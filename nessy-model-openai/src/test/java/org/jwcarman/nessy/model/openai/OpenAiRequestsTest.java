@@ -48,23 +48,16 @@ class OpenAiRequestsTest {
 
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "gpt-4o",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of(), null);
   }
 
   private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
     return new ModelRequest(
-        Context.of(messages), "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of(), null);
+        Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of(), null);
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(
-        Context.of(List.of()), systemPrompt, "gpt-4o", 1024, List.of(), Set.of(), null);
+    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -72,7 +65,7 @@ class OpenAiRequestsTest {
 
     @Test
     void becomes_the_leading_system_message() {
-      var params = OpenAiRequests.toParams(request(List.of()));
+      var params = OpenAiRequests.toParams(request(List.of()), "gpt-4o");
 
       var messages = params.messages();
       assertThat(messages).isNotEmpty();
@@ -83,14 +76,14 @@ class OpenAiRequestsTest {
 
     @Test
     void a_blank_system_prompt_omits_the_system_message_entirely() {
-      var params = OpenAiRequests.toParams(requestWithSystemPrompt(""));
+      var params = OpenAiRequests.toParams(requestWithSystemPrompt(""), "gpt-4o");
 
       assertThat(params.messages()).noneMatch(ChatCompletionMessageParam::isSystem);
     }
 
     @Test
     void a_whitespace_only_system_prompt_omits_the_system_message_entirely() {
-      var params = OpenAiRequests.toParams(requestWithSystemPrompt("   "));
+      var params = OpenAiRequests.toParams(requestWithSystemPrompt("   "), "gpt-4o");
 
       assertThat(params.messages()).noneMatch(ChatCompletionMessageParam::isSystem);
     }
@@ -101,7 +94,7 @@ class OpenAiRequestsTest {
 
     @Test
     void pass_through_unchanged() {
-      var params = OpenAiRequests.toParams(request(List.of()));
+      var params = OpenAiRequests.toParams(request(List.of()), "gpt-4o");
 
       assertThat(params.model().asString()).isEqualTo("gpt-4o");
       assertThat(params.maxCompletionTokens()).contains(1024L);
@@ -113,7 +106,7 @@ class OpenAiRequestsTest {
 
     @Test
     void always_includes_usage() {
-      var params = OpenAiRequests.toParams(request(List.of()));
+      var params = OpenAiRequests.toParams(request(List.of()), "gpt-4o");
 
       var streamOptions = params.streamOptions().orElseThrow();
       assertThat(streamOptions.includeUsage()).contains(true);
@@ -125,7 +118,7 @@ class OpenAiRequestsTest {
 
     @Test
     void become_a_user_message_with_string_content() {
-      var params = OpenAiRequests.toParams(request(List.of(Message.user("hello there"))));
+      var params = OpenAiRequests.toParams(request(List.of(Message.user("hello there"))), "gpt-4o");
 
       var messages = params.messages();
       assertThat(messages).hasSize(2);
@@ -141,7 +134,8 @@ class OpenAiRequestsTest {
     @Test
     void become_a_content_part_with_a_data_uri() {
       var image = new ImageBlock("image/png", "aGVsbG8=");
-      var params = OpenAiRequests.toParams(request(List.of(Message.user(List.of(image)))));
+      var params =
+          OpenAiRequests.toParams(request(List.of(Message.user(List.of(image)))), "gpt-4o");
 
       var userMessage = params.messages().get(1).asUser();
       var parts = userMessage.content().asArrayOfContentParts();
@@ -155,7 +149,8 @@ class OpenAiRequestsTest {
     void a_text_block_alongside_an_image_becomes_a_sibling_content_part() {
       var text = new TextBlock("what is this?");
       var image = new ImageBlock("image/jpeg", "Zm9v");
-      var params = OpenAiRequests.toParams(request(List.of(Message.user(List.of(text, image)))));
+      var params =
+          OpenAiRequests.toParams(request(List.of(Message.user(List.of(text, image)))), "gpt-4o");
 
       var parts = params.messages().get(1).asUser().content().asArrayOfContentParts();
       assertThat(parts).hasSize(2);
@@ -175,7 +170,7 @@ class OpenAiRequestsTest {
       var thinking = new ThinkingBlock("stray", "sig");
       var request = request(List.of(Message.user(List.of(image, thinking))));
 
-      assertThatThrownBy(() -> OpenAiRequests.toParams(request))
+      assertThatThrownBy(() -> OpenAiRequests.toParams(request, "gpt-4o"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unsupported content block");
     }
@@ -189,7 +184,8 @@ class OpenAiRequestsTest {
       var first = new TextBlock("hello ");
       var second = new TextBlock("world");
       var params =
-          OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(first, second)))));
+          OpenAiRequests.toParams(
+              request(List.of(Message.assistant(List.of(first, second)))), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("hello world");
@@ -210,7 +206,8 @@ class OpenAiRequestsTest {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
       var assistantTurn = Message.assistant(List.of(toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
+      var params =
+          OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       var toolCalls = assistantMessage.toolCalls().orElseThrow();
@@ -232,7 +229,8 @@ class OpenAiRequestsTest {
               List.of(
                   new ToolResultBlock("call-1", "ok", false),
                   new ToolResultBlock("call-2", "ok", false)));
-      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
+      var params =
+          OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("running two tools");
@@ -247,7 +245,8 @@ class OpenAiRequestsTest {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "a.txt"));
       var assistantTurn = Message.assistant(List.of(toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
+      var params =
+          OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content()).isEmpty();
@@ -264,7 +263,8 @@ class OpenAiRequestsTest {
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
+      var params =
+          OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("the visible answer");
@@ -276,7 +276,8 @@ class OpenAiRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var params =
-          OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(redacted, text)))));
+          OpenAiRequests.toParams(
+              request(List.of(Message.assistant(List.of(redacted, text)))), "gpt-4o");
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("the visible answer");
@@ -293,7 +294,8 @@ class OpenAiRequestsTest {
     @Test
     void an_assistant_message_of_only_a_thinking_block_produces_no_message_param() {
       var thinking = new ThinkingBlock("cut off before signing", "");
-      var params = OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(thinking)))));
+      var params =
+          OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(thinking)))), "gpt-4o");
 
       // Only the leading system message survives; the assistant message translated to nothing.
       assertThat(params.messages()).hasSize(1);
@@ -312,7 +314,8 @@ class OpenAiRequestsTest {
           OpenAiRequests.toParams(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              "gpt-4o");
 
       var toolMessage = params.messages().get(2);
       assertThat(toolMessage.isTool()).isTrue();
@@ -328,7 +331,8 @@ class OpenAiRequestsTest {
           OpenAiRequests.toParams(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              "gpt-4o");
 
       var toolMessage = params.messages().get(2);
       assertThat(toolMessage.asTool().content().asText()).isEqualTo("ERROR: file not found");
@@ -345,7 +349,8 @@ class OpenAiRequestsTest {
               request(
                   List.of(
                       Message.assistant(List.of(firstUse, secondUse)),
-                      Message.toolResults(List.of(first, second)))));
+                      Message.toolResults(List.of(first, second)))),
+              "gpt-4o");
 
       var messages = params.messages();
       assertThat(messages).hasSize(4);
@@ -366,7 +371,8 @@ class OpenAiRequestsTest {
           OpenAiRequests.toParams(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))));
+                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))),
+              "gpt-4o");
 
       var messages = params.messages();
       assertThat(messages).hasSize(4);
@@ -388,7 +394,8 @@ class OpenAiRequestsTest {
               request(
                   List.of(
                       Message.assistant(List.of(firstUse, secondUse)),
-                      Message.user(List.of(first, second, text)))));
+                      Message.user(List.of(first, second, text)))),
+              "gpt-4o");
 
       var messages = params.messages();
       assertThat(messages).hasSize(5);
@@ -416,7 +423,7 @@ class OpenAiRequestsTest {
                           new ToolUseBlock(new ToolCall("c1", "noop", MAPPER.createObjectNode())))),
                   Message.user(content))
               : List.of(Message.user(content));
-      var params = OpenAiRequests.toParams(request(requestMessages));
+      var params = OpenAiRequests.toParams(request(requestMessages), "gpt-4o");
 
       var paramMessages = params.messages();
       var last = paramMessages.get(paramMessages.size() - 1);
@@ -437,7 +444,8 @@ class OpenAiRequestsTest {
 
     @Test
     void becomes_a_function_tool_carrying_the_schema_as_is() {
-      var params = OpenAiRequests.toParams(request(List.of(), List.of(toolSpec("read_file"))));
+      var params =
+          OpenAiRequests.toParams(request(List.of(), List.of(toolSpec("read_file"))), "gpt-4o");
 
       var tools = params.tools().orElseThrow();
       assertThat(tools).hasSize(1);

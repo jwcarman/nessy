@@ -23,15 +23,15 @@ import org.jwcarman.nessy.agent.host.CliAgent;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.testing.ScriptedModelProvider;
+import org.jwcarman.nessy.testing.ScriptedModel;
 
 /**
  * The root README's five-minute promise, made runnable: one calculator tool, one turn, printed for
- * real. {@code --scripted} swaps in {@link ScriptedModelProvider} so the promise needs no key, no
- * network, and no Docker; without it, {@link EnvModelProviders#select()} picks a real provider (and
- * its default model) from whichever API key is set in the environment.
+ * real. {@code --scripted} swaps in {@link ScriptedModel} so the promise needs no key, no network,
+ * and no Docker; without it, {@link EnvModelProviders#select()} picks a real, bound model handle
+ * from whichever API key is set in the environment.
  */
 public final class Hello {
 
@@ -50,17 +50,8 @@ public final class Hello {
    */
   static String run(Iterable<String> args) {
     boolean scripted = contains(args, "--scripted");
-    ModelProvider provider;
-    String model;
-    if (scripted) {
-      provider = scriptedProvider();
-      model = "fake-model";
-    } else {
-      EnvModelProviders.Selection selection = EnvModelProviders.select();
-      provider = selection.provider();
-      model = selection.model();
-    }
-    ModelSettings settings = new ModelSettings(model, SYSTEM_PROMPT, 1024, Set.of(), null);
+    Model model = scripted ? scriptedModel() : EnvModelProviders.select().model();
+    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
     Tool<Calculate> calculator =
         Tool.of(
             Calculate.class,
@@ -69,17 +60,22 @@ public final class Hello {
                     .executes(calc -> String.valueOf(calc.left() + calc.right())));
 
     try (CliAgent agent =
-        Nessy.cli().provider(provider).settings(settings).tools(calculator).build()) {
+        Nessy.cli()
+            .model(model)
+            .systemPrompt(SYSTEM_PROMPT)
+            .settings(settings)
+            .tools(calculator)
+            .build()) {
       String reply = agent.converse(QUESTION);
       return reply + " (COMPLETE)";
     }
   }
 
-  private static ScriptedModelProvider scriptedProvider() {
+  private static ScriptedModel scriptedModel() {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();
     arguments.put("left", 2);
     arguments.put("right", 2);
-    return ScriptedModelProvider.script(
+    return ScriptedModel.script(
         s ->
             s.toolUse("c1", "calculate", arguments)
                 .endWithToolUse()

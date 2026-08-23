@@ -46,37 +46,20 @@ class BedrockRequestsTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
+  private static final String MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of(), null);
   }
 
   private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        1024,
-        tools,
-        Set.of(),
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of(), null);
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(
-        Context.of(List.of()),
-        systemPrompt,
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -84,7 +67,7 @@ class BedrockRequestsTest {
 
     @Test
     void becomes_a_system_content_block() {
-      var built = BedrockRequests.toRequest(request(List.of()));
+      var built = BedrockRequests.toRequest(request(List.of()), MODEL_ID);
 
       assertThat(built.system()).hasSize(1);
       assertThat(built.system().get(0).text()).isEqualTo("you are a helpful assistant");
@@ -92,14 +75,14 @@ class BedrockRequestsTest {
 
     @Test
     void a_blank_system_prompt_omits_the_system_field_entirely() {
-      var built = BedrockRequests.toRequest(requestWithSystemPrompt(""));
+      var built = BedrockRequests.toRequest(requestWithSystemPrompt(""), MODEL_ID);
 
       assertThat(built.hasSystem()).isFalse();
     }
 
     @Test
     void a_whitespace_only_system_prompt_omits_the_system_field_entirely() {
-      var built = BedrockRequests.toRequest(requestWithSystemPrompt("   "));
+      var built = BedrockRequests.toRequest(requestWithSystemPrompt("   "), MODEL_ID);
 
       assertThat(built.hasSystem()).isFalse();
     }
@@ -110,7 +93,7 @@ class BedrockRequestsTest {
 
     @Test
     void passes_through_unchanged() {
-      var built = BedrockRequests.toRequest(request(List.of()));
+      var built = BedrockRequests.toRequest(request(List.of()), MODEL_ID);
 
       assertThat(built.inferenceConfig().maxTokens()).isEqualTo(1024);
     }
@@ -121,7 +104,8 @@ class BedrockRequestsTest {
 
     @Test
     void become_a_user_message_with_a_text_block() {
-      var built = BedrockRequests.toRequest(request(List.of(Message.user("hello there"))));
+      var built =
+          BedrockRequests.toRequest(request(List.of(Message.user("hello there"))), MODEL_ID);
 
       assertThat(built.messages()).hasSize(1);
       var message = built.messages().get(0);
@@ -134,7 +118,9 @@ class BedrockRequestsTest {
     void multiple_text_blocks_become_sibling_content_blocks_in_order() {
       var first = new TextBlock("first ");
       var second = new TextBlock("second");
-      var built = BedrockRequests.toRequest(request(List.of(Message.user(List.of(first, second)))));
+      var built =
+          BedrockRequests.toRequest(
+              request(List.of(Message.user(List.of(first, second)))), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(2);
@@ -151,7 +137,7 @@ class BedrockRequestsTest {
       var image = new ImageBlock("image/png", "aGVsbG8=");
       var request = request(List.of(Message.user(List.of(image))));
 
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request))
+      assertThatThrownBy(() -> BedrockRequests.toRequest(request, MODEL_ID))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unsupported content block");
     }
@@ -165,7 +151,8 @@ class BedrockRequestsTest {
       var first = new TextBlock("hello ");
       var second = new TextBlock("world");
       var built =
-          BedrockRequests.toRequest(request(List.of(Message.assistant(List.of(first, second)))));
+          BedrockRequests.toRequest(
+              request(List.of(Message.assistant(List.of(first, second)))), MODEL_ID);
 
       assertThat(built.messages()).hasSize(1);
       var message = built.messages().get(0);
@@ -190,7 +177,8 @@ class BedrockRequestsTest {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
       var assistantTurn = Message.assistant(List.of(toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+      var built =
+          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(1);
@@ -211,7 +199,8 @@ class BedrockRequestsTest {
               List.of(
                   new ToolResultBlock("call-1", "ok", false),
                   new ToolResultBlock("call-2", "ok", false)));
-      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+      var built =
+          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(3);
@@ -229,7 +218,8 @@ class BedrockRequestsTest {
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
       var assistantTurn = Message.assistant(List.of(toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+      var built =
+          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
       var input = built.messages().get(0).content().get(0).toolUse().input().asMap();
       // Node equality on document kind, not just string form: a wrong implementation that
@@ -254,7 +244,8 @@ class BedrockRequestsTest {
 
       // No exception, and the rebuilt block carries the call unchanged — Bedrock's ToolUseBlock
       // has no signature-shaped field for GeminiRequests' equivalent to replay onto.
-      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+      var built =
+          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
       var block = built.messages().get(0).content().get(0).toolUse();
       assertThat(block.toolUseId()).isEqualTo("call-1");
@@ -271,7 +262,8 @@ class BedrockRequestsTest {
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
       var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
-      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+      var built =
+          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(2);
@@ -284,7 +276,8 @@ class BedrockRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var built =
-          BedrockRequests.toRequest(request(List.of(Message.assistant(List.of(redacted, text)))));
+          BedrockRequests.toRequest(
+              request(List.of(Message.assistant(List.of(redacted, text)))), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(1);
@@ -301,7 +294,9 @@ class BedrockRequestsTest {
     @Test
     void an_assistant_message_of_only_a_thinking_block_produces_no_message() {
       var thinking = new ThinkingBlock("cut off before signing", "");
-      var built = BedrockRequests.toRequest(request(List.of(Message.assistant(List.of(thinking)))));
+      var built =
+          BedrockRequests.toRequest(
+              request(List.of(Message.assistant(List.of(thinking)))), MODEL_ID);
 
       assertThat(built.messages()).isEmpty();
     }
@@ -319,7 +314,8 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              MODEL_ID);
 
       var responseContent = built.messages().get(1).content();
       assertThat(built.messages().get(1).roleAsString()).isEqualTo("user");
@@ -340,7 +336,8 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              MODEL_ID);
 
       var toolResult = built.messages().get(1).content().get(0).toolResult();
       assertThat(toolResult.status()).isEqualTo(ToolResultStatus.ERROR);
@@ -358,7 +355,8 @@ class BedrockRequestsTest {
               request(
                   List.of(
                       Message.assistant(List.of(firstUse, secondUse)),
-                      Message.toolResults(List.of(first, second)))));
+                      Message.toolResults(List.of(first, second)))),
+              MODEL_ID);
 
       var content = built.messages().get(1).content();
       assertThat(content).hasSize(2);
@@ -380,7 +378,8 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))));
+                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))),
+              MODEL_ID);
 
       var responseMessage = built.messages().get(1);
       assertThat(responseMessage.roleAsString()).isEqualTo("user");
@@ -410,7 +409,7 @@ class BedrockRequestsTest {
                   Message.user(content))
               : List.of(Message.user(content));
 
-      var built = BedrockRequests.toRequest(request(messages));
+      var built = BedrockRequests.toRequest(request(messages), MODEL_ID);
 
       var lastMessage = built.messages().get(built.messages().size() - 1);
       assertThat(lastMessage.roleAsString()).isEqualTo("user");
@@ -437,7 +436,7 @@ class BedrockRequestsTest {
     @Test
     void becomes_a_tool_specification_carrying_the_schema_as_a_document() {
       var spec = toolSpec("read_file");
-      var built = BedrockRequests.toRequest(request(List.of(), List.of(spec)));
+      var built = BedrockRequests.toRequest(request(List.of(), List.of(spec)), MODEL_ID);
 
       assertThat(built.toolConfig().tools()).hasSize(1);
       var toolSpecification = built.toolConfig().tools().get(0).toolSpec();
@@ -454,7 +453,7 @@ class BedrockRequestsTest {
 
     @Test
     void no_tools_means_the_request_carries_no_tool_config() {
-      var built = BedrockRequests.toRequest(request(List.of()));
+      var built = BedrockRequests.toRequest(request(List.of()), MODEL_ID);
 
       assertThat(built.toolConfig()).isNull();
     }

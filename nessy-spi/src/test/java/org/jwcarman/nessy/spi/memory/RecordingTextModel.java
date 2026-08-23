@@ -24,29 +24,29 @@ import java.util.Set;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * A minimal scripted {@link ModelProvider} for {@code nessy-core}'s own tests: replies with one
- * text chunk per call, drawn from a fixed queue (the last reply repeats once the queue runs dry, so
- * a test exercising more calls than it bothered to script still gets a deterministic answer), and
- * counts how many calls it received — the counting is the point for a below-threshold-makes-no-call
+ * A minimal scripted {@link Model} for {@code nessy-core}'s own tests: replies with one text chunk
+ * per call, drawn from a fixed queue (the last reply repeats once the queue runs dry, so a test
+ * exercising more calls than it bothered to script still gets a deterministic answer), and counts
+ * how many calls it received — the counting is the point for a below-threshold-makes-no-call
  * assertion.
  *
- * <p>{@code nessy-testing}'s {@code ScriptedModelProvider} is the richer, multi-event-per-turn
- * cousin of this one; {@code nessy-core} cannot depend on {@code nessy-testing} (the dependency
- * runs the other way), so this is the small, single-purpose double this module's own tests need.
+ * <p>{@code nessy-testing}'s {@code ScriptedModel} is the richer, multi-event-per-turn cousin of
+ * this one; {@code nessy-core} cannot depend on {@code nessy-testing} (the dependency runs the
+ * other way), so this is the small, single-purpose double this module's own tests need.
  */
-final class RecordingTextModelProvider implements ModelProvider {
+final class RecordingTextModel implements Model {
 
   private final Deque<String> replies;
   private final List<ModelRequest> requests = new ArrayList<>();
   private String lastReply = "";
 
-  RecordingTextModelProvider(String... replies) {
+  RecordingTextModel(String... replies) {
     this.replies = new ArrayDeque<>(List.of(replies));
   }
 
@@ -78,6 +78,11 @@ final class RecordingTextModelProvider implements ModelProvider {
   @Override
   public Set<Capability> capabilities() {
     return Set.of();
+  }
+
+  @Override
+  public String id() {
+    return "recording-text";
   }
 
   int callCount() {

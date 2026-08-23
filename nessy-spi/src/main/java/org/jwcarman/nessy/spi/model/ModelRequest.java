@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 public record ModelRequest(
     Context context,
     String systemPrompt,
-    String model,
     int maxTokens,
     List<ToolSpec> tools,
     Set<Capability> requested,
@@ -49,9 +48,6 @@ public record ModelRequest(
   public ModelRequest {
     Objects.requireNonNull(context, "context must not be null");
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
-    if (model == null || model.isBlank()) {
-      throw new IllegalArgumentException("model must not be blank");
-    }
     if (maxTokens < 1) {
       throw new IllegalArgumentException("maxTokens must be at least 1");
     }

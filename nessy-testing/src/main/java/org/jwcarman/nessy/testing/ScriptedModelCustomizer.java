@@ -17,14 +17,14 @@ package org.jwcarman.nessy.testing;
 
 /**
  * The DSL-idiom name (design of record 2026-08-16 §1) for what {@link
- * ScriptedModelProvider#script(ScriptedModelProviderCustomizer)} hands a lambda: a {@link
- * ScriptedModelProviderConfig} to fill in. A named functional interface rather than a bare {@code
- * Consumer<ScriptedModelProviderConfig>} — matching {@link
- * org.jwcarman.nessy.api.tool.ToolCustomizer} and every other named customizer in this codebase.
+ * ScriptedModel#script(ScriptedModelCustomizer)} hands a lambda: a {@link ScriptedModelConfig} to
+ * fill in. A named functional interface rather than a bare {@code Consumer<ScriptedModelConfig>} —
+ * matching {@link org.jwcarman.nessy.api.tool.ToolCustomizer} and every other named customizer in
+ * this codebase.
  */
 @FunctionalInterface
-public interface ScriptedModelProviderCustomizer {
+public interface ScriptedModelCustomizer {
 
   /** Fills in {@code scripted} — the only thing a customizer ever does. */
-  void customize(ScriptedModelProviderConfig scripted);
+  void customize(ScriptedModelConfig scripted);
 }

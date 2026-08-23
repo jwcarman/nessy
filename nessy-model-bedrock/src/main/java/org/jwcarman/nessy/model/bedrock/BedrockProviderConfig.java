@@ -167,10 +167,10 @@ public final class BedrockProviderConfig {
    * event, {@link #DONE}, or {@link StreamFailure} — before returning, so a failure on the very
    * first call (a 429 throttle, an expired credential, a guardrail-blocked request) throws from
    * {@link BedrockModelProvider#stream} itself rather than only once the caller starts iterating.
-   * This matters: {@code RetryingModelProvider} retries only the opening of a stream (its javadoc:
-   * "once events flow, tokens have already been fed downstream"), so an opening failure that
-   * instead surfaced from the first {@code hasNext()}/{@code next()} call would silently never be
-   * retried, unlike the identical failure on every synchronous-SDK sibling provider.
+   * This matters: {@code RetryingModel} retries only the opening of a stream (its javadoc: "once
+   * events flow, tokens have already been fed downstream"), so an opening failure that instead
+   * surfaced from the first {@code hasNext()}/{@code next()} call would silently never be retried,
+   * unlike the identical failure on every synchronous-SDK sibling provider.
    *
    * <p><b>Close ownership.</b> {@code ownsClient} decides what {@link BedrockClient#close()} does
    * to {@code sdkClient}: {@code true} for the client this config constructed itself (the {@code

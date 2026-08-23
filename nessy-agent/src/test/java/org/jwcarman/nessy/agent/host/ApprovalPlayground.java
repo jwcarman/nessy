@@ -80,14 +80,14 @@ public final class ApprovalPlayground {
 
   public static void main(String[] args) throws Exception {
     var selection = EnvModelProviders.select();
-    var settings =
-        new ModelSettings(selection.model(), "You are a terse assistant.", 1024, Set.of(), null);
+    var settings = new ModelSettings(1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
     var harness =
         Nessy.harness(
             h ->
                 h.type("playground")
-                    .provider(selection.provider())
+                    .model(selection.model())
+                    .systemPrompt("You are a terse assistant.")
                     .settings(settings)
                     .grants(
                         ToolGrant.grant(

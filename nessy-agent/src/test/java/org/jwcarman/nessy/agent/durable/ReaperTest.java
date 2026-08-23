@@ -42,7 +42,7 @@ import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -204,7 +204,7 @@ class ReaperTest {
     var registry = ToolRegistry.of(tool);
     var pump = new PumpedExecutor();
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(CALL, null)),
                 List.of(new ModelEvent.TextChunk("done"))));
@@ -224,7 +224,13 @@ class ReaperTest {
             new QueueBacklog(),
             text -> List.of(new TextBlock(text)),
             new ProviderModelCallExecutor(
-                provider, TestSettings.settings(), registry, memory, narrator, pump),
+                provider,
+                TestSettings.SYSTEM_PROMPT,
+                TestSettings.settings(),
+                registry,
+                memory,
+                narrator,
+                pump),
             executor,
             AgentObserver.noop(),
             false,

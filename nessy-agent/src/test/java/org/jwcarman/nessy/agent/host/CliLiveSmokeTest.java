@@ -44,10 +44,14 @@ class CliLiveSmokeTest {
     assumeTrue(anyProviderKeyPresent(), "no model provider API key set");
 
     var selection = EnvModelProviders.select();
-    var settings =
-        new ModelSettings(selection.model(), "You are a terse assistant.", 64, Set.of(), null);
+    var settings = new ModelSettings(64, Set.of(), null);
 
-    try (var agent = Nessy.cli().provider(selection.provider()).settings(settings).build()) {
+    try (var agent =
+        Nessy.cli()
+            .model(selection.model())
+            .systemPrompt("You are a terse assistant.")
+            .settings(settings)
+            .build()) {
       String reply = agent.converse("Reply with exactly the word: pong");
       assertThat(reply).isNotBlank();
     }

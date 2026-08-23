@@ -29,15 +29,16 @@ import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
 import org.jwcarman.nessy.model.gemini.GeminiProviderConfig;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiProviderConfig;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * The provider follows the key (design §4a, owner: "switching to openai would be simply including
- * that env var"): one method that picks a {@link ModelProvider} by which API key is present in the
- * environment, so an application built against this module switches providers by switching an
- * environment variable rather than its code.
+ * that env var"): one method that picks a {@link ModelProvider} gateway by which API key is present
+ * in the environment, then binds it to a model id, so an application built against this module
+ * switches models by switching an environment variable rather than its code.
  *
  * <p><strong>Precedence table</strong> (provider-expansion design §3, §7):
  *
@@ -139,14 +140,14 @@ public final class EnvModelProviders {
 
   private EnvModelProviders() {}
 
-  /** The public entry point: chooses a provider from the real process environment. */
-  public static ModelProvider fromEnv() {
-    return select(System.getenv()).provider();
+  /** The public entry point: chooses a bound model handle from the real process environment. */
+  public static Model fromEnv() {
+    return select(System.getenv()).model();
   }
 
-  /** The offline seam: chooses a provider from {@code env} rather than the real environment. */
-  static ModelProvider fromEnv(Map<String, String> env) {
-    return select(env).provider();
+  /** The offline seam: chooses a bound model handle from {@code env} rather than the real one. */
+  static Model fromEnv(Map<String, String> env) {
+    return select(env).model();
   }
 
   /**
@@ -173,7 +174,7 @@ public final class EnvModelProviders {
     // even computed, so it never enters the candidate list, the ambiguity count, or the
     // which-key tiebreak, and wins outright regardless of which API keys happen to be present.
     if (isBedrockChosen(env)) {
-      return new Selection(bedrock(), BEDROCK_CHOICE, bedrockModel(env));
+      return new Selection(bedrock().model(bedrockModel(env)), BEDROCK_CHOICE);
     }
     List<Candidate> candidates = presentCandidates(env);
     if (candidates.isEmpty()) {
@@ -184,8 +185,8 @@ public final class EnvModelProviders {
             ? candidates.get(0)
             : tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
     var override = env.get(NESSY_MODEL_ENV_VAR);
-    var model = override != null && !override.isBlank() ? override : chosen.defaultModel();
-    return new Selection(chosen.provider().get(), chosen.name(), model);
+    var modelId = override != null && !override.isBlank() ? override : chosen.defaultModel();
+    return new Selection(chosen.provider().get().model(modelId), chosen.name());
   }
 
   /**
@@ -352,19 +353,18 @@ public final class EnvModelProviders {
   private record Candidate(String name, String defaultModel, Supplier<ModelProvider> provider) {}
 
   /**
-   * What {@link #select()}/{@link #select(Map)} chose: the built {@code provider}, its lowercase
-   * name ({@code "anthropic"}/{@code "openai"}/{@code "gemini"}/{@code "xai"}/{@code "bedrock"} —
-   * the same {@value #NESSY_PROVIDER_ENV_VAR} vocabulary, though {@code "bedrock"} only ever
-   * arrives here via explicit selection, never a tiebreak), and the {@code model} that goes with
-   * it, so a caller — a demo's banner, an application's logging — can show what was picked without
-   * re-deriving it via {@code instanceof}.
+   * What {@link #select()}/{@link #select(Map)} chose: the bound {@code model} handle — its id
+   * reachable as {@code model().id()} — and the chosen provider's lowercase name ({@code
+   * "anthropic"}/{@code "openai"}/{@code "gemini"}/{@code "xai"}/{@code "bedrock"} — the same
+   * {@value #NESSY_PROVIDER_ENV_VAR} vocabulary, though {@code "bedrock"} only ever arrives here
+   * via explicit selection, never a tiebreak), so a caller — a demo's banner, an application's
+   * logging — can show what was picked without re-deriving it via {@code instanceof}.
    */
-  public record Selection(ModelProvider provider, String providerName, String model) {
+  public record Selection(Model model, String providerName) {
 
     public Selection {
-      Objects.requireNonNull(provider, "provider must not be null");
-      Objects.requireNonNull(providerName, "providerName must not be null");
       Objects.requireNonNull(model, "model must not be null");
+      Objects.requireNonNull(providerName, "providerName must not be null");
     }
   }
 }

@@ -50,7 +50,7 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -66,7 +66,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  */
 public final class HarnessConfig<O> {
 
-  private ModelProvider provider;
+  private Model model;
   private ModelSettings settings;
   private String systemPrompt;
   private String typeName = "agent";
@@ -116,36 +116,31 @@ public final class HarnessConfig<O> {
   }
 
   /**
-   * The model backend every scope talks to — the harness's one required dependency (spec §3): no
-   * environment fallback, so this stays the one thing every caller must supply explicitly.
+   * The bound model handle every scope talks to — the harness's one required dependency (spec §3):
+   * no environment fallback, so this stays the one thing every caller must supply explicitly. A
+   * {@link Model} already knows which model it runs (spec §7); no model string threads through the
+   * harness at all.
    */
-  public HarnessConfig<O> provider(ModelProvider provider) {
-    this.provider = Objects.requireNonNull(provider, Nessy.PROVIDER_MUST_NOT_BE_NULL);
+  public HarnessConfig<O> model(Model model) {
+    this.model = Objects.requireNonNull(model, Nessy.MODEL_MUST_NOT_BE_NULL);
     return this;
   }
 
   /**
-   * The model call's tuning knobs — model id, system prompt, token budget, capabilities. Still
-   * required for model id and max tokens even when {@link #systemPrompt(String)} is also called
-   * (spec §3): that sugar only ever overrides this settings object's own {@code systemPrompt} field
-   * when {@code customize} returns, never the rest of it.
-   */
-  public HarnessConfig<O> settings(ModelSettings settings) {
-    this.settings = Objects.requireNonNull(settings, Nessy.SETTINGS_MUST_NOT_BE_NULL);
-    return this;
-  }
-
-  /**
-   * First-class sugar over {@link #settings(ModelSettings)} (spec §3): sets just the system prompt
-   * without repeating the rest of {@link ModelSettings}' shape. <b>Precedence:</b> at finish, when
-   * this is set it always overrides whatever {@code systemPrompt} the {@link
-   * #settings(ModelSettings)} object carries — regardless of call order — while every other field
-   * of that settings object (model id, max tokens, capabilities, context window) passes through
-   * untouched; {@link #settings(ModelSettings)} itself is still required, for those other fields,
-   * even when this is called.
+   * First-class, harness-level configuration (spec §3, §7) — no longer a field on {@link
+   * ModelSettings}: required, with no settings fallback.
    */
   public HarnessConfig<O> systemPrompt(String systemPrompt) {
-    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    this.systemPrompt = Objects.requireNonNull(systemPrompt, Nessy.SYSTEM_PROMPT_MUST_NOT_BE_NULL);
+    return this;
+  }
+
+  /**
+   * The model call's OPTIONAL tuning knobs — max token budget, requested capabilities, context
+   * window (spec §7); default {@link ModelSettings#defaults()} when never called.
+   */
+  public HarnessConfig<O> settings(ModelSettings settings) {
+    this.settings = Objects.requireNonNull(settings, "settings must not be null");
     return this;
   }
 
@@ -299,22 +294,18 @@ public final class HarnessConfig<O> {
    * idiom — no public {@code build()} survives here).
    */
   Harness<O> finish() {
-    if (provider == null) {
+    if (model == null) {
       throw new NullPointerException(
-          "provider must not be null — Nessy.harness(...) requires .provider(ModelProvider)"
-              + " inside the customizer; it is the harness's one required dependency (spec §3),"
-              + " with no environment fallback");
+          "model must not be null — Nessy.harness(...) requires .model(Model) inside the"
+              + " customizer; it is the harness's one required dependency (spec §3), with no"
+              + " environment fallback");
     }
-    Objects.requireNonNull(settings, Nessy.SETTINGS_MUST_NOT_BE_NULL);
-    ModelSettings effectiveSettings =
-        systemPrompt != null
-            ? new ModelSettings(
-                settings.model(),
-                systemPrompt,
-                settings.maxTokens(),
-                settings.capabilities(),
-                settings.contextWindow())
-            : settings;
+    if (systemPrompt == null) {
+      throw new NullPointerException(
+          "systemPrompt must not be null — Nessy.harness(...) requires .systemPrompt(String)"
+              + " inside the customizer; it is required, harness-level configuration (spec §3, §7)");
+    }
+    ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
     ObservationRenderer<O> effectiveRenderer =
         Objects.requireNonNull(renderer, "renderer must not be null");
     ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
@@ -348,7 +339,8 @@ public final class HarnessConfig<O> {
     // lambdas below close over values captured at this atomic-construction moment, not over
     // `this` fields a later mutation (there is none in practice — the config never escapes — but
     // the lambdas should say what they mean).
-    ModelProvider effectiveProvider = provider;
+    Model effectiveModel = model;
+    String effectiveSystemPrompt = systemPrompt;
     TurnObserver effectiveTurnObserver = turnObserver;
     Consumer<ApprovalRequest> effectiveApprovalNotifier = approvalNotifier;
 
@@ -364,7 +356,8 @@ public final class HarnessConfig<O> {
             effectiveBacklogFactory,
             scopeMemory ->
                 new ProviderModelCallExecutor(
-                    effectiveProvider,
+                    effectiveModel,
+                    effectiveSystemPrompt,
                     effectiveSettings,
                     registry,
                     scopeMemory,

@@ -29,7 +29,7 @@ import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
@@ -99,13 +99,13 @@ class ThreeRuntimeProcessLossTest {
 
     // Runtime A: create the computation and dispatch (the tool defers), then die.
     var pumpA = new PumpedExecutor();
-    var providerA =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+    var providerA = new ScriptedModel(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
     var harnessA =
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerA)
+                    .model(providerA)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
                     .substrate(substrate)
@@ -134,13 +134,13 @@ class ThreeRuntimeProcessLossTest {
     // Runtime C: a fresh host, knowing nothing of A or B, whose own heartbeat is the only thing
     // that ever drains the delivery.
     var pumpC = new PumpedExecutor();
-    var providerC =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("all done."))));
+    var providerC = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("all done."))));
     var harnessC =
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerC)
+                    .model(providerC)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
                     .substrate(substrate)

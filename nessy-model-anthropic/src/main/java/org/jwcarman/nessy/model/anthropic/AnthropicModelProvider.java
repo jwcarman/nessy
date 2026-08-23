@@ -25,17 +25,18 @@ import java.util.Set;
 import java.util.function.Predicate;
 import org.jwcarman.nessy.model.anthropic.AnthropicRequests.ThinkingConfig;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * The public face of the Anthropic provider module: turns a {@link ModelRequest} into a live
- * streaming call against the anthropic-java SDK.
+ * The vendor gateway for Anthropic: owns the {@link AnthropicClient} and hands out {@link Model}
+ * handles bound to one model id apiece via {@link #model(String)}.
  *
- * <p>Everything upstream of this class is pure translation ({@link AnthropicRequests}, {@link
- * AnthropicStream}, {@link AnthropicSchemas}); this class is the one place that owns an {@link
- * AnthropicClient} and actually talks to the network.
+ * <p>Everything upstream of the handle it returns is pure translation ({@link AnthropicRequests},
+ * {@link AnthropicStream}, {@link AnthropicSchemas}); this class is the one place that owns the
+ * client and actually talks to the network.
  */
 public final class AnthropicModelProvider implements ModelProvider {
 
@@ -47,7 +48,7 @@ public final class AnthropicModelProvider implements ModelProvider {
           Capability.IMAGE_INPUT);
 
   /**
-   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModelProvider} should retry.
+   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModel} should retry.
    *
    * <p>Grounded in the SDK's own retry classification: the anthropic-java SDK's internal HTTP
    * client retries a raw {@link java.io.IOException} or {@link AnthropicRetryableException}
@@ -115,14 +116,11 @@ public final class AnthropicModelProvider implements ModelProvider {
   }
 
   @Override
-  public ModelStream stream(ModelRequest request) {
-    var params = AnthropicRequests.toParams(request, thinkingConfigFor(request));
-    return new AnthropicStream(client.messages().createStreaming(params));
-  }
-
-  @Override
-  public Set<Capability> capabilities() {
-    return CAPABILITIES;
+  public Model model(String id) {
+    if (id == null || id.isBlank()) {
+      throw new IllegalArgumentException("id must not be blank");
+    }
+    return new AnthropicModel(id);
   }
 
   @Override
@@ -130,7 +128,37 @@ public final class AnthropicModelProvider implements ModelProvider {
     return "Anthropic";
   }
 
-  private ThinkingConfig thinkingConfigFor(ModelRequest request) {
-    return new ThinkingConfig(request.requested().contains(Capability.THINKING), thinkingBudget);
+  /**
+   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
+   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
+   * disturbing the gateway.
+   */
+  private final class AnthropicModel implements Model {
+
+    private final String id;
+
+    private AnthropicModel(String id) {
+      this.id = id;
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      var params = AnthropicRequests.toParams(request, id, thinkingConfigFor(request));
+      return new AnthropicStream(client.messages().createStreaming(params));
+    }
+
+    @Override
+    public Set<Capability> capabilities() {
+      return CAPABILITIES;
+    }
+
+    @Override
+    public String id() {
+      return id;
+    }
+
+    private ThinkingConfig thinkingConfigFor(ModelRequest request) {
+      return new ThinkingConfig(request.requested().contains(Capability.THINKING), thinkingBudget);
+    }
   }
 }

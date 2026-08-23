@@ -21,23 +21,23 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * Like {@link ScriptedModelProvider}, but the first {@link #stream(ModelRequest)} call blocks on an
+ * Like {@link ScriptedModel}, but the first {@link #stream(ModelRequest)} call blocks on an
  * injected latch before returning its scripted events; every later call returns immediately.
  */
-public final class LatchedModelProvider implements ModelProvider {
+public final class LatchedModel implements Model {
 
   private final CountDownLatch gate;
   private final List<List<ModelEvent>> scripts;
   private final List<ModelRequest> requests = new ArrayList<>();
   private int next;
 
-  public LatchedModelProvider(CountDownLatch gate, List<List<ModelEvent>> scripts) {
+  public LatchedModel(CountDownLatch gate, List<List<ModelEvent>> scripts) {
     this.gate = gate;
     this.scripts = scripts;
   }
@@ -75,6 +75,11 @@ public final class LatchedModelProvider implements ModelProvider {
   @Override
   public Set<Capability> capabilities() {
     return Set.of();
+  }
+
+  @Override
+  public String id() {
+    return "latched";
   }
 
   public List<ModelRequest> requests() {

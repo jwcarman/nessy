@@ -41,7 +41,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -51,8 +51,8 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 public final class Nessy {
 
   // package-private: HarnessConfig (a sibling top-level class, mirroring ToolConfig) shares these.
-  static final String PROVIDER_MUST_NOT_BE_NULL = "provider must not be null";
-  static final String SETTINGS_MUST_NOT_BE_NULL = "settings must not be null";
+  static final String MODEL_MUST_NOT_BE_NULL = "model must not be null";
+  static final String SYSTEM_PROMPT_MUST_NOT_BE_NULL = "systemPrompt must not be null";
 
   /**
    * The {@code String} door's trivial backlog codec: UTF-8 bytes, nothing more. Not a new public
@@ -116,7 +116,8 @@ public final class Nessy {
 
   public static final class CliBuilder {
 
-    private ModelProvider provider;
+    private Model model;
+    private String systemPrompt;
     private ModelSettings settings;
     private Memory memory;
     private String id = "cli";
@@ -128,15 +129,24 @@ public final class Nessy {
     /** Reachable only through {@link Nessy#cli()}. */
     private CliBuilder() {}
 
-    /** The model backend the scope talks to. */
-    public CliBuilder provider(ModelProvider provider) {
-      this.provider = Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
+    /** The bound model handle the scope talks to (spec §7): already knows which model it runs. */
+    public CliBuilder model(Model model) {
+      this.model = Objects.requireNonNull(model, MODEL_MUST_NOT_BE_NULL);
       return this;
     }
 
-    /** The model call's tuning knobs — model id, system prompt, token budget, capabilities. */
+    /** First-class, harness-level configuration (spec §3, §7); required, no settings fallback. */
+    public CliBuilder systemPrompt(String systemPrompt) {
+      this.systemPrompt = Objects.requireNonNull(systemPrompt, SYSTEM_PROMPT_MUST_NOT_BE_NULL);
+      return this;
+    }
+
+    /**
+     * The model call's OPTIONAL tuning knobs — max token budget, requested capabilities, context
+     * window; default {@link ModelSettings#defaults()} when never called.
+     */
     public CliBuilder settings(ModelSettings settings) {
-      this.settings = Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
+      this.settings = Objects.requireNonNull(settings, "settings must not be null");
       return this;
     }
 
@@ -182,8 +192,9 @@ public final class Nessy {
     }
 
     public CliAgent build() {
-      Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(model, MODEL_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(systemPrompt, SYSTEM_PROMPT_MUST_NOT_BE_NULL);
+      ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
       ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
       boolean ownsExecutor = executor == null;
       ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
@@ -208,7 +219,7 @@ public final class Nessy {
               rawId -> backlog,
               scopeMemory ->
                   new ProviderModelCallExecutor(
-                      provider, settings, limited, scopeMemory, relay, exec),
+                      model, systemPrompt, effectiveSettings, limited, scopeMemory, relay, exec),
               scopeId ->
                   new RegistryToolCallExecutor(limited, agentType, scopeId, relay, exec, pinned),
               substrate,

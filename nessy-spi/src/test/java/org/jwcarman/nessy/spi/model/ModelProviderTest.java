@@ -17,9 +17,6 @@ package org.jwcarman.nessy.spi.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ModelProviderTest {
@@ -42,23 +39,8 @@ class ModelProviderTest {
   private abstract static class BareModelProvider implements ModelProvider {
 
     @Override
-    public ModelStream stream(ModelRequest request) {
-      return new ModelStream() {
-        @Override
-        public Iterator<ModelEvent> iterator() {
-          return List.<ModelEvent>of().iterator();
-        }
-
-        @Override
-        public void close() {
-          // fake stream holds no resources to release
-        }
-      };
-    }
-
-    @Override
-    public Set<Capability> capabilities() {
-      return Set.of();
+    public Model model(String id) {
+      throw new UnsupportedOperationException("not exercised by this test");
     }
   }
 

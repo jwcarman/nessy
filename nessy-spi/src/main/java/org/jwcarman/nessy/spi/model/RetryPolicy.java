@@ -18,7 +18,7 @@ package org.jwcarman.nessy.spi.model;
 import java.time.Duration;
 
 /**
- * How {@link RetryingModelProvider} backs off between attempts.
+ * How {@link RetryingModel} backs off between attempts.
  *
  * @param maxAttempts total attempts, including the first (must be at least 1)
  * @param initialDelay delay before the first retry (must be positive)

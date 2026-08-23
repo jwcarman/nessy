@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import software.amazon.awssdk.regions.Region;
@@ -45,15 +46,10 @@ class BedrockModelProviderTest {
     };
   }
 
+  private static final String MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+
   private static ModelRequest request() {
-    return new ModelRequest(
-        Context.of(List.of()),
-        "sys",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+    return new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
   }
 
   private static ConverseStreamOutput textDelta(String text) {
@@ -76,7 +72,7 @@ class BedrockModelProviderTest {
       var response = new BedrockStream(List.of(), () -> {});
       var provider = new BedrockModelProvider(fakeClient(capturedArgs, response));
 
-      var stream = provider.stream(request());
+      var stream = provider.model(MODEL_ID).stream(request());
 
       assertThat(stream).isSameAs(response);
       assertThat(capturedArgs[0]).isInstanceOf(ConverseStreamRequest.class);
@@ -187,7 +183,8 @@ class BedrockModelProviderTest {
     @Test
     void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
       try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
-        assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
+        assertThat(provider.model(MODEL_ID).capabilities())
+            .containsExactly(Capability.PARALLEL_TOOL_CALLS);
       }
     }
   }
@@ -200,6 +197,49 @@ class BedrockModelProviderTest {
       try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
         assertThat(provider.name()).isEqualTo("Bedrock");
       }
+    }
+  }
+
+  /**
+   * Exercises the split itself, offline: {@link BedrockModelProvider#model(String)} hands out
+   * independent handles that share the gateway's client, each honest about its own id, with a blank
+   * id rejected before any handle is created.
+   */
+  @Nested
+  class Gateway {
+
+    @Test
+    void two_model_calls_on_one_provider_yield_independent_handles_sharing_the_client() {
+      var capturedArgs = new Object[1];
+      var response = new BedrockStream(List.of(), () -> {});
+      var provider = new BedrockModelProvider(fakeClient(capturedArgs, response));
+
+      Model haiku = provider.model(MODEL_ID);
+      Model opus = provider.model("us.anthropic.claude-opus-5-20260101-v1:0");
+
+      assertThat(haiku.id()).isEqualTo(MODEL_ID);
+      assertThat(opus.id()).isEqualTo("us.anthropic.claude-opus-5-20260101-v1:0");
+      assertThat(haiku).isNotSameAs(opus);
+
+      haiku.stream(request());
+      assertThat(((ConverseStreamRequest) capturedArgs[0]).modelId()).isEqualTo(MODEL_ID);
+      opus.stream(request());
+      assertThat(((ConverseStreamRequest) capturedArgs[0]).modelId())
+          .isEqualTo("us.anthropic.claude-opus-5-20260101-v1:0");
+    }
+
+    @Test
+    void a_blank_model_id_is_rejected() {
+      var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
+
+      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_null_model_id_is_rejected() {
+      var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
+
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -223,7 +263,7 @@ class BedrockModelProviderTest {
 
       try (var provider = new BedrockProviderConfig().client(fake).build()) {
         var collected = new ArrayList<ModelEvent>();
-        try (var stream = provider.stream(request())) {
+        try (var stream = provider.model(MODEL_ID).stream(request())) {
           stream.forEach(collected::add);
         }
 
@@ -243,7 +283,7 @@ class BedrockModelProviderTest {
 
       try (var provider = new BedrockProviderConfig().client(fake).build()) {
         var collected = new ArrayList<ModelEvent>();
-        try (var stream = provider.stream(request())) {
+        try (var stream = provider.model(MODEL_ID).stream(request())) {
           // The ordering guarantee the whole bridge rests on: both events already queued ahead of
           // the future's completion are delivered before the failure is ever seen.
           assertThatThrownBy(() -> stream.forEach(collected::add)).isSameAs(cause);
@@ -259,7 +299,7 @@ class BedrockModelProviderTest {
       var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of(textDelta("only")));
 
       try (var provider = new BedrockProviderConfig().client(fake).build();
-          var stream = provider.stream(request())) {
+          var stream = provider.model(MODEL_ID).stream(request())) {
         assertThatThrownBy(() -> stream.forEach(event -> {}))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("messageStop");
@@ -271,7 +311,7 @@ class BedrockModelProviderTest {
       var fake = ScriptedBedrockRuntimeAsyncClient.leavingPendingAfter(List.of(textDelta("hi")));
 
       try (var provider = new BedrockProviderConfig().client(fake).build()) {
-        var stream = provider.stream(request());
+        var stream = provider.model(MODEL_ID).stream(request());
         stream.close();
 
         assertThat(fake.lastFuture().isCancelled()).isTrue();
@@ -286,10 +326,10 @@ class BedrockModelProviderTest {
 
       try (var provider = new BedrockProviderConfig().client(fake).build()) {
         // The failure must surface from stream() itself — this is what lets
-        // RetryingModelProvider retry it, exactly as it does for every synchronous-SDK sibling
+        // RetryingModel retry it, exactly as it does for every synchronous-SDK sibling
         // provider's opening failure. A stream() that returned successfully here (with the
         // failure only surfacing later on the first hasNext()/next()) would defeat that retry.
-        assertThatThrownBy(() -> provider.stream(request)).isSameAs(failure);
+        assertThatThrownBy(() -> provider.model(MODEL_ID).stream(request)).isSameAs(failure);
       }
     }
   }

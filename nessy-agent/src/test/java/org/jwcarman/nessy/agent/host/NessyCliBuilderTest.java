@@ -23,9 +23,15 @@ import org.jwcarman.nessy.api.tool.Tool;
 class NessyCliBuilderTest {
 
   @Test
-  void aNullProviderIsRejectedByItsSetter() {
+  void aNullModelIsRejectedByItsSetter() {
     var builder = Nessy.cli();
-    assertThatThrownBy(() -> builder.provider(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> builder.model(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aNullSystemPromptIsRejectedByItsSetter() {
+    var builder = Nessy.cli();
+    assertThatThrownBy(() -> builder.systemPrompt(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test

@@ -18,21 +18,22 @@ package org.jwcarman.nessy.model.bedrock;
 import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
 
 /**
- * The public face of the Bedrock provider module: turns a {@link ModelRequest} into a live
- * streaming {@code ConverseStream} call against Amazon Bedrock via the AWS SDK for Java v2's {@code
- * bedrockruntime} client.
+ * The vendor gateway for Bedrock: owns a {@link BedrockClient} and hands out {@link Model} handles
+ * bound to one model id apiece via {@link #model(String)}, streaming {@code ConverseStream} calls
+ * against Amazon Bedrock via the AWS SDK for Java v2's {@code bedrockruntime} client.
  *
- * <p>Everything upstream of this class is pure translation ({@link BedrockRequests}, {@link
- * BedrockStream}); this class is the one place that owns a {@link BedrockClient} and actually talks
- * to the network — including the async-to-blocking bridge {@link BedrockProviderConfig#wrap}
- * builds, since the SDK's {@code converseStream} is a push-callback API and {@link ModelStream} is
- * a blocking {@code Iterable} (see {@link BedrockClient}'s class javadoc).
+ * <p>Everything upstream of the handle it returns is pure translation ({@link BedrockRequests},
+ * {@link BedrockStream}); this class is the one place that owns the client and actually talks to
+ * the network — including the async-to-blocking bridge {@link BedrockProviderConfig#wrap} builds,
+ * since the SDK's {@code converseStream} is a push-callback API and {@link ModelStream} is a
+ * blocking {@code Iterable} (see {@link BedrockClient}'s class javadoc).
  *
  * <p>{@link Capability#PARALLEL_TOOL_CALLS} is advertised: Bedrock's Converse API already streams
  * several {@code toolUse} content blocks in one assistant turn (one {@code content_block_start}
@@ -96,13 +97,11 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
   }
 
   @Override
-  public ModelStream stream(ModelRequest request) {
-    return client.converseStream(BedrockRequests.toRequest(request));
-  }
-
-  @Override
-  public Set<Capability> capabilities() {
-    return CAPABILITIES;
+  public Model model(String id) {
+    if (id == null || id.isBlank()) {
+      throw new IllegalArgumentException("id must not be blank");
+    }
+    return new BedrockModel(id);
   }
 
   @Override
@@ -113,5 +112,34 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
   @Override
   public void close() {
     client.close();
+  }
+
+  /**
+   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
+   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
+   * disturbing the gateway.
+   */
+  private final class BedrockModel implements Model {
+
+    private final String id;
+
+    private BedrockModel(String id) {
+      this.id = id;
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      return client.converseStream(BedrockRequests.toRequest(request, id));
+    }
+
+    @Override
+    public Set<Capability> capabilities() {
+      return CAPABILITIES;
+    }
+
+    @Override
+    public String id() {
+      return id;
+    }
   }
 }

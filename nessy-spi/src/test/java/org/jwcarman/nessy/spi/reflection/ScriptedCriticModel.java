@@ -24,30 +24,29 @@ import java.util.Set;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * A minimal scripted {@link ModelProvider} standing in for the critic's side model, local to this
- * test package for the same reason {@code RecordingTextModelProvider} is local to {@code
- * spi.memory}'s tests: {@code nessy-core} cannot depend on {@code nessy-testing}'s richer {@code
- * ScriptedModelProvider} (the dependency runs the other way). Scripts one reply per call — a text
- * response, or a {@link RuntimeException} thrown instead of replying at all, for the never-throw
- * test.
+ * A minimal scripted {@link Model} standing in for the critic's side model, local to this test
+ * package for the same reason {@code RecordingTextModel} is local to {@code spi.memory}'s tests:
+ * {@code nessy-core} cannot depend on {@code nessy-testing}'s richer {@code ScriptedModel} (the
+ * dependency runs the other way). Scripts one reply per call — a text response, or a {@link
+ * RuntimeException} thrown instead of replying at all, for the never-throw test.
  */
-final class ScriptedCriticProvider implements ModelProvider {
+final class ScriptedCriticModel implements Model {
 
   private final Deque<Object> script = new ArrayDeque<>();
   private final List<ModelRequest> requests = new ArrayList<>();
 
-  ScriptedCriticProvider reply(String text) {
+  ScriptedCriticModel reply(String text) {
     script.add(text);
     return this;
   }
 
-  ScriptedCriticProvider throwing(RuntimeException failure) {
+  ScriptedCriticModel throwing(RuntimeException failure) {
     script.add(failure);
     return this;
   }
@@ -81,6 +80,11 @@ final class ScriptedCriticProvider implements ModelProvider {
   @Override
   public Set<Capability> capabilities() {
     return Set.of();
+  }
+
+  @Override
+  public String id() {
+    return "scripted-critic";
   }
 
   int callCount() {

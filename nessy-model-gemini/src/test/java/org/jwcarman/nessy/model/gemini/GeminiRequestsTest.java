@@ -49,29 +49,16 @@ class GeminiRequestsTest {
 
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "gemini-2.5-flash",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of(), null);
   }
 
   private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "gemini-2.5-flash",
-        1024,
-        tools,
-        Set.of(),
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of(), null);
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(
-        Context.of(List.of()), systemPrompt, "gemini-2.5-flash", 1024, List.of(), Set.of(), null);
+    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of(), null);
   }
 
   @Nested

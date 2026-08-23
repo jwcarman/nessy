@@ -49,7 +49,7 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
@@ -68,6 +68,7 @@ import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -92,14 +93,14 @@ class NessyHarnessDoorTest {
   @Test
   void aPlainTurnRunsToIdleThroughTheHarness() {
     var pump = new PumpedExecutor();
-    var provider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     ConcurrentMap<String, Memory> captured = new ConcurrentHashMap<>();
 
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .memoryFactory(
@@ -121,14 +122,14 @@ class NessyHarnessDoorTest {
   @Test
   void aDefaultBuiltHarnessNarratesExactlyOneAssistantSaidAndOneTurnEndedForACompletedTurn() {
     var pump = new PumpedExecutor();
-    var provider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
 
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .turnObserver(observer));
@@ -160,14 +161,14 @@ class NessyHarnessDoorTest {
   @Test
   void aSuppliedAgentObserverReplacesTheDefaultNarrationWiringWholesale() {
     var pump = new PumpedExecutor();
-    var provider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
 
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .turnObserver(observer)
@@ -196,8 +197,7 @@ class NessyHarnessDoorTest {
   @Test
   void aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion() {
     var pump = new PumpedExecutor();
-    var provider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var substrate = new InMemorySubstrate();
     TurnObserver throwing =
         event -> {
@@ -209,7 +209,8 @@ class NessyHarnessDoorTest {
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .substrate(substrate)
@@ -229,7 +230,7 @@ class NessyHarnessDoorTest {
   void twoScopesDoNotShareMemoryOrState() {
     var pump = new PumpedExecutor();
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("hi a")),
                 List.of(new ModelEvent.TextChunk("hi b"))));
@@ -238,7 +239,8 @@ class NessyHarnessDoorTest {
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .memoryFactory(
@@ -275,12 +277,16 @@ class NessyHarnessDoorTest {
   @Test
   void twoHarnessesFromTheSameBaseCustomizationWithDistinctStoresDoNotLeakHistory() {
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("reply one")),
                 List.of(new ModelEvent.TextChunk("reply two"))));
 
-    HarnessCustomizer<String> base = h -> h.provider(provider).settings(TestSettings.settings());
+    HarnessCustomizer<String> base =
+        h ->
+            h.model(provider)
+                .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                .settings(TestSettings.settings());
 
     var substrateOne = new InMemorySubstrate();
     var pumpOne = new PumpedExecutor();
@@ -336,74 +342,83 @@ class NessyHarnessDoorTest {
   }
 
   /**
-   * Fix round 1 I1: the builder minimum (spec §3), previously unexercised — {@code
-   * .systemPrompt(String)}'s precedence over {@code .settings(ModelSettings)}, the teaching
-   * missing-provider message, and {@code .type(String)}'s "agent" default.
+   * The builder minimum (spec §3, amended §7): {@code .settings(ModelSettings)} is now optional —
+   * omitted, {@code finish()} falls back to {@link ModelSettings#defaults()} — the teaching
+   * missing-{@code .model(Model)} and missing-{@code .systemPrompt(String)} messages, the §1
+   * snippet's bare minimum, and {@code .type(String)}'s "agent" default.
    */
   @Nested
   class BuilderMinimum {
 
     /**
-     * Fix round 1 I1a: {@code .systemPrompt(String)} overrides whatever {@code systemPrompt} the
-     * {@code .settings(ModelSettings)} object carries — every other field of that settings object
-     * (model id, max tokens) passes through untouched. Proven in this call order: {@code
-     * .settings(...)} first, {@code .systemPrompt(...)} second.
+     * Spec §7: {@code .settings(...)} is the OPTIONAL tuning bag. Omitted entirely, {@code
+     * finish()} falls back to {@link ModelSettings#defaults()} — the captured request carries the
+     * default max-tokens budget and the harness's own {@code .systemPrompt(...)}.
      */
     @Test
-    void systemPromptOverridesTheSettingsObjectsOwnPromptWhenSettingsIsSetFirst() {
+    void settingsOmittedFallsBackToTheDefaultMaxTokensAndTheHarnessesSystemPrompt() {
       var pump = new PumpedExecutor();
-      var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply"))));
-      var settings = TestSettings.settings();
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("reply"))));
 
       var harness =
           Nessy.harness(
-              h -> h.provider(provider).settings(settings).systemPrompt("X").executor(pump));
+              h -> h.model(model).systemPrompt(TestSettings.SYSTEM_PROMPT).executor(pump));
       HarnessTeardown.track(harness);
 
       harness.bind(AgentId.of("scope-1")).observe("hello");
       pump.pumpUntilQuiet();
 
-      ModelRequest request = provider.requests().getFirst();
-      assertThat(request.systemPrompt()).isEqualTo("X");
-      assertThat(request.model()).isEqualTo(settings.model());
-      assertThat(request.maxTokens()).isEqualTo(settings.maxTokens());
+      ModelRequest request = model.requests().getFirst();
+      assertThat(request.systemPrompt()).isEqualTo(TestSettings.SYSTEM_PROMPT);
+      assertThat(request.maxTokens()).isEqualTo(ModelSettings.DEFAULT_MAX_TOKENS);
     }
 
     /**
-     * As above, the other call order: {@code .systemPrompt(...)} first, {@code .settings(...)}
-     * second — the override still wins, precedence does not depend on order.
+     * Spec §3: {@code .model(Model)} is the harness's one required dependency — the teaching
+     * message names the setter to call, not just that something is null.
      */
     @Test
-    void systemPromptOverridesTheSettingsObjectsOwnPromptWhenSystemPromptIsSetFirst() {
-      var pump = new PumpedExecutor();
-      var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply"))));
-      var settings = TestSettings.settings();
-
-      var harness =
-          Nessy.harness(
-              h -> h.provider(provider).systemPrompt("X").settings(settings).executor(pump));
-      HarnessTeardown.track(harness);
-
-      harness.bind(AgentId.of("scope-1")).observe("hello");
-      pump.pumpUntilQuiet();
-
-      ModelRequest request = provider.requests().getFirst();
-      assertThat(request.systemPrompt()).isEqualTo("X");
-      assertThat(request.model()).isEqualTo(settings.model());
-      assertThat(request.maxTokens()).isEqualTo(settings.maxTokens());
-    }
-
-    /**
-     * Fix round 1 I1b: the missing-provider message teaches — it names the setter to call, not just
-     * that something is null.
-     */
-    @Test
-    void aMissingProviderIsRejectedWithATeachingMessage() {
-      var settings = TestSettings.settings();
-
-      assertThatThrownBy(() -> Nessy.harness(h -> h.settings(settings)))
+    void aMissingModelIsRejectedWithATeachingMessage() {
+      assertThatThrownBy(() -> Nessy.harness(h -> h.systemPrompt(TestSettings.SYSTEM_PROMPT)))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining(".provider(ModelProvider)");
+          .hasMessageContaining(".model(Model)");
+    }
+
+    /**
+     * Spec §3, §7: {@code .systemPrompt(String)} no longer has a settings fallback — it is required
+     * on its own, and the teaching message names it.
+     */
+    @Test
+    void aMissingSystemPromptIsRejectedWithATeachingMessage() {
+      var model = new ScriptedModel(List.of());
+
+      assertThatThrownBy(() -> Nessy.harness(h -> h.model(model)))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining(".systemPrompt(String)");
+    }
+
+    /**
+     * The §1 snippet's own claim: a harness built with ONLY {@code .model(...)}, {@code
+     * .systemPrompt(...)}, {@code .tools(...)} — no settings, no substrate, no type — accepts
+     * {@code bind(id).observe(...)} and completes a turn.
+     */
+    @Test
+    void theSpecSnippetsBareMinimumAcceptsAnObservationAndCompletesATurn() {
+      var pump = new PumpedExecutor();
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+
+      var harness =
+          Nessy.harness(
+              h -> h.model(model).systemPrompt(TestSettings.SYSTEM_PROMPT).tools().executor(pump));
+      HarnessTeardown.track(harness);
+
+      harness.bind(AgentId.of("scope-1")).observe("restart prod-eu");
+      pump.pumpUntilQuiet();
+
+      List<Message> messages = model.requests().getFirst().context().messages();
+      assertThat(messages)
+          .isNotEmpty()
+          .anyMatch(m -> m.content().contains(new TextBlock("restart prod-eu")));
     }
 
     /**
@@ -415,14 +430,14 @@ class NessyHarnessDoorTest {
     void theDefaultAgentTypeIsAgent() {
       var pump = new PumpedExecutor();
       var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
-      var provider =
-          new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+      var provider = new ScriptedModel(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
       var requests = new CopyOnWriteArrayList<ApprovalRequest>();
 
       var harness =
           Nessy.harness(
               h ->
-                  h.provider(provider)
+                  h.model(provider)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pump)
                       .grants(ToolGrant.grant(new GatedTool(), UsagePolicy.requireApproval()))
@@ -477,7 +492,7 @@ class NessyHarnessDoorTest {
       aSecondObservationToTheSameScopeSeesTheFirstsHistoryEvenThoughEveryDeliveryBindsAFreshHandle() {
     var pump = new PumpedExecutor();
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("first reply")),
                 List.of(new ModelEvent.TextChunk("second reply"))));
@@ -486,7 +501,8 @@ class NessyHarnessDoorTest {
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .memoryFactory(
@@ -520,7 +536,7 @@ class NessyHarnessDoorTest {
   void twoDeliveriesToTheSameAgentShareOneSubstrateProvenByASecondMemoryBinding() {
     var pump = new PumpedExecutor();
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("first reply")),
                 List.of(new ModelEvent.TextChunk("second reply"))));
@@ -529,7 +545,8 @@ class NessyHarnessDoorTest {
     var harness =
         Nessy.harness(
             h ->
-                h.provider(provider)
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .substrate(substrate));
@@ -565,12 +582,12 @@ class NessyHarnessDoorTest {
     var substrate = new InMemorySubstrate();
 
     var pumpA = new PumpedExecutor();
-    var providerA =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply one"))));
+    var providerA = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("reply one"))));
     var harnessA =
         Nessy.harness(
             h ->
-                h.provider(providerA)
+                h.model(providerA)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pumpA)
                     .substrate(substrate));
@@ -579,12 +596,12 @@ class NessyHarnessDoorTest {
     pumpA.pumpUntilQuiet();
 
     var pumpB = new PumpedExecutor();
-    var providerB =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply two"))));
+    var providerB = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("reply two"))));
     var harnessB =
         Nessy.harness(
             h ->
-                h.provider(providerB)
+                h.model(providerB)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .executor(pumpB)
                     .substrate(substrate));
@@ -633,12 +650,13 @@ class NessyHarnessDoorTest {
 
       var pumpA = new PumpedExecutor();
       var providerA =
-          new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply to prime"))));
+          new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("reply to prime"))));
       var harnessA =
           Nessy.harness(
               Note.class,
               h ->
-                  h.provider(providerA)
+                  h.model(providerA)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pumpA)
                       .substrate(substrate)
@@ -667,7 +685,7 @@ class NessyHarnessDoorTest {
 
       var pumpB = new PumpedExecutor();
       var providerB =
-          new ScriptedModelProvider(
+          new ScriptedModel(
               List.of(
                   List.of(new ModelEvent.TextChunk("reply to prime")),
                   List.of(new ModelEvent.TextChunk("reply to pending"))));
@@ -675,7 +693,8 @@ class NessyHarnessDoorTest {
           Nessy.harness(
               Note.class,
               h ->
-                  h.provider(providerB)
+                  h.model(providerB)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pumpB)
                       .substrate(substrate)
@@ -712,11 +731,17 @@ class NessyHarnessDoorTest {
     void theTypedDoorWithoutARendererIsRejectedNamingTheRenderer() {
       // fix round 1 M4: hoisted out of the assertThatThrownBy lambda (S5778) — only Nessy.harness
       // itself may throw below.
-      var provider = new ScriptedModelProvider(List.of());
+      var provider = new ScriptedModel(List.of());
       var settings = TestSettings.settings();
 
       assertThatThrownBy(
-              () -> Nessy.harness(Note.class, h -> h.provider(provider).settings(settings)))
+              () ->
+                  Nessy.harness(
+                      Note.class,
+                      h ->
+                          h.model(provider)
+                              .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                              .settings(settings)))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("renderer");
     }
@@ -822,7 +847,7 @@ class NessyHarnessDoorTest {
           new ToolCall(
               "c1", "charge", JsonNodeFactory.instance.objectNode().put("amount", "$12.34"));
       var provider =
-          new ScriptedModelProvider(
+          new ScriptedModel(
               List.of(
                   List.of(new ModelEvent.ToolUseEmitted(call, null)),
                   List.of(new ModelEvent.TextChunk("charged"))));
@@ -831,7 +856,8 @@ class NessyHarnessDoorTest {
       var harness =
           Nessy.harness(
               h ->
-                  h.provider(provider)
+                  h.model(provider)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pump)
                       .objectMapper(userMapper)
@@ -866,7 +892,7 @@ class NessyHarnessDoorTest {
       var call =
           new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
       var provider =
-          new ScriptedModelProvider(
+          new ScriptedModel(
               List.of(
                   List.of(new ModelEvent.ToolUseEmitted(call, null)),
                   List.of(new ModelEvent.TextChunk("done"))));
@@ -874,7 +900,8 @@ class NessyHarnessDoorTest {
       var harness =
           Nessy.harness(
               h ->
-                  h.provider(provider)
+                  h.model(provider)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pump)
                       .substrate(substrate)

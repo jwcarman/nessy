@@ -49,6 +49,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class OpenAiModelProviderTest {
@@ -128,10 +129,10 @@ class OpenAiModelProviderTest {
       var capturedParams = new ChatCompletionCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new OpenAiProviderConfig().client(client).build();
-      var request =
-          new ModelRequest(Context.of(List.of()), "sys", "gpt-4o", 1024, List.of(), Set.of(), null);
+      var model = provider.model("gpt-4o");
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
 
-      var stream = provider.stream(request);
+      var stream = model.stream(request);
 
       assertThat(stream).isInstanceOf(OpenAiStream.class);
       assertThat(capturedParams[0]).isNotNull();
@@ -291,7 +292,7 @@ class OpenAiModelProviderTest {
     void advertise_parallel_tool_calls_and_image_input_but_not_thinking_or_caching() {
       OpenAiModelProvider provider = new OpenAiProviderConfig().apiKey("sk-test").build();
 
-      assertThat(provider.capabilities())
+      assertThat(provider.model("gpt-4o").capabilities())
           .containsExactlyInAnyOrder(Capability.PARALLEL_TOOL_CALLS, Capability.IMAGE_INPUT);
     }
   }
@@ -305,6 +306,49 @@ class OpenAiModelProviderTest {
           new OpenAiProviderConfig().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
 
       assertThat(provider.name()).isEqualTo("OpenAI");
+    }
+  }
+
+  /**
+   * Exercises the split itself, offline: {@link OpenAiModelProvider#model(String)} hands out
+   * independent handles that share the gateway's client, each honest about its own id, with a blank
+   * id rejected before any handle is created.
+   */
+  @Nested
+  class Gateway {
+
+    @Test
+    void two_model_calls_on_one_provider_yield_independent_handles_sharing_the_client() {
+      var capturedParams = new ChatCompletionCreateParams[1];
+      var client = fakeClient(capturedParams, emptyStreamResponse());
+      var provider = new OpenAiProviderConfig().client(client).build();
+
+      Model gpt4o = provider.model("gpt-4o");
+      Model gpt4oMini = provider.model("gpt-4o-mini");
+
+      assertThat(gpt4o.id()).isEqualTo("gpt-4o");
+      assertThat(gpt4oMini.id()).isEqualTo("gpt-4o-mini");
+      assertThat(gpt4o).isNotSameAs(gpt4oMini);
+
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      gpt4o.stream(request);
+      assertThat(capturedParams[0].model().asString()).isEqualTo("gpt-4o");
+      gpt4oMini.stream(request);
+      assertThat(capturedParams[0].model().asString()).isEqualTo("gpt-4o-mini");
+    }
+
+    @Test
+    void a_blank_model_id_is_rejected() {
+      var provider = new OpenAiProviderConfig().apiKey("sk-test").build();
+
+      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_null_model_id_is_rejected() {
+      var provider = new OpenAiProviderConfig().apiKey("sk-test").build();
+
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 

@@ -24,17 +24,18 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * The public face of the OpenAI provider module: turns a {@link ModelRequest} into a live streaming
- * call against the openai-java SDK's Chat Completions API.
+ * The vendor gateway for OpenAI: owns the {@link OpenAIClient} and hands out {@link Model} handles
+ * bound to one model id apiece via {@link #model(String)}.
  *
- * <p>Everything upstream of this class is pure translation ({@link OpenAiRequests}, {@link
- * OpenAiStream}); this class is the one place that owns an {@link OpenAIClient} and actually talks
- * to the network.
+ * <p>Everything upstream of the handle it returns is pure translation ({@link OpenAiRequests},
+ * {@link OpenAiStream}); this class is the one place that owns the client and actually talks to the
+ * network.
  */
 public final class OpenAiModelProvider implements ModelProvider {
 
@@ -53,7 +54,7 @@ public final class OpenAiModelProvider implements ModelProvider {
       Set.of(Capability.PARALLEL_TOOL_CALLS, Capability.IMAGE_INPUT);
 
   /**
-   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModelProvider} should retry.
+   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModel} should retry.
    *
    * <p>Grounded in the SDK's own retry classification: {@code
    * com.openai.core.http.RetryingHttpClient} retries a raw {@link java.io.IOException} or {@link
@@ -122,18 +123,45 @@ public final class OpenAiModelProvider implements ModelProvider {
   }
 
   @Override
-  public ModelStream stream(ModelRequest request) {
-    var params = OpenAiRequests.toParams(request);
-    return new OpenAiStream(client.chat().completions().createStreaming(params));
-  }
-
-  @Override
-  public Set<Capability> capabilities() {
-    return CAPABILITIES;
+  public Model model(String id) {
+    if (id == null || id.isBlank()) {
+      throw new IllegalArgumentException("id must not be blank");
+    }
+    return new OpenAiModel(id);
   }
 
   @Override
   public String name() {
     return "OpenAI";
+  }
+
+  /**
+   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
+   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
+   * disturbing the gateway.
+   */
+  private final class OpenAiModel implements Model {
+
+    private final String id;
+
+    private OpenAiModel(String id) {
+      this.id = id;
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      var params = OpenAiRequests.toParams(request, id);
+      return new OpenAiStream(client.chat().completions().createStreaming(params));
+    }
+
+    @Override
+    public Set<Capability> capabilities() {
+      return CAPABILITIES;
+    }
+
+    @Override
+    public String id() {
+      return id;
+    }
   }
 }

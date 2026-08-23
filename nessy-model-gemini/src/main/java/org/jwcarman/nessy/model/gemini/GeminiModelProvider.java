@@ -18,18 +18,20 @@ package org.jwcarman.nessy.model.gemini;
 import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * The public face of the Gemini provider module: turns a {@link ModelRequest} into a live streaming
- * call against Google's java-genai SDK, talking to the Gemini Developer API via a plain API key
- * (Vertex AI's project/location/credentials auth is out of scope for v1).
+ * The vendor gateway for Gemini: owns a {@link GeminiClient} and hands out {@link Model} handles
+ * bound to one model id apiece via {@link #model(String)}, talking to the Gemini Developer API via
+ * Google's java-genai SDK with a plain API key (Vertex AI's project/location/credentials auth is
+ * out of scope for v1).
  *
- * <p>Everything upstream of this class is pure translation ({@link GeminiRequests}, {@link
- * GeminiStream}); this class is the one place that owns a {@link GeminiClient} and actually talks
- * to the network.
+ * <p>Everything upstream of the handle it returns is pure translation ({@link GeminiRequests},
+ * {@link GeminiStream}); this class is the one place that owns the client and actually talks to the
+ * network.
  *
  * <p>{@link Capability#PARALLEL_TOOL_CALLS} <em>is</em> advertised: {@link GeminiRequests} and
  * {@link GeminiStream} already handle several {@code functionCall} parts arriving on one turn —
@@ -74,19 +76,46 @@ public final class GeminiModelProvider implements ModelProvider {
   }
 
   @Override
-  public ModelStream stream(ModelRequest request) {
-    var contents = GeminiRequests.toContents(request);
-    var config = GeminiRequests.toConfig(request);
-    return client.generateContentStream(request.model(), contents, config);
-  }
-
-  @Override
-  public Set<Capability> capabilities() {
-    return CAPABILITIES;
+  public Model model(String id) {
+    if (id == null || id.isBlank()) {
+      throw new IllegalArgumentException("id must not be blank");
+    }
+    return new GeminiModel(id);
   }
 
   @Override
   public String name() {
     return "Gemini";
+  }
+
+  /**
+   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
+   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
+   * disturbing the gateway.
+   */
+  private final class GeminiModel implements Model {
+
+    private final String id;
+
+    private GeminiModel(String id) {
+      this.id = id;
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      var contents = GeminiRequests.toContents(request);
+      var config = GeminiRequests.toConfig(request);
+      return client.generateContentStream(id, contents, config);
+    }
+
+    @Override
+    public Set<Capability> capabilities() {
+      return CAPABILITIES;
+    }
+
+    @Override
+    public String id() {
+      return id;
+    }
   }
 }

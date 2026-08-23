@@ -26,8 +26,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.support.LatchedModelProvider;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.LatchedModel;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -43,10 +43,15 @@ class CliAgentTest {
   @Test
   void helloWorldEndToEnd() {
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("Hello "), new ModelEvent.TextChunk("back!"))));
-    try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
+    try (var agent =
+        Nessy.cli()
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build()) {
       assertThat(agent.converse("hello")).isEqualTo("Hello back!");
     }
   }
@@ -60,11 +65,15 @@ class CliAgentTest {
    */
   @Test
   void closingACliAgentLeavesNoLiveDeliveryHeartbeatThread() throws InterruptedException {
-    var provider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     long before = liveDeliveryThreadCount();
 
-    var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build();
+    var agent =
+        Nessy.cli()
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build();
     assertThat(agent.converse("hello")).isEqualTo("hello back");
     assertThat(liveDeliveryThreadCount()).isEqualTo(before + 1);
 
@@ -90,11 +99,16 @@ class CliAgentTest {
   @Test
   void twoTurnsShareOneMemory() {
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.TextChunk("one")),
                 List.of(new ModelEvent.TextChunk("two"))));
-    try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
+    try (var agent =
+        Nessy.cli()
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build()) {
       agent.converse("first");
       agent.converse("second");
       // the second request's context carries the whole first exchange plus the new user turn
@@ -107,12 +121,17 @@ class CliAgentTest {
   void aBusySecondTurnIsRefusedAndItsLateReplyIsNeverMisattributed() {
     var gate = new CountDownLatch(1);
     var provider =
-        new LatchedModelProvider(
+        new LatchedModel(
             gate,
             List.of(
                 List.of(new ModelEvent.TextChunk("late answer")),
                 List.of(new ModelEvent.TextChunk("fresh answer"))));
-    try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
+    try (var agent =
+        Nessy.cli()
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build()) {
       var shortTimeout = Duration.ofMillis(100);
       assertThatThrownBy(() -> agent.converse("first", shortTimeout))
           .isInstanceOf(IllegalStateException.class)
@@ -133,10 +152,11 @@ class CliAgentTest {
   @Test
   void aCallerSuppliedExecutorSurvivesAgentClose() {
     ExecutorService callerExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
         Nessy.cli()
-            .provider(provider)
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
             .settings(TestSettings.settings())
             .executor(callerExecutor)
             .build()) {
@@ -148,16 +168,22 @@ class CliAgentTest {
 
   @Test
   void twoBuildsNeverShareTheDefaultMemory() {
-    var firstProvider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("one"))));
+    var firstProvider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("one"))));
     try (var first =
-        Nessy.cli().provider(firstProvider).settings(TestSettings.settings()).build()) {
+        Nessy.cli()
+            .model(firstProvider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build()) {
       first.converse("hello");
     }
-    var secondProvider =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("two"))));
+    var secondProvider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("two"))));
     try (var second =
-        Nessy.cli().provider(secondProvider).settings(TestSettings.settings()).build()) {
+        Nessy.cli()
+            .model(secondProvider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
+            .settings(TestSettings.settings())
+            .build()) {
       second.converse("hi");
     }
     // a fresh build starts with an empty memory: just the one user turn, not the first agent's
@@ -169,13 +195,14 @@ class CliAgentTest {
   void aToolCallingTurnRunsTheWholeLoop() {
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("echoed: hi"))));
     try (var agent =
         Nessy.cli()
-            .provider(provider)
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
             .settings(TestSettings.settings())
             .tools(new EchoTool())
             .build()) {
@@ -188,10 +215,11 @@ class CliAgentTest {
 
   @Test
   void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() {
-    var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
         Nessy.cli()
-            .provider(provider)
+            .model(provider)
+            .systemPrompt(TestSettings.SYSTEM_PROMPT)
             .settings(TestSettings.settings())
             .tools(new EchoTool(), new DurableOnlyTool())
             .build()) {

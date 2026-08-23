@@ -30,7 +30,7 @@ import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
@@ -103,8 +103,7 @@ class GrantSurvivalTest {
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
 
     var pumpA = new PumpedExecutor();
-    var providerA =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+    var providerA = new ScriptedModel(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
     var requestsA = new CopyOnWriteArrayList<ApprovalRequest>();
 
     ApprovalRequest firstAsk;
@@ -112,7 +111,8 @@ class GrantSurvivalTest {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerA)
+                    .model(providerA)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -141,15 +141,15 @@ class GrantSurvivalTest {
 
     var pumpB = new PumpedExecutor();
     var providerB =
-        new ScriptedModelProvider(
-            List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
+        new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
 
     var harnessB =
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerB)
+                    .model(providerB)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -229,8 +229,7 @@ class GrantSurvivalTest {
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
 
     var pumpA = new PumpedExecutor();
-    var providerA =
-        new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+    var providerA = new ScriptedModel(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
     var requestsA = new CopyOnWriteArrayList<ApprovalRequest>();
 
     ApprovalRequest firstAsk;
@@ -238,7 +237,8 @@ class GrantSurvivalTest {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerA)
+                    .model(providerA)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -263,8 +263,7 @@ class GrantSurvivalTest {
 
     var pumpB = new PumpedExecutor();
     var providerB =
-        new ScriptedModelProvider(
-            List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
+        new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
     var toolComputation = firstAsk.address().execution();
 
@@ -272,7 +271,8 @@ class GrantSurvivalTest {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(providerB)
+                    .model(providerB)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(

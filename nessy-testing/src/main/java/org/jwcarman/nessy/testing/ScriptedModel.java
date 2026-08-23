@@ -21,8 +21,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
@@ -34,29 +34,28 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * what the harness <em>sent</em>, which is usually the more interesting half.
  *
  * <p>Its turn-and-request bookkeeping is synchronized: examples drive on virtual threads, and a
- * concurrent resume racing a park against this same provider must not corrupt {@code nextTurn} or
- * the request log.
+ * concurrent resume racing a park against this same model must not corrupt {@code nextTurn} or the
+ * request log.
  */
-public final class ScriptedModelProvider implements ModelProvider {
+public final class ScriptedModel implements Model {
 
   private final List<List<ModelEvent>> turns;
   private final List<ModelRequest> requests = new ArrayList<>();
   private int nextTurn;
 
-  ScriptedModelProvider(List<List<ModelEvent>> turns) {
+  ScriptedModel(List<List<ModelEvent>> turns) {
     this.turns = List.copyOf(turns);
   }
 
   /**
-   * Scripts a {@link ScriptedModelProvider}: {@code customizer} fills in a live {@link
-   * ScriptedModelProviderConfig}, then this factory turns it into the finished provider. No public
-   * {@code build()} survives here; the factory is the only place a {@link
-   * ScriptedModelProviderConfig} ever turns into a {@link ScriptedModelProvider} (design of record
-   * 2026-08-16 §1).
+   * Scripts a {@link ScriptedModel}: {@code customizer} fills in a live {@link
+   * ScriptedModelConfig}, then this factory turns it into the finished provider. No public {@code
+   * build()} survives here; the factory is the only place a {@link ScriptedModelConfig} ever turns
+   * into a {@link ScriptedModel} (design of record 2026-08-16 §1).
    */
-  public static ScriptedModelProvider script(ScriptedModelProviderCustomizer customizer) {
+  public static ScriptedModel script(ScriptedModelCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
-    ScriptedModelProviderConfig config = new ScriptedModelProviderConfig();
+    ScriptedModelConfig config = new ScriptedModelConfig();
     customizer.customize(config);
     return config.build();
   }
@@ -98,8 +97,8 @@ public final class ScriptedModelProvider implements ModelProvider {
   }
 
   @Override
-  public String name() {
-    return "Scripted";
+  public String id() {
+    return "scripted";
   }
 
   /** A snapshot of every request this provider was handed, oldest first. */

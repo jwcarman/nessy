@@ -49,7 +49,7 @@ import org.jwcarman.nessy.intent.SubstrateIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.testing.ScriptedModelProvider;
+import org.jwcarman.nessy.testing.ScriptedModel;
 
 /**
  * The full gate as consumer code (vocabulary amendment §3): an org's own sealed intent vocabulary,
@@ -102,7 +102,7 @@ public final class Governed {
         new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     IntentStore<OpsIntent> intentStore =
         new SubstrateIntentStore<>(substrate, SCOPE_ID, OpsIntent.class, intentMapper);
-    ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
+    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
     BlockingQueue<ApprovalRequest> approvalRequests = new LinkedBlockingQueue<>();
@@ -114,7 +114,8 @@ public final class Governed {
         Nessy.harness(
             h ->
                 h.type("governed")
-                    .provider(scriptedProvider())
+                    .model(scriptedModel())
+                    .systemPrompt(SYSTEM_PROMPT)
                     .settings(settings)
                     .grants(
                         ToolGrant.grant(
@@ -188,7 +189,7 @@ public final class Governed {
     return value;
   }
 
-  private static ScriptedModelProvider scriptedProvider() {
+  private static ScriptedModel scriptedModel() {
     ObjectNode restartArguments = JsonNodeFactory.instance.objectNode();
     restartArguments.put("target", "prod-eu");
     ObjectNode declareArguments =
@@ -197,7 +198,7 @@ public final class Governed {
             .put("type", "Restart")
             .put("target", "prod-eu")
             .put("reason", "stuck deploy");
-    return ScriptedModelProvider.script(
+    return ScriptedModel.script(
         s ->
             s.toolUse("c1", "restart", restartArguments)
                 .endWithToolUse()

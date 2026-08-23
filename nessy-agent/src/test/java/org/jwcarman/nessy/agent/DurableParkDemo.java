@@ -38,7 +38,7 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -118,7 +118,7 @@ class DurableParkDemo {
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("action", "restart"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("Restarted. All good."))));
@@ -146,7 +146,13 @@ class DurableParkDemo {
                 backlog,
                 text -> List.of(new TextBlock(text)),
                 new ProviderModelCallExecutor(
-                    provider, TestSettings.settings(), registry, memory, narrator, pump),
+                    provider,
+                    TestSettings.SYSTEM_PROMPT,
+                    TestSettings.settings(),
+                    registry,
+                    memory,
+                    narrator,
+                    pump),
                 new RegistryToolCallExecutor(
                     registry,
                     type,
@@ -166,7 +172,13 @@ class DurableParkDemo {
             backlog,
             text -> List.of(new TextBlock(text)),
             new ProviderModelCallExecutor(
-                provider, TestSettings.settings(), registry, memory, narrator, pump),
+                provider,
+                TestSettings.SYSTEM_PROMPT,
+                TestSettings.settings(),
+                registry,
+                memory,
+                narrator,
+                pump),
             new RegistryToolCallExecutor(
                 registry,
                 type,

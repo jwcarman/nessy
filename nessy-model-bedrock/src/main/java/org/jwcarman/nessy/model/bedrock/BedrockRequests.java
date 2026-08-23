@@ -77,10 +77,10 @@ public final class BedrockRequests {
    * temperature field — no provider module in this harness sets one — so there is nothing to thread
    * onto {@link InferenceConfiguration#temperature()}.
    */
-  public static ConverseStreamRequest toRequest(ModelRequest request) {
+  public static ConverseStreamRequest toRequest(ModelRequest request, String modelId) {
     var builder =
         ConverseStreamRequest.builder()
-            .modelId(request.model())
+            .modelId(modelId)
             .inferenceConfig(b -> b.maxTokens(request.maxTokens()));
 
     if (!request.systemPrompt().isBlank()) {

@@ -34,7 +34,6 @@ class ModelRequestTest {
         new ModelRequest(
             Context.of(List.of(Message.user("hi"))),
             "be helpful",
-            "some-model",
             1024,
             List.of(),
             requested,
@@ -51,7 +50,6 @@ class ModelRequestTest {
         new ModelRequest(
             Context.of(List.of(Message.user("hi"))),
             "be helpful",
-            "some-model",
             1024,
             List.of(),
             Set.of(Capability.PROMPT_CACHING, Capability.THINKING),

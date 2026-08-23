@@ -33,67 +33,58 @@ import org.jwcarman.nessy.api.message.Context;
 class ValidationTest {
 
   @Test
-  void a_model_settings_without_a_model_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of(), null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
   void a_model_settings_without_tokens_to_spend_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of(), null))
+    assertThatThrownBy(() -> new ModelSettings(0, Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_settings_context_window_at_or_below_max_tokens_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 1024, Set.of(), 1024L))
+    assertThatThrownBy(() -> new ModelSettings(1024, Set.of(), 1024L))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_settings_accepts_a_null_context_window() {
-    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), null);
+    var settings = new ModelSettings(1024, Set.of(), null);
 
     assertThat(settings.contextWindow()).isNull();
   }
 
   @Test
   void a_model_settings_context_window_above_max_tokens_is_accepted() {
-    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), 200_000L);
+    var settings = new ModelSettings(1024, Set.of(), 200_000L);
 
     assertThat(settings.contextWindow()).isEqualTo(200_000L);
   }
 
   @Test
-  void a_model_request_without_a_model_is_rejected() {
-    Context context = Context.of(List.of());
+  void the_defaults_use_the_published_max_tokens_constant_and_no_extras() {
+    var settings = ModelSettings.defaults();
 
-    assertThatThrownBy(
-            () -> new ModelRequest(context, "system", " ", 1024, List.of(), Set.of(), null))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(settings.maxTokens()).isEqualTo(ModelSettings.DEFAULT_MAX_TOKENS);
+    assertThat(settings.capabilities()).isEmpty();
+    assertThat(settings.contextWindow()).isNull();
   }
 
   @Test
   void a_model_request_without_tokens_to_spend_is_rejected() {
     Context context = Context.of(List.of());
 
-    assertThatThrownBy(
-            () -> new ModelRequest(context, "system", "fake-model", 0, List.of(), Set.of(), null))
+    assertThatThrownBy(() -> new ModelRequest(context, "system", 0, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_request_without_a_context_is_rejected() {
-    assertThatThrownBy(
-            () -> new ModelRequest(null, "system", "fake-model", 1024, List.of(), Set.of(), null))
+    assertThatThrownBy(() -> new ModelRequest(null, "system", 1024, List.of(), Set.of(), null))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_model_request_accepts_a_null_response_schema() {
     var request =
-        new ModelRequest(
-            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), null);
+        new ModelRequest(Context.of(List.of()), "system", 1024, List.of(), Set.of(), null);
 
     assertThat(request.responseSchema()).isNull();
   }
@@ -103,8 +94,7 @@ class ValidationTest {
     var schema = JsonNodeFactory.instance.objectNode().put("type", "object");
 
     var request =
-        new ModelRequest(
-            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), schema);
+        new ModelRequest(Context.of(List.of()), "system", 1024, List.of(), Set.of(), schema);
 
     assertThat(request.responseSchema()).isSameAs(schema);
   }

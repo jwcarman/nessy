@@ -28,7 +28,7 @@ import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
@@ -102,7 +102,7 @@ class HarnessApprovalDemo {
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("Done — prod-eu restarted."))));
@@ -111,7 +111,8 @@ class HarnessApprovalDemo {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(provider)
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -166,7 +167,7 @@ class HarnessApprovalDemo {
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("Understood — I will not restart prod-eu."))));
@@ -175,7 +176,8 @@ class HarnessApprovalDemo {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(provider)
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(

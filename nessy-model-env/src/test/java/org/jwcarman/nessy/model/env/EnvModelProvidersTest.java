@@ -24,6 +24,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,31 +33,39 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
-import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
-import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelStream;
 import org.slf4j.LoggerFactory;
 
 /**
  * Drives {@link EnvModelProviders#fromEnv(Map)} entirely through the env-map seam — no real
  * environment variable, no network — the same offline shape {@code ConsoleReplTest} drives {@code
- * ConsoleRepl} through its reader/writer seam. The default-provider notice is asserted through a
- * capturing {@link ListAppender} on {@link EnvModelProviders}'s own logger — the same house pattern
- * {@code AgentBuilderTest}'s {@code Memory_downgrade_warning} uses — rather than by redirecting
- * {@link System#err}, since the notice moved off that raw stream and onto a logger (java:S106).
+ * ConsoleRepl} through its reader/writer seam. {@link EnvModelProviders#fromEnv(Map)} now returns a
+ * bound {@link Model} rather than a vendor-typed {@code ModelProvider}, so which gateway was chosen
+ * is read off the handle's own {@link Model#id()} — every default model id across the table
+ * (anthropic/openai/gemini/xai/bedrock) is distinct, so the id alone proves the choice. The
+ * default-provider notice is asserted through a capturing {@link ListAppender} on {@link
+ * EnvModelProviders}'s own logger — the same house pattern {@code AgentBuilderTest}'s {@code
+ * Memory_downgrade_warning} uses — rather than by redirecting {@link System#err}, since the notice
+ * moved off that raw stream and onto a logger (java:S106).
  */
 class EnvModelProvidersTest {
+
+  private static final String ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+  private static final String OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
+  private static final String GEMINI_DEFAULT_MODEL = "gemini-3.6-flash";
+  private static final String XAI_DEFAULT_MODEL = "grok-4.6";
 
   @Nested
   class Only_the_anthropic_key_set {
 
     @Test
     void chooses_the_anthropic_provider() {
-      ModelProvider provider =
-          EnvModelProviders.fromEnv(Map.of("ANTHROPIC_API_KEY", "fake-anthropic-key"));
+      Model model = EnvModelProviders.fromEnv(Map.of("ANTHROPIC_API_KEY", "fake-anthropic-key"));
 
-      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(model.id()).isEqualTo(ANTHROPIC_DEFAULT_MODEL);
     }
   }
 
@@ -65,10 +74,9 @@ class EnvModelProvidersTest {
 
     @Test
     void chooses_the_openai_provider() {
-      ModelProvider provider =
-          EnvModelProviders.fromEnv(Map.of("OPENAI_API_KEY", "fake-openai-key"));
+      Model model = EnvModelProviders.fromEnv(Map.of("OPENAI_API_KEY", "fake-openai-key"));
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(model.id()).isEqualTo(OPENAI_DEFAULT_MODEL);
     }
   }
 
@@ -104,9 +112,9 @@ class EnvModelProvidersTest {
               // Mixed case, on purpose: the tiebreak reads NESSY_PROVIDER case-insensitively.
               "NESSY_PROVIDER", "OpenAI");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(model.id()).isEqualTo(OPENAI_DEFAULT_MODEL);
       assertThat(appender.list).isEmpty();
     }
 
@@ -118,9 +126,9 @@ class EnvModelProvidersTest {
               "OPENAI_API_KEY", "fake-openai-key",
               "NESSY_PROVIDER", "anthropic");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(model.id()).isEqualTo(ANTHROPIC_DEFAULT_MODEL);
       assertThat(appender.list).isEmpty();
     }
 
@@ -131,9 +139,9 @@ class EnvModelProvidersTest {
               "ANTHROPIC_API_KEY", "fake-anthropic-key",
               "OPENAI_API_KEY", "fake-openai-key");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(model.id()).isEqualTo(ANTHROPIC_DEFAULT_MODEL);
       assertThat(appender.list).hasSize(1);
       ILoggingEvent event = appender.list.getFirst();
       assertThat(event.getLevel()).isEqualTo(Level.WARN);
@@ -149,9 +157,9 @@ class EnvModelProvidersTest {
               // Neither "anthropic" nor "openai" — the tiebreak's fallback arm, same as unset.
               "NESSY_PROVIDER", "gemini");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(model.id()).isEqualTo(ANTHROPIC_DEFAULT_MODEL);
       assertThat(appender.list).hasSize(1);
       ILoggingEvent event = appender.list.getFirst();
       assertThat(event.getLevel()).isEqualTo(Level.WARN);
@@ -194,18 +202,16 @@ class EnvModelProvidersTest {
 
     @Test
     void chooses_the_gemini_provider_via_gemini_api_key() {
-      ModelProvider provider =
-          EnvModelProviders.fromEnv(Map.of("GEMINI_API_KEY", "fake-gemini-key"));
+      Model model = EnvModelProviders.fromEnv(Map.of("GEMINI_API_KEY", "fake-gemini-key"));
 
-      assertThat(provider).isInstanceOf(GeminiModelProvider.class);
+      assertThat(model.id()).isEqualTo(GEMINI_DEFAULT_MODEL);
     }
 
     @Test
     void chooses_the_gemini_provider_via_google_api_key() {
-      ModelProvider provider =
-          EnvModelProviders.fromEnv(Map.of("GOOGLE_API_KEY", "fake-google-key"));
+      Model model = EnvModelProviders.fromEnv(Map.of("GOOGLE_API_KEY", "fake-google-key"));
 
-      assertThat(provider).isInstanceOf(GeminiModelProvider.class);
+      assertThat(model.id()).isEqualTo(GEMINI_DEFAULT_MODEL);
     }
 
     @Test
@@ -214,15 +220,15 @@ class EnvModelProvidersTest {
       // pair order), but that resolved key is never exposed by an accessor to assert on directly
       // — the same offline limit OpenAiModelProviderTest documents for its own base URL/org
       // fields. What's verified here is the observable half: both variables set together still
-      // resolves to exactly one Gemini provider, not an ambiguity.
+      // resolves to exactly one Gemini model, not an ambiguity.
       Map<String, String> env =
           Map.of(
               "GEMINI_API_KEY", "fake-gemini-key",
               "GOOGLE_API_KEY", "fake-google-key");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(GeminiModelProvider.class);
+      assertThat(model.id()).isEqualTo(GEMINI_DEFAULT_MODEL);
     }
   }
 
@@ -235,10 +241,10 @@ class EnvModelProvidersTest {
       // Grok as a first-class env citizen with zero new provider code. The resolved base URL has
       // no accessor to assert against offline (OpenAiModelProviderTest documents the same limit
       // for its own baseUrl(...) builder calls) — what's verified here is that the single-key
-      // path resolves to exactly one OpenAI-shaped provider without error.
-      ModelProvider provider = EnvModelProviders.fromEnv(Map.of("XAI_API_KEY", "fake-xai-key"));
+      // path resolves to the xai default model id, distinct from every other vendor's default.
+      Model model = EnvModelProviders.fromEnv(Map.of("XAI_API_KEY", "fake-xai-key"));
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(model.id()).isEqualTo(XAI_DEFAULT_MODEL);
     }
   }
 
@@ -257,9 +263,9 @@ class EnvModelProvidersTest {
               "OPENAI_API_KEY", "lm-studio",
               "OPENAI_BASE_URL", "http://127.0.0.1:1234/v1");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(model.id()).isEqualTo(OPENAI_DEFAULT_MODEL);
     }
   }
 
@@ -267,11 +273,10 @@ class EnvModelProvidersTest {
    * Every ambiguity/tiebreak combination the provider-expansion design adds beyond the original
    * anthropic/openai pair ({@link Both_keys_set} keeps covering that original pair unchanged) —
    * parameterized per the house rule banked from an earlier task: a third same-shaped test bundles
-   * rather than repeats. Two providers building the same {@link OpenAiModelProvider} class (openai
-   * and xai) can't be told apart by type, so the tiebreak's own observable branch — silent
-   * (explicit match found) vs. one WARN logged (fell through to the default order) — is what these
-   * assertions key on; the resolved type is asserted too wherever the pairing makes it
-   * distinguishable.
+   * rather than repeats. openai and xai both resolve through the same {@code OpenAiModelProvider}
+   * gateway class, so the tiebreak's own observable branch — silent (explicit match found) vs. one
+   * WARN logged (fell through to the default order) — is what these assertions key on; the resolved
+   * default model id is asserted too wherever the pairing makes it distinguishable.
    */
   @Nested
   class Multiple_keys_set {
@@ -299,32 +304,29 @@ class EnvModelProvidersTest {
     static Stream<Arguments> default_order_cases() {
       return Stream.of(
           Arguments.of(
-              Map.of("ANTHROPIC_API_KEY", "k1", "GEMINI_API_KEY", "k2"),
-              AnthropicModelProvider.class),
+              Map.of("ANTHROPIC_API_KEY", "k1", "GEMINI_API_KEY", "k2"), ANTHROPIC_DEFAULT_MODEL),
           Arguments.of(
-              Map.of("ANTHROPIC_API_KEY", "k1", "XAI_API_KEY", "k2"), AnthropicModelProvider.class),
+              Map.of("ANTHROPIC_API_KEY", "k1", "XAI_API_KEY", "k2"), ANTHROPIC_DEFAULT_MODEL),
           Arguments.of(
-              Map.of("OPENAI_API_KEY", "k1", "GEMINI_API_KEY", "k2"), OpenAiModelProvider.class),
-          Arguments.of(
-              Map.of("OPENAI_API_KEY", "k1", "XAI_API_KEY", "k2"), OpenAiModelProvider.class),
-          Arguments.of(
-              Map.of("GEMINI_API_KEY", "k1", "XAI_API_KEY", "k2"), GeminiModelProvider.class),
+              Map.of("OPENAI_API_KEY", "k1", "GEMINI_API_KEY", "k2"), OPENAI_DEFAULT_MODEL),
+          Arguments.of(Map.of("OPENAI_API_KEY", "k1", "XAI_API_KEY", "k2"), OPENAI_DEFAULT_MODEL),
+          Arguments.of(Map.of("GEMINI_API_KEY", "k1", "XAI_API_KEY", "k2"), GEMINI_DEFAULT_MODEL),
           Arguments.of(
               Map.of(
                   "ANTHROPIC_API_KEY", "k1",
                   "OPENAI_API_KEY", "k2",
                   "GEMINI_API_KEY", "k3",
                   "XAI_API_KEY", "k4"),
-              AnthropicModelProvider.class));
+              ANTHROPIC_DEFAULT_MODEL));
     }
 
     @ParameterizedTest
     @MethodSource("default_order_cases")
     void with_no_nessy_provider_set_the_first_key_in_precedence_order_wins_and_warns_once(
-        Map<String, String> env, Class<? extends ModelProvider> expectedType) {
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+        Map<String, String> env, String expectedModelId) {
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(expectedType);
+      assertThat(model.id()).isEqualTo(expectedModelId);
       assertThat(appender.list).hasSize(1);
       assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.WARN);
     }
@@ -335,43 +337,40 @@ class EnvModelProvidersTest {
           Arguments.of(
               Map.of("ANTHROPIC_API_KEY", "k1", "GEMINI_API_KEY", "k2"),
               "gemini",
-              GeminiModelProvider.class),
+              GEMINI_DEFAULT_MODEL),
           // gemini explicitly beats the openai default.
           Arguments.of(
               Map.of("OPENAI_API_KEY", "k1", "GEMINI_API_KEY", "k2"),
               "GEMINI",
-              GeminiModelProvider.class),
+              GEMINI_DEFAULT_MODEL),
           // the "grok" alias explicitly beats the gemini default.
           Arguments.of(
-              Map.of("GEMINI_API_KEY", "k1", "XAI_API_KEY", "k2"),
-              "grok",
-              OpenAiModelProvider.class),
-          // xai explicitly beats the anthropic default (still OpenAiModelProvider-typed, but
-          // distinguishable from the would-be anthropic default by type all the same).
+              Map.of("GEMINI_API_KEY", "k1", "XAI_API_KEY", "k2"), "grok", XAI_DEFAULT_MODEL),
+          // xai explicitly beats the anthropic default (still an OpenAiModelProvider-shaped
+          // gateway underneath, but distinguishable from the would-be anthropic default by its
+          // model id all the same).
           Arguments.of(
-              Map.of("ANTHROPIC_API_KEY", "k1", "XAI_API_KEY", "k2"),
-              "xai",
-              OpenAiModelProvider.class));
+              Map.of("ANTHROPIC_API_KEY", "k1", "XAI_API_KEY", "k2"), "xai", XAI_DEFAULT_MODEL));
     }
 
     @ParameterizedTest
     @MethodSource("explicit_choice_cases")
     void naming_a_present_key_explicitly_chooses_it_silently(
-        Map<String, String> env, String preference, Class<? extends ModelProvider> expectedType) {
+        Map<String, String> env, String preference, String expectedModelId) {
       var envWithPreference = new HashMap<>(env);
       envWithPreference.put("NESSY_PROVIDER", preference);
 
-      ModelProvider provider = EnvModelProviders.fromEnv(envWithPreference);
+      Model model = EnvModelProviders.fromEnv(envWithPreference);
 
-      assertThat(provider).isInstanceOf(expectedType);
+      assertThat(model.id()).isEqualTo(expectedModelId);
       assertThat(appender.list).isEmpty();
     }
 
     @Test
     void openai_versus_xai_is_only_distinguishable_by_the_tiebreak_s_own_silence() {
-      // Both keys build an OpenAiModelProvider, so type can't prove which key was actually
-      // embedded (no accessor — see Only_the_xai_key_set's note). What IS observable: naming
-      // "xai" explicitly takes the silent explicit-match branch rather than the
+      // Both keys build an OpenAiModelProvider gateway, so the id alone (once NESSY_MODEL is not
+      // overridden) is what tells xai and openai apart. What IS observable: naming "xai"
+      // explicitly takes the silent explicit-match branch rather than the
       // warn-and-fall-back-to-openai default branch.
       Map<String, String> env =
           Map.of(
@@ -379,9 +378,9 @@ class EnvModelProvidersTest {
               "XAI_API_KEY", "k2",
               "NESSY_PROVIDER", "xai");
 
-      ModelProvider provider = EnvModelProviders.fromEnv(env);
+      Model model = EnvModelProviders.fromEnv(env);
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(model.id()).isEqualTo(XAI_DEFAULT_MODEL);
       assertThat(appender.list).isEmpty();
     }
   }
@@ -497,7 +496,7 @@ class EnvModelProvidersTest {
   /**
    * {@link EnvModelProviders#select(Map)} — the {@link EnvModelProviders.Selection}-returning
    * overload demos use for their banners — layered on top of the same {@code fromEnv(Map)}
-   * machinery: same provider choice, plus the provider name and the model that goes with it.
+   * machinery: same model choice, plus the provider name that goes with it.
    */
   @Nested
   class Selecting {
@@ -507,9 +506,8 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection =
           EnvModelProviders.select(Map.of("ANTHROPIC_API_KEY", "fake-anthropic-key"));
 
-      assertThat(selection.provider()).isInstanceOf(AnthropicModelProvider.class);
       assertThat(selection.providerName()).isEqualTo("anthropic");
-      assertThat(selection.model()).isEqualTo("claude-haiku-4-5-20251001");
+      assertThat(selection.model().id()).isEqualTo(ANTHROPIC_DEFAULT_MODEL);
     }
 
     @Test
@@ -517,9 +515,8 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection =
           EnvModelProviders.select(Map.of("OPENAI_API_KEY", "fake-openai-key"));
 
-      assertThat(selection.provider()).isInstanceOf(OpenAiModelProvider.class);
       assertThat(selection.providerName()).isEqualTo("openai");
-      assertThat(selection.model()).isEqualTo("gpt-4o-mini");
+      assertThat(selection.model().id()).isEqualTo(OPENAI_DEFAULT_MODEL);
     }
 
     @Test
@@ -527,9 +524,8 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection =
           EnvModelProviders.select(Map.of("GEMINI_API_KEY", "fake-gemini-key"));
 
-      assertThat(selection.provider()).isInstanceOf(GeminiModelProvider.class);
       assertThat(selection.providerName()).isEqualTo("gemini");
-      assertThat(selection.model()).isEqualTo("gemini-3.6-flash");
+      assertThat(selection.model().id()).isEqualTo(GEMINI_DEFAULT_MODEL);
     }
 
     @Test
@@ -537,9 +533,8 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection =
           EnvModelProviders.select(Map.of("XAI_API_KEY", "fake-xai-key"));
 
-      assertThat(selection.provider()).isInstanceOf(OpenAiModelProvider.class);
       assertThat(selection.providerName()).isEqualTo("xai");
-      assertThat(selection.model()).isEqualTo("grok-4.6");
+      assertThat(selection.model().id()).isEqualTo(XAI_DEFAULT_MODEL);
     }
 
     @Test
@@ -552,7 +547,7 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection = EnvModelProviders.select(env);
 
       assertThat(selection.providerName()).isEqualTo("anthropic");
-      assertThat(selection.model()).isEqualTo("claude-opus-4-1-20260805");
+      assertThat(selection.model().id()).isEqualTo("claude-opus-4-1-20260805");
     }
 
     @Test
@@ -564,7 +559,7 @@ class EnvModelProvidersTest {
 
       EnvModelProviders.Selection selection = EnvModelProviders.select(env);
 
-      assertThat(selection.model()).isEqualTo("gpt-4o-mini");
+      assertThat(selection.model().id()).isEqualTo(OPENAI_DEFAULT_MODEL);
     }
 
     @Test
@@ -579,32 +574,40 @@ class EnvModelProvidersTest {
       EnvModelProviders.Selection selection = EnvModelProviders.select(env);
 
       assertThat(selection.providerName()).isEqualTo("openai");
-      assertThat(selection.model()).isEqualTo("gpt-5-nano");
-    }
-
-    @Test
-    void rejects_a_null_provider() {
-      assertThatThrownBy(() -> new EnvModelProviders.Selection(null, "anthropic", "a-model"))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessage("provider must not be null");
-    }
-
-    @Test
-    void rejects_a_null_provider_name() {
-      ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("fake-anthropic-key"));
-
-      assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, null, "a-model"))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessage("providerName must not be null");
+      assertThat(selection.model().id()).isEqualTo("gpt-5-nano");
     }
 
     @Test
     void rejects_a_null_model() {
-      ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("fake-anthropic-key"));
-
-      assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, "anthropic", null))
+      assertThatThrownBy(() -> new EnvModelProviders.Selection(null, "anthropic"))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("model must not be null");
+    }
+
+    @Test
+    void rejects_a_null_provider_name() {
+      assertThatThrownBy(() -> new EnvModelProviders.Selection(fakeModel(), null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("providerName must not be null");
+    }
+
+    private static Model fakeModel() {
+      return new Model() {
+        @Override
+        public ModelStream stream(ModelRequest request) {
+          throw new UnsupportedOperationException("not exercised by this test");
+        }
+
+        @Override
+        public Set<Capability> capabilities() {
+          return Set.of();
+        }
+
+        @Override
+        public String id() {
+          return "fake-model";
+        }
+      };
     }
   }
 }

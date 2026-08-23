@@ -15,21 +15,25 @@
  */
 package org.jwcarman.nessy.spi.model;
 
-import java.util.Set;
-
-/** Where tokens come from. */
+/**
+ * The vendor gateway — an application singleton holding the SDK client, credentials, and transport
+ * for one vendor.
+ *
+ * <p>A gateway does not run requests itself; it hands out {@link Model} handles that do. {@link
+ * #model(String)} returns a cheap, immutable handle bound to one model id, sharing this gateway's
+ * client. Two calls with different ids yield two independent handles from the same gateway — one
+ * gateway per app, many models drawn from it.
+ */
 public interface ModelProvider {
 
   /**
-   * Starts one turn. The caller iterates the returned stream and must close it.
+   * Binds a model id to this gateway's shared client.
    *
-   * <p>Blocking by design: on virtual threads that is cheaper and far more readable than a callback
-   * protocol.
+   * @param id the vendor's model identifier, e.g. {@code "claude-opus-5"}; must not be null or
+   *     blank
+   * @throws IllegalArgumentException if {@code id} is null or blank
    */
-  ModelStream stream(ModelRequest request);
-
-  /** What this provider can actually do. See {@link Capability}. */
-  Set<Capability> capabilities();
+  Model model(String id);
 
   /**
    * Who this provider is, for banners and logs — never used for model selection.

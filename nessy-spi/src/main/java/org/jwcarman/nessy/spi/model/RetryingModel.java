@@ -23,32 +23,29 @@ import java.util.function.Predicate;
 /**
  * Retries the OPENING of a model stream, with exponential backoff.
  *
- * <p>A decorator, not loop machinery — the upgrade path is {@code wrap(provider, …)} and nothing
- * else changes. Only the initial {@link ModelProvider#stream} call is retried: once events flow,
- * tokens have already been fed downstream and a mid-stream failure propagates, because a
- * transparent re-call would replay the turn from the top.
+ * <p>A decorator, not loop machinery — the upgrade path is {@code wrap(model, …)} and nothing else
+ * changes. Only the initial {@link Model#stream} call is retried: once events flow, tokens have
+ * already been fed downstream and a mid-stream failure propagates, because a transparent re-call
+ * would replay the turn from the top.
  *
- * <p>Which failures are retryable is provider-specific (a 429 is not an auth error), so each
- * provider module publishes its own predicate — see {@code AnthropicModelProvider#RETRYABLE} and
- * {@code OpenAiModelProvider#RETRYABLE}.
+ * <p>Which failures are retryable is provider-specific (a 429 is not an auth error), so each vendor
+ * module publishes its own predicate — see {@code AnthropicModelProvider#RETRYABLE} and {@code
+ * OpenAiModelProvider#RETRYABLE}.
  */
-public final class RetryingModelProvider implements ModelProvider {
+public final class RetryingModel implements Model {
 
-  private final ModelProvider delegate;
+  private final Model delegate;
   private final RetryPolicy policy;
   private final Predicate<RuntimeException> retryable;
   private final Sleeper sleeper;
 
-  public static RetryingModelProvider wrap(
-      ModelProvider delegate, RetryPolicy policy, Predicate<RuntimeException> retryable) {
-    return new RetryingModelProvider(delegate, policy, retryable, Sleeper.REAL);
+  public static RetryingModel wrap(
+      Model delegate, RetryPolicy policy, Predicate<RuntimeException> retryable) {
+    return new RetryingModel(delegate, policy, retryable, Sleeper.REAL);
   }
 
-  RetryingModelProvider(
-      ModelProvider delegate,
-      RetryPolicy policy,
-      Predicate<RuntimeException> retryable,
-      Sleeper sleeper) {
+  RetryingModel(
+      Model delegate, RetryPolicy policy, Predicate<RuntimeException> retryable, Sleeper sleeper) {
     this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.retryable = Objects.requireNonNull(retryable, "retryable must not be null");
@@ -77,7 +74,7 @@ public final class RetryingModelProvider implements ModelProvider {
   }
 
   @Override
-  public String name() {
-    return delegate.name();
+  public String id() {
+    return delegate.id();
   }
 }

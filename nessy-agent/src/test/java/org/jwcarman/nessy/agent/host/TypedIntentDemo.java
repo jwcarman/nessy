@@ -31,7 +31,7 @@ import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
@@ -205,7 +205,7 @@ class TypedIntentDemo {
         new ToolCall(
             "c3", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(firstAttempt, null)),
                 List.of(new ModelEvent.ToolUseEmitted(declareCall, null)),
@@ -216,7 +216,8 @@ class TypedIntentDemo {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(provider)
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -287,7 +288,7 @@ class TypedIntentDemo {
         new ToolCall(
             "c2", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-us"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(declareCall, null)),
                 List.of(new ModelEvent.ToolUseEmitted(mismatchedAttempt, null)),
@@ -297,7 +298,8 @@ class TypedIntentDemo {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(provider)
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
@@ -348,7 +350,7 @@ class TypedIntentDemo {
             "declare-intent",
             JsonNodeFactory.instance.objectNode().put("type", "Nuke").put("target", "x"));
     var provider =
-        new ScriptedModelProvider(
+        new ScriptedModel(
             List.of(
                 List.of(new ModelEvent.ToolUseEmitted(unrepresentableDeclare, null)),
                 List.of(new ModelEvent.TextChunk("Understood — that shape is not supported."))));
@@ -357,7 +359,8 @@ class TypedIntentDemo {
         Nessy.harness(
             h ->
                 h.type("ops")
-                    .provider(provider)
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(

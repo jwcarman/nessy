@@ -34,29 +34,30 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * The bridge from the agent machine to core's {@link ModelProvider} SPI: recall from {@link
- * Memory}, stream from the provider, merge deltas into settled blocks (a hundred chunks become one
+ * The bridge from the agent machine to core's {@link Model} SPI: recall from {@link Memory}, stream
+ * from the bound model handle, merge deltas into settled blocks (a hundred chunks become one
  * block), narrate texture as it arrives on {@link TurnObserver}, and deliver exactly one {@link
  * AgentEvent.ModelFinished} to the dispatch-time {@link Sink}. Message construction lives here and
  * nowhere else on the model side.
  *
  * <p>{@link #callModel(Sink)} is async by {@link ModelCallExecutor}'s contract: the call is
  * submitted to {@code executor} and never runs on the dispatching stack. Any {@code
- * RuntimeException} the provider call or stream consumption raises — a context overflow, an HTTP
+ * RuntimeException} the model call or stream consumption raises — a context overflow, an HTTP
  * error, a broken stream protocol, whatever a provider SDK decides to throw — folds to a {@link
- * ModelOutcome.Failed} instead of propagating, so a provider failure always yields the one required
+ * ModelOutcome.Failed} instead of propagating, so a model failure always yields the one required
  * {@code ModelFinished} rather than escaping onto the executor thread.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
-  private final ModelProvider provider;
+  private final Model model;
+  private final String systemPrompt;
   private final ModelSettings settings;
   private final ToolRegistry tools;
   private final Memory memory;
@@ -64,13 +65,15 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private final Executor executor;
 
   public ProviderModelCallExecutor(
-      ModelProvider provider,
+      Model model,
+      String systemPrompt,
       ModelSettings settings,
       ToolRegistry tools,
       Memory memory,
       TurnObserver turn,
       Executor executor) {
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.model = Objects.requireNonNull(model, "model must not be null");
+    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     this.settings = Objects.requireNonNull(settings, "settings must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
@@ -88,8 +91,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       ModelRequest request =
           new ModelRequest(
               memory.recall(),
-              settings.systemPrompt(),
-              settings.model(),
+              systemPrompt,
               settings.maxTokens(),
               tools.specs(),
               settings.capabilities(),
@@ -108,7 +110,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private ModelOutcome stream(ModelRequest request) {
     List<ContentBlock> blocks = new ArrayList<>();
     List<ToolCall> calls = new ArrayList<>();
-    try (ModelStream stream = provider.stream(request)) {
+    try (ModelStream stream = model.stream(request)) {
       for (ModelEvent event : stream) {
         switch (event) {
           case ModelEvent.TextChunk(String text) -> {

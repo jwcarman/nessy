@@ -70,7 +70,8 @@ public final class AnthropicRequests {
    * empty text block: Anthropic rejects empty text blocks, and an absent system is the correct
    * encoding of "no system prompt".
    */
-  public static MessageCreateParams toParams(ModelRequest request, ThinkingConfig thinking) {
+  public static MessageCreateParams toParams(
+      ModelRequest request, String modelId, ThinkingConfig thinking) {
     if (thinking.enabled() && request.maxTokens() <= thinking.budgetTokens()) {
       throw new IllegalArgumentException(
           "maxTokens (%d) must be greater than the thinking budget (%d)"
@@ -79,8 +80,7 @@ public final class AnthropicRequests {
 
     var cachingRequested = request.requested().contains(Capability.PROMPT_CACHING);
 
-    var builder =
-        MessageCreateParams.builder().model(request.model()).maxTokens(request.maxTokens());
+    var builder = MessageCreateParams.builder().model(modelId).maxTokens(request.maxTokens());
 
     if (!request.systemPrompt().isBlank()) {
       builder.systemOfTextBlockParams(

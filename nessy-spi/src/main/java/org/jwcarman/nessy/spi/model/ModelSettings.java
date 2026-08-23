@@ -15,11 +15,15 @@
  */
 package org.jwcarman.nessy.spi.model;
 
-import java.util.Objects;
 import java.util.Set;
 
 /**
- * The knobs one agent needs that are not seams.
+ * The optional tuning bag — everything the harness needs that is not a seam and not the model
+ * handle itself.
+ *
+ * <p>The model and the system prompt are not here: the former is the {@code Model} handle passed to
+ * the harness, the latter is harness-level configuration (see {@code HarnessConfig.systemPrompt}).
+ * {@link #defaults()} is what a harness built without {@code .settings(...)} gets.
  *
  * @param capabilities what the harness asks providers to use; a provider that cannot do one says so
  *     rather than silently degrading
@@ -29,16 +33,12 @@ import java.util.Set;
  *     maxTokens}, when declared) but otherwise not yet consumed by anything in the loop — a
  *     declared-but-unconsumed setting, reserved for a future retention policy to read.
  */
-public record ModelSettings(
-    String model,
-    String systemPrompt,
-    int maxTokens,
-    Set<Capability> capabilities,
-    Long contextWindow) {
+public record ModelSettings(int maxTokens, Set<Capability> capabilities, Long contextWindow) {
+
+  /** The max-tokens budget a harness gets when {@code .settings(...)} is never called. */
+  public static final int DEFAULT_MAX_TOKENS = 8192;
 
   public ModelSettings {
-    Objects.requireNonNull(model, "model must not be null");
-    Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     if (maxTokens < 1) {
       throw new IllegalArgumentException("maxTokens must be at least 1");
     }
@@ -46,5 +46,10 @@ public record ModelSettings(
       throw new IllegalArgumentException("contextWindow must be greater than maxTokens");
     }
     capabilities = Set.copyOf(capabilities);
+  }
+
+  /** The honest defaults a harness runs with when no tuning is supplied. */
+  public static ModelSettings defaults() {
+    return new ModelSettings(DEFAULT_MAX_TOKENS, Set.of(), null);
   }
 }

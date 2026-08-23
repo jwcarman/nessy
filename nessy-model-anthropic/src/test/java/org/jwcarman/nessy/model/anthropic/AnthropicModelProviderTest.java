@@ -49,6 +49,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AnthropicModelProviderTest {
@@ -118,11 +119,10 @@ class AnthropicModelProviderTest {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new AnthropicProviderConfig().client(client).build();
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "claude-sonnet", 1024, List.of(), Set.of(), null);
+      var model = provider.model("claude-sonnet");
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
 
-      var stream = provider.stream(request);
+      var stream = model.stream(request);
 
       assertThat(stream).isInstanceOf(AnthropicStream.class);
       assertThat(capturedParams[0]).isNotNull();
@@ -134,17 +134,12 @@ class AnthropicModelProviderTest {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new AnthropicProviderConfig().client(client).thinkingBudget(777).build();
+      var model = provider.model("claude-sonnet");
       var request =
           new ModelRequest(
-              Context.of(List.of()),
-              "sys",
-              "claude-sonnet",
-              4096,
-              List.of(),
-              Set.of(Capability.THINKING),
-              null);
+              Context.of(List.of()), "sys", 4096, List.of(), Set.of(Capability.THINKING), null);
 
-      provider.stream(request);
+      model.stream(request);
 
       var thinking = capturedParams[0].thinking().orElseThrow();
       assertThat(thinking.isEnabled()).isTrue();
@@ -309,7 +304,7 @@ class AnthropicModelProviderTest {
     void advertise_thinking_caching_parallel_tools_and_images() {
       AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
-      assertThat(provider.capabilities())
+      assertThat(provider.model("claude-sonnet").capabilities())
           .containsExactlyInAnyOrder(
               Capability.THINKING,
               Capability.PROMPT_CACHING,
@@ -326,6 +321,49 @@ class AnthropicModelProviderTest {
       AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider.name()).isEqualTo("Anthropic");
+    }
+  }
+
+  /**
+   * Exercises the split itself, offline: {@link AnthropicModelProvider#model(String)} hands out
+   * independent handles that share the gateway's client, each honest about its own id, with a blank
+   * id rejected before any handle is created.
+   */
+  @Nested
+  class Gateway {
+
+    @Test
+    void two_model_calls_on_one_provider_yield_independent_handles_sharing_the_client() {
+      var capturedParams = new MessageCreateParams[1];
+      var client = fakeClient(capturedParams, emptyStreamResponse());
+      var provider = new AnthropicProviderConfig().client(client).build();
+
+      Model opus = provider.model("claude-opus-5");
+      Model haiku = provider.model("claude-haiku-4-5");
+
+      assertThat(opus.id()).isEqualTo("claude-opus-5");
+      assertThat(haiku.id()).isEqualTo("claude-haiku-4-5");
+      assertThat(opus).isNotSameAs(haiku);
+
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      opus.stream(request);
+      assertThat(capturedParams[0].model().asString()).isEqualTo("claude-opus-5");
+      haiku.stream(request);
+      assertThat(capturedParams[0].model().asString()).isEqualTo("claude-haiku-4-5");
+    }
+
+    @Test
+    void a_blank_model_id_is_rejected() {
+      var provider = new AnthropicProviderConfig().apiKey("sk-test").build();
+
+      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_null_model_id_is_rejected() {
+      var provider = new AnthropicProviderConfig().apiKey("sk-test").build();
+
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 

@@ -27,7 +27,7 @@ import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -36,8 +36,8 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
@@ -49,10 +49,16 @@ class ProviderModelCallExecutorTest {
   private ModelOutcome run(
       List<ModelEvent> script, VerbatimMemory memory, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
-    var provider = new ScriptedModelProvider(List.of(script));
+    var model = new ScriptedModel(List.of(script));
     var executor =
         new ProviderModelCallExecutor(
-            provider, TestSettings.settings(), TestSettings.emptyRegistry(), memory, turn, pump);
+            model,
+            TestSettings.SYSTEM_PROMPT,
+            TestSettings.settings(),
+            TestSettings.emptyRegistry(),
+            memory,
+            turn,
+            pump);
     var delivered = new ArrayList<AgentEvent>();
     executor.callModel(delivered::add);
     pump.pumpUntilQuiet();
@@ -152,14 +158,20 @@ class ProviderModelCallExecutorTest {
     memory.remember(Message.user("earlier"));
     var turn = new RecordingTurnObserver();
     var pump = new PumpedExecutor();
-    var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("ok"))));
+    var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("ok"))));
     var executor =
         new ProviderModelCallExecutor(
-            provider, TestSettings.settings(), TestSettings.emptyRegistry(), memory, turn, pump);
+            model,
+            TestSettings.SYSTEM_PROMPT,
+            TestSettings.settings(),
+            TestSettings.emptyRegistry(),
+            memory,
+            turn,
+            pump);
     executor.callModel(event -> {});
     pump.pumpUntilQuiet();
-    assertThat(provider.requests()).hasSize(1);
-    assertThat(provider.requests().getFirst().context().messages())
+    assertThat(model.requests()).hasSize(1);
+    assertThat(model.requests().getFirst().context().messages())
         .containsExactly(Message.user("earlier"));
   }
 
@@ -168,7 +180,7 @@ class ProviderModelCallExecutorTest {
     var turn = new RecordingTurnObserver();
     var pump = new PumpedExecutor();
     var exploding =
-        new ModelProvider() {
+        new Model() {
           @Override
           public ModelStream stream(ModelRequest request) {
             throw new IllegalStateException("boom");
@@ -178,10 +190,16 @@ class ProviderModelCallExecutorTest {
           public Set<Capability> capabilities() {
             return Set.of();
           }
+
+          @Override
+          public String id() {
+            return "exploding";
+          }
         };
     var executor =
         new ProviderModelCallExecutor(
             exploding,
+            TestSettings.SYSTEM_PROMPT,
             TestSettings.settings(),
             TestSettings.emptyRegistry(),
             new VerbatimMemory(),

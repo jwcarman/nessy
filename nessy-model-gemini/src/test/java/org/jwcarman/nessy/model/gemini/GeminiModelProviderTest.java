@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class GeminiModelProviderTest {
@@ -48,11 +49,10 @@ class GeminiModelProviderTest {
       var capturedArgs = new Object[3];
       var response = new GeminiStream(List.of(), () -> {});
       var provider = new GeminiModelProvider(fakeClient(capturedArgs, response));
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "gemini-2.5-flash", 1024, List.of(), Set.of(), null);
+      var model = provider.model("gemini-2.5-flash");
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
 
-      var stream = provider.stream(request);
+      var stream = model.stream(request);
 
       assertThat(stream).isSameAs(response);
       assertThat(capturedArgs[0]).isEqualTo("gemini-2.5-flash");
@@ -180,7 +180,8 @@ class GeminiModelProviderTest {
     void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
       var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
-      assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
+      assertThat(provider.model("gemini-2.5-flash").capabilities())
+          .containsExactly(Capability.PARALLEL_TOOL_CALLS);
     }
   }
 
@@ -192,6 +193,49 @@ class GeminiModelProviderTest {
       var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
       assertThat(provider.name()).isEqualTo("Gemini");
+    }
+  }
+
+  /**
+   * Exercises the split itself, offline: {@link GeminiModelProvider#model(String)} hands out
+   * independent handles that share the gateway's client, each honest about its own id, with a blank
+   * id rejected before any handle is created.
+   */
+  @Nested
+  class Gateway {
+
+    @Test
+    void two_model_calls_on_one_provider_yield_independent_handles_sharing_the_client() {
+      var capturedArgs = new Object[3];
+      var response = new GeminiStream(List.of(), () -> {});
+      var provider = new GeminiModelProvider(fakeClient(capturedArgs, response));
+
+      Model flash = provider.model("gemini-2.5-flash");
+      Model pro = provider.model("gemini-2.5-pro");
+
+      assertThat(flash.id()).isEqualTo("gemini-2.5-flash");
+      assertThat(pro.id()).isEqualTo("gemini-2.5-pro");
+      assertThat(flash).isNotSameAs(pro);
+
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      flash.stream(request);
+      assertThat(capturedArgs[0]).isEqualTo("gemini-2.5-flash");
+      pro.stream(request);
+      assertThat(capturedArgs[0]).isEqualTo("gemini-2.5-pro");
+    }
+
+    @Test
+    void a_blank_model_id_is_rejected() {
+      var provider = new GeminiProviderConfig().apiKey("test-key").build();
+
+      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_null_model_id_is_rejected() {
+      var provider = new GeminiProviderConfig().apiKey("test-key").build();
+
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 }

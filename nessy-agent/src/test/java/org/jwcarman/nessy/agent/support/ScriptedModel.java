@@ -20,19 +20,19 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /** Replays a scripted event list per stream() call; records each request. */
-public final class ScriptedModelProvider implements ModelProvider {
+public final class ScriptedModel implements Model {
 
   private final List<List<ModelEvent>> scripts;
   private final List<ModelRequest> requests = new ArrayList<>();
   private int next;
 
-  public ScriptedModelProvider(List<List<ModelEvent>> scripts) {
+  public ScriptedModel(List<List<ModelEvent>> scripts) {
     this.scripts = scripts;
   }
 
@@ -56,6 +56,11 @@ public final class ScriptedModelProvider implements ModelProvider {
   @Override
   public Set<Capability> capabilities() {
     return Set.of();
+  }
+
+  @Override
+  public String id() {
+    return "scripted";
   }
 
   public List<ModelRequest> requests() {

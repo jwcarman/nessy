@@ -22,10 +22,13 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 /** Minimal, real fixtures shared across agent tests. */
 public final class TestSettings {
 
+  /** The system prompt every test fixture here pairs with {@link #settings()}. */
+  public static final String SYSTEM_PROMPT = "you are helpful";
+
   private TestSettings() {}
 
   public static ModelSettings settings() {
-    return new ModelSettings("test-model", "you are helpful", 1024, Set.of(), null);
+    return new ModelSettings(1024, Set.of(), null);
   }
 
   public static ToolRegistry emptyRegistry() {

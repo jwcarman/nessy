@@ -47,13 +47,7 @@ class AnthropicRequestsTest {
 
   private static ModelRequest request(List<Message> messages, Set<Capability> requested) {
     return new ModelRequest(
-        Context.of(messages),
-        "you are a helpful assistant",
-        "claude-sonnet",
-        1024,
-        List.of(),
-        requested,
-        null);
+        Context.of(messages), "you are a helpful assistant", 1024, List.of(), requested, null);
   }
 
   private static ModelRequest request(List<Message> messages) {
@@ -61,8 +55,7 @@ class AnthropicRequestsTest {
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(
-        Context.of(List.of()), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of(), null);
+    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -70,7 +63,8 @@ class AnthropicRequestsTest {
 
     @Test
     void becomes_a_system_text_block() {
-      var params = AnthropicRequests.toParams(request(List.of()), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(request(List.of()), "claude-sonnet", THINKING_DISABLED);
 
       var systemBlocks = params.system().orElseThrow().asTextBlockParams();
       assertThat(systemBlocks).hasSize(1);
@@ -79,7 +73,8 @@ class AnthropicRequestsTest {
 
     @Test
     void has_no_cache_control_when_prompt_caching_is_not_requested() {
-      var params = AnthropicRequests.toParams(request(List.of()), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(request(List.of()), "claude-sonnet", THINKING_DISABLED);
 
       var systemBlock = params.system().orElseThrow().asTextBlockParams().get(0);
       assertThat(systemBlock.cacheControl()).isEmpty();
@@ -89,7 +84,9 @@ class AnthropicRequestsTest {
     void gets_ephemeral_cache_control_when_prompt_caching_is_requested() {
       var params =
           AnthropicRequests.toParams(
-              request(List.of(), Set.of(Capability.PROMPT_CACHING)), THINKING_DISABLED);
+              request(List.of(), Set.of(Capability.PROMPT_CACHING)),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var systemBlock = params.system().orElseThrow().asTextBlockParams().get(0);
       assertThat(systemBlock.cacheControl()).isPresent();
@@ -97,14 +94,18 @@ class AnthropicRequestsTest {
 
     @Test
     void a_blank_system_prompt_omits_the_system_field_entirely() {
-      var params = AnthropicRequests.toParams(requestWithSystemPrompt(""), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(
+              requestWithSystemPrompt(""), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.system()).isEmpty();
     }
 
     @Test
     void a_whitespace_only_system_prompt_omits_the_system_field_entirely() {
-      var params = AnthropicRequests.toParams(requestWithSystemPrompt("   "), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(
+              requestWithSystemPrompt("   "), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.system()).isEmpty();
     }
@@ -115,7 +116,8 @@ class AnthropicRequestsTest {
 
     @Test
     void pass_through_unchanged() {
-      var params = AnthropicRequests.toParams(request(List.of()), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(request(List.of()), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.model().asString()).isEqualTo("claude-sonnet");
       assertThat(params.maxTokens()).isEqualTo(1024L);
@@ -129,7 +131,7 @@ class AnthropicRequestsTest {
     void become_a_user_message_with_a_text_block() {
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.user("hello there"))), THINKING_DISABLED);
+              request(List.of(Message.user("hello there"))), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.messages()).hasSize(1);
       var message = params.messages().get(0);
@@ -146,7 +148,9 @@ class AnthropicRequestsTest {
       // other content, the whole message translates to nothing.
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.user(List.of(new TextBlock(""))))), THINKING_DISABLED);
+              request(List.of(Message.user(List.of(new TextBlock(""))))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       assertThat(params.messages()).isEmpty();
     }
@@ -156,7 +160,9 @@ class AnthropicRequestsTest {
       var image = new org.jwcarman.nessy.api.message.ImageBlock("image/png", "aGVsbG8=");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.user(List.of(new TextBlock(""), image)))), THINKING_DISABLED);
+              request(List.of(Message.user(List.of(new TextBlock(""), image)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(1);
@@ -172,7 +178,7 @@ class AnthropicRequestsTest {
       var image = new ImageBlock("image/png", "aGVsbG8=");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.user(List.of(image)))), THINKING_DISABLED);
+              request(List.of(Message.user(List.of(image)))), "claude-sonnet", THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.isImage()).isTrue();
@@ -190,7 +196,9 @@ class AnthropicRequestsTest {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(thinking)))), THINKING_DISABLED);
+              request(List.of(Message.assistant(List.of(thinking)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(1);
@@ -205,7 +213,9 @@ class AnthropicRequestsTest {
       var text = new TextBlock("the visible answer");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(unsigned, text)))), THINKING_DISABLED);
+              request(List.of(Message.assistant(List.of(unsigned, text)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(1);
@@ -224,7 +234,9 @@ class AnthropicRequestsTest {
       var unsigned = new ThinkingBlock("cut off before signing", "");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(unsigned)))), THINKING_DISABLED);
+              request(List.of(Message.assistant(List.of(unsigned)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       assertThat(params.messages()).isEmpty();
     }
@@ -240,7 +252,9 @@ class AnthropicRequestsTest {
           Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
+              request(List.of(assistantMessage, toolResultMessage)),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(2);
@@ -262,7 +276,9 @@ class AnthropicRequestsTest {
           Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
+              request(List.of(assistantMessage, toolResultMessage)),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.isToolUse()).isTrue();
@@ -282,7 +298,9 @@ class AnthropicRequestsTest {
           Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
+              request(List.of(assistantMessage, toolResultMessage)),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.asToolUse().input()._additionalProperties()).isEmpty();
@@ -297,7 +315,9 @@ class AnthropicRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(redacted)))), THINKING_DISABLED);
+              request(List.of(Message.assistant(List.of(redacted)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.isRedactedThinking()).isTrue();
@@ -318,6 +338,7 @@ class AnthropicRequestsTest {
               request(
                   List.of(
                       Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              "claude-sonnet",
               THINKING_DISABLED);
 
       var message = params.messages().get(1);
@@ -338,6 +359,7 @@ class AnthropicRequestsTest {
               request(
                   List.of(
                       Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              "claude-sonnet",
               THINKING_DISABLED);
 
       var block = params.messages().get(1).content().asBlockParams().get(0);
@@ -359,14 +381,8 @@ class AnthropicRequestsTest {
     void convert_via_anthropic_schemas() {
       var request =
           new ModelRequest(
-              Context.of(List.of()),
-              "sys",
-              "claude-sonnet",
-              1024,
-              List.of(toolSpec("read_file")),
-              Set.of(),
-              null);
-      var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
+              Context.of(List.of()), "sys", 1024, List.of(toolSpec("read_file")), Set.of(), null);
+      var params = AnthropicRequests.toParams(request, "claude-sonnet", THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
       assertThat(tools).hasSize(1);
@@ -382,12 +398,11 @@ class AnthropicRequestsTest {
           new ModelRequest(
               Context.of(List.of()),
               "sys",
-              "claude-sonnet",
               1024,
               List.of(toolSpec("read_file"), toolSpec("write_file")),
               Set.of(Capability.PROMPT_CACHING),
               null);
-      var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
+      var params = AnthropicRequests.toParams(request, "claude-sonnet", THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
       assertThat(tools.get(0).asTool().cacheControl()).isEmpty();
@@ -400,12 +415,11 @@ class AnthropicRequestsTest {
           new ModelRequest(
               Context.of(List.of()),
               "sys",
-              "claude-sonnet",
               1024,
               List.of(toolSpec("read_file"), toolSpec("write_file")),
               Set.of(),
               null);
-      var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
+      var params = AnthropicRequests.toParams(request, "claude-sonnet", THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
       assertThat(tools)
@@ -419,7 +433,9 @@ class AnthropicRequestsTest {
 
     @Test
     void enabled_sets_a_thinking_config_with_the_budget() {
-      var params = AnthropicRequests.toParams(request(List.of()), new ThinkingConfig(true, 512));
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of()), "claude-sonnet", new ThinkingConfig(true, 512));
 
       var thinkingConfig = params.thinking().orElseThrow();
       assertThat(thinkingConfig.isEnabled()).isTrue();
@@ -428,41 +444,37 @@ class AnthropicRequestsTest {
 
     @Test
     void disabled_sets_no_thinking_config() {
-      var params = AnthropicRequests.toParams(request(List.of()), THINKING_DISABLED);
+      var params =
+          AnthropicRequests.toParams(request(List.of()), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.thinking()).isEmpty();
     }
 
     @Test
     void rejects_a_budget_that_leaves_no_headroom_under_max_tokens() {
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 512, List.of(), Set.of(), null);
 
       var thinkingConfig = new ThinkingConfig(true, 512);
 
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, thinkingConfig))
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, "claude-sonnet", thinkingConfig))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejects_a_budget_larger_than_max_tokens() {
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 512, List.of(), Set.of(), null);
       var thinkingConfig = new ThinkingConfig(true, 1024);
 
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, thinkingConfig))
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, "claude-sonnet", thinkingConfig))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void accepts_a_budget_strictly_below_max_tokens() {
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "claude-sonnet", 513, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 513, List.of(), Set.of(), null);
 
-      var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 512));
+      var params =
+          AnthropicRequests.toParams(request, "claude-sonnet", new ThinkingConfig(true, 512));
 
       assertThat(params.thinking()).isPresent();
     }
@@ -474,11 +486,10 @@ class AnthropicRequestsTest {
      */
     @Test
     void the_default_thinking_budget_leaves_headroom_under_the_default_max_tokens() {
-      var request =
-          new ModelRequest(
-              Context.of(List.of()), "sys", "claude-sonnet", 4096, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 4096, List.of(), Set.of(), null);
 
-      var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024));
+      var params =
+          AnthropicRequests.toParams(request, "claude-sonnet", new ThinkingConfig(true, 1024));
 
       assertThat(params.thinking()).isPresent();
     }

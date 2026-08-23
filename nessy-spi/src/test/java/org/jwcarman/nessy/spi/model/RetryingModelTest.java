@@ -28,14 +28,14 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 
-class RetryingModelProviderTest {
+class RetryingModelTest {
 
-  static final class FlakyProvider implements ModelProvider {
+  static final class FlakyModel implements Model {
     int calls;
     final int failuresBeforeSuccess;
     final RuntimeException failure;
 
-    FlakyProvider(int failuresBeforeSuccess, RuntimeException failure) {
+    FlakyModel(int failuresBeforeSuccess, RuntimeException failure) {
       this.failuresBeforeSuccess = failuresBeforeSuccess;
       this.failure = failure;
     }
@@ -65,8 +65,8 @@ class RetryingModelProviderTest {
     }
 
     @Override
-    public String name() {
-      return "Flaky";
+    public String id() {
+      return "flaky";
     }
   }
 
@@ -81,7 +81,7 @@ class RetryingModelProviderTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        Context.of(List.of(Message.user("hi"))), "sys", "m", 100, List.of(), Set.of(), null);
+        Context.of(List.of(Message.user("hi"))), "sys", 100, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -89,12 +89,11 @@ class RetryingModelProviderTest {
 
     @Test
     void retries_retryable_failures_with_exponential_backoff() {
-      FlakyProvider flaky = new FlakyProvider(2, new IllegalStateException("429"));
+      FlakyModel flaky = new FlakyModel(2, new IllegalStateException("429"));
       RecordingSleeper sleeper = new RecordingSleeper();
-      ModelProvider provider =
-          new RetryingModelProvider(flaky, RetryPolicy.defaults(), e -> true, sleeper);
+      Model model = new RetryingModel(flaky, RetryPolicy.defaults(), e -> true, sleeper);
 
-      provider.stream(request()).close();
+      model.stream(request()).close();
 
       assertThat(flaky.calls).isEqualTo(3);
       assertThat(sleeper.slept).containsExactly(Duration.ofMillis(500), Duration.ofMillis(1000));
@@ -102,14 +101,13 @@ class RetryingModelProviderTest {
 
     @Test
     void gives_up_after_max_attempts_and_rethrows_the_last_failure() {
-      FlakyProvider flaky = new FlakyProvider(99, new IllegalStateException("still 429"));
-      ModelProvider provider =
-          new RetryingModelProvider(
-              flaky, RetryPolicy.defaults(), e -> true, new RecordingSleeper());
+      FlakyModel flaky = new FlakyModel(99, new IllegalStateException("still 429"));
+      Model model =
+          new RetryingModel(flaky, RetryPolicy.defaults(), e -> true, new RecordingSleeper());
 
       ModelRequest modelRequest = request();
 
-      assertThatThrownBy(() -> provider.stream(modelRequest))
+      assertThatThrownBy(() -> model.stream(modelRequest))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("still 429");
       assertThat(flaky.calls).isEqualTo(3);
@@ -117,14 +115,13 @@ class RetryingModelProviderTest {
 
     @Test
     void non_retryable_failures_are_rethrown_immediately() {
-      FlakyProvider flaky = new FlakyProvider(99, new IllegalArgumentException("bad request"));
+      FlakyModel flaky = new FlakyModel(99, new IllegalArgumentException("bad request"));
       RecordingSleeper sleeper = new RecordingSleeper();
-      ModelProvider provider =
-          new RetryingModelProvider(flaky, RetryPolicy.defaults(), e -> false, sleeper);
+      Model model = new RetryingModel(flaky, RetryPolicy.defaults(), e -> false, sleeper);
 
       ModelRequest modelRequest = request();
 
-      assertThatThrownBy(() -> provider.stream(modelRequest))
+      assertThatThrownBy(() -> model.stream(modelRequest))
           .isInstanceOf(IllegalArgumentException.class);
       assertThat(flaky.calls).isEqualTo(1);
       assertThat(sleeper.slept).isEmpty();
@@ -133,24 +130,24 @@ class RetryingModelProviderTest {
 
   @Test
   void capabilities_pass_through_untouched() {
-    ModelProvider provider =
-        RetryingModelProvider.wrap(
-            new FlakyProvider(0, new IllegalStateException("unused")),
+    Model model =
+        RetryingModel.wrap(
+            new FlakyModel(0, new IllegalStateException("unused")),
             RetryPolicy.defaults(),
             e -> true);
 
-    assertThat(provider.capabilities()).containsExactly(Capability.THINKING);
+    assertThat(model.capabilities()).containsExactly(Capability.THINKING);
   }
 
   @Test
-  void name_delegates_to_the_wrapped_provider() {
-    ModelProvider provider =
-        RetryingModelProvider.wrap(
-            new FlakyProvider(0, new IllegalStateException("unused")),
+  void id_delegates_to_the_wrapped_model() {
+    Model model =
+        RetryingModel.wrap(
+            new FlakyModel(0, new IllegalStateException("unused")),
             RetryPolicy.defaults(),
             e -> true);
 
-    assertThat(provider.name()).isEqualTo("Flaky");
+    assertThat(model.id()).isEqualTo("flaky");
   }
 
   @Test

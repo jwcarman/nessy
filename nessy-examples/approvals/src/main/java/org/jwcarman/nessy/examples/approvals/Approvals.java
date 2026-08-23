@@ -37,9 +37,9 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.testing.ScriptedModelProvider;
+import org.jwcarman.nessy.testing.ScriptedModel;
 
 /**
  * The harness door plus a desk: one DURABLE {@code restart} tool behind {@link
@@ -77,8 +77,8 @@ public final class Approvals {
    * notifier fires exactly once, the tool runs exactly once, and the model's reply lands.
    */
   static String runScripted() throws InterruptedException {
-    ModelProvider provider = scriptedProvider();
-    ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
+    Model model = scriptedModel();
+    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
     BlockingQueue<String> replies = new LinkedBlockingQueue<>();
     TurnObserver observer =
@@ -98,7 +98,8 @@ public final class Approvals {
         Nessy.harness(
             h ->
                 h.type("approvals")
-                    .provider(provider)
+                    .model(model)
+                    .systemPrompt(SYSTEM_PROMPT)
                     .settings(settings)
                     .grants(
                         ToolGrant.grant(
@@ -133,7 +134,7 @@ public final class Approvals {
 
   private static void runInteractive() throws IOException {
     var selection = EnvModelProviders.select();
-    var settings = new ModelSettings(selection.model(), SYSTEM_PROMPT, 1024, Set.of(), null);
+    var settings = new ModelSettings(1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
     // The harness is immortal, not closeable (spec §4): it is kept for the process's lifetime, not
@@ -142,7 +143,8 @@ public final class Approvals {
         Nessy.harness(
             h ->
                 h.type("approvals")
-                    .provider(selection.provider())
+                    .model(selection.model())
+                    .systemPrompt(SYSTEM_PROMPT)
                     .settings(settings)
                     .grants(
                         ToolGrant.grant(
@@ -182,10 +184,10 @@ public final class Approvals {
     queue.add(request);
   }
 
-  private static ScriptedModelProvider scriptedProvider() {
+  private static ScriptedModel scriptedModel() {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();
     arguments.put("target", "prod-eu");
-    return ScriptedModelProvider.script(
+    return ScriptedModel.script(
         s ->
             s.toolUse("c1", "restart", arguments)
                 .endWithToolUse()

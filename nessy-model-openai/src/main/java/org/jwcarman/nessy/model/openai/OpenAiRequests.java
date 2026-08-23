@@ -67,7 +67,7 @@ public final class OpenAiRequests {
    * module's precedent: an absent system prompt is the correct encoding of "no system prompt", not
    * an empty one.
    */
-  public static ChatCompletionCreateParams toParams(ModelRequest request) {
+  public static ChatCompletionCreateParams toParams(ModelRequest request, String modelId) {
     var messages = new ArrayList<ChatCompletionMessageParam>();
     if (!request.systemPrompt().isBlank()) {
       messages.add(
@@ -80,7 +80,7 @@ public final class OpenAiRequests {
 
     var builder =
         ChatCompletionCreateParams.builder()
-            .model(request.model())
+            .model(modelId)
             .maxCompletionTokens(request.maxTokens())
             .messages(messages)
             .streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());

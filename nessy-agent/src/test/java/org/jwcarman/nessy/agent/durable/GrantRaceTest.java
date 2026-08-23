@@ -41,7 +41,7 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -151,7 +151,7 @@ class GrantRaceTest {
       script.add(List.of(new ModelEvent.ToolUseEmitted(call, null)));
       script.add(List.of(new ModelEvent.TextChunk("done")));
     }
-    var provider = new ScriptedModelProvider(script);
+    var provider = new ScriptedModel(script);
     var executor =
         new RegistryToolCallExecutor(
             registry,
@@ -169,7 +169,13 @@ class GrantRaceTest {
             new QueueBacklog(),
             text -> List.of(new TextBlock(text)),
             new ProviderModelCallExecutor(
-                provider, TestSettings.settings(), registry, memory, narrator, pump),
+                provider,
+                TestSettings.SYSTEM_PROMPT,
+                TestSettings.settings(),
+                registry,
+                memory,
+                narrator,
+                pump),
             executor,
             AgentObserver.noop(),
             false,

@@ -33,17 +33,11 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
-class ScriptedModelProviderTest {
+class ScriptedModelTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        Context.of(List.of(Message.user("hi"))),
-        "system",
-        "fake-model",
-        1024,
-        List.of(),
-        Set.of(),
-        null);
+        Context.of(List.of(Message.user("hi"))), "system", 1024, List.of(), Set.of(), null);
   }
 
   private static List<ModelEvent> drain(ModelStream stream) {
@@ -56,7 +50,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void replays_a_single_text_turn() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
     List<ModelEvent> events = drain(provider.stream(request()));
 
@@ -69,8 +63,8 @@ class ScriptedModelProviderTest {
   @Test
   void replays_turns_in_order() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.script(
+    ScriptedModel provider =
+        ScriptedModel.script(
             s -> s.toolUse("c1", "read_file", args).endWithToolUse().text("Done").endTurn());
 
     assertThat(drain(provider.stream(request()))).hasSize(2);
@@ -82,17 +76,17 @@ class ScriptedModelProviderTest {
 
   @Test
   void records_every_request_it_received() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
     provider.stream(request()).close();
 
     assertThat(provider.requests()).hasSize(1);
-    assertThat(provider.requests().getFirst().model()).isEqualTo("fake-model");
+    assertThat(provider.requests().getFirst().systemPrompt()).isEqualTo("system");
   }
 
   @Test
   void iterating_the_same_stream_twice_is_a_loud_failure() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
     try (ModelStream stream = provider.stream(request())) {
       stream.iterator();
@@ -104,8 +98,8 @@ class ScriptedModelProviderTest {
 
   @Test
   void requests_is_a_snapshot_rather_than_a_live_view() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.script(s -> s.text("Hello").endTurn().text("Again").endTurn());
+    ScriptedModel provider =
+        ScriptedModel.script(s -> s.text("Hello").endTurn().text("Again").endTurn());
     provider.stream(request()).close();
     List<ModelRequest> snapshot = provider.requests();
 
@@ -117,7 +111,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void running_out_of_script_is_a_loud_failure() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
     provider.stream(request()).close();
     ModelRequest exhaustedRequest = request();
 
@@ -128,7 +122,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void building_with_an_unended_turn_is_a_loud_failure() {
-    assertThatThrownBy(() -> ScriptedModelProvider.script(s -> s.text("Hello")))
+    assertThatThrownBy(() -> ScriptedModel.script(s -> s.text("Hello")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("last turn was never ended");
   }
@@ -136,8 +130,8 @@ class ScriptedModelProviderTest {
   @Test
   void replays_thinking_and_tool_use_events_in_a_single_turn() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.script(
+    ScriptedModel provider =
+        ScriptedModel.script(
             s ->
                 s.thinking("pondering")
                     .thinkingSigned("sig-123")
@@ -157,8 +151,8 @@ class ScriptedModelProviderTest {
   @Test
   void replays_a_signed_tool_use_event() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.script(
+    ScriptedModel provider =
+        ScriptedModel.script(
             s -> s.toolUseSigned("c1", "read_file", args, "sig-123").endWithToolUse());
 
     assertThat(drain(provider.stream(request())))
@@ -170,8 +164,7 @@ class ScriptedModelProviderTest {
   @Test
   void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
     Usage usage = new Usage(12, 34, 0);
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.script(s -> s.text("Hello").endTurn(usage));
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn(usage));
 
     assertThat(drain(provider.stream(request())))
         .containsExactly(
@@ -181,15 +174,15 @@ class ScriptedModelProviderTest {
 
   @Test
   void capabilities_are_empty() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
     assertThat(provider.capabilities()).isEmpty();
   }
 
   @Test
-  void reports_scripted_as_its_name() {
-    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
+  void reports_scripted_as_its_id() {
+    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
-    assertThat(provider.name()).isEqualTo("Scripted");
+    assertThat(provider.id()).isEqualTo("scripted");
   }
 }
