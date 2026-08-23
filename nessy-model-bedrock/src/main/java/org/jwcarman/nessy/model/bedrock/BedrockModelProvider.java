@@ -50,11 +50,12 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
  *
  * <p>Also {@link AutoCloseable}: the real {@link BedrockClient} built by {@link
  * BedrockProviderConfig#wrap} owns a {@code BedrockRuntimeAsyncClient}, whose default Netty
- * transport holds an event-loop group and connection pool that outlive a single {@link #stream}
- * call. {@link ModelProvider} itself declares no {@code close()} — most sibling providers wrap a
- * client with no such teardown need — so this is additive: callers that construct a {@code
- * BedrockModelProvider} directly (rather than through a DI container that already manages its
- * lifecycle) should close it when done, the same as they would the underlying SDK client itself.
+ * transport holds an event-loop group and connection pool that outlive a single {@code stream(...)}
+ * call on any handle this gateway has minted. {@link ModelProvider} itself declares no {@code
+ * close()} — most sibling providers wrap a client with no such teardown need — so this is additive:
+ * callers that construct a {@code BedrockModelProvider} directly (rather than through a DI
+ * container that already manages its lifecycle) should close it when done, the same as they would
+ * the underlying SDK client itself.
  *
  * <p><b>Close ownership is not symmetric across {@link BedrockProviderConfig}'s two client
  * paths.</b> {@link #close()} closes the {@code BedrockRuntimeAsyncClient} only when this provider
