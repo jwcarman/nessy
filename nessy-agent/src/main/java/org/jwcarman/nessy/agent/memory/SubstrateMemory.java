@@ -46,18 +46,18 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  * VerbatimMemory} shares.
  *
  * <p>Wire compatibility (spec §6): a transcript written before this reform is a bare {@code
- * Message} per entry, with no {@code "type"} discriminator — {@link #decode} recognizes the absence
- * of one and reads it back as a {@link JournalEntry.Legacy}, which {@link RemembranceFold} emits
+ * Message} per entry, with no {@code "type"} discriminator — the decoder recognizes the absence of
+ * one and reads it back as a {@link JournalEntry.Legacy}, which {@link RemembranceFold} emits
  * verbatim rather than trying to re-pair it. Nothing here ever re-encodes a legacy entry; every
  * write this class makes is {@link JournalEntry.Fresh}.
  *
- * <p>The stored shape binds through a {@link Codec}{@code <}{@link JournalEntry>}{@code >}, over a
- * {@link JournalStore}{@code <}{@link JournalEntry>}{@code >} (typed-stores spec §1): {@link
- * #SubstrateMemory(Substrate, String, ObjectMapper)} defaults to the built-in binding (JSON via
- * {@code mapper}, with the legacy fallback above); {@link #SubstrateMemory(Substrate, String,
- * Codec)} accepts a caller-supplied {@code Codec<Remembrance>} directly — a transform chained on
- * with {@link Codec#then(Codec)} (encryption, compression) or a test probe. A custom codec owns its
- * own decode failure and legacy-reading story; the built-in fallback above is this class's own.
+ * <p>The stored shape binds through a {@code Codec<JournalEntry>}, over a {@code
+ * JournalStore<JournalEntry>} (typed-stores spec §1): {@link #SubstrateMemory(Substrate, String,
+ * ObjectMapper)} defaults to the built-in binding (JSON via {@code mapper}, with the legacy
+ * fallback above); {@link #SubstrateMemory(Substrate, String, Codec)} accepts a caller-supplied
+ * {@code Codec<Remembrance>} directly — a transform chained on with {@link Codec#then(Codec)}
+ * (encryption, compression) or a test probe. A custom codec owns its own decode failure and
+ * legacy-reading story; the built-in fallback above is this class's own.
  */
 public final class SubstrateMemory implements Memory {
 
