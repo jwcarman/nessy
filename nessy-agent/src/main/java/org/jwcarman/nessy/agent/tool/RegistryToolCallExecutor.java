@@ -90,10 +90,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final Codecs codecs;
 
   private static final String PARKING_UNAVAILABLE =
-      "deferred execution is unavailable in this wiring; the desk arrives with the autonomous host";
+      "deferred execution is unavailable in this wiring; the desk arrives with the harness";
 
   static final String APPROVAL_UNAVAILABLE =
-      "approval is unavailable in this wiring; the desk arrives with the autonomous host";
+      "approval is unavailable in this wiring; the desk arrives with the harness";
 
   public RegistryToolCallExecutor(
       ToolRegistry registry,

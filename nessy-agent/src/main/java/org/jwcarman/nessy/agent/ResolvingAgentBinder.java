@@ -34,8 +34,10 @@ public final class ResolvingAgentBinder implements AgentBinder {
   public void deliver(AgentType type, AgentId id, AgentEvent event) {
     Agent<?> agent = resolver.resolve(type, id);
     if (!(agent instanceof DefaultAgent<?> defaultAgent)) {
-      throw new IllegalStateException(
-          "resolved agent is not a DefaultAgent: " + agent.getClass().getName());
+      // fix round 1 M6: a null resolve must land in this same message, not NPE out of
+      // Class#getName() while building it.
+      String resolved = agent == null ? "null" : agent.getClass().getName();
+      throw new IllegalStateException("resolved agent is not a DefaultAgent: " + resolved);
     }
     defaultAgent.deliver(event);
   }

@@ -57,11 +57,12 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * A CONFIG, not a builder (harness-first spec §2, renamed from {@code AutonomousBuilder}): fluent
- * setters, no public {@code build()} — the same {@link org.jwcarman.nessy.api.tool.ToolConfig}
- * idiom, describing a kept, immortal {@link Harness} rather than a host. Reached only through
- * {@link Nessy#harness(HarnessCustomizer)} or {@link Nessy#harness(Class, HarnessCustomizer)},
- * which alone turn a filled-in config into the {@link Harness} it describes.
+ * A CONFIG, not a builder (harness-first spec §2, renamed from the pre-customizer fluent builder
+ * this reform replaced): fluent setters, no public {@code build()} — the same {@link
+ * org.jwcarman.nessy.api.tool.ToolConfig} idiom, describing a kept, immortal {@link Harness} rather
+ * than a host. Reached only through {@link Nessy#harness(HarnessCustomizer)} or {@link
+ * Nessy#harness(Class, HarnessCustomizer)}, which alone turn a filled-in config into the {@link
+ * Harness} it describes.
  */
 public final class HarnessConfig<O> {
 
@@ -236,7 +237,12 @@ public final class HarnessConfig<O> {
     return this;
   }
 
-  /** A caller-supplied executor; when omitted, the built host owns and closes its own. */
+  /**
+   * A caller-supplied executor; when omitted, {@link #finish()} owns one of its own — a virtual-
+   * thread-per-task executor that, like the rest of the harness's life-support, lives exactly as
+   * long as the process (spec §4): there is no lifecycle door to shut it down through, and none is
+   * needed.
+   */
   public HarnessConfig<O> executor(Executor executor) {
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     return this;
@@ -338,6 +344,13 @@ public final class HarnessConfig<O> {
         backend != null ? backend : new SubstrateComputations(effectiveSubstrate, pinned);
     AgentObserver effectiveAgentObserver =
         agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
+    // Fix round 1 M1: snapshot these three fields into locals so the two executor factory
+    // lambdas below close over values captured at this atomic-construction moment, not over
+    // `this` fields a later mutation (there is none in practice — the config never escapes — but
+    // the lambdas should say what they mean).
+    ModelProvider effectiveProvider = provider;
+    TurnObserver effectiveTurnObserver = turnObserver;
+    Consumer<ApprovalRequest> effectiveApprovalNotifier = approvalNotifier;
 
     Harness<O> harness =
         Harness.of(
@@ -351,16 +364,21 @@ public final class HarnessConfig<O> {
             effectiveBacklogFactory,
             scopeMemory ->
                 new ProviderModelCallExecutor(
-                    provider, effectiveSettings, registry, scopeMemory, turnObserver, exec),
+                    effectiveProvider,
+                    effectiveSettings,
+                    registry,
+                    scopeMemory,
+                    effectiveTurnObserver,
+                    exec),
             scopeId ->
                 new RegistryToolCallExecutor(
                     registry,
                     agentType,
                     scopeId,
-                    turnObserver,
+                    effectiveTurnObserver,
                     exec,
                     new ComputationDeferredToolCallPolicy(effectiveBackend, pinned),
-                    new ComputationApprover(effectiveBackend, approvalNotifier, pinned),
+                    new ComputationApprover(effectiveBackend, effectiveApprovalNotifier, pinned),
                     pinned),
             effectiveSubstrate,
             pinned,

@@ -93,8 +93,8 @@ public final class Governed {
   /**
    * The whole narrated run, factored out so {@code GovernedTest} can assert on the checkpoints
    * {@link #main} only prints. The final checkpoint synchronizes on {@link TurnEvent.TurnEnded} —
-   * the autonomous host's default {@code agentObserver} narrates it on the turn observer. Every
-   * wait is bounded: a hung host fails loudly with a named timeout instead of hanging the build.
+   * the harness's default {@code agentObserver} narrates it on the turn observer. Every wait is
+   * bounded: a hung host fails loudly with a named timeout instead of hanging the build.
    */
   static Result run() throws InterruptedException {
     var substrate = new InMemorySubstrate();

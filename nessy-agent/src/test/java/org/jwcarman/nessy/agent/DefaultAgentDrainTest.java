@@ -170,7 +170,7 @@ class DefaultAgentDrainTest {
   }
 
   @Test
-  void autonomousWiringDrainsTheNextObservationWhenTheTurnEnds() {
+  void drainOnIdleWiringDrainsTheNextObservationWhenTheTurnEnds() {
     var f =
         new AgentFixture(
             new SubstrateAgentStateStore(

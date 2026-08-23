@@ -48,12 +48,12 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The flagship (the-doors plan, Task 9): an autonomous agent asks to restart prod, the policy says
+ * The flagship (the-doors plan, Task 9): an unattended agent asks to restart prod, the policy says
  * RequireApproval, the call suspends into an approval computation, every instance dies — and an
  * approve at the desk redrives the scope on a fresh instance, the gate finds the decision, the tool
  * finally runs, and the turn completes. The model never knew anyone hesitated.
  */
-class AutonomousApprovalDemo {
+class HarnessApprovalDemo {
 
   record RestartInput(String target) {}
 

@@ -102,7 +102,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     harness.observer().applied(event, t);
     t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
-      drive(); // §3.1 — the autonomous wiring's drain executor
+      drive(); // §3.1 — the drain-on-idle wiring's own drive executor
     }
   }
 

@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 /**
  * Whoever is sitting there, watching this turn happen — a REPL painting deltas, a UI narrating
  * homework. Bound per entry: the observer handed to {@code tell} or {@code resume} sees the segment
- * that call starts, and nothing after a park. The consumer may not exist at all — an autonomous
+ * that call starts, and nothing after a park. The consumer may not exist at all — an unattended
  * agent runs every turn against {@link #noop()} and loses nothing.
  *
  * <p>Implement directly (a lambda) when one concern covers every event; extend {@link

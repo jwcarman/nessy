@@ -22,8 +22,8 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
- * The gated tool this demo carries: DURABLE completion, so the autonomous host's own filter admits
- * it, and gated in {@link Governed} behind a declared intent plus a risk threshold.
+ * The gated tool this demo carries: DURABLE completion, so the harness's own filter admits it, and
+ * gated in {@link Governed} behind a declared intent plus a risk threshold.
  */
 final class RestartTool implements Tool<RestartInput> {
 

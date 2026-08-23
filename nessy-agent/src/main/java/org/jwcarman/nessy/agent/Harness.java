@@ -103,11 +103,13 @@ public final class Harness<O> {
 
   /**
    * The one caller of this private constructor: {@link org.jwcarman.nessy.agent.host.Nessy} is the
-   * harness's only compiler — the two host builders are the doors, not this factory, so this stays
-   * a plain composition point rather than growing fluent setters of its own. {@code substrate},
-   * {@code mapper}, and {@code backend} are this task's growth (harness-first spec §4): the life-
-   * support this constructor now owns needs them, where a builder used to wire the worker and desks
-   * itself.
+   * harness's only compiler — the doors are {@code Nessy.harness(...)} (×2, the String and typed
+   * customizer forms) and {@code Nessy.cli()}, not this factory, so this stays a plain composition
+   * point rather than growing fluent setters of its own. No builder exists in user hands (spec §2):
+   * each door hands a customizer a fresh config and turns it into a {@link Harness} atomically.
+   * {@code substrate}, {@code mapper}, and {@code backend} are this task's growth (harness-first
+   * spec §4): the life-support this constructor now owns needs them, where a builder used to wire
+   * the worker and desks itself.
    */
   public static <O> Harness<O> of(
       AgentType type,

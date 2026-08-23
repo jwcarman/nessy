@@ -53,7 +53,7 @@ class CliAgentTest {
 
   /**
    * Fix round 1, item 1: {@code Nessy.cli()}'s build now runs its {@link Harness} through the same
-   * compiler every door shares, so it starts a delivery heartbeat exactly like an autonomous host's
+   * compiler every door shares, so it starts a delivery heartbeat exactly like any other harness's
    * — {@link CliAgent#close()} must quiesce it, or the ephemeral-CLI charter (one turn, then gone)
    * is violated by a stranded daemon thread. Enumerated by name prefix rather than a new public
    * seam: {@code DeliveryWorker}'s heartbeat thread is always named {@code "nessy-delivery"}.

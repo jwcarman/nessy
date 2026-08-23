@@ -42,13 +42,13 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 
 /**
- * The autonomous door plus a desk: one DURABLE {@code restart} tool behind {@link
+ * The harness door plus a desk: one DURABLE {@code restart} tool behind {@link
  * UsagePolicy#requireApproval()}, so a call parks until a human decides it. {@code --scripted}
- * drives a short deterministic conversation — no key, no network — that posts an observation, waits
- * for the approval request, approves it, and prints the advertised sentinel once the model's reply
- * lands; without it, this runs a console loop against a real provider from {@link
- * EnvModelProviders#select()}: free text posts to the scope, {@code approve}/{@code deny <reason>}
- * answer whatever's pending, and {@code quit} exits.
+ * drives a short deterministic conversation — no key, no network — that tells the scope one
+ * observation, waits for the approval request, approves it, and prints the advertised sentinel once
+ * the model's reply lands; without it, this runs a console loop against a real provider from {@link
+ * EnvModelProviders#select()}: free text is told to the scope, {@code approve}/{@code deny
+ * <reason>} answer whatever's pending, and {@code quit} exits.
  */
 public final class Approvals {
 

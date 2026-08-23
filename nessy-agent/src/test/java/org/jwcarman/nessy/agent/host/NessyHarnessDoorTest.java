@@ -35,7 +35,9 @@ import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
@@ -44,21 +46,26 @@ import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -71,6 +78,16 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * harness kept rather than closed, and the customizer form in place of a builder's {@code build()}.
  */
 class NessyHarnessDoorTest {
+
+  /**
+   * Fix round 1 M5: every harness this file builds owns a live delivery-worker heartbeat
+   * (harness-first spec §4); each construction below is tracked via {@link HarnessTeardown#track},
+   * and this reclaims all of them once per test method.
+   */
+  @AfterEach
+  void tearDown() {
+    HarnessTeardown.shutdownAllTracked();
+  }
 
   @Test
   void aPlainTurnRunsToIdleThroughTheHarness() {
@@ -87,6 +104,7 @@ class NessyHarnessDoorTest {
                     .executor(pump)
                     .memoryFactory(
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
@@ -114,6 +132,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .turnObserver(observer));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
@@ -153,6 +172,7 @@ class NessyHarnessDoorTest {
                     .executor(pump)
                     .turnObserver(observer)
                     .agentObserver(AgentObserver.noop()));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
@@ -194,6 +214,7 @@ class NessyHarnessDoorTest {
                     .executor(pump)
                     .substrate(substrate)
                     .turnObserver(throwing));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
@@ -222,6 +243,7 @@ class NessyHarnessDoorTest {
                     .executor(pump)
                     .memoryFactory(
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("a")).observe("hello from a");
     pump.pumpUntilQuiet();
@@ -268,6 +290,7 @@ class NessyHarnessDoorTest {
               base.customize(h);
               h.executor(pumpOne).substrate(substrateOne);
             });
+    HarnessTeardown.track(harnessOne);
     harnessOne.bind(AgentId.of("shared-scope")).observe("message one");
     pumpOne.pumpUntilQuiet();
 
@@ -279,6 +302,7 @@ class NessyHarnessDoorTest {
               base.customize(h);
               h.executor(pumpTwo).substrate(substrateTwo);
             });
+    HarnessTeardown.track(harnessTwo);
     harnessTwo.bind(AgentId.of("shared-scope")).observe("message two");
     pumpTwo.pumpUntilQuiet();
 
@@ -312,6 +336,137 @@ class NessyHarnessDoorTest {
   }
 
   /**
+   * Fix round 1 I1: the builder minimum (spec §3), previously unexercised — {@code
+   * .systemPrompt(String)}'s precedence over {@code .settings(ModelSettings)}, the teaching
+   * missing-provider message, and {@code .type(String)}'s "agent" default.
+   */
+  @Nested
+  class BuilderMinimum {
+
+    /**
+     * Fix round 1 I1a: {@code .systemPrompt(String)} overrides whatever {@code systemPrompt} the
+     * {@code .settings(ModelSettings)} object carries — every other field of that settings object
+     * (model id, max tokens) passes through untouched. Proven in this call order: {@code
+     * .settings(...)} first, {@code .systemPrompt(...)} second.
+     */
+    @Test
+    void systemPromptOverridesTheSettingsObjectsOwnPromptWhenSettingsIsSetFirst() {
+      var pump = new PumpedExecutor();
+      var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply"))));
+      var settings = TestSettings.settings();
+
+      var harness =
+          Nessy.harness(
+              h -> h.provider(provider).settings(settings).systemPrompt("X").executor(pump));
+      HarnessTeardown.track(harness);
+
+      harness.bind(AgentId.of("scope-1")).observe("hello");
+      pump.pumpUntilQuiet();
+
+      ModelRequest request = provider.requests().getFirst();
+      assertThat(request.systemPrompt()).isEqualTo("X");
+      assertThat(request.model()).isEqualTo(settings.model());
+      assertThat(request.maxTokens()).isEqualTo(settings.maxTokens());
+    }
+
+    /**
+     * As above, the other call order: {@code .systemPrompt(...)} first, {@code .settings(...)}
+     * second — the override still wins, precedence does not depend on order.
+     */
+    @Test
+    void systemPromptOverridesTheSettingsObjectsOwnPromptWhenSystemPromptIsSetFirst() {
+      var pump = new PumpedExecutor();
+      var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply"))));
+      var settings = TestSettings.settings();
+
+      var harness =
+          Nessy.harness(
+              h -> h.provider(provider).systemPrompt("X").settings(settings).executor(pump));
+      HarnessTeardown.track(harness);
+
+      harness.bind(AgentId.of("scope-1")).observe("hello");
+      pump.pumpUntilQuiet();
+
+      ModelRequest request = provider.requests().getFirst();
+      assertThat(request.systemPrompt()).isEqualTo("X");
+      assertThat(request.model()).isEqualTo(settings.model());
+      assertThat(request.maxTokens()).isEqualTo(settings.maxTokens());
+    }
+
+    /**
+     * Fix round 1 I1b: the missing-provider message teaches — it names the setter to call, not just
+     * that something is null.
+     */
+    @Test
+    void aMissingProviderIsRejectedWithATeachingMessage() {
+      var settings = TestSettings.settings();
+
+      assertThatThrownBy(() -> Nessy.harness(h -> h.settings(settings)))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining(".provider(ModelProvider)");
+    }
+
+    /**
+     * Fix round 1 I1c: {@code .type(String)} defaults to {@code "agent"} — observed through a
+     * scripted turn's own {@code CallAddress}: a required-approval tool call parks an approval
+     * computation addressed by the harness's agent type.
+     */
+    @Test
+    void theDefaultAgentTypeIsAgent() {
+      var pump = new PumpedExecutor();
+      var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+      var provider =
+          new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+      var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+
+      var harness =
+          Nessy.harness(
+              h ->
+                  h.provider(provider)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .grants(ToolGrant.grant(new GatedTool(), UsagePolicy.requireApproval()))
+                      .approvalNotifier(requests::add));
+      HarnessTeardown.track(harness);
+
+      harness.bind(AgentId.of("scope-1")).observe("please restart");
+      pump.pumpUntilQuiet();
+
+      assertThat(requests).hasSize(1);
+      assertThat(requests.getFirst().address().agentType()).isEqualTo("agent");
+    }
+
+    record NoInput() {}
+
+    static final class GatedTool implements Tool<NoInput> {
+      @Override
+      public String name() {
+        return "restart";
+      }
+
+      @Override
+      public String description() {
+        return "restarts something; requires human approval";
+      }
+
+      @Override
+      public Class<NoInput> inputType() {
+        return NoInput.class;
+      }
+
+      @Override
+      public CompletionPolicy requiredCompletion() {
+        return CompletionPolicy.DURABLE;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("restarted"));
+      }
+    }
+  }
+
+  /**
    * There is no per-id wiring cache any more (§10.11): {@code bind(id)} binds a fresh handle from
    * the shared substrate on every call. This is the reform's whole point in one test — two
    * deliveries to the same scope, each through a brand-new binding, still see each other's history
@@ -336,6 +491,7 @@ class NessyHarnessDoorTest {
                     .executor(pump)
                     .memoryFactory(
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("first message");
     pump.pumpUntilQuiet();
@@ -377,6 +533,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .substrate(substrate));
+    HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).observe("first message");
     pump.pumpUntilQuiet();
@@ -417,6 +574,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pumpA)
                     .substrate(substrate));
+    HarnessTeardown.track(harnessA);
     harnessA.bind(AgentId.of("shared-scope")).observe("message one");
     pumpA.pumpUntilQuiet();
 
@@ -430,6 +588,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pumpB)
                     .substrate(substrate));
+    HarnessTeardown.track(harnessB);
     harnessB.bind(AgentId.of("shared-scope")).observe("message two");
     pumpB.pumpUntilQuiet();
 
@@ -484,6 +643,7 @@ class NessyHarnessDoorTest {
                       .executor(pumpA)
                       .substrate(substrate)
                       .renderer(note -> List.of(new TextBlock(note.text()))));
+      HarnessTeardown.track(harnessA);
 
       // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of observe()
       // itself, dispatching a model-call effect onto pumpA — never pumped below, so harness A's
@@ -521,6 +681,7 @@ class NessyHarnessDoorTest {
                       .substrate(substrate)
                       .renderer(note -> List.of(new TextBlock(note.text())))
                       .staleness((phase, lastSaved) -> true));
+      HarnessTeardown.track(harnessB);
 
       // No new observation posted on harness B — drive() alone re-fires harness A's stuck turn;
       // its completion then drains the pending Note by the recipe's own drainOnIdle wiring.
@@ -549,13 +710,13 @@ class NessyHarnessDoorTest {
      */
     @Test
     void theTypedDoorWithoutARendererIsRejectedNamingTheRenderer() {
+      // fix round 1 M4: hoisted out of the assertThatThrownBy lambda (S5778) — only Nessy.harness
+      // itself may throw below.
+      var provider = new ScriptedModelProvider(List.of());
+      var settings = TestSettings.settings();
+
       assertThatThrownBy(
-              () ->
-                  Nessy.harness(
-                      Note.class,
-                      h ->
-                          h.provider(new ScriptedModelProvider(List.of()))
-                              .settings(TestSettings.settings())))
+              () -> Nessy.harness(Note.class, h -> h.provider(provider).settings(settings)))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("renderer");
     }
@@ -676,6 +837,7 @@ class NessyHarnessDoorTest {
                       .objectMapper(userMapper)
                       .tools(new ChargeTool())
                       .turnObserver(observer));
+      HarnessTeardown.track(harness);
 
       harness.bind(AgentId.of("scope-1")).observe("charge please");
       pump.pumpUntilQuiet();
@@ -718,6 +880,7 @@ class NessyHarnessDoorTest {
                       .substrate(substrate)
                       .objectMapper(snakeCaseMapper)
                       .tools(new EchoTool()));
+      HarnessTeardown.track(harness);
 
       harness.bind(AgentId.of("scope-1")).observe("hi");
       pump.pumpUntilQuiet();

@@ -22,9 +22,9 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
- * The one tool this demo carries: DURABLE completion, so the autonomous host's own filter admits
- * it, and gated behind {@code requireApproval()} in {@link Approvals} so it never runs without a
- * human's yes.
+ * The one tool this demo carries: DURABLE completion, so the harness's own filter admits it, and
+ * gated behind {@code requireApproval()} in {@link Approvals} so it never runs without a human's
+ * yes.
  */
 final class RestartTool implements Tool<RestartInput> {
 
