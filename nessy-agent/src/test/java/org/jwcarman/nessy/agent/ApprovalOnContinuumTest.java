@@ -297,6 +297,11 @@ class ApprovalOnContinuumTest {
     driveOnceWithPending(call);
 
     clock.advance(Duration.ofDays(8));
+    // The behaviour under test — an expired approval folds an in-band failure — is real and this
+    // proves it, but its production trigger is not wired yet: nothing in src/main calls
+    // failExpiredComputations. The heartbeat only runs the drain paths (drainOnce,
+    // safeDrainApprovalsOnce, reapOnce); the expiry pump (ComputationScheduler.expireApprovals) is
+    // a later task's scope. Calling it here directly means this test is not yet end-to-end.
     client.failExpiredComputations(BatchSize.of(10));
     drainApprovals();
 

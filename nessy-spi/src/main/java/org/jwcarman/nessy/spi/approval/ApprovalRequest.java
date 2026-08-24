@@ -28,12 +28,21 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * AuthzContext#action()}, {@link AuthzContext#principal()}, {@link AuthzContext#risk()}, {@link
  * AuthzContext#declaredIntent()}.
  *
- * <p>{@code id} is the ticket (computation-identity spec §1, §4 addendum): the approval's own
- * opaque {@link ComputationId}, already derived by the caller — the taught path back is {@code
- * harness.approvals().approve(request.id())} (or {@code deny}). {@code CallAddress} no longer
- * travels here — it stayed a wiring-internal detail ({@code CallAddress} moved into {@code
- * nessy-agent}) rather than crossing this SPI boundary. {@code agentType}/{@code agentId} are plain
- * strings, for display only.
+ * <p>{@code id} is the ticket, but what it means depends on which side of {@link Approver} you are
+ * on (continuum-adoption spec §3 — this is no longer "already derived by the caller" for every
+ * wiring). A durable, computation-backed {@code Approver} (the shipped one, {@code
+ * ComputationApprover}) mints the request's caller-supplied {@code id} BEFORE the real approval
+ * computation exists — it is a placeholder the caller had to supply to satisfy this record's
+ * non-null constructor, not yet a live handle, and {@code ComputationApprover.adjudicate} never
+ * reads it. Only AFTER {@code adjudicate} returns does a real, opaque id exist; the request an
+ * {@code approvalNotifier} actually observes carries THAT corrected id, not the one the {@code
+ * Approver} was called with. So: an {@link Approver} implementation sees a request whose {@code id}
+ * is not yet meaningful — do not read it, act on {@link AuthzContext} and {@code call} instead —
+ * and only a notifier (or anything downstream of {@code adjudicate} returning) sees the real one.
+ * The taught path back, {@code harness.approvals().approve(request.id())} (or {@code deny}), is
+ * only valid from the notifier's copy. {@code CallAddress} no longer travels here — it stayed a
+ * wiring-internal detail ({@code CallAddress} moved into {@code nessy-agent}) rather than crossing
+ * this SPI boundary. {@code agentType}/{@code agentId} are plain strings, for display only.
  *
  * <p>{@code responseId} does NOT travel here (identity spec §6, the continuation audit): the
  * un-ratified fifth field was reverted — this is a human decision surface, not a routing packet. A

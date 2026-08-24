@@ -383,8 +383,10 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * tool through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} —
    * exactly the post-gate door the old grant arm below uses — while {@code Success(Deny)}, {@code
    * Failure}, and {@code Expired} all fold a tool failure so the model reads it in-band. Continuum
-   * acknowledges the delivery once this consumer returns normally; a thrown exception leaves it
-   * pending for the lease to expire and a later pass to reclaim.
+   * acknowledges the delivery once this consumer returns normally; a thrown exception releases the
+   * claim immediately, backed off by {@link #APPROVAL_BACKOFF} (30s) — not held for the full {@link
+   * #APPROVAL_LEASE} (2m) — so a failing fold re-fires a granted tool's side effect within 30
+   * seconds, not two minutes.
    *
    * @param batchSize how many approval deliveries to claim in one pass
    * @return how many deliveries this pass processed
@@ -425,17 +427,40 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   /**
-   * The stale-grant guard (continuum-adoption spec §5, §11.3) — shipped in its WEAKER form: an
-   * index entry must exist for {@code address} and name the APPROVAL kind. The stronger form (the
-   * entry must name THIS EXACT computation) is not available here — {@link
-   * ContinuumClient#deliverResults} hands this consumer only {@code (Routing, TypedOutcome)}, never
-   * the delivery's own {@code computationId} ({@code CompletionDelivery} carries it, but the typed
-   * layer does not pass it through). This weaker guard still stops an orphaned approval's grant
-   * from running the tool a second time once the real approval's own fold has already deleted the
-   * index entry (the ordering {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate
-   * and this worker's own claim order guarantee for the common case); it does NOT stop two live,
-   * concurrently-granted orphans from both passing the guard before either has folded — a narrower
-   * hole than the design called for, recorded rather than hidden.
+   * The stale-grant guard (continuum-adoption spec §5, §11.3) — shipped in its WEAKER form, and its
+   * weakness is wider than "stale-grant" suggests. {@link ContinuumClient#deliverResults} hands
+   * this consumer only {@code (Routing, TypedOutcome)}, never the delivery's own {@code
+   * computationId} ({@code CompletionDelivery} carries it; the typed layer does not pass it
+   * through), so the stronger form — the entry must name THIS EXACT computation — is not available
+   * here.
+   *
+   * <p>What actually ships is a predicate on the ADDRESS, not on the computation: a grant is
+   * admitted iff this call's dispatch entry currently exists and is APPROVAL-kind. It discriminates
+   * finished calls from unfinished ones, not real approvals from orphans. Concretely:
+   *
+   * <ul>
+   *   <li>It closes the hole ONLY when the tool returns {@link ToolExecution.Immediate} and the
+   *       real and orphaned grants drain strictly sequentially on one thread — the real grant's own
+   *       {@link #foldApprovalResult} deletes the entry before the orphan's grant is ever drained,
+   *       so the orphan finds the entry gone and is acknowledged, not run.
+   *   <li>It closes NOTHING when the tool returns {@link ToolExecution.Deferred}: the branch below
+   *       deliberately leaves the dispatch entry in place (the tool kind's own migration is what
+   *       replaces it), so an orphan's grant and the real grant — drained sequentially, on one
+   *       thread, in one batch, no race required — both find the entry present and APPROVAL-kind,
+   *       and both call {@code executeGrantedToolNow}. That is a double dispatch of a
+   *       side-effecting tool.
+   *   <li>The guard applies to this method only. {@link #foldApprovalFailure} (deny, {@code
+   *       Failure}, {@code Expired}) runs unguarded: an orphan that hits its 7-day deadline while
+   *       the real approval is still live folds a {@code ToolFinished(Failed)} over the still-live
+   *       call, advances the turn, and deletes the index entry — after which the real approval's
+   *       eventual grant is silently swallowed by this same guard (entry gone). The human's actual
+   *       "approve" is discarded and the model reads a timeout it never suffered.
+   * </ul>
+   *
+   * Neither (b) nor (c) above can be closed with this guard — an orphan's grant or failure is
+   * indistinguishable from the real one's without the computation id. Closing them needs
+   * Continuum's typed delivery to expose {@code computationId} (tracked separately; not this task's
+   * scope).
    */
   private void deliverApprovalGrant(
       AgentType type, AgentId id, CallAddress address, Routing routing) {

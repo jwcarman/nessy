@@ -444,9 +444,46 @@ the duplicate), and if both are approved, both fan out grants and each grant
 runs the tool. The reducer dedups the second *fold*, never the second
 *execution*.
 
-**Mitigation:** the grant consumer validates against the index before
-running (§5). A grant whose computation is not the one the index names for
-that call is stale — acknowledge it and do not run.
+**Mitigation, as shipped (Task 3):** the stronger form described above — validate
+that the grant's computation is the one the index names — is not available.
+`ContinuumClient#deliverResults` hands its consumer only `(continuation,
+TypedOutcome)`; `CompletionDelivery` carries `computationId`, but the typed
+client layer does not pass it through, and dropping to
+`ContinuumRepository.claimDeliveries` to hand-decode it was ruled out (it
+reopens the untyped-repository seam Task 3 exists to avoid).
+
+What actually shipped is weaker than "stale-grant guard" suggests: a predicate
+on the call's **address**, not on the computation — *a grant is admitted iff
+this call's dispatch entry currently exists and is APPROVAL-kind.* It
+discriminates finished calls from unfinished ones, not real approvals from
+orphans. Concretely, three gaps, only the first of which is closed:
+
+1. **Closed, for one tool shape only.** When the tool returns
+   `Awaited.Ready` (`ToolExecution.Immediate`) and the real and orphaned
+   grants drain strictly sequentially on one thread, the real grant's own
+   fold deletes the index entry before the orphan's grant is drained, so the
+   orphan finds the entry gone and is acknowledged, not run.
+2. **Not closed: deferred tools.** `ComputationDeferredToolCallPolicy.onDeferred`
+   deliberately leaves the dispatch entry in place when the tool returns
+   `Awaited.Deferred` (the tool kind's own future migration is what replaces
+   it with a TOOL entry). So for a tool that defers, an orphan's grant and the
+   real grant — drained sequentially, on one thread, in one batch, no race
+   required — both find the entry present and APPROVAL-kind, and both call
+   `executeGrantedToolNow`. That is a double dispatch of a side-effecting
+   tool with no concurrency involved at all.
+3. **Not closed: deny/failure/expiry.** The guard applies to the grant arm
+   only. An orphan that hits its 7-day deadline while the real approval is
+   still live folds a `ToolFinished(Failed)` over the still-live call,
+   advances the turn, and deletes the index entry — after which the real
+   approval's eventual grant is silently swallowed by the very same guard
+   (entry gone, indistinguishable from "already handled"). The human's actual
+   approval is discarded and the model reads a timeout it never suffered.
+
+Neither (2) nor (3) can be closed with an address-only guard — an orphan's
+grant or failure is indistinguishable from the real one's without the
+computation id. Closing both needs Continuum to expose a delivery's
+`computationId` to the typed consumer (tracked as follow-on scope, not this
+task's).
 
 ### 11.4 Documentation this change owes
 
