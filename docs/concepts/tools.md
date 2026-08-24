@@ -69,36 +69,27 @@ The marker carries no identity: the wiring derives the computation's
 deterministic id from the work's coordinates itself, because a tool can
 neither reach the backend nor know the scope it's running in.
 
-## `RetrySemantics` and `timeout` — what redispatch is allowed to assume
+## `timeout` — the deadline a deferred answer has to beat
 
-A deferring tool declares two more things at registration, both consulted
-only by the reaper (see [Durable Computation](durable-computation.md#retry-deadlines-and-the-reaper)):
+A deferring tool can declare a deadline at registration:
 
 ```java
 Tool.of(SlowJob.class, t -> t
     .description("...")
     .defers((cmd, ctx) -> jobs.submit(cmd, ctx))
-    .retrySemantics(RetrySemantics.RETRYABLE)
     .timeout(Duration.ofMinutes(10)));
 ```
 
-`retrySemantics(RetrySemantics)` — `RETRYABLE` or `NON_RETRYABLE`, default
-`NON_RETRYABLE` — is your own assertion that redispatching this tool's
-external work with the same `ToolInvocationId` is safe. Nessy cannot verify
-that; it only guarantees the identity stays stable and the routing stays
-durable, never that the external side effect itself runs exactly once. If
-your call is idempotent, dedups on its own, or accepts a provider
-idempotency key, derive that key from `ToolInvocationId` — every
-invocation carries one, through `ToolContext.invocationId()`, stable across
-every redispatch and replay of the same logical call. A tool that cannot
-make that assertion stays `NON_RETRYABLE`: an overdue computation fails
-rather than runs twice.
-
-`timeout(Duration)` is optional. Set, an overdue durable computation gets
-reaped — bumped and redispatched if `RETRYABLE`, failed if not. Unset,
-there is no deadline: the computation waits indefinitely, which is exactly
-what you want for a tool whose answer is a human's approval, not a job
-that might hang.
+`timeout(Duration)` is optional and means **fail at this point**, not
+retry at this point: retryable redispatch is not implemented in Nessy
+today (Continuum's own retryable client exists for exactly this, unused
+here so far). Set, an overdue durable computation is expired and folded as
+an in-band failure the model reads — once, never resubmitted. Unset, the
+computation still gets a default deadline rather than waiting forever
+(Continuum requires every computation to carry one) — except an approval,
+which is deliberately given a long, fixed deadline harness-wide, since it
+may sit for days waiting on a person. See
+[Durable Computation](durable-computation.md#deadlines).
 
 ## Sealed inputs — a vocabulary as one argument
 
