@@ -57,10 +57,11 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * Ownership-split absorption (durable-deliveries spec §5a, §6): a staleness redrive must never
  * re-ask a still-pending approval's notifier a second time, and must never re-dispatch a call whose
  * work has already gone durable (an approval that has been granted into a tool computation). Both
- * are proven here by driving {@link DefaultAgent#redispatch()} — the exact mechanism a staleness
- * redrive uses — twice over a scope carrying one call of each kind, with a real {@link
- * ComputationApprover} (so its create-idempotent notifier behavior is exercised for real, not
- * assumed) and a tool that records every invocation.
+ * are proven here by driving {@link DefaultAgent#drive()} over a harness wired with {@link
+ * StalenessPolicy#after(java.time.Duration) StalenessPolicy.after(Duration.ZERO)} — the exact
+ * mechanism a staleness redrive uses — twice over a scope carrying one call of each kind, with a
+ * real {@link ComputationApprover} (so its create-idempotent notifier behavior is exercised for
+ * real, not assumed) and a tool that records every invocation.
  */
 class AbsorptionTest {
 
@@ -142,7 +143,7 @@ class AbsorptionTest {
     var c1 = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     var c2 = new ToolCall("c2", "restart", JsonNodeFactory.instance.objectNode());
 
-    // c2 is already "granted and in flight": its tool computation exists BEFORE any redispatch —
+    // c2 is already "granted and in flight": its tool computation exists BEFORE any redrive —
     // simulating a grant the grant arm already ran, whose own delivery this test does not need to
     // model, since the gate-level absorption only ever looks for the index entry's presence.
     var c2Address = new CallAddress("test", "test-scope", "r1", "c2");

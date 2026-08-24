@@ -248,7 +248,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
     T typed = tool.inputType().cast(input);
     // address.indexKey()'s digest is deterministic from this call's own coordinates (agentType,
-    // agentId, responseId, callId) — stable across every redispatch and replay, exactly the
+    // agentId, responseId, callId) — stable across every redrive and replay, exactly the
     // contract ToolContext#invocation documents. A genuine Continuum-minted id cannot serve here:
     // it is not known until (and unless) the tool actually defers, since onDeferred only creates a
     // computation on the Awaited.Deferred arm below — after the tool has already been handed this

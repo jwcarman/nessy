@@ -319,7 +319,7 @@ final class DeliveryWorker<O> implements ComputationPump {
   /**
    * Expires up to a batch of the approval kind's overdue computations (continuum-adoption spec §7):
    * delegates straight to {@link ContinuumClient#failExpiredComputations(BatchSize)} — the approval
-   * kind is non-retryable, so an overdue wait always ends, never redispatches.
+   * kind is non-retryable, so an overdue wait always ends, never restarts the work.
    *
    * @param batchSize the maximum expired approvals to process
    * @return the number expired

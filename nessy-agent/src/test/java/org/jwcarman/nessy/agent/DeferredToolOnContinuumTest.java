@@ -227,7 +227,7 @@ class DeferredToolOnContinuumTest {
           executor,
           AgentObserver.noop(),
           false,
-          StalenessPolicy.never());
+          StalenessPolicy.after(Duration.ZERO));
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
 
   /**
@@ -287,12 +287,12 @@ class DeferredToolOnContinuumTest {
                 List.of(),
                 ModelResponseId.of("r1")),
             0));
-    ((DefaultAgent<String>) agent).redispatch();
+    agent.drive();
     pump.pumpUntilQuiet();
   }
 
   private void redrive() {
-    ((DefaultAgent<String>) agent).redispatch();
+    agent.drive();
     pump.pumpUntilQuiet();
   }
 
