@@ -276,30 +276,16 @@ class ToolOfTest {
   }
 
   @Nested
-  class Retry_and_deadline {
+  class Deadline {
 
     @Test
-    void a_tool_defaults_to_non_retryable_with_no_timeout() {
+    void a_tool_defaults_to_no_timeout() {
       Tool<CreateAccount> tool =
           Tool.of(
               CreateAccount.class,
               t -> t.description("Create a new bank account.").executes(cmd -> "ok"));
 
-      assertThat(tool.retrySemantics()).isEqualTo(RetrySemantics.NON_RETRYABLE);
       assertThat(tool.timeout()).isEmpty();
-    }
-
-    @Test
-    void retry_semantics_can_be_declared_retryable() {
-      Tool<CreateAccount> tool =
-          Tool.of(
-              CreateAccount.class,
-              t ->
-                  t.description("Create a new bank account.")
-                      .retrySemantics(RetrySemantics.RETRYABLE)
-                      .executes(cmd -> "ok"));
-
-      assertThat(tool.retrySemantics()).isEqualTo(RetrySemantics.RETRYABLE);
     }
 
     @Test

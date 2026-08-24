@@ -25,7 +25,6 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolError;
-import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
@@ -49,7 +48,6 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
@@ -74,9 +72,8 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * (durable-deliveries spec §5a). Before that, even before the policy: {@link #gate} checks {@link
  * DeferredToolCallPolicy#pendingComputation} — ownership-split absorption, spec §5a/§6. {@link
  * #executeGrantedToolNow} is the one door that skips both the absorption check and the policy: it
- * is reached only for work the gate already cleared — an approval's granted tool call, or the
- * reaper's redispatch of a {@code RETRYABLE} overdue computation — so re-running policy or
- * re-asking an approver there would be a bug, not a safety net.
+ * is reached only for work the gate already cleared — an approval's granted tool call — so
+ * re-running policy or re-asking an approver there would be a bug, not a safety net.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -152,16 +149,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         });
   }
 
-  // dead until Task 6: invocation/alsoCommit ride every call down to run() below but nothing there
-  // reads either anymore (continuum-adoption spec §3 dropped both from
-  // DeferredToolCallPolicy#onDeferred) — do not assume alsoCommit still composes a batch.
   @Override
-  public ToolExecution executeGrantedToolNow(
-      ToolCall call,
-      CallAddress address,
-      ToolInvocationId invocation,
-      Optional<Substrate.Op> alsoCommit) {
-    return executePastGate(call, address, invocation, alsoCommit);
+  public ToolExecution executeGrantedToolNow(ToolCall call, CallAddress address) {
+    return executePastGate(call, address);
   }
 
   private ToolExecution execute(ToolCall call, ModelResponseId responseId) {
@@ -178,11 +168,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     }
   }
 
-  private ToolExecution executePastGate(
-      ToolCall call,
-      CallAddress address,
-      ToolInvocationId invocation,
-      Optional<Substrate.Op> alsoCommit) {
+  private ToolExecution executePastGate(ToolCall call, CallAddress address) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
       return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
@@ -190,7 +176,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     try {
       ToolGrant grant = found.get();
       Object input = convert(call, grant.tool());
-      return run(grant.tool(), input, call, address, invocation, alsoCommit);
+      return run(grant.tool(), input, call, address);
     } catch (RuntimeException e) {
       String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
       return new ToolExecution.Immediate(failed(call, message));
@@ -210,7 +196,6 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       return new ToolExecution.Deferred(pending.get());
     }
     Object input = convert(call, grant.tool());
-    ToolInvocationId invocation = new ToolInvocationId(address.responseId(), call.id());
     PolicyDecision decision;
     AuthzContext assembled = null;
     if (grant.policy() instanceof UsagePolicy.Static fixed) {
@@ -225,8 +210,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       }
     }
     return switch (decision) {
-      case PolicyDecision.Allow _ ->
-          run(grant.tool(), input, call, address, invocation, Optional.empty());
+      case PolicyDecision.Allow _ -> run(grant.tool(), input, call, address);
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
           // The id here is a placeholder ApprovalRequest's non-null constructor requires; the
@@ -241,8 +225,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
                   address.agentType(),
                   address.agentId(),
                   assembled))) {
-            case Adjudication.Granted _ ->
-                run(grant.tool(), input, call, address, invocation, Optional.empty());
+            case Adjudication.Granted _ -> run(grant.tool(), input, call, address);
             case Adjudication.Refused(String reason) ->
                 new ToolExecution.Immediate(failed(call, reason));
             case Adjudication.Suspended(var computation) -> new ToolExecution.Deferred(computation);
@@ -262,15 +245,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
-  // invocation and alsoCommit are dead until Task 6 (see executeGrantedToolNow's own note) —
-  // neither is read below; onDeferred takes only (call, address, timeout) now.
-  private <T> ToolExecution run(
-      Tool<T> tool,
-      Object input,
-      ToolCall call,
-      CallAddress address,
-      ToolInvocationId invocation,
-      Optional<Substrate.Op> alsoCommit) {
+  private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
     T typed = tool.inputType().cast(input);
     // address.indexKey()'s digest is deterministic from this call's own coordinates (agentType,
     // agentId, responseId, callId) — stable across every redispatch and replay, exactly the

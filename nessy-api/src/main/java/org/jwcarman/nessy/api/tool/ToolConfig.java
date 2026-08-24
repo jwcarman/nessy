@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
@@ -42,6 +44,8 @@ import org.jwcarman.nessy.api.CompletionPolicy;
  */
 public final class ToolConfig<T> {
 
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
   private final Class<T> inputType;
   private String name;
   private String description;
@@ -49,7 +53,6 @@ public final class ToolConfig<T> {
   private BiFunction<T, ToolContext, ?> contextHandler;
   private BiConsumer<T, ToolContext> deferStarter;
   private CompletionPolicy explicitCompletion;
-  private RetrySemantics retrySemantics = RetrySemantics.NON_RETRYABLE;
   private Duration timeout;
 
   ToolConfig(Class<T> inputType) {
@@ -104,18 +107,6 @@ public final class ToolConfig<T> {
   }
 
   /**
-   * The reaper's authority to redispatch this tool's overdue durable computation with the same
-   * {@code ToolInvocationId} (durable-deliveries spec §6). Default {@link
-   * RetrySemantics#NON_RETRYABLE}. Declaring {@link RetrySemantics#RETRYABLE} is the tool author's
-   * own assertion that redispatch is safe — see {@link RetrySemantics}'s javadoc for what that
-   * assertion means.
-   */
-  public ToolConfig<T> retrySemantics(RetrySemantics retrySemantics) {
-    this.retrySemantics = Objects.requireNonNull(retrySemantics, "retrySemantics must not be null");
-    return this;
-  }
-
-  /**
    * How long a durable computation this tool starts may stay pending before the reaper treats it as
    * overdue (durable-deliveries spec §6). Unset means no deadline — the computation waits
    * indefinitely.
@@ -143,13 +134,12 @@ public final class ToolConfig<T> {
           "tool '%s' must declare exactly one handler door (executes/executes/defers), found %d"
               .formatted(name, handlerCount));
     }
-    return new ConfiguredTool<>(
+    return new Configured<>(
         name,
         description,
         inputType,
         buildExecutor(),
         completionPolicy(),
-        retrySemantics,
         Optional.ofNullable(timeout));
   }
 
@@ -182,14 +172,94 @@ public final class ToolConfig<T> {
       };
     }
     if (contextHandler != null) {
-      return (input, context) ->
-          Awaited.ready(ConfiguredTool.render(contextHandler.apply(input, context)));
+      return (input, context) -> Awaited.ready(render(contextHandler.apply(input, context)));
     }
-    return (input, context) -> Awaited.ready(ConfiguredTool.render(plainHandler.apply(input)));
+    return (input, context) -> Awaited.ready(render(plainHandler.apply(input)));
+  }
+
+  /**
+   * Return rendering (design of record 2026-08-20 §5): a {@link String} passes through as {@link
+   * ToolResult#ok(String)}; a {@link ToolResult} passes as-is; {@code null} renders as {@code
+   * ToolResult.ok("done")}; anything else JSON-serializes through the one shared {@link #MAPPER}.
+   */
+  private static ToolResult render(Object value) {
+    if (value instanceof ToolResult result) {
+      return result;
+    }
+    if (value instanceof String text) {
+      return ToolResult.ok(text);
+    }
+    if (value == null) {
+      return ToolResult.ok("done");
+    }
+    try {
+      return ToolResult.ok(MAPPER.writeValueAsString(value));
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("failed to render tool result as JSON", e);
+    }
   }
 
   /** {@code CreateAccount} → {@code create-account}; digits stay attached to their word segment. */
   private static String kebabCase(String simpleName) {
     return simpleName.replaceAll("(?<=.)(?=\\p{Upper})", "-").toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * The {@link Tool} a {@link ToolConfig} finishes into (private: {@link ToolConfig#finish()} is
+   * the only place one of these is ever built, per the dsl-coherence law).
+   */
+  private static final class Configured<T> implements Tool<T> {
+
+    private final String name;
+    private final String description;
+    private final Class<T> inputType;
+    private final BiFunction<T, ToolContext, Awaited<ToolResult>> executor;
+    private final CompletionPolicy requiredCompletion;
+    private final Optional<Duration> timeout;
+
+    Configured(
+        String name,
+        String description,
+        Class<T> inputType,
+        BiFunction<T, ToolContext, Awaited<ToolResult>> executor,
+        CompletionPolicy requiredCompletion,
+        Optional<Duration> timeout) {
+      this.name = name;
+      this.description = description;
+      this.inputType = inputType;
+      this.executor = executor;
+      this.requiredCompletion = requiredCompletion;
+      this.timeout = timeout;
+    }
+
+    @Override
+    public String name() {
+      return name;
+    }
+
+    @Override
+    public String description() {
+      return description;
+    }
+
+    @Override
+    public Class<T> inputType() {
+      return inputType;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(T input, ToolContext context) {
+      return executor.apply(input, context);
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return requiredCompletion;
+    }
+
+    @Override
+    public Optional<Duration> timeout() {
+      return timeout;
+    }
   }
 }

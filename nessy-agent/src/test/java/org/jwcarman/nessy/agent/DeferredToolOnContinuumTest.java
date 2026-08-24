@@ -42,6 +42,7 @@ import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -50,6 +51,7 @@ import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.support.TestToolClients;
+import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -65,6 +67,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -398,6 +401,107 @@ class DeferredToolOnContinuumTest {
     drainTools();
 
     assertThat(index.find(addressOf(call))).isEmpty();
+  }
+
+  /**
+   * Restores the property {@code DeliveryWorkerTest}'s {@code
+   * aConflictingStateWriteForcesARetryAndLeavesNoOrphanJournalEntries} pinned over the now-deleted
+   * Substrate-outbox path (continuum-adoption spec §6): a competitor's identical-phase state write
+   * landing between {@link DeliveryWorker#foldToolOutcome}'s own read and its commit batch is a
+   * genuine CAS conflict the fold must retry past, not a semantic change to swallow. Only the STATE
+   * write races here; Continuum's own repository (the tool computation itself) never touches {@code
+   * substrate} at all, so a second {@link DeliveryWorker}, wired over a raced view of the SAME
+   * substrate but sharing every other collaborator with the class's own {@link #worker}, is enough
+   * to force the retry without re-wiring Continuum. The retry itself legitimately remembers twice
+   * (once per read-then-batch attempt) — {@code recall()}'s own key-idempotence, not a call count,
+   * is what proves no duplicate: exactly one folded result reaches the transcript despite the
+   * forced retry, and the scope actually advances rather than getting stuck retrying forever.
+   */
+  @Test
+  void aConflictingStateWriteDuringTheFoldForcesARetryThatStillConverges() {
+    var call = deferringCall("c1");
+    driveOnceWithPending(call);
+    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    completions.complete(id, ToolResult.ok("restarted"));
+
+    byte[] currentStatePayload = substrate.read("state", "test-scope").orElseThrow().payload();
+    var raced = new RaceOnceOnBatchSubstrate(substrate, "state", "test-scope", currentStatePayload);
+    var racedWorker =
+        new DeliveryWorker<String>(
+            raced,
+            mapper,
+            harness,
+            (type, i) -> agent,
+            nudgePump,
+            approvalClient,
+            index,
+            toolClient);
+
+    racedWorker.drainTools(BatchSize.of(10));
+
+    assertThat(foldedResults()).singleElement().satisfies(r -> assertThat(r.isError()).isFalse());
+    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+  }
+
+  /**
+   * Restores the property {@code DeliveryWorkerTest}'s {@code
+   * aThrowingRememberAbortsBeforeTheCommitBatchThenHealsOnTheNextNudge} pinned over the now-deleted
+   * Substrate-outbox path (continuum-adoption spec §6): remembrance spec §1 law 1 — a throwing
+   * {@code remember} must abort the fold attempt BEFORE the commit batch ever runs, leaving the
+   * scope's state untouched. Continuum's own {@code deliverResults} (unlike the retired outbox
+   * scan's own drive-by-hand redrive) already catches a throwing consumer and releases the delivery
+   * for a later retry after its own backoff — so healing here means advancing the test clock past
+   * the tool kind's backoff and draining again, not a second {@code nudge()}.
+   */
+  @Test
+  void aThrowingRememberAbortsTheFoldThenHealsOnceTheBackoffElapses() {
+    var call = deferringCall("c2");
+    driveOnceWithPending(call);
+    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    completions.complete(id, ToolResult.ok("restarted"));
+
+    var recording = new RecordingMemory();
+    var throwingMemory = new ThrowingThenDelegatingMemory(recording, 1); // throws once, then heals
+    var throwingHarness =
+        TestAgents.<String>harness(
+            throwingMemory,
+            store,
+            new NoopBacklog(),
+            text -> List.of(),
+            sink -> {},
+            executor,
+            AgentObserver.noop(),
+            false,
+            StalenessPolicy.never());
+    var throwingAgent = throwingHarness.bind(AgentId.of("test-scope"));
+    var throwingWorker =
+        new DeliveryWorker<String>(
+            substrate,
+            mapper,
+            throwingHarness,
+            (type, i) -> throwingAgent,
+            nudgePump,
+            approvalClient,
+            index,
+            toolClient);
+    long versionBefore = store.load().version();
+
+    throwingWorker.drainTools(BatchSize.of(10)); // the throwing arm — Continuum releases for retry
+
+    assertThat(store.load().version())
+        .isEqualTo(versionBefore); // untouched — aborted before commit
+
+    clock.advance(Duration.ofSeconds(6)); // past the tool kind's own backoff (5s)
+    throwingWorker.drainTools(BatchSize.of(10)); // memory has healed — the redrive folds cleanly
+
+    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    List<Remembrance.ToolExchange> exchangesForTheCall =
+        recording.facts().stream()
+            .filter(Remembrance.ToolExchange.class::isInstance)
+            .map(Remembrance.ToolExchange.class::cast)
+            .filter(exchange -> exchange.call().id().equals(call.id()))
+            .toList();
+    assertThat(exchangesForTheCall).hasSize(1); // exactly one, despite the failed first attempt
   }
 
   @Test

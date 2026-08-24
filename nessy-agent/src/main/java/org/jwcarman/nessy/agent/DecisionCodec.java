@@ -27,11 +27,11 @@ import org.jwcarman.nessy.api.Decision;
 /**
  * A hand-rolled {@link Codec} for {@link Decision} — the approval kind's Continuum result type.
  * {@link Decision} carries no Jackson polymorphism annotations (it lives in {@code nessy-api},
- * which does not depend on Jackson), the same reason {@link OutcomeCodec} hand-rolls its own {@code
- * AllowWire}/{@code DenyWire} discriminated shape for the old Substrate-backed wiring; this is that
- * same discrimination, over a plain {@code {type, reason?}} object, for the Continuum result codec
- * {@code ContinuumClient}'s config requires. Public: {@code HarnessConfig} builds the approval
- * kind's client from a different package.
+ * which does not depend on Jackson), the same reason the old (retired) Substrate-backed wiring's
+ * outcome codec used to hand-roll its own {@code AllowWire}/{@code DenyWire} discriminated shape;
+ * this is that same discrimination, over a plain {@code {type, reason?}} object, for the Continuum
+ * result codec {@code ContinuumClient}'s config requires. Public: {@code HarnessConfig} builds the
+ * approval kind's client from a different package.
  */
 public final class DecisionCodec {
 
