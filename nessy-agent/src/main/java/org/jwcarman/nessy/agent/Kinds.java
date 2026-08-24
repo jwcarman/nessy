@@ -28,11 +28,12 @@ package org.jwcarman.nessy.agent;
  * ContinuumClient} kinds rather than {@code SubstrateComputations} ones (continuum-adoption spec
  * §3) — {@link #tool(AgentType)} (formerly {@code computation(AgentType)}) is the rename: it stops
  * naming Nessy's old Substrate-backed tool kind and starts naming the {@code
- * ContinuumClient<ToolResult, Routing>} kind. {@link DeliveryWorker}'s own now-unreachable
- * Substrate-scan machinery (the outbox drain and the reaper, spec §6) still derives its scan kind
- * through this same method — a harmless string coincidence across two unrelated storage stacks
- * (Continuum's own repository never shares a namespace with a {@link
- * org.jwcarman.nessy.spi.substrate.Substrate} document kind), not a collision.
+ * ContinuumClient<ToolResult, Routing>} kind. {@link #outbox(AgentType)} names the {@code
+ * Substrate} outbox kind the pre-adoption outbox scan and reaper used to derive their scan key
+ * through; that machinery — the outbox drain, the reaper, and the daemon heartbeat that ran them —
+ * was deleted from {@link DeliveryWorker} (spec §6), so nothing in {@code src/main} calls {@link
+ * #outbox(AgentType)} any more. It survives here, unreferenced in production, only because it is a
+ * public method on a public class.
  *
  * <p>Public: {@code HarnessConfig} and {@code Nessy} are the callers outside this package, deriving
  * the same kinds from the same {@link AgentType} when they build a harness's backends — not

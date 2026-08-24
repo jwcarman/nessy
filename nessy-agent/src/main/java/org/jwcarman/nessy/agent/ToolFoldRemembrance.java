@@ -32,8 +32,8 @@ import org.jwcarman.nessy.spi.Remembrance;
  * too, exactly once, keyed by the same response id.
  *
  * <p>Both {@link DefaultAgent} (the immediate, non-durable fold — most tool calls) and {@link
- * DeliveryWorker} (the durable, outbox-driven fold — deferred computations and approval grants)
- * fold a {@code ToolFinished} the same way; this is the one place that mapping lives.
+ * DeliveryWorker} (the durable, Continuum-delivery-driven fold — deferred computations and approval
+ * grants) fold a {@code ToolFinished} the same way; this is the one place that mapping lives.
  */
 final class ToolFoldRemembrance {
 

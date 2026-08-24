@@ -55,13 +55,14 @@ import org.slf4j.LoggerFactory;
  * <p>Two audiences, two throw postures, both preserved from before this class existed: every {@code
  * subscribe}d observer runs first, individually isolated in a try/catch — a throw there is logged
  * and dropped, never allowed to poison the fold for the other subscribers or escape onto whatever
- * thread narrated it, a worker's heartbeat included. {@code global} — the harness's configured
- * {@code TurnObserver} ({@link org.jwcarman.nessy.agent.host.HarnessConfig#turnObserver}), composed
- * here as one more subscriber per the spec — runs LAST and UNGUARDED (fix round 1, MINOR-5): a
- * throw there keeps its long-standing meaning ({@link TurnObserver}'s own javadoc: a throwing
- * observer aborts the model-path call it narrates, attributed to the caller's own {@code tell}),
- * and running it after the per-id subscribers means a buggy global observer can no longer starve
- * them of an event it would have aborted on.
+ * thread narrated it, one of {@link ComputationScheduler}'s own pump threads included. {@code
+ * global} — the harness's configured {@code TurnObserver} ({@link
+ * org.jwcarman.nessy.agent.host.HarnessConfig#turnObserver}), composed here as one more subscriber
+ * per the spec — runs LAST and UNGUARDED (fix round 1, MINOR-5): a throw there keeps its
+ * long-standing meaning ({@link TurnObserver}'s own javadoc: a throwing observer aborts the
+ * model-path call it narrates, attributed to the caller's own {@code tell}), and running it after
+ * the per-id subscribers means a buggy global observer can no longer starve them of an event it
+ * would have aborted on.
  */
 final class TurnFanout {
 

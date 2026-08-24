@@ -188,11 +188,12 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     if (pending.isPresent()) {
       // ownership-split absorption (spec §5a, §6; computation-identity spec §4): a staleness
       // redrive reached a call whose approval is still pending, whose tool computation already
-      // exists, or whose grant/completion already folded into an undrained outbox delivery under
-      // its own deterministic key — the ask, or the work, is already in flight from an earlier
-      // pass through this exact gate. Absorb here, before the policy (which could be non-constant)
-      // or its enrichers run again, before the tool runs again, and before the approver is ever
-      // asked again.
+      // exists, or whose grant/completion has already completed on Continuum's own side but has
+      // not yet been drained and folded by DeliveryWorker — the dispatch index still names a
+      // computation for this call's address in every one of those cases (§5), so the ask, or the
+      // work, is already in flight from an earlier pass through this exact gate. Absorb here,
+      // before the policy (which could be non-constant) or its enrichers run again, before the
+      // tool runs again, and before the approver is ever asked again.
       return new ToolExecution.Deferred(pending.get());
     }
     Object input = convert(call, grant.tool());

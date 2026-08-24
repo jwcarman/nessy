@@ -48,13 +48,18 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * {@link DefaultAgent} every time; binding is cheap because the factories it calls hand back views
  * over shared substrate, never build new machinery.
  *
- * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker},
- * the {@link ApprovalDesk}/{@link CompletionDesk}, and the reaper sweep are constructed and
- * daemon-threaded by this class's own constructor, exactly as the now-deleted long-running host
- * shim used to build them — {@code Nessy}'s builders now hand this constructor the substrate,
- * mapper, and durable computation backend those doors need, instead of wiring the worker
- * themselves. The harness is immortal, not closeable: {@link #shutdown()} is the one undecorated
- * lifecycle door, and it exists for infrastructure only.
+ * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker}
+ * and the {@link ApprovalDesk}/{@link CompletionDesk} are constructed by this class's own
+ * constructor, exactly as the now-deleted long-running host shim used to build them — {@code
+ * Nessy}'s builders now hand this constructor the substrate, mapper, and durable computation
+ * backend those doors need, instead of wiring the worker themselves. {@link #of} then registers the
+ * worker's six pumps — deliver, expire, purge, once each for the approval and tool kinds
+ * (continuum-adoption spec §7) — onto a {@link ComputationScheduler} it mints for this harness,
+ * deliberately after the constructor returns, not inside it (see {@link #of}'s own comment on why).
+ * There is no reaper any more — that Substrate-outbox-scanning machinery was retired in the
+ * migration onto Continuum (continuum-adoption spec §6); Continuum's own delivery mechanism claims,
+ * leases, and expires computations itself. The harness is immortal, not closeable: {@link
+ * #shutdown()} is the one undecorated lifecycle door, and it exists for infrastructure only.
  */
 public final class Harness<O> {
 

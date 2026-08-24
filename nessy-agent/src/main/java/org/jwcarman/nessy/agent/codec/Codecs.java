@@ -24,7 +24,7 @@ import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
 /**
  * Internal storage machinery: the mapper-binding boundary every codec that renders the byte-payload
  * substrate's JSON relies on (spec §7). Public so recipes outside the {@code codec} package (e.g.
- * {@code org.jwcarman.nessy.agent.OutcomeCodec}) can reuse the same tolerant-read/exception
+ * {@code org.jwcarman.nessy.agent.DecisionCodec}) can reuse the same tolerant-read/exception
  * conventions instead of duplicating them; still not API vocabulary — nessy-owned types carry their
  * own Jackson annotations (spec §7), this class carries none.
  *
@@ -80,8 +80,9 @@ public final class Codecs {
 
   /**
    * {@code value} rendered to a {@link JsonNode} tree rather than a JSON string — the data-born
-   * door a caller uses to build a wire payload it will embed inside a larger document (e.g. {@code
-   * OutcomeCodec#encodeSuccess}) instead of re-parsing a serialized string back into a tree.
+   * door a caller uses to build a wire payload it will embed inside a larger document (e.g. one
+   * discriminated arm of a sealed result type a hand-rolled codec like {@code DecisionCodec}
+   * assembles) instead of re-parsing a serialized string back into a tree.
    */
   public JsonNode toTree(Object value) {
     return mapper.valueToTree(value);
