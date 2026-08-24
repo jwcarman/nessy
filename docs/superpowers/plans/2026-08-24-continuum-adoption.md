@@ -1059,6 +1059,14 @@ failure over the live call, deletes the index entry, and causes the real
 approval's grant to be swallowed afterwards — the human's decision discarded and
 a timeout the model never suffered folded in its place.
 
+**A third site, found in Task 4's review:** `DeliveryWorker.foldToolOutcome`
+deletes the dispatch entry unguarded, without checking the entry names *this*
+computation. Same shape as the approval arm's weakness — a stale redelivery can
+remove a live entry and reopen the absorption door. Identity-check it too. Note
+that gap 2 is already closed (Task 4's `onDeferred` overwrites the entry to
+`TOOL` on every deferral), so this step closes gaps 1 and 3 plus the tool arm,
+not all three gaps.
+
 The contract this relies on is now explicit in Continuum's own javadoc:
 **returning acknowledges the delivery, throwing releases it** with the call-site
 backoff and an incremented `deliveryAttempt()`. Returning without acting is the
