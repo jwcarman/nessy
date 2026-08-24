@@ -58,7 +58,12 @@ final class ToolFoldRemembrance {
     }
     CallAddress address =
         new CallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
-    // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+    // address.indexKey() — deterministic from the call's own coordinates — is the permanent key
+    // here, not a Continuum-minted id: this method folds through THREE different call sites
+    // (DefaultAgent's own immediate, non-durable fold; DeliveryWorker's durable completion and
+    // grant folds), and a genuinely immediate fold never has a computation at all to mint an id
+    // from. A single deterministic key across every fold path is also what SPI law 2 (a redelivery
+    // re-remembers the SAME key and converges) requires — a per-path id would fracture that.
     memory.remember(new Remembrance.ToolExchange(address.indexKey(), call, toToolResult(outcome)));
     // AwaitingTools#handle commits [assistantTurn, toolResults] together, exactly once, on the
     // call that completes the whole batch — never fewer than both, never just one. Testing

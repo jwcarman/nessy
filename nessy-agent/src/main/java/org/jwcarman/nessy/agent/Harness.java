@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
@@ -89,7 +90,7 @@ public final class Harness<O> {
       ObjectMapper mapper,
       ContinuumClient<Decision, Routing> approvalClient,
       DispatchIndex dispatchIndex,
-      SubstrateComputations executionBackend,
+      ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
@@ -113,11 +114,12 @@ public final class Harness<O> {
     Objects.requireNonNull(mapper, "mapper must not be null");
     Objects.requireNonNull(approvalClient, "approvalClient must not be null");
     Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null");
-    Objects.requireNonNull(executionBackend, "executionBackend must not be null");
+    Objects.requireNonNull(toolClient, "toolClient must not be null");
     this.worker =
-        new DeliveryWorker<>(substrate, mapper, this, this::resolve, approvalClient, dispatchIndex);
+        new DeliveryWorker<>(
+            substrate, mapper, this, this::resolve, approvalClient, dispatchIndex, toolClient);
     this.approvals = new ApprovalDesk(approvalClient, worker::nudge);
-    this.completions = new CompletionDesk(executionBackend, worker::nudge);
+    this.completions = new CompletionDesk(toolClient, worker::nudge);
   }
 
   /**
@@ -126,11 +128,10 @@ public final class Harness<O> {
    * customizer forms) and {@code Nessy.cli()}, not this factory, so this stays a plain composition
    * point rather than growing fluent setters of its own. No builder exists in user hands (spec §2):
    * each door hands a customizer a fresh config and turns it into a {@link Harness} atomically.
-   * {@code substrate}, {@code mapper}, {@code approvalClient} (the approval kind's Continuum
-   * client, continuum-adoption spec §3), {@code dispatchIndex}, and {@code executionBackend} (the
-   * tool kind's old Substrate-backed store, unchanged until that kind migrates too) are the
-   * life-support this constructor owns (harness-first spec §4): the worker and desks it wires used
-   * to be a builder's job.
+   * {@code substrate}, {@code mapper}, {@code approvalClient}, and {@code toolClient} (the approval
+   * and tool kinds' own Continuum clients, continuum-adoption spec §3) and {@code dispatchIndex}
+   * are the life-support this constructor owns (harness-first spec §4): the worker and desks it
+   * wires used to be a builder's job.
    */
   public static <O> Harness<O> of(
       AgentType type,
@@ -148,7 +149,7 @@ public final class Harness<O> {
       ObjectMapper mapper,
       ContinuumClient<Decision, Routing> approvalClient,
       DispatchIndex dispatchIndex,
-      SubstrateComputations executionBackend,
+      ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     Harness<O> harness =
         new Harness<>(
@@ -167,7 +168,7 @@ public final class Harness<O> {
             mapper,
             approvalClient,
             dispatchIndex,
-            executionBackend,
+            toolClient,
             approvalWaiters);
     // Started here, after the constructor returns, not inside it: the heartbeat thread reads
     // `harness` (via DeliveryWorker's own field) the instant it runs, and starting a thread from

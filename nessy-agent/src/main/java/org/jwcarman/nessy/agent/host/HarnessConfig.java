@@ -60,6 +60,7 @@ import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -84,6 +85,17 @@ public final class HarnessConfig<O> {
    * per-tool — a per-tool override is deferred until something needs it.
    */
   private static final Duration APPROVAL_DEADLINE = Duration.ofDays(7);
+
+  /**
+   * The tool kind's default Continuum deadline (continuum-adoption spec §3, §11.2): what a tool
+   * with no declared {@link org.jwcarman.nessy.api.tool.Tool#timeout()} gets stamped with — {@link
+   * ComputationDeferredToolCallPolicy#onDeferred} passes a declared timeout straight through to
+   * {@code create(routing, timeout)} instead, overriding this default. Continuum requires every
+   * computation to carry a deadline (no deadline-less wait survives adoption, spec §3), so a tool
+   * that never used to expire now does — a day is generous for an external system to answer while
+   * still bounding the leak a truly abandoned computation would otherwise be.
+   */
+  private static final Duration DEFAULT_TOOL_DEADLINE = Duration.ofDays(1);
 
   private Model model;
   private ModelSettings settings;
@@ -386,16 +398,10 @@ public final class HarnessConfig<O> {
     Function<String, Backlog<O>> effectiveBacklogFactory =
         id ->
             new SubstrateBacklog<>(effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);
-    String executionKind = Kinds.computation(agentType);
-    String outboxKind = Kinds.outbox(agentType);
-    SubstrateComputations effectiveExecutionBackend =
-        backend != null
-            ? backend
-            : new SubstrateComputations(effectiveSubstrate, pinned, executionKind, outboxKind);
-    // The approval kind's own store, on Continuum rather than Substrate (continuum-adoption spec
-    // §3): wired to continuum-memory, never continuum-jdbc — the tool kind's computations and the
-    // approval kind's still share one durability tier with the scope's own Substrate state, and
-    // InMemorySubstrate is the only shipped Substrate (spec §11.1) until a durable one exists.
+    // The approval and tool kinds' own stores, on Continuum rather than Substrate (continuum-
+    // adoption spec §3): wired to continuum-memory, never continuum-jdbc — both kinds still share
+    // one durability tier with the scope's own Substrate state, and InMemorySubstrate is the only
+    // shipped Substrate (spec §11.1) until a durable one exists.
     Continuum continuum =
         new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
     ContinuumClient<Decision, Routing> effectiveApprovalClient =
@@ -407,6 +413,18 @@ public final class HarnessConfig<O> {
                 cfg.resultCodec(DecisionCodec.codec(pinned))
                     .continuationCodec(Routing.codec(pinned))
                     .deadline(APPROVAL_DEADLINE));
+    // ToolResult carries no Jackson polymorphism of its own (a plain record, unlike Decision's
+    // sealed Allow/Deny), so the substrate's own pinned Jackson2 codec factory binds it directly —
+    // no hand-rolled codec needed the way DecisionCodec exists for the approval kind.
+    ContinuumClient<ToolResult, Routing> effectiveToolClient =
+        continuum.client(
+            Kinds.tool(agentType),
+            ToolResult.class,
+            Routing.class,
+            cfg ->
+                cfg.resultCodec(effectiveSubstrate.codecs().create(ToolResult.class))
+                    .continuationCodec(Routing.codec(pinned))
+                    .deadline(DEFAULT_TOOL_DEADLINE));
     DispatchIndex effectiveDispatchIndex =
         new DispatchIndex(effectiveSubstrate, pinned, Kinds.dispatchIndex(agentType));
     // The default narrator targets the id-scoped TurnObserver Harness.observerFor(id) hands it
@@ -474,7 +492,7 @@ public final class HarnessConfig<O> {
                     scopeTurnObserver,
                     exec,
                     new ComputationDeferredToolCallPolicy(
-                        effectiveDispatchIndex, effectiveExecutionBackend, pinned),
+                        effectiveDispatchIndex, effectiveToolClient),
                     new ComputationApprover(
                         effectiveApprovalClient,
                         effectiveDispatchIndex,
@@ -485,7 +503,7 @@ public final class HarnessConfig<O> {
             pinned,
             effectiveApprovalClient,
             effectiveDispatchIndex,
-            effectiveExecutionBackend,
+            effectiveToolClient,
             approvalWaiters);
 
     return harness;

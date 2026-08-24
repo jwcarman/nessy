@@ -124,6 +124,18 @@ final class DeliveryWorker<O> implements AutoCloseable {
   /** The approval sweep's own per-pass cap — small, since a human-gated backlog is never large. */
   private static final BatchSize APPROVAL_BATCH_SIZE = BatchSize.of(100);
 
+  /**
+   * The tool kind's lease (continuum-adoption spec §11.2, ruled): short, because this consumer only
+   * folds — it never runs a tool inline the way the approval consumer's grant arm does, so there is
+   * no slow in-flight work a lease must outlast.
+   */
+  private static final Lease TOOL_LEASE = Lease.ofSeconds(30);
+
+  private static final Backoff TOOL_BACKOFF = Backoff.ofSeconds(5);
+
+  /** The tool sweep's own per-pass cap. */
+  private static final BatchSize TOOL_BATCH_SIZE = BatchSize.of(100);
+
   private final Substrate store;
   private final OutcomeCodec codec;
   private final Harness<O> harness;
@@ -154,6 +166,13 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final DispatchIndex dispatchIndex;
 
   /**
+   * The tool kind's Continuum client (continuum-adoption spec §3, §7) — {@code null} for a worker
+   * built by a pre-migration test constructor that never wires tools; {@link #drainTools} and its
+   * callers no-op when absent, mirroring {@link #approvalClient}.
+   */
+  private final ContinuumClient<ToolResult, Routing> toolClient;
+
+  /**
    * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
    * key set, {@code add} as the claim, {@code remove} as the release. In-process only — this is NOT
    * a substrate write, and does not protect against any other {@code DeliveryWorker} instance, in
@@ -178,12 +197,12 @@ final class DeliveryWorker<O> implements AutoCloseable {
       Harness<O> harness,
       AgentResolver resolver,
       Duration pollInterval) {
-    this(store, mapper, harness, resolver, pollInterval, null, null);
+    this(store, mapper, harness, resolver, pollInterval, null, null, null);
   }
 
   /**
-   * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval kind's
-   * Continuum client and its dispatch index, alongside the old Substrate-backed tool kind.
+   * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval and tool
+   * kinds' Continuum clients and their shared dispatch index.
    */
   DeliveryWorker(
       Substrate store,
@@ -191,7 +210,8 @@ final class DeliveryWorker<O> implements AutoCloseable {
       Harness<O> harness,
       AgentResolver resolver,
       ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex) {
+      DispatchIndex dispatchIndex,
+      ContinuumClient<ToolResult, Routing> toolClient) {
     this(
         store,
         mapper,
@@ -199,17 +219,27 @@ final class DeliveryWorker<O> implements AutoCloseable {
         resolver,
         DEFAULT_POLL_INTERVAL,
         Objects.requireNonNull(approvalClient, "approvalClient must not be null"),
-        Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null"));
+        Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null"),
+        Objects.requireNonNull(toolClient, "toolClient must not be null"));
   }
 
-  private DeliveryWorker(
+  /**
+   * As the production constructor, but naming {@code pollInterval} rather than defaulting it — for
+   * a test that needs both a deterministic (non-firing) heartbeat and the Continuum wiring, e.g. to
+   * race explicit {@link #nudge()} calls without the heartbeat thread joining in. This is also the
+   * one master constructor every other constructor above ultimately delegates to; the continuum
+   * fields are left unchecked here (a legacy fixture deliberately passes {@code null} for them
+   * through the shorter constructors above).
+   */
+  DeliveryWorker(
       Substrate store,
       ObjectMapper mapper,
       Harness<O> harness,
       AgentResolver resolver,
       Duration pollInterval,
       ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex) {
+      DispatchIndex dispatchIndex,
+      ContinuumClient<ToolResult, Routing> toolClient) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codec = new OutcomeCodec(mapper);
@@ -217,7 +247,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     Objects.requireNonNull(resolver, "resolver must not be null");
     this.binder = new ResolvingAgentBinder(resolver);
-    this.computationKind = Kinds.computation(harness.type());
+    this.computationKind = Kinds.tool(harness.type());
     this.outboxKind = Kinds.outbox(harness.type());
     this.computations = new SubstrateComputations(store, mapper, computationKind, outboxKind);
     this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
@@ -225,6 +255,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.states = store.document(STATE_KIND, stateCodec(stateCodec));
     this.approvalClient = approvalClient;
     this.dispatchIndex = dispatchIndex;
+    this.toolClient = toolClient;
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
@@ -287,6 +318,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
   void nudge() {
     safeDrainOnce();
     safeDrainApprovalsOnce();
+    safeDrainToolsOnce();
   }
 
   @Override
@@ -306,6 +338,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
       if (!closed) {
         safeDrainOnce();
         safeDrainApprovalsOnce();
+        safeDrainToolsOnce();
         safeReapOnce();
       }
     }
@@ -332,6 +365,21 @@ final class DeliveryWorker<O> implements AutoCloseable {
       drainApprovals(APPROVAL_BATCH_SIZE);
     } catch (RuntimeException e) {
       log.warn("an approval delivery sweep failed; will retry on the next heartbeat or nudge", e);
+    }
+  }
+
+  /**
+   * Guards the tool kind's own sweep (continuum-adoption spec §7): a no-op when this worker was
+   * built by a pre-migration test constructor that never wired {@link #toolClient}.
+   */
+  private void safeDrainToolsOnce() {
+    if (toolClient == null) {
+      return;
+    }
+    try {
+      drainTools(TOOL_BATCH_SIZE);
+    } catch (RuntimeException e) {
+      log.warn("a tool delivery sweep failed; will retry on the next heartbeat or nudge", e);
     }
   }
 
@@ -415,6 +463,67 @@ final class DeliveryWorker<O> implements AutoCloseable {
                     type, id, address, routing.call(), expired.kind() + ": " + expired.message());
           }
         });
+  }
+
+  /**
+   * The tool kind's own consumer (continuum-adoption spec §3, §7, §11.2): unlike the approval
+   * consumer, this one never runs a tool inline — it only folds an already-produced {@link
+   * ToolResult} (or a failure/expiry) into the scope, which is why its lease ({@link #TOOL_LEASE},
+   * 30s) can be short.
+   *
+   * @param batchSize how many tool deliveries to claim in one pass
+   * @return how many deliveries this pass processed
+   */
+  int drainTools(BatchSize batchSize) {
+    return toolClient.deliverResults(batchSize, TOOL_LEASE, TOOL_BACKOFF, this::foldOutcome);
+  }
+
+  /**
+   * Resolves {@code routing}'s scope coordinates and folds {@code outcome} through the reducer.
+   * Package-visible (not {@code private}), like {@link #reapOnce()}, so a test can drive a genuine
+   * redelivery of the same outcome without a second pass through Continuum's own lease/ack cycle.
+   */
+  void foldOutcome(Routing routing, TypedOutcome<ToolResult> outcome) {
+    AgentType type = AgentType.of(routing.agentType());
+    AgentId id = AgentId.of(routing.agentId());
+    CallAddress address =
+        new CallAddress(
+            routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
+    foldToolOutcome(type, id, address, routing.call(), toToolOutcome(outcome));
+  }
+
+  /**
+   * The tool kind's own fold-advance (mirrors {@link #foldApprovalResult}'s shape): read state,
+   * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
+   * entry's own deletion (spec §5) — then dispatch effects. There is no outbox delivery to delete
+   * here: Continuum's own delivery is acknowledged by this consumer returning normally.
+   */
+  private void foldToolOutcome(
+      AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
+    while (true) {
+      State state = readState(id);
+      var event = new AgentEvent.ToolFinished(call, outcome);
+      var transition = state.phase().handle(event);
+      if (!transition.isIgnored()) {
+        ToolFoldRemembrance.remember(
+            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+      }
+      List<Substrate.Op> ops = foldOps(id, state, transition, address);
+      if (!ops.isEmpty()) {
+        try {
+          store.batch(ops);
+        } catch (ConflictException _) {
+          // lost the race — re-read state (or find the index entry already gone) and retry; the
+          // remember above already ran, keyed by the call's own address, so a retry that remembers
+          // the same keys again converges rather than duplicating anything.
+          continue;
+        }
+      }
+      if (!transition.isIgnored()) {
+        dispatchEffects(type, id, transition.next(), transition.effects());
+      }
+      return;
+    }
   }
 
   private void handleApprovalDecision(
@@ -717,6 +826,21 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   /**
+   * The tool kind's own fold-advance batch (continuum-adoption spec §5): the CAS state write and
+   * the dispatch index entry's own deletion — there is no outbox delivery to delete here, since
+   * Continuum owns the tool kind's delivery and acknowledges it by this consumer returning.
+   */
+  private List<Substrate.Op> foldOps(
+      AgentId id, State state, Transition transition, CallAddress address) {
+    List<Substrate.Op> ops = new ArrayList<>();
+    if (!transition.isIgnored()) {
+      ops.add(states.writeOp(id.value(), transition.next(), state.version()));
+    }
+    dispatchIndex.deleteOp(address).ifPresent(ops::add);
+    return ops;
+  }
+
+  /**
    * One bad computation — an undecodable continuation, an unresolvable scope — must not block every
    * other pending computation behind it, matching {@link #drainOnce()}'s per-item isolation.
    * Package-visible (not {@code private}) so tests can trigger one reaper sweep synchronously,
@@ -860,6 +984,21 @@ final class DeliveryWorker<O> implements AutoCloseable {
     }
     throw new IllegalStateException(
         "an ExecuteTool effect was dispatched outside AwaitingTools: " + phase);
+  }
+
+  /**
+   * The tool kind's own outcome mapping (continuum-adoption spec §3, §7): {@code Success} carries
+   * the tool's own answer straight through; {@code Failure} and {@code Expired} both fold an
+   * in-band failure so the model reads it.
+   */
+  private static ToolOutcome toToolOutcome(TypedOutcome<ToolResult> outcome) {
+    return switch (outcome) {
+      case TypedOutcome.Success<ToolResult> success -> new ToolOutcome.Returned(success.value());
+      case TypedOutcome.Failure<ToolResult> failure ->
+          new ToolOutcome.Failed(new ToolError(failure.message()));
+      case TypedOutcome.Expired<ToolResult> expired ->
+          new ToolOutcome.Failed(new ToolError(expired.kind() + ": " + expired.message()));
+    };
   }
 
   /**

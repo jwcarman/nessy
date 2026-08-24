@@ -267,7 +267,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       ToolInvocationId invocation,
       Optional<Substrate.Op> alsoCommit) {
     T typed = tool.inputType().cast(input);
-    // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+    // address.indexKey()'s digest is deterministic from this call's own coordinates (agentType,
+    // agentId, responseId, callId) — stable across every redispatch and replay, exactly the
+    // contract ToolContext#invocation documents. A genuine Continuum-minted id cannot serve here:
+    // it is not known until (and unless) the tool actually defers, since onDeferred only creates a
+    // computation on the Awaited.Deferred arm below — after the tool has already been handed this
+    // very context. Using the deterministic digest is therefore the permanent answer, not a
+    // migration placeholder.
     ToolContext context =
         new ToolContext(call, event -> narrate(call, event), ComputationId.of(address.indexKey()));
     return switch (tool.execute(typed, context)) {
@@ -276,8 +282,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
       case Awaited.Deferred<ToolResult> _ ->
-          deferredToolCallPolicy.onDeferred(
-              call, address, invocation, tool.retrySemantics(), tool.timeout(), alsoCommit);
+          deferredToolCallPolicy.onDeferred(call, address, tool.timeout());
     };
   }
 
@@ -300,7 +305,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   /** The 5-arg constructor's default: fails loudly in-band rather than suspending silently. */
   private static DeferredToolCallPolicy defaultPolicy(TurnObserver turn) {
-    return (call, address, invocation, retrySemantics, timeout, alsoCommit) -> {
+    return (call, address, timeout) -> {
       ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
       turn.on(new TurnEvent.ToolCallCompleted(call, error));
       return new ToolExecution.Immediate(

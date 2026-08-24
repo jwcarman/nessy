@@ -18,66 +18,69 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-import java.util.Optional;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
-/** The result door: completes {@code tool:} computations with a {@code ToolResult} (spec §5). */
+/** The result door: completes tool computations with a {@code ToolResult} (spec §5). */
 class CompletionDeskTest {
 
-  private final SubstrateComputations backend =
-      new SubstrateComputations(
-          new InMemorySubstrate(), TestMappers.plainlyPinned(), "computation", "outbox");
+  private final ContinuumClient<ToolResult, Routing> client =
+      TestToolClients.client("tool", TestMappers.plainlyPinned());
   private int nudges;
-  private final CompletionDesk desk = new CompletionDesk(backend, () -> nudges++);
+  private final CompletionDesk desk = new CompletionDesk(client, () -> nudges++);
 
-  private static final ComputationId COMPUTATION = ComputationId.of("tool:t:a:c1");
-  private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "c1");
-  private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{}");
+  private static Routing routing() {
+    return new Routing(
+        "t",
+        "a",
+        "response-1",
+        new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode()));
+  }
 
-  private void park() {
-    backend.create(COMPUTATION, INVOCATION, RETURN_ADDRESS, Optional.empty());
+  private ComputationId park() {
+    var created = client.create(routing());
+    return ComputationId.of(created.id().value().toString());
   }
 
   @Test
-  void completingTransfersOwnershipAndNudgesTheWorker() {
-    park();
+  void completingNudgesTheWorker() {
+    ComputationId id = park();
 
-    desk.complete(COMPUTATION, ToolResult.ok("approved"));
+    desk.complete(id, ToolResult.ok("approved"));
 
-    assertThat(backend.find(COMPUTATION)).isEmpty();
     assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void failingTransfersOwnershipAndNudgesTheWorker() {
-    park();
+  void failingNudgesTheWorker() {
+    ComputationId id = park();
 
-    desk.fail(COMPUTATION, "too risky");
+    desk.fail(id, "too risky");
 
-    assertThat(backend.find(COMPUTATION)).isEmpty();
     assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void completingAnUnknownIdIsBenignAndStillNudges() {
-    var ghost = ComputationId.of("ghost");
+  void completingAGenuinelyAbsentIdIsBenignAndStillNudges() {
+    var ghost = ComputationId.of(UUID.randomUUID().toString());
 
     desk.complete(ghost, ToolResult.ok("x"));
 
-    assertThat(backend.find(ghost)).isEmpty();
     assertThat(nudges).isEqualTo(1);
   }
 
   @Test
   void aSecondCompletionIsBenignNotAThrow() {
-    park();
-    desk.complete(COMPUTATION, ToolResult.ok("approved"));
+    ComputationId id = park();
+    desk.complete(id, ToolResult.ok("approved"));
 
-    assertThatCode(() -> desk.complete(COMPUTATION, ToolResult.ok("again")))
-        .doesNotThrowAnyException();
+    assertThatCode(() -> desk.complete(id, ToolResult.ok("again"))).doesNotThrowAnyException();
   }
 }

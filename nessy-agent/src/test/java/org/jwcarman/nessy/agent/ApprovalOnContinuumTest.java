@@ -45,6 +45,7 @@ import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
@@ -153,10 +154,10 @@ class ApprovalOnContinuumTest {
   private final VerbatimMemory memory = new VerbatimMemory();
   private final SubstrateAgentStateStore store =
       new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-  private final SubstrateComputations executionBackend =
-      new SubstrateComputations(substrate, mapper, "computation/test", "outbox/test");
+  private final ContinuumClient<ToolResult, Routing> toolClient =
+      TestToolClients.client("tool/test", mapper);
   private final ComputationDeferredToolCallPolicy deferredPolicy =
-      new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
+      new ComputationDeferredToolCallPolicy(index, toolClient);
   private final ComputationApprover approver =
       new ComputationApprover(client, index, store, notifications::add);
   private final RegistryToolCallExecutor executor =
@@ -182,7 +183,8 @@ class ApprovalOnContinuumTest {
           StalenessPolicy.never());
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
   private final DeliveryWorker<String> worker =
-      new DeliveryWorker<>(substrate, mapper, harness, (type, id) -> agent, client, index);
+      new DeliveryWorker<>(
+          substrate, mapper, harness, (type, id) -> agent, client, index, toolClient);
   private final ApprovalDesk desk = new ApprovalDesk(client, worker::nudge);
 
   private void drainApprovals() {

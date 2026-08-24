@@ -32,6 +32,7 @@ import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -67,13 +68,10 @@ final class AgentFixture {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     var fixtureType = AgentType.of("fixture");
-    String outboxKind = Kinds.outbox(fixtureType);
     var approvalClient = TestApprovalClients.client(Kinds.approval(fixtureType), mapper);
     var dispatchIndex =
         new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(fixtureType));
-    SubstrateComputations executionBackend =
-        new SubstrateComputations(
-            lifeSupportSubstrate, mapper, Kinds.computation(fixtureType), outboxKind);
+    var toolClient = TestToolClients.client(Kinds.tool(fixtureType), mapper);
     Harness<String> harness =
         Harness.of(
             fixtureType,
@@ -91,7 +89,7 @@ final class AgentFixture {
             mapper,
             approvalClient,
             dispatchIndex,
-            executionBackend,
+            toolClient,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));

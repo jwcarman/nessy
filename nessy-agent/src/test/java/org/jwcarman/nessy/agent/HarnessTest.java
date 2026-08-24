@@ -40,6 +40,7 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -138,12 +139,9 @@ class HarnessTest {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    String outboxKind = Kinds.outbox(type);
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
     var dispatchIndex = new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(type));
-    SubstrateComputations executionBackend =
-        new SubstrateComputations(
-            lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
+    var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
     // Preserves harnessRequiresAnObserver()'s null-through behavior: a literal null observer
     // stays a literal null factory (Harness.of's own requireNonNull rejects it), rather than
     // silently becoming a non-null factory that always hands back null.
@@ -165,7 +163,7 @@ class HarnessTest {
         mapper,
         approvalClient,
         dispatchIndex,
-        executionBackend,
+        toolClient,
         new ConcurrentHashMap<>());
   }
 

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -38,8 +39,10 @@ import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
@@ -54,16 +57,12 @@ import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The §5a honesty amendment's window, now shut (computation-identity spec §4): between a grant's
- * completion batch (approval computation deleted, delivery created under the completed
- * computation's OWN deterministic key) and a worker draining that delivery, neither the approval
- * nor the tool computation exists for the call's address — presence-means-pending leaves no residue
- * there — but the delivery itself now sits at a key the gate CAN derive: {@code
- * ComputationId.of(address.indexKey())}, the same id the grant just completed. {@link
- * ComputationDeferredToolCallPolicy#pendingComputation} checks that key too now (via {@link
- * SubstrateComputations#deliveryPending}), so a staleness redrive landing squarely in the old
- * "pending window" absorbs instead of re-asking the approver — this test proves that shut window,
- * where the sibling {@code GrantDeliveryPendingWindowTest} used to pin the open one.
+ * The §5a honesty amendment's window, now shut a different way (continuum-adoption spec §5): a
+ * completed-but-undrained grant leaves the dispatch index's entry exactly as it was — completing a
+ * Continuum computation touches only Continuum's own store, never the index — so {@link
+ * ComputationDeferredToolCallPolicy#pendingComputation} still finds the same APPROVAL entry it
+ * found before the grant, and a staleness redrive landing squarely in this window absorbs instead
+ * of re-asking the approver.
  */
 class GrantDeliveryPendingWindowTest {
 
@@ -120,13 +119,12 @@ class GrantDeliveryPendingWindowTest {
     var substrate = new InMemorySubstrate();
     var memory = new VerbatimMemory();
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
-    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
+    var toolClient = TestToolClients.client("tool/test", mapper);
     var approvalClient = TestApprovalClients.client("approval/test", mapper);
     var index = new DispatchIndex(substrate, mapper, "dispatch/test");
     var notifications = new ArrayList<ApprovalRequest>();
     var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, toolClient);
     var tool = new RecordingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();
@@ -160,37 +158,35 @@ class GrantDeliveryPendingWindowTest {
             executor,
             AgentObserver.noop(),
             false,
-            StalenessPolicy.never());
+            StalenessPolicy.after(Duration.ZERO));
 
     // First redrive: c1's fresh ask. Exactly one notification, as usual.
-    agent.redispatch();
+    agent.drive();
     pump.pumpUntilQuiet();
     assertThat(notifications).hasSize(1);
 
-    // Grant it directly — the transfer batch deletes the approval computation and creates the
-    // grant's outbox delivery UNDER THE APPROVAL COMPUTATION'S OWN ID (spec §4). No DeliveryWorker
-    // exists in this harness-only fixture, so the delivery is deliberately left undrained: this IS
-    // the pending window.
+    // Grant it directly, through the real approval client — no DeliveryWorker exists in this
+    // harness-only fixture, so the grant is deliberately left undrained: this IS the pending
+    // window. The dispatch index entry is untouched by completion alone (only a fold deletes or
+    // overwrites it), so it still names the same APPROVAL computation this call was asked under.
     var address = new CallAddress("test", "test-scope", "r1", "c1");
-    approvalBackend.complete(
-        ComputationId.of(address.indexKey()), DurableDecisions.granted(mapper));
-    assertThat(approvalBackend.find(ComputationId.of(address.indexKey()))).isEmpty();
-    assertThat(executionBackend.find(ComputationId.of(address.indexKey())))
-        .isEmpty(); // no tool computation yet
-    assertThat(substrate.keys("outbox", 10))
-        .containsExactly(ComputationId.of(address.indexKey()).value());
+    ComputationId approvalId = ComputationId.of(index.find(address).orElseThrow().computationId());
+    approvalClient.complete(ContinuumIds.continuumId(approvalId.value()), Decision.allow());
+    assertThat(index.find(address))
+        .hasValueSatisfying(
+            entry -> assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.APPROVAL));
 
     // Second redrive lands squarely inside the pending window: the gate's pendingComputation check
-    // now finds the undrained delivery at ComputationId.of(address.indexKey())'s own key and
-    // absorbs — no second ask,
-    // no second tool execution.
-    agent.redispatch();
+    // still finds the (now-granted-but-undrained) APPROVAL entry and absorbs — no second ask, no
+    // second tool execution.
+    agent.drive();
     pump.pumpUntilQuiet();
 
     assertThat(notifications).hasSize(1); // the window is shut: no re-ask
     assertThat(tool.invocations).hasValue(0); // the tool itself never ran a second time
-    assertThat(substrate.keys("outbox", 10))
-        .containsExactly(ComputationId.of(address.indexKey()).value());
+    assertThat(index.find(address))
+        .hasValueSatisfying(
+            entry -> assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.APPROVAL));
   }
 
   @Test

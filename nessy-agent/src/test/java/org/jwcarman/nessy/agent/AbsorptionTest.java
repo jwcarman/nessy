@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -35,11 +36,11 @@ import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -126,12 +127,12 @@ class AbsorptionTest {
     var substrate = new InMemorySubstrate();
     var memory = new VerbatimMemory();
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
+    var toolClient = TestToolClients.client("tool", mapper);
     var approvalClient = TestApprovalClients.client("approval", mapper);
     var index = new DispatchIndex(substrate, mapper, "dispatch");
     var notifications = new java.util.ArrayList<ApprovalRequest>();
     var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, toolClient);
     var tool = new RecordingTool();
     var policy = new CountingRequireApprovalPolicy();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, policy));
@@ -143,13 +144,13 @@ class AbsorptionTest {
 
     // c2 is already "granted and in flight": its tool computation exists BEFORE any redispatch —
     // simulating a grant the grant arm already ran, whose own delivery this test does not need to
-    // model, since the gate-level absorption only ever looks for the computation's presence.
+    // model, since the gate-level absorption only ever looks for the index entry's presence.
     var c2Address = new CallAddress("test", "test-scope", "r1", "c2");
-    executionBackend.create(
-        ComputationId.of(c2Address.indexKey()),
-        new ToolInvocationId("r1", "c2"),
-        new Continuation("SCOPE_RESUME", "{}"),
-        Optional.empty());
+    var c2Routing = new Routing("test", "test-scope", "r1", c2);
+    var c2Computation = toolClient.create(c2Routing);
+    index.record(
+        c2Address,
+        new DispatchEntry(c2Computation.id().value().toString(), DispatchEntry.DispatchKind.TOOL));
 
     var assistantTurn = Message.assistant(List.of(new ToolUseBlock(c1), new ToolUseBlock(c2)));
     store.save(
@@ -178,11 +179,11 @@ class AbsorptionTest {
             executor,
             AgentObserver.noop(),
             false,
-            StalenessPolicy.never());
+            StalenessPolicy.after(Duration.ZERO));
 
-    agent.redispatch();
+    agent.drive();
     pump.pumpUntilQuiet();
-    agent.redispatch();
+    agent.drive();
     pump.pumpUntilQuiet();
 
     assertThat(notifications).hasSize(1); // c1's first ask only — never a second, never for c2

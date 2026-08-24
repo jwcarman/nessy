@@ -238,12 +238,11 @@ class TypeFilteredSweepTest {
       // alpha's kind (computation/alpha) never holds beta's computation (computation/beta) — the
       // reap sweep touches only its own kind: alpha's counting executor fires once, beta's never
       // fires, and beta's computation document is left byte-for-byte as it was
-      Optional<Substrate.Document> betaBefore =
-          substrate.read(Kinds.computation(BETA), betaKey.value());
+      Optional<Substrate.Document> betaBefore = substrate.read(Kinds.tool(BETA), betaKey.value());
       alphaWorker.reapOnce();
       assertThat(alphaExecutor.invocations).hasValue(1);
       assertThat(betaExecutor.invocations).hasValue(0);
-      assertThat(substrate.read(Kinds.computation(BETA), betaKey.value())).isEqualTo(betaBefore);
+      assertThat(substrate.read(Kinds.tool(BETA), betaKey.value())).isEqualTo(betaBefore);
 
       // beta's own sweep now reaps the one computation left untouched, proving it was never even
       // scanned by alpha's sweep above
@@ -294,7 +293,7 @@ class TypeFilteredSweepTest {
           new OutcomeCodec.PendingDocument(
               invocation, returnAddress, Optional.of(Instant.now().minusSeconds(1)));
       byte[] payload = codec.toJson(pending).getBytes(StandardCharsets.UTF_8);
-      store.write(Kinds.computation(type), key, payload, 0);
+      store.write(Kinds.tool(type), key, payload, 0);
     }
   }
 

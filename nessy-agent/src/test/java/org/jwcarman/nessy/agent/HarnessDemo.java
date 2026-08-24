@@ -34,6 +34,7 @@ import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -111,13 +112,10 @@ class HarnessDemo {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var lifeSupportMapper = TestMappers.plainlyPinned();
     var demoType = AgentType.of("demo");
-    var demoOutboxKind = Kinds.outbox(demoType);
     var approvalClient = TestApprovalClients.client(Kinds.approval(demoType), lifeSupportMapper);
     var dispatchIndex =
         new DispatchIndex(lifeSupportSubstrate, lifeSupportMapper, Kinds.dispatchIndex(demoType));
-    SubstrateComputations executionBackend =
-        new SubstrateComputations(
-            lifeSupportSubstrate, lifeSupportMapper, Kinds.computation(demoType), demoOutboxKind);
+    var toolClient = TestToolClients.client(Kinds.tool(demoType), lifeSupportMapper);
     var harness =
         Harness.<String>of(
             demoType,
@@ -135,7 +133,7 @@ class HarnessDemo {
             lifeSupportMapper,
             approvalClient,
             dispatchIndex,
-            executionBackend,
+            toolClient,
             new ConcurrentHashMap<>());
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 

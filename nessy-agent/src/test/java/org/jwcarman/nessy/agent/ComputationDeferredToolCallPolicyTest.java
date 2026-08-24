@@ -22,157 +22,94 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class ComputationDeferredToolCallPolicyTest {
 
   private final InMemorySubstrate substrate = new InMemorySubstrate();
 
-  private final SubstrateComputations approvalBackend =
-      new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "approval", "outbox");
-  private final SubstrateComputations backend =
-      new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "computation", "outbox");
+  private final ContinuumClient<ToolResult, Routing> toolClient =
+      TestToolClients.client("tool", TestMappers.plainlyPinned());
   private final DispatchIndex index =
       new DispatchIndex(substrate, TestMappers.plainlyPinned(), "dispatch");
   private final ComputationDeferredToolCallPolicy policy =
-      new ComputationDeferredToolCallPolicy(index, backend, TestMappers.plainlyPinned());
+      new ComputationDeferredToolCallPolicy(index, toolClient);
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
-  private static final ToolInvocationId INVOCATION = new ToolInvocationId("r1", "c1");
-  private static final ComputationId COMPUTATION = ComputationId.of(ADDRESS.indexKey());
 
   @Test
-  void aFirstDeferralCreatesTheComputationAndSuspends() {
-    assertThat(
-            policy.onDeferred(
-                CALL,
-                ADDRESS,
-                INVOCATION,
-                RetrySemantics.NON_RETRYABLE,
-                Optional.empty(),
-                Optional.empty()))
-        .isEqualTo(new ToolExecution.Deferred(COMPUTATION));
-    assertThat(backend.find(COMPUTATION)).isPresent();
+  void aFirstDeferralCreatesTheComputationAndRecordsItInTheIndex() {
+    ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
+
+    assertThat(execution).isInstanceOf(ToolExecution.Deferred.class);
+    ComputationId created = ((ToolExecution.Deferred) execution).id();
+    assertThat(index.find(ADDRESS))
+        .hasValueSatisfying(
+            entry -> {
+              assertThat(entry.computationId()).isEqualTo(created.value());
+              assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.TOOL);
+            });
   }
 
   @Test
   void aReDriveFindsTheExistingComputationAndStaysSuspended() {
-    policy.onDeferred(
-        CALL,
-        ADDRESS,
-        INVOCATION,
-        RetrySemantics.NON_RETRYABLE,
-        Optional.empty(),
-        Optional.empty());
+    ToolExecution first = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
-    assertThat(
-            policy.onDeferred(
-                CALL,
-                ADDRESS,
-                INVOCATION,
-                RetrySemantics.NON_RETRYABLE,
-                Optional.empty(),
-                Optional.empty()))
-        .isEqualTo(new ToolExecution.Deferred(COMPUTATION));
+    Optional<ComputationId> pending = policy.pendingComputation(ADDRESS);
 
-    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    assertThat(pending.returnAddress().type()).isEqualTo("SCOPE_RESUME");
+    assertThat(pending).isPresent();
+    assertThat(pending.orElseThrow()).isEqualTo(((ToolExecution.Deferred) first).id());
   }
 
   @Test
-  void theReturnAddressCarriesTheAgentCoordinateAndTheCall() {
-    policy.onDeferred(
-        CALL,
-        ADDRESS,
-        INVOCATION,
-        RetrySemantics.NON_RETRYABLE,
-        Optional.empty(),
-        Optional.empty());
-
-    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    ScopeRouting.Routing routing =
-        ScopeRouting.decode(TestMappers.plainlyPinned(), pending.returnAddress());
-    assertThat(routing.agentType()).isEqualTo(ADDRESS.agentType());
-    assertThat(routing.agentId()).isEqualTo(ADDRESS.agentId());
-    assertThat(routing.call()).isEqualTo(CALL);
-    assertThat(pending.invocation().callId()).isEqualTo("c1");
-    assertThat(pending.invocation().responseId()).isEqualTo("r1");
-  }
-
-  @Test
-  void theRetrySemanticsRidesTheReturnAddress() {
-    policy.onDeferred(
-        CALL, ADDRESS, INVOCATION, RetrySemantics.RETRYABLE, Optional.empty(), Optional.empty());
-
-    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    ScopeRouting.Routing routing =
-        ScopeRouting.decode(TestMappers.plainlyPinned(), pending.returnAddress());
-    assertThat(routing.retrySemantics()).isEqualTo(RetrySemantics.RETRYABLE);
-  }
-
-  @Test
-  void aDeclaredTimeoutStampsADeadlineAtDispatch() {
+  void aDeclaredTimeoutStampsADeadlineOnTheComputation() {
     Instant before = Instant.now();
 
-    policy.onDeferred(
-        CALL,
-        ADDRESS,
-        INVOCATION,
-        RetrySemantics.RETRYABLE,
-        Optional.of(Duration.ofMinutes(5)),
-        Optional.empty());
+    ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.of(Duration.ofMinutes(5)));
 
-    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    assertThat(pending.deadline()).isPresent();
-    assertThat(pending.deadline().orElseThrow()).isAfter(before.plus(Duration.ofMinutes(4)));
+    ComputationId created = ((ToolExecution.Deferred) execution).id();
+    Optional<org.jwcarman.continuum.api.Computation> found =
+        toolClient
+            .register(
+                org.jwcarman.nessy.agent.ContinuumIdsTestAccess.continuumId(created.value()),
+                new Routing("approver", "demo", "r1", CALL))
+            .computation();
+    assertThat(found).isPresent();
+    assertThat(found.orElseThrow().deadline()).isAfter(before.plus(Duration.ofMinutes(4)));
   }
 
   @Test
-  void noDeclaredTimeoutLeavesTheComputationDeadlineLess() {
-    policy.onDeferred(
-        CALL,
-        ADDRESS,
-        INVOCATION,
-        RetrySemantics.NON_RETRYABLE,
-        Optional.empty(),
-        Optional.empty());
-
-    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    assertThat(pending.deadline()).isEmpty();
-  }
-
-  @Test
-  void pendingComputationFindsAPendingApproval() {
+  void pendingComputationIsEmptyBeforeAnyDeferral() {
     assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
-
-    approvalBackend.create(
-        ComputationId.of(ADDRESS.indexKey()),
-        INVOCATION,
-        new Continuation("SCOPE_RESUME", "{}"),
-        Optional.empty());
-
-    assertThat(policy.pendingComputation(ADDRESS)).contains(ComputationId.of(ADDRESS.indexKey()));
   }
 
   @Test
   void pendingComputationFindsAnInFlightToolComputation() {
     assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
 
-    policy.onDeferred(
-        CALL,
-        ADDRESS,
-        INVOCATION,
-        RetrySemantics.NON_RETRYABLE,
-        Optional.empty(),
-        Optional.empty());
+    ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
-    assertThat(policy.pendingComputation(ADDRESS)).contains(ComputationId.of(ADDRESS.indexKey()));
+    assertThat(policy.pendingComputation(ADDRESS))
+        .contains(((ToolExecution.Deferred) execution).id());
+  }
+
+  @Test
+  void pendingComputationFindsAPendingApprovalRecordedInTheIndex() {
+    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
+
+    var approvalId = ComputationId.of(ADDRESS.indexKey());
+    index.record(
+        ADDRESS, new DispatchEntry(approvalId.value(), DispatchEntry.DispatchKind.APPROVAL));
+
+    assertThat(policy.pendingComputation(ADDRESS)).contains(approvalId);
   }
 }

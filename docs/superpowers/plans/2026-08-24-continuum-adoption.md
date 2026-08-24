@@ -976,3 +976,124 @@ git commit -m "docs: durability must match, and the retryable tool vocabulary re
 1. **Task 3 Step 6:** whether `deliverResults`'s consumer can see the delivery's `computationId`. If not, the stale-grant guard weakens to "an entry exists and its kind is APPROVAL" — decide, implement, and amend spec §11.3 to match what shipped.
 2. **Task 1 Step 3:** `ToolCall`'s real component types.
 3. **Task 2 Step 6:** whether `DocumentStore.deleteOp` at an absent key conflicts, which decides `deleteOp`'s return type.
+
+---
+
+### Task 8: Upgrade to Continuum 0.3.0, and close the stale-grant guard
+
+Added mid-execution and revised as upstream moved. The migration lands on 0.1.0;
+this task takes 0.3.0 in one reviewable step against a green suite.
+
+0.3.0 carries two things this plan treated as unreachable: `TypedDelivery`
+exposes `computationId()`, which makes the **strong** stale-grant guard
+writable, and both `continuum-bom` and `codec-bom` are now parentless, which
+retires Task 1's workaround.
+
+**Files:** `pom.xml`, `DeliveryWorker`, `ApprovalOnContinuumTest`, spec §11.3.
+
+- [ ] **Step 1: Confirm 0.3.0 resolves**
+
+Run: `./mvnw -q dependency:get -Dartifact=org.jwcarman.continuum:continuum-core:0.3.0`
+Expected: success. If it 404s, Central sync is still in flight — stop and report
+rather than proceeding against a version Central does not serve.
+
+- [ ] **Step 2: Bump both versions**
+
+```xml
+<continuum.version>0.3.0</continuum.version>
+<codec.version>0.4.0</codec.version>
+```
+
+**Why both, stated correctly.** An earlier draft of this task claimed that
+pinning an older codec would resolve clean, compile clean, and fail at runtime
+with a `NoSuchMethodError`. **That claim was false and is retracted.** Codec
+0.2.0 and 0.3.0 have byte-for-byte identical public signatures — verified by
+unpacking both jars and diffing `javap -public` across every class, 48 signature
+lines each, no difference. There is no signature to be missing, so no
+`NoSuchMethodError` is available to happen.
+
+The real consequence of pinning an older codec is narrower: codec 0.2.0 declares
+`spring-boot-autoconfigure` at compile scope, so keeping it reinstates a Spring
+transitive that later codecs removed. A dependency-tree regression, not a runtime
+failure. Bump both because the tree should be clean, not because one breaks
+without the other.
+
+- [ ] **Step 3: Drop both BOM workarounds**
+
+Remove the `org.junit:junit-bom` import Task 1 added ahead of `continuum-bom`,
+and its explanatory comment. Both BOMs are parentless as of continuum 0.2.0 and
+codec 0.4.0, so neither leaks build pins. Check whether Nessy carries any
+equivalent workaround for `codec-bom` and remove that too.
+
+- [ ] **Step 4: Migrate `deliverResults` to the envelope**
+
+0.3.0 replaces the two-argument consumer with a single `TypedDelivery`. The
+two-argument overload is **gone, not deprecated** — keeping both made overloaded
+method references ambiguous, since a reference like `seen::add` is potentially
+applicable to both arities.
+
+```java
+// before
+client.deliverResults(batch, lease, backoff, (continuation, outcome) -> ...);
+// after
+client.deliverResults(batch, lease, backoff, delivery -> ...);
+```
+
+`continuation` becomes `delivery.continuation()`, `outcome` becomes
+`delivery.outcome()`. Where the body switches on the outcome, bind it first —
+`switch (delivery.outcome())` — because a lambda body can no longer be a bare
+switch expression over the parameter. Two call sites: `drainApprovals` and
+`drainTools`.
+
+- [ ] **Step 5: Upgrade the guard to the strong form**
+
+This is the point of the task. `DeliveryWorker.deliverApprovalGrant` currently
+admits a grant iff the call's dispatch entry exists and names `APPROVAL` — a
+predicate on the *address*, which discriminates finished calls from unfinished
+ones rather than real approvals from orphans. Replace it with an identity check
+against `delivery.computationId()`, and **apply the same check to the failure
+arm** (`foldApprovalFailure`), which is currently unguarded.
+
+Both arms need it. Spec §11.3 gap 3 is that an orphaned approval's expiry folds a
+failure over the live call, deletes the index entry, and causes the real
+approval's grant to be swallowed afterwards — the human's decision discarded and
+a timeout the model never suffered folded in its place.
+
+The contract this relies on is now explicit in Continuum's own javadoc:
+**returning acknowledges the delivery, throwing releases it** with the call-site
+backoff and an incremented `deliveryAttempt()`. Returning without acting is the
+supported way to consume a delivery you have judged stale.
+
+- [ ] **Step 6: Prove the guard with a test**
+
+Extend `ApprovalOnContinuumTest.aStaleGrantDoesNotRunTheTool` so it fails against
+the weak guard and passes against the strong one. The weak guard survives the
+existing ordering because the real approval folds and deletes the entry first;
+the discriminating case is **two live approvals for one call, the orphan
+completing first**. Add a failure-arm case too: an orphan expiring while the real
+approval is live must not fold a failure over the live call.
+
+- [ ] **Step 7: Amend spec §11.3 to the closed state**
+
+§11.3 documents three gaps as known and open. Steps 5 and 6 close them. Rewrite
+it to describe the guard as shipped — identity-checked on both arms — keeping one
+sentence of history noting the weak form existed while 0.1.0's typed consumer
+withheld the computation id. Do not leave open-hole text standing beside a closed
+hole.
+
+- [ ] **Step 8: Verify and commit**
+
+```bash
+./mvnw -q -pl nessy-agent dependency:tree -Dverbose > /tmp/tree.txt 2>&1
+```
+
+Read it for three things: the JUnit artifacts agree with the workaround gone;
+`codec-core` resolves to 0.4.0; and `spring-boot-autoconfigure` no longer arrives
+by way of `continuum-core`.
+
+```bash
+./mvnw -q clean verify
+./mvnw license:format -Plicense && ./mvnw spotless:apply
+git add -A
+git commit -m "build: continuum 0.3.0, and the stale-grant guard closes"
+```

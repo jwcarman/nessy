@@ -42,8 +42,10 @@ import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -135,16 +137,12 @@ class GrantRaceTest {
     var memory = new SubstrateMemory(substrate, "test-scope", mapper);
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
     var testType = AgentType.of("test");
-    var outboxKind = Kinds.outbox(testType);
-    var approvalBackend =
-        new SubstrateComputations(substrate, mapper, Kinds.approval(testType), outboxKind);
-    var executionBackend =
-        new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
     var approvalClient = TestApprovalClients.client(Kinds.approval(testType), mapper);
+    var toolClient = TestToolClients.client(Kinds.tool(testType), mapper);
     var index = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(testType));
     var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
     var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, toolClient);
     var tool = new CountingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();
@@ -187,7 +185,14 @@ class GrantRaceTest {
     var agent = harness.bind(AgentId.of("test-scope"));
     var worker =
         new DeliveryWorker<String>(
-            substrate, mapper, harness, (t, i) -> agent, java.time.Duration.ofHours(1));
+            substrate,
+            mapper,
+            harness,
+            (t, i) -> agent,
+            java.time.Duration.ofHours(1),
+            approvalClient,
+            index,
+            toolClient);
 
     for (int i = 0; i < ITERATIONS; i++) {
       agent.tell("go");
@@ -195,8 +200,8 @@ class GrantRaceTest {
       assertThat(notifications).hasSize(i + 1);
       ApprovalRequest request = notifications.get(i);
 
-      // Grant it: the ownership transfer creates the outbox delivery both racers will drain.
-      approvalBackend.complete(request.id(), DurableDecisions.granted(mapper));
+      // Grant it: the ownership transfer creates the delivery both racers will drain.
+      approvalClient.complete(ContinuumIds.continuumId(request.id().value()), Decision.allow());
 
       ExecutorService pool = Executors.newFixedThreadPool(2);
       CountDownLatch ready = new CountDownLatch(2);

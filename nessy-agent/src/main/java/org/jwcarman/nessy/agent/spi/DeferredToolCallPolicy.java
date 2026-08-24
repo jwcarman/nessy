@@ -18,11 +18,8 @@ package org.jwcarman.nessy.agent.spi;
 import java.time.Duration;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.CallAddress;
-import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * What a wiring does when a tool defers (spec §4.3). {@link ToolExecution.Deferred} means the call
@@ -31,29 +28,18 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * means an outcome to deliver now — the loud in-band failure of a non-durable wiring, or a durable
  * computation's already-terminal answer.
  *
- * <p>{@code invocation}, {@code retrySemantics}, and {@code timeout} are the tool's registration-
- * time facts (durable-deliveries spec §6) a durable wiring needs to create the computation and
- * stamp its deadline: {@code invocation} carries the real, committed {@code ModelResponseId} paired
- * with the call's id; {@code retrySemantics} and {@code timeout} come straight from the tool's
- * {@code Tool#retrySemantics()}/{@code Tool#timeout()}.
- *
- * <p>{@code alsoCommit} is the grant arm's transfer-then-dispatch door (spec §5a invariant 5): when
- * present, an implementation that can (a {@link Substrate}-backed one) must commit it in the SAME
- * atomic batch as the computation's own creation — a grant delivery's own removal, riding alongside
- * so the two either both land or neither does. Every non-grant dispatch passes {@link
- * Optional#empty()}; an implementation with nothing to batch into (a foreign engine) is free to
- * ignore it, at the cost of the atomicity guarantee this door exists to close.
+ * <p>{@code timeout} is the tool's registration-time fact (durable-deliveries spec §6) a durable
+ * wiring needs to stamp the computation's deadline — straight from the tool's {@code
+ * Tool#timeout()}. (continuum-adoption spec §3): retryability is not implemented, and Continuum's
+ * own outbox is what acknowledges a completion now, so neither {@code retrySemantics} nor {@code
+ * alsoCommit} — the outbox-delete-composition door — survive on this interface; a durable wiring's
+ * {@code create} call is what carries the continuation, so the return address is durable before any
+ * dispatch, and there is no longer a Nessy-owned outbox delete to compose alongside it.
  */
 @FunctionalInterface
 public interface DeferredToolCallPolicy {
 
-  ToolExecution onDeferred(
-      ToolCall call,
-      CallAddress address,
-      ToolInvocationId invocation,
-      RetrySemantics retrySemantics,
-      Optional<Duration> timeout,
-      Optional<Substrate.Op> alsoCommit);
+  ToolExecution onDeferred(ToolCall call, CallAddress address, Optional<Duration> timeout);
 
   /**
    * Ownership-split absorption (durable-deliveries spec §5a, §6): the id of whichever computation —

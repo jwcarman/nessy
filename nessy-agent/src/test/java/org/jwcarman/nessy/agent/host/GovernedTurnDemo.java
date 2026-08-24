@@ -151,7 +151,7 @@ class GovernedTurnDemo {
         new SubstrateComputations(
             substrate,
             TestMappers.plainlyPinned(),
-            Kinds.computation(AgentType.of("ops")),
+            Kinds.tool(AgentType.of("ops")),
             Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
@@ -230,7 +230,7 @@ class GovernedTurnDemo {
         new SubstrateComputations(
             substrate,
             TestMappers.plainlyPinned(),
-            Kinds.computation(AgentType.of("ops")),
+            Kinds.tool(AgentType.of("ops")),
             Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
@@ -288,7 +288,7 @@ class GovernedTurnDemo {
         new SubstrateComputations(
             substrate,
             TestMappers.plainlyPinned(),
-            Kinds.computation(AgentType.of("ops")),
+            Kinds.tool(AgentType.of("ops")),
             Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =

@@ -24,10 +24,15 @@ package org.jwcarman.nessy.agent;
  * here, never by hand, so the strings can never drift apart. Isolation across agent types is by
  * construction: two harnesses of different types over one substrate never share a kind.
  *
- * <p>{@link #approval(AgentType)} now names a Continuum {@code ContinuumClient} kind rather than a
- * {@code SubstrateComputations} one (continuum-adoption spec §3) — the string itself is unchanged,
- * only what it addresses. {@link #computation(AgentType)} still names the old Substrate-backed tool
- * kind, coexisting deliberately until that kind migrates too.
+ * <p>{@link #approval(AgentType)} and {@link #tool(AgentType)} both now name Continuum {@code
+ * ContinuumClient} kinds rather than {@code SubstrateComputations} ones (continuum-adoption spec
+ * §3) — {@link #tool(AgentType)} (formerly {@code computation(AgentType)}) is the rename: it stops
+ * naming Nessy's old Substrate-backed tool kind and starts naming the {@code
+ * ContinuumClient<ToolResult, Routing>} kind. {@link DeliveryWorker}'s own now-unreachable
+ * Substrate-scan machinery (the outbox drain and the reaper, spec §6) still derives its scan kind
+ * through this same method — a harmless string coincidence across two unrelated storage stacks
+ * (Continuum's own repository never shares a namespace with a {@link
+ * org.jwcarman.nessy.spi.substrate.Substrate} document kind), not a collision.
  *
  * <p>Public: {@code HarnessConfig} and {@code Nessy} are the callers outside this package, deriving
  * the same kinds from the same {@link AgentType} when they build a harness's backends — not
@@ -36,15 +41,23 @@ package org.jwcarman.nessy.agent;
  */
 public final class Kinds {
 
-  private static final String COMPUTATION_PREFIX = "computation/";
+  private static final String TOOL_PREFIX = "tool/";
   private static final String APPROVAL_PREFIX = "approval/";
   private static final String OUTBOX_PREFIX = "outbox/";
   private static final String DISPATCH_INDEX_PREFIX = "dispatch/";
 
   private Kinds() {}
 
-  public static String computation(AgentType type) {
-    return COMPUTATION_PREFIX + type.name();
+  /**
+   * The tool kind's own name (continuum-adoption spec §3): {@code tool/<agentType>}. Renamed from
+   * {@code computation(AgentType)} — the tool kind now lives on a {@code
+   * ContinuumClient<ToolResult, Routing>}, not a {@code SubstrateComputations}.
+   *
+   * @param type the agent type
+   * @return the tool kind
+   */
+  public static String tool(AgentType type) {
+    return TOOL_PREFIX + type.name();
   }
 
   public static String approval(AgentType type) {
