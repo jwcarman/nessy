@@ -27,8 +27,9 @@ immediately; the reply is narrated, not returned — see
 The harness is the thing your application maintains a reference to, for as
 long as it runs. It is not `AutoCloseable`, and no example in this guide
 opens one in a `try`-with-resources. Its life-support — the delivery
-worker, the approval and completion desks, the reaper sweep — runs on
-daemon threads and lives exactly as long as the process does.
+worker's deliver/expire/purge pumps, for both the approval and tool
+kinds — runs on a small shared pool of daemon threads and lives exactly as
+long as the process does.
 
 One undecorated lifecycle method exists, `shutdown()`, and it is
 infrastructure-only:
@@ -72,21 +73,25 @@ The builder surface, piece by piece:
   [Storage](../concepts/storage.md)): every scope's state, memory, and
   backlog live as documents in this substrate; default a fresh
   `InMemorySubstrate`, durable only for the process's lifetime. Supply a
-  durable `Substrate` — a JDBC or DynamoDB adapter — to persist every
-  scope beyond the process. There is no per-id cache: `bind(id)` stamps a
-  fresh handle on every call, and the substrate document each recipe reads
-  is what makes a scope's history survive from one binding to the next.
+  durable `Substrate` to persist those beyond the process — but that alone
+  does not make approvals or deferred tool calls durable; see the next
+  bullet. There is no per-id cache: `bind(id)` stamps a fresh handle on
+  every call, and the substrate document each recipe reads is what makes a
+  scope's history survive from one binding to the next.
+- **Approvals and deferred tool calls** are not configured through
+  `HarnessConfig` at all — `.finish()` mints a fresh, in-memory Continuum
+  computation store for the harness, with no override seam today. That
+  store's durability must match `.substrate(...)`'s: both in memory (the
+  only coherent wiring today, since `InMemorySubstrate` is the only
+  `Substrate` Nessy ships) or both durable. See
+  [Durable Computation](../concepts/durable-computation.md) for the rule
+  and what mismatching them does.
 - **`.memoryFactory(Function<String, Memory>)`** — overrides the default
   `id -> new SubstrateMemory(substrate, id, mapper)` recipe with a
   caller-supplied `Memory`. **Any override MUST return a view over shared
   state, never freshly-created state** — the same discipline
   `SubstrateMemory` gets for free by reading and writing through the
   shared substrate.
-- **`.backend(SubstrateComputations)`** — the shared computation store
-  behind both desks; default a fresh `SubstrateComputations` over this
-  config's `.substrate(...)`. There is no adapter seam above it — override
-  only to share one instance across configs, or to pair it with a
-  different `Substrate`/`ObjectMapper`.
 - **`.objectMapper(ObjectMapper)`** — the one mapper the harness binds
   JSON with; default a fresh `ObjectMapper`. Nessy pins a copy (lower-camel
   naming, tolerant reads, no default typing — see
@@ -107,12 +112,24 @@ The builder surface, piece by piece:
 
 ## One harness per agent type per substrate
 
-Two harnesses that share both the same `.type(...)` and the same
-`.substrate(...)` would double-drain each other's deliveries: each
-harness's worker and reaper sweep every record carrying that type,
-regardless of which harness instance produced it. Give two harnesses over
-one substrate distinct types, or give them distinct substrates. This is a
-contract the caller keeps, not something the builder can check for you.
+Each `HarnessConfig.finish()` mints its own, private, in-memory Continuum
+computation store — there is no seam yet for two harnesses to share one.
+So two harnesses over the same `.substrate(...)` do **not** currently
+double-drain each other's approvals or deferred tool calls; each harness's
+computations are invisible to the other. That is its own gap, not a
+safety net: it means computation state cannot survive a "restart" modeled
+as a second harness over the same substrate, and it stays true even once a
+durable `Substrate` exists, until a caller-supplied Continuum seam ships.
+
+What *is* still shared is the `dispatch/<agentType>` index — plain
+`Substrate` state, keyed only by `(agentType, agentId, responseId,
+callId)`. Two harnesses sharing both `.type(...)` and `.substrate(...)`
+would write into the very same index while each backed by a *different*,
+private Continuum store — an entry one harness records can point at a
+computation the other harness's client has never heard of. Give two
+harnesses over one substrate distinct types, or give them distinct
+substrates. This is a contract the caller keeps, not something the builder
+can check for you.
 
 ## `bind` and `tell`
 
@@ -274,20 +291,34 @@ answers `complete(id, result)`/`fail(id, reason)` for a durable tool's own
 eventual result. Both are the harness's own desks — reachable for as long
 as the harness is kept, from any thread, any time.
 
-Nothing here holds a thread open waiting. Whether a park survives a restart
-of the process that opened it depends entirely on the `Substrate` behind
-`.substrate(...)` — `InMemorySubstrate` does not, a durable implementation
-does.
+Nothing here holds a thread open waiting. Whether a park survives a
+restart depends on both stores behind the harness, not just
+`.substrate(...)` — see
+[Durable Computation](../concepts/durable-computation.md) for the rule.
+Today, with `InMemorySubstrate` and Continuum's in-memory repository both
+the only options Nessy wires, a park never survives a restart, full stop —
+and a *second* harness instance over the same `.substrate(...)`, even a
+future durable one, still can't see the first harness's pending
+approvals or tool computations either, because each harness's Continuum
+store is private (see "One harness per agent type per substrate" above).
 
-!!! note "Delivery is per-harness, not per-cluster, until the outbox gets a lease"
-    Within one harness, the delivery worker's own claim gives one winner per
-    delivery. Across processes sharing the same substrate and agent type,
-    the same delivery can be drained more than once until an outbox lease
-    lands with the first durable substrate adapter — parked, not built. The
-    durable record stays single-winner regardless (that's the completion's
-    own atomic transfer); only a tool's external side effect can run more
-    than once in the meantime, which is why `RetrySemantics` exists at all —
-    see [Durable Computation](../concepts/durable-computation.md#honest-limits).
+!!! note "Delivery is per-harness, not per-cluster"
+    Within one harness, Continuum's own lease gives one winner per
+    delivery — claimed, processed, then acknowledged or released back for
+    another pump to pick up. That lease mechanism is Continuum's, already
+    shipped; it replaces an older, unbuilt "outbox lease" idea from before
+    this migration.
+
+    A slower hazard remains even within a single process: the approval
+    kind's consumer runs a granted `Awaited.Ready` tool inline, holding
+    the lease for as long as that tool takes. A tool slower than the
+    lease gets reclaimed and **run a second time** while the first run is
+    still in flight. Retryable redispatch is not implemented in Nessy
+    today — an overdue *durable* computation is expired once and folded as
+    a failure, never resubmitted — so a tool that might run long under an
+    approval-gated grant should still be idempotent, or should defer
+    rather than answer `Awaited.Ready`. See
+    [Durable Computation](../concepts/durable-computation.md#honest-limits).
 
 ## The governed turn: intent, risk, and threshold together
 
