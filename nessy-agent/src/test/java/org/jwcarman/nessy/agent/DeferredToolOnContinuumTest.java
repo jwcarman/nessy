@@ -226,9 +226,25 @@ class DeferredToolOnContinuumTest {
           false,
           StalenessPolicy.never());
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
+
+  /**
+   * A {@link PumpedExecutor}, never pumped in this file: every {@code completions.complete}/{@code
+   * approvals.approve} call below is immediately followed by an explicit, synchronous {@link
+   * #drainTools()}/{@link #drainApprovals()} — {@link DeliveryWorker#nudge()}'s own submitted drain
+   * would just be redundant, so it is left queued and unpumped rather than raced against it.
+   */
+  private final PumpedExecutor nudgePump = new PumpedExecutor();
+
   private final DeliveryWorker<String> worker =
       new DeliveryWorker<>(
-          substrate, mapper, harness, (type, id) -> agent, approvalClient, index, toolClient);
+          substrate,
+          mapper,
+          harness,
+          (type, id) -> agent,
+          nudgePump,
+          approvalClient,
+          index,
+          toolClient);
   private final CompletionDesk completions = new CompletionDesk(toolClient, worker::nudge);
   private final ApprovalDesk approvals = new ApprovalDesk(approvalClient, worker::nudge);
 
@@ -420,7 +436,8 @@ class DeferredToolOnContinuumTest {
    * {@link TestToolClients#toolResultCodec} every other test in this file uses.
    */
   @Test
-  void aDeferredToolOnARealHarnessParksAndResumesThroughTheHarnessOwnCompletionsDoor() {
+  void aDeferredToolOnARealHarnessParksAndResumesThroughTheHarnessOwnCompletionsDoor()
+      throws InterruptedException {
     var e2eSubstrate = new InMemorySubstrate();
     var e2eMapper = TestMappers.plainlyPinned();
     var call = new ToolCall("c1", "central_op", JsonNodeFactory.instance.objectNode());
@@ -459,7 +476,16 @@ class DeferredToolOnContinuumTest {
       // "every instance is garbage; any node may answer": complete purely through the harness's
       // own public door, exactly as a genuinely out-of-band responder would.
       e2eHarness.completions().complete(computation, ToolResult.ok("central op done"));
-      pump.pumpUntilQuiet();
+      // completions().complete nudges asynchronously now (continuum-adoption spec §7): the fold
+      // runs on the harness's own ComputationScheduler thread, which dispatches the follow-up
+      // model call onto `pump` from that same background thread — so this awaits the turn's own
+      // resumption (Idle) rather than assuming a single pumpUntilQuiet() call already caught it.
+      long deadline = System.currentTimeMillis() + 5000;
+      while (!(scopeState.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < deadline) {
+        pump.pumpUntilQuiet();
+        Thread.sleep(20);
+      }
 
       // the property DurableParkDemo pinned and cases 3/7 above do not: the turn actually RESUMED,
       // not merely that a ToolResultBlock landed in memory — the follow-up model call ran and the

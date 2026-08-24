@@ -73,6 +73,7 @@ public final class Harness<O> {
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
+  private final ComputationScheduler scheduler;
 
   private Harness(
       AgentType type,
@@ -91,7 +92,8 @@ public final class Harness<O> {
       ContinuumClient<Decision, Routing> approvalClient,
       DispatchIndex dispatchIndex,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
+      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters,
+      ComputationScheduler scheduler) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.agentObserverFactory =
@@ -115,9 +117,17 @@ public final class Harness<O> {
     Objects.requireNonNull(approvalClient, "approvalClient must not be null");
     Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null");
     Objects.requireNonNull(toolClient, "toolClient must not be null");
+    this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
     this.worker =
         new DeliveryWorker<>(
-            substrate, mapper, this, this::resolve, approvalClient, dispatchIndex, toolClient);
+            substrate,
+            mapper,
+            this,
+            this::resolve,
+            scheduler,
+            approvalClient,
+            dispatchIndex,
+            toolClient);
     this.approvals = new ApprovalDesk(approvalClient, worker::nudge);
     this.completions = new CompletionDesk(toolClient, worker::nudge);
   }
@@ -151,6 +161,10 @@ public final class Harness<O> {
       DispatchIndex dispatchIndex,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
+    // Constructed here, not shared across separate Harness.of(...) calls (continuum-adoption spec
+    // §7 leaves that wider sharing to a future task): one small pool per harness, replacing the
+    // one-heartbeat-thread-per-harness this superseded.
+    ComputationScheduler scheduler = new ComputationScheduler();
     Harness<O> harness =
         new Harness<>(
             type,
@@ -169,13 +183,14 @@ public final class Harness<O> {
             approvalClient,
             dispatchIndex,
             toolClient,
-            approvalWaiters);
-    // Started here, after the constructor returns, not inside it: the heartbeat thread reads
-    // `harness` (via DeliveryWorker's own field) the instant it runs, and starting a thread from
-    // inside a constructor risks handing that thread a `this` reference before the object is fully
-    // and safely published to other threads (no-`this`-escape). Starting after `new Harness<>(...)`
-    // returns guarantees safe publication.
-    harness.worker.start();
+            approvalWaiters,
+            scheduler);
+    // Registered here, after the constructor returns, not inside it: a scheduled pump reads
+    // `harness.worker` the instant it first fires, and registering from inside a constructor risks
+    // handing a background thread a `this` reference before the object is fully and safely
+    // published to other threads (no-`this`-escape). Registering after `new Harness<>(...)` returns
+    // guarantees safe publication.
+    scheduler.register(harness.worker);
     return harness;
   }
 
@@ -379,16 +394,17 @@ public final class Harness<O> {
   }
 
   /**
-   * Infrastructure-only (harness-first spec §4): quiesces this harness's delivery worker heartbeat.
-   * The harness is kept, never closed, by application code — this door exists for a container's
-   * destroy callback or a test's teardown, never application hygiene. Deliberately not {@link
-   * AutoCloseable}: nothing reaches for this by accident through try-with-resources.
+   * Infrastructure-only (harness-first spec §4): shuts down this harness's shared {@link
+   * ComputationScheduler} (continuum-adoption spec §7). The harness is kept, never closed, by
+   * application code — this door exists for a container's destroy callback or a test's teardown,
+   * never application hygiene. Deliberately not {@link AutoCloseable}: nothing reaches for this by
+   * accident through try-with-resources.
    *
-   * <p>Stops the heartbeat only — it does not wait for it. Any model call or tool execution already
-   * in flight on the model/tool executors keeps running to completion (or failure) on its own
-   * thread; this method neither awaits nor cancels it.
+   * <p>Stops the scheduled pumps only — it does not wait for them. Any model call or tool execution
+   * already in flight on the model/tool executors keeps running to completion (or failure) on its
+   * own thread; this method neither awaits nor cancels it.
    */
   public void shutdown() {
-    worker.close();
+    scheduler.close();
   }
 }

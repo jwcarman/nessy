@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -137,7 +136,7 @@ class DeliveryWorkerTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    return new DeliveryWorker<>(store, mapper, harness, resolver, Duration.ofHours(1));
+    return new DeliveryWorker<>(store, mapper, harness, resolver);
   }
 
   private static void writeDelivery(
@@ -248,57 +247,6 @@ class DeliveryWorkerTest {
       assertThat(store.keys(Kinds.outbox(TYPE), 10))
           .containsExactly("bad"); // left in place — never silently dropped
     }
-
-    @Test
-    void theHeartbeatSurvivesAnUndecodableDeliveryAndLaterDeliversAGoodOne() throws Exception {
-      var mapper = TestMappers.plainlyPinned();
-      var store = new InMemorySubstrate();
-      var stateCodec = new StateCodec(mapper);
-      byte[] statePayload = stateCodec.toJson(awaitingOneCall()).getBytes(StandardCharsets.UTF_8);
-      store.write("state", ID.value(), statePayload, 0);
-      store.write(Kinds.outbox(TYPE), "bad", "not json at all".getBytes(StandardCharsets.UTF_8), 0);
-
-      var memory = new SubstrateMemory(store, ID.value(), mapper);
-      var stateStore = new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper);
-      Harness<String> harness =
-          TestAgents.harness(
-              TYPE,
-              memory,
-              stateStore,
-              new NoopBacklog(),
-              text -> List.of(new TextBlock(text)),
-              new NoopModelCallExecutor(),
-              new NoopToolCallExecutor(),
-              AgentObserver.noop(),
-              false,
-              StalenessPolicy.never());
-      var worker =
-          new DeliveryWorker<String>(
-              store, mapper, harness, (type, id) -> null, Duration.ofMillis(20));
-      try {
-        worker.start();
-        Thread.sleep(100); // a few heartbeat ticks over the undecodable delivery, unharmed
-
-        writeDelivery(
-            store,
-            mapper,
-            "good",
-            new Outcome.Success(
-                new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("restarted"))));
-
-        List<Substrate.Entry> journal = List.of();
-        long deadline = System.currentTimeMillis() + 3000;
-        while (journal.isEmpty() && System.currentTimeMillis() < deadline) {
-          Thread.sleep(20);
-          journal = store.entries("memory", ID.value(), 1);
-        }
-
-        assertThat(journal).hasSize(2); // the heartbeat picked it up on its own, no nudge() called
-        assertThat(store.keys(Kinds.outbox(TYPE), 10)).containsExactly("bad");
-      } finally {
-        worker.close();
-      }
-    }
   }
 
   @Nested
@@ -392,8 +340,7 @@ class DeliveryWorkerTest {
               AgentObserver.noop(),
               false,
               StalenessPolicy.never());
-      var worker =
-          new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null, Duration.ofHours(1));
+      var worker = new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null);
 
       writeDelivery(
           store,
@@ -449,8 +396,7 @@ class DeliveryWorkerTest {
               AgentObserver.noop(),
               false,
               StalenessPolicy.never());
-      var worker =
-          new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null, Duration.ofHours(1));
+      var worker = new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null);
 
       worker.nudge(); // the throwing arm — must not throw out of nudge() itself
 

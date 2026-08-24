@@ -223,17 +223,19 @@ class ConsoleTest {
   class Lifecycle {
 
     /**
-     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2a): {@code
-     * Nessy.cli()}'s build runs its {@link org.jwcarman.nessy.agent.Harness} through the same
-     * compiler every door shares, so it starts a delivery heartbeat exactly like any other
-     * harness's — {@link Console#close()} must quiesce it, or the ephemeral-CLI charter (one turn,
-     * then gone) is violated by a stranded daemon thread. Enumerated by name prefix rather than a
-     * new public seam: {@code DeliveryWorker}'s heartbeat thread is always named {@code
-     * "nessy-delivery"}.
+     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2a); repointed at the
+     * shared {@code ComputationScheduler} pool (continuum-adoption spec §7, replacing the per-
+     * harness daemon heartbeat this test used to watch): {@code Nessy.cli()}'s build runs its
+     * {@link org.jwcarman.nessy.agent.Harness} through the same compiler every door shares, so it
+     * builds its own scheduler exactly like any other harness's — {@link Console#close()} must
+     * quiesce it, or the ephemeral-CLI charter (one turn, then gone) is violated by stranded daemon
+     * threads. Enumerated by name prefix rather than a new public seam: every thread {@code
+     * ComputationScheduler} prestarts is named {@code "nessy-pump-<n>"}. The pool size itself is
+     * tuning, not contract (spec §7's own "do not assert cadence" ruling extends to it), so this
+     * asserts "more than before" rather than an exact count.
      */
     @Test
-    void closing_the_console_leaves_no_live_delivery_heartbeat_thread()
-        throws InterruptedException {
+    void closing_the_console_leaves_no_live_delivery_pump_thread() throws InterruptedException {
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
       long before = liveDeliveryThreadCount();
 
@@ -249,11 +251,12 @@ class ConsoleTest {
       console.run();
       // the console observer streams TextDelta live (fix round 2, M9); contains, not equals.
       assertThat(captured.toString(StandardCharsets.UTF_8)).contains("hello back");
-      assertThat(liveDeliveryThreadCount()).isEqualTo(before + 1);
+      assertThat(liveDeliveryThreadCount()).isGreaterThan(before);
 
       console.close();
 
-      // Thread#interrupt() is asynchronous — give the heartbeat a moment to actually stop.
+      // ScheduledExecutorService#shutdown() lets running/queued tasks finish before its threads
+      // actually die — give the pool a moment to actually stop.
       long deadline = System.currentTimeMillis() + 2000;
       long after = liveDeliveryThreadCount();
       while (after > before && System.currentTimeMillis() < deadline) {
@@ -266,7 +269,7 @@ class ConsoleTest {
     private static long liveDeliveryThreadCount() {
       return Thread.getAllStackTraces().keySet().stream()
           .filter(Thread::isAlive)
-          .filter(t -> t.getName().equals("nessy-delivery"))
+          .filter(t -> t.getName().startsWith("nessy-pump-"))
           .count();
     }
 

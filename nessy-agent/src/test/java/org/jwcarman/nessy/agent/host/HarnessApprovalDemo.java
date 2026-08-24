@@ -88,7 +88,7 @@ class HarnessApprovalDemo {
       input -> "restart " + input.target();
 
   @Test
-  void anApprovalParksTheTurnAndTheDeskResumesIt() {
+  void anApprovalParksTheTurnAndTheDeskResumesIt() throws InterruptedException {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
@@ -134,7 +134,16 @@ class HarnessApprovalDemo {
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");
       harness.approvals().approve(computation);
-      pump.pumpUntilQuiet();
+      // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
+      // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
+      // `pump` from that background thread — so this awaits the turn's own resumption rather than
+      // assuming a single pumpUntilQuiet() call already caught it.
+      long deadline = System.currentTimeMillis() + 5000;
+      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < deadline) {
+        pump.pumpUntilQuiet();
+        Thread.sleep(20);
+      }
 
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker reads the grant's
       // continuation directly and dispatches the call past the gate via
@@ -149,7 +158,7 @@ class HarnessApprovalDemo {
   }
 
   @Test
-  void aDenialArrivesInBandAndTheModelReacts() {
+  void aDenialArrivesInBandAndTheModelReacts() throws InterruptedException {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
@@ -189,7 +198,14 @@ class HarnessApprovalDemo {
 
       System.out.println("== the desk says no; the denial arrives in-band ==");
       harness.approvals().deny(computation, "not during business hours");
-      pump.pumpUntilQuiet();
+      // deny() only submits the drain now (continuum-adoption spec §7) — see the sibling test's
+      // note on approve().
+      long deadline = System.currentTimeMillis() + 5000;
+      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < deadline) {
+        pump.pumpUntilQuiet();
+        Thread.sleep(20);
+      }
 
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());

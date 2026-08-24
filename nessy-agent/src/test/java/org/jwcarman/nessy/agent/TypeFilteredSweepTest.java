@@ -150,7 +150,7 @@ class TypeFilteredSweepTest {
             false,
             StalenessPolicy.never());
     AgentResolver resolver = (t, i) -> null;
-    return new DeliveryWorker<>(store, mapper, harness, resolver, Duration.ofHours(1));
+    return new DeliveryWorker<>(store, mapper, harness, resolver);
   }
 
   private static void writeDelivery(
@@ -268,7 +268,7 @@ class TypeFilteredSweepTest {
               false,
               StalenessPolicy.never());
       AgentResolver resolver = (t, i) -> null;
-      return new DeliveryWorker<>(store, mapper, harness, resolver, Duration.ofHours(1));
+      return new DeliveryWorker<>(store, mapper, harness, resolver);
     }
 
     private static void writeOverdueRetryableComputation(

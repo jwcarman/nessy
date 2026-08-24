@@ -27,11 +27,13 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.api.Backoff;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.Lease;
+import org.jwcarman.continuum.api.ResultTtl;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -65,18 +67,24 @@ import org.slf4j.LoggerFactory;
  * unconditional re-fire, retired: nothing routes through it in production anymore) would re-run
  * policy and re-ask the approver on every grant (spec §5a).
  *
- * <p>One heartbeat thread per harness, started by the harness and stopped on {@link #close()};
- * {@link #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is
- * the recovery net, never the happy-path latency (spec §5).
+ * <p>Pumping moved off a per-harness daemon heartbeat onto one shared {@link ComputationScheduler}
+ * (continuum-adoption spec §7): this worker implements {@link ComputationPump}, and {@link
+ * ComputationScheduler#register} schedules its six pumps — deliver, expire, purge, once each for
+ * the approval and tool kinds — with {@code scheduleWithFixedDelay}. {@link #nudge()} still exists
+ * for the happy path, but no longer runs the approval/tool drain on the caller's thread: it submits
+ * one pass of each to the shared scheduler instead, so a completing desk (e.g. {@code
+ * ApprovalDesk#approve}) returns immediately rather than blocking for as long as a granted inline
+ * tool takes to run. The legacy in-substrate outbox scan ({@link #drainOnce()}) is unaffected — it
+ * still runs synchronously inside {@link #nudge()}, since the reaper (below) depends on it to
+ * redeliver a completion it writes there directly.
  *
- * <p>The reaper is this worker's second sweep, on the same heartbeat (spec §6): scan {@code
- * computation} documents, decode each, and compare its deadline. Deadline-less computations are
- * skipped — they wait indefinitely, exactly like an approval. An overdue {@link
- * RetrySemantics#NON_RETRYABLE} computation is failed — {@code complete(id,
- * Failure("TIMEOUT_NON_RETRYABLE"))} — which rides the normal delivery pipeline into the fold, no
- * special timeout path. An overdue {@link RetrySemantics#RETRYABLE} computation gets its deadline
- * CAS-bumped (a lost CAS means another worker already won the bump, or already completed it — this
- * worker backs off) and is redispatched through {@link
+ * <p>The reaper is this worker's second sweep (spec §6): scan {@code computation} documents, decode
+ * each, and compare its deadline. Deadline-less computations are skipped — they wait indefinitely,
+ * exactly like an approval. An overdue {@link RetrySemantics#NON_RETRYABLE} computation is failed —
+ * {@code complete(id, Failure("TIMEOUT_NON_RETRYABLE"))} — which rides the normal delivery pipeline
+ * into the fold, no special timeout path. An overdue {@link RetrySemantics#RETRYABLE} computation
+ * gets its deadline CAS-bumped (a lost CAS means another worker already won the bump, or already
+ * completed it — this worker backs off) and is redispatched through {@link
  * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow}, the same {@code
  * ToolInvocationId} the computation already carries.
  *
@@ -91,7 +99,7 @@ import org.slf4j.LoggerFactory;
  * first-class citizen here: this worker no longer inspects what kind of {@code Memory} a scope is
  * wired with.
  */
-final class DeliveryWorker<O> implements AutoCloseable {
+final class DeliveryWorker<O> implements ComputationPump {
 
   private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
   private static final String STATE_KIND = "state";
@@ -109,8 +117,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * docs/concepts/durable-computation.md}'s Honest limits.
    */
   private static final int REAP_KEY_SCAN_LIMIT = 20_000;
-
-  private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(2);
 
   /**
    * The approval kind's lease and backoff (continuum-adoption spec §11.2, ruled): long enough for
@@ -144,7 +150,15 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final String computationKind;
   private final String outboxKind;
   private final ObjectMapper mapper;
-  private final Thread heartbeat;
+
+  /**
+   * Where {@link #nudge()} submits its post-completion approval/tool drain passes (continuum-
+   * adoption spec §7) — the production door ({@link Harness#of}) hands in the shared {@link
+   * ComputationScheduler} itself (it doubles as an {@link Executor}); a pre-migration test
+   * constructor that never wires Continuum hands in a direct {@code Runnable::run} executor, which
+   * is never actually reached since {@link #approvalClient}/{@link #toolClient} are null there too.
+   */
+  private final Executor nudgeExecutor;
 
   /** The {@code outbox/<agentType>} kind, typed over this worker's own {@link OutcomeCodec}. */
   private final DocumentStore<OutcomeCodec.DeliveryDocument> outbox;
@@ -179,64 +193,36 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * this process or another, racing the same delivery (two workers in one JVM over one substrate
    * are just as unprotected as two workers in two JVMs — this is a plain in-memory set, not a
    * cross-instance coordination mechanism); it exists specifically to serialize THIS worker's own
-   * {@link #nudge()} against its own heartbeat thread, the exact race a version-bump alone cannot
-   * close (a second racer reading after the first's bump sees an ordinary document at a newer
-   * version, indistinguishable from "untouched," and bumps it again just as validly).
+   * {@link #nudge()} racing itself — e.g. two concurrent completions of the same grant — the exact
+   * race a version-bump alone cannot close (a second racer reading after the first's bump sees an
+   * ordinary document at a newer version, indistinguishable from "untouched," and bumps it again
+   * just as validly).
    */
   private final Set<String> claiming = ConcurrentHashMap.newKeySet();
 
-  private volatile boolean closed;
-
+  /**
+   * The pre-migration test shape: no Continuum wiring, {@link #nudge()}'s approval/tool submissions
+   * are guarded no-ops (spec §3), and this worker is never {@link ComputationScheduler#register}ed
+   * — nothing ever calls the four expiry/purge {@link ComputationPump} methods on it.
+   */
   DeliveryWorker(Substrate store, ObjectMapper mapper, Harness<O> harness, AgentResolver resolver) {
-    this(store, mapper, harness, resolver, DEFAULT_POLL_INTERVAL);
-  }
-
-  DeliveryWorker(
-      Substrate store,
-      ObjectMapper mapper,
-      Harness<O> harness,
-      AgentResolver resolver,
-      Duration pollInterval) {
-    this(store, mapper, harness, resolver, pollInterval, null, null, null);
+    this(store, mapper, harness, resolver, Runnable::run, null, null, null);
   }
 
   /**
    * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval and tool
-   * kinds' Continuum clients and their shared dispatch index.
+   * kinds' Continuum clients, their shared dispatch index, and the {@link Executor} {@link
+   * #nudge()}'s post-completion drain passes submit to — {@link Harness#of} hands in the same
+   * shared {@link ComputationScheduler} it registers this worker's six pumps with.
+   *
+   * @param nudgeExecutor where {@link #nudge()} submits its approval/tool drain passes
    */
   DeliveryWorker(
       Substrate store,
       ObjectMapper mapper,
       Harness<O> harness,
       AgentResolver resolver,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
-      ContinuumClient<ToolResult, Routing> toolClient) {
-    this(
-        store,
-        mapper,
-        harness,
-        resolver,
-        DEFAULT_POLL_INTERVAL,
-        Objects.requireNonNull(approvalClient, "approvalClient must not be null"),
-        Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null"),
-        Objects.requireNonNull(toolClient, "toolClient must not be null"));
-  }
-
-  /**
-   * As the production constructor, but naming {@code pollInterval} rather than defaulting it — for
-   * a test that needs both a deterministic (non-firing) heartbeat and the Continuum wiring, e.g. to
-   * race explicit {@link #nudge()} calls without the heartbeat thread joining in. This is also the
-   * one master constructor every other constructor above ultimately delegates to; the continuum
-   * fields are left unchecked here (a legacy fixture deliberately passes {@code null} for them
-   * through the shorter constructors above).
-   */
-  DeliveryWorker(
-      Substrate store,
-      ObjectMapper mapper,
-      Harness<O> harness,
-      AgentResolver resolver,
-      Duration pollInterval,
+      Executor nudgeExecutor,
       ContinuumClient<Decision, Routing> approvalClient,
       DispatchIndex dispatchIndex,
       ContinuumClient<ToolResult, Routing> toolClient) {
@@ -253,12 +239,10 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
     this.pendingComputations = store.document(computationKind, pendingDocumentCodec(codec));
     this.states = store.document(STATE_KIND, stateCodec(stateCodec));
+    this.nudgeExecutor = Objects.requireNonNull(nudgeExecutor, "nudgeExecutor must not be null");
     this.approvalClient = approvalClient;
     this.dispatchIndex = dispatchIndex;
     this.toolClient = toolClient;
-    Objects.requireNonNull(pollInterval, "pollInterval must not be null");
-    this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
-    this.heartbeat.setDaemon(true);
   }
 
   /** Adapts {@link OutcomeCodec#toJson(OutcomeCodec.PendingDocument)}/{@code pendingDocument}. */
@@ -306,90 +290,59 @@ final class DeliveryWorker<O> implements AutoCloseable {
     };
   }
 
-  void start() {
-    heartbeat.start();
-  }
-
   /**
-   * An immediate, synchronous drain — the happy path after every completion. Never throws: a
-   * completing desk calls this after its own commit, and a nudge failure must not surface as if the
-   * desk's own {@code complete()} had failed.
+   * The happy path after every completion (continuum-adoption spec §7). Never throws: a completing
+   * desk calls this after its own commit, and a nudge failure must not surface as if the desk's own
+   * {@code complete()} had failed.
+   *
+   * <p>The legacy in-substrate outbox scan ({@link #drainOnce()}) still runs synchronously and
+   * guarded, right here — cheap, in-memory, and still how the reaper's own {@code
+   * computations.complete(...)} (spec §6) rides back into the fold. The approval and tool kinds'
+   * own Continuum drains, by contrast, are SUBMITTED to {@link #nudgeExecutor} rather than run on
+   * the caller's thread: an approval or completion arriving from a UI or HTTP handler should not
+   * block for as long as a granted inline tool takes to run.
    */
   void nudge() {
-    safeDrainOnce();
-    safeDrainApprovalsOnce();
-    safeDrainToolsOnce();
-  }
-
-  @Override
-  public void close() {
-    closed = true;
-    heartbeat.interrupt();
-  }
-
-  private void heartbeatLoop(Duration pollInterval) {
-    while (!closed) {
-      try {
-        Thread.sleep(pollInterval);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return;
-      }
-      if (!closed) {
-        safeDrainOnce();
-        safeDrainApprovalsOnce();
-        safeDrainToolsOnce();
-        safeReapOnce();
-      }
-    }
-  }
-
-  /** Guards the whole sweep: a scan-level failure must not kill the heartbeat thread. */
-  private void safeDrainOnce() {
     try {
       drainOnce();
     } catch (RuntimeException e) {
-      log.warn("a delivery sweep failed; will retry on the next heartbeat or nudge", e);
+      log.warn("a delivery sweep failed; will retry on the next nudge", e);
     }
+    submitApprovalsDrain();
+    submitToolsDrain();
   }
 
   /**
-   * Guards the approval kind's own sweep (continuum-adoption spec §7): a no-op when this worker was
-   * built by a pre-migration test constructor that never wired {@link #approvalClient}.
+   * Submits the approval kind's own drain pass (continuum-adoption spec §7): a no-op when this
+   * worker was built by a pre-migration test constructor that never wired {@link #approvalClient}.
    */
-  private void safeDrainApprovalsOnce() {
+  private void submitApprovalsDrain() {
     if (approvalClient == null) {
       return;
     }
-    try {
-      drainApprovals(APPROVAL_BATCH_SIZE);
-    } catch (RuntimeException e) {
-      log.warn("an approval delivery sweep failed; will retry on the next heartbeat or nudge", e);
-    }
+    nudgeExecutor.execute(guarded(() -> drainApprovals(APPROVAL_BATCH_SIZE)));
   }
 
   /**
-   * Guards the tool kind's own sweep (continuum-adoption spec §7): a no-op when this worker was
-   * built by a pre-migration test constructor that never wired {@link #toolClient}.
+   * Submits the tool kind's own drain pass (continuum-adoption spec §7): a no-op when this worker
+   * was built by a pre-migration test constructor that never wired {@link #toolClient}.
    */
-  private void safeDrainToolsOnce() {
+  private void submitToolsDrain() {
     if (toolClient == null) {
       return;
     }
-    try {
-      drainTools(TOOL_BATCH_SIZE);
-    } catch (RuntimeException e) {
-      log.warn("a tool delivery sweep failed; will retry on the next heartbeat or nudge", e);
-    }
+    nudgeExecutor.execute(guarded(() -> drainTools(TOOL_BATCH_SIZE)));
   }
 
-  /** Guards the whole reaper sweep: a scan-level failure must not kill the heartbeat thread. */
-  private void safeReapOnce() {
-    try {
-      reapOnce();
-    } catch (RuntimeException e) {
-      log.warn("a reaper sweep failed; will retry on the next heartbeat", e);
-    }
+  /** A thrown {@link RuntimeException} is logged, not propagated to {@link #nudgeExecutor}. */
+  private static Runnable guarded(Runnable task) {
+    return () -> {
+      try {
+        task.run();
+      } catch (RuntimeException e) {
+        log.warn("a nudge-submitted delivery sweep failed", e);
+      }
+    };
   }
 
   /**
@@ -439,7 +392,8 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * @param batchSize how many approval deliveries to claim in one pass
    * @return how many deliveries this pass processed
    */
-  int drainApprovals(BatchSize batchSize) {
+  @Override
+  public int drainApprovals(BatchSize batchSize) {
     return approvalClient.deliverResults(
         batchSize,
         APPROVAL_LEASE,
@@ -474,8 +428,62 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * @param batchSize how many tool deliveries to claim in one pass
    * @return how many deliveries this pass processed
    */
-  int drainTools(BatchSize batchSize) {
+  @Override
+  public int drainTools(BatchSize batchSize) {
     return toolClient.deliverResults(batchSize, TOOL_LEASE, TOOL_BACKOFF, this::foldOutcome);
+  }
+
+  /**
+   * Expires up to a batch of the approval kind's overdue computations (continuum-adoption spec §7):
+   * delegates straight to {@link ContinuumClient#failExpiredComputations(BatchSize)} — the approval
+   * kind is non-retryable, so an overdue wait always ends, never redispatches.
+   *
+   * @param batchSize the maximum expired approvals to process
+   * @return the number expired
+   */
+  @Override
+  public int expireApprovals(BatchSize batchSize) {
+    return approvalClient.failExpiredComputations(batchSize);
+  }
+
+  /**
+   * Expires up to a batch of the tool kind's overdue computations (continuum-adoption spec §7):
+   * delegates straight to {@link ContinuumClient#failExpiredComputations(BatchSize)}.
+   *
+   * @param batchSize the maximum expired tool computations to process
+   * @return the number expired
+   */
+  @Override
+  public int expireTools(BatchSize batchSize) {
+    return toolClient.failExpiredComputations(batchSize);
+  }
+
+  /**
+   * Purges up to a batch of the approval kind's memoized results older than {@code ttl}
+   * (continuum-adoption spec §7): delegates straight to {@link
+   * ContinuumClient#purgeExpiredResults(BatchSize, ResultTtl)}.
+   *
+   * @param batchSize the maximum result records to delete
+   * @param ttl how long results outlive completion
+   * @return the number purged
+   */
+  @Override
+  public int purgeApprovals(BatchSize batchSize, ResultTtl ttl) {
+    return approvalClient.purgeExpiredResults(batchSize, ttl);
+  }
+
+  /**
+   * Purges up to a batch of the tool kind's memoized results older than {@code ttl} (continuum-
+   * adoption spec §7): delegates straight to {@link ContinuumClient#purgeExpiredResults(BatchSize,
+   * ResultTtl)}.
+   *
+   * @param batchSize the maximum result records to delete
+   * @param ttl how long results outlive completion
+   * @return the number purged
+   */
+  @Override
+  public int purgeTools(BatchSize batchSize, ResultTtl ttl) {
+    return toolClient.purgeExpiredResults(batchSize, ttl);
   }
 
   /**

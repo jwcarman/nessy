@@ -183,13 +183,18 @@ class GrantRaceTest {
             false,
             StalenessPolicy.never());
     var agent = harness.bind(AgentId.of("test-scope"));
+    // A real, multi-threaded executor for nudge()'s own submitted drain passes — nudge() no
+    // longer runs the approval/tool drain on the caller's thread (continuum-adoption spec §7), so
+    // the two racing nudge() calls below now merely SUBMIT work here; this pool is what actually
+    // runs it, on its own thread(s), same as production's shared ComputationScheduler would.
+    ExecutorService nudgeExecutor = Executors.newFixedThreadPool(2);
     var worker =
         new DeliveryWorker<String>(
             substrate,
             mapper,
             harness,
             (t, i) -> agent,
-            java.time.Duration.ofHours(1),
+            nudgeExecutor,
             approvalClient,
             index,
             toolClient);
@@ -226,11 +231,24 @@ class GrantRaceTest {
       pool.shutdown();
       assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
 
-      pump.pumpUntilQuiet();
+      // nudge() only submits now (continuum-adoption spec §7): f1/f2 above confirm the two racing
+      // SUBMISSIONS returned, not that nudgeExecutor's own threads finished running them, or that
+      // the follow-up model call they dispatch onto `pump` has landed there yet — so this awaits
+      // the turn's own resumption (Idle) rather than assuming one pumpUntilQuiet() call already
+      // caught work a background thread had not enqueued yet.
+      int expected = i + 1;
+      long deadline = System.currentTimeMillis() + 10_000;
+      while (!(store.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < deadline) {
+        pump.pumpUntilQuiet();
+        Thread.sleep(20);
+      }
 
-      assertThat(tool.invocations).hasValue(i + 1); // exactly one more, never two more
+      assertThat(tool.invocations).hasValue(expected); // exactly one more, never two more
       assertThat(substrate.keys("outbox", 10)).isEmpty();
       assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
     }
+    nudgeExecutor.shutdown();
+    assertThat(nudgeExecutor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
   }
 }

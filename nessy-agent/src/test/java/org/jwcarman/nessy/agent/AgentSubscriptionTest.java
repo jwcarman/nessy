@@ -180,7 +180,8 @@ class AgentSubscriptionTest {
      */
     @Test
     void
-        a_subscriber_registered_before_a_park_sees_the_turn_that_resumes_after_the_worker_folds_the_grant() {
+        a_subscriber_registered_before_a_park_sees_the_turn_that_resumes_after_the_worker_folds_the_grant()
+            throws InterruptedException {
       var mapper = TestMappers.plainlyPinned();
       var substrate = new InMemorySubstrate();
       var type = AgentType.of("subscription-worker");
@@ -252,7 +253,18 @@ class AgentSubscriptionTest {
         assertThat(notifications).hasSize(1); // parked: the tool call is awaiting approval
 
         harness.approvals().approve(notifications.getFirst().id()); // grants and nudges the worker
-        pump.pumpUntilQuiet(); // drains the resumed model call the worker's fold dispatched
+        // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
+        // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
+        // `pump` from that background thread at some point AFTER the tool itself ran — polling on
+        // the tool's own invocation count would race that later enqueue, so this awaits the turn's
+        // own resumption (Idle) instead, the definitive final signal.
+        var scopeAState = storeFactory.apply("scope-a");
+        long deadline = System.currentTimeMillis() + 5000;
+        while (!(scopeAState.load().phase() instanceof Phase.Idle)
+            && System.currentTimeMillis() < deadline) {
+          pump.pumpUntilQuiet();
+          Thread.sleep(20);
+        }
 
         assertThat(tool.invocations).hasValue(1);
         List<TurnEvent> events = recorder.events();

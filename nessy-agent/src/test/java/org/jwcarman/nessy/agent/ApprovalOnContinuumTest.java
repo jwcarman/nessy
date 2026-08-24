@@ -182,9 +182,18 @@ class ApprovalOnContinuumTest {
           false,
           StalenessPolicy.never());
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
+
+  /**
+   * A {@link PumpedExecutor}, never pumped in this file: every {@code desk.approve}/{@code
+   * desk.deny} call below is immediately followed by an explicit, synchronous {@link
+   * #drainApprovals()} — {@link DeliveryWorker#nudge()}'s own submitted approval drain would just
+   * be redundant, so it is left queued and unpumped rather than raced against the explicit call.
+   */
+  private final PumpedExecutor nudgePump = new PumpedExecutor();
+
   private final DeliveryWorker<String> worker =
       new DeliveryWorker<>(
-          substrate, mapper, harness, (type, id) -> agent, client, index, toolClient);
+          substrate, mapper, harness, (type, id) -> agent, nudgePump, client, index, toolClient);
   private final ApprovalDesk desk = new ApprovalDesk(client, worker::nudge);
 
   private void drainApprovals() {

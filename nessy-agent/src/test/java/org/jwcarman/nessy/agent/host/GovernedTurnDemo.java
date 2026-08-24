@@ -138,7 +138,8 @@ class GovernedTurnDemo {
   }
 
   @Test
-  void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes() {
+  void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes()
+      throws InterruptedException {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
@@ -196,7 +197,16 @@ class GovernedTurnDemo {
 
       System.out.println("== the desk approves; the scope resumes ==");
       harness.approvals().approve(computation);
-      pump.pumpUntilQuiet();
+      // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
+      // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
+      // `pump` from that background thread — so this awaits the turn's own resumption rather than
+      // assuming a single pumpUntilQuiet() call already caught it.
+      long deadline = System.currentTimeMillis() + 5000;
+      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < deadline) {
+        pump.pumpUntilQuiet();
+        Thread.sleep(20);
+      }
 
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
       // call past the gate directly from the grant's own continuation — no re-derivation, no
