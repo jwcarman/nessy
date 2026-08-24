@@ -476,7 +476,8 @@ class RegistryToolCallExecutorTest {
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
     assertThat(request.id())
-        .isEqualTo(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1").approval());
+        .isEqualTo(
+            ComputationId.of(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1").indexKey()));
     assertThat(request.agentType()).isEqualTo("cli");
     assertThat(request.agentId()).isEqualTo("cli");
     assertThat(request.context().action()).contains("EchoInput[value=hi]");

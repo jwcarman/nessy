@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -247,7 +248,8 @@ class TypedIntentDemo {
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
       var computation =
-          new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c3").approval();
+          ComputationId.of(
+              new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c3").indexKey());
       assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
           .isPresent();
       assertThat(requests).hasSize(1);

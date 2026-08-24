@@ -41,6 +41,7 @@ import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -57,7 +58,7 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * computation's OWN deterministic key) and a worker draining that delivery, neither the approval
  * nor the tool computation exists for the call's address — presence-means-pending leaves no residue
  * there — but the delivery itself now sits at a key the gate CAN derive: {@code
- * address.approval()}, the same id the grant just completed. {@link
+ * ComputationId.of(address.indexKey())}, the same id the grant just completed. {@link
  * ComputationDeferredToolCallPolicy#pendingComputation} checks that key too now (via {@link
  * SubstrateComputations#deliveryPending}), so a staleness redrive landing squarely in the old
  * "pending window" absorbs instead of re-asking the approver — this test proves that shut window,
@@ -169,20 +170,25 @@ class GrantDeliveryPendingWindowTest {
     // exists in this harness-only fixture, so the delivery is deliberately left undrained: this IS
     // the pending window.
     var address = new CallAddress("test", "test-scope", "r1", "c1");
-    approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
-    assertThat(approvalBackend.find(address.approval())).isEmpty();
-    assertThat(executionBackend.find(address.execution())).isEmpty(); // no tool computation yet
-    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
+    approvalBackend.complete(
+        ComputationId.of(address.indexKey()), DurableDecisions.granted(mapper));
+    assertThat(approvalBackend.find(ComputationId.of(address.indexKey()))).isEmpty();
+    assertThat(executionBackend.find(ComputationId.of(address.indexKey())))
+        .isEmpty(); // no tool computation yet
+    assertThat(substrate.keys("outbox", 10))
+        .containsExactly(ComputationId.of(address.indexKey()).value());
 
     // Second redrive lands squarely inside the pending window: the gate's pendingComputation check
-    // now finds the undrained delivery at address.approval()'s own key and absorbs — no second ask,
+    // now finds the undrained delivery at ComputationId.of(address.indexKey())'s own key and
+    // absorbs — no second ask,
     // no second tool execution.
     agent.redispatch();
     pump.pumpUntilQuiet();
 
     assertThat(notifications).hasSize(1); // the window is shut: no re-ask
     assertThat(tool.invocations).hasValue(0); // the tool itself never ran a second time
-    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
+    assertThat(substrate.keys("outbox", 10))
+        .containsExactly(ComputationId.of(address.indexKey()).value());
   }
 
   @Test
@@ -192,7 +198,7 @@ class GrantDeliveryPendingWindowTest {
     var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
     var address = new CallAddress("test", "test-scope", "r1", "c1");
     approvalBackend.create(
-        address.approval(),
+        ComputationId.of(address.indexKey()),
         new ToolInvocationId("r1", "c1"),
         ScopeRouting.continuationFor(
             mapper,
@@ -203,7 +209,8 @@ class GrantDeliveryPendingWindowTest {
         Optional.empty());
 
     CompletionResult first =
-        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+        approvalBackend.complete(
+            ComputationId.of(address.indexKey()), DurableDecisions.granted(mapper));
     assertThat(substrate.keys("outbox", 10)).hasSize(1);
 
     // a second completion after the transfer: the computation is already gone (deleted by the
@@ -212,7 +219,8 @@ class GrantDeliveryPendingWindowTest {
     // test below for that): the computation being absent takes the ALREADY_DONE arm even though a
     // delivery is present — the converge branch is never entered.
     CompletionResult second =
-        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+        approvalBackend.complete(
+            ComputationId.of(address.indexKey()), DurableDecisions.granted(mapper));
 
     assertThat(first).isEqualTo(CompletionResult.TRANSFERRED);
     assertThat(second).isEqualTo(CompletionResult.ALREADY_DONE);
@@ -241,7 +249,10 @@ class GrantDeliveryPendingWindowTest {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     var continuation = ScopeRouting.continuationFor(mapper, "test", "test-scope", "r1", call);
     approvalBackend.create(
-        address.approval(), new ToolInvocationId("r1", "c1"), continuation, Optional.empty());
+        ComputationId.of(address.indexKey()),
+        new ToolInvocationId("r1", "c1"),
+        continuation,
+        Optional.empty());
 
     // the delivery already sits at the computation's own deterministic key — as if an earlier
     // completion attempt had already transferred it, and the computation was somehow recreated
@@ -252,13 +263,18 @@ class GrantDeliveryPendingWindowTest {
         codec.toJson(
             new OutcomeCodec.DeliveryDocument(continuation, DurableDecisions.granted(mapper)));
     substrate.write(
-        "outbox", address.approval().value(), deliveryPayload.getBytes(StandardCharsets.UTF_8), 0);
+        "outbox",
+        ComputationId.of(address.indexKey()).value(),
+        deliveryPayload.getBytes(StandardCharsets.UTF_8),
+        0);
 
     CompletionResult result =
-        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+        approvalBackend.complete(
+            ComputationId.of(address.indexKey()), DurableDecisions.granted(mapper));
 
     assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
-    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
-    assertThat(approvalBackend.find(address.approval())).isEmpty();
+    assertThat(substrate.keys("outbox", 10))
+        .containsExactly(ComputationId.of(address.indexKey()).value());
+    assertThat(approvalBackend.find(ComputationId.of(address.indexKey()))).isEmpty();
   }
 }

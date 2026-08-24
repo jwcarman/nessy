@@ -22,40 +22,26 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * The two derivations digest, opaquely (computation-identity spec §1, §2): deterministic over the
- * identity tuple, distinct between purposes, distinct between tuples, and carrying no colon-
- * delimited structure a caller could parse back apart.
+ * {@link CallAddress#indexKey()} digests, opaquely (computation-identity spec §1, §2):
+ * deterministic over the identity tuple, distinct between tuples, and carrying no colon-delimited
+ * structure a caller could parse back apart.
  */
 class CallAddressTest {
 
   private static final Pattern LOWERCASE_HEX = Pattern.compile("[0-9a-f]+");
 
   @Test
-  void theSameTupleDerivesTheSameApprovalIdEveryTime() {
+  void theSameTupleDerivesTheSameIndexKeyEveryTime() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.approval())
-        .isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").approval());
+    assertThat(address.indexKey())
+        .isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").indexKey());
   }
 
   @Test
-  void theSameTupleDerivesTheSameExecutionIdEveryTime() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.execution())
-        .isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").execution());
-  }
-
-  @Test
-  void approvalAndExecutionDifferForTheSameInvocation() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.approval()).isNotEqualTo(address.execution());
-  }
-
-  @Test
-  void distinctTuplesDeriveDistinctIds() {
+  void distinctTuplesDeriveDistinctIndexKeys() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
     var other = new CallAddress("ops", "prod-1", "r7", "c43");
-    assertThat(address.approval()).isNotEqualTo(other.approval());
-    assertThat(address.execution()).isNotEqualTo(other.execution());
+    assertThat(address.indexKey()).isNotEqualTo(other.indexKey());
   }
 
   /**
@@ -68,21 +54,19 @@ class CallAddressTest {
   void fieldsWithEmbeddedDelimitersDoNotCollide() {
     var first = new CallAddress("a:b", "c", "r", "x");
     var second = new CallAddress("a", "b:c", "r", "x");
-    assertThat(first.approval()).isNotEqualTo(second.approval());
+    assertThat(first.indexKey()).isNotEqualTo(second.indexKey());
   }
 
   @Test
-  void derivedIdsCarryNoColonDelimitedFormat() {
+  void theIndexKeyCarriesNoColonDelimitedFormat() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.approval().value()).doesNotContain(":");
-    assertThat(address.execution().value()).doesNotContain(":");
+    assertThat(address.indexKey()).doesNotContain(":");
   }
 
   @Test
-  void derivedIdsAreLowercaseHex() {
+  void theIndexKeyIsLowercaseHex() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.approval().value()).matches(LOWERCASE_HEX);
-    assertThat(address.execution().value()).matches(LOWERCASE_HEX);
+    assertThat(address.indexKey()).matches(LOWERCASE_HEX);
   }
 
   @Test

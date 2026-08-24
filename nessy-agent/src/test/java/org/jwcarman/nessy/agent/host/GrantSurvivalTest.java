@@ -104,8 +104,9 @@ class GrantSurvivalTest {
    * computation lands under.
    */
   private static ComputationId toolComputationFor(ApprovalRequest request, String responseId) {
-    return new CallAddress(request.agentType(), request.agentId(), responseId, request.call().id())
-        .execution();
+    return ComputationId.of(
+        new CallAddress(request.agentType(), request.agentId(), responseId, request.call().id())
+            .indexKey());
   }
 
   @Test

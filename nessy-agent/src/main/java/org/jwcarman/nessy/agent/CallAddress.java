@@ -20,30 +20,22 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
  * Where one tool call's durable questions live (spec §10.9): stamped by the executor — the one
- * party that provably holds the scope — before the tool runs. The two derivations below are the
- * single site the address formulas exist at; anyone holding the coordinates re-derives the same
- * ids, which is the submit-once discipline's foundation and lets external systems dedup on them.
+ * party that provably holds the scope — before the tool runs. {@link #indexKey()} below is the
+ * single site the address formula exists at; anyone holding the coordinates re-derives the same
+ * key, which is the submit-once discipline's foundation and lets external systems dedup on them.
  *
- * <p>Both derivations digest (computation-identity spec §2): SHA-256 over a length-prefixed UTF-8
- * encoding of {@code (purpose, agentType, agentId, responseId, callId)}, rendered lowercase hex —
- * opaque and one-way, carrying no extractable structure. The length prefix on every field closes
- * the concatenation-ambiguity hole a plain delimiter leaves open (e.g. {@code agentType="a:b"}
- * colliding with {@code agentType="a", agentId="b:..."}); {@code purpose} is the one differentiator
- * between the two derivations below, so an approval and an execution over the identical remaining
- * tuple never collide.
+ * <p>The derivation digests (computation-identity spec §2): SHA-256 over a length-prefixed UTF-8
+ * encoding of {@code (agentType, agentId, responseId, callId)}, rendered lowercase hex — opaque and
+ * one-way, carrying no extractable structure. The length prefix on every field closes the
+ * concatenation-ambiguity hole a plain delimiter leaves open (e.g. {@code agentType="a:b"}
+ * colliding with {@code agentType="a", agentId="b:..."}).
  *
- * <p>Lives in {@code nessy-agent}, public (computation-identity spec §4 addendum, the whittle
- * ruling): {@code nessy-api}'s {@code ToolContext} no longer carries this type (it exposes only the
- * opaque {@link ComputationId} it derives), and {@link
- * org.jwcarman.nessy.spi.approval.ApprovalRequest} never did — so nothing in {@code nessy-api} or
- * {@code nessy-spi} forces it there anymore. It stays public here because {@link
- * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} and {@link
- * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#onDeferred}/{@code pendingComputation} — both
- * in the cross-package {@code agent.spi} — carry it across the package line.
+ * <p>Purpose-free: with Continuum minting opaque computation ids, this key no longer derives a
+ * computation's identity — it only locates that call's entry in the {@link DispatchIndex}, which a
+ * call has exactly one of, whichever kind it is currently in flight under.
  *
  * @param agentType the recipe's name
  * @param agentId the scope
@@ -55,8 +47,6 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 public record CallAddress(String agentType, String agentId, String responseId, String callId) {
 
   private static final String DIGEST_ALGORITHM = "SHA-256";
-  private static final String PURPOSE_APPROVAL = "approval";
-  private static final String PURPOSE_EXECUTION = "execution";
 
   public CallAddress {
     requireText(agentType, "agentType");
@@ -65,24 +55,19 @@ public record CallAddress(String agentType, String agentId, String responseId, S
     requireText(callId, "callId");
   }
 
-  /** The address of "may it run?" — completed with a {@code Decision} by the approval desk. */
-  public ComputationId approval() {
-    return digest(PURPOSE_APPROVAL);
-  }
-
-  /** The address of "what did it return?" — completed with a {@code ToolResult}. */
-  public ComputationId execution() {
-    return digest(PURPOSE_EXECUTION);
-  }
-
-  private ComputationId digest(String purpose) {
+  /**
+   * This call's key in the dispatch index — a stable digest of the four coordinates. Purpose-free:
+   * one call has one entry, whichever kind it is currently in flight under.
+   *
+   * @return the index key
+   */
+  public String indexKey() {
     MessageDigest digest = newDigest();
-    updateLengthPrefixed(digest, purpose);
     updateLengthPrefixed(digest, agentType);
     updateLengthPrefixed(digest, agentId);
     updateLengthPrefixed(digest, responseId);
     updateLengthPrefixed(digest, callId);
-    return ComputationId.of(HexFormat.of().formatHex(digest.digest()));
+    return HexFormat.of().formatHex(digest.digest());
   }
 
   private static MessageDigest newDigest() {

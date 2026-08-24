@@ -24,12 +24,12 @@ import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * The tool-delivery fold moment, shared (remembrance spec §2): every non-ignored {@code
- * ToolFinished} remembers its own {@link Remembrance.ToolExchange}, keyed by the call's execution
- * {@code ComputationId} ({@link CallAddress#execution()}) — deterministic from {@code (agentType,
- * agentId, responseId, callId)}, so a redelivery re-remembers the same key and converges (SPI law
- * 2). When this is the call that completes the whole batch (the phase's {@link Transition} also
- * commits the deferred assistant turn alongside the tool-results message), the {@link
- * Remembrance.AssistantMessage} is remembered too, exactly once, keyed by the same response id.
+ * ToolFinished} remembers its own {@link Remembrance.ToolExchange}, keyed by the call's {@link
+ * CallAddress#indexKey()} — deterministic from {@code (agentType, agentId, responseId, callId)}, so
+ * a redelivery re-remembers the same key and converges (SPI law 2). When this is the call that
+ * completes the whole batch (the phase's {@link Transition} also commits the deferred assistant
+ * turn alongside the tool-results message), the {@link Remembrance.AssistantMessage} is remembered
+ * too, exactly once, keyed by the same response id.
  *
  * <p>Both {@link DefaultAgent} (the immediate, non-durable fold — most tool calls) and {@link
  * DeliveryWorker} (the durable, outbox-driven fold — deferred computations and approval grants)
@@ -58,8 +58,8 @@ final class ToolFoldRemembrance {
     }
     CallAddress address =
         new CallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
-    memory.remember(
-        new Remembrance.ToolExchange(address.execution().value(), call, toToolResult(outcome)));
+    // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+    memory.remember(new Remembrance.ToolExchange(address.indexKey(), call, toToolResult(outcome)));
     // AwaitingTools#handle commits [assistantTurn, toolResults] together, exactly once, on the
     // call that completes the whole batch — never fewer than both, never just one. Testing
     // non-empty and reading getFirst() (the assistantTurn) rather than pinning the exact size

@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -205,7 +206,8 @@ class DurableParkDemo {
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
     var parkedResponseId = ((Phase.AwaitingTools) store.load().phase()).responseId();
     var computation =
-        new CallAddress("approver", "demo", parkedResponseId.value(), "c1").execution();
+        ComputationId.of(
+            new CallAddress("approver", "demo", parkedResponseId.value(), "c1").indexKey());
     assertThat(backend.find(computation)).isPresent();
     // only the observation is committed; the assistant tool-use turn is held back
     assertThat(memory.recall().messages())

@@ -38,6 +38,7 @@ import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -144,7 +145,7 @@ class AbsorptionTest {
     // model, since the gate-level absorption only ever looks for the computation's presence.
     var c2Address = new CallAddress("test", "test-scope", "r1", "c2");
     executionBackend.create(
-        c2Address.execution(),
+        ComputationId.of(c2Address.indexKey()),
         new ToolInvocationId("r1", "c2"),
         new Continuation("SCOPE_RESUME", "{}"),
         Optional.empty());

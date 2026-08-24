@@ -86,15 +86,7 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
 
   @Override
   public Optional<ComputationId> pendingComputation(CallAddress address) {
-    ComputationId approval = address.approval();
-    if (approvalBackend.find(approval).isPresent() || approvalBackend.deliveryPending(approval)) {
-      return Optional.of(approval);
-    }
-    ComputationId execution = address.execution();
-    if (executionBackend.find(execution).isPresent()
-        || executionBackend.deliveryPending(execution)) {
-      return Optional.of(execution);
-    }
+    // Task 4 replaces this: the dispatch index answers this question once it is wired in.
     return Optional.empty();
   }
 
@@ -106,7 +98,8 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
       RetrySemantics retrySemantics,
       Optional<Duration> timeout,
       Optional<Substrate.Op> alsoCommit) {
-    ComputationId id = address.execution();
+    // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+    ComputationId id = ComputationId.of(address.indexKey());
     Continuation continuation =
         ScopeRouting.continuationFor(
             mapper,

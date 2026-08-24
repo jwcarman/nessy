@@ -226,9 +226,14 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           run(grant.tool(), input, call, address, invocation, Optional.empty());
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
+          // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
           switch (approver.adjudicate(
               new ApprovalRequest(
-                  address.approval(), call, address.agentType(), address.agentId(), assembled))) {
+                  ComputationId.of(address.indexKey()),
+                  call,
+                  address.agentType(),
+                  address.agentId(),
+                  assembled))) {
             case Adjudication.Granted _ ->
                 run(grant.tool(), input, call, address, invocation, Optional.empty());
             case Adjudication.Refused(String reason) ->
@@ -258,7 +263,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       ToolInvocationId invocation,
       Optional<Substrate.Op> alsoCommit) {
     T typed = tool.inputType().cast(input);
-    ToolContext context = new ToolContext(call, event -> narrate(call, event), address.execution());
+    // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+    ToolContext context =
+        new ToolContext(call, event -> narrate(call, event), ComputationId.of(address.indexKey()));
     return switch (tool.execute(typed, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));

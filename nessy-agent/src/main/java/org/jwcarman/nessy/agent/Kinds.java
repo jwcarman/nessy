@@ -34,6 +34,7 @@ public final class Kinds {
   private static final String COMPUTATION_PREFIX = "computation/";
   private static final String APPROVAL_PREFIX = "approval/";
   private static final String OUTBOX_PREFIX = "outbox/";
+  private static final String DISPATCH_INDEX_PREFIX = "dispatch/";
 
   private Kinds() {}
 
@@ -47,5 +48,16 @@ public final class Kinds {
 
   public static String outbox(AgentType type) {
     return OUTBOX_PREFIX + type.name();
+  }
+
+  /**
+   * The dispatch index's kind for {@code type} (computation-identity spec §3): {@code
+   * dispatch/<agentType>}.
+   *
+   * @param type the agent type
+   * @return the dispatch index kind
+   */
+  public static String dispatchIndex(AgentType type) {
+    return DISPATCH_INDEX_PREFIX + type.name();
   }
 }

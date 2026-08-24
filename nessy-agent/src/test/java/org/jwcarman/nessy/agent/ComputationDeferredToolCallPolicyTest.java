@@ -44,7 +44,7 @@ class ComputationDeferredToolCallPolicyTest {
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
   private static final ToolInvocationId INVOCATION = new ToolInvocationId("r1", "c1");
-  private static final ComputationId COMPUTATION = ADDRESS.execution();
+  private static final ComputationId COMPUTATION = ComputationId.of(ADDRESS.indexKey());
 
   @Test
   void aFirstDeferralCreatesTheComputationAndSuspends() {
@@ -151,9 +151,12 @@ class ComputationDeferredToolCallPolicyTest {
     assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
 
     approvalBackend.create(
-        ADDRESS.approval(), INVOCATION, new Continuation("SCOPE_RESUME", "{}"), Optional.empty());
+        ComputationId.of(ADDRESS.indexKey()),
+        INVOCATION,
+        new Continuation("SCOPE_RESUME", "{}"),
+        Optional.empty());
 
-    assertThat(policy.pendingComputation(ADDRESS)).contains(ADDRESS.approval());
+    assertThat(policy.pendingComputation(ADDRESS)).contains(ComputationId.of(ADDRESS.indexKey()));
   }
 
   @Test
@@ -168,6 +171,6 @@ class ComputationDeferredToolCallPolicyTest {
         Optional.empty(),
         Optional.empty());
 
-    assertThat(policy.pendingComputation(ADDRESS)).contains(ADDRESS.execution());
+    assertThat(policy.pendingComputation(ADDRESS)).contains(ComputationId.of(ADDRESS.indexKey()));
   }
 }

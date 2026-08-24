@@ -46,6 +46,7 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -219,8 +220,12 @@ class TypeFilteredSweepTest {
 
       var alphaId = AgentId.of("scope-alpha");
       var betaId = AgentId.of("scope-beta");
-      var alphaKey = new CallAddress(ALPHA.name(), alphaId.value(), "response-1", "c1").execution();
-      var betaKey = new CallAddress(BETA.name(), betaId.value(), "response-1", "c1").execution();
+      var alphaKey =
+          ComputationId.of(
+              new CallAddress(ALPHA.name(), alphaId.value(), "response-1", "c1").indexKey());
+      var betaKey =
+          ComputationId.of(
+              new CallAddress(BETA.name(), betaId.value(), "response-1", "c1").indexKey());
 
       writeOverdueRetryableComputation(substrate, mapper, codec, ALPHA, alphaId, alphaKey.value());
       writeOverdueRetryableComputation(substrate, mapper, codec, BETA, betaId, betaKey.value());

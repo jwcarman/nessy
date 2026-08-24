@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.spi.approval.Adjudication;
@@ -84,7 +85,11 @@ class ComputationApproverTest {
     ToolCall call = new ToolCall(address.callId(), "some-tool", arguments);
     AuthzContext context = AuthzContext.of("test-agent", call);
     return new ApprovalRequest(
-        address.approval(), call, address.agentType(), address.agentId(), context);
+        ComputationId.of(address.indexKey()),
+        call,
+        address.agentType(),
+        address.agentId(),
+        context);
   }
 
   @Test
@@ -93,9 +98,10 @@ class ComputationApproverTest {
 
     Adjudication adjudication = approver.adjudicate(request);
 
-    assertThat(adjudication).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+    assertThat(adjudication)
+        .isEqualTo(new Adjudication.Suspended(ComputationId.of(ADDRESS.indexKey())));
     assertThat(notified).containsExactly(request);
-    assertThat(backend.find(ADDRESS.approval())).isPresent();
+    assertThat(backend.find(ComputationId.of(ADDRESS.indexKey()))).isPresent();
   }
 
   @Test
@@ -105,7 +111,7 @@ class ComputationApproverTest {
     approver.adjudicate(request);
     Adjudication second = approver.adjudicate(request);
 
-    assertThat(second).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+    assertThat(second).isEqualTo(new Adjudication.Suspended(ComputationId.of(ADDRESS.indexKey())));
     assertThat(notified).containsExactly(request);
   }
 
@@ -115,7 +121,7 @@ class ComputationApproverTest {
 
     approver.adjudicate(request);
 
-    PendingComputation pending = backend.find(ADDRESS.approval()).orElseThrow();
+    PendingComputation pending = backend.find(ComputationId.of(ADDRESS.indexKey())).orElseThrow();
     assertThat(pending.returnAddress().type()).isEqualTo("SCOPE_RESUME");
     ScopeRouting.Routing routing =
         ScopeRouting.decode(TestMappers.plainlyPinned(), pending.returnAddress());
@@ -131,7 +137,7 @@ class ComputationApproverTest {
 
     approver.adjudicate(request);
 
-    PendingComputation pending = backend.find(ADDRESS.approval()).orElseThrow();
+    PendingComputation pending = backend.find(ComputationId.of(ADDRESS.indexKey())).orElseThrow();
     assertThat(pending.invocation().responseId()).isEqualTo(ADDRESS.responseId());
   }
 }
