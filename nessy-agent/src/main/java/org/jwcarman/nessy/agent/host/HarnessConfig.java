@@ -137,11 +137,20 @@ public final class HarnessConfig<O> {
   /**
    * The recipe's name — the first coordinate of every durable address; default {@code "agent"}.
    *
-   * <p><b>One harness per agent type per substrate</b> (spec §3): two harnesses sharing both the
-   * same {@code type} and the same {@link #substrate(Substrate)} would double-drain each other's
-   * deliveries — each harness's worker and reaper sweep every record carrying that type, regardless
-   * of which harness instance produced it. Give two harnesses over one substrate distinct types, or
-   * give them distinct substrates.
+   * <p><b>Two harnesses sharing both the same {@code type} and the same {@link
+   * #substrate(Substrate)} do NOT share computation state</b> (continuum-adoption spec §11.1, the
+   * regression this migration introduced): {@link #finish()} mints a private {@code Continuum} per
+   * call, with no override seam, so each harness's approval and tool computations are invisible to
+   * every other harness — even one built with the identical {@code type} over the identical {@link
+   * Substrate}. Before this migration, when computations lived as {@code Substrate} documents,
+   * sharing both coordinates made two harnesses double-drain each other's deliveries; that hazard
+   * is gone, replaced by a subtler one: the {@code dispatch/<agentType>} index is still a plain
+   * {@code Substrate} document store, so a second harness sharing {@code type} and {@code
+   * substrate} CAN read dispatch-index entries naming computations its own private {@code
+   * Continuum} has never heard of — the gate's absorption logic (§5) sees a live-looking entry it
+   * can never resolve. Give two harnesses over one substrate distinct types, or give them distinct
+   * substrates, until a caller-supplied {@code Continuum} seam exists to let them genuinely share
+   * computation state again.
    */
   public HarnessConfig<O> type(String typeName) {
     this.typeName = Objects.requireNonNull(typeName, "typeName must not be null");
@@ -358,8 +367,9 @@ public final class HarnessConfig<O> {
     Codec<O> effectiveBacklogCodec =
         backlogCodec != null ? backlogCodec : effectiveSubstrate.codecs().create(observationType);
     // The harness is immortal, not closeable (spec §4): an owned executor here lives exactly as
-    // long as the process, same as the worker's daemon heartbeat — there is no lifecycle door to
-    // shut it down through, and none is needed.
+    // long as the process, same as the delivery worker's deliver/expire/purge pumps running on
+    // ComputationScheduler's own pool (spec §7) — there is no lifecycle door to shut it down
+    // through, and none is needed.
     Executor exec = executor != null ? executor : Executors.newVirtualThreadPerTaskExecutor();
     var agentType = AgentType.of(typeName);
     ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
