@@ -26,10 +26,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -184,12 +181,6 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -231,7 +222,6 @@ class TypedIntentDemo {
                         restartGrant(
                             intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {
@@ -273,12 +263,6 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -315,7 +299,6 @@ class TypedIntentDemo {
                             new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                         restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {
@@ -347,12 +330,6 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -382,7 +359,6 @@ class TypedIntentDemo {
                         restartGrant(
                             intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {

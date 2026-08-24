@@ -43,7 +43,6 @@ import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -104,7 +103,6 @@ public final class HarnessConfig<O> {
   private List<ToolGrant> grants = List.of();
   private Function<String, Memory> memoryFactory;
   private Substrate substrate;
-  private SubstrateComputations backend;
   private Consumer<ApprovalRequest> approvalNotifier = request -> {};
   private TurnObserver turnObserver = TurnObserver.noop();
   // null until the caller sets one — finish() defaults it to a TurnNarrationAdapter over
@@ -222,33 +220,6 @@ public final class HarnessConfig<O> {
    */
   public HarnessConfig<O> substrate(Substrate substrate) {
     this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
-    return this;
-  }
-
-  /**
-   * The shared EXECUTION-kind computation store {@link org.jwcarman.nessy.agent.CompletionDesk} and
-   * {@link org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy} ride ({@code
-   * computation/&lt;agentType&gt;}, computation-identity spec §3); default a fresh {@link
-   * SubstrateComputations} over this builder's {@link #substrate(Substrate)} and {@link #type
-   * (String)}. There is no adapter seam above this — the {@link Substrate} it rides IS the seam a
-   * host swaps (durable-dissolves spec §2); override this setter only to share one {@link
-   * SubstrateComputations} instance across builders (e.g. simulating a runtime restart over the
-   * same substrate and type — kind-scoping makes two independently constructed instances
-   * functionally identical as long as they share both), or to hand it a different {@link
-   * Substrate}/{@link ObjectMapper} pairing than this config's own. The APPROVAL kind ({@code
-   * approval/&lt;agentType&gt;}) {@link org.jwcarman.nessy.agent.ApprovalDesk} and {@link
-   * org.jwcarman.nessy.agent.ComputationApprover} ride is no longer a {@link SubstrateComputations}
-   * at all (continuum-adoption spec §3): it is a Continuum {@code ContinuumClient}, built fresh in
-   * {@link #finish()} over an in-memory {@code Continuum} — there is no override seam for it yet.
-   *
-   * <p><b>Integration contract:</b> the {@code DeliveryWorker} reads completions from this
-   * builder's {@link #substrate(Substrate)} — specifically, {@code outbox/&lt;agentType&gt;}
-   * delivery documents ({@code {destination, outcome}}, spec §4) — never from the backend directly.
-   * Whatever {@link Substrate} this backend is constructed over MUST be the same one this builder
-   * uses, or its completions never reach a parked scope.
-   */
-  public HarnessConfig<O> backend(SubstrateComputations backend) {
-    this.backend = Objects.requireNonNull(backend, "backend must not be null");
     return this;
   }
 

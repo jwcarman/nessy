@@ -60,9 +60,15 @@ public final class TestToolClients {
   /**
    * {@link ToolResult} carries no Jackson polymorphism of its own (a plain record), so the pinned
    * mapper binds it directly — no hand-rolled discriminated shape needed the way {@code
-   * DecisionCodec} exists for the approval kind's {@code Decision}.
+   * DecisionCodec} exists for the approval kind's {@code Decision}. Public so a test that builds
+   * its own {@code ContinuumClient<ToolResult, Routing>} directly (e.g. one that needs a
+   * controllable clock {@link #client} doesn't expose) can share this codec rather than
+   * re-declaring it.
+   *
+   * @param mapper the pinned mapper
+   * @return the tool result codec
    */
-  private static Codec<ToolResult> toolResultCodec(ObjectMapper mapper) {
+  public static Codec<ToolResult> toolResultCodec(ObjectMapper mapper) {
     return new Codec<>() {
       @Override
       public byte[] encode(ToolResult value) {

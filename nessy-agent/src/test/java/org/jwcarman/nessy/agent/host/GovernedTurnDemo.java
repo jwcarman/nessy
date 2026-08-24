@@ -23,10 +23,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -147,12 +144,6 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
@@ -174,7 +165,6 @@ class GovernedTurnDemo {
                         ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                         restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {
@@ -226,12 +216,6 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
@@ -254,7 +238,6 @@ class GovernedTurnDemo {
                         restartGrant(
                             intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {
@@ -284,12 +267,6 @@ class GovernedTurnDemo {
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
@@ -314,7 +291,6 @@ class GovernedTurnDemo {
                                 new IntentEnricher(intentStore),
                                 Enrichers.principal(() -> "jcarman"))))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {

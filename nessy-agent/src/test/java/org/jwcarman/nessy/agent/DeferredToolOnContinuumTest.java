@@ -17,10 +17,8 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,25 +29,30 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.host.Nessy;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestSettings;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -63,6 +66,7 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
@@ -119,6 +123,39 @@ class DeferredToolOnContinuumTest {
     }
   }
 
+  /**
+   * Always defers, declares itself durable, and never runs synchronously — the fixture for {@link
+   * #aDeferredToolOnARealHarnessParksAndResumesThroughTheHarnessOwnCompletionsDoor()}, which drives
+   * {@link org.jwcarman.nessy.agent.host.Nessy#harness} end to end rather than this file's
+   * hand-wired {@link #harness} field.
+   */
+  private static final class EndToEndDeferringTool implements Tool<NoInput> {
+    @Override
+    public String name() {
+      return "central_op";
+    }
+
+    @Override
+    public String description() {
+      return "defers durably; answered out of band";
+    }
+
+    @Override
+    public Class<NoInput> inputType() {
+      return NoInput.class;
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return CompletionPolicy.DURABLE;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      return Awaited.deferred();
+    }
+  }
+
   private static final class NoopBacklog implements Backlog<String> {
     @Override
     public void add(String observation) {}
@@ -140,7 +177,7 @@ class DeferredToolOnContinuumTest {
           ToolResult.class,
           Routing.class,
           cfg ->
-              cfg.resultCodec(toolResultCodec(mapper))
+              cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
   private final ContinuumClient<Decision, Routing> approvalClient =
@@ -157,7 +194,7 @@ class DeferredToolOnContinuumTest {
   private final DeferringTool gatedTool = new DeferringTool("restart_gated");
   private final PumpedExecutor pump = new PumpedExecutor();
   private final RecordingTurnObserver turn = new RecordingTurnObserver();
-  private final VerbatimMemory memory = new VerbatimMemory();
+  private final RecordingMemory memory = new RecordingMemory();
   private final SubstrateAgentStateStore store =
       new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final List<ApprovalRequest> notifications = new ArrayList<>();
@@ -194,33 +231,6 @@ class DeferredToolOnContinuumTest {
           substrate, mapper, harness, (type, id) -> agent, approvalClient, index, toolClient);
   private final CompletionDesk completions = new CompletionDesk(toolClient, worker::nudge);
   private final ApprovalDesk approvals = new ApprovalDesk(approvalClient, worker::nudge);
-
-  /**
-   * {@link ToolResult} carries no Jackson polymorphism of its own (a plain record), so the pinned
-   * mapper binds it directly — no hand-rolled discriminated shape needed the way {@link
-   * DecisionCodec} exists for the approval kind's {@code Decision}.
-   */
-  private static Codec<ToolResult> toolResultCodec(ObjectMapper mapper) {
-    return new Codec<>() {
-      @Override
-      public byte[] encode(ToolResult value) {
-        try {
-          return mapper.writeValueAsBytes(value);
-        } catch (JsonProcessingException e) {
-          throw new IllegalArgumentException("undecodable tool result", e);
-        }
-      }
-
-      @Override
-      public ToolResult decode(byte[] bytes) {
-        try {
-          return mapper.readValue(new String(bytes, StandardCharsets.UTF_8), ToolResult.class);
-        } catch (JsonProcessingException e) {
-          throw new IllegalArgumentException("undecodable tool result", e);
-        }
-      }
-    };
-  }
 
   private ToolCall deferringCall(String callId) {
     return new ToolCall(callId, "restart", JsonNodeFactory.instance.objectNode());
@@ -313,8 +323,19 @@ class DeferredToolOnContinuumTest {
    * the client is not reachable here — once {@link #drainTools()} acknowledges Continuum's
    * delivery, Continuum has nothing left queued to redeliver — so this drives {@link
    * DeliveryWorker#foldOutcome} a second time with the same outcome directly, the fallback the
-   * brief names explicitly. Assert emptiness before the single-element assertion (S5841 sibling
-   * discipline).
+   * brief names explicitly.
+   *
+   * <p>{@code foldedResults()).hasSize(1)} alone proves nothing here: {@link
+   * org.jwcarman.nessy.agent.support.RecordingMemory}'s delegate ({@link
+   * org.jwcarman.nessy.agent.memory.VerbatimMemory}) is {@code putIfAbsent} on {@link
+   * org.jwcarman.nessy.spi.Remembrance#key()}, and {@link ToolFoldRemembrance} keys every fold on
+   * the deterministic {@code address.indexKey()} — so even a broken reducer that re-accepted the
+   * second {@code ToolFinished} would still collapse to one transcript entry via memory-layer
+   * key-idempotence, not reducer dedup. This asserts two signals a broken dedup could not produce
+   * either: the scope's own state version did not advance (the reducer's own {@code ignore()} arm
+   * commits no state write), and {@code remember} was invoked exactly once, not twice (a
+   * re-accepted event would call {@code remember} again with the same key, which {@code
+   * RecordingMemory#facts()} would show even though {@code recall()} still deduplicates it).
    */
   @Test
   void aRedeliveredCompletionIsIgnored() {
@@ -324,10 +345,15 @@ class DeferredToolOnContinuumTest {
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
 
+    assertThat(foldedResults()).isNotEmpty();
+    long versionAfterFirstFold = store.load().version();
+    int rememberCallsAfterFirstFold = memory.facts().size();
+
     drainTools(); // a second pass: nothing left to deliver
     worker.foldOutcome(routingFor(call), new TypedOutcome.Success<>(ToolResult.ok("done")));
 
-    assertThat(foldedResults()).isNotEmpty();
+    assertThat(store.load().version()).isEqualTo(versionAfterFirstFold);
+    assertThat(memory.facts()).hasSize(rememberCallsAfterFirstFold);
     assertThat(foldedResults()).hasSize(1);
   }
 
@@ -380,5 +406,74 @@ class DeferredToolOnContinuumTest {
     drainTools();
 
     assertThat(foldedResults()).singleElement().satisfies(r -> assertThat(r.isError()).isFalse());
+  }
+
+  /**
+   * Case 8 (task-4 fix round, Fix 3): the one-runtime replacement for the deleted {@code
+   * DurableParkDemo} — a real {@link Nessy#harness} rather than this file's own hand-wired {@link
+   * #harness} field. Nothing else in the suite drives a durable tool completion all the way through
+   * {@link Harness#completions()} and asserts the TURN resumed (cases 3 and 7 above only assert a
+   * {@link ToolResultBlock} reached memory, never that the follow-up model call happened and the
+   * phase returned to {@link Phase.Idle}); nothing else executes {@code HarnessConfig#finish()}'s
+   * tool-kind wiring either, so this is also the one test that would notice if production's result
+   * codec ({@code substrate.codecs().create(ToolResult.class)}) ever disagreed with the hand-rolled
+   * {@link TestToolClients#toolResultCodec} every other test in this file uses.
+   */
+  @Test
+  void aDeferredToolOnARealHarnessParksAndResumesThroughTheHarnessOwnCompletionsDoor() {
+    var e2eSubstrate = new InMemorySubstrate();
+    var e2eMapper = TestMappers.plainlyPinned();
+    var call = new ToolCall("c1", "central_op", JsonNodeFactory.instance.objectNode());
+    var provider =
+        new ScriptedModel(
+            List.of(
+                List.of(new ModelEvent.ToolUseEmitted(call, null)),
+                List.of(new ModelEvent.TextChunk("all done."))));
+    var pump = new PumpedExecutor();
+    var e2eHarness =
+        Nessy.harness(
+            h ->
+                h.type("e2e-tool")
+                    .model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                    .settings(TestSettings.settings())
+                    .grants(ToolGrant.grant(new EndToEndDeferringTool(), UsagePolicy.allow()))
+                    .substrate(e2eSubstrate)
+                    .executor(pump));
+    try {
+      var scopeState =
+          new SubstrateAgentStateStore(e2eSubstrate, "scope-1", Clock.systemUTC(), e2eMapper);
+      e2eHarness.bind(AgentId.of("scope-1")).tell("please run the central op");
+      pump.pumpUntilQuiet();
+
+      assertThat(scopeState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var responseId = ((Phase.AwaitingTools) scopeState.load().phase()).responseId();
+      // The dispatch index is the only handle back to the Continuum-minted id (spec §5) — built
+      // fresh here over the same substrate/kind HarnessConfig#finish() derived internally, exactly
+      // as a genuinely separate out-of-band responder would have to.
+      var e2eIndex =
+          new DispatchIndex(e2eSubstrate, e2eMapper, Kinds.dispatchIndex(AgentType.of("e2e-tool")));
+      var address = new CallAddress("e2e-tool", "scope-1", responseId.value(), "c1");
+      var computation = ComputationId.of(e2eIndex.find(address).orElseThrow().computationId());
+
+      // "every instance is garbage; any node may answer": complete purely through the harness's
+      // own public door, exactly as a genuinely out-of-band responder would.
+      e2eHarness.completions().complete(computation, ToolResult.ok("central op done"));
+      pump.pumpUntilQuiet();
+
+      // the property DurableParkDemo pinned and cases 3/7 above do not: the turn actually RESUMED,
+      // not merely that a ToolResultBlock landed in memory — the follow-up model call ran and the
+      // scope reached Idle.
+      assertThat(scopeState.load().phase()).isEqualTo(new Phase.Idle());
+      var transcript = new SubstrateMemory(e2eSubstrate, "scope-1", e2eMapper).recall().messages();
+      assertThat(transcript)
+          .anySatisfy(
+              m ->
+                  assertThat(m.content())
+                      .contains(new ToolResultBlock("c1", "central op done", false)));
+      assertThat(provider.requests()).hasSize(2); // the parked call, then the resumed follow-up
+    } finally {
+      e2eHarness.shutdown();
+    }
   }
 }

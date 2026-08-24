@@ -23,10 +23,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -97,12 +94,6 @@ class HarnessApprovalDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -124,7 +115,6 @@ class HarnessApprovalDemo {
                         ToolGrant.grant(
                             new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {
@@ -165,12 +155,6 @@ class HarnessApprovalDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.tool(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -192,7 +176,6 @@ class HarnessApprovalDemo {
                         ToolGrant.grant(
                             new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
                     .substrate(substrate)
-                    .backend(backend)
                     .approvalNotifier(requests::add)
                     .executor(pump));
     try {

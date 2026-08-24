@@ -152,6 +152,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         });
   }
 
+  // dead until Task 6: invocation/alsoCommit ride every call down to run() below but nothing there
+  // reads either anymore (continuum-adoption spec §3 dropped both from
+  // DeferredToolCallPolicy#onDeferred) — do not assume alsoCommit still composes a batch.
   @Override
   public ToolExecution executeGrantedToolNow(
       ToolCall call,
@@ -259,6 +262,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
+  // invocation and alsoCommit are dead until Task 6 (see executeGrantedToolNow's own note) —
+  // neither is read below; onDeferred takes only (call, address, timeout) now.
   private <T> ToolExecution run(
       Tool<T> tool,
       Object input,

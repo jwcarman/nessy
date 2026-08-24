@@ -19,9 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.api.BatchSize;
+import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
@@ -59,12 +63,20 @@ class CompletionDeskTest {
   }
 
   @Test
-  void failingNudgesTheWorker() {
+  void failingNudgesTheWorkerAndDeliversAFailureOutcome() {
     ComputationId id = park();
 
     desk.fail(id, "too risky");
 
     assertThat(nudges).isEqualTo(1);
+    List<TypedOutcome<ToolResult>> delivered = new ArrayList<>();
+    client.deliverResults(BatchSize.of(10), (routing, outcome) -> delivered.add(outcome));
+    assertThat(delivered).isNotEmpty();
+    assertThat(delivered)
+        .singleElement()
+        .isInstanceOfSatisfying(
+            TypedOutcome.Failure.class,
+            failure -> assertThat(failure.message()).isEqualTo("too risky"));
   }
 
   @Test

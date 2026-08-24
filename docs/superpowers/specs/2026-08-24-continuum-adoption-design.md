@@ -456,21 +456,27 @@ What actually shipped is weaker than "stale-grant guard" suggests: a predicate
 on the call's **address**, not on the computation — *a grant is admitted iff
 this call's dispatch entry currently exists and is APPROVAL-kind.* It
 discriminates finished calls from unfinished ones, not real approvals from
-orphans. Concretely, three gaps, only the first of which is closed:
+orphans. Concretely, three gaps, of which the first two are now closed:
 
 1. **Closed, for one tool shape only.** When the tool returns
    `Awaited.Ready` (`ToolExecution.Immediate`) and the real and orphaned
    grants drain strictly sequentially on one thread, the real grant's own
    fold deletes the index entry before the orphan's grant is drained, so the
    orphan finds the entry gone and is acknowledged, not run.
-2. **Not closed: deferred tools.** `ComputationDeferredToolCallPolicy.onDeferred`
-   deliberately leaves the dispatch entry in place when the tool returns
-   `Awaited.Deferred` (the tool kind's own future migration is what replaces
-   it with a TOOL entry). So for a tool that defers, an orphan's grant and the
-   real grant — drained sequentially, on one thread, in one batch, no race
-   required — both find the entry present and APPROVAL-kind, and both call
-   `executeGrantedToolNow`. That is a double dispatch of a side-effecting
-   tool with no concurrency involved at all.
+2. **Closed as of Task 4 (deferred tools).** As shipped in Task 3,
+   `ComputationDeferredToolCallPolicy.onDeferred` deliberately left the
+   dispatch entry in place when the tool returned `Awaited.Deferred`, so an
+   orphan's grant and the real grant — drained sequentially, on one thread,
+   in one batch, no race required — both found the entry present and
+   APPROVAL-kind, and both called `executeGrantedToolNow`: a double dispatch
+   of a side-effecting tool with no concurrency involved at all. Task 4's
+   `onDeferred` now overwrites the dispatch entry unconditionally to a TOOL
+   entry naming the newly-created tool computation, on every deferral —
+   including over a call whose entry currently names an APPROVAL computation.
+   The real grant's own deferral flips the entry to TOOL before an orphan's
+   grant is ever drained, so the orphan finds `kind != APPROVAL` and is
+   acknowledged, not run — closing this gap without needing the
+   computation id the guard still lacks.
 3. **Not closed: deny/failure/expiry.** The guard applies to the grant arm
    only. An orphan that hits its 7-day deadline while the real approval is
    still live folds a `ToolFinished(Failed)` over the still-live call,
@@ -479,11 +485,10 @@ orphans. Concretely, three gaps, only the first of which is closed:
    (entry gone, indistinguishable from "already handled"). The human's actual
    approval is discarded and the model reads a timeout it never suffered.
 
-Neither (2) nor (3) can be closed with an address-only guard — an orphan's
-grant or failure is indistinguishable from the real one's without the
-computation id. Closing both needs Continuum to expose a delivery's
-`computationId` to the typed consumer (tracked as follow-on scope, not this
-task's).
+Gap (3) cannot be closed with an address-only guard — an orphan's failure or
+expiry is indistinguishable from the real one's without the computation id.
+Closing it needs Continuum to expose a delivery's `computationId` to the
+typed consumer (tracked as follow-on scope, not this task's).
 
 ### 11.4 Documentation this change owes
 

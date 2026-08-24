@@ -17,15 +17,12 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.DefaultContinuum;
@@ -34,6 +31,7 @@ import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -57,7 +55,7 @@ class ComputationDeferredToolCallPolicyTest {
           ToolResult.class,
           Routing.class,
           cfg ->
-              cfg.resultCodec(toolResultCodec(mapper))
+              cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
   private final DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
@@ -67,28 +65,6 @@ class ComputationDeferredToolCallPolicyTest {
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
-
-  private static Codec<ToolResult> toolResultCodec(ObjectMapper mapper) {
-    return new Codec<>() {
-      @Override
-      public byte[] encode(ToolResult value) {
-        try {
-          return mapper.writeValueAsBytes(value);
-        } catch (JsonProcessingException e) {
-          throw new IllegalArgumentException("undecodable tool result", e);
-        }
-      }
-
-      @Override
-      public ToolResult decode(byte[] bytes) {
-        try {
-          return mapper.readValue(new String(bytes, StandardCharsets.UTF_8), ToolResult.class);
-        } catch (JsonProcessingException e) {
-          throw new IllegalArgumentException("undecodable tool result", e);
-        }
-      }
-    };
-  }
 
   @Test
   void aFirstDeferralCreatesTheComputationAndRecordsItInTheIndex() {

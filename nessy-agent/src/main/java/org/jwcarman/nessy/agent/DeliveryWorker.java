@@ -545,31 +545,34 @@ final class DeliveryWorker<O> implements AutoCloseable {
    *
    * <p>What actually ships is a predicate on the ADDRESS, not on the computation: a grant is
    * admitted iff this call's dispatch entry currently exists and is APPROVAL-kind. It discriminates
-   * finished calls from unfinished ones, not real approvals from orphans. Concretely:
+   * finished calls from unfinished ones, not real approvals from orphans. Concretely (spec §11.3),
+   * of three gaps the first two are now closed:
    *
    * <ul>
-   *   <li>It closes the hole ONLY when the tool returns {@link ToolExecution.Immediate} and the
-   *       real and orphaned grants drain strictly sequentially on one thread — the real grant's own
-   *       {@link #foldApprovalResult} deletes the entry before the orphan's grant is ever drained,
-   *       so the orphan finds the entry gone and is acknowledged, not run.
-   *   <li>It closes NOTHING when the tool returns {@link ToolExecution.Deferred}: the branch below
-   *       deliberately leaves the dispatch entry in place (the tool kind's own migration is what
-   *       replaces it), so an orphan's grant and the real grant — drained sequentially, on one
-   *       thread, in one batch, no race required — both find the entry present and APPROVAL-kind,
-   *       and both call {@code executeGrantedToolNow}. That is a double dispatch of a
-   *       side-effecting tool.
-   *   <li>The guard applies to this method only. {@link #foldApprovalFailure} (deny, {@code
-   *       Failure}, {@code Expired}) runs unguarded: an orphan that hits its 7-day deadline while
-   *       the real approval is still live folds a {@code ToolFinished(Failed)} over the still-live
-   *       call, advances the turn, and deletes the index entry — after which the real approval's
-   *       eventual grant is silently swallowed by this same guard (entry gone). The human's actual
-   *       "approve" is discarded and the model reads a timeout it never suffered.
+   *   <li>Closed. When the tool returns {@link ToolExecution.Immediate} and the real and orphaned
+   *       grants drain strictly sequentially on one thread — the real grant's own {@link
+   *       #foldApprovalResult} deletes the entry before the orphan's grant is ever drained, so the
+   *       orphan finds the entry gone and is acknowledged, not run.
+   *   <li>Closed, as of this task ({@code ComputationDeferredToolCallPolicy#onDeferred} now
+   *       overwrites the dispatch entry to a TOOL entry unconditionally, on every deferral). Before
+   *       this task, the branch below left the dispatch entry in place across a deferral, so an
+   *       orphan's grant and the real grant — drained sequentially, on one thread, in one batch, no
+   *       race required — both found the entry present and APPROVAL-kind, and both called {@code
+   *       executeGrantedToolNow}: a double dispatch of a side-effecting tool. Now the real grant's
+   *       own deferral flips the entry to TOOL before an orphan's grant is ever drained, so the
+   *       orphan finds {@code kind != APPROVAL} and is acknowledged, not run — the same shape as
+   *       the first bullet, without needing the computation id the guard still lacks.
+   *   <li>Not closed. The guard applies to this method only. {@link #foldApprovalFailure} (deny,
+   *       {@code Failure}, {@code Expired}) runs unguarded: an orphan that hits its 7-day deadline
+   *       while the real approval is still live folds a {@code ToolFinished(Failed)} over the
+   *       still-live call, advances the turn, and deletes the index entry — after which the real
+   *       approval's eventual grant is silently swallowed by this same guard (entry gone). The
+   *       human's actual "approve" is discarded and the model reads a timeout it never suffered.
    * </ul>
    *
-   * Neither (b) nor (c) above can be closed with this guard — an orphan's grant or failure is
-   * indistinguishable from the real one's without the computation id. Closing them needs
-   * Continuum's typed delivery to expose {@code computationId} (tracked separately; not this task's
-   * scope).
+   * The third gap cannot be closed with this guard — an orphan's failure or expiry is
+   * indistinguishable from the real one's without the computation id. Closing it needs Continuum's
+   * typed delivery to expose {@code computationId} (tracked separately; not this task's scope).
    */
   private void deliverApprovalGrant(
       AgentType type, AgentId id, CallAddress address, Routing routing) {
@@ -586,9 +589,9 @@ final class DeliveryWorker<O> implements AutoCloseable {
       case ToolExecution.Immediate(ToolOutcome outcome) ->
           foldApprovalResult(type, id, address, routing.call(), outcome);
       case ToolExecution.Deferred(_) -> {
-        // the tool went durable via the old execution backend (onDeferred is untouched by the
-        // approval-kind migration); the dispatch index entry for this call stays as-is until the
-        // tool kind's own migration replaces it with a TOOL entry.
+        // the tool went durable via the tool kind's own ContinuumClient; onDeferred already
+        // overwrote this call's dispatch entry to TOOL (unconditionally, on every deferral) before
+        // control returned here — nothing left to do (spec §11.3 gap 2, closed).
       }
     }
   }
@@ -651,20 +654,19 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * winner dispatches. An immediate outcome's grant delivery is then consumed by {@link
    * #foldGrantedResult}'s own batch — the state CAS and the delivery's removal at the current
    * version (memory has left this batch entirely — remembrance spec §1), the same shape {@link
-   * #deliverCompletion} uses. A deferred outcome's transfer — {@code [create tool computation,
-   * delete delivery]} — is composed into ONE {@link Substrate#batch} by {@link
-   * ComputationDeferredToolCallPolicy#onDeferred} via the {@code alsoCommit} door, before control
-   * returns here — so once that batch commits, there is no window where the computation exists and
-   * this delivery still does, and no way for a real completion to ever find this delivery left over
-   * to reprocess. This is NOT "closed at every committed point" unqualified, though: the grant's
-   * OWN completion batch (approval computation deleted, this delivery created) is itself a
-   * committed point at which neither the approval nor the tool computation exists. That window is
-   * closed now (computation-identity spec §4): the grant delivery sits at the completed approval
-   * computation's own deterministic id, and {@link
-   * ComputationDeferredToolCallPolicy#pendingComputation} checks that exact key (via {@link
-   * SubstrateComputations#deliveryPending}) before ever reaching the approver again — so a
-   * staleness redrive landing between the grant's completion batch and this worker's drain absorbs
-   * at the gate instead of re-asking.
+   * #deliverCompletion} uses.
+   *
+   * <p><b>This method and everything it calls are unreachable in production</b> (continuum-adoption
+   * spec §3, mirrors {@link Kinds}'s own note on the reaper): the approval kind moved off this
+   * {@code outbox/&lt;agentType&gt;} Substrate scan onto a Continuum {@code ContinuumClient} before
+   * this task, so nothing in {@code src/main} ever writes a grant delivery here anymore — {@link
+   * #deliverApprovalGrant} (Continuum's own consumer, above) is the live grant path. A deferred
+   * outcome reaching this method used to have its transfer — {@code [create tool computation,
+   * delete delivery]} — composed into one {@link Substrate#batch} via an {@code alsoCommit} door on
+   * {@code ComputationDeferredToolCallPolicy#onDeferred}; that door, and the atomicity guarantee it
+   * gave this now-dead path, do not exist on {@code onDeferred}'s current signature (this task
+   * dropped both parameters, spec §3) — retained here only because a whitebox test still exercises
+   * this method directly, not because production ever reaches it.
    */
   private void deliverGrant(String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
     if (!claiming.add(key)) {
