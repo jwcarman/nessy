@@ -45,6 +45,44 @@ class CallAddressTest {
   }
 
   /**
+   * Per-coordinate sensitivity, isolated (computation-identity spec §2): each of the four fields
+   * must move the digest on its own, with the other three held fixed against a common baseline —
+   * distinct from {@link #fieldsWithEmbeddedDelimitersDoNotCollide()} below, which deliberately
+   * varies two fields at once to pin a different property. {@code indexKey()} is now load-bearing
+   * for the dispatch index: a digest that silently dropped one field (e.g. {@code responseId},
+   * closing "the provider-uniqueness hole" the class javadoc calls out) would collide two distinct
+   * calls into one dispatch entry, and a redrive of one call would absorb against the other's
+   * in-flight computation.
+   */
+  @Test
+  void varyingAgentTypeAloneChangesTheIndexKey() {
+    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new CallAddress("billing", "prod-1", "r7", "c42");
+    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+  }
+
+  @Test
+  void varyingAgentIdAloneChangesTheIndexKey() {
+    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new CallAddress("ops", "prod-2", "r7", "c42");
+    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+  }
+
+  @Test
+  void varyingResponseIdAloneChangesTheIndexKey() {
+    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new CallAddress("ops", "prod-1", "r8", "c42");
+    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+  }
+
+  @Test
+  void varyingCallIdAloneChangesTheIndexKey() {
+    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new CallAddress("ops", "prod-1", "r7", "c43");
+    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+  }
+
+  /**
    * Pins the length-prefix property the class javadoc claims: a naive delimiter-join (plain
    * concatenation with a separator, no length prefix) would collide these two tuples — {@code "a:b"
    * + "c"} and {@code "a" + "b:c"} render identically once joined — so this only stays distinct
