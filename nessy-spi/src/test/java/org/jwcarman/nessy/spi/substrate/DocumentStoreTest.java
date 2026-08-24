@@ -23,6 +23,8 @@ import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 
 class DocumentStoreTest {
 
@@ -172,7 +174,7 @@ class DocumentStoreTest {
     void updateRetriesPastAConflictInjectedBetweenReadAndWrite() {
       InMemorySubstrate backing = new InMemorySubstrate();
       backing.document("counters", Counter.class).write("a", new Counter(1), 0L); // now at v1
-      byte[] competitorPayload = backing.codecs().codec(Counter.class).encode(new Counter(99));
+      byte[] competitorPayload = backing.codecs().create(Counter.class).encode(new Counter(99));
       RaceOnceOnWriteSubstrate racing = new RaceOnceOnWriteSubstrate(backing, competitorPayload);
       DocumentStore<Counter> counters = racing.document("counters", Counter.class);
 

@@ -423,9 +423,7 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id ->
-                  new SubstrateBacklog<>(
-                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (mem, obs) -> MODEL,
               (id, obs) -> TOOLS);
 
@@ -459,9 +457,7 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id ->
-                  new SubstrateBacklog<>(
-                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (mem, obs) -> MODEL,
               (id, obs) -> TOOLS);
 
@@ -572,9 +568,7 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id ->
-                  new SubstrateBacklog<>(
-                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (mem, obs) -> MODEL,
               (id, obs) -> TOOLS);
 

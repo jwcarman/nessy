@@ -18,7 +18,7 @@ package org.jwcarman.nessy.agent.support;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.spi.substrate.CodecFactory;
+import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**

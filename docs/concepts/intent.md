@@ -90,8 +90,9 @@ weigh, not the enricher's failure to report.
 scope, `kind=intent`, written by a read-then-CAS retry loop over
 [`Substrate`](storage.md) — the same document the scope's state and
 backlog already live in, on the same substrate. It stores through a
-`Codec<T>`; a constructor taking an `ObjectMapper` and the vocabulary class
-derives `Codec.json(mapper, vocabulary)` for you. Build one directly
+`Codec<T>` (`org.jwcarman.codec.spi.Codec`); a constructor taking an
+`ObjectMapper` and the vocabulary class derives one from a
+`Jackson2CodecFactory` over that mapper for you. Build one directly
 against whatever store the host is using:
 
 ```java

@@ -27,6 +27,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ComputationApprover;
@@ -55,7 +56,6 @@ import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -91,8 +91,8 @@ public final class HarnessConfig<O> {
   // Nessy.harness(Class, HarnessCustomizer).
   ObservationRenderer<O> renderer;
   // package-private: Nessy.harness(HarnessCustomizer) sets this directly for the String door; the
-  // typed door always derives its codec in finish() from Codec.json(pinned, observationType) — no
-  // override seam (parked for James).
+  // typed door always derives its codec in finish() from the substrate's own CodecFactory over
+  // observationType (codec-adoption spec §2) — no override seam (parked for James).
   Codec<O> backlogCodec;
   // package-private: Nessy.harness(Class, HarnessCustomizer) sets this directly — the typed door's
   // codec-derivation source.
@@ -342,18 +342,19 @@ public final class HarnessConfig<O> {
     ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
     ObservationRenderer<O> effectiveRenderer = renderer;
     ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
-    // typed-stores spec §1 ruling 3: the substrate's own CodecFactory is the codec extension
-    // point now — the default substrate is constructed over the SAME pinned mapper every other
-    // recipe here threads through, so its codec factory derives byte-identical codecs to the
-    // retired Codec.json(pinned, ...) call it replaces; a caller-supplied substrate carries its
-    // own pinned mapper, the override door ruling 3 describes.
+    // typed-stores spec §1 ruling 3; codec-adoption spec §2: the substrate's own CodecFactory
+    // (one Jackson2CodecFactory, held by SubstrateSupport) is the codec extension point now — the
+    // default substrate is constructed over the SAME pinned mapper every other recipe here
+    // threads through, so its codec factory derives byte-identical codecs to the retired
+    // Codec.json(pinned, ...) call it replaces; a caller-supplied substrate carries its own
+    // pinned mapper, the override door ruling 3 describes.
     Substrate effectiveSubstrate = substrate != null ? substrate : new InMemorySubstrate(pinned);
     // the String door (Nessy.harness()) presets backlogCodec to STRING_CODEC — an explicit
     // caller-supplied codec, unaffected by this seam; the typed door (Nessy.harness(Class)) now
     // derives its fallback from the substrate's own codec factory instead of a hand-rolled
     // Codec.json call (the retired .backlogCodec derivation seam).
     Codec<O> effectiveBacklogCodec =
-        backlogCodec != null ? backlogCodec : effectiveSubstrate.codecs().codec(observationType);
+        backlogCodec != null ? backlogCodec : effectiveSubstrate.codecs().create(observationType);
     // The harness is immortal, not closeable (spec §4): an owned executor here lives exactly as
     // long as the process, same as the worker's daemon heartbeat — there is no lifecycle door to
     // shut it down through, and none is needed.
@@ -369,8 +370,7 @@ public final class HarnessConfig<O> {
         id -> new SubstrateAgentStateStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
     Function<String, Backlog<O>> effectiveBacklogFactory =
         id ->
-            new SubstrateBacklog<>(
-                effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec, pinned);
+            new SubstrateBacklog<>(effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);
     String executionKind = Kinds.computation(agentType);
     String approvalKind = Kinds.approval(agentType);
     String outboxKind = Kinds.outbox(agentType);

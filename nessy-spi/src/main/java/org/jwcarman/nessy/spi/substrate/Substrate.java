@@ -20,6 +20,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 
 /**
  * The substrate (spec §2): two shapes — a document store (mutable current-truth, addressed by
@@ -119,14 +121,14 @@ public interface Substrate {
   default <T> DocumentStore<T> document(String kind, Class<T> type) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
-    return new SubstrateDocumentStore<>(this, kind, codecs().codec(type));
+    return new SubstrateDocumentStore<>(this, kind, codecs().create(type));
   }
 
   /**
    * Mints a {@link DocumentStore} over {@code kind} with a caller-supplied {@link Codec}, bypassing
    * {@link #codecs()} entirely — the same escape hatch a feature's own caller-supplied- codec
-   * constructor offered before this reform (a transform chained with {@link Codec#then(Codec)}, or
-   * a test probe).
+   * constructor offered before this reform (a transform chained with {@link Codec#andThen(Codec)},
+   * or a test probe).
    *
    * @throws NullPointerException if {@code kind} or {@code codec} is null
    */
@@ -145,7 +147,7 @@ public interface Substrate {
   default <T> JournalStore<T> journal(String kind, Class<T> type) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
-    return new SubstrateJournalStore<>(this, kind, codecs().codec(type));
+    return new SubstrateJournalStore<>(this, kind, codecs().create(type));
   }
 
   /**

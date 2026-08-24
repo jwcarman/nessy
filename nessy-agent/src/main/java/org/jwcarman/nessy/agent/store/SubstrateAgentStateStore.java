@@ -20,10 +20,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -37,8 +37,8 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * <p>The stored shape is a {@link Codec}{@code <}{@link Phase}{@code >} (spec §3, §7): the {@link
  * #SubstrateAgentStateStore(Substrate, String, Clock, ObjectMapper)} constructor defaults it to the
  * {@link StateCodec} binding; {@link #SubstrateAgentStateStore(Substrate, String, Clock, Codec)}
- * accepts a caller-supplied codec directly — a transform chained on with {@link Codec#then(Codec)}
- * (encryption, compression) or a test probe.
+ * accepts a caller-supplied codec directly — a transform chained on with {@link
+ * Codec#andThen(Codec)} (encryption, compression) or a test probe.
  */
 public final class SubstrateAgentStateStore implements AgentStateStore {
 

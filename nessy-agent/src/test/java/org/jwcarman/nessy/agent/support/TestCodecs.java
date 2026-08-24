@@ -17,7 +17,7 @@ package org.jwcarman.nessy.agent.support;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.codec.spi.Codec;
 
 /**
  * Test-only codec source: the trivial UTF-8 {@code Codec<String>} tests use wherever a {@link

@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.support.MarkerBytesCodec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
@@ -33,8 +36,6 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Remembrance;
-import org.jwcarman.nessy.spi.substrate.Codec;
-import org.jwcarman.nessy.spi.substrate.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -90,7 +91,7 @@ class SubstrateMemoryTest {
     Substrate delegate = new InMemorySubstrate();
     CodecFactory codecs = delegate.codecs();
     byte[] competitorMarkerPayload =
-        codecs.codec(RememberedMarker.class).encode(new RememberedMarker("turn-1"));
+        codecs.create(RememberedMarker.class).encode(new RememberedMarker("turn-1"));
     Substrate racing =
         new RaceOnceOnBatchSubstrate(
             delegate, KEYS_KIND, "agent-a/turn-1", competitorMarkerPayload);
@@ -162,7 +163,9 @@ class SubstrateMemoryTest {
     void isHonoredByBothWritesAndReads() {
       Substrate substrate = new InMemorySubstrate();
       Codec<Remembrance> codec =
-          Codec.json(TestMappers.plainlyPinned(), Remembrance.class).then(new MarkerBytesCodec());
+          new Jackson2CodecFactory(TestMappers.plainlyPinned())
+              .create(Remembrance.class)
+              .andThen(new MarkerBytesCodec());
       var memory = new SubstrateMemory(substrate, "agent-a", codec);
 
       memory.remember(new Remembrance.UserMessage("turn-1", Message.user("mine")));

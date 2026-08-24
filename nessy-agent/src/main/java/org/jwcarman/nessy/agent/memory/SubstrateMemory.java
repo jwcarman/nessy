@@ -21,11 +21,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.JournalStore;
@@ -68,7 +68,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * JournalStore<JournalEntry>} (typed-stores spec §1): {@link #SubstrateMemory(Substrate, String,
  * ObjectMapper)} defaults to the built-in binding (JSON via {@code mapper}, with the legacy
  * fallback above); {@link #SubstrateMemory(Substrate, String, Codec)} accepts a caller-supplied
- * {@code Codec<Remembrance>} directly — a transform chained on with {@link Codec#then(Codec)}
+ * {@code Codec<Remembrance>} directly — a transform chained on with {@link Codec#andThen(Codec)}
  * (encryption, compression) or a test probe. A custom codec owns its own decode failure and
  * legacy-reading story; the built-in fallback above is this class's own.
  */
@@ -99,7 +99,7 @@ public final class SubstrateMemory implements Memory {
   /**
    * Accepts a caller-supplied {@code Codec<Remembrance>} directly — the same escape hatch the
    * pre-reform constructor offered over {@code Codec<Message>}, moved onto this reform's own domain
-   * shape (a transform chained on with {@link Codec#then(Codec)}, or a test probe).
+   * shape (a transform chained on with {@link Codec#andThen(Codec)}, or a test probe).
    */
   public SubstrateMemory(Substrate store, String agentId, Codec<Remembrance> codec) {
     this.store = Objects.requireNonNull(store, "store must not be null");

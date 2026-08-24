@@ -18,13 +18,13 @@ package org.jwcarman.nessy.agent.support;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
-import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.codec.spi.Codec;
 
 /**
  * A trivial byte-transform {@link Codec}: prepends a fixed marker to every encoded payload and
- * strips it back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#then(Codec)}, it
- * proves a caller-supplied codec is actually honored by a recipe — the substrate's raw stored bytes
- * carry the marker, and a read still round-trips through it.
+ * strips it back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#andThen(Codec)},
+ * it proves a caller-supplied codec is actually honored by a recipe — the substrate's raw stored
+ * bytes carry the marker, and a read still round-trips through it.
  */
 public final class MarkerBytesCodec implements Codec<byte[]> {
 

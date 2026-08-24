@@ -21,15 +21,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Objects;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.CodecFactory;
 
 /**
  * The support base a {@link Substrate} implementation extends to satisfy {@link Substrate#codecs()}
- * (typed-stores spec §1 ruling 3): one pinned, standard {@link ObjectMapper} per substrate instance
- * (statics-die law — no shared static mapper), wrapped as a {@link CodecFactory} via {@link
- * Codec#json(ObjectMapper, Class)}. Overriding the mapper at construction — {@link
- * #SubstrateSupport(ObjectMapper)} — IS the codec extension point (spec ruling 3): the parked
- * {@code .backlogCodec} config door and every other per-feature codec-threading seam retire into
- * this one override.
+ * (typed-stores spec §1 ruling 3; codec-adoption spec §2): one pinned, standard {@link
+ * ObjectMapper} per substrate instance (statics-die law — no shared static mapper), wrapped as a
+ * {@link CodecFactory} via one {@link Jackson2CodecFactory}. Overriding the mapper at construction
+ * — {@link #SubstrateSupport(ObjectMapper)} — IS the codec extension point (spec ruling 3): the
+ * parked {@code .backlogCodec} config door and every other per-feature codec-threading seam retire
+ * into this one override.
  *
  * <p><b>Mappers-threaded law: copy-and-pin at the boundary.</b> {@link #copyAndPin(ObjectMapper)}
  * is the single source of truth for the format-critical settings a stored document's wire format
@@ -68,7 +70,7 @@ public abstract class SubstrateSupport {
    */
   protected SubstrateSupport(ObjectMapper mapper) {
     Objects.requireNonNull(mapper, "mapper must not be null");
-    this.codecs = new MapperCodecFactory(copyAndPin(mapper));
+    this.codecs = new Jackson2CodecFactory(copyAndPin(mapper));
   }
 
   /**
@@ -120,19 +122,5 @@ public abstract class SubstrateSupport {
   /** This instance's {@link CodecFactory} — satisfies {@link Substrate#codecs()}. */
   public final CodecFactory codecs() {
     return codecs;
-  }
-
-  private static final class MapperCodecFactory implements CodecFactory {
-
-    private final ObjectMapper mapper;
-
-    private MapperCodecFactory(ObjectMapper mapper) {
-      this.mapper = mapper;
-    }
-
-    @Override
-    public <T> Codec<T> codec(Class<T> type) {
-      return Codec.json(mapper, type);
-    }
   }
 }

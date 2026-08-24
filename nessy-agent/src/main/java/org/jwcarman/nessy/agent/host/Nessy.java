@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Harness;
@@ -34,7 +35,6 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.substrate.Codec;
 
 /** The front doors (§7.1). Builders wire existing seams; they never own machinery. */
 public final class Nessy {
@@ -91,8 +91,9 @@ public final class Nessy {
    * The typed door (spec §2, §6.4): observations are {@code O}, not {@code String}. {@code
    * customizer} must supply the {@link ObservationRenderer} that turns an {@code O} into inference
    * content — the same seam {@link Harness} has always taken — via {@link
-   * HarnessConfig#renderer(ObservationRenderer)}; the backlog codec is always {@link
-   * Codec#json(ObjectMapper, Class)} over the config's pinned mapper and {@code observationType}.
+   * HarnessConfig#renderer(ObservationRenderer)}; the backlog codec is always minted from the
+   * config's substrate's own {@code CodecFactory} (codec-adoption spec §2) over {@code
+   * observationType}.
    */
   public static <O> Harness<O> harness(Class<O> observationType, HarnessCustomizer<O> customizer) {
     Objects.requireNonNull(observationType, "observationType must not be null");

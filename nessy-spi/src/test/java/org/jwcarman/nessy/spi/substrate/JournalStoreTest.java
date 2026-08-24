@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.spi.CodecFactory;
 
 class JournalStoreTest {
 
@@ -120,7 +121,7 @@ class JournalStoreTest {
     @Test
     void appendRetriesPastAConflictInjectedOnTheHeadSeq() {
       InMemorySubstrate backing = new InMemorySubstrate();
-      byte[] competitorPayload = backing.codecs().codec(Note.class).encode(new Note("racer"));
+      byte[] competitorPayload = backing.codecs().create(Note.class).encode(new Note("racer"));
       RaceOnceOnAppendSubstrate racing = new RaceOnceOnAppendSubstrate(backing, competitorPayload);
       JournalStore<Note> notes = racing.journal("notes", Note.class);
 

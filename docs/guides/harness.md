@@ -393,11 +393,11 @@ free:
   naming the missing seam.
 - **The backlog codec has no override seam.** A posted `Note` is queued in
   the same `backlog` document every observation rides (see
-  [Storage](../concepts/storage.md)), through `Codec.json(pinned,
-  Note.class)` — derived automatically from the config's pinned
-  `ObjectMapper` and `observationType`. There is no `.backlogCodec(...)`
-  setter today; a custom stored shape for observations is parked, not
-  planned.
+  [Storage](../concepts/storage.md)), through the config's substrate's own
+  `CodecFactory` — derived automatically over `observationType` from the
+  same pinned `ObjectMapper` the substrate was built with. There is no
+  `.backlogCodec(...)` setter today; a custom stored shape for observations
+  is parked, not planned.
 
 A typed observation queued while its scope is busy survives in the backlog
 document exactly like a `String` one does — draining, staleness recovery,

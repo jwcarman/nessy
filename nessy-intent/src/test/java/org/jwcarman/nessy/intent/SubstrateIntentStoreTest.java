@@ -28,8 +28,9 @@ import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.substrate.Codec;
-import org.jwcarman.nessy.spi.substrate.CodecFactory;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -200,7 +201,8 @@ class SubstrateIntentStoreTest {
     @Test
     void isHonoredByBothWritesAndReads() {
       var substrate = new InMemorySubstrate();
-      Codec<Intent> codec = Codec.json(MAPPER, Intent.class).then(new MarkerBytesCodec());
+      Codec<Intent> codec =
+          new Jackson2CodecFactory(MAPPER).create(Intent.class).andThen(new MarkerBytesCodec());
       var store = new SubstrateIntentStore<>(substrate, "agent-a", codec);
 
       store.declare(new Intent("restart prod-eu"));
@@ -213,8 +215,8 @@ class SubstrateIntentStoreTest {
 
   /**
    * A trivial byte-transform codec: prepends a fixed marker to every encoded payload and strips it
-   * back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#then(Codec)}, it proves a
-   * caller-supplied codec is actually honored by the recipe — the substrate's raw stored bytes
+   * back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#andThen(Codec)}, it proves
+   * a caller-supplied codec is actually honored by the recipe — the substrate's raw stored bytes
    * carry the marker, and a read still round-trips through it. A local hand-rolled equivalent of
    * nessy-agent's own {@code MarkerBytesCodec} test support, which this module cannot depend on
    * (design authority: nessy-intent depends only on nessy-api and nessy-spi).

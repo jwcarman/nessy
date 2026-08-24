@@ -28,10 +28,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -41,32 +42,21 @@ class SubstrateBacklogTest {
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
     Codec<String> codec = TestCodecs.utf8String();
-    ObjectMapper mapper = TestMappers.plainlyPinned();
-    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, codec, mapper))
+    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, codec))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aFreshBacklogPollsEmpty() {
     var backlog =
-        new SubstrateBacklog<>(
-            new InMemorySubstrate(),
-            "agent-a",
-            2,
-            TestCodecs.utf8String(),
-            TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     assertThat(backlog.poll()).isEmpty();
   }
 
   @Test
   void addedObservationsPollInFifoOrder() {
     var backlog =
-        new SubstrateBacklog<>(
-            new InMemorySubstrate(),
-            "agent-a",
-            3,
-            TestCodecs.utf8String(),
-            TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     backlog.add("c");
@@ -79,12 +69,7 @@ class SubstrateBacklogTest {
   @Test
   void addBeyondCapacityThrowsTheRejection() {
     var backlog =
-        new SubstrateBacklog<>(
-            new InMemorySubstrate(),
-            "agent-a",
-            2,
-            TestCodecs.utf8String(),
-            TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     assertThatThrownBy(() -> backlog.add("c"))
@@ -95,12 +80,7 @@ class SubstrateBacklogTest {
   @Test
   void pollingFreesCapacity() {
     var backlog =
-        new SubstrateBacklog<>(
-            new InMemorySubstrate(),
-            "agent-a",
-            2,
-            TestCodecs.utf8String(),
-            TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     assertThat(backlog.poll()).contains("a");
@@ -113,12 +93,8 @@ class SubstrateBacklogTest {
   @Test
   void twoViewsOverOneSubstrateShareTheQueue() {
     Substrate store = new InMemorySubstrate();
-    var writer =
-        new SubstrateBacklog<>(
-            store, "agent-a", 4, TestCodecs.utf8String(), TestMappers.plainlyPinned());
-    var reader =
-        new SubstrateBacklog<>(
-            store, "agent-a", 4, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var writer = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
+    var reader = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
 
     writer.add("first");
     writer.add("second");
@@ -132,9 +108,7 @@ class SubstrateBacklogTest {
   void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
     Substrate raceStore =
         new RaceOnceOnWriteSubstrate(new InMemorySubstrate(), racedInDocument("raced-in"));
-    var backlog =
-        new SubstrateBacklog<>(
-            raceStore, "agent-a", 2, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 2, TestCodecs.utf8String());
 
     backlog.add("mine");
 
@@ -146,22 +120,16 @@ class SubstrateBacklogTest {
   @Test
   void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
     Substrate substrate = new InMemorySubstrate();
-    var seeded =
-        new SubstrateBacklog<>(
-            substrate, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var seeded = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
     seeded.add("a");
     seeded.add("b");
 
     Substrate raceStore = new RaceOnceOnWriteSubstrate(substrate, racedInDocument("a", "b", "c"));
-    var backlog =
-        new SubstrateBacklog<>(
-            raceStore, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 3, TestCodecs.utf8String());
 
     assertThat(backlog.poll()).contains("a");
 
-    var reader =
-        new SubstrateBacklog<>(
-            substrate, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var reader = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
     assertThat(reader.poll()).contains("b");
     assertThat(reader.poll()).contains("c");
     assertThat(reader.poll()).isEmpty();
@@ -181,8 +149,8 @@ class SubstrateBacklogTest {
 
     Substrate substrate = new InMemorySubstrate();
     ObjectMapper mapper = TestMappers.plainlyPinned();
-    Codec<Note> codec = Codec.json(mapper, Note.class);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec, mapper);
+    Codec<Note> codec = new Jackson2CodecFactory(mapper).create(Note.class);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec);
 
     var note = new Note("check the oven", 3);
     backlog.add(note);
@@ -201,21 +169,20 @@ class SubstrateBacklogTest {
   }
 
   /**
-   * Negative coverage for the typed envelope's malformed-payload rejection (typed-stores spec §1:
-   * the hand-written parser is gone, the outer envelope now binds through {@link
-   * org.jwcarman.nessy.spi.substrate.DocumentStore}{@code <String[]>}'s {@code Codec.json}). Each
-   * seeds the substrate directly with a payload {@code mapper.readValue} cannot parse as a {@code
-   * String[]} and asserts {@code poll()} fails loudly, wrapping Jackson's exception, rather than
-   * silently misreading it.
+   * Negative coverage for the typed envelope's malformed-payload rejection (typed-stores spec §1;
+   * codec-adoption spec §2: the outer envelope now binds through {@link
+   * org.jwcarman.nessy.spi.substrate.DocumentStore}{@code <String[]>} over the external Jackson2
+   * codec, whose {@code UncheckedIOException} the typed view translates into the same teaching
+   * {@code IllegalArgumentException}). Each seeds the substrate directly with a payload {@code
+   * mapper.readValue} cannot parse as a {@code String[]} and asserts {@code poll()} fails loudly,
+   * wrapping the codec's exception, rather than silently misreading it.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("malformedBacklogPayloads")
   void pollRejectsAMalformedPayload(String description, String payload) {
     Substrate substrate = new InMemorySubstrate();
     substrate.write("backlog", "agent-a", payload.getBytes(StandardCharsets.UTF_8), 0L);
-    var backlog =
-        new SubstrateBacklog<>(
-            substrate, "agent-a", 2, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
 
     assertThatThrownBy(backlog::poll)
         .isInstanceOf(IllegalArgumentException.class)
@@ -239,9 +206,7 @@ class SubstrateBacklogTest {
   @Test
   void pollConsumesAPoisonElementBeforePropagatingItsDecodeFailureThenReachesTheNextElement() {
     Codec<String> poisonOnFirst = TestCodecs.poisonOnDecode("boom", "a");
-    var backlog =
-        new SubstrateBacklog<>(
-            new InMemorySubstrate(), "agent-a", 3, poisonOnFirst, TestMappers.plainlyPinned());
+    var backlog = new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, poisonOnFirst);
     backlog.add("a");
     backlog.add("b");
 

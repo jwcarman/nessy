@@ -15,15 +15,14 @@
  */
 package org.jwcarman.nessy.agent.backlog;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -39,11 +38,11 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  * BoundedBacklog} used to enforce (spec §12).
  *
  * <p>The outer array-of-strings envelope is a {@link DocumentStore}{@code <String[]>} (typed-
- * stores spec §1): the {@link Substrate#document(String, Codec)} mint over {@code
- * Codec.json(mapper, String[].class)} — a plain {@code String[]}, threaded via the constructor
- * (spec §7's statics-die law: never static/ambient). Every element is base64 ({@code
- * [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable; only the elements' meaning is
- * caller-controlled, through {@code codec}.
+ * stores spec §1; codec-adoption spec §2): the {@link Substrate#document(String, Class)} mint over
+ * {@code String[].class}, which derives from {@code store}'s own {@link Substrate#codecs()} factory
+ * — no second {@code CodecFactory} constructed here (codec-adoption spec §2's "one factory at the
+ * composition root" rule). Every element is base64 ({@code [A-Za-z0-9+/=]}), so nothing in it is
+ * ever JSON-escapable; only the elements' meaning is caller-controlled, through {@code codec}.
  *
  * @param <O> the observation vocabulary this backlog holds
  */
@@ -56,11 +55,9 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
   private final int capacity;
   private final Codec<O> codec;
 
-  public SubstrateBacklog(
-      Substrate store, String agentId, int capacity, Codec<O> codec, ObjectMapper mapper) {
+  public SubstrateBacklog(Substrate store, String agentId, int capacity, Codec<O> codec) {
     Objects.requireNonNull(store, "store must not be null");
-    Objects.requireNonNull(mapper, "mapper must not be null");
-    this.documents = store.document(KIND, Codec.json(mapper, String[].class));
+    this.documents = store.document(KIND, String[].class);
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
       throw new IllegalArgumentException("capacity must be at least 1: " + capacity);

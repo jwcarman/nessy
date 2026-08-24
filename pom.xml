@@ -90,6 +90,10 @@
          property so each artifact resolves to a version that actually
          exists. -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
+    <!-- org.jwcarman.codec 0.2.0 (Central release, no snapshots): the typed-
+         serialization seam nessy-spi's homegrown Codec/CodecFactory retired
+         into (2026-08-24 codec-adoption spec). -->
+    <codec.version>0.2.0</codec.version>
     <!-- victools 5 migrated jsonschema-generator's ObjectNode return types from
          com.fasterxml.jackson.databind to tools.jackson.databind (Jackson 3),
          breaking Schemas.java's direct assignment to a Jackson 2 ObjectNode.
@@ -279,6 +283,16 @@
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-annotations</artifactId>
         <version>${jackson-annotations.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.codec</groupId>
+        <artifactId>codec-core</artifactId>
+        <version>${codec.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.codec</groupId>
+        <artifactId>codec-jackson2</artifactId>
+        <version>${codec.version}</version>
       </dependency>
       <dependency>
         <groupId>com.github.victools</groupId>

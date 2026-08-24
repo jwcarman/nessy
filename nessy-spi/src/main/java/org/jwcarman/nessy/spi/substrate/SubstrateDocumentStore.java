@@ -15,15 +15,24 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.function.UnaryOperator;
+import org.jwcarman.codec.spi.Codec;
 
 /**
  * The one library implementation of {@link DocumentStore} (typed-stores spec §1 ruling 1), minted
  * by {@link Substrate#document(String, Class)} — never constructed directly outside this package.
+ *
+ * <p>Exception contract (codec-adoption spec §2): this typed view is where a raw {@code
+ * org.jwcarman.codec} {@link UncheckedIOException} — thrown by the external Jackson2 codec on
+ * malformed bytes or an encoding failure — gets translated into the teaching {@link
+ * IllegalArgumentException} this store's callers have always seen, naming the {@code kind}. A
+ * caller-supplied {@link Codec} that already throws its own {@link IllegalArgumentException} (or
+ * anything else) rides through untouched.
  */
 final class SubstrateDocumentStore<T> implements DocumentStore<T> {
 
@@ -41,7 +50,7 @@ final class SubstrateDocumentStore<T> implements DocumentStore<T> {
   public Optional<Versioned<T>> read(String key) {
     return substrate
         .read(kind, key)
-        .map(doc -> new Versioned<>(codec.decode(doc.payload()), doc.version()));
+        .map(doc -> new Versioned<>(decode(doc.payload()), doc.version()));
   }
 
   @Override
@@ -61,7 +70,7 @@ final class SubstrateDocumentStore<T> implements DocumentStore<T> {
   @Override
   public void write(String key, T value, long expectedVersion) {
     Objects.requireNonNull(value, "value must not be null");
-    substrate.write(kind, key, codec.encode(value), expectedVersion);
+    substrate.write(kind, key, encode(value), expectedVersion);
   }
 
   @Override
@@ -90,11 +99,39 @@ final class SubstrateDocumentStore<T> implements DocumentStore<T> {
   @Override
   public Substrate.Op writeOp(String key, T value, long expectedVersion) {
     Objects.requireNonNull(value, "value must not be null");
-    return new Substrate.Op.WriteDocument(kind, key, codec.encode(value), expectedVersion);
+    return new Substrate.Op.WriteDocument(kind, key, encode(value), expectedVersion);
   }
 
   @Override
   public Substrate.Op deleteOp(String key, long expectedVersion) {
     return new Substrate.Op.DeleteDocument(kind, key, expectedVersion);
+  }
+
+  /**
+   * {@code codec.decode}, translating a raw {@link UncheckedIOException} from the external codec
+   * into the teaching {@link IllegalArgumentException} this view has always thrown for a malformed
+   * {@code kind} payload (codec-adoption spec §2).
+   */
+  private T decode(byte[] payload) {
+    try {
+      return codec.decode(payload);
+    } catch (UncheckedIOException e) {
+      throw new IllegalArgumentException(
+          "failed to decode " + kind + " payload: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * {@code codec.encode}, translating a raw {@link UncheckedIOException} from the external codec
+   * into the teaching {@link IllegalArgumentException} this view has always thrown for an
+   * unencodable {@code kind} value (codec-adoption spec §2).
+   */
+  private byte[] encode(T value) {
+    try {
+      return codec.encode(value);
+    } catch (UncheckedIOException e) {
+      throw new IllegalArgumentException(
+          "failed to encode " + kind + " payload: " + e.getMessage(), e);
+    }
   }
 }

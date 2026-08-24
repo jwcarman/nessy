@@ -47,12 +47,16 @@ re-reads and retries. Implementations must not alias the caller's array —
 bytes are copied on write and on read, so nothing downstream can mutate
 stored truth behind the CAS.
 
-`org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is the whole package:
-`Substrate`, `Codec`, `CodecFactory`, `ConflictException`,
-`DocumentStore`/`JournalStore`, `Versioned`, `SubstrateSupport`, and
-`InMemorySubstrate` — the reference substrate, shipped alongside the
-contract so a feature jar can test against it without depending on
-`nessy-agent`. `Nessy.harness(...)` defaults to a fresh `InMemorySubstrate`;
+`org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is `Substrate`,
+`ConflictException`, `DocumentStore`/`JournalStore`, `Versioned`,
+`SubstrateSupport`, and `InMemorySubstrate` — the reference substrate,
+shipped alongside the contract so a feature jar can test against it without
+depending on `nessy-agent`. The typed seam above the bytes — `Codec<T>` and
+`CodecFactory` — is not Nessy's own: it's `org.jwcarman.codec.spi` from the
+released `org.jwcarman.codec` library (`codec-core` for the SPI,
+`codec-jackson2` for the Jackson binding), the same shapes this page
+described before the 2026-08-24 codec-adoption reform, now maintained
+outside Nessy. `Nessy.harness(...)` defaults to a fresh `InMemorySubstrate`;
 supply a durable implementation through `.substrate(Substrate)` to persist
 every scope beyond the process.
 
@@ -102,50 +106,58 @@ page as hand-rolled per recipe are this one implementation, reused.
 
 ## `Codec<T>`: the typed seam above the bytes
 
-Nothing above the substrate hand-rolls byte encoding. `Codec<T>` is the
-seam every recipe stores its shape through:
+Nothing above the substrate hand-rolls byte encoding. `org.jwcarman.codec.spi.Codec<T>`
+is the seam every recipe stores its shape through — released separately
+from Nessy (`org.jwcarman.codec:codec-core`, 0.2.0):
 
 ```java
 public interface Codec<T> {
   byte[] encode(T value);
   T decode(byte[] bytes);
 
-  default Codec<T> then(Codec<byte[]> next) { ... }
+  default Codec<T> andThen(Codec<byte[]> next) { ... }
+}
 
-  static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) { ... }
+public interface CodecFactory {
+  <T> Codec<T> create(TypeRef<T> type);
+  default <T> Codec<T> create(Class<T> type) { ... }
 }
 ```
 
-`Codec.json(mapper, type)` is a plain `writeValueAsBytes`/`readValue` pair
-through `mapper`, exactly as `mapper` is configured — this call inspects
-neither `type` nor the mapper's configuration first. There is no
-construction-time check and no collision guard: a sealed `type` binds
-through whatever polymorphism `mapper` resolves for it — `@JsonTypeInfo`/
-`@JsonSubTypes` directly on the type, a `mapper.addMixIn(...)`, a custom
-`AnnotationIntrospector` — the same vocabulary a tool input's schema/binding
-rides (see [Tools](tools.md#sealed-inputs-a-vocabulary-as-one-argument)).
-Annotate your sealed vocabularies: an unannotated sealed `type` simply gets
-Jackson's own natural behavior, no discriminator is ever written, and
-decoding fails with Jackson's own error.
+`SubstrateSupport` mints its `CodecFactory` as one `Jackson2CodecFactory`
+(`org.jwcarman.codec:codec-jackson2`) over the substrate's pinned mapper — a
+plain `writeValueAsBytes`/`readValue` pair through that mapper, exactly as
+it is configured; this binding inspects neither the requested type nor the
+mapper's configuration first. There is no construction-time check and no
+collision guard: a sealed type binds through whatever polymorphism the
+mapper resolves for it — `@JsonTypeInfo`/`@JsonSubTypes` directly on the
+type, a `mapper.addMixIn(...)`, a custom `AnnotationIntrospector` — the same
+vocabulary a tool input's schema/binding rides (see
+[Tools](tools.md#sealed-inputs-a-vocabulary-as-one-argument)). Annotate your
+sealed vocabularies: an unannotated sealed type simply gets Jackson's own
+natural behavior, no discriminator is ever written, and decoding fails with
+Jackson's own error.
 
 Misconfiguration surfaces exactly as it would in any Jackson application —
-Nessy does not inspect or police a caller's own mapper setup. What
-`Codec.json` does own is the boundary: malformed bytes, an unknown
-discriminator, or a shape mismatch never leak a raw Jackson exception past
-it — every failure surfaces as `IllegalArgumentException` naming the
-offense.
+Nessy does not inspect or police a caller's own mapper setup. The external
+codec's own failure contract is `UncheckedIOException`; Nessy's typed views
+(`DocumentStore<T>`/`JournalStore<T>`) are where that gets translated back
+into the `IllegalArgumentException` naming the offense that every malformed-
+payload test here has always seen — a raw Jackson exception never leaks past
+that boundary.
 
 Test over `InMemorySubstrate`: storage there is real encoded bytes, so a
 Jackson misconfiguration fails in your own unit tests, not in production.
 
 ## Transforms are patterns, not products
 
-A `Codec<byte[]>` is a byte-to-byte transform, and `then` chains one onto
+A `Codec<byte[]>` is a byte-to-byte transform, and `andThen` chains one onto
 any `Codec<T>`: encoding runs left-to-right, decoding runs the chain
 backwards. That makes an enterprise at-rest story one line:
 
 ```java
-Codec<Transcript> stored = Codec.json(mapper, Transcript.class).then(gzip).then(aes);
+Codec<Transcript> stored =
+    new Jackson2CodecFactory(mapper).create(Transcript.class).andThen(gzip).andThen(aes);
 ```
 
 Nessy ships no compression and no cryptography — `gzip` and `aes` above are
@@ -220,7 +232,8 @@ serialization; the substrate never sees anything but bytes.
   observations as a JSON array. **Observations are typed:**
   `SubstrateBacklog<O>` takes a `Codec<O>` — the `String` door defaults to a
   trivial UTF-8 codec, the typed door (`Nessy.harness(Class<O>, ...)`) derives
-  `Codec.json(mapper, observationType)` automatically. The stored document
+  one from the substrate's own `CodecFactory` over `observationType`
+  automatically. The stored document
   is a JSON array whose *elements* are the base64 of each encoded
   observation — uniform regardless of what codec produced the bytes,
   because the backlog is self-draining transient state and glance-readability
@@ -310,11 +323,11 @@ copy-and-pin path with their format pinned by the vendor instead.
 - **Every sealed hierarchy carries Jackson annotations directly** — user
   vocabularies and Nessy-owned types alike (the 2026-08-22 repeal). Nessy
   binds nothing bespoke and polices nothing: `@JsonTypeInfo`/`@JsonSubTypes`
-  on the type is what `Schemas`, `Codec.json`, and the tool executor's
-  binding all read. A user vocabulary that skips the annotations gets
-  either `Schemas`' own rejection (tool inputs — it cannot generate a
+  on the type is what `Schemas`, the substrate's `Codec`, and the tool
+  executor's binding all read. A user vocabulary that skips the annotations
+  gets either `Schemas`' own rejection (tool inputs — it cannot generate a
   discriminated schema without them) or Jackson's own unannotated behavior
-  (stored shapes through `Codec.json`).
+  (stored shapes through the substrate's `Codec`).
 - **`ContentBlock` and `Phase` carry `@JsonTypeInfo`/`@JsonSubTypes` on
   their sealed hierarchies**; the hand-rolled tree-walking codecs that used
   to bind them are gone. The pinned mapper does the binding, and the wire

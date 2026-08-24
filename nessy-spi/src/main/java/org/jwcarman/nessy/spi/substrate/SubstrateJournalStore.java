@@ -15,12 +15,21 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.codec.spi.Codec;
 
 /**
  * The one library implementation of {@link JournalStore} (typed-stores spec §1 ruling 1), minted by
  * {@link Substrate#journal(String, Class)} — never constructed directly outside this package.
+ *
+ * <p>Exception contract (codec-adoption spec §2): this typed view is where a raw {@code
+ * org.jwcarman.codec} {@link UncheckedIOException} — thrown by the external Jackson2 codec on
+ * malformed bytes or an encoding failure — gets translated into the teaching {@link
+ * IllegalArgumentException} this store's callers have always seen, naming the {@code kind}. A
+ * caller-supplied {@link Codec} that already throws its own {@link IllegalArgumentException} (or
+ * anything else) rides through untouched.
  */
 final class SubstrateJournalStore<T> implements JournalStore<T> {
 
@@ -37,7 +46,7 @@ final class SubstrateJournalStore<T> implements JournalStore<T> {
   @Override
   public void append(String key, T value) {
     Objects.requireNonNull(value, "value must not be null");
-    byte[] payload = codec.encode(value);
+    byte[] payload = encode(value);
     while (true) {
       long nextSeq = head(key) + 1;
       try {
@@ -52,18 +61,44 @@ final class SubstrateJournalStore<T> implements JournalStore<T> {
   @Override
   public Substrate.Op appendOp(String key, long expectedSeq, T value) {
     Objects.requireNonNull(value, "value must not be null");
-    return new Substrate.Op.AppendEntry(kind, key, expectedSeq, codec.encode(value));
+    return new Substrate.Op.AppendEntry(kind, key, expectedSeq, encode(value));
   }
 
   @Override
   public List<T> entries(String key, long fromSeq) {
-    return substrate.entries(kind, key, fromSeq).stream()
-        .map(e -> codec.decode(e.payload()))
-        .toList();
+    return substrate.entries(kind, key, fromSeq).stream().map(e -> decode(e.payload())).toList();
   }
 
   private long head(String key) {
     List<Substrate.Entry> entries = substrate.entries(kind, key, 1);
     return entries.isEmpty() ? 0L : entries.getLast().seq();
+  }
+
+  /**
+   * {@code codec.decode}, translating a raw {@link UncheckedIOException} from the external codec
+   * into the teaching {@link IllegalArgumentException} this view has always thrown for a malformed
+   * {@code kind} entry (codec-adoption spec §2).
+   */
+  private T decode(byte[] payload) {
+    try {
+      return codec.decode(payload);
+    } catch (UncheckedIOException e) {
+      throw new IllegalArgumentException(
+          "failed to decode " + kind + " payload: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * {@code codec.encode}, translating a raw {@link UncheckedIOException} from the external codec
+   * into the teaching {@link IllegalArgumentException} this view has always thrown for an
+   * unencodable {@code kind} value (codec-adoption spec §2).
+   */
+  private byte[] encode(T value) {
+    try {
+      return codec.encode(value);
+    } catch (UncheckedIOException e) {
+      throw new IllegalArgumentException(
+          "failed to encode " + kind + " payload: " + e.getMessage(), e);
+    }
   }
 }

@@ -18,7 +18,8 @@ package org.jwcarman.nessy.intent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -32,14 +33,14 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  * a foreign shape" — {@link DocumentStore#update} would decode the incumbent before discarding it,
  * narrowing that contract for a caller sharing a key across declaration types.
  *
- * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7): the {@link
- * #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to {@link
- * Codec#json(ObjectMapper, Class)} — a sealed vocabulary's declaration is rendered with a {@code
- * "type"} discriminator naming the declared record, and read back through the vocabulary class
- * token; the freeform {@link Intent} tier — and any other plain record vocabulary — round-trips as
- * an ordinary JSON object, no discriminator involved. {@link #SubstrateIntentStore(Substrate,
- * String, Codec)} accepts a caller-supplied codec directly — a transform chained on with {@link
- * Codec#then(Codec)} (encryption, compression) or a test probe.
+ * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7; codec-adoption spec §2): the
+ * {@link #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to
+ * one {@link Jackson2CodecFactory} over {@code mapper} — a sealed vocabulary's declaration is
+ * rendered with a {@code "type"} discriminator naming the declared record, and read back through
+ * the vocabulary class token; the freeform {@link Intent} tier — and any other plain record
+ * vocabulary — round-trips as an ordinary JSON object, no discriminator involved. {@link
+ * #SubstrateIntentStore(Substrate, String, Codec)} accepts a caller-supplied codec directly — a
+ * transform chained on with {@link Codec#andThen(Codec)} (encryption, compression) or a test probe.
  *
  * @param <T> the declared-intent vocabulary this store holds
  */
@@ -50,15 +51,14 @@ public final class SubstrateIntentStore<T> implements IntentStore<T> {
   private final DocumentStore<T> documents;
   private final String agentId;
 
-  /** Defaults the stored shape to {@link Codec#json(ObjectMapper, Class)} over {@code mapper}. */
+  /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
   public SubstrateIntentStore(
       Substrate store, String agentId, Class<T> vocabulary, ObjectMapper mapper) {
     this(
         store,
         agentId,
-        Codec.json(
-            Objects.requireNonNull(mapper, "mapper must not be null"),
-            Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
+        new Jackson2CodecFactory(Objects.requireNonNull(mapper, "mapper must not be null"))
+            .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
   public SubstrateIntentStore(Substrate store, String agentId, Codec<T> codec) {

@@ -23,13 +23,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.support.MarkerBytesCodec;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -143,7 +143,7 @@ class SubstrateAgentStateStoreTest {
               return stateCodec.phase(new String(bytes, StandardCharsets.UTF_8));
             }
           };
-      Codec<Phase> codec = plain.then(new MarkerBytesCodec());
+      Codec<Phase> codec = plain.andThen(new MarkerBytesCodec());
       var store = new SubstrateAgentStateStore(substrate, "agent-a", fixedClock(), codec);
 
       store.save(new State(new Phase.AwaitingModel(), 0L));

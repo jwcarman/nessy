@@ -25,6 +25,28 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **Codec adoption: the homegrown `Codec`/`CodecFactory` retire in favor of
+  `org.jwcarman.codec` 0.2.0.** `org.jwcarman.nessy.spi.substrate.Codec` and
+  its `CodecFactory` are deleted; every reference moves to
+  `org.jwcarman.codec.spi.Codec`/`.CodecFactory` (`codec-core`, Central,
+  0.2.0 — no snapshots), backed by `org.jwcarman.codec.jackson2.Jackson2CodecFactory`
+  (`codec-jackson2`) as the Jackson binding. `then` is renamed `andThen`
+  throughout; `CodecFactory#codec(Class)` is renamed `create(Class)`.
+  `SubstrateSupport` mints one `Jackson2CodecFactory` over its
+  copy-and-pinned mapper — the codec extension point and the pin logic are
+  unchanged, only the factory implementation moves. `SubstrateBacklog`'s
+  outer `String[]` envelope now mints from the substrate's own codec
+  factory (`store.document(kind, String[].class)`) rather than constructing
+  a second, redundant `Jackson2CodecFactory` per instance. Exception
+  contract: the external codec throws `UncheckedIOException`; the typed
+  views (`SubstrateDocumentStore`/`SubstrateJournalStore`) translate that
+  into the same teaching `IllegalArgumentException` every malformed-payload
+  test has always seen, naming the `kind`. Wire formats are byte-identical
+  — the same mapper, the same `writeValueAsBytes`/`readValue` path — proven
+  by the raw-bytes-pinning tests (`SubstrateBacklog`'s base64 envelope,
+  `OutcomeCodec`'s wire shape, `SubstrateMemory`'s legacy-transcript
+  fallback), all passing unchanged.
+
 - **`tell`/`ask`/`subscribe`, and the console.** `Agent#observe` is renamed
   `Agent#tell` — the caller-perspective, fire-and-forget verb; `drive()` is
   unchanged, the manual pump. `Agent#subscribe(TurnObserver)` returns a
