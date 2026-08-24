@@ -28,6 +28,19 @@ import java.util.concurrent.Executor;
  * that cross-thread {@code add}/{@code poll} pair the happens-before edge an {@link
  * java.util.ArrayDeque} never promised, without changing this class's single-threaded-caller
  * semantics at all.
+ *
+ * <p><b>What that edge does NOT give you (fix round 2, item 1a):</b> {@link #pumpUntilQuiet()} only
+ * ever observes what has ALREADY been enqueued — the {@code ConcurrentLinkedQueue} swap fixes
+ * visibility of items already added, not the race against a fold still in flight on another thread
+ * that has not reached {@link #execute} yet. A background {@code ComputationScheduler} pool thread
+ * can enqueue a follow-up model/tool call the instant AFTER {@code pumpUntilQuiet()}'s loop
+ * observes the queue empty and returns — quiescence with a cross-thread producer is unknowable from
+ * inside this class; there is no way to prove nobody will enqueue later without a completion signal
+ * from outside it. <b>Do not assume a single {@code pumpUntilQuiet()} call caught everything a
+ * background nudge submitted.</b> Poll a definitive downstream signal instead — the scope reaching
+ * {@code Phase.Idle}, say — calling {@code pumpUntilQuiet()} again on each iteration, the way
+ * {@code GrantRaceTest}, {@code AgentSubscriptionTest}, and the {@code host}-package approval demos
+ * do.
  */
 public final class PumpedExecutor implements Executor {
 
@@ -38,6 +51,12 @@ public final class PumpedExecutor implements Executor {
     queue.add(task);
   }
 
+  /**
+   * Runs every task currently queued, and any task a run task itself enqueues — but NOT a task a
+   * different thread enqueues after this method's own loop last observes the queue empty (see the
+   * class javadoc). Safe to call repeatedly; unsafe to call once and assume the result is final
+   * when anything other than the calling thread can call {@link #execute}.
+   */
   public void pumpUntilQuiet() {
     while (!queue.isEmpty()) {
       queue.poll().run();

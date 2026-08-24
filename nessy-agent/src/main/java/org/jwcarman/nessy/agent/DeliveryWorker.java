@@ -28,6 +28,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.api.Backoff;
@@ -320,7 +321,7 @@ final class DeliveryWorker<O> implements ComputationPump {
     if (approvalClient == null) {
       return;
     }
-    nudgeExecutor.execute(guarded(() -> drainApprovals(APPROVAL_BATCH_SIZE)));
+    submit(guarded(() -> drainApprovals(APPROVAL_BATCH_SIZE)));
   }
 
   /**
@@ -331,7 +332,25 @@ final class DeliveryWorker<O> implements ComputationPump {
     if (toolClient == null) {
       return;
     }
-    nudgeExecutor.execute(guarded(() -> drainTools(TOOL_BATCH_SIZE)));
+    submit(guarded(() -> drainTools(TOOL_BATCH_SIZE)));
+  }
+
+  /**
+   * {@link #nudge()}'s own "never throws" promise (fix round 2, item 2a) must hold for WHATEVER
+   * {@link Executor} was injected at construction, not merely for {@code ComputationScheduler}'s
+   * own (already-guarded) {@code execute}: a caller-supplied {@link Executor} that has been shut
+   * down throws {@link RejectedExecutionException} straight out of {@code execute} itself — before
+   * {@code task} (already wrapped by {@link #guarded}) ever gets a chance to run and be guarded by
+   * that wrapper. A rejected nudge is exactly as benign as a rejected scheduled pump: the commit
+   * this nudge follows already succeeded, so the drain simply waits for the next nudge or the next
+   * scheduled tick instead.
+   */
+  private void submit(Runnable task) {
+    try {
+      nudgeExecutor.execute(task);
+    } catch (RejectedExecutionException e) {
+      log.debug("a nudge-submitted drain pass was rejected; the executor has been shut down", e);
+    }
   }
 
   /** A thrown {@link RuntimeException} is logged, not propagated to {@link #nudgeExecutor}. */
