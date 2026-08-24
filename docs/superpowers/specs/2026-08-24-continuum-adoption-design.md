@@ -213,9 +213,13 @@ gains no arm, and stored phase documents are unaffected.
 - `CallAddress.approval()` and `.execution()` — the two purpose-tagged
   `ComputationId` derivations. The digest helper itself survives, now
   producing the dispatch index key (§5).
-- `DurableDecisions.toAdjudication` — already dead in production; only tests
-  call it, because `DeliveryWorker` maps outcomes itself via
-  `toToolOutcome`.
+- `DurableDecisions` — **the whole class, not just `toAdjudication`**:
+  `toAdjudication` was already dead in production (only tests called it,
+  because `DeliveryWorker` maps outcomes itself via `toToolOutcome`), and its
+  now-caller-less `granted`/`denied` helpers go with it. `DurableDecisionsTest`
+  goes too.
+- `Continuation` — whittled down to zero production callers once
+  `ScopeRouting` went.
 - `RetrySemantics`, `ToolConfig.retrySemantics(...)`, `Tool#retrySemantics()`
   and the `retrySemantics`/`timeoutMillis` fields `ScopeRouting` writes into
   the continuation payload (§3).
@@ -225,7 +229,15 @@ gains no arm, and stored phase documents are unaffected.
 - From `DeliveryWorker`: the outbox `DocumentStore`, `deliveryPending`, the
   `claiming` set, `SCAN_LIMIT`, `REAP_KEY_SCAN_LIMIT`, `reapOnce`,
   `reapOne`, `reapRetryable`, and the heartbeat thread.
-- `DefaultAgent.redispatch()` — already has zero production callers.
+- `DefaultAgent.redispatch()`, along with `DefaultAgentRedispatchTest` — the
+  method already had zero production callers, and its test goes with it
+  rather than surviving as dead-code coverage.
+- The dead `invocation`/`alsoCommit` parameters `RegistryToolCallExecutor`
+  threaded down to `run()` but never read —
+  `ToolCallExecutor#executeGrantedToolNow` narrows to `(call, address)` to
+  match, and the `alsoCommit` ops-seam door on
+  `ComputationDeferredToolCallPolicy#onDeferred` (and the atomicity guarantee
+  it gave a path nothing in `src/main` reached any more) goes with it.
 
 ## 7. Pumping
 
@@ -234,11 +246,27 @@ Continuum owns no threads. Per kind: `deliverResults`, an expiry pump, and
 `SKIP LOCKED` make overlap correct.
 
 **One shared `ScheduledExecutorService` with a small pool runs them all**
-(ruled) — six tasks per agent type, all agent types on the same pool,
-`scheduleWithFixedDelay` so a slow batch cannot stack overlapping runs.
-Fixed-delay is what Continuum's own guidance recommends. This replaces
-`DeliveryWorker`'s per-`Harness` daemon heartbeat, so thread count stops
-scaling with agent types.
+(ruled) — six tasks per agent type, `scheduleWithFixedDelay` so a slow batch
+cannot stack overlapping runs. Fixed-delay is what Continuum's own guidance
+recommends.
+
+**What actually ships is one small pool per `Harness`, not one pool shared
+across every agent type in a process.** `Harness.of` mints its own
+`ComputationScheduler` (`new ComputationScheduler()`), which owns its own
+two-thread `ScheduledExecutorService` — the sharing is real within a single
+harness (its six pumps, and `nudge()`'s submitted drains, all land on that
+one pool), but two harnesses for two different agent types in the same
+process each get their own pool. This replaces `DeliveryWorker`'s per-
+`Harness` daemon heartbeat one-for-one — thread count per harness is fixed
+at two rather than growing with that harness's own load — but thread count
+**still scales with the number of agent types**, which was the original
+goal's whole point and is not delivered as shipped.
+
+A caller-supplied scheduler — a `HarnessConfig` setter analogous to
+`.substrate(Substrate)`, so callers can point several harnesses at one
+`ComputationScheduler` — is the only shape that would deliver the original
+claim. That is new public API surface and awaits the project owner's
+decision (design-authority rule); it is not implemented by this task.
 
 Platform threads, not virtual ones. This supersedes an earlier lean toward a
 hand-rolled `Thread.ofVirtual` loop, and sidesteps the JDBC driver
@@ -335,9 +363,17 @@ clients directly and nothing sits between.
 
 ### 11.1 Half-durability — the one that governs rollout
 
-Continuum on `continuum-jdbc` makes computations survive a restart. Agent
-state does not: the only shipped `Substrate` is `InMemorySubstrate`. The two
-would then die apart, and `DeliveryWorker.readState` falls back to
+**The rule is not that `continuum-jdbc` is unfit.** It is a TCK-certified
+PostgreSQL provider, and Continuum's half of durability ships today. The
+real rule is narrower and symmetric: **the computation store and the
+substrate must have matching durability** — wire both to `continuum-memory`
+and `InMemorySubstrate`, or both to `continuum-jdbc` and a durable
+`Substrate`. Mixing them breaks in one direction silently and in the other
+permanently (below). Nessy's missing half is a durable `Substrate` — that is
+what blocks the durable pairing today, not any defect in Continuum or
+`continuum-jdbc`.
+
+If the two were mismatched, `DeliveryWorker.readState` falls back to
 `State.initial()` — `Idle` — when a scope's state is missing, while
 `Idle.handle(ToolFinished)` yields `Transition.ignore()`. **Every surviving
 computation would deliver into an amnesiac scope that silently drops it.**
@@ -345,7 +381,9 @@ The tool result vanishes, the call never completes, and nothing logs an
 error.
 
 Today this cannot happen: computations and state share one in-memory store
-and die together, which is consistent. Adoption creates the mismatch.
+and die together, which is consistent. Pairing Continuum with a durable
+substrate — the day one ships — is what would create the mismatch, if the
+two knobs were ever turned independently.
 
 The mismatch is symmetric, and the other direction is worse:
 
@@ -360,7 +398,8 @@ sustains is worse.
 **Constraint:** wire Continuum to `continuum-memory` until a durable
 `Substrate` exists. That makes this change a pure structural refactor with
 no durability change, which is the right scope anyway. Moving to
-`continuum-jdbc` is gated on `JdbcSubstrate`, not on this spec.
+`continuum-jdbc` is gated on `JdbcSubstrate` landing in Nessy, not on any
+change to this spec or to Continuum.
 
 **This must not rely on a doc alone.** `HarnessConfig.finish()` gains a
 startup check: if exactly one of the two stores is an in-memory
@@ -371,9 +410,45 @@ case, which is someone wiring `continuum-jdbc` and forgetting the substrate
 is still volatile. A warning rather than a throw, matching how Continuum's
 own auto-configuration handles the equivalent situation.
 
-Additionally, `DeliveryWorker` should log when a delivery folds against a
-scope with no stored state. That is the actual moment of loss today, and it
-is currently indistinguishable from an ordinary duplicate-delivery ignore.
+Additionally, `DeliveryWorker` logs when a delivery folds against a scope
+with no stored state. That is the actual moment of loss today, and it was
+previously indistinguishable from an ordinary duplicate-delivery ignore;
+`readState` now returns `Optional<State>` so the caller can tell the two
+apart before falling back to `State.initial()`.
+
+#### Regression this migration introduces: disjoint computation state per harness
+
+Before this migration, `SubstrateComputations` gave two `Harness` instances
+built over the same `Substrate` shared, structural computation state — the
+computations lived in the same store the scopes did, so anything reading
+that `Substrate` saw the same approvals and tool computations regardless of
+which harness instance produced them.
+
+As shipped, `HarnessConfig.finish()` mints a fresh `Continuum` — and its
+`InMemoryContinuumRepository` — on every call, with no override seam. Two
+harnesses built over the same `Substrate` now have **disjoint** computation
+state: each harness's `Continuum` is a private, in-process map that no other
+harness, and no other process, can see. `host/ThreeRuntimeProcessLossTest`
+was deleted for exactly this reason — not because its mechanism changed, but
+because the property it tested (computation state surviving a "restart"
+modeled as a second harness over the same store) is now architecturally
+false.
+
+Concretely: **multi-host and restart durability for both computation kinds
+is currently architecturally impossible**, regardless of what `Substrate` a
+caller supplies. This costs nothing today — `InMemorySubstrate` is the only
+shipped `Substrate`, so no deployment could have had multi-host or restart
+durability for computations before this regression either — but it becomes
+live and consequential the day a durable `Substrate` ships: a caller who
+wires `JdbcSubstrate` reasonably expects computations to survive a restart
+too, and as shipped they will not.
+
+The fix is a caller-supplied `Continuum` seam on `HarnessConfig` — a new
+setter analogous to `.substrate(Substrate)` — so two harnesses (or two
+processes) can be pointed at the same durable `Continuum` the way they can
+already be pointed at the same `Substrate`. That is new public API surface
+and awaits the project owner's decision (design-authority rule); it is not
+implemented by this task.
 
 ### 11.2 Lease expiry can re-run a slow tool
 
@@ -508,4 +583,34 @@ unless it names its partner.
 If the index write fails persistently while Continuum is healthy, every
 redrive creates another approval computation and notifies the human again,
 bounded only by redrive frequency. Low likelihood — both are local — but the
-failure is user-visible and unbounded. Worth a log at minimum.
+failure is user-visible and unbounded.
+
+**Shipped:** the `DispatchIndex.record` call sites in
+`ComputationApprover.adjudicate` and
+`ComputationDeferredToolCallPolicy.onDeferred` wrap the call so any
+`RuntimeException` — anything other than the `ConflictException` `record`
+already retries forever internally — is logged at error, naming the call
+site, then rethrown. This does not fix the spam; it stops the spam from
+being silent, which is the point: an operator watching logs now sees the
+orphaned-computation failure the moment it starts, rather than only inferring
+it later from a flood of duplicate approval notifications.
+
+### 11.6 Pool starvation under concurrent slow approvals
+
+`nudge()`'s submitted drain passes and the shared `ComputationScheduler`'s
+six scheduled pumps (§7) share **one small pool** (two threads). `drainApprovals`
+runs a granted tool **inline**, on the pool thread, via
+`executeGrantedToolNow` (§11.2) — it does not hand the tool off the way the
+model-call and deferred-tool effect arms do.
+
+So two concurrent approvals of slow (but `Awaited.Ready`) tools can occupy
+both pool threads for as long as those tools run. For that duration, every
+other pump on the same shared pool — the tool kind's deliver, and both
+kinds' expire and purge pumps, across every `Harness` sharing the scheduler
+— is starved: nothing drains, expires, or purges until a thread frees up.
+
+This is spec-directed, not a defect: §7 rules the pool small and shared, and
+§11.2 rules the approval consumer runs `Awaited.Ready` tools inline. The
+risk is named here because the threshold is concrete and easy to hit by
+accident — **two** concurrent slow approvals is enough to starve the pool
+completely, with a default pool size of two.

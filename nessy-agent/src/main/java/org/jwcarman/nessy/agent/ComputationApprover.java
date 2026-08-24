@@ -26,6 +26,8 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The Continuum-backed adjudicator (continuum-adoption spec §3, §5, §7): {@code create} carries the
@@ -61,6 +63,8 @@ import org.jwcarman.nessy.spi.approval.Approver;
  */
 public final class ComputationApprover implements Approver {
 
+  private static final Logger log = LoggerFactory.getLogger(ComputationApprover.class);
+
   private final ContinuumClient<Decision, Routing> client;
   private final DispatchIndex index;
   private final AgentStateStore state;
@@ -90,8 +94,15 @@ public final class ComputationApprover implements Approver {
         new CallAddress(request.agentType(), request.agentId(), responseId, request.call().id());
     var routing = new Routing(request.agentType(), request.agentId(), responseId, request.call());
     Computation created = client.create(routing);
-    index.record(
-        address, new DispatchEntry(created.id().value().toString(), DispatchKind.APPROVAL));
+    try {
+      index.record(
+          address, new DispatchEntry(created.id().value().toString(), DispatchKind.APPROVAL));
+    } catch (RuntimeException e) {
+      // spec §11.5: client.create above already succeeded, so this computation is now orphaned —
+      // record failing here must not be silent, or every redrive re-asks the human forever.
+      log.error("DispatchIndex.record failed in ComputationApprover.adjudicate", e);
+      throw e;
+    }
     ComputationId mintedId = ComputationId.of(created.id().value().toString());
     // request.id() is a caller-derived placeholder (RegistryToolCallExecutor never sees the real
     // id before this point) — the notified request carries the REAL, Continuum-minted id instead,

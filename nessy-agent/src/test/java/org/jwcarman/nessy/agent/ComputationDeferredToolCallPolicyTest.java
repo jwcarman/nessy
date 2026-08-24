@@ -16,11 +16,17 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
@@ -32,10 +38,12 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
+import org.jwcarman.nessy.agent.support.ThrowingOnWriteSubstrate;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link ComputationDeferredToolCallPolicy} in isolation, over a real {@link ContinuumClient} — the
@@ -129,5 +137,40 @@ class ComputationDeferredToolCallPolicyTest {
         ADDRESS, new DispatchEntry(approvalId.value(), DispatchEntry.DispatchKind.APPROVAL));
 
     assertThat(policy.pendingComputation(ADDRESS)).contains(approvalId);
+  }
+
+  /**
+   * The §11.5 guard: {@link DispatchIndex#record} can throw after {@link ContinuumClient#create}
+   * has already minted the tool computation, at which point the computation is orphaned unless the
+   * failure is at least logged loudly before it propagates (continuum-adoption spec §11.5).
+   */
+  @Test
+  void aDispatchIndexRecordFailureIsLoggedThenRethrown() {
+    var throwingSubstrate =
+        new ThrowingOnWriteSubstrate(
+            substrate, "dispatch/test", () -> new IllegalStateException("index write boom"));
+    var throwingIndex = new DispatchIndex(throwingSubstrate, mapper, "dispatch/test");
+    var throwingPolicy = new ComputationDeferredToolCallPolicy(throwingIndex, toolClient);
+    Logger classicLogger =
+        (Logger) LoggerFactory.getLogger(ComputationDeferredToolCallPolicy.class);
+    classicLogger.setLevel(Level.TRACE);
+    var appender = new ListAppender<ILoggingEvent>();
+    appender.start();
+    classicLogger.addAppender(appender);
+    try {
+      assertThatThrownBy(() -> throwingPolicy.onDeferred(CALL, ADDRESS, Optional.empty()))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("index write boom");
+
+      List<ILoggingEvent> errors =
+          appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
+      assertThat(errors).hasSize(1);
+      assertThat(errors.getFirst().getFormattedMessage())
+          .contains("DispatchIndex.record")
+          .contains("ComputationDeferredToolCallPolicy.onDeferred");
+    } finally {
+      classicLogger.detachAppender(appender);
+      classicLogger.setLevel(null);
+    }
   }
 }

@@ -26,6 +26,8 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The tool kind's own Continuum wiring (continuum-adoption spec §3, §5): {@code create} carries the
@@ -51,6 +53,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  */
 public final class ComputationDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
+  private static final Logger log =
+      LoggerFactory.getLogger(ComputationDeferredToolCallPolicy.class);
+
   private final DispatchIndex index;
   private final ContinuumClient<ToolResult, Routing> client;
 
@@ -74,7 +79,14 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
     var routing = new Routing(address.agentType(), address.agentId(), address.responseId(), call);
     Computation created =
         timeout.map(t -> client.create(routing, t)).orElseGet(() -> client.create(routing));
-    index.record(address, new DispatchEntry(created.id().value().toString(), DispatchKind.TOOL));
+    try {
+      index.record(address, new DispatchEntry(created.id().value().toString(), DispatchKind.TOOL));
+    } catch (RuntimeException e) {
+      // spec §11.5: client.create above already succeeded, so this computation is now orphaned —
+      // record failing here must not be silent, or every redrive re-asks the human forever.
+      log.error("DispatchIndex.record failed in ComputationDeferredToolCallPolicy.onDeferred", e);
+      throw e;
+    }
     return new ToolExecution.Deferred(ComputationId.of(created.id().value().toString()));
   }
 }

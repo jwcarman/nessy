@@ -67,6 +67,8 @@ import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A CONFIG, not a builder (harness-first spec §2, renamed from the pre-customizer fluent builder
@@ -77,6 +79,8 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * Harness} it describes.
  */
 public final class HarnessConfig<O> {
+
+  private static final Logger log = LoggerFactory.getLogger(HarnessConfig.class);
 
   /**
    * The approval kind's Continuum deadline (continuum-adoption spec §7, §9, ruled): an approval
@@ -373,8 +377,24 @@ public final class HarnessConfig<O> {
     // adoption spec §3): wired to continuum-memory, never continuum-jdbc — both kinds still share
     // one durability tier with the scope's own Substrate state, and InMemorySubstrate is the only
     // shipped Substrate (spec §11.1) until a durable one exists.
-    Continuum continuum =
-        new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
+    InMemoryContinuumRepository repository = new InMemoryContinuumRepository();
+    Continuum continuum = new DefaultContinuum(repository, InstantSource.system());
+    // Guard 1 (continuum-adoption spec §11.1): the two stores must share one durability tier —
+    // both volatile or both durable. instanceof against InMemorySubstrate and Continuum's own
+    // InMemoryContinuumRepository is crude — it cannot judge a third-party Substrate that happens
+    // to be volatile for reasons of its own — but it catches the realistic mistake: wiring
+    // continuum-jdbc while leaving the substrate the default in-memory one. A warning, not a
+    // throw, matching how Continuum's own auto-configuration handles the equivalent situation.
+    boolean substrateVolatile = effectiveSubstrate instanceof InMemorySubstrate;
+    boolean computationsVolatile = repository instanceof InMemoryContinuumRepository;
+    if (substrateVolatile != computationsVolatile) {
+      log.warn(
+          "Durability mismatch: the substrate is {} and the computation store is {}. "
+              + "These must match — a durable computation store against a volatile substrate "
+              + "silently drops every delivery, and the reverse hangs calls permanently.",
+          substrateVolatile ? "in-memory" : "durable",
+          computationsVolatile ? "in-memory" : "durable");
+    }
     ContinuumClient<Decision, Routing> effectiveApprovalClient =
         continuum.client(
             Kinds.approval(agentType),

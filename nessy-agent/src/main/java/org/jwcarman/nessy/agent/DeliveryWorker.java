@@ -392,7 +392,7 @@ final class DeliveryWorker<O> implements ComputationPump {
   private void foldToolOutcome(
       AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
     while (true) {
-      State state = readState(id);
+      State state = warnIfNoStoredState(id, readState(id));
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
       if (!transition.isIgnored()) {
@@ -498,7 +498,7 @@ final class DeliveryWorker<O> implements ComputationPump {
   private void foldApprovalResult(
       AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
     while (true) {
-      State state = readState(id);
+      State state = warnIfNoStoredState(id, readState(id));
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
       if (!transition.isIgnored()) {
@@ -527,12 +527,34 @@ final class DeliveryWorker<O> implements ComputationPump {
     }
   }
 
-  /** The current scope state — a genuine value read, since the fold needs its decoded phase. */
-  private State readState(AgentId id) {
-    return states
-        .read(id.value())
-        .map(v -> new State(v.value(), v.version()))
-        .orElseGet(State::initial);
+  /**
+   * The current scope state — a genuine value read, since the fold needs its decoded phase. Empty
+   * means no state has ever been stored for this scope: ordinarily a genuine "never seen this scope
+   * before", but also the exact shape a §11.1 durability mismatch takes — a durable computation
+   * store handing this consumer a delivery for a scope whose substrate-backed state was never
+   * durable in the first place. {@link #warnIfNoStoredState} is where that distinction gets logged;
+   * this method just reports what it found.
+   */
+  private Optional<State> readState(AgentId id) {
+    return states.read(id.value()).map(v -> new State(v.value(), v.version()));
+  }
+
+  /**
+   * Guard 2 (continuum-adoption spec §11.1): a delivery folding against a scope with no stored
+   * state is, absent any other explanation, the moment a tool result is silently dropped — {@link
+   * Phase.Idle#handle(AgentEvent)} ignores it, indistinguishable from an ordinary
+   * duplicate-delivery ignore unless this logs it first. Falls back to {@link State#initial()}
+   * either way, so the fold proceeds exactly as it always has.
+   */
+  private State warnIfNoStoredState(AgentId id, Optional<State> stored) {
+    if (stored.isEmpty()) {
+      log.warn(
+          "a delivery folded against scope {} with no stored state — either its first-ever"
+              + " delivery, or a durability mismatch (spec §11.1) dropped the tool result this"
+              + " delivery was meant to complete",
+          id.value());
+    }
+    return stored.orElseGet(State::initial);
   }
 
   /**
