@@ -51,6 +51,14 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>org.jwcarman.continuum</groupId>
+      <artifactId>continuum-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.continuum</groupId>
+      <artifactId>continuum-memory</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-env</artifactId>
       <version>${project.version}</version>
