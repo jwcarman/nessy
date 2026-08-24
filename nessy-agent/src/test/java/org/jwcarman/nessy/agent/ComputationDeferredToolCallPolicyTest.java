@@ -17,28 +17,50 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.DefaultContinuum;
+import org.jwcarman.continuum.api.BatchSize;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
+import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
+/**
+ * {@link ComputationDeferredToolCallPolicy} in isolation, over a real {@link ContinuumClient} — the
+ * tool kind's own dispatch and absorption behaviour (continuum-adoption spec §3, §5), without a
+ * whole harness around it.
+ */
 class ComputationDeferredToolCallPolicyTest {
 
+  private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final InMemorySubstrate substrate = new InMemorySubstrate();
-
+  private final TestClock clock = new TestClock(Instant.parse("2026-08-24T00:00:00Z"));
+  private final Continuum continuum =
+      new DefaultContinuum(new InMemoryContinuumRepository(), clock);
   private final ContinuumClient<ToolResult, Routing> toolClient =
-      TestToolClients.client("tool", TestMappers.plainlyPinned());
-  private final DispatchIndex index =
-      new DispatchIndex(substrate, TestMappers.plainlyPinned(), "dispatch");
+      continuum.client(
+          "tool/test",
+          ToolResult.class,
+          Routing.class,
+          cfg ->
+              cfg.resultCodec(toolResultCodec(mapper))
+                  .continuationCodec(Routing.codec(mapper))
+                  .deadline(Duration.ofHours(1)));
+  private final DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
   private final ComputationDeferredToolCallPolicy policy =
       new ComputationDeferredToolCallPolicy(index, toolClient);
 
@@ -46,12 +68,34 @@ class ComputationDeferredToolCallPolicyTest {
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
 
+  private static Codec<ToolResult> toolResultCodec(ObjectMapper mapper) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(ToolResult value) {
+        try {
+          return mapper.writeValueAsBytes(value);
+        } catch (JsonProcessingException e) {
+          throw new IllegalArgumentException("undecodable tool result", e);
+        }
+      }
+
+      @Override
+      public ToolResult decode(byte[] bytes) {
+        try {
+          return mapper.readValue(new String(bytes, StandardCharsets.UTF_8), ToolResult.class);
+        } catch (JsonProcessingException e) {
+          throw new IllegalArgumentException("undecodable tool result", e);
+        }
+      }
+    };
+  }
+
   @Test
   void aFirstDeferralCreatesTheComputationAndRecordsItInTheIndex() {
     ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
     assertThat(execution).isInstanceOf(ToolExecution.Deferred.class);
-    ComputationId created = ((ToolExecution.Deferred) execution).id();
+    ComputationId created = ((ToolExecution.Deferred) execution).computation();
     assertThat(index.find(ADDRESS))
         .hasValueSatisfying(
             entry -> {
@@ -61,30 +105,28 @@ class ComputationDeferredToolCallPolicyTest {
   }
 
   @Test
-  void aReDriveFindsTheExistingComputationAndStaysSuspended() {
+  void aRedriveFindsTheExistingComputationAndStaysSuspended() {
     ToolExecution first = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
     Optional<ComputationId> pending = policy.pendingComputation(ADDRESS);
 
     assertThat(pending).isPresent();
-    assertThat(pending.orElseThrow()).isEqualTo(((ToolExecution.Deferred) first).id());
+    assertThat(pending.orElseThrow()).isEqualTo(((ToolExecution.Deferred) first).computation());
   }
 
+  /**
+   * Proves the declared timeout, not the kind's own default deadline (1 hour here), is what got
+   * stamped: advancing well past the 5-minute override but far short of the default expires the
+   * computation, which only a shorter-than-default deadline explains.
+   */
   @Test
-  void aDeclaredTimeoutStampsADeadlineOnTheComputation() {
-    Instant before = Instant.now();
+  void aDeclaredTimeoutStampsAShorterDeadlineThanTheKindsDefault() {
+    policy.onDeferred(CALL, ADDRESS, Optional.of(Duration.ofMinutes(5)));
 
-    ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.of(Duration.ofMinutes(5)));
+    clock.advance(Duration.ofMinutes(6));
+    int expired = toolClient.failExpiredComputations(BatchSize.of(10));
 
-    ComputationId created = ((ToolExecution.Deferred) execution).id();
-    Optional<org.jwcarman.continuum.api.Computation> found =
-        toolClient
-            .register(
-                org.jwcarman.nessy.agent.ContinuumIdsTestAccess.continuumId(created.value()),
-                new Routing("approver", "demo", "r1", CALL))
-            .computation();
-    assertThat(found).isPresent();
-    assertThat(found.orElseThrow().deadline()).isAfter(before.plus(Duration.ofMinutes(4)));
+    assertThat(expired).isEqualTo(1);
   }
 
   @Test
@@ -99,7 +141,7 @@ class ComputationDeferredToolCallPolicyTest {
     ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
     assertThat(policy.pendingComputation(ADDRESS))
-        .contains(((ToolExecution.Deferred) execution).id());
+        .contains(((ToolExecution.Deferred) execution).computation());
   }
 
   @Test

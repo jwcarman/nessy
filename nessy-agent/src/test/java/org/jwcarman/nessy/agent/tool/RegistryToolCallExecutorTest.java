@@ -38,8 +38,6 @@ import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
-import org.jwcarman.nessy.agent.SubstrateComputations;
-import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -48,12 +46,12 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -367,7 +365,7 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, address, invocation, retrySemantics, timeout, alsoCommit) ->
+            (parkedCall, address, timeout) ->
                 new ToolExecution.Deferred(ComputationId.of("tool:test:cli:r1:c1")),
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
@@ -387,7 +385,7 @@ class RegistryToolCallExecutorTest {
   }
 
   private DeferredToolCallPolicy neverParks() {
-    return (parkedCall, address, invocation, retrySemantics, timeout, alsoCommit) -> {
+    return (parkedCall, address, timeout) -> {
       throw new AssertionError("no tool in this test defers");
     };
   }
@@ -567,8 +565,8 @@ class RegistryToolCallExecutorTest {
    * The standalone counting-approver test: exactly one ask across the FULL arc, including a
    * staleness redrive that lands after the grant already turned the call into a durable tool
    * computation. Real {@link ComputationApprover} and {@link ComputationDeferredToolCallPolicy}
-   * over a real {@link SubstrateComputations} — no test doubles standing in for the durable
-   * machinery this test is actually about.
+   * over a real {@link org.jwcarman.continuum.ContinuumClient} (continuum-adoption spec §3) — no
+   * test doubles standing in for the durable machinery this test is actually about.
    */
   @Test
   void exactlyOneApproverNotificationSurvivesAStalenessRedriveAfterTheGrant() {
@@ -585,12 +583,12 @@ class RegistryToolCallExecutorTest {
                 List.of(),
                 RESPONSE_ID),
             0));
-    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
+    var toolClient = TestToolClients.client("tool", mapper);
     var approvalClient = TestApprovalClients.client("approval", mapper);
     var index = new DispatchIndex(substrate, mapper, "dispatch");
     var notifications = new ArrayList<ApprovalRequest>();
     var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, toolClient);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new ParkingDurableTool(), UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();
@@ -618,17 +616,10 @@ class RegistryToolCallExecutorTest {
     // tool computation — simulated through the real policy's own onDeferred (the grant arm's own
     // mechanics are covered by GrantSurvivalTest and AbsorptionTest; this test is about the
     // approver's count), so no raw continuation construction is needed here.
-    deferredPolicy.onDeferred(
-        call,
-        address,
-        new ToolInvocationId(RESPONSE_ID.value(), "c1"),
-        RetrySemantics.NON_RETRYABLE,
-        Optional.empty(),
-        Optional.empty());
+    deferredPolicy.onDeferred(call, address, Optional.empty());
 
     // a staleness redrive lands after the grant: the gate absorbs it via pendingComputation, before
-    // the
-    // approver is ever reached again
+    // the approver is ever reached again
     var redelivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, RESPONSE_ID, redelivered::add);
     pump.pumpUntilQuiet();
