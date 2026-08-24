@@ -32,6 +32,12 @@ vocabulary may still say observe).
   Replied carries the assistant's final text; Parked carries the approval
   request the turn suspended on; Failed carries `TurnEnded`'s reason.
   Zero new event types — `TurnObserver`'s existing vocabulary suffices.
+  (Amendment, merge-time: `TurnOutcome` lives in `nessy-agent`, not
+  `nessy-api` — `Parked` carries `nessy-spi`'s `ApprovalRequest` and
+  `spi → api` already, so api-side placement would cycle. It sits beside
+  `Agent`, its only producer. `TurnOutcome.capturing` is public out of
+  necessity, not design — the cross-package price of Console living in
+  the host package; accepted as documented.)
 
 ## 2. Subscriptions
 
