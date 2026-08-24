@@ -27,7 +27,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
@@ -42,7 +41,6 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -246,16 +244,13 @@ class TypedIntentDemo {
 
       System.out.println("== the desk approves the retried restart ==");
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
-      var computation =
-          ComputationId.of(
-              new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c3").indexKey());
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isPresent();
       assertThat(requests).hasSize(1);
       ApprovalRequest request = requests.getFirst();
       assertThat(request.context().declaredIntent(OpsIntent.class))
           .contains(new Restart("prod-eu", "stuck deploy"));
+      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
+      // document under Kinds.approval — the request's own id (Continuum-minted) is the handle.
+      var computation = request.id();
 
       harness.approvals().approve(computation);
       pump.pumpUntilQuiet();
@@ -266,8 +261,6 @@ class TypedIntentDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isEmpty();
     } finally {
       harness.shutdown();
     }

@@ -15,52 +15,54 @@
  */
 package org.jwcarman.nessy.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
- * The approve/deny door (durable-deliveries spec §5), addressed by the computation's own
- * deterministic identity — the desk holds no state of its own, because the backend is the state.
- * Complete, then nudge the delivery worker: a completed-or-absent id is equally benign under
- * at-least-once delivery (ruling 6, reversed) — there is no "already decided" to refuse loudly,
+ * The approve/deny door (continuum-adoption spec §3, §7), addressed by the computation's own opaque
+ * identity — the desk holds no state of its own, because the approval kind's own {@link
+ * ContinuumClient} is the state. Complete, then nudge the delivery worker: a completed-or-absent id
+ * is equally benign under at-least-once delivery — there is no "already decided" to refuse loudly,
  * because there is nothing left to read once the answer has transferred to its delivery.
  *
- * <p>This backend is the approval-kind instance (computation-identity spec §3) — {@code
- * approval/&lt;agentType&gt;} — never the execution one {@link CompletionDesk} holds.
- *
- * <p>{@code approve}/{@code deny} route through {@link DurableDecisions} (fix round 1, Q4): the one
- * place a {@code Decision} becomes an {@code Outcome} — {@code mapper} is threaded through here
- * purely so this desk can reach that one door, not because this class has any encoding logic of its
- * own.
+ * <p>No adapter type sits between this desk and Continuum (spec §9): {@link ContinuumClient} is the
+ * wrapper {@code SubstrateComputations} used to be, so this desk holds one directly.
  */
 public final class ApprovalDesk {
 
-  private final SubstrateComputations backend;
-  private final ObjectMapper mapper;
+  private final ContinuumClient<Decision, Routing> client;
   private final Runnable nudge;
 
-  public ApprovalDesk(SubstrateComputations backend, ObjectMapper mapper, Runnable nudge) {
-    this.backend = Objects.requireNonNull(backend, "backend must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+  /**
+   * @param client the approval kind's Continuum client
+   * @param nudge run after every decision, so it folds promptly rather than waiting on the next
+   *     heartbeat sweep
+   */
+  public ApprovalDesk(ContinuumClient<Decision, Routing> client, Runnable nudge) {
+    this.client = Objects.requireNonNull(client, "client must not be null");
     this.nudge = Objects.requireNonNull(nudge, "nudge must not be null");
   }
 
   /**
-   * The decision is a fact: {@code Success(Decision)} — answering "no" is a successful
-   * adjudication.
+   * @param id the approval's own opaque id
    */
   public void approve(ComputationId id) {
-    decide(id, DurableDecisions.granted(mapper));
+    decide(id, Decision.allow());
   }
 
+  /**
+   * @param id the approval's own opaque id
+   * @param reason why — folds into the tool call's in-band failure so the model reads it
+   */
   public void deny(ComputationId id, String reason) {
-    decide(id, DurableDecisions.denied(mapper, reason));
+    decide(id, new Decision.Deny(reason));
   }
 
-  private void decide(ComputationId id, Outcome outcome) {
+  private void decide(ComputationId id, Decision decision) {
     Objects.requireNonNull(id, "id must not be null");
-    backend.complete(id, outcome);
+    client.complete(ContinuumIds.continuumId(id.value()), decision);
     nudge.run();
   }
 }

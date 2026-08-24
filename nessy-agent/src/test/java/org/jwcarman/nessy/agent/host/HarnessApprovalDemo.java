@@ -24,7 +24,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
@@ -39,7 +38,6 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -137,15 +135,12 @@ class HarnessApprovalDemo {
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
-      var computation =
-          ComputationId.of(
-              new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c1").indexKey());
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isPresent();
       assertThat(requests).hasSize(1);
       assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
-      assertThat(requests.getFirst().id()).isEqualTo(computation);
+      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
+      // document under Kinds.approval — the request's own id (Continuum-minted, not a locally
+      // derived digest) is the only handle back to it.
+      var computation = requests.getFirst().id();
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");
       harness.approvals().approve(computation);
@@ -158,8 +153,6 @@ class HarnessApprovalDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isEmpty();
     } finally {
       harness.shutdown();
     }
@@ -208,11 +201,8 @@ class HarnessApprovalDemo {
       pump.pumpUntilQuiet();
 
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
-      var computation =
-          ComputationId.of(
-              new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c1").indexKey());
       assertThat(requests).hasSize(1);
+      var computation = requests.getFirst().id();
 
       System.out.println("== the desk says no; the denial arrives in-band ==");
       harness.approvals().deny(computation, "not during business hours");

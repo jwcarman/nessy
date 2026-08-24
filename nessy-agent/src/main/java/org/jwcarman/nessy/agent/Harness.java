@@ -21,12 +21,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
@@ -85,7 +87,8 @@ public final class Harness<O> {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      SubstrateComputations approvalBackend,
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex,
       SubstrateComputations executionBackend,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     this.type = Objects.requireNonNull(type, "type must not be null");
@@ -108,10 +111,12 @@ public final class Harness<O> {
         Objects.requireNonNull(toolExecutorFactory, "toolExecutorFactory must not be null");
     Objects.requireNonNull(substrate, "substrate must not be null");
     Objects.requireNonNull(mapper, "mapper must not be null");
-    Objects.requireNonNull(approvalBackend, "approvalBackend must not be null");
+    Objects.requireNonNull(approvalClient, "approvalClient must not be null");
+    Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null");
     Objects.requireNonNull(executionBackend, "executionBackend must not be null");
-    this.worker = new DeliveryWorker<>(substrate, mapper, this, this::resolve);
-    this.approvals = new ApprovalDesk(approvalBackend, mapper, worker::nudge);
+    this.worker =
+        new DeliveryWorker<>(substrate, mapper, this, this::resolve, approvalClient, dispatchIndex);
+    this.approvals = new ApprovalDesk(approvalClient, worker::nudge);
     this.completions = new CompletionDesk(executionBackend, worker::nudge);
   }
 
@@ -121,11 +126,11 @@ public final class Harness<O> {
    * customizer forms) and {@code Nessy.cli()}, not this factory, so this stays a plain composition
    * point rather than growing fluent setters of its own. No builder exists in user hands (spec §2):
    * each door hands a customizer a fresh config and turns it into a {@link Harness} atomically.
-   * {@code substrate}, {@code mapper}, and the two kind-scoped backends (computation-identity spec
-   * §3: {@code approvalBackend} over {@code approval/<agentType>}, {@code executionBackend} over
-   * {@code computation/<agentType>}, sharing {@code outbox/<agentType>}) are this task's growth
-   * (harness-first spec §4): the life-support this constructor now owns needs them, where a builder
-   * used to wire the worker and desks itself.
+   * {@code substrate}, {@code mapper}, {@code approvalClient} (the approval kind's Continuum
+   * client, continuum-adoption spec §3), {@code dispatchIndex}, and {@code executionBackend} (the
+   * tool kind's old Substrate-backed store, unchanged until that kind migrates too) are the
+   * life-support this constructor owns (harness-first spec §4): the worker and desks it wires used
+   * to be a builder's job.
    */
   public static <O> Harness<O> of(
       AgentType type,
@@ -141,7 +146,8 @@ public final class Harness<O> {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      SubstrateComputations approvalBackend,
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex,
       SubstrateComputations executionBackend,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     Harness<O> harness =
@@ -159,7 +165,8 @@ public final class Harness<O> {
             toolExecutorFactory,
             substrate,
             mapper,
-            approvalBackend,
+            approvalClient,
+            dispatchIndex,
             executionBackend,
             approvalWaiters);
     // Started here, after the constructor returns, not inside it: the heartbeat thread reads

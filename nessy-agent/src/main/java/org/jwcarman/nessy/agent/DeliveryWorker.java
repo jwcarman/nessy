@@ -28,6 +28,11 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.api.Backoff;
+import org.jwcarman.continuum.api.BatchSize;
+import org.jwcarman.continuum.api.Lease;
+import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -107,6 +112,18 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(2);
 
+  /**
+   * The approval kind's lease and backoff (continuum-adoption spec §11.2, ruled): long enough for
+   * an approval-gated {@code Awaited.Ready} tool to complete synchronously inside the grant
+   * consumer — a human just approved it interactively, so a minute or two is generous, not a guess.
+   */
+  private static final Lease APPROVAL_LEASE = Lease.ofMinutes(2);
+
+  private static final Backoff APPROVAL_BACKOFF = Backoff.ofSeconds(30);
+
+  /** The approval sweep's own per-pass cap — small, since a human-gated backlog is never large. */
+  private static final BatchSize APPROVAL_BATCH_SIZE = BatchSize.of(100);
+
   private final Substrate store;
   private final OutcomeCodec codec;
   private final Harness<O> harness;
@@ -125,6 +142,16 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   /** The {@code state} kind, typed over {@link StateCodec} — the scope's phase. */
   private final DocumentStore<Phase> states;
+
+  /**
+   * The approval kind's Continuum client (continuum-adoption spec §3, §7) and its dispatch index —
+   * both {@code null} for a worker built by a pre-migration test constructor that never wires
+   * approvals; {@link #drainApprovals} and its callers no-op when either is absent rather than
+   * assuming every worker in this module's test suite has been repointed at Continuum yet.
+   */
+  private final ContinuumClient<Decision, Routing> approvalClient;
+
+  private final DispatchIndex dispatchIndex;
 
   /**
    * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
@@ -151,6 +178,38 @@ final class DeliveryWorker<O> implements AutoCloseable {
       Harness<O> harness,
       AgentResolver resolver,
       Duration pollInterval) {
+    this(store, mapper, harness, resolver, pollInterval, null, null);
+  }
+
+  /**
+   * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval kind's
+   * Continuum client and its dispatch index, alongside the old Substrate-backed tool kind.
+   */
+  DeliveryWorker(
+      Substrate store,
+      ObjectMapper mapper,
+      Harness<O> harness,
+      AgentResolver resolver,
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex) {
+    this(
+        store,
+        mapper,
+        harness,
+        resolver,
+        DEFAULT_POLL_INTERVAL,
+        Objects.requireNonNull(approvalClient, "approvalClient must not be null"),
+        Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null"));
+  }
+
+  private DeliveryWorker(
+      Substrate store,
+      ObjectMapper mapper,
+      Harness<O> harness,
+      AgentResolver resolver,
+      Duration pollInterval,
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codec = new OutcomeCodec(mapper);
@@ -164,6 +223,8 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
     this.pendingComputations = store.document(computationKind, pendingDocumentCodec(codec));
     this.states = store.document(STATE_KIND, stateCodec(stateCodec));
+    this.approvalClient = approvalClient;
+    this.dispatchIndex = dispatchIndex;
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
@@ -225,6 +286,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
    */
   void nudge() {
     safeDrainOnce();
+    safeDrainApprovalsOnce();
   }
 
   @Override
@@ -243,6 +305,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
       }
       if (!closed) {
         safeDrainOnce();
+        safeDrainApprovalsOnce();
         safeReapOnce();
       }
     }
@@ -254,6 +317,21 @@ final class DeliveryWorker<O> implements AutoCloseable {
       drainOnce();
     } catch (RuntimeException e) {
       log.warn("a delivery sweep failed; will retry on the next heartbeat or nudge", e);
+    }
+  }
+
+  /**
+   * Guards the approval kind's own sweep (continuum-adoption spec §7): a no-op when this worker was
+   * built by a pre-migration test constructor that never wired {@link #approvalClient}.
+   */
+  private void safeDrainApprovalsOnce() {
+    if (approvalClient == null) {
+      return;
+    }
+    try {
+      drainApprovals(APPROVAL_BATCH_SIZE);
+    } catch (RuntimeException e) {
+      log.warn("an approval delivery sweep failed; will retry on the next heartbeat or nudge", e);
     }
   }
 
@@ -298,6 +376,130 @@ final class DeliveryWorker<O> implements AutoCloseable {
       return;
     }
     deliverCompletion(type, id, routing.call().id(), toolOutcome.get(), key);
+  }
+
+  /**
+   * The approval kind's own consumer (continuum-adoption spec §7): {@code Success(Allow)} runs the
+   * tool through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} —
+   * exactly the post-gate door the old grant arm below uses — while {@code Success(Deny)}, {@code
+   * Failure}, and {@code Expired} all fold a tool failure so the model reads it in-band. Continuum
+   * acknowledges the delivery once this consumer returns normally; a thrown exception leaves it
+   * pending for the lease to expire and a later pass to reclaim.
+   *
+   * @param batchSize how many approval deliveries to claim in one pass
+   * @return how many deliveries this pass processed
+   */
+  int drainApprovals(BatchSize batchSize) {
+    return approvalClient.deliverResults(
+        batchSize,
+        APPROVAL_LEASE,
+        APPROVAL_BACKOFF,
+        (routing, outcome) -> {
+          AgentType type = AgentType.of(routing.agentType());
+          AgentId id = AgentId.of(routing.agentId());
+          CallAddress address =
+              new CallAddress(
+                  routing.agentType(),
+                  routing.agentId(),
+                  routing.responseId(),
+                  routing.call().id());
+          switch (outcome) {
+            case TypedOutcome.Success<Decision> success ->
+                handleApprovalDecision(type, id, address, routing, success.value());
+            case TypedOutcome.Failure<Decision> failure ->
+                foldApprovalFailure(type, id, address, routing.call(), failure.message());
+            case TypedOutcome.Expired<Decision> expired ->
+                foldApprovalFailure(
+                    type, id, address, routing.call(), expired.kind() + ": " + expired.message());
+          }
+        });
+  }
+
+  private void handleApprovalDecision(
+      AgentType type, AgentId id, CallAddress address, Routing routing, Decision decision) {
+    switch (decision) {
+      case Decision.Allow _ -> deliverApprovalGrant(type, id, address, routing);
+      case Decision.Deny(String reason) ->
+          foldApprovalFailure(type, id, address, routing.call(), reason);
+    }
+  }
+
+  /**
+   * The stale-grant guard (continuum-adoption spec §5, §11.3) — shipped in its WEAKER form: an
+   * index entry must exist for {@code address} and name the APPROVAL kind. The stronger form (the
+   * entry must name THIS EXACT computation) is not available here — {@link
+   * ContinuumClient#deliverResults} hands this consumer only {@code (Routing, TypedOutcome)}, never
+   * the delivery's own {@code computationId} ({@code CompletionDelivery} carries it, but the typed
+   * layer does not pass it through). This weaker guard still stops an orphaned approval's grant
+   * from running the tool a second time once the real approval's own fold has already deleted the
+   * index entry (the ordering {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate
+   * and this worker's own claim order guarantee for the common case); it does NOT stop two live,
+   * concurrently-granted orphans from both passing the guard before either has folded — a narrower
+   * hole than the design called for, recorded rather than hidden.
+   */
+  private void deliverApprovalGrant(
+      AgentType type, AgentId id, CallAddress address, Routing routing) {
+    Optional<DispatchEntry> entry = dispatchIndex.find(address);
+    if (entry.isEmpty() || entry.get().kind() != DispatchEntry.DispatchKind.APPROVAL) {
+      return; // a stale grant from an orphaned approval — acknowledged, not run
+    }
+    ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
+    ToolExecution result =
+        harness
+            .toolExecutorFor(id)
+            .executeGrantedToolNow(routing.call(), address, invocation, Optional.empty());
+    switch (result) {
+      case ToolExecution.Immediate(ToolOutcome outcome) ->
+          foldApprovalResult(type, id, address, routing.call(), outcome);
+      case ToolExecution.Deferred(_) -> {
+        // the tool went durable via the old execution backend (onDeferred is untouched by the
+        // approval-kind migration); the dispatch index entry for this call stays as-is until the
+        // tool kind's own migration replaces it with a TOOL entry.
+      }
+    }
+  }
+
+  private void foldApprovalFailure(
+      AgentType type, AgentId id, CallAddress address, ToolCall call, String reason) {
+    foldApprovalResult(type, id, address, call, new ToolOutcome.Failed(new ToolError(reason)));
+  }
+
+  /**
+   * The approval kind's own fold-advance (mirrors {@link #deliverCompletion}'s shape): read state,
+   * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
+   * entry's own deletion, so the entry never outlives the call it named (the same reasoning {@link
+   * #foldOps} documents for the outbox delete) — then dispatch effects.
+   */
+  private void foldApprovalResult(
+      AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
+    while (true) {
+      State state = readState(id);
+      var event = new AgentEvent.ToolFinished(call, outcome);
+      var transition = state.phase().handle(event);
+      if (!transition.isIgnored()) {
+        ToolFoldRemembrance.remember(
+            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+      }
+      List<Substrate.Op> ops = new ArrayList<>();
+      if (!transition.isIgnored()) {
+        ops.add(states.writeOp(id.value(), transition.next(), state.version()));
+      }
+      dispatchIndex.deleteOp(address).ifPresent(ops::add);
+      if (!ops.isEmpty()) {
+        try {
+          store.batch(ops);
+        } catch (ConflictException _) {
+          // lost the race — re-read state (or find the index entry already gone) and retry; the
+          // remember above already ran, keyed by the call's own address, so a retry that remembers
+          // the same keys again converges rather than duplicating anything.
+          continue;
+        }
+      }
+      if (!transition.isIgnored()) {
+        dispatchEffects(type, id, transition.next(), transition.effects());
+      }
+      return;
+    }
   }
 
   /**

@@ -226,7 +226,11 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           run(grant.tool(), input, call, address, invocation, Optional.empty());
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
-          // Task 4 replaces this: a locally-derived placeholder rather than a Continuum-minted id.
+          // The id here is a placeholder ApprovalRequest's non-null constructor requires; the
+          // approver never reads it (continuum-adoption spec §3) — ComputationApprover derives its
+          // own address from agentType/agentId/call and mints the real id via Continuum's create(),
+          // never from this request's id. Console-style callers that need the real handle read it
+          // off Adjudication.Suspended, not off this request.
           switch (approver.adjudicate(
               new ApprovalRequest(
                   ComputationId.of(address.indexKey()),

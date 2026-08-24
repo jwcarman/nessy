@@ -193,8 +193,7 @@ class ReaperTest {
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
     var testType = AgentType.of("test");
     var outboxKind = Kinds.outbox(testType);
-    var approvalBackend =
-        new SubstrateComputations(substrate, mapper, Kinds.approval(testType), outboxKind);
+    var index = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(testType));
     var backend =
         new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
     var narrator = new RecordingTurnObserver();
@@ -212,7 +211,7 @@ class ReaperTest {
             AgentId.of("test-scope"),
             narrator,
             pump,
-            new ComputationDeferredToolCallPolicy(approvalBackend, backend, mapper),
+            new ComputationDeferredToolCallPolicy(index, backend, mapper),
             mapper);
     var harness =
         TestAgents.<String>harness(

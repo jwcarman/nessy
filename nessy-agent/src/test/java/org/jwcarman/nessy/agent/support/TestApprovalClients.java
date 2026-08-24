@@ -1,0 +1,56 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.agent.support;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import org.jwcarman.continuum.Continuum;
+import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.DefaultContinuum;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
+import org.jwcarman.nessy.agent.DecisionCodec;
+import org.jwcarman.nessy.agent.Routing;
+import org.jwcarman.nessy.api.Decision;
+
+/**
+ * Test-only Continuum wiring for the approval kind (continuum-adoption spec §3): every test that
+ * builds a {@code Harness}, {@code ComputationApprover}, or {@code ApprovalDesk} directly —
+ * bypassing {@code HarnessConfig#finish()} — needs the same client shape production wiring builds.
+ * One fresh, in-memory {@link Continuum} per call, so tests stay isolated from one another.
+ */
+public final class TestApprovalClients {
+
+  private static final Duration DEADLINE = Duration.ofDays(7);
+
+  private TestApprovalClients() {}
+
+  /**
+   * @param kind the approval kind's own Continuum kind string (see {@code Kinds#approval})
+   * @param mapper the pinned mapper
+   * @return a fresh approval-kind client over a fresh in-memory repository
+   */
+  public static ContinuumClient<Decision, Routing> client(String kind, ObjectMapper mapper) {
+    Continuum continuum = new DefaultContinuum(new InMemoryContinuumRepository());
+    return continuum.client(
+        kind,
+        Decision.class,
+        Routing.class,
+        cfg ->
+            cfg.resultCodec(DecisionCodec.codec(mapper))
+                .continuationCodec(Routing.codec(mapper))
+                .deadline(DEADLINE));
+  }
+}

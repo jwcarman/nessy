@@ -16,18 +16,23 @@
 package org.jwcarman.nessy.agent;
 
 /**
- * The one place a kind-scoped keyspace name is composed (computation-identity spec §3): {@code
- * computation/<agentType>}, {@code approval/<agentType>}, {@code outbox/<agentType>}. Every caller
- * — {@link DeliveryWorker} in this package, and {@link
- * org.jwcarman.nessy.agent.host.HarnessConfig}/ {@link org.jwcarman.nessy.agent.host.Nessy}
- * building a harness's two backends — derives its kind through here, never by hand, so the three
- * strings can never drift apart. Isolation across agent types is by construction (spec §3): two
- * harnesses of different types over one substrate never share a kind.
+ * The one place a kind-scoped name is composed (computation-identity spec §3; continuum-adoption
+ * spec §3): {@code computation/<agentType>}, {@code approval/<agentType>}, {@code
+ * outbox/<agentType>}, {@code dispatch/<agentType>}. Every caller — {@link DeliveryWorker} in this
+ * package, and {@link org.jwcarman.nessy.agent.host.HarnessConfig}/{@link
+ * org.jwcarman.nessy.agent.host.Nessy} building a harness's backends — derives its kind through
+ * here, never by hand, so the strings can never drift apart. Isolation across agent types is by
+ * construction: two harnesses of different types over one substrate never share a kind.
+ *
+ * <p>{@link #approval(AgentType)} now names a Continuum {@code ContinuumClient} kind rather than a
+ * {@code SubstrateComputations} one (continuum-adoption spec §3) — the string itself is unchanged,
+ * only what it addresses. {@link #computation(AgentType)} still names the old Substrate-backed tool
+ * kind, coexisting deliberately until that kind migrates too.
  *
  * <p>Public: {@code HarnessConfig} and {@code Nessy} are the callers outside this package, deriving
- * the same three kinds from the same {@link AgentType} when they build a harness's two backends —
- * not application vocabulary, just the shared derivation both sides of the harness-construction
- * seam must agree on byte-for-byte.
+ * the same kinds from the same {@link AgentType} when they build a harness's backends — not
+ * application vocabulary, just the shared derivation both sides of the harness-construction seam
+ * must agree on byte-for-byte.
  */
 public final class Kinds {
 

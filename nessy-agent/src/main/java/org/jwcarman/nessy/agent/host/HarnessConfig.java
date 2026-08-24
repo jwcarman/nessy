@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.host;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.InstantSource;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -28,12 +29,19 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.continuum.Continuum;
+import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.DefaultContinuum;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.DecisionCodec;
+import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
+import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
@@ -48,6 +56,7 @@ import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -68,6 +77,13 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * Harness} it describes.
  */
 public final class HarnessConfig<O> {
+
+  /**
+   * The approval kind's Continuum deadline (continuum-adoption spec §7, §9, ruled): an approval
+   * waiting forever is a leak; expiry arrives through the normal delivery path. Harness-level, not
+   * per-tool — a per-tool override is deferred until something needs it.
+   */
+  private static final Duration APPROVAL_DEADLINE = Duration.ofDays(7);
 
   private Model model;
   private ModelSettings settings;
@@ -207,12 +223,11 @@ public final class HarnessConfig<O> {
    * SubstrateComputations} instance across builders (e.g. simulating a runtime restart over the
    * same substrate and type — kind-scoping makes two independently constructed instances
    * functionally identical as long as they share both), or to hand it a different {@link
-   * Substrate}/{@link ObjectMapper} pairing than this config's own. The APPROVAL-kind store ({@code
+   * Substrate}/{@link ObjectMapper} pairing than this config's own. The APPROVAL kind ({@code
    * approval/&lt;agentType&gt;}) {@link org.jwcarman.nessy.agent.ApprovalDesk} and {@link
-   * org.jwcarman.nessy.agent.ComputationApprover} ride is always derived fresh from this same
-   * substrate/mapper/type — there is no override seam for it, since sharing only ever mattered for
-   * the substrate + kind strings, not Java object identity, and those are already shared by
-   * construction.
+   * org.jwcarman.nessy.agent.ComputationApprover} ride is no longer a {@link SubstrateComputations}
+   * at all (continuum-adoption spec §3): it is a Continuum {@code ContinuumClient}, built fresh in
+   * {@link #finish()} over an in-memory {@code Continuum} — there is no override seam for it yet.
    *
    * <p><b>Integration contract:</b> the {@code DeliveryWorker} reads completions from this
    * builder's {@link #substrate(Substrate)} — specifically, {@code outbox/&lt;agentType&gt;}
@@ -372,14 +387,28 @@ public final class HarnessConfig<O> {
         id ->
             new SubstrateBacklog<>(effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);
     String executionKind = Kinds.computation(agentType);
-    String approvalKind = Kinds.approval(agentType);
     String outboxKind = Kinds.outbox(agentType);
     SubstrateComputations effectiveExecutionBackend =
         backend != null
             ? backend
             : new SubstrateComputations(effectiveSubstrate, pinned, executionKind, outboxKind);
-    SubstrateComputations effectiveApprovalBackend =
-        new SubstrateComputations(effectiveSubstrate, pinned, approvalKind, outboxKind);
+    // The approval kind's own store, on Continuum rather than Substrate (continuum-adoption spec
+    // §3): wired to continuum-memory, never continuum-jdbc — the tool kind's computations and the
+    // approval kind's still share one durability tier with the scope's own Substrate state, and
+    // InMemorySubstrate is the only shipped Substrate (spec §11.1) until a durable one exists.
+    Continuum continuum =
+        new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
+    ContinuumClient<Decision, Routing> effectiveApprovalClient =
+        continuum.client(
+            Kinds.approval(agentType),
+            Decision.class,
+            Routing.class,
+            cfg ->
+                cfg.resultCodec(DecisionCodec.codec(pinned))
+                    .continuationCodec(Routing.codec(pinned))
+                    .deadline(APPROVAL_DEADLINE));
+    DispatchIndex effectiveDispatchIndex =
+        new DispatchIndex(effectiveSubstrate, pinned, Kinds.dispatchIndex(agentType));
     // The default narrator targets the id-scoped TurnObserver Harness.observerFor(id) hands it
     // (fanout.observerFor(id)) — the ONE path AssistantSaid/TurnEnded now narrate through (front-
     // ends spec §1, Task 3's fix for Task 2's fanout gap): before this, TurnNarrationAdapter
@@ -445,16 +474,17 @@ public final class HarnessConfig<O> {
                     scopeTurnObserver,
                     exec,
                     new ComputationDeferredToolCallPolicy(
-                        effectiveApprovalBackend, effectiveExecutionBackend, pinned),
+                        effectiveDispatchIndex, effectiveExecutionBackend, pinned),
                     new ComputationApprover(
-                        effectiveApprovalBackend,
+                        effectiveApprovalClient,
+                        effectiveDispatchIndex,
                         effectiveStoreFactory.apply(scopeId.value()),
-                        capturingApprovalNotifier,
-                        pinned),
+                        capturingApprovalNotifier),
                     pinned),
             effectiveSubstrate,
             pinned,
-            effectiveApprovalBackend,
+            effectiveApprovalClient,
+            effectiveDispatchIndex,
             effectiveExecutionBackend,
             approvalWaiters);
 

@@ -34,6 +34,7 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
@@ -45,6 +46,7 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
@@ -583,12 +585,12 @@ class RegistryToolCallExecutorTest {
                 List.of(),
                 RESPONSE_ID),
             0));
-    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
     var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
+    var approvalClient = TestApprovalClients.client("approval", mapper);
+    var index = new DispatchIndex(substrate, mapper, "dispatch");
     var notifications = new ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
-    var deferredPolicy =
-        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
+    var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new ParkingDurableTool(), UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();

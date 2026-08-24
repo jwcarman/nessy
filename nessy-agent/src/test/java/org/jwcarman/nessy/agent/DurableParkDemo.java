@@ -109,9 +109,8 @@ class DurableParkDemo {
     var backend =
         new SubstrateComputations(
             substrate, TestMappers.plainlyPinned(), Kinds.computation(type), outboxKind);
-    var approvalBackend =
-        new SubstrateComputations(
-            substrate, TestMappers.plainlyPinned(), Kinds.approval(type), outboxKind);
+    var index =
+        new DispatchIndex(substrate, TestMappers.plainlyPinned(), Kinds.dispatchIndex(type));
     var narrator = new RecordingTurnObserver();
     var id = AgentId.of("demo");
     var registry = ToolRegistry.of(new RiskyTool());
@@ -162,7 +161,7 @@ class DurableParkDemo {
                     narrator,
                     pump,
                     new ComputationDeferredToolCallPolicy(
-                        approvalBackend, backend, TestMappers.plainlyPinned()),
+                        index, backend, TestMappers.plainlyPinned()),
                     TestMappers.plainlyPinned()),
                 AgentObserver.noop(),
                 false,
@@ -188,8 +187,7 @@ class DurableParkDemo {
                 id,
                 narrator,
                 pump,
-                new ComputationDeferredToolCallPolicy(
-                    approvalBackend, backend, TestMappers.plainlyPinned()),
+                new ComputationDeferredToolCallPolicy(index, backend, TestMappers.plainlyPinned()),
                 TestMappers.plainlyPinned()),
             AgentObserver.noop(),
             false,

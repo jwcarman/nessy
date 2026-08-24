@@ -36,6 +36,7 @@ import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -121,10 +122,11 @@ class GrantDeliveryPendingWindowTest {
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
     var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
     var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
+    var approvalClient = TestApprovalClients.client("approval/test", mapper);
+    var index = new DispatchIndex(substrate, mapper, "dispatch/test");
     var notifications = new ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
-    var deferredPolicy =
-        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
+    var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
     var tool = new RecordingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();

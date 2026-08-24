@@ -37,6 +37,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Context;
@@ -138,8 +139,8 @@ class HarnessTest {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     String outboxKind = Kinds.outbox(type);
-    SubstrateComputations approvalBackend =
-        new SubstrateComputations(lifeSupportSubstrate, mapper, Kinds.approval(type), outboxKind);
+    var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
+    var dispatchIndex = new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(type));
     SubstrateComputations executionBackend =
         new SubstrateComputations(
             lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
@@ -162,7 +163,8 @@ class HarnessTest {
         toolExecutorFactory,
         lifeSupportSubstrate,
         mapper,
-        approvalBackend,
+        approvalClient,
+        dispatchIndex,
         executionBackend,
         new ConcurrentHashMap<>());
   }

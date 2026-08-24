@@ -37,8 +37,10 @@ class ComputationDeferredToolCallPolicyTest {
       new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "approval", "outbox");
   private final SubstrateComputations backend =
       new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "computation", "outbox");
+  private final DispatchIndex index =
+      new DispatchIndex(substrate, TestMappers.plainlyPinned(), "dispatch");
   private final ComputationDeferredToolCallPolicy policy =
-      new ComputationDeferredToolCallPolicy(approvalBackend, backend, TestMappers.plainlyPinned());
+      new ComputationDeferredToolCallPolicy(index, backend, TestMappers.plainlyPinned());
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());

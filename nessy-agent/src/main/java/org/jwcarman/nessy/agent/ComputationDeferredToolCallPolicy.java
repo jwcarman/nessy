@@ -34,12 +34,12 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * durable before any dispatch, so the register- after-create window is unexpressible. Every
  * deferral suspends; the eventual completion arrives through the delivery worker, never here.
  *
- * <p>Holds BOTH kind-scoped backends (spec §3): {@code executionBackend} ({@code
- * computation/&lt;agentType&gt;}) is where {@link #onDeferred} creates a durable tool computation;
- * {@code approvalBackend} ({@code approval/&lt;agentType&gt;}) is read-only here, needed only so
- * {@link #pendingComputation} can also check whether an approval is (or was) in flight for {@code
- * address} — the two kinds never overlap, so one instance's {@code find} can no longer answer for
- * the other.
+ * <p>{@code executionBackend} ({@code computation/&lt;agentType&gt;}) is where {@link #onDeferred}
+ * creates a durable tool computation — unchanged by the continuum-adoption migration (spec §2): the
+ * tool kind stays on the old Substrate machinery until a later task. {@link #pendingComputation}
+ * answers from {@code index} alone (continuum-adoption spec §5) — a single read replacing the four
+ * store queries the pre-migration stub would have needed, kind-agnostic by construction since the
+ * index records whichever kind — approval or tool — currently owns the call.
  *
  * <p>{@code invocation} arrives from the gate ({@link
  * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}) already carrying the committed {@code
@@ -69,16 +69,18 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  */
 public final class ComputationDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
-  private final SubstrateComputations approvalBackend;
+  private final DispatchIndex index;
   private final SubstrateComputations executionBackend;
   private final ObjectMapper mapper;
 
+  /**
+   * @param index the dispatch index answering {@link #pendingComputation}
+   * @param executionBackend the execution-kind computation store {@link #onDeferred} creates into
+   * @param mapper the pinned mapper
+   */
   public ComputationDeferredToolCallPolicy(
-      SubstrateComputations approvalBackend,
-      SubstrateComputations executionBackend,
-      ObjectMapper mapper) {
-    this.approvalBackend =
-        Objects.requireNonNull(approvalBackend, "approvalBackend must not be null");
+      DispatchIndex index, SubstrateComputations executionBackend, ObjectMapper mapper) {
+    this.index = Objects.requireNonNull(index, "index must not be null");
     this.executionBackend =
         Objects.requireNonNull(executionBackend, "executionBackend must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
@@ -86,8 +88,7 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
 
   @Override
   public Optional<ComputationId> pendingComputation(CallAddress address) {
-    // Task 4 replaces this: the dispatch index answers this question once it is wired in.
-    return Optional.empty();
+    return index.find(address).map(entry -> ComputationId.of(entry.computationId()));
   }
 
   @Override

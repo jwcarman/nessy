@@ -39,6 +39,7 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
@@ -139,10 +140,11 @@ class GrantRaceTest {
         new SubstrateComputations(substrate, mapper, Kinds.approval(testType), outboxKind);
     var executionBackend =
         new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
+    var approvalClient = TestApprovalClients.client(Kinds.approval(testType), mapper);
+    var index = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(testType));
     var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
-    var deferredPolicy =
-        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
+    var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, executionBackend, mapper);
     var tool = new CountingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();

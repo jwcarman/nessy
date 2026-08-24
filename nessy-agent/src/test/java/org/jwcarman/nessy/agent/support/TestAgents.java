@@ -20,6 +20,7 @@ import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DefaultAgent;
+import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
@@ -163,8 +164,8 @@ public final class TestAgents {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     String outboxKind = Kinds.outbox(type);
-    SubstrateComputations approvalBackend =
-        new SubstrateComputations(lifeSupportSubstrate, mapper, Kinds.approval(type), outboxKind);
+    var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
+    var dispatchIndex = new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(type));
     SubstrateComputations executionBackend =
         new SubstrateComputations(
             lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
@@ -183,7 +184,8 @@ public final class TestAgents {
             (id, obs) -> tools,
             lifeSupportSubstrate,
             mapper,
-            approvalBackend,
+            approvalClient,
+            dispatchIndex,
             executionBackend,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);

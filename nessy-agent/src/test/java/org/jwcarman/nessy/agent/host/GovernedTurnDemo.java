@@ -24,7 +24,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
@@ -39,7 +38,6 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -191,18 +189,14 @@ class GovernedTurnDemo {
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
-      var computation =
-          ComputationId.of(
-              new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c1").indexKey());
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isPresent();
 
       assertThat(requests).isNotEmpty();
       assertThat(requests).hasSize(1);
       ApprovalRequest request = requests.getFirst();
       System.out.println("approval request context: " + request.context());
-      assertThat(request.id()).isEqualTo(computation);
+      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
+      // document under Kinds.approval — the request's own id (Continuum-minted) is the handle.
+      var computation = request.id();
       assertThat(request.context().action()).contains("restart prod-eu");
       assertThat(request.context().declaredIntent())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
@@ -220,8 +214,6 @@ class GovernedTurnDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
-          .isEmpty();
     } finally {
       harness.shutdown();
     }
