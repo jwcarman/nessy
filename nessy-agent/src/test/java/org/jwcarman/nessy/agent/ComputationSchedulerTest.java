@@ -146,50 +146,58 @@ class ComputationSchedulerTest {
     }
   }
 
-  /** A {@link ComputationPump} fake whose every method runs one shared action and counts calls. */
+  /**
+   * A {@link ComputationPump} fake whose every method runs one shared action, counts calls, and
+   * records which of the six methods was invoked — fix round 1 item 6: pure counts alone cannot
+   * tell six distinct pumps from six copies of one (a {@code register} that copy-pasted {@code
+   * drainApprovals} twice and dropped {@code expireTools} would pass every count-only assertion,
+   * and a dropped expire pump means nothing ever times out).
+   */
   private static final class CountingWorker implements ComputationPump {
 
     final AtomicInteger attempts = new AtomicInteger();
+    final List<String> invokedMethods = new ArrayList<>();
     private final Runnable action;
 
     CountingWorker(Runnable action) {
       this.action = action;
     }
 
-    private int run() {
+    private int run(String method) {
       attempts.incrementAndGet();
+      invokedMethods.add(method);
       action.run();
       return 0;
     }
 
     @Override
     public int drainApprovals(BatchSize batchSize) {
-      return run();
+      return run("drainApprovals");
     }
 
     @Override
     public int drainTools(BatchSize batchSize) {
-      return run();
+      return run("drainTools");
     }
 
     @Override
     public int expireApprovals(BatchSize batchSize) {
-      return run();
+      return run("expireApprovals");
     }
 
     @Override
     public int expireTools(BatchSize batchSize) {
-      return run();
+      return run("expireTools");
     }
 
     @Override
     public int purgeApprovals(BatchSize batchSize, ResultTtl ttl) {
-      return run();
+      return run("purgeApprovals");
     }
 
     @Override
     public int purgeTools(BatchSize batchSize, ResultTtl ttl) {
-      return run();
+      return run("purgeTools");
     }
   }
 
@@ -203,6 +211,24 @@ class ComputationSchedulerTest {
     scheduler.register(worker);
 
     assertThat(fake.fixedDelay).hasSize(6);
+  }
+
+  @Test
+  void theSixScheduledPumpsAreSixDistinctMethodsNotSixCopiesOfOne() {
+    var scheduler = new ComputationScheduler(fake);
+
+    scheduler.register(worker);
+    fake.fixedDelay.forEach(scheduled -> scheduled.task().run());
+
+    assertThat(worker.invokedMethods).hasSize(6);
+    assertThat(worker.invokedMethods)
+        .containsExactlyInAnyOrder(
+            "drainApprovals",
+            "drainTools",
+            "expireApprovals",
+            "expireTools",
+            "purgeApprovals",
+            "purgeTools");
   }
 
   @Test

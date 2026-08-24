@@ -42,8 +42,9 @@ public final class ApprovalDesk {
 
   /**
    * @param client the approval kind's Continuum client
-   * @param nudge run after every decision, so it folds promptly rather than waiting on the next
-   *     heartbeat sweep
+   * @param nudge run after every decision — submits a drain pass to the shared {@code
+   *     ComputationScheduler} rather than blocking the caller (continuum-adoption spec §7), so it
+   *     folds promptly without waiting on the next scheduled tick
    */
   public ApprovalDesk(ContinuumClient<Decision, Routing> client, Runnable nudge) {
     this.client = Objects.requireNonNull(client, "client must not be null");
@@ -51,6 +52,9 @@ public final class ApprovalDesk {
   }
 
   /**
+   * Grants the approval, then nudges — the fold itself runs asynchronously (continuum-adoption spec
+   * §7), so this call returns before the grant has actually landed.
+   *
    * @param id the approval's own opaque id
    * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's
    *     own id shape, and every id this desk ever mints one of
@@ -60,6 +64,9 @@ public final class ApprovalDesk {
   }
 
   /**
+   * Denies the approval, then nudges — the fold itself runs asynchronously (continuum-adoption spec
+   * §7), so this call returns before the in-band denial has actually landed.
+   *
    * @param id the approval's own opaque id
    * @param reason why — folds into the tool call's in-band failure so the model reads it
    * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's

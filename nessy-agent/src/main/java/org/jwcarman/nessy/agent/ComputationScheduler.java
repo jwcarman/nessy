@@ -19,8 +19,8 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,11 +30,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * One shared, small, platform-threaded {@link ScheduledExecutorService} driving every registered
- * {@link DeliveryWorker}'s pumps (continuum-adoption spec §7) — six per worker: deliver, expire,
- * and purge, once each for the approval and tool kinds. This replaces {@code DeliveryWorker}'s old
- * per-{@code Harness} daemon heartbeat thread, so thread count no longer scales with the number of
- * registered workers the way that heartbeat did.
+ * A small, platform-threaded {@link ScheduledExecutorService} driving every worker registered to
+ * THIS instance's pumps (continuum-adoption spec §7) — six per worker: deliver, expire, and purge,
+ * once each for the approval and tool kinds, all sharing this one pool rather than each pump
+ * getting its own thread. This replaces {@code DeliveryWorker}'s old per-{@code Harness} daemon
+ * heartbeat thread. One caveat honestly stated: {@link Harness#of} builds one {@code
+ * ComputationScheduler} per {@code Harness} — there is no process-wide holder shared across
+ * multiple agent types today — so thread count stops scaling with the number of WORKERS on one
+ * harness (proven by two workers registered to one scheduler sharing its pool), but still scales
+ * with the number of distinct {@code Harness} instances a process builds, same as the heartbeat it
+ * replaces. A caller-supplied, process-wide scheduler would close that gap; it is a new public knob
+ * this class does not offer (continuum-adoption spec §7's decision list, deferred).
  *
  * <p><b>Fixed-delay, not fixed-rate</b> ({@link ScheduledExecutorService#scheduleWithFixedDelay}):
  * a slow batch must not stack overlapping runs of the same pump on one node — Continuum's own
@@ -72,28 +78,24 @@ public final class ComputationScheduler implements AutoCloseable, Executor {
   private static final Duration TOOL_EXPIRE_DELAY = Duration.ofSeconds(15);
   private static final Duration PURGE_DELAY = Duration.ofMinutes(10);
 
-  private static final int POOL_SIZE = 4;
+  /**
+   * Two, not one (fix round 1 item 3: dropped from an eager four): {@link
+   * DeliveryWorker#drainApprovals} runs a granted tool inline via {@code executeGrantedToolNow}, so
+   * a single thread would let one slow approval wedge the expire and purge pumps behind it. Two is
+   * enough — fixed-delay is exactly the discipline (§7) that makes one runner per pump unnecessary.
+   */
+  private static final int POOL_SIZE = 2;
 
   private final ScheduledExecutorService scheduler;
 
   /**
    * The production constructor: a small, daemon-threaded, platform-thread pool of its own — daemon
    * so it never blocks process shutdown, since the harness is immortal and owns no lifecycle door
-   * of its own beyond {@link Harness#shutdown()}. Prestarts every core thread rather than letting
-   * them start lazily on first task fire: the pumps' own initial delays (see {@link #register}) are
-   * all seconds-to-minutes out, so a lazy pool would leave a freshly built harness with zero live
-   * threads for a while — observable, but not the deterministic "built means running" a lifecycle
-   * test (or a caller) should be able to rely on.
+   * of its own beyond {@link Harness#shutdown()}. Threads start lazily, on first task fire, like
+   * any other {@link java.util.concurrent.ScheduledThreadPoolExecutor}.
    */
   public ComputationScheduler() {
-    this(prestarted(Executors.newScheduledThreadPool(POOL_SIZE, daemonThreadFactory())));
-  }
-
-  private static ScheduledExecutorService prestarted(ScheduledExecutorService scheduler) {
-    if (scheduler instanceof ScheduledThreadPoolExecutor pool) {
-      pool.prestartAllCoreThreads();
-    }
-    return scheduler;
+    this(Executors.newScheduledThreadPool(POOL_SIZE, daemonThreadFactory()));
   }
 
   /**
@@ -139,19 +141,30 @@ public final class ComputationScheduler implements AutoCloseable, Executor {
 
   /**
    * Submits {@code task} to the shared pool, guarded the same way a scheduled pump is — a thrown
-   * {@link RuntimeException} is logged, never propagated to the caller.
+   * {@link RuntimeException} is caught and logged on the pool thread that runs {@code task}, so it
+   * never reaches a caller of {@code task} (there is no such caller here; {@code task} runs later,
+   * asynchronously). The only exception THIS method itself can throw is a {@link
+   * RejectedExecutionException} from {@code scheduler.execute} once {@link #close()} has run — a
+   * shut-down scheduler discarding a late nudge (e.g. a container destroy callback racing an HTTP
+   * approval) is benign, so that is caught here too and logged at debug, not propagated.
    *
    * @param task the work to run
    */
   @Override
   public void execute(Runnable task) {
-    scheduler.execute(guarded(task));
+    try {
+      scheduler.execute(guarded(task));
+    } catch (RejectedExecutionException e) {
+      log.debug("a submitted task was rejected; the scheduler has been closed", e);
+    }
   }
 
   /**
    * {@link ScheduledExecutorService} silently cancels a repeating task that throws (see the class
    * javadoc). Catches {@link RuntimeException} only: an {@link Error} is not a pump's to handle and
-   * propagates.
+   * propagates. Runs on a pool thread, not the submitter's — this guard is what keeps a scheduled
+   * pump's own throw from reaching anyone; {@link #execute}'s {@code RejectedExecutionException}
+   * catch is a separate concern (submission itself failing, before {@code task} ever runs).
    */
   private static Runnable guarded(Runnable task) {
     return () -> {

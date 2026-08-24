@@ -15,14 +15,23 @@
  */
 package org.jwcarman.nessy.agent.support;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 
-/** Tasks queue; the test pumps until quiet. Deterministic asynchrony, no threads (§3.2). */
+/**
+ * Tasks queue; the test pumps until quiet. Deterministic asynchrony, no threads, from the pumping
+ * thread's own point of view (§3.2) — but {@link #execute} itself is called cross-thread now that
+ * {@code DeliveryWorker#nudge()} submits work to a real {@code ComputationScheduler} pool thread
+ * (continuum-adoption spec §7, fix round 1 item 1): a scheduler thread can be mid-{@link #execute}
+ * while the test's own thread is mid-{@link #pumpUntilQuiet()}. {@link ConcurrentLinkedQueue} gives
+ * that cross-thread {@code add}/{@code poll} pair the happens-before edge an {@link
+ * java.util.ArrayDeque} never promised, without changing this class's single-threaded-caller
+ * semantics at all.
+ */
 public final class PumpedExecutor implements Executor {
 
-  private final Deque<Runnable> queue = new ArrayDeque<>();
+  private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
 
   @Override
   public void execute(Runnable task) {

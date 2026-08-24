@@ -36,8 +36,9 @@ public final class CompletionDesk {
 
   /**
    * @param client the tool kind's Continuum client
-   * @param nudge run after every decision, so it folds promptly rather than waiting on the next
-   *     heartbeat sweep
+   * @param nudge run after every decision — submits a drain pass to the shared {@code
+   *     ComputationScheduler} rather than blocking the caller (continuum-adoption spec §7), so it
+   *     folds promptly without waiting on the next scheduled tick
    */
   public CompletionDesk(ContinuumClient<ToolResult, Routing> client, Runnable nudge) {
     this.client = Objects.requireNonNull(client, "client must not be null");
@@ -45,6 +46,9 @@ public final class CompletionDesk {
   }
 
   /**
+   * Completes the computation, then nudges — the fold itself runs asynchronously (continuum-
+   * adoption spec §7), so this call returns before the result has actually landed.
+   *
    * @param id the tool computation's own opaque id
    * @param result what the tool returned
    * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's
@@ -58,6 +62,9 @@ public final class CompletionDesk {
   }
 
   /**
+   * Fails the computation, then nudges — the fold itself runs asynchronously (continuum-adoption
+   * spec §7), so this call returns before the in-band failure has actually landed.
+   *
    * @param id the tool computation's own opaque id
    * @param reason why — folds into the tool call's in-band failure so the model reads it
    * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's

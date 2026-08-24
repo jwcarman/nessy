@@ -230,9 +230,17 @@ class ConsoleTest {
      * builds its own scheduler exactly like any other harness's — {@link Console#close()} must
      * quiesce it, or the ephemeral-CLI charter (one turn, then gone) is violated by stranded daemon
      * threads. Enumerated by name prefix rather than a new public seam: every thread {@code
-     * ComputationScheduler} prestarts is named {@code "nessy-pump-<n>"}. The pool size itself is
-     * tuning, not contract (spec §7's own "do not assert cadence" ruling extends to it), so this
-     * asserts "more than before" rather than an exact count.
+     * ComputationScheduler} runs is named {@code "nessy-pump-<n>"}.
+     *
+     * <p>Two "do not pin tuning as contract" concessions (spec §7's own ruling, extended to thread
+     * count and start timing): (1) pool threads now start lazily, on first scheduled task fire —
+     * this class dropped an earlier eager {@code prestartAllCoreThreads()} (fix round 1 item 3), so
+     * the "started" side polls up to the pumps' own fastest initial delay rather than asserting
+     * immediately after {@link Console#run()}; (2) the pool size itself is tuning, so both sides
+     * compare against {@code before} with an inequality, never an exact {@code + N} or {@code ==} —
+     * a harness some OTHER, concurrently-running test shut down mid-window could otherwise drive
+     * the live count below {@code before} and fail an exact-equality check that was never this
+     * test's to make (fix round 1 item 7).
      */
     @Test
     void closing_the_console_leaves_no_live_delivery_pump_thread() throws InterruptedException {
@@ -251,19 +259,28 @@ class ConsoleTest {
       console.run();
       // the console observer streams TextDelta live (fix round 2, M9); contains, not equals.
       assertThat(captured.toString(StandardCharsets.UTF_8)).contains("hello back");
-      assertThat(liveDeliveryThreadCount()).isGreaterThan(before);
+
+      // the fastest pump (deliver) has a 1s initial delay, so the pool's threads may not have
+      // started yet the instant run() returns — poll rather than assert immediately.
+      long startDeadline = System.currentTimeMillis() + 3000;
+      long started = liveDeliveryThreadCount();
+      while (started <= before && System.currentTimeMillis() < startDeadline) {
+        Thread.sleep(20);
+        started = liveDeliveryThreadCount();
+      }
+      assertThat(started).isGreaterThan(before);
 
       console.close();
 
       // ScheduledExecutorService#shutdown() lets running/queued tasks finish before its threads
       // actually die — give the pool a moment to actually stop.
-      long deadline = System.currentTimeMillis() + 2000;
+      long closeDeadline = System.currentTimeMillis() + 2000;
       long after = liveDeliveryThreadCount();
-      while (after > before && System.currentTimeMillis() < deadline) {
+      while (after > before && System.currentTimeMillis() < closeDeadline) {
         Thread.sleep(20);
         after = liveDeliveryThreadCount();
       }
-      assertThat(after).isEqualTo(before);
+      assertThat(after).isLessThanOrEqualTo(before);
     }
 
     private static long liveDeliveryThreadCount() {

@@ -194,9 +194,9 @@ public final class Console implements AutoCloseable {
   }
 
   /**
-   * Shuts down this console's harness (its worker heartbeat), then closes the owned executor if any
-   * — the reverse of build-time construction order, matching {@code Harness}'s own lifecycle
-   * discipline (harness-first spec §4).
+   * Shuts down this console's harness (its shared {@code ComputationScheduler}, continuum-adoption
+   * spec §7), then closes the owned executor if any — the reverse of build-time construction order,
+   * matching {@code Harness}'s own lifecycle discipline (harness-first spec §4).
    */
   @Override
   public void close() {
