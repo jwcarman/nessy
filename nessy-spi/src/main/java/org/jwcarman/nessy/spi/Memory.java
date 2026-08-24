@@ -28,14 +28,14 @@ import org.jwcarman.nessy.api.message.Context;
  *   <li><b>Append before commit — the CALLER's law.</b> A caller that folds a transition remembers
  *       every {@link Remembrance} the fold implies BEFORE committing its own state; a throwing
  *       {@code remember} aborts the attempt before anything commits. What "the attempt stays
- *       pending" means differs by caller: the durable, outbox-driven fold ({@code DeliveryWorker})
- *       leaves the delivery undeleted, and the next heartbeat (or {@code nudge()}) redrives it —
- *       at-least-once, no caller-visible failure. The non-durable shell fold ({@code DefaultAgent})
- *       re-queues the observation onto its backlog and lets the exception surface to whoever called
- *       {@code tell()} — there is no heartbeat to redrive it silently, so the caller sees the
- *       failure and decides whether to retry. Either way, the work this attempt would have
- *       committed is preserved, not lost. This implementation contract does not live here — it
- *       binds callers, not implementors.
+ *       pending" means differs by caller: the durable, Continuum-driven fold ({@code
+ *       DeliveryWorker}) leaves the delivery unacknowledged, and the next scheduled drain (or
+ *       {@code nudge()}) redrives it — at-least-once, no caller-visible failure. The non-durable
+ *       shell fold ({@code DefaultAgent}) re-queues the observation onto its backlog and lets the
+ *       exception surface to whoever called {@code tell()} — there is no scheduled drain to redrive
+ *       it silently, so the caller sees the failure and decides whether to retry. Either way, the
+ *       work this attempt would have committed is preserved, not lost. This implementation contract
+ *       does not live here — it binds callers, not implementors.
  *   <li><b>Remember is idempotent by turn identity — the IMPLEMENTOR's law.</b> Every {@link
  *       Remembrance} carries its own opaque {@link Remembrance#key()}; {@code remember}ing the same
  *       key twice must converge to one remembered fact, and {@link #recall()} must return messages

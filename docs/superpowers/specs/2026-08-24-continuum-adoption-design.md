@@ -189,8 +189,11 @@ second computation. The reverse ordering must not be used: an index entry
 with no computation behind it would absorb every redrive forever and hang
 the call.
 
-An orphaned **tool** computation is harmless — its eventual delivery folds
-into a call no longer pending and the reducer ignores it. An orphaned
+An orphaned **tool** computation is harmless *when it arrives second* — its
+eventual delivery folds into a call no longer pending and the reducer
+ignores it. That ordering is not guaranteed: an orphan-first arrival folds a
+genuine result for a call that is still pending, indistinguishable from the
+real answer, so the qualifier matters. An orphaned
 **approval** is not (§11.3), so the grant consumer must validate before
 acting: if the index entry for the call is absent or names a different
 computation, the grant is stale and is acknowledged without running the
@@ -215,9 +218,12 @@ gains no arm, and stored phase documents are unaffected.
   producing the dispatch index key (§5).
 - `DurableDecisions` — **the whole class, not just `toAdjudication`**:
   `toAdjudication` was already dead in production (only tests called it,
-  because `DeliveryWorker` maps outcomes itself via `toToolOutcome`), and its
-  now-caller-less `granted`/`denied` helpers go with it. `DurableDecisionsTest`
-  goes too.
+  because `DeliveryWorker` maps outcomes itself via `toToolOutcome`). `denied`
+  was not caller-less — `ApprovalDesk#deny` called it, for its null/blank
+  guard — and the deletion rewrote that call site to build a bare
+  `Decision.Deny(reason)` instead, dropping the guard along with the helper.
+  (A later fix-wave task restored the check, on `Decision.Deny`'s own
+  compact constructor.) `DurableDecisionsTest` goes too.
 - `Continuation` — whittled down to zero production callers once
   `ScopeRouting` went.
 - `RetrySemantics`, `ToolConfig.retrySemantics(...)`, `Tool#retrySemantics()`
@@ -282,10 +288,9 @@ The approval consumer receives `(Routing, TypedOutcome<Decision>)`:
 Both kinds expire the same way — `failExpiredComputations` — so there is one
 pump shape, not two.
 
-`DeliveryWorker` keeps its fold half — `deliverCompletion`,
-`foldGrantedResult`, `foldOps`, `dispatchEffects`, `routingCall` — now
-driven by `deliverResults` consumers rather than by scanning an outbox it
-owns.
+`DeliveryWorker` keeps its fold half — `foldToolOutcome`, `foldApprovalResult`,
+`foldOps`, `dispatchEffects` — now driven by `deliverResults` consumers
+rather than by scanning an outbox it owns.
 
 **`nudge()` survives in spirit.** `ApprovalDesk.approve` currently nudges
 the worker so a decision folds immediately rather than on the next
@@ -404,11 +409,16 @@ change to this spec or to Continuum.
 **This must not rely on a doc alone.** `HarnessConfig.finish()` gains a
 startup check: if exactly one of the two stores is an in-memory
 implementation, log loudly. Detection is `instanceof` against
-`InMemorySubstrate` and Continuum's in-memory repository, which is crude —
-it cannot judge a third-party `Substrate` — but it catches the realistic
-case, which is someone wiring `continuum-jdbc` and forgetting the substrate
-is still volatile. A warning rather than a throw, matching how Continuum's
-own auto-configuration handles the equivalent situation.
+`InMemorySubstrate` for the substrate side; the computation-store side has
+no seam yet to be anything other than `InMemoryContinuumRepository` (§10 —
+no `JdbcSubstrate`, so nothing wires `continuum-jdbc` here today), so that
+half of the check is presently a constant rather than a live `instanceof`.
+The guard is therefore one-sided as shipped: it can only catch a durable
+`Substrate` paired with the still-volatile default computation store — the
+hang direction, which is the worse of the two failures above — not the
+"someone wired `continuum-jdbc` and forgot the substrate" direction, since
+there is nothing to wire yet. A warning rather than a throw, matching how
+Continuum's own auto-configuration handles the equivalent situation.
 
 Additionally, `DeliveryWorker` logs when a delivery folds against a scope
 with no stored state. That is the actual moment of loss today, and it was
@@ -519,11 +529,17 @@ the duplicate), and if both are approved, both fan out grants and each grant
 runs the tool. The reducer dedups the second *fold*, never the second
 *execution*.
 
-**As shipped (Task 8):** the guard is identity-checked on all three arms — a
-grant, a failure, or an expiry is admitted iff the call's dispatch entry
-currently exists and names THIS EXACT computation, not merely an entry of the
-right kind. `DeliveryWorker.isCurrentDispatch` is the one predicate all three
-arms (`deliverApprovalGrant`, `foldApprovalFailure`, and the tool kind's own
+**As shipped (Task 8):** the guard is identity-checked on all three arms. For
+the approval kind's two arms, a grant or a failure/expiry is admitted iff the
+call's dispatch entry currently exists and names THIS EXACT computation, not
+merely an entry of the right kind — a stale one is acknowledged, not folded,
+so it never reaches the reducer at all. The tool kind's own arm is narrower:
+its outcome always folds through the reducer regardless (the reducer's own
+duplicate-call-id ignore already absorbs a stale redelivery) — only the
+dispatch index entry's own *deletion* is gated on the same identity check, so
+a stale redelivery cannot delete an entry a newer, still-live computation has
+since overwritten to name. `DeliveryWorker.isCurrentDispatch` is the one
+predicate all three arms (`deliverApprovalGrant`, `foldApprovalFailure`, and the tool kind's own
 `foldOps` deletion) share.
 
 **History.** Task 3 shipped a weaker form: `ContinuumClient#deliverResults`
@@ -569,6 +585,19 @@ If the index write fails persistently while Continuum is healthy, every
 redrive creates another approval computation and notifies the human again,
 bounded only by redrive frequency. Low likelihood — both are local — but the
 failure is user-visible and unbounded.
+
+That understates the blast radius: `deliverApprovalGrant` runs a granted
+tool inline, and a *deferring* tool's `onDeferred` rethrows on the same
+`DispatchIndex.record` failure. That exception propagates out of the
+Continuum consumer, so the **approval delivery itself** is redelivered after
+the 30-second backoff — the identity guard (§11.3) still passes, because it
+is the same live computation — and **the side-effecting tool runs again**,
+minting a fresh orphan on every pass. At roughly two passes a minute against
+a 7-day approval deadline, one index-store outage can drive on the order of
+20,000 executions of that tool before the approval finally expires. There is
+no dead-letter threshold today — nothing stops the redrive loop short of the
+deadline. `TypedDelivery.deliveryAttempt()` is the mechanism available for a
+future cap, unused as shipped.
 
 **Shipped:** the `DispatchIndex.record` call sites in
 `ComputationApprover.adjudicate` and

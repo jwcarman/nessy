@@ -107,9 +107,10 @@ public final class ToolConfig<T> {
   }
 
   /**
-   * How long a durable computation this tool starts may stay pending before the reaper treats it as
-   * overdue (durable-deliveries spec §6). Unset means no deadline — the computation waits
-   * indefinitely.
+   * How long a durable computation this tool starts may stay pending before Continuum treats it as
+   * overdue and fails it (continuum-adoption spec §3, §9.3) — expiry ends the wait, it does not
+   * retry it. Unset does NOT mean no deadline: {@link Tool#timeout()}'s own javadoc explains the
+   * one-day default an unset timeout is stamped with instead.
    */
   public ToolConfig<T> timeout(Duration timeout) {
     this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");

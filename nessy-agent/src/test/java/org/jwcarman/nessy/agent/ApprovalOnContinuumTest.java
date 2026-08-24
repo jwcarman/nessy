@@ -308,11 +308,12 @@ class ApprovalOnContinuumTest {
     driveOnceWithPending(call);
 
     clock.advance(Duration.ofDays(8));
-    // The behaviour under test — an expired approval folds an in-band failure — is real and this
-    // proves it, but its production trigger is not wired yet: nothing in src/main calls
-    // failExpiredComputations. The heartbeat only runs the drain paths (drainOnce,
-    // safeDrainApprovalsOnce, reapOnce); the expiry pump (ComputationScheduler.expireApprovals) is
-    // a later task's scope. Calling it here directly means this test is not yet end-to-end.
+    // Its production trigger IS wired (continuum-adoption spec §7): DeliveryWorker.expireApprovals
+    // delegates straight to failExpiredComputations, and ComputationScheduler.register schedules it
+    // as one of the worker's six pumps. Calling failExpiredComputations directly here, rather than
+    // going through worker.expireApprovals(...), is still a deliberate narrowing — it isolates the
+    // behaviour under test (an expired approval folds an in-band failure) from the scheduler's own
+    // fixed-delay timing — not evidence the production path is unwired.
     client.failExpiredComputations(BatchSize.of(10));
     drainApprovals();
 
@@ -348,6 +349,16 @@ class ApprovalOnContinuumTest {
     drainApprovals();
 
     assertThat(tool.invocations).hasValue(1); // the real grant, and only the real grant, ran
+
+    // The real grant's own fold deleted its dispatch entry (spec §5), so the call's address now
+    // has NO entry at all — the absent-entry branch of isCurrentDispatch, distinct from the
+    // present-but-wrong-computation branch exercised above. A second orphan completed now must be
+    // rejected the same way: acknowledged, not run.
+    Computation secondOrphan = client.create(routingFor(call));
+    client.complete(secondOrphan.id(), Decision.allow());
+    drainApprovals();
+
+    assertThat(tool.invocations).hasValue(1); // unchanged — the second orphan's grant was swallowed
   }
 
   @Test
@@ -361,6 +372,10 @@ class ApprovalOnContinuumTest {
     // client's default) is untouched, so advancing the clock past the orphan's own deadline
     // expires only the orphan while the real approval stays live.
     Computation orphan = client.create(routingFor(call), Duration.ofHours(1));
+    // Pins this test's premise: the orphan is a genuinely distinct computation from the real
+    // approval, not an accidental re-fetch of the same one — client.create() must mint a fresh id
+    // every call for the rest of this test to mean anything.
+    assertThat(orphan.id().value().toString()).isNotEqualTo(real.value());
 
     clock.advance(Duration.ofHours(2));
     client.failExpiredComputations(BatchSize.of(10));

@@ -143,10 +143,12 @@ public interface AgentObserver {
 `AgentObserver.noop()` is the default everywhere a harness is built without
 one, via `HarnessConfig#agentObserver(AgentObserver)`.
 
-None of these events originate from a live wait. `DeliveryWorker` — one
-heartbeat thread per harness, plus an immediate synchronous drain right after
-any completion commits — is what turns a pending outbox delivery back into
-an `applied` (or `ignored`) fact on this same observer; a grant's dispatch
+None of these events originate from a live wait. `DeliveryWorker` — a small
+scheduled pump pool per harness (`ComputationScheduler`), plus a drain pass
+`nudge()` submits to that same pool right after any completion commits — is
+what turns a pending Continuum delivery back into an `applied` (or
+`ignored`) fact on this same observer; the submitted drain runs
+asynchronously, not on the completing caller's own thread. A grant's dispatch
 and a durable tool's eventual result both surface here exactly like any
 other transition, with no separate "resumed from durable storage" event of
 its own. There is nothing to observe about the worker itself beyond that:

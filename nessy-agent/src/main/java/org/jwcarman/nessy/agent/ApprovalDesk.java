@@ -68,9 +68,13 @@ public final class ApprovalDesk {
    * §7), so this call returns before the in-band denial has actually landed.
    *
    * @param id the approval's own opaque id
-   * @param reason why — folds into the tool call's in-band failure so the model reads it
-   * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's
-   *     own id shape, and every id this desk ever mints one of
+   * @param reason why — folds into the tool call's in-band failure so the model reads it; a null or
+   *     blank {@code reason} is rejected by {@link Decision.Deny}'s own compact constructor before
+   *     this ever reaches Continuum — a silent empty or literal-{@code "null"} denial reason is not
+   *     something the model should ever read
+   * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID, or if {@code
+   *     reason} is blank
+   * @throws NullPointerException if {@code reason} is null
    */
   public void deny(ComputationId id, String reason) {
     decide(id, new Decision.Deny(reason));

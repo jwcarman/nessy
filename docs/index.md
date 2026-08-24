@@ -29,7 +29,8 @@ call is what Restate or DBOS would call a durable promise. "Host" retires
 to meaning your process — the JVM that keeps a harness reference alive,
 nothing more; MCP's own architecture noun agrees. The harness itself now
 carries what a separate host tier used to: the delivery worker, the
-approval and completion desks, the reaper sweep.
+approval and completion desks, and the computation scheduler driving their
+pumps.
 
 ## One door
 
@@ -74,8 +75,9 @@ directly, as below, when a tool needs a real authority rule instead.
 
 The harness is kept, not closed: no `try`-with-resources here, and none in
 any example on this site. Its life-support — the delivery worker, the
-approval and completion desks, the reaper sweep — runs on daemon threads
-for as long as the process does. A single tool that needs a human decides
+approval and completion desks, and the `ComputationScheduler` driving their
+pumps — runs on daemon threads for as long as the process does. A single
+tool that needs a human decides
 that through the same harness, fronted with an `ApprovalDesk`:
 
 ```java

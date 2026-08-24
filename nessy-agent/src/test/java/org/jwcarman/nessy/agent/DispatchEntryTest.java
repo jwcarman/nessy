@@ -1,0 +1,36 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.agent;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.DispatchEntry.DispatchKind;
+
+/**
+ * {@link DispatchEntry}'s own compact constructor: rejects a blank {@code computationId}, matching
+ * its siblings {@link Routing} and {@link CallAddress}, which both reject blank on every String
+ * component. A blank {@code computationId} would make {@code isCurrentDispatch} permanently false
+ * for that call — the absorb-everything failure the dispatch index exists to prevent.
+ */
+class DispatchEntryTest {
+
+  @Test
+  void aBlankComputationIdIsRejected() {
+    assertThatThrownBy(() -> new DispatchEntry("   ", DispatchKind.APPROVAL))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+}

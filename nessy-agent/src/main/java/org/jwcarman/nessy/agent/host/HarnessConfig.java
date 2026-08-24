@@ -390,13 +390,16 @@ public final class HarnessConfig<O> {
     InMemoryContinuumRepository repository = new InMemoryContinuumRepository();
     Continuum continuum = new DefaultContinuum(repository, InstantSource.system());
     // Guard 1 (continuum-adoption spec §11.1): the two stores must share one durability tier —
-    // both volatile or both durable. instanceof against InMemorySubstrate and Continuum's own
-    // InMemoryContinuumRepository is crude — it cannot judge a third-party Substrate that happens
-    // to be volatile for reasons of its own — but it catches the realistic mistake: wiring
-    // continuum-jdbc while leaving the substrate the default in-memory one. A warning, not a
+    // both volatile or both durable. `computationsVolatile` is not a live instanceof check: there
+    // is no seam yet to wire continuum-jdbc here (spec §10 — no JdbcSubstrate), so `repository`'s
+    // static type is always InMemoryContinuumRepository and this is always true. That makes the
+    // guard structurally one-sided as shipped — it can only fire when the substrate is durable and
+    // the computation store is (still, always) volatile, which is the hang direction, the worse of
+    // the two mismatches this guard exists to catch. It is left in, as a placeholder for the day a
+    // durable ContinuumRepository seam exists here, rather than deleted outright. A warning, not a
     // throw, matching how Continuum's own auto-configuration handles the equivalent situation.
     boolean substrateVolatile = effectiveSubstrate instanceof InMemorySubstrate;
-    boolean computationsVolatile = repository instanceof InMemoryContinuumRepository;
+    boolean computationsVolatile = true;
     if (substrateVolatile != computationsVolatile) {
       log.warn(
           "Durability mismatch: the substrate is {} and the computation store is {}. "

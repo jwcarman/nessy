@@ -27,6 +27,9 @@ public record DispatchEntry(String computationId, DispatchKind kind) {
 
   public DispatchEntry {
     Objects.requireNonNull(computationId, "computationId must not be null");
+    if (computationId.isBlank()) {
+      throw new IllegalArgumentException("computationId must not be blank");
+    }
     Objects.requireNonNull(kind, "kind must not be null");
   }
 

@@ -86,9 +86,12 @@ public interface Tool<T> {
   }
 
   /**
-   * How long a durable computation this tool starts may stay pending before the reaper treats it as
-   * overdue (durable-deliveries spec §6). Empty means no deadline — the computation waits
-   * indefinitely, exactly like an approval.
+   * How long a durable computation this tool starts may stay pending before Continuum treats it as
+   * overdue and fails it (continuum-adoption spec §3, §9.3) — expiry ends the wait, it does not
+   * retry it. Empty does NOT mean no deadline: an unset timeout is stamped with a one-day default
+   * ({@code HarnessConfig.DEFAULT_TOOL_DEADLINE}), not left unbounded. Approvals are not unbounded
+   * either — they carry their own fixed, harness-level 7-day deadline (spec §9.3), unaffected by
+   * this method.
    */
   default Optional<Duration> timeout() {
     return Optional.empty();

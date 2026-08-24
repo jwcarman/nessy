@@ -518,7 +518,7 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * The approval kind's own fold-advance (mirrors {@link #deliverCompletion}'s shape): read state,
+   * The approval kind's own fold-advance (mirrors {@link #foldToolOutcome}'s shape): read state,
    * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
    * entry's own deletion, so the entry never outlives the call it named (the same reasoning {@link
    * #foldOps} documents for the outbox delete) — then dispatch effects.

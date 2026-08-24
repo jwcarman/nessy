@@ -76,12 +76,13 @@ showed the answer was never load-bearing. Three laws replace it:
    transition remembers every `Remembrance` the fold implies *before*
    committing its own state. A `remember` that throws aborts the attempt
    before anything commits — but what "stays pending" means differs by
-   caller: the durable, outbox-driven fold (`DeliveryWorker`) leaves the
-   delivery undeleted, and the next heartbeat (or `nudge()`) redrives it —
-   at-least-once, no caller-visible failure. The non-durable shell fold
-   (`DefaultAgent`) re-queues the observation onto its own backlog and lets
-   the exception surface to whoever called `tell()` — there is no
-   heartbeat to redrive it silently, so the caller sees the failure and
+   caller: the durable, Continuum-driven fold (`DeliveryWorker`) leaves the
+   delivery unacknowledged, and the next scheduled drain (or `nudge()`)
+   redrives it — at-least-once, no caller-visible failure. The non-durable
+   shell fold (`DefaultAgent`) re-queues the observation onto its own
+   backlog and lets the exception surface to whoever called `tell()` —
+   there is no scheduled drain to redrive it silently, so the caller sees
+   the failure and
    decides whether to retry. Either way, the work this attempt would have
    committed is preserved, not lost.
 2. **Remember is idempotent by turn identity — the implementor's law.**
@@ -204,12 +205,13 @@ exist at once, one riding the effect and one living in memory. Instead:
 A `Memory` backed by a foreign store that goes down does not corrupt a
 scope's history or fold a turn twice: `remember` throws, and the caller's
 attempt aborts before its own commit. What happens next depends on which
-caller: the durable, outbox-driven fold leaves the delivery exactly where
-it was, waiting for the next heartbeat or the next `nudge()` — no exception
-escapes to anything outside the worker. The non-durable shell fold instead
-re-queues the observation onto its own backlog and lets the exception
-surface to whoever called `tell()` — there is no heartbeat backing that
-path, so the caller finds out and decides whether to retry. Either way,
+caller: the durable, Continuum-driven fold leaves the delivery exactly
+where it was, unacknowledged, waiting for the next scheduled drain or the
+next `nudge()` — no exception escapes to anything outside the worker. The
+non-durable shell fold instead re-queues the observation onto its own
+backlog and lets the exception surface to whoever called `tell()` — there
+is no scheduled drain backing that path, so the caller finds out and
+decides whether to retry. Either way,
 once the foreign store recovers, the same at-least-once retry that already
 governs delivery redrive (or the caller's own next `tell()`/`drive()`)
 carries memory along for free: the same keys, remembered again, converge to

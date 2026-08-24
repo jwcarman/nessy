@@ -60,15 +60,18 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The double-drain race (durable-deliveries spec §5a invariant 5, fix round 2 item (c)): two
- * concurrent drains of the SAME grant delivery — {@link DeliveryWorker#nudge()} racing the
- * heartbeat, modeled here as two threads both calling {@code nudge()} at once — must execute the
- * granted tool exactly once. Before the fix, both racers would read the delivery present, both call
- * the tool, and both attempt to fold — a duplicate external side effect with no crash involved. A
- * version-bump claim was tried first and proven insufficient by this exact test (a second racer
- * reading after the first's bump sees an ordinary document at a newer version and bumps it again
- * just as validly); the actual single-winner mechanism is {@link DeliveryWorker}'s in-process
- * {@code claiming} key set — that is what makes this test pass: only the claim's winner ever
- * reaches the tool.
+ * concurrent drains of the SAME grant — two threads both calling {@link DeliveryWorker#nudge()} at
+ * once, each submitting a drain pass to the shared {@link ComputationScheduler} — must execute the
+ * granted tool exactly once. Before Continuum adoption, both racers would read the delivery
+ * present, both call the tool, and both attempt to fold — a duplicate external side effect with no
+ * crash involved.
+ *
+ * <p>Continuum's own lease is what makes this test pass now (continuum-adoption spec §3, §7): a
+ * {@code deliverResults} pass claims a delivery under an exclusive lease before handing it to this
+ * worker's consumer, so only one of the two racing drain passes ever sees the grant at all — the
+ * other's pass finds nothing claimable and returns having done nothing. There is no in-process
+ * {@code claiming} set doing this any more; the single-winner guarantee is Continuum's, not this
+ * module's.
  */
 class GrantRaceTest {
 

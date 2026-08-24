@@ -12,7 +12,7 @@ other two tiers are what that door assembles underneath.
 JVM that keeps a harness reference alive, nothing more. There used to be a
 fourth tier, a host, sitting between the substrate and the harness; that
 tier's machinery — the delivery worker, the approval and completion desks,
-the reaper sweep — moved *into* the harness itself, so a harness is now the
+the computation scheduler's pumps — moved *into* the harness itself, so a harness is now the
 recipe compiled *plus its own life-support*. Nothing application code
 builds separately plays the old host's role any more.
 
@@ -62,10 +62,12 @@ and tool-call machinery (with one shared `ObjectMapper`, never a per-scope
 one), the observer, the renderer, the staleness policy — built once and
 never reconstructed per delivery. It also owns the machinery a separate
 "host" tier used to own: the delivery worker, the approval and completion
-desks (`harness.approvals()`, `harness.completions()`), and the reaper
-sweep, all daemon-threaded from the harness's own constructor.
+desks (`harness.approvals()`, `harness.completions()`), and the
+`ComputationScheduler` driving their pumps, all daemon-threaded from the
+harness's own constructor.
 
-> A harness is an agent with the scope left blank, plus a heartbeat.
+> A harness is an agent with the scope left blank, plus a computation
+> scheduler.
 
 ```java
 public final class Harness<O> {
@@ -82,7 +84,9 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      SubstrateComputations backend) { ... }
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex,
+      ContinuumClient<ToolResult, Routing> toolClient) { ... }
 
   public Agent<O> bind(AgentId id) { ... }
   public ApprovalDesk approvals() { ... }
@@ -155,8 +159,8 @@ the same `AgentType`, against one shared substrate. A JDBC substrate behind
 many processes is the designed deployment; an in-memory substrate behind
 one process, as in every snippet on this page, is that same design's
 single-node case — not a simplified alternative to it. Each harness's
-worker and reaper sweep only their own type's records (harness-first spec
-§5): a delivery's routing data and a computation's derived address both
+worker's pumps sweep only their own type's records (harness-first spec
+§5): a delivery's routing data and a call's dispatch-index key both
 carry `agentType`, so different types sharing one substrate never touch
 each other's records, and same type ⇒ same harness ⇒ one in-JVM claim
 covering racing drains.
