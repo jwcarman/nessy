@@ -17,12 +17,12 @@ package org.jwcarman.nessy.agent;
 
 /**
  * The one place a kind-scoped name is composed (computation-identity spec §3; continuum-adoption
- * spec §3): {@code computation/<agentType>}, {@code approval/<agentType>}, {@code
- * outbox/<agentType>}, {@code dispatch/<agentType>}. Every caller — {@link DeliveryWorker} in this
- * package, and {@link org.jwcarman.nessy.agent.host.HarnessConfig}/{@link
- * org.jwcarman.nessy.agent.host.Nessy} building a harness's backends — derives its kind through
- * here, never by hand, so the strings can never drift apart. Isolation across agent types is by
- * construction: two harnesses of different types over one substrate never share a kind.
+ * spec §3): {@code tool/<agentType>}, {@code approval/<agentType>}, {@code outbox/<agentType>},
+ * {@code dispatch/<agentType>}. Every caller — {@link DeliveryWorker} in this package, and {@link
+ * org.jwcarman.nessy.agent.host.HarnessConfig}/{@link org.jwcarman.nessy.agent.host.Nessy} building
+ * a harness's backends — derives its kind through here, never by hand, so the strings can never
+ * drift apart. Isolation across agent types is by construction: two harnesses of different types
+ * over one substrate never share a kind.
  *
  * <p>{@link #approval(AgentType)} and {@link #tool(AgentType)} both now name Continuum {@code
  * ContinuumClient} kinds rather than {@code SubstrateComputations} ones (continuum-adoption spec

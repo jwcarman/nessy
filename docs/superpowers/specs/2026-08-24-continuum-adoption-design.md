@@ -597,20 +597,24 @@ it later from a flood of duplicate approval notifications.
 
 ### 11.6 Pool starvation under concurrent slow approvals
 
-`nudge()`'s submitted drain passes and the shared `ComputationScheduler`'s
-six scheduled pumps (§7) share **one small pool** (two threads). `drainApprovals`
-runs a granted tool **inline**, on the pool thread, via
+`nudge()`'s submitted drain passes and one `Harness`'s own `ComputationScheduler`
+six scheduled pumps (§7) share **one small pool** (two threads) — as §7
+now corrects, this pool is per-`Harness`, not shared across agent types.
+`drainApprovals` runs a granted tool **inline**, on the pool thread, via
 `executeGrantedToolNow` (§11.2) — it does not hand the tool off the way the
 model-call and deferred-tool effect arms do.
 
 So two concurrent approvals of slow (but `Awaited.Ready`) tools can occupy
-both pool threads for as long as those tools run. For that duration, every
-other pump on the same shared pool — the tool kind's deliver, and both
-kinds' expire and purge pumps, across every `Harness` sharing the scheduler
-— is starved: nothing drains, expires, or purges until a thread frees up.
+both of one harness's pool threads for as long as those tools run. For that
+duration, every other pump sharing that same harness's pool — the tool
+kind's deliver, and both kinds' expire and purge pumps, five pumps in all —
+is starved: nothing drains, expires, or purges on that harness until a
+thread frees up. Because the pool is per-`Harness`, the starvation is
+confined to that one harness; a second harness for a different agent type
+has its own pool and its own two threads, untouched.
 
-This is spec-directed, not a defect: §7 rules the pool small and shared, and
-§11.2 rules the approval consumer runs `Awaited.Ready` tools inline. The
-risk is named here because the threshold is concrete and easy to hit by
-accident — **two** concurrent slow approvals is enough to starve the pool
-completely, with a default pool size of two.
+This is spec-directed, not a defect: §7 rules the pool small and per-
+harness, and §11.2 rules the approval consumer runs `Awaited.Ready` tools
+inline. The risk is named here because the threshold is concrete and easy
+to hit by accident — **two** concurrent slow approvals is enough to starve
+one harness's pool completely, with a default pool size of two.

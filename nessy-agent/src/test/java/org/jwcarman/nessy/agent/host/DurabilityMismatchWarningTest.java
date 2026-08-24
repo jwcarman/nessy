@@ -82,6 +82,13 @@ class DurabilityMismatchWarningTest {
     assertThat(warnings.getFirst().getFormattedMessage()).contains("Durability mismatch");
   }
 
+  /**
+   * S5841: {@code noneMatch} on {@code appender.list} alone would pass vacuously if the appender
+   * were silently mis-wired — a typo'd logger name, or {@link HarnessConfig} ceasing to log at any
+   * level — since an empty list matches nothing by construction. Proven non-vacuous here by driving
+   * a genuinely mismatched build through the SAME appender afterward and asserting it captures
+   * exactly the one warning the first (matched) build must not have produced.
+   */
   @Test
   void a_plain_in_memory_substrate_over_the_in_memory_computation_store_logs_nothing() {
     var model = new ScriptedModel(List.of());
@@ -95,5 +102,16 @@ class DurabilityMismatchWarningTest {
     HarnessTeardown.track(harness);
 
     assertThat(appender.list).noneMatch(event -> event.getLevel() == Level.WARN);
+
+    var mismatchedHarness =
+        Nessy.harness(
+            h ->
+                h.model(model)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                    .settings(TestSettings.settings())
+                    .substrate(new DelegatingSubstrate(new InMemorySubstrate())));
+    HarnessTeardown.track(mismatchedHarness);
+
+    assertThat(appender.list).hasSize(1).allMatch(event -> event.getLevel() == Level.WARN);
   }
 }
