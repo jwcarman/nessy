@@ -46,6 +46,11 @@
       <artifactId>codec-core</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson2</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-env</artifactId>
       <version>${project.version}</version>
