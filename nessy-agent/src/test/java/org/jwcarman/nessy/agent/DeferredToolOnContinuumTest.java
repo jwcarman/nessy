@@ -33,6 +33,8 @@ import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.api.BatchSize;
+import org.jwcarman.continuum.api.ContinuationId;
+import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.host.Nessy;
@@ -369,7 +371,15 @@ class DeferredToolOnContinuumTest {
     int rememberCallsAfterFirstFold = memory.facts().size();
 
     drainTools(); // a second pass: nothing left to deliver
-    worker.foldOutcome(routingFor(call), new TypedOutcome.Success<>(ToolResult.ok("done")));
+    worker.foldOutcome(
+        new TypedDelivery<>(
+            ContinuumIds.continuumId(id.value()),
+            ContinuationId.random(),
+            routingFor(call),
+            new TypedOutcome.Success<>(ToolResult.ok("done")),
+            clock.instant(),
+            clock.instant(),
+            1));
 
     assertThat(store.load().version()).isEqualTo(versionAfterFirstFold);
     assertThat(memory.facts()).hasSize(rememberCallsAfterFirstFold);

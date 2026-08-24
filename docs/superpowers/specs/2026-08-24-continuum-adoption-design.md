@@ -510,7 +510,7 @@ These are different failure modes with different mitigations.
 defect: Nessy has no backoff today, so a consumer that keeps throwing
 hot-loops on every sweep.
 
-### 11.3 An orphaned approval can run the tool twice
+### 11.3 An orphaned approval can run the tool twice — closed
 
 The §5 crash window leaves an approval computation with no index entry, and
 the redrive creates a second one. Both are **live approvals**. The human
@@ -519,51 +519,36 @@ the duplicate), and if both are approved, both fan out grants and each grant
 runs the tool. The reducer dedups the second *fold*, never the second
 *execution*.
 
-**Mitigation, as shipped (Task 3):** the stronger form described above — validate
-that the grant's computation is the one the index names — is not available.
-`ContinuumClient#deliverResults` hands its consumer only `(continuation,
-TypedOutcome)`; `CompletionDelivery` carries `computationId`, but the typed
-client layer does not pass it through, and dropping to
-`ContinuumRepository.claimDeliveries` to hand-decode it was ruled out (it
-reopens the untyped-repository seam Task 3 exists to avoid).
+**As shipped (Task 8):** the guard is identity-checked on all three arms — a
+grant, a failure, or an expiry is admitted iff the call's dispatch entry
+currently exists and names THIS EXACT computation, not merely an entry of the
+right kind. `DeliveryWorker.isCurrentDispatch` is the one predicate all three
+arms (`deliverApprovalGrant`, `foldApprovalFailure`, and the tool kind's own
+`foldOps` deletion) share.
 
-What actually shipped is weaker than "stale-grant guard" suggests: a predicate
-on the call's **address**, not on the computation — *a grant is admitted iff
-this call's dispatch entry currently exists and is APPROVAL-kind.* It
-discriminates finished calls from unfinished ones, not real approvals from
-orphans. Concretely, three gaps, of which the first two are now closed:
-
-1. **Closed, for one tool shape only.** When the tool returns
-   `Awaited.Ready` (`ToolExecution.Immediate`) and the real and orphaned
-   grants drain strictly sequentially on one thread, the real grant's own
-   fold deletes the index entry before the orphan's grant is drained, so the
-   orphan finds the entry gone and is acknowledged, not run.
-2. **Closed as of Task 4 (deferred tools).** As shipped in Task 3,
-   `ComputationDeferredToolCallPolicy.onDeferred` deliberately left the
-   dispatch entry in place when the tool returned `Awaited.Deferred`, so an
-   orphan's grant and the real grant — drained sequentially, on one thread,
-   in one batch, no race required — both found the entry present and
-   APPROVAL-kind, and both called `executeGrantedToolNow`: a double dispatch
-   of a side-effecting tool with no concurrency involved at all. Task 4's
-   `onDeferred` now overwrites the dispatch entry unconditionally to a TOOL
-   entry naming the newly-created tool computation, on every deferral —
-   including over a call whose entry currently names an APPROVAL computation.
-   The real grant's own deferral flips the entry to TOOL before an orphan's
-   grant is ever drained, so the orphan finds `kind != APPROVAL` and is
-   acknowledged, not run — closing this gap without needing the
-   computation id the guard still lacks.
-3. **Not closed: deny/failure/expiry.** The guard applies to the grant arm
-   only. An orphan that hits its 7-day deadline while the real approval is
-   still live folds a `ToolFinished(Failed)` over the still-live call,
-   advances the turn, and deletes the index entry — after which the real
-   approval's eventual grant is silently swallowed by the very same guard
-   (entry gone, indistinguishable from "already handled"). The human's actual
-   approval is discarded and the model reads a timeout it never suffered.
-
-Gap (3) cannot be closed with an address-only guard — an orphan's failure or
+**History.** Task 3 shipped a weaker form: `ContinuumClient#deliverResults`
+handed its consumer only `(continuation, TypedOutcome)`, never the delivery's
+own `computationId` (`CompletionDelivery` carried it, but the typed client
+layer did not pass it through), so the guard could only ask whether the
+call's dispatch entry currently existed and was APPROVAL-kind — a predicate
+on the call's **address**, not on the computation, which discriminated
+finished calls from unfinished ones rather than real approvals from orphans.
+Two of that guard's three gaps closed before Task 8: the `Awaited.Ready`
+shape closed because the real grant's own fold deleted the index entry
+before an orphan's grant was ever drained, and the deferred-tool shape closed
+in Task 4, when `ComputationDeferredToolCallPolicy.onDeferred` started
+overwriting the dispatch entry unconditionally to a TOOL entry on every
+deferral. The third gap — deny/failure/expiry ran unguarded, so an orphan's
+expiry could fold a `ToolFinished(Failed)` over a still-live call and delete
+its index entry, silently swallowing the real approval's eventual grant —
+could not be closed with an address-only guard, since an orphan's failure or
 expiry is indistinguishable from the real one's without the computation id.
-Closing it needs Continuum to expose a delivery's `computationId` to the
-typed consumer (tracked as follow-on scope, not this task's).
+Continuum 0.3.0 puts `computationId()` on `TypedDelivery` itself, which is
+what makes the identity check above possible; Task 8 also closed a third,
+previously-undocumented site of the same shape (found in Task 4's review):
+the tool kind's own `foldOps` deleted its dispatch entry unguarded, so a
+stale redelivery of an already-superseded tool computation could delete an
+entry a newer, still-live tool computation had since overwritten it to name.
 
 ### 11.4 Documentation this change owes
 

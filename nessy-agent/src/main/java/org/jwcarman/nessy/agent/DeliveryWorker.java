@@ -29,6 +29,7 @@ import org.jwcarman.continuum.api.Backoff;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.Lease;
 import org.jwcarman.continuum.api.ResultTtl;
+import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -281,7 +282,8 @@ final class DeliveryWorker<O> implements ComputationPump {
         batchSize,
         APPROVAL_LEASE,
         APPROVAL_BACKOFF,
-        (routing, outcome) -> {
+        delivery -> {
+          Routing routing = delivery.continuation();
           AgentType type = AgentType.of(routing.agentType());
           AgentId id = AgentId.of(routing.agentId());
           CallAddress address =
@@ -290,14 +292,21 @@ final class DeliveryWorker<O> implements ComputationPump {
                   routing.agentId(),
                   routing.responseId(),
                   routing.call().id());
-          switch (outcome) {
+          String computationId = delivery.computationId().value().toString();
+          switch (delivery.outcome()) {
             case TypedOutcome.Success<Decision> success ->
-                handleApprovalDecision(type, id, address, routing, success.value());
+                handleApprovalDecision(type, id, address, routing, computationId, success.value());
             case TypedOutcome.Failure<Decision> failure ->
-                foldApprovalFailure(type, id, address, routing.call(), failure.message());
+                foldApprovalFailure(
+                    type, id, address, computationId, routing.call(), failure.message());
             case TypedOutcome.Expired<Decision> expired ->
                 foldApprovalFailure(
-                    type, id, address, routing.call(), expired.kind() + ": " + expired.message());
+                    type,
+                    id,
+                    address,
+                    computationId,
+                    routing.call(),
+                    expired.kind() + ": " + expired.message());
           }
         });
   }
@@ -314,6 +323,23 @@ final class DeliveryWorker<O> implements ComputationPump {
   @Override
   public int drainTools(BatchSize batchSize) {
     return toolClient.deliverResults(batchSize, TOOL_LEASE, TOOL_BACKOFF, this::foldOutcome);
+  }
+
+  /**
+   * Resolves {@code delivery}'s scope coordinates and folds its outcome through the reducer.
+   * Package-visible (not {@code private}) so a test can drive a genuine redelivery of the same
+   * outcome without a second pass through Continuum's own lease/ack cycle.
+   */
+  void foldOutcome(TypedDelivery<Routing, ToolResult> delivery) {
+    Routing routing = delivery.continuation();
+    AgentType type = AgentType.of(routing.agentType());
+    AgentId id = AgentId.of(routing.agentId());
+    CallAddress address =
+        new CallAddress(
+            routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
+    String computationId = delivery.computationId().value().toString();
+    foldToolOutcome(
+        type, id, address, computationId, routing.call(), toToolOutcome(delivery.outcome()));
   }
 
   /**
@@ -370,27 +396,23 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * Resolves {@code routing}'s scope coordinates and folds {@code outcome} through the reducer.
-   * Package-visible (not {@code private}) so a test can drive a genuine redelivery of the same
-   * outcome without a second pass through Continuum's own lease/ack cycle.
-   */
-  void foldOutcome(Routing routing, TypedOutcome<ToolResult> outcome) {
-    AgentType type = AgentType.of(routing.agentType());
-    AgentId id = AgentId.of(routing.agentId());
-    CallAddress address =
-        new CallAddress(
-            routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
-    foldToolOutcome(type, id, address, routing.call(), toToolOutcome(outcome));
-  }
-
-  /**
    * The tool kind's own fold-advance (mirrors {@link #foldApprovalResult}'s shape): read state,
    * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
-   * entry's own deletion (spec §5) — then dispatch effects. There is no outbox delivery to delete
-   * here: Continuum's own delivery is acknowledged by this consumer returning normally.
+   * entry's own deletion (spec §5, §11.3) — then dispatch effects. There is no outbox delivery to
+   * delete here: Continuum's own delivery is acknowledged by this consumer returning normally.
+   *
+   * <p>The dispatch entry's deletion is identity-checked against {@code computationId} ({@link
+   * #foldOps}): the fold itself always applies (the reducer's own duplicate-call-id ignore already
+   * absorbs a stale redelivery), but deleting an entry that has since been overwritten to name a
+   * different, still-live computation would reopen the absorption door that entry exists to close.
    */
   private void foldToolOutcome(
-      AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
+      AgentType type,
+      AgentId id,
+      CallAddress address,
+      String computationId,
+      ToolCall call,
+      ToolOutcome outcome) {
     while (true) {
       State state = warnIfNoStoredState(id, readState(id));
       var event = new AgentEvent.ToolFinished(call, outcome);
@@ -399,7 +421,7 @@ final class DeliveryWorker<O> implements ComputationPump {
         ToolFoldRemembrance.remember(
             harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
       }
-      List<Substrate.Op> ops = foldOps(id, state, transition, address);
+      List<Substrate.Op> ops = foldOps(id, state, transition, address, computationId);
       if (!ops.isEmpty()) {
         try {
           store.batch(ops);
@@ -418,57 +440,36 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   private void handleApprovalDecision(
-      AgentType type, AgentId id, CallAddress address, Routing routing, Decision decision) {
+      AgentType type,
+      AgentId id,
+      CallAddress address,
+      Routing routing,
+      String computationId,
+      Decision decision) {
     switch (decision) {
-      case Decision.Allow _ -> deliverApprovalGrant(type, id, address, routing);
+      case Decision.Allow _ -> deliverApprovalGrant(type, id, address, routing, computationId);
       case Decision.Deny(String reason) ->
-          foldApprovalFailure(type, id, address, routing.call(), reason);
+          foldApprovalFailure(type, id, address, computationId, routing.call(), reason);
     }
   }
 
   /**
-   * The stale-grant guard (continuum-adoption spec §5, §11.3) — shipped in its WEAKER form, and its
-   * weakness is wider than "stale-grant" suggests. {@link ContinuumClient#deliverResults} hands
-   * this consumer only {@code (Routing, TypedOutcome)}, never the delivery's own {@code
-   * computationId} ({@code CompletionDelivery} carries it; the typed layer does not pass it
-   * through), so the stronger form — the entry must name THIS EXACT computation — is not available
-   * here.
+   * The stale-grant guard (continuum-adoption spec §5, §11.3), shipped in its STRONG form: a grant
+   * is admitted iff the call's dispatch entry currently exists and names THIS EXACT computation —
+   * an identity check, not a predicate on the address. 0.1.0's typed {@code deliverResults}
+   * consumer withheld the delivery's own {@code computationId} ({@code CompletionDelivery} carried
+   * it, but the typed layer did not pass it through), so an earlier form of this guard could only
+   * ask whether the call's dispatch entry currently existed and was APPROVAL-kind — a predicate
+   * that discriminated finished calls from unfinished ones, not real approvals from orphans. 0.3.0
+   * puts {@code computationId} on {@link TypedDelivery} itself, closing that gap.
    *
-   * <p>What actually ships is a predicate on the ADDRESS, not on the computation: a grant is
-   * admitted iff this call's dispatch entry currently exists and is APPROVAL-kind. It discriminates
-   * finished calls from unfinished ones, not real approvals from orphans. Concretely (spec §11.3),
-   * of three gaps the first two are now closed:
-   *
-   * <ul>
-   *   <li>Closed. When the tool returns {@link ToolExecution.Immediate} and the real and orphaned
-   *       grants drain strictly sequentially on one thread — the real grant's own {@link
-   *       #foldApprovalResult} deletes the entry before the orphan's grant is ever drained, so the
-   *       orphan finds the entry gone and is acknowledged, not run.
-   *   <li>Closed, as of this task ({@code ComputationDeferredToolCallPolicy#onDeferred} now
-   *       overwrites the dispatch entry to a TOOL entry unconditionally, on every deferral). Before
-   *       this task, the branch below left the dispatch entry in place across a deferral, so an
-   *       orphan's grant and the real grant — drained sequentially, on one thread, in one batch, no
-   *       race required — both found the entry present and APPROVAL-kind, and both called {@code
-   *       executeGrantedToolNow}: a double dispatch of a side-effecting tool. Now the real grant's
-   *       own deferral flips the entry to TOOL before an orphan's grant is ever drained, so the
-   *       orphan finds {@code kind != APPROVAL} and is acknowledged, not run — the same shape as
-   *       the first bullet, without needing the computation id the guard still lacks.
-   *   <li>Not closed. The guard applies to this method only. {@link #foldApprovalFailure} (deny,
-   *       {@code Failure}, {@code Expired}) runs unguarded: an orphan that hits its 7-day deadline
-   *       while the real approval is still live folds a {@code ToolFinished(Failed)} over the
-   *       still-live call, advances the turn, and deletes the index entry — after which the real
-   *       approval's eventual grant is silently swallowed by this same guard (entry gone). The
-   *       human's actual "approve" is discarded and the model reads a timeout it never suffered.
-   * </ul>
-   *
-   * The third gap cannot be closed with this guard — an orphan's failure or expiry is
-   * indistinguishable from the real one's without the computation id. Closing it needs Continuum's
-   * typed delivery to expose {@code computationId} (tracked separately; not this task's scope).
+   * <p>{@link #foldApprovalFailure} (deny, {@code Failure}, {@code Expired}) carries the same
+   * identity check, closing spec §11.3 gap 3: an orphan that hits its deadline while the real
+   * approval is still live is now acknowledged, not folded over the live call.
    */
   private void deliverApprovalGrant(
-      AgentType type, AgentId id, CallAddress address, Routing routing) {
-    Optional<DispatchEntry> entry = dispatchIndex.find(address);
-    if (entry.isEmpty() || entry.get().kind() != DispatchEntry.DispatchKind.APPROVAL) {
+      AgentType type, AgentId id, CallAddress address, Routing routing, String computationId) {
+    if (!isCurrentDispatch(address, computationId)) {
       return; // a stale grant from an orphaned approval — acknowledged, not run
     }
     ToolExecution result =
@@ -484,9 +485,36 @@ final class DeliveryWorker<O> implements ComputationPump {
     }
   }
 
+  /**
+   * The deny/failure/expiry arm of the stale-grant guard (spec §11.3 gap 3, closed by this task):
+   * an orphaned approval's own failure or expiry must not fold over the live call and delete its
+   * dispatch entry out from under it — that would silently swallow the real approval's eventual
+   * grant (entry gone, indistinguishable from "already handled").
+   */
   private void foldApprovalFailure(
-      AgentType type, AgentId id, CallAddress address, ToolCall call, String reason) {
+      AgentType type,
+      AgentId id,
+      CallAddress address,
+      String computationId,
+      ToolCall call,
+      String reason) {
+    if (!isCurrentDispatch(address, computationId)) {
+      return; // a stale failure/expiry from an orphaned approval — acknowledged, not folded
+    }
     foldApprovalResult(type, id, address, call, new ToolOutcome.Failed(new ToolError(reason)));
+  }
+
+  /**
+   * Whether {@code address}'s dispatch entry currently names {@code computationId} — the stale-
+   * grant guard's identity check (spec §11.3), shared by the approval kind's grant and
+   * failure/expiry arms and the tool kind's dispatch-entry deletion.
+   */
+  private boolean isCurrentDispatch(CallAddress address, String computationId) {
+    return dispatchIndex
+        .find(address)
+        .map(DispatchEntry::computationId)
+        .filter(computationId::equals)
+        .isPresent();
   }
 
   /**
@@ -558,17 +586,22 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * The tool kind's own fold-advance batch (continuum-adoption spec §5): the CAS state write and
-   * the dispatch index entry's own deletion — there is no outbox delivery to delete here, since
-   * Continuum owns the tool kind's delivery and acknowledges it by this consumer returning.
+   * The tool kind's own fold-advance batch (continuum-adoption spec §5, §11.3): the CAS state write
+   * and the dispatch index entry's own deletion — there is no outbox delivery to delete here, since
+   * Continuum owns the tool kind's delivery and acknowledges it by this consumer returning. The
+   * deletion is identity-checked against {@code computationId}: a stale redelivery of an
+   * already-superseded tool computation must not delete an entry that has since been overwritten to
+   * name a different, still-live computation (spec §11.3 gap 3's tool-kind shape).
    */
   private List<Substrate.Op> foldOps(
-      AgentId id, State state, Transition transition, CallAddress address) {
+      AgentId id, State state, Transition transition, CallAddress address, String computationId) {
     List<Substrate.Op> ops = new ArrayList<>();
     if (!transition.isIgnored()) {
       ops.add(states.writeOp(id.value(), transition.next(), state.version()));
     }
-    dispatchIndex.deleteOp(address).ifPresent(ops::add);
+    if (isCurrentDispatch(address, computationId)) {
+      dispatchIndex.deleteOp(address).ifPresent(ops::add);
+    }
     return ops;
   }
 

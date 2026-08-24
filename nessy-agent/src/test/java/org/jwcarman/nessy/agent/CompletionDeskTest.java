@@ -70,7 +70,7 @@ class CompletionDeskTest {
 
     assertThat(nudges).isEqualTo(1);
     List<TypedOutcome<ToolResult>> delivered = new ArrayList<>();
-    client.deliverResults(BatchSize.of(10), (routing, outcome) -> delivered.add(outcome));
+    client.deliverResults(BatchSize.of(10), delivery -> delivered.add(delivery.outcome()));
     assertThat(delivered).isNotEmpty();
     assertThat(delivered)
         .singleElement()

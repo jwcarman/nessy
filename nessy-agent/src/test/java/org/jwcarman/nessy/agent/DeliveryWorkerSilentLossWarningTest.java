@@ -25,12 +25,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.api.ComputationId;
+import org.jwcarman.continuum.api.ContinuationId;
+import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -158,7 +163,15 @@ class DeliveryWorkerSilentLossWarningTest {
     ToolCall call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     Routing routing = new Routing(type.name(), "test-scope", "r1", call);
 
-    worker.foldOutcome(routing, new TypedOutcome.Success<>(ToolResult.ok("done")));
+    worker.foldOutcome(
+        new TypedDelivery<>(
+            new ComputationId(UUID.randomUUID()),
+            ContinuationId.random(),
+            routing,
+            new TypedOutcome.Success<>(ToolResult.ok("done")),
+            Instant.EPOCH,
+            Instant.EPOCH,
+            1));
 
     List<ILoggingEvent> warnings =
         appender.list.stream().filter(event -> event.getLevel() == Level.WARN).toList();

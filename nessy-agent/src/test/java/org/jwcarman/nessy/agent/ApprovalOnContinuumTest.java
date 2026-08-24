@@ -330,17 +330,50 @@ class ApprovalOnContinuumTest {
     ComputationId real =
         ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
 
-    // An orphan: a second approval for the same call, with no index entry naming it — exactly
-    // what a crash between create and index.record leaves behind.
+    // An orphan: a second, still-live approval for the same call, with no index entry naming
+    // it — exactly what a crash between create and index.record leaves behind. The real
+    // approval's own entry is still present and APPROVAL-kind at this point (it has not been
+    // approved yet), so an address-only guard cannot tell the two grants apart — only a
+    // computation-identity check can. This ordering is the one the weak guard fails: it admits
+    // the orphan's grant because the entry it finds is present and APPROVAL-kind, never asking
+    // whose computation it actually names.
     Computation orphan = client.create(routingFor(call));
-
-    desk.approve(real);
-    drainApprovals();
-    assertThat(tool.invocations).hasValue(1);
 
     client.complete(orphan.id(), Decision.allow());
     drainApprovals();
 
-    assertThat(tool.invocations).hasValue(1); // the orphan's grant was acknowledged, not run
+    assertThat(tool.invocations).hasValue(0); // the orphan's grant was acknowledged, not run
+
+    desk.approve(real);
+    drainApprovals();
+
+    assertThat(tool.invocations).hasValue(1); // the real grant, and only the real grant, ran
+  }
+
+  @Test
+  void anOrphanedApprovalsExpiryDoesNotFoldAFailureOverTheLiveCall() {
+    var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+    driveOnceWithPending(call);
+    ComputationId real =
+        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+
+    // An orphan with its own short deadline — the real approval's own 7-day deadline (the
+    // client's default) is untouched, so advancing the clock past the orphan's own deadline
+    // expires only the orphan while the real approval stays live.
+    Computation orphan = client.create(routingFor(call), Duration.ofHours(1));
+
+    clock.advance(Duration.ofHours(2));
+    client.failExpiredComputations(BatchSize.of(10));
+    drainApprovals();
+
+    // the orphan's expiry was acknowledged, not folded over the still-live call — the human's
+    // eventual "approve" must not be swallowed by an entry this expiry deleted out from under it
+    assertThat(foldedResults()).isEmpty();
+    assertThat(tool.invocations).hasValue(0);
+
+    desk.approve(real);
+    drainApprovals();
+
+    assertThat(tool.invocations).hasValue(1); // the human's real approval still lands
   }
 }

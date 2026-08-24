@@ -17,23 +17,18 @@ package org.jwcarman.nessy.agent;
 
 /**
  * The one place a kind-scoped name is composed (computation-identity spec §3; continuum-adoption
- * spec §3): {@code tool/<agentType>}, {@code approval/<agentType>}, {@code outbox/<agentType>},
- * {@code dispatch/<agentType>}. Every caller — {@link DeliveryWorker} in this package, and {@link
+ * spec §3): {@code tool/<agentType>}, {@code approval/<agentType>}, {@code dispatch/<agentType>}.
+ * Every caller — {@link DeliveryWorker} in this package, and {@link
  * org.jwcarman.nessy.agent.host.HarnessConfig}/{@link org.jwcarman.nessy.agent.host.Nessy} building
  * a harness's backends — derives its kind through here, never by hand, so the strings can never
  * drift apart. Isolation across agent types is by construction: two harnesses of different types
  * over one substrate never share a kind.
  *
- * <p>{@link #approval(AgentType)} and {@link #tool(AgentType)} both now name Continuum {@code
+ * <p>{@link #approval(AgentType)} and {@link #tool(AgentType)} both name Continuum {@code
  * ContinuumClient} kinds rather than {@code SubstrateComputations} ones (continuum-adoption spec
  * §3) — {@link #tool(AgentType)} (formerly {@code computation(AgentType)}) is the rename: it stops
  * naming Nessy's old Substrate-backed tool kind and starts naming the {@code
- * ContinuumClient<ToolResult, Routing>} kind. {@link #outbox(AgentType)} names the {@code
- * Substrate} outbox kind the pre-adoption outbox scan and reaper used to derive their scan key
- * through; that machinery — the outbox drain, the reaper, and the daemon heartbeat that ran them —
- * was deleted from {@link DeliveryWorker} (spec §6), so nothing in {@code src/main} calls {@link
- * #outbox(AgentType)} any more. It survives here, unreferenced in production, only because it is a
- * public method on a public class.
+ * ContinuumClient<ToolResult, Routing>} kind.
  *
  * <p>Public: {@code HarnessConfig} and {@code Nessy} are the callers outside this package, deriving
  * the same kinds from the same {@link AgentType} when they build a harness's backends — not
@@ -44,7 +39,6 @@ public final class Kinds {
 
   private static final String TOOL_PREFIX = "tool/";
   private static final String APPROVAL_PREFIX = "approval/";
-  private static final String OUTBOX_PREFIX = "outbox/";
   private static final String DISPATCH_INDEX_PREFIX = "dispatch/";
 
   private Kinds() {}
@@ -63,10 +57,6 @@ public final class Kinds {
 
   public static String approval(AgentType type) {
     return APPROVAL_PREFIX + type.name();
-  }
-
-  public static String outbox(AgentType type) {
-    return OUTBOX_PREFIX + type.name();
   }
 
   /**
