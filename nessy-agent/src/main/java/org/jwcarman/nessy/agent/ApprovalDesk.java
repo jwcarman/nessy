@@ -16,73 +16,153 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
 import org.jwcarman.continuum.ContinuumClient;
-import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
- * The approve/deny door (continuum-adoption spec §3, §7), addressed by the computation's own opaque
- * identity — the desk holds no state of its own, because the approval kind's own {@link
- * ContinuumClient} is the state. Complete, then nudge the delivery worker: an already-completed or
- * genuinely absent id (one that parses as a UUID but names no live computation) is equally benign
- * under at-least-once delivery — there is no "already decided" to refuse loudly, because there is
- * nothing left to read once the answer has transferred to its delivery. A structurally malformed id
- * (one whose {@code value()} is not a UUID at all) is a caller bug, not a benign race, and is NOT
- * swallowed: {@link #approve(ComputationId)}/{@link #deny(ComputationId, String)} throw {@link
- * IllegalArgumentException} for it (via {@link ContinuumIds#continuumId}) before ever reaching
- * Continuum.
+ * The approve/deny door (approval-lifecycle spec §1.6), reachable two ways: by the computation's
+ * own opaque id, for whoever was handed one — a Slack message, a webhook, a test — and by
+ * coordinates, for whoever has only the question. Coordinates resolve through the scope's phase,
+ * which names the parked computation for that call: <b>the phase is the map</b>. A caller who
+ * answers before the harness has folded the park finds the call {@code Pending} and is refused
+ * loudly, rather than losing the answer.
  *
- * <p>No adapter type sits between this desk and Continuum (spec §9): {@link ContinuumClient} is the
- * wrapper {@code SubstrateComputations} used to be, so this desk holds one directly.
+ * <p>The desk takes a principal and a note because it is the one door with no subsystem behind it:
+ * when a person answers here directly, nobody else is collecting evidence, so it refuses to be the
+ * place a yes can enter anonymously (spec §7). Both fold into the answer's {@code reference}.
+ *
+ * <p>Complete, then nudge the delivery worker: an already-completed or genuinely absent id is
+ * equally benign under at-least-once delivery. A structurally malformed id (one whose {@code
+ * value()} is not a UUID at all) is a caller bug and throws {@link IllegalArgumentException} via
+ * {@link ContinuumIds#continuumId} before ever reaching Continuum.
  */
 public final class ApprovalDesk {
 
-  private final ContinuumClient<Decision, Routing> client;
+  private final ContinuumClient<Approval, ApprovalRouting> client;
+  private final Function<String, AgentStateStore> stores;
   private final Runnable nudge;
 
   /**
    * @param client the approval kind's Continuum client
-   * @param nudge run after every decision — submits a drain pass to the shared {@code
-   *     ComputationScheduler} rather than blocking the caller (continuum-adoption spec §7), so it
-   *     folds promptly without waiting on the next scheduled tick
+   * @param stores the scope state stores the by-coordinates doors read the phase from
+   * @param nudge run after every answer — submits a drain pass to the shared {@code
+   *     ComputationScheduler} rather than blocking the caller (continuum-adoption spec §7)
    */
-  public ApprovalDesk(ContinuumClient<Decision, Routing> client, Runnable nudge) {
+  public ApprovalDesk(
+      ContinuumClient<Approval, ApprovalRouting> client,
+      Function<String, AgentStateStore> stores,
+      Runnable nudge) {
     this.client = Objects.requireNonNull(client, "client must not be null");
+    this.stores = Objects.requireNonNull(stores, "stores must not be null");
     this.nudge = Objects.requireNonNull(nudge, "nudge must not be null");
   }
 
   /**
-   * Grants the approval, then nudges — the fold itself runs asynchronously (continuum-adoption spec
-   * §7), so this call returns before the grant has actually landed.
+   * Approves by id, on behalf of {@code principal}; {@code note} may be empty.
    *
    * @param id the approval's own opaque id
-   * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID — Continuum's
-   *     own id shape, and every id this desk ever mints one of
+   * @param principal who is answering — never blank
+   * @param note free text folded into the reference, or empty
    */
-  public void approve(ComputationId id) {
-    decide(id, Decision.allow());
+  public void approve(ComputationId id, String principal, String note) {
+    answer(id, new Approval.Approved(Optional.of(reference(principal, note))));
   }
 
   /**
-   * Denies the approval, then nudges — the fold itself runs asynchronously (continuum-adoption spec
-   * §7), so this call returns before the in-band denial has actually landed.
+   * Denies by id, on behalf of {@code principal}.
    *
    * @param id the approval's own opaque id
-   * @param reason why — folds into the tool call's in-band failure so the model reads it; a null or
-   *     blank {@code reason} is rejected by {@link Decision.Deny}'s own compact constructor before
-   *     this ever reaches Continuum — a silent empty or literal-{@code "null"} denial reason is not
-   *     something the model should ever read
-   * @throws IllegalArgumentException if {@code id.value()} does not parse as a UUID, or if {@code
-   *     reason} is blank
-   * @throws NullPointerException if {@code reason} is null
+   * @param principal who is answering — never blank
+   * @param reason why — folds into the call's in-band failure so the model reads it
    */
-  public void deny(ComputationId id, String reason) {
-    decide(id, new Decision.Deny(reason));
+  public void deny(ComputationId id, String principal, String reason) {
+    answer(id, new Approval.Denied(reason, Optional.of(reference(principal, ""))));
   }
 
-  private void decide(ComputationId id, Decision decision) {
+  /**
+   * Approves the call {@code callId} the scope {@code id} is awaiting approval of.
+   *
+   * @param id the scope
+   * @param callId the tool call id
+   * @param principal who is answering — never blank
+   * @param note free text folded into the reference, or empty
+   * @throws IllegalStateException if that call is not awaiting approval
+   */
+  public void approve(AgentId id, String callId, String principal, String note) {
+    approve(awaiting(id, callId).approval(), principal, note);
+  }
+
+  /**
+   * Denies the call {@code callId} the scope {@code id} is awaiting approval of.
+   *
+   * @param id the scope
+   * @param callId the tool call id
+   * @param principal who is answering — never blank
+   * @param reason why
+   * @throws IllegalStateException if that call is not awaiting approval
+   */
+  public void deny(AgentId id, String callId, String principal, String reason) {
+    deny(awaiting(id, callId).approval(), principal, reason);
+  }
+
+  /**
+   * Abandons a parked ask: folds as a denial the model reads, referenced "withdrawn".
+   *
+   * @param id the approval's own opaque id
+   * @param reason why it was abandoned
+   */
+  public void withdraw(ComputationId id, String reason) {
+    answer(id, new Approval.Denied("withdrawn: " + reason, Optional.of("withdrawn")));
+  }
+
+  /**
+   * The parked question for {@code callId} on {@code id} — the document the approver saw.
+   *
+   * @param id the scope
+   * @param callId the tool call id
+   * @return the frozen request
+   * @throws IllegalStateException if that call is not awaiting approval
+   */
+  public ApprovalRequest request(AgentId id, String callId) {
+    return awaiting(id, callId).request();
+  }
+
+  private CallStatus.AwaitingApproval awaiting(AgentId id, String callId) {
     Objects.requireNonNull(id, "id must not be null");
-    client.complete(ContinuumIds.continuumId(id.value()), decision);
+    Objects.requireNonNull(callId, "callId must not be null");
+    Phase phase = stores.apply(id.value()).load().phase();
+    if (phase instanceof Phase.AwaitingTools awaiting
+        && awaiting.calls().get(callId) instanceof CallStatus.AwaitingApproval parked) {
+      return parked;
+    }
+    throw new IllegalStateException(
+        "call "
+            + callId
+            + " on "
+            + id.value()
+            + " is not awaiting approval (phase: "
+            + phase
+            + ")");
+  }
+
+  private void answer(ComputationId id, Approval approval) {
+    Objects.requireNonNull(id, "id must not be null");
+    client.complete(ContinuumIds.continuumId(id.value()), approval);
     nudge.run();
+  }
+
+  private static String reference(String principal, String note) {
+    Objects.requireNonNull(principal, "principal must not be null");
+    if (principal.isBlank()) {
+      throw new IllegalArgumentException(
+          "principal must not be blank — the desk does not take an anonymous answer");
+    }
+    Objects.requireNonNull(note, "note must not be null");
+    return note.isBlank() ? "desk:" + principal : "desk:" + principal + ":" + note;
   }
 }

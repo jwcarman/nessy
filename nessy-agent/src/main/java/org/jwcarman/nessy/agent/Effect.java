@@ -19,16 +19,25 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Commands, imperative. Two variants is the designed ceiling (spec §2.4). {@code CallModel} is a
- * bare marker: the executor asks Memory for context itself, and a fat effect could not be
- * re-derived by recovery (spec §6.1).
+ * Commands, imperative. Three variants (approval-lifecycle spec §3): {@code CallModel} is a bare
+ * marker — the executor asks Memory for context itself, and a fat effect could not be re-derived by
+ * recovery (spec §6.1). {@code SeekApproval} asks and never runs; {@code RunTool} runs and never
+ * asks — the answer between them is always a folded fact.
  */
 public sealed interface Effect {
 
   record CallModel() implements Effect {}
 
-  record ExecuteTool(ToolCall call) implements Effect {
-    public ExecuteTool {
+  /** Ask: yields {@code ApprovalAnswered} or {@code ApprovalDeferred}. */
+  record SeekApproval(ToolCall call) implements Effect {
+    public SeekApproval {
+      Objects.requireNonNull(call, "call must not be null");
+    }
+  }
+
+  /** Run: yields {@code ToolFinished} or {@code ToolDeferred}. */
+  record RunTool(ToolCall call) implements Effect {
+    public RunTool {
       Objects.requireNonNull(call, "call must not be null");
     }
   }

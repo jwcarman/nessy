@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.continuum.Continuum;
@@ -36,14 +35,15 @@ import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.ComputationApprover;
+import org.jwcarman.nessy.agent.ApprovalCodec;
+import org.jwcarman.nessy.agent.ApprovalRouting;
+import org.jwcarman.nessy.agent.ComputationApprovalContext;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.DecisionCodec;
-import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.StalenessPolicy;
+import org.jwcarman.nessy.agent.TurnOutcome;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -56,14 +56,13 @@ import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -109,7 +108,6 @@ public final class HarnessConfig<O> {
   private Function<String, Memory> memoryFactory;
   private Substrate substrate;
   private Continuum continuum;
-  private Consumer<ApprovalRequest> approvalNotifier = request -> {};
   private TurnObserver turnObserver = TurnObserver.noop();
   // null until the caller sets one — finish() defaults it to a TurnNarrationAdapter over
   // turnObserver, so AssistantSaid/TurnEnded narrate the way the CLI door always has.
@@ -140,17 +138,16 @@ public final class HarnessConfig<O> {
    * The recipe's name — the first coordinate of every durable address; default {@code "agent"}.
    *
    * <p><b>Two harnesses sharing a {@code type} must share both {@link #substrate(Substrate)} and
-   * {@link #continuum(Continuum)}, or neither.</b> Two things are keyed by type alone. The {@code
-   * dispatch/<agentType>} index is plain {@code Substrate} state: harnesses sharing type and
-   * substrate write the same index, and if each is backed by a different Continuum (the default —
-   * {@link #finish()} mints a private one when none is supplied), an entry one records names a
-   * computation the other's client has never heard of, and the gate's absorption logic sees a
-   * live-looking entry it can never resolve. Continuum's kinds are {@code approval/<agentType>} and
-   * {@code tool/<agentType>}, drained with no substrate discriminator: harnesses sharing type and
-   * Continuum over DIFFERENT substrates cross-drain, one claiming a delivery for a scope that
-   * exists only in the other's substrate and folding it against a scope that reads {@code Idle} —
-   * the call hangs forever, silently. Share all three; or use distinct types; or use a distinct
-   * substrate AND a distinct Continuum. Sharing exactly one store is never right.
+   * {@link #continuum(Continuum)}, or neither.</b> Two harnesses sharing a type and a substrate
+   * write one set of scopes, so they must share the Continuum those scopes name — but the failure
+   * when they do not is loud now (approval-lifecycle spec §8): an answer arrives for a computation
+   * no phase names and is ignored, rather than draining into a scope that reads {@code Idle}.
+   * Continuum's kinds are {@code approval/<agentType>} and {@code tool/<agentType>}, drained with
+   * no substrate discriminator: harnesses sharing type and Continuum over DIFFERENT substrates
+   * cross-drain, one claiming a delivery for a scope that exists only in the other's substrate and
+   * folding it against a scope that reads {@code Idle} — the call hangs forever, silently. Share
+   * all three; or use distinct types; or use a distinct substrate AND a distinct Continuum. Sharing
+   * exactly one store is never right.
    */
   public HarnessConfig<O> type(String typeName) {
     this.typeName = Objects.requireNonNull(typeName, "typeName must not be null");
@@ -233,15 +230,6 @@ public final class HarnessConfig<O> {
    */
   public HarnessConfig<O> substrate(Substrate substrate) {
     this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
-    return this;
-  }
-
-  /**
-   * Fires once, point-to-point, the moment an approval computation is first asked (§4.3 amendment).
-   */
-  public HarnessConfig<O> approvalNotifier(Consumer<ApprovalRequest> approvalNotifier) {
-    this.approvalNotifier =
-        Objects.requireNonNull(approvalNotifier, "approvalNotifier must not be null");
     return this;
   }
 
@@ -429,18 +417,18 @@ public final class HarnessConfig<O> {
               + " process while the scope it belongs to will — supply a durable Continuum via"
               + " continuum(...) to match.");
     }
-    ContinuumClient<Decision, Routing> effectiveApprovalClient =
+    ContinuumClient<Approval, ApprovalRouting> effectiveApprovalClient =
         effectiveContinuum.client(
             Kinds.approval(agentType),
-            Decision.class,
-            Routing.class,
+            Approval.class,
+            ApprovalRouting.class,
             cfg ->
-                cfg.resultCodec(DecisionCodec.codec(pinned))
-                    .continuationCodec(Routing.codec(pinned))
+                cfg.resultCodec(ApprovalCodec.codec(pinned))
+                    .continuationCodec(ApprovalRouting.codec(pinned))
                     .deadline(APPROVAL_DEADLINE));
-    // ToolResult carries no Jackson polymorphism of its own (a plain record, unlike Decision's
-    // sealed Allow/Deny), so the substrate's own pinned Jackson2 codec factory binds it directly —
-    // no hand-rolled codec needed the way DecisionCodec exists for the approval kind.
+    // ToolResult carries no Jackson polymorphism of its own (a plain record, unlike Approval's
+    // sealed Approved/Denied), so the substrate's own pinned Jackson2 codec factory binds it
+    // directly — no hand-rolled codec needed the way ApprovalCodec exists for the approval kind.
     ContinuumClient<ToolResult, Routing> effectiveToolClient =
         effectiveContinuum.client(
             Kinds.tool(agentType),
@@ -450,8 +438,6 @@ public final class HarnessConfig<O> {
                 cfg.resultCodec(effectiveSubstrate.codecs().create(ToolResult.class))
                     .continuationCodec(Routing.codec(pinned))
                     .deadline(DEFAULT_TOOL_DEADLINE));
-    DispatchIndex effectiveDispatchIndex =
-        new DispatchIndex(effectiveSubstrate, pinned, Kinds.dispatchIndex(agentType));
     // The default narrator targets the id-scoped TurnObserver Harness.observerFor(id) hands it
     // (fanout.observerFor(id)) — the ONE path AssistantSaid/TurnEnded now narrate through (front-
     // ends spec §1, Task 3's fix for Task 2's fanout gap): before this, TurnNarrationAdapter
@@ -469,25 +455,11 @@ public final class HarnessConfig<O> {
     Model effectiveModel = model;
     String effectiveSystemPrompt = systemPrompt;
     TurnObserver effectiveTurnObserver = turnObserver;
-    Consumer<ApprovalRequest> effectiveApprovalNotifier = approvalNotifier;
     // Agent#ask's Parked-detection seam (front-ends spec §1): a plain map, not a new public type,
-    // shared by reference between this notifier wrapper (built here, before Harness exists) and
-    // the finished Harness (Harness.awaitApproval/cancelApprovalWait just read/write it) — the
-    // only way to thread a per-id capture through the toolExecutorFactory closure below, which is
-    // baked here but not actually invoked until well after Harness.of returns. Threaded through
-    // the EXISTING notifier seam (no new event type): every request still reaches the caller's own
-    // configured notifier exactly as before; capturing is a side effect on the way there.
-    ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters =
+    // handed to the finished Harness, whose ApprovalDeferred fold completes whichever wait is
+    // registered for that id (Harness#parked).
+    ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters =
         new ConcurrentHashMap<>();
-    Consumer<ApprovalRequest> capturingApprovalNotifier =
-        request -> {
-          CompletableFuture<ApprovalRequest> waiting =
-              approvalWaiters.remove(AgentId.of(request.agentId()));
-          if (waiting != null) {
-            waiting.complete(request);
-          }
-          effectiveApprovalNotifier.accept(request);
-        };
 
     Harness<O> harness =
         Harness.of(
@@ -516,18 +488,18 @@ public final class HarnessConfig<O> {
                     scopeId,
                     scopeTurnObserver,
                     exec,
-                    new ComputationDeferredToolCallPolicy(
-                        effectiveDispatchIndex, effectiveToolClient),
-                    new ComputationApprover(
-                        effectiveApprovalClient,
-                        effectiveDispatchIndex,
-                        effectiveStoreFactory.apply(scopeId.value()),
-                        capturingApprovalNotifier),
+                    new ComputationDeferredToolCallPolicy(effectiveToolClient),
+                    (call, responseId, request, sink) ->
+                        new ComputationApprovalContext(
+                            effectiveApprovalClient,
+                            new Routing(
+                                agentType.name(), scopeId.value(), responseId.value(), call),
+                            request,
+                            sink),
                     pinned),
             effectiveSubstrate,
             pinned,
             effectiveApprovalClient,
-            effectiveDispatchIndex,
             effectiveToolClient,
             approvalWaiters,
             ownedExecutor);

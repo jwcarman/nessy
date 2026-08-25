@@ -21,15 +21,15 @@ import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
-import org.jwcarman.nessy.agent.DecisionCodec;
-import org.jwcarman.nessy.agent.Routing;
-import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.agent.ApprovalCodec;
+import org.jwcarman.nessy.agent.ApprovalRouting;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 
 /**
  * Test-only Continuum wiring for the approval kind (continuum-adoption spec §3): every test that
- * builds a {@code Harness}, {@code ComputationApprover}, or {@code ApprovalDesk} directly —
- * bypassing {@code HarnessConfig#finish()} — needs the same client shape production wiring builds.
- * One fresh, in-memory {@link Continuum} per call, so tests stay isolated from one another.
+ * builds a {@code Harness} or {@code ApprovalDesk} directly — bypassing {@code
+ * HarnessConfig#finish()} — needs the same client shape production wiring builds. One fresh,
+ * in-memory {@link Continuum} per call, so tests stay isolated from one another.
  */
 public final class TestApprovalClients {
 
@@ -42,15 +42,16 @@ public final class TestApprovalClients {
    * @param mapper the pinned mapper
    * @return a fresh approval-kind client over a fresh in-memory repository
    */
-  public static ContinuumClient<Decision, Routing> client(String kind, ObjectMapper mapper) {
+  public static ContinuumClient<Approval, ApprovalRouting> client(
+      String kind, ObjectMapper mapper) {
     Continuum continuum = new DefaultContinuum(new InMemoryContinuumRepository());
     return continuum.client(
         kind,
-        Decision.class,
-        Routing.class,
+        Approval.class,
+        ApprovalRouting.class,
         cfg ->
-            cfg.resultCodec(DecisionCodec.codec(mapper))
-                .continuationCodec(Routing.codec(mapper))
+            cfg.resultCodec(ApprovalCodec.codec(mapper))
+                .continuationCodec(ApprovalRouting.codec(mapper))
                 .deadline(DEADLINE));
   }
 }

@@ -27,10 +27,10 @@ import java.util.concurrent.CompletableFuture;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.TurnOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 
 /**
  * The CLI front end (front-ends spec §3): owns the terminal, drives {@link Agent#ask} at a prompt,
@@ -130,7 +130,7 @@ public final class Console implements AutoCloseable {
    * decision, one wait.
    */
   private TurnOutcome settle(TurnOutcome outcome) {
-    return outcome instanceof TurnOutcome.Parked parked ? decideAndAwait(parked.ask()) : outcome;
+    return outcome instanceof TurnOutcome.Parked parked ? decideAndAwait(parked) : outcome;
   }
 
   /**
@@ -139,11 +139,11 @@ public final class Console implements AutoCloseable {
    * {@link #approver()} and blocks for the turn's next {@code TurnEnded}. See the class javadoc for
    * what happens if the SAME turn parks again before that arrives.
    */
-  private TurnOutcome decideAndAwait(ApprovalRequest request) {
+  private TurnOutcome decideAndAwait(TurnOutcome.Parked parked) {
     CompletableFuture<TurnOutcome> outcome = new CompletableFuture<>();
     TurnObserver capture = TurnOutcome.capturing(outcome);
     try (Subscription subscription = agent.subscribe(capture)) {
-      approver().decide(request);
+      approver().decide(parked);
       return outcome.join();
     }
   }
@@ -197,20 +197,23 @@ public final class Console implements AutoCloseable {
   }
 
   /**
-   * The §5a immediate-decision arm (spec §3): renders the flattened {@link ApprovalRequest} ({@code
-   * id}, {@code call}, {@code agentType}, {@code agentId}), reads y/n(+reason) from the console's
-   * input, and answers through {@link Harness#approvals()} by {@link ApprovalRequest#id()}. A blank
-   * denial reason is not sent as-is ({@link org.jwcarman.nessy.agent.ApprovalDesk#deny} refuses a
-   * blank one loudly) — it is replaced with a fixed, honest default instead.
+   * The immediate-decision arm (spec §3): renders the parked {@link ApprovalRequest} (agent
+   * coordinates, call name, arguments, action), reads y/n(+reason) from the console's input, and
+   * answers through {@link Harness#approvals()} by the parked computation's id, as the principal
+   * {@code "console"}. A blank denial reason is not sent as-is ({@link
+   * org.jwcarman.nessy.agent.ApprovalDesk#deny} refuses a blank one loudly) — it is replaced with a
+   * fixed, honest default instead.
    */
   public final class Approver {
 
     private static final String DEFAULT_DENIAL_REASON = "denied at the console";
+    private static final String CONSOLE_PRINCIPAL = "console";
 
     private Approver() {}
 
-    public void decide(ApprovalRequest request) {
-      Objects.requireNonNull(request, "request must not be null");
+    public void decide(TurnOutcome.Parked parked) {
+      Objects.requireNonNull(parked, "parked must not be null");
+      ApprovalRequest request = parked.request();
       out.println(
           "approval requested — "
               + request.agentType()
@@ -220,11 +223,14 @@ public final class Console implements AutoCloseable {
               + request.call().name()
               + " "
               + request.call().arguments());
+      if (!request.action().isBlank()) {
+        out.println("action: " + request.action());
+      }
       out.print("approve? [y/N] ");
       out.flush();
       String answer = readLineOrNull();
       if (isYes(answer)) {
-        harness.approvals().approve(request.id());
+        harness.approvals().approve(parked.approval(), CONSOLE_PRINCIPAL, "");
         out.println("approved.");
       } else {
         out.print("reason: ");
@@ -232,7 +238,7 @@ public final class Console implements AutoCloseable {
         String reason = readLineOrNull();
         String effectiveReason =
             (reason == null || reason.isBlank()) ? DEFAULT_DENIAL_REASON : reason;
-        harness.approvals().deny(request.id(), effectiveReason);
+        harness.approvals().deny(parked.approval(), CONSOLE_PRINCIPAL, effectiveReason);
         out.println("denied: " + effectiveReason);
       }
     }

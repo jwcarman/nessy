@@ -39,6 +39,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -46,7 +47,6 @@ import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
@@ -89,7 +89,7 @@ class HarnessTest {
           TestMappers.plainlyPinned());
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
-  private static final ToolCallExecutor TOOLS = (call, responseId, sink) -> {};
+  private static final ToolCallExecutor TOOLS = new NoToolsExecutor();
   private static final AgentObserver OBSERVER = AgentObserver.noop();
   private static final StalenessPolicy STALENESS_POLICY = StalenessPolicy.never();
   private static final AgentType TYPE = AgentType.of("test");
@@ -142,7 +142,6 @@ class HarnessTest {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-    var dispatchIndex = new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(type));
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
     // Preserves harnessRequiresAnObserver()'s null-through behavior: a literal null observer
     // stays a literal null factory (Harness.of's own requireNonNull rejects it), rather than
@@ -164,7 +163,6 @@ class HarnessTest {
         lifeSupportSubstrate,
         mapper,
         approvalClient,
-        dispatchIndex,
         toolClient,
         new ConcurrentHashMap<>());
   }
@@ -193,7 +191,6 @@ class HarnessTest {
         lifeSupportSubstrate,
         mapper,
         TestApprovalClients.client(Kinds.approval(TYPE), mapper),
-        new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(TYPE)),
         TestToolClients.client(Kinds.tool(TYPE), mapper),
         new ConcurrentHashMap<>(),
         ownedExecutor);
@@ -589,14 +586,7 @@ class HarnessTest {
               (mem, obs) -> MODEL,
               (id, obs) -> {
                 receivedByFactory.add(registry);
-                ToolCallExecutor fresh =
-                    new ToolCallExecutor() {
-                      @Override
-                      public void executeTool(
-                          ToolCall call, ModelResponseId responseId, Sink sink) {
-                        // fixture only: this test cares about factory freshness, not tool output
-                      }
-                    };
+                ToolCallExecutor fresh = new NoToolsExecutor();
                 produced.add(fresh);
                 return fresh;
               });

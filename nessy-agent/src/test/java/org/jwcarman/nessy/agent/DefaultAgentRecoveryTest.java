@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -105,7 +105,8 @@ class DefaultAgentRecoveryTest {
     var turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a")));
     var f =
         stalled(
-            new Phase.AwaitingTools(turn, Set.of("a"), List.of(), ModelResponseId.of("response-1")),
+            new Phase.AwaitingTools(
+                turn, Map.of("a", new CallStatus.Pending()), ModelResponseId.of("response-1")),
             clock);
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.model.enqueue(

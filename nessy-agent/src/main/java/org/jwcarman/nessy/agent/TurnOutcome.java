@@ -21,9 +21,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 
 /**
  * What one {@link Agent#ask} settles on (front-ends spec §1): a turn's outcome, as a value, read
@@ -31,22 +32,13 @@ import org.jwcarman.nessy.spi.approval.ApprovalRequest;
  * Agent#subscribe(org.jwcarman.nessy.api.turn.TurnObserver)} already delivers — because the fold
  * retains no failure residue (a failed model turn folds back to {@link Phase.Idle} committing
  * nothing), the events are the only honest source. Zero new event types: {@code Replied} and {@code
- * Failed} resolve from {@code AssistantSaid}/{@code TurnEnded}; {@code Parked} resolves
- * off-channel, through the harness's existing §5a approval notifier (see {@link
- * Harness#awaitApproval(AgentId)}), since a parked call is never narrated at all.
+ * Failed} resolve from {@code AssistantSaid}/{@code TurnEnded}; {@code Parked} resolves from the
+ * {@code ApprovalDeferred} fold — the park is a fact (see {@link Harness#awaitApproval(AgentId)}),
+ * since a parked call is never narrated at all.
  *
  * <p><b>Module placement note:</b> the front-ends design (spec §1) places this sealed interface in
- * {@code nessy-api}, alongside {@link org.jwcarman.nessy.api.turn.TurnEvent}. It lives in {@code
- * nessy-agent} instead, next to {@link Agent} itself, because {@code Parked} carries {@link
- * ApprovalRequest} — a {@code nessy-spi} type — and {@code nessy-spi} already depends on {@code
- * nessy-api} (its own {@code pom.xml}: {@code ApprovalRequest} itself is built from {@code
- * nessy-api}'s {@link org.jwcarman.nessy.api.tool.ComputationId}, {@link
- * org.jwcarman.nessy.api.tool.ToolCall}, and {@link
- * org.jwcarman.nessy.api.tool.authorization.AuthzContext}); a {@code nessy-api}-hosted {@code
- * TurnOutcome} referencing {@code ApprovalRequest} would need {@code nessy-api} to depend on {@code
- * nessy-spi} too, a cycle. {@code nessy-agent} already depends on both (via {@code nessy-spi}), so
- * this is the nearest module that can actually compile the type the spec describes, without
- * inventing a second, api-level view of {@link ApprovalRequest} the design never asked for.
+ * {@code nessy-api}. It lives in {@code nessy-agent} instead, next to {@link Agent} itself, which
+ * is where the fold that produces it lives.
  */
 public sealed interface TurnOutcome {
 
@@ -57,10 +49,14 @@ public sealed interface TurnOutcome {
     }
   }
 
-  /** The turn suspended on a §5a approval: the ticket whose id grants or denies it. */
-  record Parked(ApprovalRequest ask) implements TurnOutcome {
+  /**
+   * The turn suspended on an approval: the computation whose completion answers it, and the frozen
+   * question that was asked.
+   */
+  record Parked(ComputationId approval, ApprovalRequest request) implements TurnOutcome {
     public Parked {
-      Objects.requireNonNull(ask, "ask must not be null");
+      Objects.requireNonNull(approval, "approval must not be null");
+      Objects.requireNonNull(request, "request must not be null");
     }
   }
 

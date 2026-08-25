@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
+import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
@@ -119,7 +120,7 @@ class DefaultAgentDrainTest {
             racingBacklog,
             text -> List.of(new TextBlock(text)),
             sink -> {},
-            (call, responseId, sink) -> {},
+            new NoToolsExecutor(),
             new RecordingObserver(),
             false,
             StalenessPolicy.never());
@@ -205,7 +206,7 @@ class DefaultAgentDrainTest {
             backlog,
             text -> List.of(new TextBlock(text)),
             sink -> {},
-            (call, responseId, sink) -> {},
+            new NoToolsExecutor(),
             new RecordingObserver(),
             false,
             StalenessPolicy.never());

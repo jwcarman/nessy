@@ -25,12 +25,12 @@ import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 
 /**
  * The shell: load–handle–save–dispatch with a retry (§3.4). No concurrency machinery — the store's
@@ -77,14 +77,14 @@ public final class DefaultAgent<O> implements Agent<O> {
    * turn folds to {@link Phase.Idle} committing nothing).
    *
    * <p>Parking is the one outcome {@link TurnEvent} can never carry (its own javadoc: "Parking is
-   * never narrated at all"), so it is detected off-channel, through the harness's existing §5a
-   * approval notifier instead (see {@link Harness#awaitApproval(AgentId)}): a fresh wait is
-   * registered for this id BEFORE {@code tell} ever dispatches anything, so a synchronous park
-   * inside the very call that registers it can never race ahead of the registration. Whichever
-   * resolves first — the turn's own {@code TurnEnded}, or the notifier capturing an {@link
-   * ApprovalRequest} for this id — decides the {@link TurnOutcome}; the other input, if it never
-   * fires, is retired in the {@code finally} block so it cannot leak into a later, unrelated {@code
-   * ask} on the same id.
+   * never narrated at all"), so it is detected off the fold itself: the {@code ApprovalDeferred}
+   * that records the park completes this id's registered wait (see {@link
+   * Harness#awaitApproval(AgentId)} and {@link Harness#parked(AgentId, TurnOutcome.Parked)}). A
+   * fresh wait is registered for this id BEFORE {@code tell} ever dispatches anything, so a
+   * synchronous park inside the very call that registers it can never race ahead of the
+   * registration. Whichever resolves first — the turn's own {@code TurnEnded}, or the park —
+   * decides the {@link TurnOutcome}; the other input, if it never fires, is retired in the {@code
+   * finally} block so it cannot leak into a later, unrelated {@code ask} on the same id.
    */
   @Override
   public TurnOutcome ask(O observation) {
@@ -94,8 +94,8 @@ public final class DefaultAgent<O> implements Agent<O> {
     TurnObserver capture = TurnOutcome.capturing(outcome);
     // awaitApproval throws if a previous ask on this id is still in flight (fix round 2, I2b) —
     // before subscribe ever runs, so nothing is left half-registered.
-    CompletableFuture<ApprovalRequest> approvalWait = harness.awaitApproval(id);
-    approvalWait.thenAccept(request -> outcome.complete(new TurnOutcome.Parked(request)));
+    CompletableFuture<TurnOutcome.Parked> approvalWait = harness.awaitApproval(id);
+    approvalWait.thenAccept(outcome::complete);
     try (Subscription subscription = subscribe(capture)) {
       tell(observation);
       return outcome.join();
@@ -150,6 +150,11 @@ public final class DefaultAgent<O> implements Agent<O> {
     remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
     observer.applied(event, t);
+    // The fold IS the park (approval-lifecycle spec §1.3): by the time this commits, the phase
+    // names the ask, so whoever is waiting on this turn can be told about it.
+    if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request)) {
+      harness.parked(binding.id(), new TurnOutcome.Parked(approval, request));
+    }
     t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the drain-on-idle wiring's own drive executor
@@ -184,9 +189,17 @@ public final class DefaultAgent<O> implements Agent<O> {
         // every call answers) or a Failed outcome (Phase.AwaitingModel#handle discards it):
         // nothing committed, nothing to remember yet.
       }
-      case AgentEvent.ToolFinished(var call, var outcome) ->
+      case AgentEvent.ToolFinished(var call, var _, var outcome) ->
           ToolFoldRemembrance.remember(
               memory, harness.type(), binding.id(), priorPhase, call, outcome, t);
+      case AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _)) ->
+          ToolFoldRemembrance.rememberDenial(
+              memory, harness.type(), binding.id(), priorPhase, call, reason, t);
+      case AgentEvent.ApprovalDeferred _,
+          AgentEvent.ApprovalAnswered _,
+          AgentEvent.ToolDeferred _ -> {
+        // an approval, a park: no message committed, nothing to remember
+      }
     }
   }
 
@@ -238,16 +251,17 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   /**
-   * {@code phase} is the committed state an {@code ExecuteTool} effect is dispatched alongside —
-   * always {@link Phase.AwaitingTools}, the only phase that ever carries one (§2.2) — and is where
-   * the call's {@link ModelResponseId} is read from (durable-deliveries spec §2): minted once, in
-   * the model-call executor, never re-derived here.
+   * {@code phase} is the committed state a call effect is dispatched alongside — always {@link
+   * Phase.AwaitingTools}, the only phase that ever carries one (§2.2) — and is where the call's
+   * {@link ModelResponseId} is read from (durable-deliveries spec §2): minted once, in the
+   * model-call executor, never re-derived here.
    */
   private void dispatch(Effect effect, Phase phase) {
     switch (effect) {
       case Effect.CallModel _ -> model.callModel(this::deliver);
-      case Effect.ExecuteTool(var call) ->
-          tools.executeTool(call, responseIdOf(phase), this::deliver);
+      case Effect.SeekApproval(var call) ->
+          tools.seekApproval(call, responseIdOf(phase), this::deliver);
+      case Effect.RunTool(var call) -> tools.runTool(call, responseIdOf(phase), this::deliver);
     }
   }
 
@@ -255,7 +269,6 @@ public final class DefaultAgent<O> implements Agent<O> {
     if (phase instanceof Phase.AwaitingTools awaiting) {
       return awaiting.responseId();
     }
-    throw new IllegalStateException(
-        "an ExecuteTool effect was dispatched outside AwaitingTools: " + phase);
+    throw new IllegalStateException("a call effect was dispatched outside AwaitingTools: " + phase);
   }
 }

@@ -37,14 +37,14 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 /**
  * {@link Console#approver()} (spec §3): scripted IO — hand-rolled streams, no mocking — proves it
- * renders the flattened {@link org.jwcarman.nessy.spi.approval.ApprovalRequest} and answers by
+ * renders the flattened {@link org.jwcarman.nessy.api.tool.approval.ApprovalRequest} and answers by
  * {@code request.id()} through {@link org.jwcarman.nessy.agent.Harness#approvals()}, verified the
  * same way {@link org.jwcarman.nessy.agent.AgentAskTest.Parked} verifies it: the gated tool
  * actually runs (or never does).
@@ -92,7 +92,7 @@ class ConsoleApproverTest {
         .model(model)
         .systemPrompt(TestSettings.SYSTEM_PROMPT)
         .settings(TestSettings.settings())
-        .grants(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
+        .grants(ToolGrant.grant(tool, Approvers.defer()))
         .in(new ByteArrayInputStream(answer))
         .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
         .build();
@@ -109,7 +109,7 @@ class ConsoleApproverTest {
           buildParkedConsole(tool, "y\n".getBytes(StandardCharsets.UTF_8), captured)) {
         TurnOutcome outcome = console.agent().ask("please restart");
         assertThat(outcome).isInstanceOf(TurnOutcome.Parked.class);
-        var request = ((TurnOutcome.Parked) outcome).ask();
+        var parked = (TurnOutcome.Parked) outcome;
 
         var settled = new CompletableFuture<Void>();
         try (Subscription subscription =
@@ -121,7 +121,7 @@ class ConsoleApproverTest {
                         settled.complete(null);
                       }
                     })) {
-          console.approver().decide(request);
+          console.approver().decide(parked);
           settled.get(5, TimeUnit.SECONDS);
         }
 
@@ -143,7 +143,7 @@ class ConsoleApproverTest {
           buildParkedConsole(tool, "n\nnot today\n".getBytes(StandardCharsets.UTF_8), captured)) {
         TurnOutcome outcome = console.agent().ask("please restart");
         assertThat(outcome).isInstanceOf(TurnOutcome.Parked.class);
-        var request = ((TurnOutcome.Parked) outcome).ask();
+        var parked = (TurnOutcome.Parked) outcome;
 
         var settled = new CompletableFuture<Void>();
         try (Subscription subscription =
@@ -155,7 +155,7 @@ class ConsoleApproverTest {
                         settled.complete(null);
                       }
                     })) {
-          console.approver().decide(request);
+          console.approver().decide(parked);
           settled.get(5, TimeUnit.SECONDS);
         }
 

@@ -45,16 +45,17 @@ import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -142,12 +143,16 @@ class GrantRaceTest {
     var testType = AgentType.of("test");
     var approvalClient = TestApprovalClients.client(Kinds.approval(testType), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(testType), mapper);
-    var index = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(testType));
-    var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalClient, index, store, notifications::add);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(index, toolClient);
+    var notifications = new CopyOnWriteArrayList<ComputationId>();
+    Approver approver =
+        context -> {
+          ApprovalOutcome outcome = context.defer();
+          notifications.add(((ApprovalOutcome.Deferred) outcome).id());
+          return outcome;
+        };
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(toolClient);
     var tool = new CountingTool();
-    var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
+    var registry = ToolRegistry.of(ToolGrant.grant(tool, approver));
     var pump = new PumpedExecutor();
     var narrator = new RecordingTurnObserver();
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -165,7 +170,12 @@ class GrantRaceTest {
             narrator,
             pump,
             deferredPolicy,
-            approver,
+            (racedCall, responseId, request, sink) ->
+                new ComputationApprovalContext(
+                    approvalClient,
+                    new Routing("test", "test-scope", responseId.value(), racedCall),
+                    request,
+                    sink),
             mapper);
     var harness =
         TestAgents.<String>harness(
@@ -193,23 +203,16 @@ class GrantRaceTest {
     ExecutorService nudgeExecutor = Executors.newFixedThreadPool(2);
     var worker =
         new DeliveryWorker<String>(
-            substrate,
-            mapper,
-            harness,
-            (t, i) -> agent,
-            nudgeExecutor,
-            approvalClient,
-            index,
-            toolClient);
+            substrate, mapper, harness, (t, i) -> agent, nudgeExecutor, approvalClient, toolClient);
 
     for (int i = 0; i < ITERATIONS; i++) {
       agent.tell("go");
       pump.pumpUntilQuiet();
       assertThat(notifications).hasSize(i + 1);
-      ApprovalRequest request = notifications.get(i);
+      ComputationId parked = notifications.get(i);
 
-      // Grant it: the ownership transfer creates the delivery both racers will drain.
-      approvalClient.complete(ContinuumIds.continuumId(request.id().value()), Decision.allow());
+      // Answer it: the completion creates the delivery both racers will drain.
+      approvalClient.complete(ContinuumIds.continuumId(parked.value()), Approval.approved());
 
       ExecutorService pool = Executors.newFixedThreadPool(2);
       CountDownLatch ready = new CountDownLatch(2);

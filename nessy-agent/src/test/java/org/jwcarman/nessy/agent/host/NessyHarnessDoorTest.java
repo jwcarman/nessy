@@ -37,7 +37,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
@@ -63,11 +62,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -433,7 +431,6 @@ class NessyHarnessDoorTest {
       var pump = new PumpedExecutor();
       var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
       var provider = new ScriptedModel(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
-      var requests = new CopyOnWriteArrayList<ApprovalRequest>();
 
       var harness =
           Nessy.harness(
@@ -442,15 +439,14 @@ class NessyHarnessDoorTest {
                       .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
                       .executor(pump)
-                      .grants(ToolGrant.grant(new GatedTool(), UsagePolicy.requireApproval()))
-                      .approvalNotifier(requests::add));
+                      .grants(ToolGrant.grant(new GatedTool(), Approvers.defer())));
       HarnessTeardown.track(harness);
 
       harness.bind(AgentId.of("scope-1")).tell("please restart");
       pump.pumpUntilQuiet();
 
-      assertThat(requests).hasSize(1);
-      assertThat(requests.getFirst().agentType()).isEqualTo("agent");
+      assertThat(harness.approvals().request(AgentId.of("scope-1"), "c1").agentType())
+          .isEqualTo("agent");
     }
 
     record NoInput() {}

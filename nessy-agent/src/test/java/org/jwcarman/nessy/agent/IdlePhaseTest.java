@@ -17,19 +17,25 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class IdlePhaseTest {
 
   @Test
   void anObservationCommitsTheUserMessageAndCallsTheModel() {
-    var content = List.<org.jwcarman.nessy.api.message.ContentBlock>of(new TextBlock("hi"));
+    var content = List.<ContentBlock>of(new TextBlock("hi"));
     var t = new Phase.Idle().handle(new AgentEvent.Observed(content));
     assertThat(t.next()).isEqualTo(new Phase.AwaitingModel());
     assertThat(t.commit()).containsExactly(Message.user(content));
@@ -45,7 +51,30 @@ class IdlePhaseTest {
   @Test
   void aStrayToolCompletionIsIgnored() {
     var call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    var event = new AgentEvent.ToolFinished(call, new ToolOutcome.Returned(ToolResult.ok("x")));
+    var event =
+        new AgentEvent.ToolFinished(
+            call, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
     assertThat(new Phase.Idle().handle(event).isIgnored()).isTrue();
+  }
+
+  @Test
+  void aStrayApprovalOrDeferralIsIgnored() {
+    var call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
+    var parked = ComputationId.of("parked-1");
+    var request = ApprovalRequest.draft("ops", "prod-1", call, new ObjectMapper()).freeze();
+
+    assertThat(
+            new Phase.Idle()
+                .handle(new AgentEvent.ApprovalDeferred(call, parked, request))
+                .isIgnored())
+        .isTrue();
+    assertThat(
+            new Phase.Idle()
+                .handle(
+                    new AgentEvent.ApprovalAnswered(call, Optional.empty(), Approval.approved()))
+                .isIgnored())
+        .isTrue();
+    assertThat(new Phase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isIgnored())
+        .isTrue();
   }
 }

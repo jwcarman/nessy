@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -49,22 +49,27 @@ class PhaseOutstandingEffectsTest {
   }
 
   @Test
-  void awaitingToolsReDerivesOnlyThePendingCallsWithFullArguments() {
+  void awaitingToolsReDerivesOnlyTheUnsettledCallsWithFullArguments() {
     var phase =
         new Phase.AwaitingTools(
             TURN,
-            Set.of("b"),
-            List.of(new ToolResultBlock("a", "42", false)),
+            Map.of(
+                "a",
+                new CallStatus.Finished(new ToolResultBlock("a", "42", false)),
+                "b",
+                new CallStatus.Pending()),
             ModelResponseId.of("response-1"));
-    assertThat(phase.outstandingEffects()).containsExactly(new Effect.ExecuteTool(CALL_B));
+    assertThat(phase.outstandingEffects()).containsExactly(new Effect.SeekApproval(CALL_B));
   }
 
   @Test
-  void awaitingToolsReDerivesInSortedIdOrder() {
+  void awaitingToolsReDerivesInTheAssistantTurnsOwnOrder() {
     var phase =
         new Phase.AwaitingTools(
-            TURN, Set.of("b", "a"), List.of(), ModelResponseId.of("response-1"));
+            TURN,
+            Map.of("b", new CallStatus.Pending(), "a", new CallStatus.Pending()),
+            ModelResponseId.of("response-1"));
     assertThat(phase.outstandingEffects())
-        .containsExactly(new Effect.ExecuteTool(CALL_A), new Effect.ExecuteTool(CALL_B));
+        .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));
   }
 }

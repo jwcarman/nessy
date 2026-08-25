@@ -22,10 +22,9 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -57,7 +56,6 @@ import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -68,25 +66,21 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.Remembrance;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The tool kind on Continuum (continuum-adoption spec §3, §5, §7): a deferred tool creates one
- * computation and records it in the dispatch index under {@link DispatchEntry.DispatchKind#TOOL}, a
- * redrive while it is pending does not dispatch the tool again, completing folds the result, a
- * redelivered completion is ignored (spec §4's at-least-once claim), an expired tool computation
- * folds an in-band failure, and the index entry is gone once the fold's own batch commits (spec
- * §5).
+ * The tool kind on Continuum (continuum-adoption spec §3, §7; approval-lifecycle spec §2): a
+ * deferred tool creates one computation and the phase records it as {@code AwaitingResult(id)}, a
+ * re-fire while it is parked does not dispatch the tool again, completing folds the result, a
+ * redelivered completion is ignored (spec §4's at-least-once claim), and an expired tool
+ * computation folds an in-band failure.
  *
- * <p>Case 7 restores the deferred-grant-arm property {@code GrantSurvivalTest} covered before Task
- * 3 deleted it: a {@code requireApproval} grant over a tool that itself defers, driven end to end —
- * the exact branch spec §11.3 gap 2 names as failing open before this task's {@link
- * ComputationDeferredToolCallPolicy#onDeferred} started overwriting the index entry
- * unconditionally.
+ * <p>Case 7 is the deferring tool behind a deferring approver, driven end to end: the answer folds,
+ * the tool runs, the tool defers, and its eventual result folds too.
  */
 class DeferredToolOnContinuumTest {
 
@@ -185,16 +179,15 @@ class DeferredToolOnContinuumTest {
               cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
-  private final ContinuumClient<Decision, Routing> approvalClient =
+  private final ContinuumClient<Approval, ApprovalRouting> approvalClient =
       continuum.client(
           "approval/test",
-          Decision.class,
-          Routing.class,
+          Approval.class,
+          ApprovalRouting.class,
           cfg ->
-              cfg.resultCodec(DecisionCodec.codec(mapper))
-                  .continuationCodec(Routing.codec(mapper))
+              cfg.resultCodec(ApprovalCodec.codec(mapper))
+                  .continuationCodec(ApprovalRouting.codec(mapper))
                   .deadline(Duration.ofDays(7)));
-  private final DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
   private final DeferringTool tool = new DeferringTool("restart");
   private final DeferringTool gatedTool = new DeferringTool("restart_gated");
   private final PumpedExecutor pump = new PumpedExecutor();
@@ -202,22 +195,24 @@ class DeferredToolOnContinuumTest {
   private final RecordingMemory memory = new RecordingMemory();
   private final SubstrateAgentStateStore store =
       new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-  private final List<ApprovalRequest> notifications = new ArrayList<>();
   private final ComputationDeferredToolCallPolicy deferredPolicy =
-      new ComputationDeferredToolCallPolicy(index, toolClient);
-  private final ComputationApprover approver =
-      new ComputationApprover(approvalClient, index, store, notifications::add);
+      new ComputationDeferredToolCallPolicy(toolClient);
   private final RegistryToolCallExecutor executor =
       new RegistryToolCallExecutor(
           ToolRegistry.of(
-              ToolGrant.grant(tool, UsagePolicy.allow()),
-              ToolGrant.grant(gatedTool, UsagePolicy.requireApproval())),
+              ToolGrant.grant(tool, Approvers.allow()),
+              ToolGrant.grant(gatedTool, Approvers.defer())),
           AgentType.of("test"),
           AgentId.of("test-scope"),
           turn,
           pump,
           deferredPolicy,
-          approver,
+          (call, responseId, request, sink) ->
+              new ComputationApprovalContext(
+                  approvalClient,
+                  new Routing("test", "test-scope", responseId.value(), call),
+                  request,
+                  sink),
           mapper);
   private final Harness<String> harness =
       TestAgents.<String>harness(
@@ -242,16 +237,10 @@ class DeferredToolOnContinuumTest {
 
   private final DeliveryWorker<String> worker =
       new DeliveryWorker<>(
-          substrate,
-          mapper,
-          harness,
-          (type, id) -> agent,
-          nudgePump,
-          approvalClient,
-          index,
-          toolClient);
+          substrate, mapper, harness, (type, id) -> agent, nudgePump, approvalClient, toolClient);
   private final CompletionDesk completions = new CompletionDesk(toolClient, worker::nudge);
-  private final ApprovalDesk approvals = new ApprovalDesk(approvalClient, worker::nudge);
+  private final ApprovalDesk approvals =
+      new ApprovalDesk(approvalClient, id -> store, worker::nudge);
 
   private ToolCall deferringCall(String callId) {
     return new ToolCall(callId, "restart", JsonNodeFactory.instance.objectNode());
@@ -261,8 +250,21 @@ class DeferredToolOnContinuumTest {
     return new ToolCall(callId, "restart_gated", JsonNodeFactory.instance.objectNode());
   }
 
-  private CallAddress addressOf(ToolCall call) {
-    return new CallAddress("test", "test-scope", "r1", call.id());
+  /** The computation the phase says this call is awaiting the result of. */
+  private ComputationId parkedToolIdFor(ToolCall call) {
+    CallStatus status = statusOf(call);
+    return ((CallStatus.AwaitingResult) status).tool();
+  }
+
+  /** The computation the phase says this call is awaiting approval of. */
+  private ComputationId parkedApprovalIdFor(ToolCall call) {
+    CallStatus status = statusOf(call);
+    return ((CallStatus.AwaitingApproval) status).approval();
+  }
+
+  private CallStatus statusOf(ToolCall call) {
+    Phase phase = store.load().phase();
+    return ((Phase.AwaitingTools) phase).calls().get(call.id());
   }
 
   private Routing routingFor(ToolCall call) {
@@ -285,8 +287,7 @@ class DeferredToolOnContinuumTest {
         new State(
             new Phase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Set.of(call.id()),
-                List.of(),
+                Map.of(call.id(), new CallStatus.Pending()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();
@@ -312,9 +313,7 @@ class DeferredToolOnContinuumTest {
     driveOnceWithPending(call);
 
     assertThat(tool.invocations).hasValue(1); // dispatched exactly once
-    assertThat(index.find(addressOf(call)))
-        .hasValueSatisfying(
-            entry -> assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.TOOL));
+    assertThat(statusOf(call)).isInstanceOf(CallStatus.AwaitingResult.class);
   }
 
   @Test
@@ -330,7 +329,7 @@ class DeferredToolOnContinuumTest {
   void completingTheComputationFoldsTheResult() {
     var call = deferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId id = parkedToolIdFor(call);
 
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
@@ -350,7 +349,7 @@ class DeferredToolOnContinuumTest {
    * org.jwcarman.nessy.agent.support.RecordingMemory}'s delegate ({@link
    * org.jwcarman.nessy.agent.memory.VerbatimMemory}) is {@code putIfAbsent} on {@link
    * org.jwcarman.nessy.spi.Remembrance#key()}, and {@link ToolFoldRemembrance} keys every fold on
-   * the deterministic {@code address.indexKey()} — so even a broken reducer that re-accepted the
+   * the deterministic {@code address.digest()} — so even a broken reducer that re-accepted the
    * second {@code ToolFinished} would still collapse to one transcript entry via memory-layer
    * key-idempotence, not reducer dedup. This asserts two signals a broken dedup could not produce
    * either: the scope's own state version did not advance (the reducer's own {@code ignore()} arm
@@ -362,7 +361,7 @@ class DeferredToolOnContinuumTest {
   void aRedeliveredCompletionIsIgnored() {
     var call = deferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId id = parkedToolIdFor(call);
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
 
@@ -402,15 +401,15 @@ class DeferredToolOnContinuumTest {
   }
 
   @Test
-  void theIndexEntryIsGoneAfterTheFold() {
+  void theCallIsFinishedAfterTheFold() {
     var call = deferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId id = parkedToolIdFor(call);
 
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
 
-    assertThat(index.find(addressOf(call))).isEmpty();
+    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
   }
 
   /**
@@ -431,21 +430,14 @@ class DeferredToolOnContinuumTest {
   void aConflictingStateWriteDuringTheFoldForcesARetryThatStillConverges() {
     var call = deferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId id = parkedToolIdFor(call);
     completions.complete(id, ToolResult.ok("restarted"));
 
     byte[] currentStatePayload = substrate.read("state", "test-scope").orElseThrow().payload();
     var raced = new RaceOnceOnBatchSubstrate(substrate, "state", "test-scope", currentStatePayload);
     var racedWorker =
         new DeliveryWorker<String>(
-            raced,
-            mapper,
-            harness,
-            (type, i) -> agent,
-            nudgePump,
-            approvalClient,
-            index,
-            toolClient);
+            raced, mapper, harness, (type, i) -> agent, nudgePump, approvalClient, toolClient);
 
     racedWorker.drainTools(BatchSize.of(10));
 
@@ -467,7 +459,7 @@ class DeferredToolOnContinuumTest {
   void aThrowingRememberAbortsTheFoldThenHealsOnceTheBackoffElapses() {
     var call = deferringCall("c2");
     driveOnceWithPending(call);
-    ComputationId id = ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId id = parkedToolIdFor(call);
     completions.complete(id, ToolResult.ok("restarted"));
 
     var recording = new RecordingMemory();
@@ -492,7 +484,6 @@ class DeferredToolOnContinuumTest {
             (type, i) -> throwingAgent,
             nudgePump,
             approvalClient,
-            index,
             toolClient);
     long versionBefore = store.load().version();
 
@@ -518,20 +509,17 @@ class DeferredToolOnContinuumTest {
   void aGrantedToolThatDefersTransfersAndItsEventualAnswerFolds() {
     var call = gatedDeferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId approval =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId approval = parkedApprovalIdFor(call);
 
-    approvals.approve(approval);
+    approvals.approve(approval, "test", "");
     drainApprovals();
+    pump.pumpUntilQuiet();
 
-    // the grant ran the tool, the tool deferred, and the entry now names the TOOL kind
-    assertThat(index.find(addressOf(call)))
-        .hasValueSatisfying(
-            entry -> assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.TOOL));
+    // the answer folded, the tool ran, and it deferred: the phase now awaits a tool result
+    assertThat(statusOf(call)).isInstanceOf(CallStatus.AwaitingResult.class);
     assertThat(foldedResults()).isEmpty();
 
-    ComputationId execution =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId execution = parkedToolIdFor(call);
     completions.complete(execution, ToolResult.ok("eventually"));
     drainTools();
 
@@ -568,7 +556,7 @@ class DeferredToolOnContinuumTest {
                     .model(provider)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(ToolGrant.grant(new EndToEndDeferringTool(), UsagePolicy.allow()))
+                    .grants(ToolGrant.grant(new EndToEndDeferringTool(), Approvers.allow()))
                     .substrate(e2eSubstrate)
                     .executor(pump));
     try {
@@ -579,13 +567,11 @@ class DeferredToolOnContinuumTest {
 
       assertThat(scopeState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       var responseId = ((Phase.AwaitingTools) scopeState.load().phase()).responseId();
-      // The dispatch index is the only handle back to the Continuum-minted id (spec §5) — built
-      // fresh here over the same substrate/kind HarnessConfig#finish() derived internally, exactly
-      // as a genuinely separate out-of-band responder would have to.
-      var e2eIndex =
-          new DispatchIndex(e2eSubstrate, e2eMapper, Kinds.dispatchIndex(AgentType.of("e2e-tool")));
-      var address = new CallAddress("e2e-tool", "scope-1", responseId.value(), "c1");
-      var computation = ComputationId.of(e2eIndex.find(address).orElseThrow().computationId());
+      // The phase names the computation a deferred call is waiting on (approval-lifecycle spec
+      // §2) — the only handle back to the Continuum-minted id, read exactly as a genuinely
+      // separate out-of-band responder would have to.
+      var status = ((Phase.AwaitingTools) scopeState.load().phase()).calls().get("c1");
+      var computation = ((CallStatus.AwaitingResult) status).tool();
 
       // "every instance is garbage; any node may answer": complete purely through the harness's
       // own public door, exactly as a genuinely out-of-band responder would.

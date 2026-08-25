@@ -20,27 +20,52 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Stream;
+import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class StateCodecTest {
 
-  private static final StateCodec CODEC = new StateCodec(Codecs.copyAndPin(new ObjectMapper()));
+  private static final ObjectMapper PINNED = Codecs.copyAndPin(new ObjectMapper());
+  private static final StateCodec CODEC = new StateCodec(PINNED);
   private static final MessageCodec MESSAGE_CODEC =
       new MessageCodec(Codecs.copyAndPin(new ObjectMapper()));
   private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
+
+  private static final ToolCall CALL_A =
+      new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_B =
+      new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_C =
+      new ToolCall("c", "deploy", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_D =
+      new ToolCall("d", "drain", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_E =
+      new ToolCall("e", "audit", JsonNodeFactory.instance.objectNode());
+
+  private static Message turnOf(ToolCall... calls) {
+    List<ContentBlock> blocks = new ArrayList<>();
+    for (ToolCall call : calls) {
+      blocks.add(new ToolUseBlock(call, null));
+    }
+    return Message.assistant(blocks);
+  }
+
+  private static ApprovalRequest request() {
+    return ApprovalRequest.draft("ops", "prod-1", CALL_B, PINNED).action("restart prod-1").freeze();
+  }
 
   @Nested
   class PhaseRoundTrips {
@@ -58,71 +83,84 @@ class StateCodecTest {
     }
 
     @Test
-    void aPopulatedAwaitingToolsPhaseRoundTripsWithItsInvariantsIntact() {
-      var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
-      var turn =
-          Message.assistant(
-              List.of(new ToolUseBlock(callA, "sig-a"), new ToolUseBlock(callB, null)));
+    void everyCallStatusRoundTripsIncludingTheParkedRequest() {
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
           new Phase.AwaitingTools(
               turn,
-              Set.of("a", "b"),
-              List.of(new ToolResultBlock("z", "already gathered", false)),
+              Map.of(
+                  "a",
+                  new CallStatus.Pending(),
+                  "b",
+                  new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  "c",
+                  new CallStatus.Running(),
+                  "d",
+                  new CallStatus.AwaitingResult(ComputationId.of("tool-1")),
+                  "e",
+                  new CallStatus.Finished(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
-      var roundTripped = CODEC.phase(CODEC.toJson(phase));
+
+      var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
+
       assertThat(roundTripped).isEqualTo(phase);
-      var awaitingTools = (Phase.AwaitingTools) roundTripped;
-      assertThat(awaitingTools.pending()).isNotEmpty().containsExactlyInAnyOrder("a", "b");
+      assertThat(roundTripped.calls()).isNotEmpty();
+      assertThat(roundTripped.calls().get("b"))
+          .isInstanceOfSatisfying(
+              CallStatus.AwaitingApproval.class,
+              parked -> assertThat(parked.request().action()).isEqualTo("restart prod-1"));
     }
 
     @Test
-    void anAwaitingToolsPhaseWithNoGatheredResultsYetRoundTrips() {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
-      var phase = new Phase.AwaitingTools(turn, Set.of("a"), List.of(), RESPONSE_ID);
+    void anAwaitingToolsPhaseWithOnePendingCallRoundTrips() {
+      var turn = turnOf(CALL_A);
+      var phase = new Phase.AwaitingTools(turn, Map.of("a", new CallStatus.Pending()), RESPONSE_ID);
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
-    /**
-     * Final review round (T3): the exact-shape golden for a populated {@code AwaitingTools} phase —
-     * pinned so a future change to field order, discriminator spelling, or inclusion behavior fails
-     * loudly here rather than only in a round-trip test blind to the wire shape itself.
-     */
     @Test
-    void aPopulatedAwaitingToolsPhaseRendersTheExactPinnedJsonShape() {
-      var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
-      var turn =
-          Message.assistant(
-              List.of(new ToolUseBlock(callA, "sig-a"), new ToolUseBlock(callB, null)));
+    void everyStatusCarriesItsOwnTypeDiscriminatorOnTheWire() {
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
           new Phase.AwaitingTools(
               turn,
-              Set.of("a", "b"),
-              List.of(new ToolResultBlock("z", "already gathered", false)),
+              Map.of(
+                  "a",
+                  new CallStatus.Pending(),
+                  "b",
+                  new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  "c",
+                  new CallStatus.Running(),
+                  "d",
+                  new CallStatus.AwaitingResult(ComputationId.of("tool-1")),
+                  "e",
+                  new CallStatus.Finished(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
       String json = CODEC.toJson(phase);
 
       assertThat(json)
-          .isEqualTo(
-              "{\"type\":\"awaiting-tools\",\"assistantTurn\":{\"role\":\"assistant\","
-                  + "\"content\":[{\"type\":\"tool-use\",\"id\":\"a\",\"name\":\"lookup\","
-                  + "\"arguments\":{},\"signature\":\"sig-a\"},{\"type\":\"tool-use\",\"id\":\"b\","
-                  + "\"name\":\"restart\",\"arguments\":{}}]},\"pending\":[\"a\",\"b\"],"
-                  + "\"gathered\":[{\"type\":\"tool-result\",\"toolUseId\":\"z\","
-                  + "\"content\":\"already gathered\",\"isError\":false}],"
-                  + "\"responseId\":{\"value\":\"response-1\"}}");
+          .contains("\"type\":\"awaiting-tools\"")
+          .contains("\"type\":\"pending\"")
+          .contains("\"type\":\"awaiting-approval\"")
+          .contains("\"type\":\"running\"")
+          .contains("\"type\":\"awaiting-result\"")
+          .contains("\"type\":\"finished\"");
     }
 
     @Test
-    void pendingIdsSerializeInSortedOrder() {
-      var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
-      var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(callB), new ToolUseBlock(callA)));
-      var phase = new Phase.AwaitingTools(turn, Set.of("b", "a"), List.of(), RESPONSE_ID);
-      assertThat(CODEC.toJson(phase)).contains("\"pending\":[\"a\",\"b\"]");
+    void callsSerializeInSortedIdOrder() {
+      var turn = turnOf(CALL_B, CALL_A);
+      var phase =
+          new Phase.AwaitingTools(
+              turn,
+              Map.of("b", new CallStatus.Pending(), "a", new CallStatus.Pending()),
+              RESPONSE_ID);
+
+      String calls = CODEC.toJson(phase);
+      String map = calls.substring(calls.indexOf("\"calls\""));
+
+      assertThat(map.indexOf("\"a\"")).isLessThan(map.indexOf("\"b\""));
     }
   }
 
@@ -171,45 +209,53 @@ class StateCodecTest {
     }
 
     @Test
-    void anAwaitingToolsPayloadWithNothingPendingIsRejected() {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
+    void anAwaitingToolsPayloadWithNoCallsIsRejected() {
+      var turn = turnOf(CALL_A);
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
               + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":[],\"gathered\":[],\"responseId\":{\"value\":\"response-1\"}}";
+              + ",\"calls\":{},\"responseId\":{\"value\":\"response-1\"}}";
+
       assertThatThrownBy(() -> CODEC.phase(json)).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("malformedAwaitingToolsPayloads")
-    void anAwaitingToolsPayloadWithAStructuralDefectIsRejectedNamingIt(
-        String description, String pendingJson, String gatheredJson, String expectedMessage) {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
+    @Test
+    void anAwaitingToolsPayloadNamingACallOutsideTheTurnIsRejectedNamingIt() {
+      var turn = turnOf(CALL_A);
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
               + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":"
-              + pendingJson
-              + ",\"gathered\":"
-              + gatheredJson
-              + ",\"responseId\":{\"value\":\"response-1\"}}";
+              + ",\"calls\":{\"ghost\":{\"type\":\"pending\"}},"
+              + "\"responseId\":{\"value\":\"response-1\"}}";
+
       assertThatThrownBy(() -> CODEC.phase(json))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining(expectedMessage);
+          .hasMessageContaining("ghost");
     }
 
-    private static Stream<Arguments> malformedAwaitingToolsPayloads() {
-      return Stream.of(
-          Arguments.of("pending outside the assistant turn", "[\"a\",\"ghost\"]", "[]", "ghost"),
-          Arguments.of(
-              "a non-tool-result block in gathered",
-              "[\"a\"]",
-              "[{\"type\":\"text\",\"text\":\"oops\"}]",
-              "text"),
-          Arguments.of("a non-array pending", "\"oops\"", "[]", "pending"),
-          Arguments.of("a non-array gathered", "[\"a\"]", "\"oops\"", "gathered"));
+    @Test
+    void anAwaitingToolsPayloadWithAnUnknownStatusDiscriminatorIsRejectedNamingIt() {
+      var turn = turnOf(CALL_A);
+      var json =
+          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
+              + MESSAGE_CODEC.toJson(turn)
+              + ",\"calls\":{\"a\":{\"type\":\"escalated\"}},"
+              + "\"responseId\":{\"value\":\"response-1\"}}";
+
+      assertThatThrownBy(() -> CODEC.phase(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("escalated");
+    }
+
+    @Test
+    void anAwaitingToolsPayloadWithANonObjectCallsFieldIsRejected() {
+      var turn = turnOf(CALL_A);
+      var json =
+          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
+              + MESSAGE_CODEC.toJson(turn)
+              + ",\"calls\":\"oops\",\"responseId\":{\"value\":\"response-1\"}}";
+
+      assertThatThrownBy(() -> CODEC.phase(json)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 }

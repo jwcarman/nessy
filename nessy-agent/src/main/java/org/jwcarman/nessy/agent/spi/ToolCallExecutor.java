@@ -20,31 +20,24 @@ import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Tool execution: async by contract. The sink is handed per dispatch, lives one dispatch, and is
- * never invoked on the dispatching stack (§4). {@code responseId} is the committed {@code
+ * Tool execution: async by contract, and two doors, neither with a conditional inside
+ * (approval-lifecycle spec §4). The sink is handed per dispatch, lives one dispatch, and is never
+ * invoked on the dispatching stack (§4). {@code responseId} is the committed {@code
  * ModelResponseId} that produced {@code call} (durable-deliveries spec §2), read from the fold's
  * {@code AwaitingTools} state at the dispatch site — it is how {@link CallAddress}'s derivation and
- * a real {@code ToolInvocationId} become possible at the gate.
+ * a real {@code ToolInvocationId} become possible.
  */
 public interface ToolCallExecutor {
 
-  void executeTool(ToolCall call, ModelResponseId responseId, Sink sink);
+  /**
+   * Ask: evaluate the grant's approver; deliver {@code ApprovalAnswered} or (via {@code defer()})
+   * {@code ApprovalDeferred}. Never runs a tool.
+   */
+  void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink);
 
   /**
-   * The synchronous post-gate door (durable-deliveries spec §5a invariant 5): runs {@code call}
-   * straight to the tool, skipping the policy/approval gate entirely, on the CALLING thread,
-   * returning the {@link ToolExecution} directly rather than delivering asynchronously. Used only
-   * where the gate has already run for this exact invocation — a granted approval's tool call —
-   * never for a fresh dispatch. Callers need the outcome in hand, synchronously, before they decide
-   * what to commit: {@code org.jwcarman.nessy.agent.DeliveryWorker}'s grant arm decides which
-   * atomic batch to build from it.
-   *
-   * <p>The default throws: only {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}
-   * implements this meaningfully, and nothing calls it on a {@link ToolCallExecutor} without a gate
-   * to skip.
+   * Run: past the gate; deliver {@code ToolFinished} or {@code ToolDeferred}. Never consults an
+   * approver — the answer is already a fact in the phase.
    */
-  default ToolExecution executeGrantedToolNow(ToolCall call, CallAddress address) {
-    throw new UnsupportedOperationException(
-        "this ToolCallExecutor does not support synchronous granted execution");
-  }
+  void runTool(ToolCall call, ModelResponseId responseId, Sink sink);
 }

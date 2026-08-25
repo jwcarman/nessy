@@ -38,27 +38,30 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
+import org.jwcarman.nessy.api.tool.approval.Rule;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Impact;
 import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
-import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
+import org.jwcarman.nessy.api.tool.authorization.RiskRules;
 import org.jwcarman.nessy.intent.IntentEnricher;
-import org.jwcarman.nessy.intent.IntentPolicies;
+import org.jwcarman.nessy.intent.IntentRules;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.SubstrateIntentStore;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -123,55 +126,75 @@ class TypedIntentDemo {
   private static final ActionContributor<RestartInput, String> RESTART_ACTION =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
+  /** What the demo's approver tells its queue once it has parked a question. */
+  record Ask(ComputationId id, ApprovalRequest request) {}
+
   private static Enricher riskAssessor(Likelihood likelihood, Impact impact) {
     RiskAssessment assessment = RiskAssessment.of(likelihood, impact, RiskFactors.DESTRUCTIVE);
-    return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
+    return Enricher.named("risk", draft -> draft.deposit(ApprovalRequest.RISK, assessment));
   }
 
   /**
    * The org's own consistency check (vocabulary amendment §3): declared target must match acted
-   * target.
+   * target. A rule, so it passes the ladder on when it has nothing to say.
    */
-  private static UsagePolicy consistencyPolicy() {
-    return UsagePolicy.of(
-        context -> {
-          Optional<OpsIntent> declared = context.declaredIntent(OpsIntent.class);
+  private static Rule consistencyRule() {
+    return Rule.named(
+        "target consistency",
+        request -> {
+          Optional<OpsIntent> declared =
+              request.facts().get(IntentEnricher.declared(OpsIntent.class));
           if (declared.isEmpty()) {
-            return new PolicyDecision.Allow();
+            return new Rule.Verdict.Undecided();
           }
           return switch (declared.get()) {
             case Restart(String target, _) -> {
-              String rendered = context.action(String.class).orElse("");
+              String rendered = request.action();
               yield rendered.contains(target)
-                  ? new PolicyDecision.Allow()
-                  : new PolicyDecision.Deny(
-                      "declared intent targets \""
-                          + target
-                          + "\" but the action is \""
-                          + rendered
-                          + "\"");
+                  ? new Rule.Verdict.Undecided()
+                  : new Rule.Verdict.Answered(
+                      Approval.denied(
+                          "declared intent targets \""
+                              + target
+                              + "\" but the action is \""
+                              + rendered
+                              + "\""));
             }
-            case Diagnose _ -> new PolicyDecision.Allow();
+            case Diagnose _ -> new Rule.Verdict.Undecided();
           };
         });
   }
 
-  private static ToolGrant restartGrant(
-      IntentStore<OpsIntent> intentStore, Enricher riskAssessor, boolean checkConsistency) {
-    List<UsagePolicy> policies =
+  /** The demo's approver: the ladder judges; a park tells the demo's queue. */
+  private static Approver queueing(boolean checkConsistency, List<Ask> asks) {
+    Approver ladder =
         checkConsistency
-            ? List.of(
-                IntentPolicies.requireDeclared(OpsIntent.class),
-                RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH),
-                consistencyPolicy())
-            : List.of(
-                IntentPolicies.requireDeclared(OpsIntent.class),
-                RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+            ? Approvers.rules(
+                IntentRules.requireDeclared(OpsIntent.class),
+                consistencyRule(),
+                RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH))
+            : Approvers.rules(
+                IntentRules.requireDeclared(OpsIntent.class),
+                RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+    return context -> {
+      ApprovalOutcome outcome = ladder.approve(context);
+      if (outcome instanceof ApprovalOutcome.Deferred deferred) {
+        asks.add(new Ask(deferred.id(), context.request()));
+      }
+      return outcome;
+    };
+  }
+
+  private static ToolGrant restartGrant(
+      IntentStore<OpsIntent> intentStore,
+      Enricher riskAssessor,
+      boolean checkConsistency,
+      List<Ask> asks) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_ACTION,
-        List.of(new IntentEnricher(intentStore), riskAssessor),
-        UsagePolicy.allOf(policies));
+        List.of(new IntentEnricher<>(intentStore, OpsIntent.class), riskAssessor),
+        queueing(checkConsistency, asks));
   }
 
   @Test
@@ -182,7 +205,7 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(
             substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
@@ -219,11 +242,13 @@ class TypedIntentDemo {
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
-                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                            new IntentTool<>(OpsIntent.class, intentStore), Approvers.allow()),
                         restartGrant(
-                            intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
+                            intentStore,
+                            riskAssessor(Likelihood.HIGH, Impact.HIGH),
+                            false,
+                            requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu with no declared intent ==");
@@ -236,14 +261,11 @@ class TypedIntentDemo {
       System.out.println("== the desk approves the retried restart ==");
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       assertThat(requests).hasSize(1);
-      ApprovalRequest request = requests.getFirst();
-      assertThat(request.context().declaredIntent(OpsIntent.class))
+      Ask ask = requests.getFirst();
+      assertThat(ask.request().facts().get(IntentEnricher.declared(OpsIntent.class)))
           .contains(new Restart("prod-eu", "stuck deploy"));
-      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
-      // document under Kinds.approval — the request's own id (Continuum-minted) is the handle.
-      var computation = request.id();
 
-      harness.approvals().approve(computation);
+      harness.approvals().approve(ask.id(), "demo", "");
       // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
       // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
@@ -273,7 +295,7 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(
             substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
@@ -306,10 +328,13 @@ class TypedIntentDemo {
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
-                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                        restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
+                            new IntentTool<>(OpsIntent.class, intentStore), Approvers.allow()),
+                        restartGrant(
+                            intentStore,
+                            riskAssessor(Likelihood.HIGH, Impact.HIGH),
+                            true,
+                            requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model declares prod-eu, then tries to restart prod-us instead ==");
@@ -340,7 +365,7 @@ class TypedIntentDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(
             substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
@@ -365,11 +390,13 @@ class TypedIntentDemo {
                     .settings(TestSettings.settings())
                     .grants(
                         ToolGrant.grant(
-                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                            new IntentTool<>(OpsIntent.class, intentStore), Approvers.allow()),
                         restartGrant(
-                            intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
+                            intentStore,
+                            riskAssessor(Likelihood.HIGH, Impact.HIGH),
+                            false,
+                            requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model declares a shape outside the vocabulary ==");

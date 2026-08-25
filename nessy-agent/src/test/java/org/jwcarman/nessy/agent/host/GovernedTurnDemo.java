@@ -35,13 +35,16 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Enrichers;
 import org.jwcarman.nessy.api.tool.authorization.Impact;
@@ -49,13 +52,13 @@ import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
-import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
+import org.jwcarman.nessy.api.tool.authorization.RiskRules;
 import org.jwcarman.nessy.intent.Intent;
 import org.jwcarman.nessy.intent.IntentEnricher;
+import org.jwcarman.nessy.intent.IntentRules;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.SubstrateIntentStore;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -101,26 +104,46 @@ class GovernedTurnDemo {
   private static final ActionContributor<RestartInput, String> RESTART_STATEMENT =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
+  /** What the demo's approver tells its queue once it has parked a question. */
+  record Ask(ComputationId id, ApprovalRequest request) {}
+
   private static Enricher riskAssessor(Likelihood likelihood, Impact impact) {
     RiskAssessment assessment = RiskAssessment.of(likelihood, impact, RiskFactors.DESTRUCTIVE);
-    return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
+    return Enricher.named("risk", draft -> draft.deposit(ApprovalRequest.RISK, assessment));
   }
 
-  private static ToolGrant restartGrant(IntentStore<Intent> intentStore, Enricher riskAssessor) {
+  /**
+   * The demo's approver: the ladder judges, and when it parks, the demo (a queue) is told — telling
+   * people is the approver's job (approval-lifecycle spec §1.3).
+   */
+  private static Approver queueing(List<Ask> asks) {
+    Approver ladder =
+        Approvers.rules(
+            IntentRules.requireDeclared(Intent.class),
+            RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+    return context -> {
+      ApprovalOutcome outcome = ladder.approve(context);
+      if (outcome instanceof ApprovalOutcome.Deferred deferred) {
+        asks.add(new Ask(deferred.id(), context.request()));
+      }
+      return outcome;
+    };
+  }
+
+  private static ToolGrant restartGrant(
+      IntentStore<Intent> intentStore, Enricher riskAssessor, List<Ask> asks) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
         List.of(
-            new IntentEnricher(intentStore), riskAssessor, Enrichers.principal(() -> "jcarman")),
-        RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+            new IntentEnricher<>(intentStore, Intent.class),
+            riskAssessor,
+            Enrichers.principal(() -> "jcarman")),
+        queueing(asks));
   }
 
-  private static ToolGrant restartGrant(List<Enricher> enrichers) {
-    return ToolGrant.grant(
-        new RestartTool(),
-        RESTART_STATEMENT,
-        enrichers,
-        RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+  private static ToolGrant restartGrant(List<Enricher> enrichers, List<Ask> asks) {
+    return ToolGrant.grant(new RestartTool(), RESTART_STATEMENT, enrichers, queueing(asks));
   }
 
   private static ToolCall declareIntentCall() {
@@ -145,7 +168,7 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
@@ -163,10 +186,10 @@ class GovernedTurnDemo {
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
-                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
-                        restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
+                        ToolGrant.grant(IntentTool.freeform(intentStore), Approvers.allow()),
+                        restartGrant(
+                            intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model declares intent, then asks to restart prod-eu ==");
@@ -183,20 +206,18 @@ class GovernedTurnDemo {
 
       assertThat(requests).isNotEmpty();
       assertThat(requests).hasSize(1);
-      ApprovalRequest request = requests.getFirst();
-      System.out.println("approval request context: " + request.context());
-      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
-      // document under Kinds.approval — the request's own id (Continuum-minted) is the handle.
-      var computation = request.id();
-      assertThat(request.context().action()).contains("restart prod-eu");
-      assertThat(request.context().declaredIntent())
+      Ask ask = requests.getFirst();
+      ApprovalRequest request = ask.request();
+      System.out.println("approval request: " + request);
+      assertThat(request.action()).contains("restart prod-eu");
+      assertThat(request.facts().get(IntentEnricher.declared(Intent.class)))
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
-      assertThat(request.context().principal()).contains("jcarman");
-      assertThat(request.context().risk())
+      assertThat(request.facts().get(ApprovalRequest.PRINCIPAL)).contains("jcarman");
+      assertThat(request.facts().get(ApprovalRequest.RISK))
           .contains(RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE));
 
       System.out.println("== the desk approves; the scope resumes ==");
-      harness.approvals().approve(computation);
+      harness.approvals().approve(ask.id(), "demo", "");
       // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
       // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
@@ -226,7 +247,7 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
@@ -244,11 +265,12 @@ class GovernedTurnDemo {
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
-                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
+                        ToolGrant.grant(IntentTool.freeform(intentStore), Approvers.allow()),
                         restartGrant(
-                            intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
+                            intentStore,
+                            riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH),
+                            requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the risk assessor reports VERY_HIGH severity ==");
@@ -277,7 +299,7 @@ class GovernedTurnDemo {
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+    var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
@@ -295,13 +317,13 @@ class GovernedTurnDemo {
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
                     .grants(
-                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
+                        ToolGrant.grant(IntentTool.freeform(intentStore), Approvers.allow()),
                         restartGrant(
                             List.of(
-                                new IntentEnricher(intentStore),
-                                Enrichers.principal(() -> "jcarman"))))
+                                new IntentEnricher<>(intentStore, Intent.class),
+                                Enrichers.principal(() -> "jcarman")),
+                            requests))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== no risk assessor is wired; the threshold fails closed ==");
@@ -316,7 +338,7 @@ class GovernedTurnDemo {
       ToolResultBlock restartResult = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("restart result: " + restartResult);
       assertThat(restartResult.isError()).isTrue();
-      assertThat(restartResult.content()).contains("no risk assessment deposited under RISK_KEY");
+      assertThat(restartResult.content()).contains("no risk assessment deposited under 'risk'");
     } finally {
       harness.shutdown();
     }

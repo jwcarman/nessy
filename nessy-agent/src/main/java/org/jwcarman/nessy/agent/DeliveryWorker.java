@@ -17,7 +17,6 @@ package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -32,10 +31,9 @@ import org.jwcarman.continuum.api.ResultTtl;
 import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.agent.spi.ToolExecution;
-import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -44,20 +42,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Delivery is fold-advance (durable-deliveries spec §5): the approval and tool kinds' own consumer.
- * Per each delivery: resolve the destination scope from its routing, reconcile the pending call
- * with its outcome through the pure reducer, remember what the fold implies (see below), commit one
- * substrate batch — the CAS state write and, for the tool kind, the dispatch index entry's own
- * deletion (spec §5) — then dispatch the transition's effects (commit-before-dispatch, unchanged
- * law). A CAS miss re-reads and re-handles; {@link org.jwcarman.nessy.agent.Transition#isIgnored()}
- * means the batch is just the index entry's deletion.
+ * Per each delivery: resolve the destination scope from its routing, fold the delivered fact
+ * through the pure reducer, remember what the fold implies (see below), CAS-write the state, then
+ * dispatch the transition's effects (commit-before-dispatch, unchanged law). A CAS miss re-reads
+ * and re-handles.
  *
- * <p>An approval's {@code Allow} decision is not a completion — the tool has not run yet, so there
- * is no {@code ToolFinished} for the reducer to fold. That case dispatches the call directly
- * through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} — the
- * post-gate door — using the {@code CallAddress}/{@code ToolInvocationId} the grant's own
- * continuation carries. Re-entering the gate from the top (the old {@code ScopeRedrive}
- * unconditional re-fire, retired: nothing routes through it in production anymore) would re-run
- * policy and re-ask the approver on every grant (spec §5a).
+ * <p>Both consumers fold; neither runs a tool (approval-lifecycle spec §5).
  *
  * <p>Pumping moved off a per-harness daemon heartbeat onto one shared {@link ComputationScheduler}
  * (continuum-adoption spec §7): this worker implements {@link ComputationPump}, and {@link
@@ -72,13 +62,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Memory has left the atomic batch (remembrance spec §1): every remembrance a fold implies is
  * remembered through {@link
- * org.jwcarman.nessy.spi.Memory#remember(org.jwcarman.nessy.spi.Remembrance)} BEFORE the commit
- * batch — the state CAS and, for the tool kind, the dispatch index entry's own deletion — ever
- * runs. A throwing {@code remember} aborts the attempt before that batch; Continuum's own {@link
- * ContinuumClient#deliverResults} catches the exception and releases the delivery for a later retry
- * (its own backoff, not a Substrate redrive). A successful {@code remember} that is later followed
- * by a lost CAS on the batch just re-remembers the same keys on retry, which converges by the SPI's
- * own idempotence law. This is what makes ANY {@link org.jwcarman.nessy.spi.Memory} —
+ * org.jwcarman.nessy.spi.Memory#remember(org.jwcarman.nessy.spi.Remembrance)} BEFORE the state CAS
+ * ever runs. A throwing {@code remember} aborts the attempt before that write; Continuum's own
+ * {@link ContinuumClient#deliverResults} catches the exception and releases the delivery for a
+ * later retry (its own backoff, not a Substrate redrive). A successful {@code remember} that is
+ * later followed by a lost CAS just re-remembers the same keys on retry, which converges by the
+ * SPI's own idempotence law. This is what makes ANY {@link org.jwcarman.nessy.spi.Memory} —
  * substrate-backed or a genuinely foreign store — a first-class citizen here: this worker no longer
  * inspects what kind of {@code Memory} a scope is wired with.
  */
@@ -88,21 +77,20 @@ final class DeliveryWorker<O> implements ComputationPump {
   private static final String STATE_KIND = "state";
 
   /**
-   * The approval kind's lease and backoff (continuum-adoption spec §11.2, ruled): long enough for
-   * an approval-gated {@code Awaited.Ready} tool to complete synchronously inside the grant
-   * consumer — a human just approved it interactively, so a minute or two is generous, not a guess.
+   * The approval kind's lease (approval-lifecycle spec §5): short, because this consumer only folds
+   * — the answer is one {@code Substrate} write, never a tool run, so nothing slow is in flight for
+   * a lease to outlast. The lease pays for delivering a message, never for doing the work.
    */
-  private static final Lease APPROVAL_LEASE = Lease.ofMinutes(2);
+  private static final Lease APPROVAL_LEASE = Lease.ofSeconds(30);
 
-  private static final Backoff APPROVAL_BACKOFF = Backoff.ofSeconds(30);
+  private static final Backoff APPROVAL_BACKOFF = Backoff.ofSeconds(5);
 
   /** The approval sweep's own per-pass cap — small, since a human-gated backlog is never large. */
   private static final BatchSize APPROVAL_BATCH_SIZE = BatchSize.of(100);
 
   /**
    * The tool kind's lease (continuum-adoption spec §11.2, ruled): short, because this consumer only
-   * folds — it never runs a tool inline the way the approval consumer's grant arm does, so there is
-   * no slow in-flight work a lease must outlast.
+   * folds — it never runs a tool inline, so there is no slow in-flight work a lease must outlast.
    */
   private static final Lease TOOL_LEASE = Lease.ofSeconds(30);
 
@@ -128,14 +116,12 @@ final class DeliveryWorker<O> implements ComputationPump {
   private final DocumentStore<Phase> states;
 
   /**
-   * The approval kind's Continuum client (continuum-adoption spec §3, §7) and its dispatch index —
-   * both {@code null} for a worker built by a pre-migration test constructor that never wires
-   * approvals; {@link #drainApprovals} and its callers no-op when either is absent rather than
-   * assuming every worker in this module's test suite has been repointed at Continuum yet.
+   * The approval kind's Continuum client (continuum-adoption spec §3, §7) — {@code null} for a
+   * worker built by a pre-migration test constructor that never wires approvals; {@link
+   * #drainApprovals} and its callers no-op when absent rather than assuming every worker in this
+   * module's test suite has been repointed at Continuum yet.
    */
-  private final ContinuumClient<Decision, Routing> approvalClient;
-
-  private final DispatchIndex dispatchIndex;
+  private final ContinuumClient<Approval, ApprovalRouting> approvalClient;
 
   /**
    * The tool kind's Continuum client (continuum-adoption spec §3, §7) — {@code null} for a worker
@@ -150,14 +136,14 @@ final class DeliveryWorker<O> implements ComputationPump {
    * — nothing ever calls the four expiry/purge {@link ComputationPump} methods on it.
    */
   DeliveryWorker(Substrate store, ObjectMapper mapper, Harness<O> harness, AgentResolver resolver) {
-    this(store, mapper, harness, resolver, Runnable::run, null, null, null);
+    this(store, mapper, harness, resolver, Runnable::run, null, null);
   }
 
   /**
    * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval and tool
-   * kinds' Continuum clients, their shared dispatch index, and the {@link Executor} {@link
-   * #nudge()}'s post-completion drain passes submit to — {@link Harness#of} hands in the same
-   * shared {@link ComputationScheduler} it registers this worker's six pumps with.
+   * kinds' Continuum clients and the {@link Executor} {@link #nudge()}'s post-completion drain
+   * passes submit to — {@link Harness#of} hands in the same shared {@link ComputationScheduler} it
+   * registers this worker's six pumps with.
    *
    * @param nudgeExecutor where {@link #nudge()} submits its approval/tool drain passes
    */
@@ -167,8 +153,7 @@ final class DeliveryWorker<O> implements ComputationPump {
       Harness<O> harness,
       AgentResolver resolver,
       Executor nudgeExecutor,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     Objects.requireNonNull(mapper, "mapper must not be null");
@@ -179,7 +164,6 @@ final class DeliveryWorker<O> implements ComputationPump {
     this.states = store.document(STATE_KIND, stateCodec(stateCodec));
     this.nudgeExecutor = Objects.requireNonNull(nudgeExecutor, "nudgeExecutor must not be null");
     this.approvalClient = approvalClient;
-    this.dispatchIndex = dispatchIndex;
     this.toolClient = toolClient;
   }
 
@@ -264,14 +248,11 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * The approval kind's own consumer (continuum-adoption spec §7): {@code Success(Allow)} runs the
-   * tool through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} —
-   * exactly the post-gate door the old grant arm below uses — while {@code Success(Deny)}, {@code
-   * Failure}, and {@code Expired} all fold a tool failure so the model reads it in-band. Continuum
+   * The approval kind's own consumer (approval-lifecycle spec §5): read the delivery's {@link
+   * Approval} and routing, fold {@code ApprovalAnswered} into the scope, commit, return. A {@code
+   * Failure} or {@code Expired} folds as a denial so the model reads the reason in-band. Continuum
    * acknowledges the delivery once this consumer returns normally; a thrown exception releases the
-   * claim immediately, backed off by {@link #APPROVAL_BACKOFF} (30s) — not held for the full {@link
-   * #APPROVAL_LEASE} (2m) — so a failing fold re-fires a granted tool's side effect within 30
-   * seconds, not two minutes.
+   * claim, backed off by {@link #APPROVAL_BACKOFF}.
    *
    * @param batchSize how many approval deliveries to claim in one pass
    * @return how many deliveries this pass processed
@@ -283,39 +264,29 @@ final class DeliveryWorker<O> implements ComputationPump {
         APPROVAL_LEASE,
         APPROVAL_BACKOFF,
         delivery -> {
-          Routing routing = delivery.continuation();
-          AgentType type = AgentType.of(routing.agentType());
-          AgentId id = AgentId.of(routing.agentId());
-          CallAddress address =
-              new CallAddress(
-                  routing.agentType(),
-                  routing.agentId(),
-                  routing.responseId(),
-                  routing.call().id());
-          String computationId = delivery.computationId().value().toString();
-          switch (delivery.outcome()) {
-            case TypedOutcome.Success<Decision> success ->
-                handleApprovalDecision(type, id, address, routing, computationId, success.value());
-            case TypedOutcome.Failure<Decision> failure ->
-                foldApprovalFailure(
-                    type, id, address, computationId, routing.call(), failure.message());
-            case TypedOutcome.Expired<Decision> expired ->
-                foldApprovalFailure(
-                    type,
-                    id,
-                    address,
-                    computationId,
-                    routing.call(),
-                    expired.kind() + ": " + expired.message());
-          }
+          Routing routing = delivery.continuation().routing();
+          ComputationId id = ComputationId.of(delivery.computationId().value().toString());
+          Approval answer =
+              switch (delivery.outcome()) {
+                case TypedOutcome.Success<Approval> success -> success.value();
+                case TypedOutcome.Failure<Approval> failure ->
+                    new Approval.Denied(failure.message(), Optional.of("continuum:failure"));
+                case TypedOutcome.Expired<Approval> expired ->
+                    new Approval.Denied(
+                        expired.kind() + ": " + expired.message(),
+                        Optional.of("continuum:expired"));
+              };
+          fold(
+              routing,
+              new AgentEvent.ApprovalAnswered(routing.call(), Optional.of(id), answer),
+              id);
         });
   }
 
   /**
-   * The tool kind's own consumer (continuum-adoption spec §3, §7, §11.2): unlike the approval
-   * consumer, this one never runs a tool inline — it only folds an already-produced {@link
-   * ToolResult} (or a failure/expiry) into the scope, which is why its lease ({@link #TOOL_LEASE},
-   * 30s) can be short.
+   * The tool kind's own consumer (continuum-adoption spec §3, §7, §11.2): like the approval
+   * consumer, this one only folds an already-produced {@link ToolResult} (or a failure/expiry) into
+   * the scope, which is why its lease ({@link #TOOL_LEASE}, 30s) can be short.
    *
    * @param batchSize how many tool deliveries to claim in one pass
    * @return how many deliveries this pass processed
@@ -332,14 +303,12 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   void foldOutcome(TypedDelivery<Routing, ToolResult> delivery) {
     Routing routing = delivery.continuation();
-    AgentType type = AgentType.of(routing.agentType());
-    AgentId id = AgentId.of(routing.agentId());
-    CallAddress address =
-        new CallAddress(
-            routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
-    String computationId = delivery.computationId().value().toString();
-    foldToolOutcome(
-        type, id, address, computationId, routing.call(), toToolOutcome(delivery.outcome()));
+    ComputationId id = ComputationId.of(delivery.computationId().value().toString());
+    fold(
+        routing,
+        new AgentEvent.ToolFinished(
+            routing.call(), Optional.of(id), toToolOutcome(delivery.outcome())),
+        id);
   }
 
   /**
@@ -396,163 +365,65 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * The tool kind's own fold-advance (mirrors {@link #foldApprovalResult}'s shape): read state,
-   * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
-   * entry's own deletion (spec §5, §11.3) — then dispatch effects. There is no outbox delivery to
-   * delete here: Continuum's own delivery is acknowledged by this consumer returning normally.
-   *
-   * <p>The dispatch entry's deletion is identity-checked against {@code computationId} ({@link
-   * #foldOps}): the fold itself always applies (the reducer's own duplicate-call-id ignore already
-   * absorbs a stale redelivery), but deleting an entry that has since been overwritten to name a
-   * different, still-live computation would reopen the absorption door that entry exists to close.
+   * One fold-advance for either kind: read state, reduce, remember, CAS-write, dispatch. An ignored
+   * transition is acknowledged as stale — EXCEPT when the call is still {@code Pending}/{@code
+   * Running} for THIS delivery's kind, which means the park has not folded yet (approval-lifecycle
+   * spec §4): throw, so Continuum releases the delivery and re-delivers after the backoff, by which
+   * time it has.
    */
-  private void foldToolOutcome(
-      AgentType type,
-      AgentId id,
-      CallAddress address,
-      String computationId,
-      ToolCall call,
-      ToolOutcome outcome) {
+  private void fold(Routing routing, AgentEvent event, ComputationId delivered) {
+    AgentType type = AgentType.of(routing.agentType());
+    AgentId id = AgentId.of(routing.agentId());
     while (true) {
       State state = warnIfNoStoredState(id, readState(id));
-      var event = new AgentEvent.ToolFinished(call, outcome);
-      var transition = state.phase().handle(event);
-      if (!transition.isIgnored()) {
+      Transition transition = state.phase().handle(event);
+      if (transition.isIgnored()) {
+        if (isEarly(state.phase(), event)) {
+          throw new EarlyDeliveryException(delivered);
+        }
+        return; // stale or duplicate — acknowledged
+      }
+      if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
         ToolFoldRemembrance.remember(
             harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
       }
-      List<Substrate.Op> ops = foldOps(id, state, transition, address, computationId);
-      if (!ops.isEmpty()) {
-        try {
-          store.batch(ops);
-        } catch (ConflictException _) {
-          // lost the race — re-read state (or find the index entry already gone) and retry; the
-          // remember above already ran, keyed by the call's own address, so a retry that remembers
-          // the same keys again converges rather than duplicating anything.
-          continue;
-        }
+      // A denial finishes the call with an error result the model reads, so it is remembered the
+      // same way a failed tool is — and it may be the call that commits the whole turn.
+      if (event
+          instanceof
+          AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _))) {
+        ToolFoldRemembrance.rememberDenial(
+            harness.memoryFor(id), type, id, state.phase(), call, reason, transition);
       }
-      if (!transition.isIgnored()) {
-        dispatchEffects(type, id, transition.next(), transition.effects());
+      try {
+        states.write(id.value(), transition.next(), state.version());
+      } catch (ConflictException _) {
+        continue; // lost the race — re-read and re-handle
       }
+      dispatchEffects(type, id, transition.next(), transition.effects());
       return;
     }
   }
 
-  private void handleApprovalDecision(
-      AgentType type,
-      AgentId id,
-      CallAddress address,
-      Routing routing,
-      String computationId,
-      Decision decision) {
-    switch (decision) {
-      case Decision.Allow _ -> deliverApprovalGrant(type, id, address, routing, computationId);
-      case Decision.Deny(String reason) ->
-          foldApprovalFailure(type, id, address, computationId, routing.call(), reason);
-    }
-  }
-
   /**
-   * The stale-grant guard (continuum-adoption spec §5, §11.3), shipped in its STRONG form: a grant
-   * is admitted iff the call's dispatch entry currently exists and names THIS EXACT computation —
-   * an identity check, not a predicate on the address. 0.1.0's typed {@code deliverResults}
-   * consumer withheld the delivery's own {@code computationId} ({@code CompletionDelivery} carried
-   * it, but the typed layer did not pass it through), so an earlier form of this guard could only
-   * ask whether the call's dispatch entry currently existed and was APPROVAL-kind — a predicate
-   * that discriminated finished calls from unfinished ones, not real approvals from orphans. 0.3.0
-   * puts {@code computationId} on {@link TypedDelivery} itself, closing that gap.
-   *
-   * <p>{@link #foldApprovalFailure} (deny, {@code Failure}, {@code Expired}) carries the same
-   * identity check, closing spec §11.3 gap 3: an orphan that hits its deadline while the real
-   * approval is still live is now acknowledged, not folded over the live call.
+   * Whether an ignored delivery is early rather than stale: the call is still awaiting the very
+   * park this delivery answers, so the fold that records it has not committed yet.
    */
-  private void deliverApprovalGrant(
-      AgentType type, AgentId id, CallAddress address, Routing routing, String computationId) {
-    if (!isCurrentDispatch(address, computationId)) {
-      return; // a stale grant from an orphaned approval — acknowledged, not run
+  private static boolean isEarly(Phase phase, AgentEvent event) {
+    if (!(phase instanceof Phase.AwaitingTools awaiting)) {
+      return false;
     }
-    ToolExecution result =
-        harness.toolExecutorFor(id).executeGrantedToolNow(routing.call(), address);
-    switch (result) {
-      case ToolExecution.Immediate(ToolOutcome outcome) ->
-          foldApprovalResult(type, id, address, routing.call(), outcome);
-      case ToolExecution.Deferred(_) -> {
-        // the tool went durable via the tool kind's own ContinuumClient; onDeferred already
-        // overwrote this call's dispatch entry to TOOL (unconditionally, on every deferral) before
-        // control returned here — nothing left to do (spec §11.3 gap 2, closed).
-      }
-    }
-  }
-
-  /**
-   * The deny/failure/expiry arm of the stale-grant guard (spec §11.3 gap 3, closed by this task):
-   * an orphaned approval's own failure or expiry must not fold over the live call and delete its
-   * dispatch entry out from under it — that would silently swallow the real approval's eventual
-   * grant (entry gone, indistinguishable from "already handled").
-   */
-  private void foldApprovalFailure(
-      AgentType type,
-      AgentId id,
-      CallAddress address,
-      String computationId,
-      ToolCall call,
-      String reason) {
-    if (!isCurrentDispatch(address, computationId)) {
-      return; // a stale failure/expiry from an orphaned approval — acknowledged, not folded
-    }
-    foldApprovalResult(type, id, address, call, new ToolOutcome.Failed(new ToolError(reason)));
-  }
-
-  /**
-   * Whether {@code address}'s dispatch entry currently names {@code computationId} — the stale-
-   * grant guard's identity check (spec §11.3), shared by the approval kind's grant and
-   * failure/expiry arms and the tool kind's dispatch-entry deletion.
-   */
-  private boolean isCurrentDispatch(CallAddress address, String computationId) {
-    return dispatchIndex
-        .find(address)
-        .map(DispatchEntry::computationId)
-        .filter(computationId::equals)
-        .isPresent();
-  }
-
-  /**
-   * The approval kind's own fold-advance (mirrors {@link #foldToolOutcome}'s shape): read state,
-   * reduce, remember, commit one {@link Substrate#batch} — the state CAS and the dispatch index
-   * entry's own deletion, so the entry never outlives the call it named (the same reasoning {@link
-   * #foldOps} documents for the outbox delete) — then dispatch effects.
-   */
-  private void foldApprovalResult(
-      AgentType type, AgentId id, CallAddress address, ToolCall call, ToolOutcome outcome) {
-    while (true) {
-      State state = warnIfNoStoredState(id, readState(id));
-      var event = new AgentEvent.ToolFinished(call, outcome);
-      var transition = state.phase().handle(event);
-      if (!transition.isIgnored()) {
-        ToolFoldRemembrance.remember(
-            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
-      }
-      List<Substrate.Op> ops = new ArrayList<>();
-      if (!transition.isIgnored()) {
-        ops.add(states.writeOp(id.value(), transition.next(), state.version()));
-      }
-      dispatchIndex.deleteOp(address).ifPresent(ops::add);
-      if (!ops.isEmpty()) {
-        try {
-          store.batch(ops);
-        } catch (ConflictException _) {
-          // lost the race — re-read state (or find the index entry already gone) and retry; the
-          // remember above already ran, keyed by the call's own address, so a retry that remembers
-          // the same keys again converges rather than duplicating anything.
-          continue;
-        }
-      }
-      if (!transition.isIgnored()) {
-        dispatchEffects(type, id, transition.next(), transition.effects());
-      }
-      return;
-    }
+    return switch (event) {
+      case AgentEvent.ApprovalAnswered(var call, var _, var _) ->
+          awaiting.calls().get(call.id()) instanceof CallStatus.Pending;
+      case AgentEvent.ToolFinished(var call, var _, var _) ->
+          awaiting.calls().get(call.id()) instanceof CallStatus.Running;
+      case AgentEvent.Observed _,
+          AgentEvent.ModelFinished _,
+          AgentEvent.ApprovalDeferred _,
+          AgentEvent.ToolDeferred _ ->
+          false;
+    };
   }
 
   /**
@@ -586,41 +457,23 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * The tool kind's own fold-advance batch (continuum-adoption spec §5, §11.3): the CAS state write
-   * and the dispatch index entry's own deletion — there is no outbox delivery to delete here, since
-   * Continuum owns the tool kind's delivery and acknowledges it by this consumer returning. The
-   * deletion is identity-checked against {@code computationId}: a stale redelivery of an
-   * already-superseded tool computation must not delete an entry that has since been overwritten to
-   * name a different, still-live computation (spec §11.3 gap 3's tool-kind shape).
-   */
-  private List<Substrate.Op> foldOps(
-      AgentId id, State state, Transition transition, CallAddress address, String computationId) {
-    List<Substrate.Op> ops = new ArrayList<>();
-    if (!transition.isIgnored()) {
-      ops.add(states.writeOp(id.value(), transition.next(), state.version()));
-    }
-    if (isCurrentDispatch(address, computationId)) {
-      dispatchIndex.deleteOp(address).ifPresent(ops::add);
-    }
-    return ops;
-  }
-
-  /**
-   * {@code phase} is the transition's committed {@code next()} — an {@code ExecuteTool} effect here
-   * would need its {@code ModelResponseId} from an {@link
-   * org.jwcarman.nessy.agent.Phase.AwaitingTools}, but a {@code ToolFinished} fold never actually
-   * emits one (only a model response does, in {@code AwaitingModel}'s own handling); this arm stays
-   * total rather than assuming that invariant silently.
+   * {@code phase} is the transition's committed {@code next()} — a call effect here reads its
+   * {@code ModelResponseId} from {@link org.jwcarman.nessy.agent.Phase.AwaitingTools}, the only
+   * phase that ever carries one.
    */
   private void dispatchEffects(AgentType type, AgentId id, Phase phase, List<Effect> effects) {
     for (Effect effect : effects) {
       switch (effect) {
         case Effect.CallModel _ ->
             harness.modelExecutorFor(id).callModel(event -> binder.deliver(type, id, event));
-        case Effect.ExecuteTool(var call) ->
+        case Effect.SeekApproval(var call) ->
             harness
                 .toolExecutorFor(id)
-                .executeTool(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
+                .seekApproval(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
+        case Effect.RunTool(var call) ->
+            harness
+                .toolExecutorFor(id)
+                .runTool(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
       }
     }
   }
@@ -629,8 +482,7 @@ final class DeliveryWorker<O> implements ComputationPump {
     if (phase instanceof Phase.AwaitingTools awaiting) {
       return awaiting.responseId();
     }
-    throw new IllegalStateException(
-        "an ExecuteTool effect was dispatched outside AwaitingTools: " + phase);
+    throw new IllegalStateException("a call effect was dispatched outside AwaitingTools: " + phase);
   }
 
   /**

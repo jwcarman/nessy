@@ -19,74 +19,167 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
-/** The approve/deny door: completes approval computations with a {@code Decision} (spec §3, §7). */
+/**
+ * The two doors of the desk (approval-lifecycle spec §1.6): by the computation's own id, and by
+ * coordinates resolved through the scope's phase — which is the map.
+ */
 class ApprovalDeskTest {
 
-  private final ContinuumClient<Decision, Routing> client =
-      TestApprovalClients.client("approval", TestMappers.plainlyPinned());
+  private static final ToolCall CALL =
+      new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+  private static final AgentId SCOPE = AgentId.of("prod-eu");
+
+  private final ObjectMapper mapper = TestMappers.plainlyPinned();
+  private final ContinuumClient<Approval, ApprovalRouting> client =
+      TestApprovalClients.client("approval", mapper);
+  private final Substrate substrate = new InMemorySubstrate();
   private int nudges;
-  private final ApprovalDesk desk = new ApprovalDesk(client, () -> nudges++);
+  private final ApprovalDesk desk = new ApprovalDesk(client, this::storeFor, () -> nudges++);
+
+  private AgentStateStore storeFor(String id) {
+    return new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), mapper);
+  }
 
   private static Routing routing() {
-    return new Routing(
-        "t",
-        "a",
-        "response-1",
-        new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode()));
+    return new Routing("t", SCOPE.value(), "response-1", CALL);
+  }
+
+  private ApprovalRequest request() {
+    return ApprovalRequest.draft("t", SCOPE.value(), CALL, mapper)
+        .action("restart prod-eu")
+        .freeze();
   }
 
   private ComputationId park() {
-    var created = client.create(routing());
+    var created = client.create(new ApprovalRouting(routing(), request()));
     return ComputationId.of(created.id().value().toString());
   }
 
+  /** Puts the scope in {@code AwaitingApproval(id)} for {@code c1}, the way the fold would. */
+  private void scopeAwaits(ComputationId id) {
+    Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL, null)));
+    Phase phase =
+        new Phase.AwaitingTools(
+            turn,
+            Map.of("c1", new CallStatus.AwaitingApproval(id, request())),
+            ModelResponseId.of("response-1"));
+    AgentStateStore store = storeFor(SCOPE.value());
+    store.save(new State(phase, store.load().version()));
+  }
+
   @Test
-  void approvingNudgesTheWorker() {
+  void approvingByIdNudgesTheWorker() {
     ComputationId id = park();
 
-    desk.approve(id);
+    desk.approve(id, "ada", "");
 
     assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void denyingNudgesTheWorker() {
+  void denyingByIdNudgesTheWorker() {
     ComputationId id = park();
 
-    desk.deny(id, "not on a Friday");
+    desk.deny(id, "ada", "not on a Friday");
 
     assertThat(nudges).isEqualTo(1);
+  }
+
+  @Test
+  void anAnonymousAnswerIsRefused() {
+    ComputationId id = park();
+
+    assertThatThrownBy(() -> desk.approve(id, "  ", ""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("anonymous");
   }
 
   @Test
   void denyingWithANullReasonIsRejected() {
     ComputationId id = park();
 
-    assertThatThrownBy(() -> desk.deny(id, null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> desk.deny(id, "ada", null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void denyingWithABlankReasonIsRejected() {
     ComputationId id = park();
 
-    assertThatThrownBy(() -> desk.deny(id, "   ")).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> desk.deny(id, "ada", "   "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void withdrawingFoldsAsADenialAndNudges() {
+    ComputationId id = park();
+
+    desk.withdraw(id, "the incident closed itself");
+
+    assertThat(nudges).isEqualTo(1);
+  }
+
+  @Test
+  void theByCoordinatesDoorReachesTheSameFold() {
+    ComputationId id = park();
+    scopeAwaits(id);
+
+    desk.approve(SCOPE, "c1", "ada", "looks fine");
+
+    assertThat(nudges).isEqualTo(1);
+  }
+
+  @Test
+  void theByCoordinatesDenialReachesTheSameFold() {
+    ComputationId id = park();
+    scopeAwaits(id);
+
+    desk.deny(SCOPE, "c1", "ada", "not on a Friday");
+
+    assertThat(nudges).isEqualTo(1);
+  }
+
+  @Test
+  void theByCoordinatesDoorShowsTheParkedQuestion() {
+    ComputationId id = park();
+    scopeAwaits(id);
+
+    assertThat(desk.request(SCOPE, "c1").action()).isEqualTo("restart prod-eu");
+  }
+
+  @Test
+  void aCallThatIsNotAwaitingApprovalIsRefusedLoudly() {
+    assertThatThrownBy(() -> desk.approve(SCOPE, "c1", "ada", ""))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("is not awaiting approval");
   }
 
   @Test
   void decidingAGenuinelyAbsentIdIsBenignAndStillNudges() {
     var ghost = ComputationId.of(UUID.randomUUID().toString());
 
-    desk.approve(ghost);
+    desk.approve(ghost, "ada", "");
 
     assertThat(nudges).isEqualTo(1);
   }
@@ -94,8 +187,8 @@ class ApprovalDeskTest {
   @Test
   void aSecondDecisionOnAnAlreadyResolvedIdIsBenignNotAThrow() {
     ComputationId id = park();
-    desk.approve(id);
+    desk.approve(id, "ada", "");
 
-    assertThatCode(() -> desk.deny(id, "too late")).doesNotThrowAnyException();
+    assertThatCode(() -> desk.deny(id, "ada", "too late")).doesNotThrowAnyException();
   }
 }

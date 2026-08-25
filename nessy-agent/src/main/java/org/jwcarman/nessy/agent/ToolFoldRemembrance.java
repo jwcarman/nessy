@@ -25,8 +25,8 @@ import org.jwcarman.nessy.spi.Remembrance;
 /**
  * The tool-delivery fold moment, shared (remembrance spec §2): every non-ignored {@code
  * ToolFinished} remembers its own {@link Remembrance.ToolExchange}, keyed by the call's {@link
- * CallAddress#indexKey()} — deterministic from {@code (agentType, agentId, responseId, callId)}, so
- * a redelivery re-remembers the same key and converges (SPI law 2). When this is the call that
+ * CallAddress#digest()} — deterministic from {@code (agentType, agentId, responseId, callId)}, so a
+ * redelivery re-remembers the same key and converges (SPI law 2). When this is the call that
  * completes the whole batch (the phase's {@link Transition} also commits the deferred assistant
  * turn alongside the tool-results message), the {@link Remembrance.AssistantMessage} is remembered
  * too, exactly once, keyed by the same response id.
@@ -38,6 +38,29 @@ import org.jwcarman.nessy.spi.Remembrance;
 final class ToolFoldRemembrance {
 
   private ToolFoldRemembrance() {}
+
+  /**
+   * The denial's own fold moment (approval-lifecycle spec §2): a denied call finishes with an error
+   * result the model reads, exactly as a failed tool does, so it is remembered the same way — and
+   * when it is the call that completes the batch, its transition commits the turn too.
+   */
+  static void rememberDenial(
+      Memory memory,
+      AgentType type,
+      AgentId id,
+      Phase priorPhase,
+      ToolCall call,
+      String reason,
+      Transition transition) {
+    remember(
+        memory,
+        type,
+        id,
+        priorPhase,
+        call,
+        new ToolOutcome.Failed(new ToolError(reason)),
+        transition);
+  }
 
   /**
    * @param priorPhase the phase the (non-ignored) transition folded FROM — always {@link
@@ -58,13 +81,13 @@ final class ToolFoldRemembrance {
     }
     CallAddress address =
         new CallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
-    // address.indexKey() — deterministic from the call's own coordinates — is the permanent key
+    // address.digest() — deterministic from the call's own coordinates — is the permanent key
     // here, not a Continuum-minted id: this method folds through THREE different call sites
     // (DefaultAgent's own immediate, non-durable fold; DeliveryWorker's durable completion and
     // grant folds), and a genuinely immediate fold never has a computation at all to mint an id
     // from. A single deterministic key across every fold path is also what SPI law 2 (a redelivery
     // re-remembers the SAME key and converges) requires — a per-path id would fracture that.
-    memory.remember(new Remembrance.ToolExchange(address.indexKey(), call, toToolResult(outcome)));
+    memory.remember(new Remembrance.ToolExchange(address.digest(), call, toToolResult(outcome)));
     // AwaitingTools#handle commits [assistantTurn, toolResults] together, exactly once, on the
     // call that completes the whole batch — never fewer than both, never just one. Testing
     // non-empty and reading getFirst() (the assistantTurn) rather than pinning the exact size

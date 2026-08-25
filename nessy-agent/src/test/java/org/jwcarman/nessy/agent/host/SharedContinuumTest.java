@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.time.InstantSource;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.DefaultContinuum;
@@ -41,8 +40,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -100,7 +98,6 @@ class SharedContinuumTest {
     var state =
         new SubstrateAgentStateStore(
             substrate, SCOPE, Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", SCOPE));
@@ -115,17 +112,13 @@ class SharedContinuumTest {
                     .model(modelA)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(substrate)
                     .continuum(shared)
-                    .approvalNotifier(requests::add)
                     .executor(pumpA));
     harnessA.bind(AgentId.of(SCOPE)).tell("please restart " + SCOPE);
     pumpA.pumpUntilQuiet();
     assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-    assertThat(requests).hasSize(1);
     harnessA.shutdown();
 
     // Harness B: fresh objects over the same two stores. Its model only ever sees the resumed turn.
@@ -139,14 +132,13 @@ class SharedContinuumTest {
                     .model(modelB)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(substrate)
                     .continuum(shared)
                     .executor(pumpB));
     try {
-      harnessB.approvals().approve(requests.getFirst().id());
+      // The phase is the map (approval-lifecycle spec §1.6): harness B answers by coordinates.
+      harnessB.approvals().approve(AgentId.of(SCOPE), "c1", "ops-desk", "");
 
       long deadline = System.currentTimeMillis() + 5000;
       while (!(state.load().phase() instanceof Phase.Idle)

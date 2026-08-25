@@ -24,13 +24,14 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
@@ -81,7 +82,14 @@ public final class ApprovalPlayground {
   public static void main(String[] args) throws Exception {
     var selection = ModelDiscovery.select();
     var settings = new ModelSettings(1024, Set.of(), null);
-    var pending = new LinkedBlockingQueue<ApprovalRequest>();
+    var pending = new LinkedBlockingQueue<ComputationId>();
+    Approver queueing =
+        context -> {
+          ApprovalOutcome outcome = context.defer();
+          System.out.println("  [parked] " + context.request().action());
+          pending.add(((ApprovalOutcome.Deferred) outcome).id());
+          return outcome;
+        };
     var harness =
         Nessy.harness(
             h ->
@@ -89,23 +97,20 @@ public final class ApprovalPlayground {
                     .model(selection.model())
                     .systemPrompt("You are a terse assistant.")
                     .settings(settings)
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                    .approvalNotifier(pending::add)
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, queueing))
                     .turnObserver(event -> System.out.println("  [turn] " + event)));
     var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     System.out.println("say something ('approve', 'deny <reason>', 'quit'):");
     String line;
     while ((line = console.readLine()) != null) {
-      ApprovalRequest open = pending.peek();
+      ComputationId open = pending.peek();
       if (line.equals("quit")) {
         break;
       }
       if (line.equals("approve") && open != null) {
-        harness.approvals().approve(pending.poll().id());
+        harness.approvals().approve(pending.poll(), "playground", "");
       } else if (line.startsWith("deny ") && open != null) {
-        harness.approvals().deny(pending.poll().id(), line.substring(5));
+        harness.approvals().deny(pending.poll(), "playground", line.substring(5));
       } else {
         harness.bind(AgentId.of("tinker")).tell(line);
       }

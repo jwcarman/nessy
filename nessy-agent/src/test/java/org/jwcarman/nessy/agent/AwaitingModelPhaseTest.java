@@ -18,17 +18,22 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class AwaitingModelPhaseTest {
 
@@ -62,9 +67,11 @@ class AwaitingModelPhaseTest {
     assertThat(t.next())
         .isEqualTo(
             new Phase.AwaitingTools(
-                Message.assistant(content), Set.of("a", "b"), List.of(), RESPONSE_ID));
+                Message.assistant(content),
+                Map.of("a", new CallStatus.Pending(), "b", new CallStatus.Pending()),
+                RESPONSE_ID));
     assertThat(t.effects())
-        .containsExactly(new Effect.ExecuteTool(CALL_A), new Effect.ExecuteTool(CALL_B));
+        .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));
   }
 
   @Test
@@ -89,8 +96,33 @@ class AwaitingModelPhaseTest {
 
   @Test
   void aStrayToolCompletionIsIgnored() {
-    var event = new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("x")));
+    var event =
+        new AgentEvent.ToolFinished(
+            CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
     assertThat(new Phase.AwaitingModel().handle(event).isIgnored()).isTrue();
+  }
+
+  @Test
+  void aStrayApprovalOrDeferralIsIgnored() {
+    var parked = ComputationId.of("parked-1");
+    var request = ApprovalRequest.draft("ops", "prod-1", CALL_A, new ObjectMapper()).freeze();
+
+    assertThat(
+            new Phase.AwaitingModel()
+                .handle(new AgentEvent.ApprovalDeferred(CALL_A, parked, request))
+                .isIgnored())
+        .isTrue();
+    assertThat(
+            new Phase.AwaitingModel()
+                .handle(
+                    new AgentEvent.ApprovalAnswered(CALL_A, Optional.empty(), Approval.approved()))
+                .isIgnored())
+        .isTrue();
+    assertThat(
+            new Phase.AwaitingModel()
+                .handle(new AgentEvent.ToolDeferred(CALL_A, parked))
+                .isIgnored())
+        .isTrue();
   }
 
   @Test

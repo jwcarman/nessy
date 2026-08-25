@@ -22,10 +22,9 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -48,34 +47,29 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The approval kind on Continuum (continuum-adoption spec §3, §5, §7): an ask creates one
- * computation and notifies once, a redrive absorbs at the gate rather than re-notifying, and an
- * approval — granted, denied, or expired — reaches the tool (or an in-band failure) through {@link
- * DeliveryWorker#drainApprovals}, never through a second read of the computation.
- *
- * <p>Reuses {@code AbsorptionTest}'s harness fixture shape (a real {@link ComputationApprover} and
- * {@link ComputationDeferredToolCallPolicy}, a counting tool, a counting {@code RequireApproval}
- * policy) — the fixture is rebuilt here rather than shared because {@code AbsorptionTest}'s helper
- * classes are private to that file, and this test's collaborators (a Continuum client, a dispatch
- * index, a worker wired to drain approvals) are new.
+ * The approval kind on Continuum (approval-lifecycle spec §1.3, §2, §5): a deferral parks one
+ * computation and the phase records it, a re-fire leaves an {@code AwaitingApproval} call alone,
+ * and an answer — approved, denied, or expired — reaches the scope through {@link
+ * DeliveryWorker#drainApprovals}, never through a second read of the computation. An answer for a
+ * computation the phase does not name is ignored: the phase is the map.
  */
 class ApprovalOnContinuumTest {
 
@@ -121,13 +115,14 @@ class ApprovalOnContinuumTest {
     }
   }
 
-  private static final class CountingRequireApprovalPolicy implements UsagePolicy {
-    final AtomicInteger evaluations = new AtomicInteger();
+  /** Always parks, and counts how many times it was ever asked. */
+  private static final class CountingDeferringApprover implements Approver {
+    final AtomicInteger asks = new AtomicInteger();
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context) {
-      evaluations.incrementAndGet();
-      return new PolicyDecision.RequireApproval();
+    public ApprovalOutcome approve(ApprovalContext context) {
+      asks.incrementAndGet();
+      return context.defer();
     }
   }
 
@@ -136,19 +131,17 @@ class ApprovalOnContinuumTest {
   private final TestClock clock = new TestClock(Instant.parse("2026-08-24T00:00:00Z"));
   private final Continuum continuum =
       new DefaultContinuum(new InMemoryContinuumRepository(), clock);
-  private final ContinuumClient<Decision, Routing> client =
+  private final ContinuumClient<Approval, ApprovalRouting> client =
       continuum.client(
           "approval/test",
-          Decision.class,
-          Routing.class,
+          Approval.class,
+          ApprovalRouting.class,
           cfg ->
-              cfg.resultCodec(DecisionCodec.codec(mapper))
-                  .continuationCodec(Routing.codec(mapper))
+              cfg.resultCodec(ApprovalCodec.codec(mapper))
+                  .continuationCodec(ApprovalRouting.codec(mapper))
                   .deadline(Duration.ofDays(7)));
-  private final DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
-  private final List<ApprovalRequest> notifications = new ArrayList<>();
   private final RecordingTool tool = new RecordingTool();
-  private final CountingRequireApprovalPolicy policy = new CountingRequireApprovalPolicy();
+  private final CountingDeferringApprover approver = new CountingDeferringApprover();
   private final PumpedExecutor pump = new PumpedExecutor();
   private final RecordingTurnObserver turn = new RecordingTurnObserver();
   private final VerbatimMemory memory = new VerbatimMemory();
@@ -157,18 +150,21 @@ class ApprovalOnContinuumTest {
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
   private final ComputationDeferredToolCallPolicy deferredPolicy =
-      new ComputationDeferredToolCallPolicy(index, toolClient);
-  private final ComputationApprover approver =
-      new ComputationApprover(client, index, store, notifications::add);
+      new ComputationDeferredToolCallPolicy(toolClient);
   private final RegistryToolCallExecutor executor =
       new RegistryToolCallExecutor(
-          ToolRegistry.of(ToolGrant.grant(tool, policy)),
+          ToolRegistry.of(ToolGrant.grant(tool, approver)),
           AgentType.of("test"),
           AgentId.of("test-scope"),
           turn,
           pump,
           deferredPolicy,
-          approver,
+          (call, responseId, request, sink) ->
+              new ComputationApprovalContext(
+                  client,
+                  new Routing("test", "test-scope", responseId.value(), call),
+                  request,
+                  sink),
           mapper);
   private final Harness<String> harness =
       TestAgents.<String>harness(
@@ -193,31 +189,30 @@ class ApprovalOnContinuumTest {
 
   private final DeliveryWorker<String> worker =
       new DeliveryWorker<>(
-          substrate, mapper, harness, (type, id) -> agent, nudgePump, client, index, toolClient);
-  private final ApprovalDesk desk = new ApprovalDesk(client, worker::nudge);
+          substrate, mapper, harness, (type, id) -> agent, nudgePump, client, toolClient);
+  private final ApprovalDesk desk = new ApprovalDesk(client, id -> store, worker::nudge);
 
   private void drainApprovals() {
     worker.drainApprovals(BatchSize.of(10));
-  }
-
-  private CallAddress addressOf(ToolCall call) {
-    return new CallAddress("test", "test-scope", "r1", call.id());
   }
 
   private Routing routingFor(ToolCall call) {
     return new Routing("test", "test-scope", "r1", call);
   }
 
+  private ApprovalRequest requestFor(ToolCall call) {
+    return ApprovalRequest.draft("test", "test-scope", call, mapper).freeze();
+  }
+
   /**
-   * Seeds the scope's state to {@code AwaitingTools} pending {@code call}, then dispatches once.
+   * Seeds the scope's state to {@code AwaitingTools} with {@code call} Pending, then dispatches.
    */
   private void driveOnceWithPending(ToolCall call) {
     store.save(
         new State(
             new Phase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Set.of(call.id()),
-                List.of(),
+                Map.of(call.id(), new CallStatus.Pending()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();
@@ -229,6 +224,13 @@ class ApprovalOnContinuumTest {
     pump.pumpUntilQuiet();
   }
 
+  /** The computation the phase says this call is awaiting approval of. */
+  private ComputationId parkedIdFor(ToolCall call) {
+    Phase phase = store.load().phase();
+    CallStatus status = ((Phase.AwaitingTools) phase).calls().get(call.id());
+    return ((CallStatus.AwaitingApproval) status).approval();
+  }
+
   private List<ToolResultBlock> foldedResults() {
     return memory.recall().messages().stream()
         .flatMap(m -> m.content().stream())
@@ -238,29 +240,25 @@ class ApprovalOnContinuumTest {
   }
 
   @Test
-  void askingCreatesOneComputationAndNotifiesOnce() {
+  void askingParksOneComputationAndThePhaseNamesIt() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
-    var address = new CallAddress("test", "test-scope", "r1", "c1");
+
     driveOnceWithPending(call);
 
-    assertThat(notifications).hasSize(1);
-    assertThat(index.find(address))
-        .hasValueSatisfying(
-            entry -> assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.APPROVAL));
+    assertThat(approver.asks).hasValue(1);
+    assertThat(parkedIdFor(call).value()).isNotBlank();
     assertThat(tool.invocations).hasValue(0);
   }
 
   @Test
-  void aRedriveWhileTheAskIsPendingDoesNotNotifyAgain() {
+  void aRefireWhileTheAskIsParkedDoesNotAskAgain() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
+
     redrive();
 
-    assertThat(notifications).hasSize(1);
-    // F3: the policy itself must not be re-evaluated on a redrive that lands while the ask is
-    // still pending — a non-constant policy that flipped to Allow between the two drives must
-    // never get the chance to double-execute (mirrors AbsorptionTest's own F3 assertion).
-    assertThat(policy.evaluations).hasValue(1);
+    // AwaitingApproval emits no effect (spec §3): Continuum holds the ask and will deliver.
+    assertThat(approver.asks).hasValue(1);
     assertThat(tool.invocations).hasValue(0);
   }
 
@@ -268,16 +266,17 @@ class ApprovalOnContinuumTest {
   void approvingRunsTheToolExactlyOnce() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
-    ComputationId pending =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId parked = parkedIdFor(call);
 
-    desk.approve(pending);
+    desk.approve(parked, "ada", "");
     drainApprovals();
+    pump.pumpUntilQuiet();
 
     assertThat(tool.invocations).hasValue(1);
 
     // an acknowledged delivery must not come back
     drainApprovals();
+    pump.pumpUntilQuiet();
     assertThat(tool.invocations).hasValue(1);
   }
 
@@ -285,11 +284,11 @@ class ApprovalOnContinuumTest {
   void denyingFoldsAFailureWithoutRunningTheTool() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
-    ComputationId pending =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId parked = parkedIdFor(call);
 
-    desk.deny(pending, "not on a Friday");
+    desk.deny(parked, "ada", "not on a Friday");
     drainApprovals();
+    pump.pumpUntilQuiet();
 
     assertThat(tool.invocations).hasValue(0);
     assertThat(foldedResults()).isNotEmpty();
@@ -303,6 +302,27 @@ class ApprovalOnContinuumTest {
   }
 
   @Test
+  void withdrawingFoldsAsADenialTheModelReads() {
+    var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+    driveOnceWithPending(call);
+    ComputationId parked = parkedIdFor(call);
+
+    desk.withdraw(parked, "the incident closed itself");
+    drainApprovals();
+    pump.pumpUntilQuiet();
+
+    assertThat(tool.invocations).hasValue(0);
+    assertThat(foldedResults()).isNotEmpty();
+    assertThat(foldedResults())
+        .singleElement()
+        .satisfies(
+            result -> {
+              assertThat(result.isError()).isTrue();
+              assertThat(result.content()).contains("withdrawn");
+            });
+  }
+
+  @Test
   void anExpiredApprovalFoldsAFailure() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
@@ -310,12 +330,11 @@ class ApprovalOnContinuumTest {
     clock.advance(Duration.ofDays(8));
     // Its production trigger IS wired (continuum-adoption spec §7): DeliveryWorker.expireApprovals
     // delegates straight to failExpiredComputations, and ComputationScheduler.register schedules it
-    // as one of the worker's six pumps. Calling failExpiredComputations directly here, rather than
-    // going through worker.expireApprovals(...), is still a deliberate narrowing — it isolates the
-    // behaviour under test (an expired approval folds an in-band failure) from the scheduler's own
-    // fixed-delay timing — not evidence the production path is unwired.
+    // as one of the worker's six pumps. Calling failExpiredComputations directly here isolates the
+    // behaviour under test from the scheduler's own fixed-delay timing.
     client.failExpiredComputations(BatchSize.of(10));
     drainApprovals();
+    pump.pumpUntilQuiet();
 
     assertThat(tool.invocations).hasValue(0);
     assertThat(foldedResults()).isNotEmpty();
@@ -325,69 +344,54 @@ class ApprovalOnContinuumTest {
   }
 
   @Test
-  void aStaleGrantDoesNotRunTheTool() {
+  void anAnswerForAComputationThePhaseDoesNotNameIsIgnored() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
-    ComputationId real =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId real = parkedIdFor(call);
 
-    // An orphan: a second, still-live approval for the same call, with no index entry naming
-    // it — exactly what a crash between create and index.record leaves behind. The real
-    // approval's own entry is still present and APPROVAL-kind at this point (it has not been
-    // approved yet), so an address-only guard cannot tell the two grants apart — only a
-    // computation-identity check can. This ordering is the one the weak guard fails: it admits
-    // the orphan's grant because the entry it finds is present and APPROVAL-kind, never asking
-    // whose computation it actually names.
-    Computation orphan = client.create(routingFor(call));
+    // An orphan: a second, still-live approval for the same call — exactly what a crash inside
+    // defer(), after create and before the fold committed, leaves behind (spec §6). Only the
+    // answer whose id the phase names is honoured.
+    Computation orphan = client.create(new ApprovalRouting(routingFor(call), requestFor(call)));
+    assertThat(orphan.id().value().toString()).isNotEqualTo(real.value());
 
-    client.complete(orphan.id(), Decision.allow());
+    client.complete(orphan.id(), Approval.approved());
     drainApprovals();
+    pump.pumpUntilQuiet();
 
-    assertThat(tool.invocations).hasValue(0); // the orphan's grant was acknowledged, not run
+    assertThat(tool.invocations).hasValue(0); // the orphan's answer was acknowledged, not folded
+    assertThat(foldedResults()).isEmpty();
 
-    desk.approve(real);
+    desk.approve(real, "ada", "");
     drainApprovals();
+    pump.pumpUntilQuiet();
 
-    assertThat(tool.invocations).hasValue(1); // the real grant, and only the real grant, ran
-
-    // The real grant's own fold deleted its dispatch entry (spec §5), so the call's address now
-    // has NO entry at all — the absent-entry branch of isCurrentDispatch, distinct from the
-    // present-but-wrong-computation branch exercised above. A second orphan completed now must be
-    // rejected the same way: acknowledged, not run.
-    Computation secondOrphan = client.create(routingFor(call));
-    client.complete(secondOrphan.id(), Decision.allow());
-    drainApprovals();
-
-    assertThat(tool.invocations).hasValue(1); // unchanged — the second orphan's grant was swallowed
+    assertThat(tool.invocations).hasValue(1); // the real answer, and only it, ran the tool
   }
 
   @Test
   void anOrphanedApprovalsExpiryDoesNotFoldAFailureOverTheLiveCall() {
     var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
     driveOnceWithPending(call);
-    ComputationId real =
-        ComputationId.of(index.find(addressOf(call)).orElseThrow().computationId());
+    ComputationId real = parkedIdFor(call);
 
-    // An orphan with its own short deadline — the real approval's own 7-day deadline (the
-    // client's default) is untouched, so advancing the clock past the orphan's own deadline
-    // expires only the orphan while the real approval stays live.
-    Computation orphan = client.create(routingFor(call), Duration.ofHours(1));
-    // Pins this test's premise: the orphan is a genuinely distinct computation from the real
-    // approval, not an accidental re-fetch of the same one — client.create() must mint a fresh id
-    // every call for the rest of this test to mean anything.
+    // An orphan with its own short deadline — the real approval's own 7-day deadline is untouched,
+    // so advancing past the orphan's deadline expires only the orphan.
+    Computation orphan =
+        client.create(new ApprovalRouting(routingFor(call), requestFor(call)), Duration.ofHours(1));
     assertThat(orphan.id().value().toString()).isNotEqualTo(real.value());
 
     clock.advance(Duration.ofHours(2));
     client.failExpiredComputations(BatchSize.of(10));
     drainApprovals();
+    pump.pumpUntilQuiet();
 
-    // the orphan's expiry was acknowledged, not folded over the still-live call — the human's
-    // eventual "approve" must not be swallowed by an entry this expiry deleted out from under it
     assertThat(foldedResults()).isEmpty();
     assertThat(tool.invocations).hasValue(0);
 
-    desk.approve(real);
+    desk.approve(real, "ada", "");
     drainApprovals();
+    pump.pumpUntilQuiet();
 
     assertThat(tool.invocations).hasValue(1); // the human's real approval still lands
   }

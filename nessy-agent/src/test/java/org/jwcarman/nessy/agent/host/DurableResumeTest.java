@@ -28,7 +28,6 @@ import java.sql.Statement;
 import java.time.Clock;
 import java.time.InstantSource;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
@@ -49,8 +48,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -121,7 +119,6 @@ class DurableResumeTest {
     var state =
         new SubstrateAgentStateStore(
             new JdbcSubstrate(dataSource), SCOPE, Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", SCOPE));
@@ -136,17 +133,14 @@ class DurableResumeTest {
                     .model(modelA)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(new JdbcSubstrate(dataSource))
                     .continuum(durableContinuum(dataSource))
-                    .approvalNotifier(requests::add)
                     .executor(pumpA));
     harnessA.bind(AgentId.of(SCOPE)).tell("please restart " + SCOPE);
     pumpA.pumpUntilQuiet();
     assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-    assertThat(requests).hasSize(1);
+    assertThat(harnessA.approvals().request(AgentId.of(SCOPE), "c1").action()).contains("restart");
     harnessA.shutdown();
 
     // "Process" B: nothing survives from A but the rows. Its model only ever sees the resumed turn.
@@ -160,14 +154,14 @@ class DurableResumeTest {
                     .model(modelB)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(new JdbcSubstrate(dataSource))
                     .continuum(durableContinuum(dataSource))
                     .executor(pumpB));
     try {
-      harnessB.approvals().approve(requests.getFirst().id());
+      // The phase is the map (approval-lifecycle spec §1.6): process B answers by coordinates,
+      // resolving the parked computation through the scope's own stored phase.
+      harnessB.approvals().approve(AgentId.of(SCOPE), "c1", "ops-desk", "");
 
       long deadline = System.currentTimeMillis() + 10_000;
       while (!(state.load().phase() instanceof Phase.Idle)

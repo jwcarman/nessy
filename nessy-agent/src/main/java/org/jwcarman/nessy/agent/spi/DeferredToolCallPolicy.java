@@ -18,7 +18,6 @@ package org.jwcarman.nessy.agent.spi;
 import java.time.Duration;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.CallAddress;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -40,20 +39,4 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 public interface DeferredToolCallPolicy {
 
   ToolExecution onDeferred(ToolCall call, CallAddress address, Optional<Duration> timeout);
-
-  /**
-   * Ownership-split absorption (durable-deliveries spec §5a, §6): the id of whichever computation —
-   * approval or execution — is already durably pending for {@code address}, if either is. The gate
-   * checks this BEFORE running the tool, assembling enrichers, or asking the policy at all, so a
-   * staleness redrive that reaches a call whose ask is still pending, or whose work has already
-   * gone durable, absorbs silently: no re-run of enrichers or policy (a non-constant policy that
-   * would now decide {@code Allow} never gets the chance to double-execute), no re-run of the
-   * tool's own side effect, no second approval ask (the approver is never even reached). The
-   * default answers empty — a wiring with nothing durable to check has nothing to absorb; {@link
-   * org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy} is the one implementation that
-   * answers meaningfully.
-   */
-  default Optional<ComputationId> pendingComputation(CallAddress address) {
-    return Optional.empty();
-  }
 }

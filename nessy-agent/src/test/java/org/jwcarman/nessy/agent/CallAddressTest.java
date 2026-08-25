@@ -22,9 +22,9 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link CallAddress#indexKey()} digests, opaquely (computation-identity spec §1, §2):
- * deterministic over the identity tuple, distinct between tuples, and carrying no colon-delimited
- * structure a caller could parse back apart.
+ * {@link CallAddress#digest()} digests, opaquely (computation-identity spec §1, §2): deterministic
+ * over the identity tuple, distinct between tuples, and carrying no colon-delimited structure a
+ * caller could parse back apart.
  */
 class CallAddressTest {
 
@@ -33,53 +33,52 @@ class CallAddressTest {
   @Test
   void theSameTupleDerivesTheSameIndexKeyEveryTime() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.indexKey())
-        .isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").indexKey());
+    assertThat(address.digest()).isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").digest());
   }
 
   @Test
   void distinctTuplesDeriveDistinctIndexKeys() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
     var other = new CallAddress("ops", "prod-1", "r7", "c43");
-    assertThat(address.indexKey()).isNotEqualTo(other.indexKey());
+    assertThat(address.digest()).isNotEqualTo(other.digest());
   }
 
   /**
    * Per-coordinate sensitivity, isolated (computation-identity spec §2): each of the four fields
    * must move the digest on its own, with the other three held fixed against a common baseline —
    * distinct from {@link #fieldsWithEmbeddedDelimitersDoNotCollide()} below, which deliberately
-   * varies two fields at once to pin a different property. {@code indexKey()} is now load-bearing
-   * for the dispatch index: a digest that silently dropped one field (e.g. {@code responseId},
-   * closing "the provider-uniqueness hole" the class javadoc calls out) would collide two distinct
-   * calls into one dispatch entry, and a redrive of one call would absorb against the other's
-   * in-flight computation.
+   * varies two fields at once to pin a different property. {@code digest()} is now load-bearing for
+   * the dispatch index: a digest that silently dropped one field (e.g. {@code responseId}, closing
+   * "the provider-uniqueness hole" the class javadoc calls out) would collide two distinct calls
+   * into one dispatch entry, and a redrive of one call would absorb against the other's in-flight
+   * computation.
    */
   @Test
   void varyingAgentTypeAloneChangesTheIndexKey() {
     var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
     var variant = new CallAddress("billing", "prod-1", "r7", "c42");
-    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+    assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingAgentIdAloneChangesTheIndexKey() {
     var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
     var variant = new CallAddress("ops", "prod-2", "r7", "c42");
-    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+    assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingResponseIdAloneChangesTheIndexKey() {
     var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
     var variant = new CallAddress("ops", "prod-1", "r8", "c42");
-    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+    assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingCallIdAloneChangesTheIndexKey() {
     var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
     var variant = new CallAddress("ops", "prod-1", "r7", "c43");
-    assertThat(baseline.indexKey()).isNotEqualTo(variant.indexKey());
+    assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   /**
@@ -92,19 +91,19 @@ class CallAddressTest {
   void fieldsWithEmbeddedDelimitersDoNotCollide() {
     var first = new CallAddress("a:b", "c", "r", "x");
     var second = new CallAddress("a", "b:c", "r", "x");
-    assertThat(first.indexKey()).isNotEqualTo(second.indexKey());
+    assertThat(first.digest()).isNotEqualTo(second.digest());
   }
 
   @Test
   void theIndexKeyCarriesNoColonDelimitedFormat() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.indexKey()).doesNotContain(":");
+    assertThat(address.digest()).doesNotContain(":");
   }
 
   @Test
   void theIndexKeyIsLowercaseHex() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.indexKey()).matches(LOWERCASE_HEX);
+    assertThat(address.digest()).matches(LOWERCASE_HEX);
   }
 
   @Test

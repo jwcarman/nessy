@@ -37,7 +37,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -174,7 +174,7 @@ class AgentAskTest {
                   h.model(model)
                       .systemPrompt(TestSettings.SYSTEM_PROMPT)
                       .settings(TestSettings.settings())
-                      .grants(ToolGrant.grant(tool, UsagePolicy.requireApproval())));
+                      .grants(ToolGrant.grant(tool, Approvers.defer())));
       HarnessTeardown.track(harness);
       var agent = harness.bind(AgentId.of("scope-1"));
 
@@ -182,8 +182,8 @@ class AgentAskTest {
 
       assertThat(outcome).isInstanceOf(TurnOutcome.Parked.class);
       var parked = (TurnOutcome.Parked) outcome;
-      assertThat(parked.ask().call().name()).isEqualTo("restart");
-      assertThat(parked.ask().agentId()).isEqualTo("scope-1");
+      assertThat(parked.request().call().name()).isEqualTo("restart");
+      assertThat(parked.request().agentId()).isEqualTo("scope-1");
 
       var settled = new CompletableFuture<Void>();
       try (Subscription subscription =
@@ -193,7 +193,7 @@ class AgentAskTest {
                   settled.complete(null);
                 }
               })) {
-        harness.approvals().approve(parked.ask().id());
+        harness.approvals().approve(parked.approval(), "test", "");
         settled.get(5, TimeUnit.SECONDS);
       }
 

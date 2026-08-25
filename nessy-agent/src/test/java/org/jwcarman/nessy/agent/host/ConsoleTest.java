@@ -37,7 +37,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
@@ -160,7 +160,7 @@ class ConsoleTest {
               .model(model)
               .systemPrompt(TestSettings.SYSTEM_PROMPT)
               .settings(TestSettings.settings())
-              .grants(ToolGrant.grant(new GatedTool(), UsagePolicy.requireApproval()))
+              .grants(ToolGrant.grant(new GatedTool(), Approvers.defer()))
               .in(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)))
               .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
               .build()) {

@@ -23,9 +23,9 @@ import java.util.Objects;
 
 /**
  * Where one tool call's durable questions live (spec §10.9): stamped by the executor — the one
- * party that provably holds the scope — before the tool runs. {@link #indexKey()} below is the
- * single site the address formula exists at; anyone holding the coordinates re-derives the same
- * key, which is the submit-once discipline's foundation and lets external systems dedup on them.
+ * party that provably holds the scope — before the tool runs. {@link #digest()} below is the single
+ * site the address formula exists at; anyone holding the coordinates re-derives the same key, which
+ * is the submit-once discipline's foundation and lets external systems dedup on them.
  *
  * <p>The derivation digests (computation-identity spec §2): SHA-256 over a length-prefixed UTF-8
  * encoding of {@code (agentType, agentId, responseId, callId)}, rendered lowercase hex — opaque and
@@ -33,9 +33,9 @@ import java.util.Objects;
  * concatenation-ambiguity hole a plain delimiter leaves open (e.g. {@code agentType="a:b"}
  * colliding with {@code agentType="a", agentId="b:..."}).
  *
- * <p>Purpose-free: with Continuum minting opaque computation ids, this key no longer derives a
- * computation's identity — it only locates that call's entry in the {@link DispatchIndex}, which a
- * call has exactly one of, whichever kind it is currently in flight under.
+ * <p>Purpose-free: with Continuum minting opaque computation ids, this digest no longer derives a
+ * computation's identity — it is the stable, per-call key a remembrance is filed under and the
+ * handle a tool sees as its own invocation id.
  *
  * @param agentType the recipe's name
  * @param agentId the scope
@@ -56,12 +56,11 @@ public record CallAddress(String agentType, String agentId, String responseId, S
   }
 
   /**
-   * This call's key in the dispatch index — a stable digest of the four coordinates. Purpose-free:
-   * one call has one entry, whichever kind it is currently in flight under.
+   * This call's stable digest over the four coordinates — the same key wherever it is re-derived.
    *
-   * @return the index key
+   * @return the digest, lowercase hex
    */
-  public String indexKey() {
+  public String digest() {
     MessageDigest digest = newDigest();
     updateLengthPrefixed(digest, agentType);
     updateLengthPrefixed(digest, agentId);

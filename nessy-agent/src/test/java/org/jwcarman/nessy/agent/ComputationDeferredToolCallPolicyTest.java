@@ -16,17 +16,11 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
@@ -38,22 +32,18 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
-import org.jwcarman.nessy.agent.support.ThrowingOnWriteSubstrate;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.slf4j.LoggerFactory;
 
 /**
  * {@link ComputationDeferredToolCallPolicy} in isolation, over a real {@link ContinuumClient} — the
- * tool kind's own dispatch and absorption behaviour (continuum-adoption spec §3, §5), without a
- * whole harness around it.
+ * tool kind's own dispatch behaviour (continuum-adoption spec §3), without a whole harness around
+ * it. There is no index any more: the phase names the computation a deferred call is waiting on
+ * (approval-lifecycle spec §8), so this policy only creates and reports.
  */
 class ComputationDeferredToolCallPolicyTest {
 
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
-  private final InMemorySubstrate substrate = new InMemorySubstrate();
   private final TestClock clock = new TestClock(Instant.parse("2026-08-24T00:00:00Z"));
   private final Continuum continuum =
       new DefaultContinuum(new InMemoryContinuumRepository(), clock);
@@ -66,36 +56,28 @@ class ComputationDeferredToolCallPolicyTest {
               cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
-  private final DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
   private final ComputationDeferredToolCallPolicy policy =
-      new ComputationDeferredToolCallPolicy(index, toolClient);
+      new ComputationDeferredToolCallPolicy(toolClient);
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
 
   @Test
-  void aFirstDeferralCreatesTheComputationAndRecordsItInTheIndex() {
+  void aDeferralCreatesTheComputationAndHandsBackItsId() {
     ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
     assertThat(execution).isInstanceOf(ToolExecution.Deferred.class);
-    ComputationId created = ((ToolExecution.Deferred) execution).computation();
-    assertThat(index.find(ADDRESS))
-        .hasValueSatisfying(
-            entry -> {
-              assertThat(entry.computationId()).isEqualTo(created.value());
-              assertThat(entry.kind()).isEqualTo(DispatchEntry.DispatchKind.TOOL);
-            });
+    assertThat(((ToolExecution.Deferred) execution).computation().value()).isNotBlank();
   }
 
   @Test
-  void aRedriveFindsTheExistingComputationAndStaysSuspended() {
+  void everyDeferralCreatesItsOwnComputation() {
     ToolExecution first = policy.onDeferred(CALL, ADDRESS, Optional.empty());
+    ToolExecution second = policy.onDeferred(CALL, ADDRESS, Optional.empty());
 
-    Optional<ComputationId> pending = policy.pendingComputation(ADDRESS);
-
-    assertThat(pending).isPresent();
-    assertThat(pending.orElseThrow()).isEqualTo(((ToolExecution.Deferred) first).computation());
+    assertThat(((ToolExecution.Deferred) first).computation())
+        .isNotEqualTo(((ToolExecution.Deferred) second).computation());
   }
 
   /**
@@ -111,66 +93,5 @@ class ComputationDeferredToolCallPolicyTest {
     int expired = toolClient.failExpiredComputations(BatchSize.of(10));
 
     assertThat(expired).isEqualTo(1);
-  }
-
-  @Test
-  void pendingComputationIsEmptyBeforeAnyDeferral() {
-    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
-  }
-
-  @Test
-  void pendingComputationFindsAnInFlightToolComputation() {
-    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
-
-    ToolExecution execution = policy.onDeferred(CALL, ADDRESS, Optional.empty());
-
-    assertThat(policy.pendingComputation(ADDRESS))
-        .contains(((ToolExecution.Deferred) execution).computation());
-  }
-
-  @Test
-  void pendingComputationFindsAPendingApprovalRecordedInTheIndex() {
-    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
-
-    var approvalId = ComputationId.of(ADDRESS.indexKey());
-    index.record(
-        ADDRESS, new DispatchEntry(approvalId.value(), DispatchEntry.DispatchKind.APPROVAL));
-
-    assertThat(policy.pendingComputation(ADDRESS)).contains(approvalId);
-  }
-
-  /**
-   * The §11.5 guard: {@link DispatchIndex#record} can throw after {@link ContinuumClient#create}
-   * has already minted the tool computation, at which point the computation is orphaned unless the
-   * failure is at least logged loudly before it propagates (continuum-adoption spec §11.5).
-   */
-  @Test
-  void aDispatchIndexRecordFailureIsLoggedThenRethrown() {
-    var throwingSubstrate =
-        new ThrowingOnWriteSubstrate(
-            substrate, "dispatch/test", () -> new IllegalStateException("index write boom"));
-    var throwingIndex = new DispatchIndex(throwingSubstrate, mapper, "dispatch/test");
-    var throwingPolicy = new ComputationDeferredToolCallPolicy(throwingIndex, toolClient);
-    Logger classicLogger =
-        (Logger) LoggerFactory.getLogger(ComputationDeferredToolCallPolicy.class);
-    classicLogger.setLevel(Level.TRACE);
-    var appender = new ListAppender<ILoggingEvent>();
-    appender.start();
-    classicLogger.addAppender(appender);
-    try {
-      assertThatThrownBy(() -> throwingPolicy.onDeferred(CALL, ADDRESS, Optional.empty()))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessage("index write boom");
-
-      List<ILoggingEvent> errors =
-          appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
-      assertThat(errors).hasSize(1);
-      assertThat(errors.getFirst().getFormattedMessage())
-          .contains("DispatchIndex.record")
-          .contains("ComputationDeferredToolCallPolicy.onDeferred");
-    } finally {
-      classicLogger.detachAppender(appender);
-      classicLogger.setLevel(null);
-    }
   }
 }

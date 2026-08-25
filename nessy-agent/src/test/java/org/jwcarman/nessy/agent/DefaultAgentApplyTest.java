@@ -22,14 +22,15 @@ import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
+import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.TestAgents;
@@ -130,7 +131,8 @@ class DefaultAgentApplyTest {
     f.pump.pumpUntilQuiet();
     var rememberedBefore = f.memory.remembered();
     f.agent.deliver(
-        new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("42-again"))));
+        new AgentEvent.ToolFinished(
+            CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("42-again"))));
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.ignored()).hasSize(1);
     assertThat(f.memory.remembered()).isEqualTo(rememberedBefore);
@@ -160,10 +162,13 @@ class DefaultAgentApplyTest {
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
     var awaiting =
         new Phase.AwaitingTools(
-            turn, Set.of("a", "b"), List.of(), ModelResponseId.of("response-1"));
+            turn,
+            Map.of("a", new CallStatus.Running(), "b", new CallStatus.Running()),
+            ModelResponseId.of("response-1"));
     inner.save(new State(awaiting, 0L)); // now at v1
     var aFinished =
-        new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("42")));
+        new AgentEvent.ToolFinished(
+            CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("42")));
     var aTransition = awaiting.handle(aFinished);
     var f = new AgentFixture(new RaceOnceStore(inner, new State(aTransition.next(), 1L)), false);
     // The competitor's own fold, off-thread from this test's real agent, also remembers its
@@ -182,7 +187,8 @@ class DefaultAgentApplyTest {
         new ModelOutcome.Responded(
             List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-2")));
     f.agent.deliver(
-        new AgentEvent.ToolFinished(CALL_B, new ToolOutcome.Returned(ToolResult.ok("ok"))));
+        new AgentEvent.ToolFinished(
+            CALL_B, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("ok"))));
     f.pump.pumpUntilQuiet();
     // b lost its first save, re-handled against the competitor's state, and correctly closed
     // the unit: exactly one commit of turn + results, exactly one model call.
@@ -240,7 +246,7 @@ class DefaultAgentApplyTest {
             backlog,
             text -> List.of(new TextBlock(text)),
             sink -> versionsAtCall.add(store.load().version()),
-            (call, responseId, sink) -> {},
+            new NoToolsExecutor(),
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());

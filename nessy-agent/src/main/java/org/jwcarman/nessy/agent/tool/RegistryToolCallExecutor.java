@@ -27,13 +27,13 @@ import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
+import org.jwcarman.nessy.agent.spi.ApprovalContexts;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -41,39 +41,33 @@ import org.jwcarman.nessy.api.tool.ToolEvent;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.spi.approval.Adjudication;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
-import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
- * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
- * authorization chokepoint. Every call passes its grant's {@link ToolGrant#assemble(AuthzContext,
- * Object)} and {@link ToolGrant#decide(AuthzContext)} before the tool ever runs: a {@link
- * UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no action rendered, no
- * context assembled — while every other grant renders the action, runs its enrichers, and lets the
- * policy judge the assembled context. A {@code RuntimeException} escaping any of that is caught and
- * turned into a fail-closed denial whose message names the stage that broke. {@link
- * PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so the
- * model reads the reason and reacts; {@link PolicyDecision.Allow} and a granted {@link
- * Adjudication} run the tool. {@link PolicyDecision.RequireApproval} routes to the wiring's {@link
- * Approver} — the default (5- and 6-arg constructors) refuses loudly in-band, since approval is a
- * capability of the wiring, not a right of every deployment.
+ * The registry tool executor: two doors, neither with a conditional inside (approval-lifecycle spec
+ * §4).
  *
- * <p>What happens when a tool defers is the wiring's {@link DeferredToolCallPolicy}: the default
- * (5-arg constructor) fails loudly in-band — a deferred turn wedges a conversation — while a
- * durable wiring suspends the call into its computation. A suspended call, whether from a deferred
- * tool or a suspended {@link Adjudication}, delivers nothing and narrates nothing.
+ * <p>{@link #seekApproval} is the harness's one authorization chokepoint: find the grant, answer a
+ * {@link Approvers.Static} approver without building a request at all (the rung-0 fast path — no
+ * enricher runs for a call nobody will read the file of), otherwise build the frozen {@link
+ * ApprovalRequest} through the grant's contributor and enrichers and let the approver read it. A
+ * {@code RuntimeException} escaping conversion, the contributor or an enricher becomes a
+ * fail-closed denial naming the stage; a {@code RuntimeException} escaping the approver becomes a
+ * denial too. A deferral has already parked and folded itself through {@link
+ * ApprovalContext#defer()} — there is nothing left to deliver, and nothing is narrated to the
+ * model.
  *
- * <p>The policy runs inline, exactly once, before the tool ever gets a chance to do anything
- * (durable-deliveries spec §5a). Before that, even before the policy: {@link #gate} checks {@link
- * DeferredToolCallPolicy#pendingComputation} — ownership-split absorption, spec §5a/§6. {@link
- * #executeGrantedToolNow} is the one door that skips both the absorption check and the policy: it
- * is reached only for work the gate already cleared — an approval's granted tool call — so
- * re-running policy or re-asking an approver there would be a bug, not a safety net.
+ * <p>{@link #runTool} is past the gate: find, bind, run. It never consults an approver — the answer
+ * is already a fact in the phase. What happens when a tool defers is the wiring's {@link
+ * DeferredToolCallPolicy}: the default (5-arg constructor) fails loudly in-band — a deferred turn
+ * wedges a conversation — while a durable wiring suspends the call into its computation and the
+ * executor delivers {@code ToolDeferred} with its id.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -83,14 +77,15 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final TurnObserver turn;
   private final Executor executor;
   private final DeferredToolCallPolicy deferredToolCallPolicy;
-  private final Approver approver;
+  private final ApprovalContexts approvalContexts;
   private final Codecs codecs;
+  private final ObjectMapper mapper;
 
   private static final String PARKING_UNAVAILABLE =
       "deferred execution is unavailable in this wiring; the desk arrives with the harness";
 
   static final String APPROVAL_UNAVAILABLE =
-      "approval is unavailable in this wiring; the desk arrives with the harness";
+      "approval parking is unavailable in this wiring; the desk arrives with the harness";
 
   public RegistryToolCallExecutor(
       ToolRegistry registry,
@@ -110,7 +105,15 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Executor executor,
       DeferredToolCallPolicy deferredToolCallPolicy,
       ObjectMapper mapper) {
-    this(registry, type, id, turn, executor, deferredToolCallPolicy, defaultApprover(), mapper);
+    this(
+        registry,
+        type,
+        id,
+        turn,
+        executor,
+        deferredToolCallPolicy,
+        defaultApprovalContexts(),
+        mapper);
   }
 
   public RegistryToolCallExecutor(
@@ -120,7 +123,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       TurnObserver turn,
       Executor executor,
       DeferredToolCallPolicy deferredToolCallPolicy,
-      Approver approver,
+      ApprovalContexts approvalContexts,
       ObjectMapper mapper) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
@@ -129,46 +132,76 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.deferredToolCallPolicy =
         Objects.requireNonNull(deferredToolCallPolicy, "deferredToolCallPolicy must not be null");
-    this.approver = Objects.requireNonNull(approver, "approver must not be null");
-    this.codecs = new Codecs(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.approvalContexts =
+        Objects.requireNonNull(approvalContexts, "approvalContexts must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.codecs = new Codecs(this.mapper);
   }
 
   @Override
-  public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
+  public void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink) {
     Objects.requireNonNull(responseId, "responseId must not be null");
     executor.execute(
         () -> {
-          switch (execute(call, responseId)) {
-            case ToolExecution.Immediate(ToolOutcome outcome) ->
-                sink.deliver(new AgentEvent.ToolFinished(call, outcome));
-            case ToolExecution.Deferred(_) -> {
-              // suspended into its computation: nothing delivered, nothing narrated (§4.3) — the
-              // completion re-enters through the computation's registered continuation
-            }
+          AgentEvent event = seek(call, responseId, sink);
+          if (event != null) {
+            sink.deliver(event);
           }
         });
   }
 
   @Override
-  public ToolExecution executeGrantedToolNow(ToolCall call, CallAddress address) {
-    return executePastGate(call, address);
+  public void runTool(ToolCall call, ModelResponseId responseId, Sink sink) {
+    Objects.requireNonNull(responseId, "responseId must not be null");
+    executor.execute(
+        () -> {
+          CallAddress address = address(call, responseId);
+          switch (runPastGate(call, address)) {
+            case ToolExecution.Immediate(ToolOutcome outcome) ->
+                sink.deliver(new AgentEvent.ToolFinished(call, Optional.empty(), outcome));
+            case ToolExecution.Deferred(ComputationId deferredId) ->
+                sink.deliver(new AgentEvent.ToolDeferred(call, deferredId));
+          }
+        });
   }
 
-  private ToolExecution execute(ToolCall call, ModelResponseId responseId) {
+  /** The ask. Returns the event to deliver; a deferral has already delivered its own. */
+  private AgentEvent seek(ToolCall call, ModelResponseId responseId, Sink sink) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
+      return answered(call, Approval.denied("unknown tool: " + call.name()));
     }
-    CallAddress address = new CallAddress(type.name(), id.value(), responseId.value(), call.id());
+    ToolGrant grant = found.get();
+    if (grant.approver() instanceof Approvers.Static fixed) {
+      return answered(call, fixed.answer()); // rung 0: no request built, no enricher run
+    }
+    ApprovalRequest request;
     try {
-      return gate(found.get(), call, address);
+      Object input = convert(call, grant.tool());
+      request = grant.request(type.name(), id.value(), call, input, mapper);
     } catch (RuntimeException e) {
-      String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-      return new ToolExecution.Immediate(failed(call, message));
+      return answered(call, Approval.denied("authorization failed: " + detailOf(e)));
     }
+    ApprovalContext context = approvalContexts.contextFor(call, responseId, request, sink);
+    ApprovalOutcome outcome;
+    try {
+      outcome = grant.approver().approve(context);
+    } catch (RuntimeException e) {
+      return answered(call, Approval.denied("approver failed: " + detailOf(e)));
+    }
+    return switch (outcome) {
+      case ApprovalOutcome.Answered(Approval approval) -> answered(call, approval);
+      case ApprovalOutcome.Deferred _ -> null; // defer() delivered ApprovalDeferred itself
+    };
   }
 
-  private ToolExecution executePastGate(ToolCall call, CallAddress address) {
+  /** Narrates the answer onto the turn and hands back the event the reducer folds. */
+  private AgentEvent answered(ToolCall call, Approval approval) {
+    turn.on(new TurnEvent.ToolCallDecided(call, approval));
+    return new AgentEvent.ApprovalAnswered(call, Optional.empty(), approval);
+  }
+
+  private ToolExecution runPastGate(ToolCall call, CallAddress address) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
       return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
@@ -178,60 +211,12 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Object input = convert(call, grant.tool());
       return run(grant.tool(), input, call, address);
     } catch (RuntimeException e) {
-      String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-      return new ToolExecution.Immediate(failed(call, message));
+      return new ToolExecution.Immediate(failed(call, detailOf(e)));
     }
   }
 
-  private ToolExecution gate(ToolGrant grant, ToolCall call, CallAddress address) {
-    Optional<ComputationId> pending = deferredToolCallPolicy.pendingComputation(address);
-    if (pending.isPresent()) {
-      // ownership-split absorption (spec §5a, §6; computation-identity spec §4): a staleness
-      // redrive reached a call whose approval is still pending, whose tool computation already
-      // exists, or whose grant/completion has already completed on Continuum's own side but has
-      // not yet been drained and folded by DeliveryWorker — the dispatch index still names a
-      // computation for this call's address in every one of those cases (§5), so the ask, or the
-      // work, is already in flight from an earlier pass through this exact gate. Absorb here,
-      // before the policy (which could be non-constant) or its enrichers run again, before the
-      // tool runs again, and before the approver is ever asked again.
-      return new ToolExecution.Deferred(pending.get());
-    }
-    Object input = convert(call, grant.tool());
-    PolicyDecision decision;
-    AuthzContext assembled = null;
-    if (grant.policy() instanceof UsagePolicy.Static fixed) {
-      decision = fixed.decision(); // rung 0: no action rendered, no context assembled
-    } else {
-      try {
-        assembled = grant.assemble(AuthzContext.of(type.name(), call), input);
-        decision = grant.decide(assembled);
-      } catch (RuntimeException e) {
-        String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-        return new ToolExecution.Immediate(failed(call, "authorization failed: " + message));
-      }
-    }
-    return switch (decision) {
-      case PolicyDecision.Allow _ -> run(grant.tool(), input, call, address);
-      case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
-      case PolicyDecision.RequireApproval _ ->
-          // The id here is a placeholder ApprovalRequest's non-null constructor requires; the
-          // approver never reads it (continuum-adoption spec §3) — ComputationApprover derives its
-          // own address from agentType/agentId/call and mints the real id via Continuum's create(),
-          // never from this request's id. Console-style callers that need the real handle read it
-          // off Adjudication.Suspended, not off this request.
-          switch (approver.adjudicate(
-              new ApprovalRequest(
-                  ComputationId.of(address.indexKey()),
-                  call,
-                  address.agentType(),
-                  address.agentId(),
-                  assembled))) {
-            case Adjudication.Granted _ -> run(grant.tool(), input, call, address);
-            case Adjudication.Refused(String reason) ->
-                new ToolExecution.Immediate(failed(call, reason));
-            case Adjudication.Suspended(var computation) -> new ToolExecution.Deferred(computation);
-          };
-    };
+  private CallAddress address(ToolCall call, ModelResponseId responseId) {
+    return new CallAddress(type.name(), id.value(), responseId.value(), call.id());
   }
 
   /**
@@ -248,15 +233,14 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
     T typed = tool.inputType().cast(input);
-    // address.indexKey()'s digest is deterministic from this call's own coordinates (agentType,
-    // agentId, responseId, callId) — stable across every redrive and replay, exactly the
-    // contract ToolContext#invocation documents. A genuine Continuum-minted id cannot serve here:
-    // it is not known until (and unless) the tool actually defers, since onDeferred only creates a
+    // address.digest() is deterministic from this call's own coordinates (agentType, agentId,
+    // responseId, callId) — stable across every redrive and replay, exactly the contract
+    // ToolContext#invocation documents. A genuine Continuum-minted id cannot serve here: it is not
+    // known until (and unless) the tool actually defers, since onDeferred only creates a
     // computation on the Awaited.Deferred arm below — after the tool has already been handed this
-    // very context. Using the deterministic digest is therefore the permanent answer, not a
-    // migration placeholder.
+    // very context.
     ToolContext context =
-        new ToolContext(call, event -> narrate(call, event), ComputationId.of(address.indexKey()));
+        new ToolContext(call, event -> narrate(call, event), ComputationId.of(address.digest()));
     return switch (tool.execute(typed, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
@@ -284,6 +268,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return new ToolOutcome.Failed(new ToolError(message));
   }
 
+  private static String detailOf(RuntimeException e) {
+    return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+  }
+
   /** The 5-arg constructor's default: fails loudly in-band rather than suspending silently. */
   private static DeferredToolCallPolicy defaultPolicy(TurnObserver turn) {
     return (call, address, timeout) -> {
@@ -295,10 +283,22 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * The 5- and 6-arg constructors' default: approval is a capability of the wiring, not a right of
-   * every deployment, so a wiring that never wires an {@link Approver} refuses loudly in-band.
+   * The 5- and 6-arg constructors' default: parking is a capability of the wiring, not a right of
+   * every deployment, so a wiring with no Continuum behind it cannot park and says so loudly — the
+   * {@code approver failed:} catch above turns the throw into a denial the model reads.
    */
-  private static Approver defaultApprover() {
-    return request -> new Adjudication.Refused(APPROVAL_UNAVAILABLE);
+  private static ApprovalContexts defaultApprovalContexts() {
+    return (call, responseId, request, sink) ->
+        new ApprovalContext() {
+          @Override
+          public ApprovalRequest request() {
+            return request;
+          }
+
+          @Override
+          public ApprovalOutcome defer() {
+            throw new IllegalStateException(APPROVAL_UNAVAILABLE);
+          }
+        };
   }
 }

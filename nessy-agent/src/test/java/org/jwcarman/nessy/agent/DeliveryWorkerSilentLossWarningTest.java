@@ -45,14 +45,15 @@ import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
+import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -99,7 +100,7 @@ class DeliveryWorkerSilentLossWarningTest {
 
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
-  private static final ToolCallExecutor TOOLS = (call, responseId, sink) -> {};
+  private static final ToolCallExecutor TOOLS = new NoToolsExecutor();
 
   private ListAppender<ILoggingEvent> appender;
 
@@ -144,11 +145,10 @@ class DeliveryWorkerSilentLossWarningTest {
     HarnessTeardown.track(harness);
     Agent<String> agent = harness.bind(AgentId.of("test-scope"));
 
-    ContinuumClient<Decision, Routing> approvalClient =
+    ContinuumClient<Approval, ApprovalRouting> approvalClient =
         TestApprovalClients.client(Kinds.approval(type), mapper);
     ContinuumClient<ToolResult, Routing> toolClient =
         TestToolClients.client(Kinds.tool(type), mapper);
-    DispatchIndex index = new DispatchIndex(substrate, mapper, "dispatch/test");
     DeliveryWorker<String> worker =
         new DeliveryWorker<>(
             substrate,
@@ -157,7 +157,6 @@ class DeliveryWorkerSilentLossWarningTest {
             (t, id) -> agent,
             Runnable::run,
             approvalClient,
-            index,
             toolClient);
 
     ToolCall call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());

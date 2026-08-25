@@ -113,8 +113,6 @@ class HarnessDemo {
     var lifeSupportMapper = TestMappers.plainlyPinned();
     var demoType = AgentType.of("demo");
     var approvalClient = TestApprovalClients.client(Kinds.approval(demoType), lifeSupportMapper);
-    var dispatchIndex =
-        new DispatchIndex(lifeSupportSubstrate, lifeSupportMapper, Kinds.dispatchIndex(demoType));
     var toolClient = TestToolClients.client(Kinds.tool(demoType), lifeSupportMapper);
     var harness =
         Harness.<String>of(
@@ -132,7 +130,6 @@ class HarnessDemo {
             lifeSupportSubstrate,
             lifeSupportMapper,
             approvalClient,
-            dispatchIndex,
             toolClient,
             new ConcurrentHashMap<>());
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
@@ -164,7 +161,8 @@ class HarnessDemo {
 
     // ---- a late duplicate, for flavor ----
     agent.deliver(
-        new AgentEvent.ToolFinished(lookup, new ToolOutcome.Returned(ToolResult.ok("dupe"))));
+        new AgentEvent.ToolFinished(
+            lookup, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("dupe"))));
 
     System.out.println(
         "\nfinal phase: " + store.load().phase() + "  version: " + store.load().version());

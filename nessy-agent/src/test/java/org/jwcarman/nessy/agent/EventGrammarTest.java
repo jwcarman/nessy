@@ -18,14 +18,28 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class EventGrammarTest {
+
+  private static final ComputationId PARKED = ComputationId.of("parked-1");
+  private static final ApprovalRequest REQUEST =
+      ApprovalRequest.draft(
+              "ops",
+              "prod-1",
+              new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode()),
+              new ObjectMapper())
+          .freeze();
 
   private static ToolCall call(String id) {
     return new ToolCall(id, "lookup", JsonNodeFactory.instance.objectNode());
@@ -65,9 +79,65 @@ class EventGrammarTest {
   @Test
   void aToolCompletionCarriesItsCallAndOutcome() {
     var outcome = new ToolOutcome.Returned(ToolResult.ok("42"));
-    var finished = new AgentEvent.ToolFinished(call("c1"), outcome);
+    var finished = new AgentEvent.ToolFinished(call("c1"), Optional.empty(), outcome);
     assertThat(finished.call().id()).isEqualTo("c1");
+    assertThat(finished.tool()).isEmpty();
     assertThat(finished.outcome()).isEqualTo(outcome);
+  }
+
+  @Test
+  void aToolCompletionRejectsANullComputation() {
+    var outcome = new ToolOutcome.Returned(ToolResult.ok("42"));
+    var call = call("c1");
+
+    assertThatThrownBy(() -> new AgentEvent.ToolFinished(call, null, outcome))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void anApprovalDeferralCarriesTheParkedComputationAndTheQuestion() {
+    var deferred = new AgentEvent.ApprovalDeferred(call("c1"), PARKED, REQUEST);
+
+    assertThat(deferred.approval()).isEqualTo(PARKED);
+    assertThat(deferred.request()).isEqualTo(REQUEST);
+  }
+
+  @Test
+  void anApprovalDeferralRejectsANullRequest() {
+    var call = call("c1");
+
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(call, PARKED, null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void anApprovalAnswerCarriesItsAnswerAndWhereItCameFrom() {
+    var answered =
+        new AgentEvent.ApprovalAnswered(call("c1"), Optional.of(PARKED), Approval.approved());
+
+    assertThat(answered.approval()).contains(PARKED);
+    assertThat(answered.answer()).isEqualTo(Approval.approved());
+  }
+
+  @Test
+  void anApprovalAnswerRejectsANullAnswer() {
+    var call = call("c1");
+
+    assertThatThrownBy(() -> new AgentEvent.ApprovalAnswered(call, Optional.of(PARKED), null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aToolDeferralCarriesTheParkedComputation() {
+    assertThat(new AgentEvent.ToolDeferred(call("c1"), PARKED).tool()).isEqualTo(PARKED);
+  }
+
+  @Test
+  void aToolDeferralRejectsANullComputation() {
+    var call = call("c1");
+
+    assertThatThrownBy(() -> new AgentEvent.ToolDeferred(call, null))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test

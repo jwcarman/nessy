@@ -69,8 +69,6 @@ final class AgentFixture {
     var mapper = TestMappers.plainlyPinned();
     var fixtureType = AgentType.of("fixture");
     var approvalClient = TestApprovalClients.client(Kinds.approval(fixtureType), mapper);
-    var dispatchIndex =
-        new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(fixtureType));
     var toolClient = TestToolClients.client(Kinds.tool(fixtureType), mapper);
     Harness<String> harness =
         Harness.of(
@@ -88,7 +86,6 @@ final class AgentFixture {
             lifeSupportSubstrate,
             mapper,
             approvalClient,
-            dispatchIndex,
             toolClient,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);

@@ -17,12 +17,17 @@ package org.jwcarman.nessy.agent;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
- * Facts, past tense. Three variants is the designed ceiling: every effect has exactly one
- * completion event, and {@code Observed} is the sole inbound fact (spec §2.1).
+ * Facts, past tense. Six variants: every effect has exactly one completion event, {@code Observed}
+ * is the sole inbound fact, and the two {@code *Deferred} events record a park (approval-lifecycle
+ * spec §3).
  */
 public sealed interface AgentEvent {
 
@@ -39,9 +44,40 @@ public sealed interface AgentEvent {
     }
   }
 
-  record ToolFinished(ToolCall call, ToolOutcome outcome) implements AgentEvent {
+  /** The approver deferred: the ask is parked under {@code approval}, and this is the question. */
+  record ApprovalDeferred(ToolCall call, ComputationId approval, ApprovalRequest request)
+      implements AgentEvent {
+    public ApprovalDeferred {
+      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(approval, "approval must not be null");
+      Objects.requireNonNull(request, "request must not be null");
+    }
+  }
+
+  /** An answer: in-process ({@code approval} empty) or delivered from a parked computation. */
+  record ApprovalAnswered(ToolCall call, Optional<ComputationId> approval, Approval answer)
+      implements AgentEvent {
+    public ApprovalAnswered {
+      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(approval, "approval must not be null");
+      Objects.requireNonNull(answer, "answer must not be null");
+    }
+  }
+
+  /** The tool deferred: its result is parked under {@code tool}. */
+  record ToolDeferred(ToolCall call, ComputationId tool) implements AgentEvent {
+    public ToolDeferred {
+      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(tool, "tool must not be null");
+    }
+  }
+
+  /** A result: in-process ({@code tool} empty) or delivered from a parked computation. */
+  record ToolFinished(ToolCall call, Optional<ComputationId> tool, ToolOutcome outcome)
+      implements AgentEvent {
     public ToolFinished {
       Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(tool, "tool must not be null");
       Objects.requireNonNull(outcome, "outcome must not be null");
     }
   }

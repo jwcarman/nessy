@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
@@ -40,8 +39,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -94,7 +92,6 @@ class HarnessApprovalDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
@@ -111,11 +108,8 @@ class HarnessApprovalDemo {
                     .model(provider)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu ==");
@@ -125,15 +119,13 @@ class HarnessApprovalDemo {
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      assertThat(requests).hasSize(1);
-      assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
-      // The approval kind lives on Continuum now (continuum-adoption spec §3), not as a Substrate
-      // document under Kinds.approval — the request's own id (Continuum-minted, not a locally
-      // derived digest) is the only handle back to it.
-      var computation = requests.getFirst().id();
+      // The phase is the map (approval-lifecycle spec §1.6): the desk resolves the parked
+      // question, and the document it shows is the one the approver was handed.
+      assertThat(harness.approvals().request(AgentId.of("prod-eu"), "c1").action())
+          .contains("restart prod-eu");
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");
-      harness.approvals().approve(computation);
+      harness.approvals().approve(AgentId.of("prod-eu"), "c1", "ops-desk", "");
       // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
       // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
@@ -151,7 +143,6 @@ class HarnessApprovalDemo {
       // exactly once and the turn completes; the notifier fires exactly once, on the original ask.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
-      assertThat(requests).hasSize(1);
     } finally {
       harness.shutdown();
     }
@@ -164,7 +155,6 @@ class HarnessApprovalDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
@@ -181,11 +171,8 @@ class HarnessApprovalDemo {
                     .model(provider)
                     .systemPrompt(TestSettings.SYSTEM_PROMPT)
                     .settings(TestSettings.settings())
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
                     .substrate(substrate)
-                    .approvalNotifier(requests::add)
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu ==");
@@ -193,11 +180,10 @@ class HarnessApprovalDemo {
       pump.pumpUntilQuiet();
 
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      assertThat(requests).hasSize(1);
-      var computation = requests.getFirst().id();
-
       System.out.println("== the desk says no; the denial arrives in-band ==");
-      harness.approvals().deny(computation, "not during business hours");
+      harness
+          .approvals()
+          .deny(AgentId.of("prod-eu"), "c1", "ops-desk", "not during business hours");
       // deny() only submits the drain now (continuum-adoption spec §7) — see the sibling test's
       // note on approve().
       long deadline = System.currentTimeMillis() + 5000;

@@ -29,12 +29,11 @@ import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
@@ -75,7 +74,7 @@ public final class Harness<O> {
   private final BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory;
   private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
   private final TurnFanout fanout;
-  private final ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters;
+  private final ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -102,10 +101,9 @@ public final class Harness<O> {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters,
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
       ComputationScheduler scheduler,
       ExecutorService ownedExecutor) {
     this.type = Objects.requireNonNull(type, "type must not be null");
@@ -129,21 +127,13 @@ public final class Harness<O> {
     Objects.requireNonNull(substrate, "substrate must not be null");
     Objects.requireNonNull(mapper, "mapper must not be null");
     Objects.requireNonNull(approvalClient, "approvalClient must not be null");
-    Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null");
     Objects.requireNonNull(toolClient, "toolClient must not be null");
     this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
     this.ownedExecutor = ownedExecutor;
     this.worker =
         new DeliveryWorker<>(
-            substrate,
-            mapper,
-            this,
-            this::resolve,
-            scheduler,
-            approvalClient,
-            dispatchIndex,
-            toolClient);
-    this.approvals = new ApprovalDesk(approvalClient, worker::nudge);
+            substrate, mapper, this, this::resolve, scheduler, approvalClient, toolClient);
+    this.approvals = new ApprovalDesk(approvalClient, storeFactory, worker::nudge);
     this.completions = new CompletionDesk(toolClient, worker::nudge);
   }
 
@@ -154,9 +144,9 @@ public final class Harness<O> {
    * point rather than growing fluent setters of its own. No builder exists in user hands (spec §2):
    * each door hands a customizer a fresh config and turns it into a {@link Harness} atomically.
    * {@code substrate}, {@code mapper}, {@code approvalClient}, and {@code toolClient} (the approval
-   * and tool kinds' own Continuum clients, continuum-adoption spec §3) and {@code dispatchIndex}
-   * are the life-support this constructor owns (harness-first spec §4): the worker and desks it
-   * wires used to be a builder's job.
+   * and tool kinds' own Continuum clients, continuum-adoption spec §3) are the life-support this
+   * constructor owns (harness-first spec §4): the worker and desks it wires used to be a builder's
+   * job.
    */
   public static <O> Harness<O> of(
       AgentType type,
@@ -172,10 +162,9 @@ public final class Harness<O> {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters) {
     return of(
         type,
         renderer,
@@ -191,7 +180,6 @@ public final class Harness<O> {
         substrate,
         mapper,
         approvalClient,
-        dispatchIndex,
         toolClient,
         approvalWaiters,
         null);
@@ -217,10 +205,9 @@ public final class Harness<O> {
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters,
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
       ExecutorService ownedExecutor) {
     // Constructed here, not shared across separate Harness.of(...) calls (continuum-adoption spec
     // §7 leaves that wider sharing to a future task): one small pool per harness, replacing the
@@ -242,7 +229,6 @@ public final class Harness<O> {
             substrate,
             mapper,
             approvalClient,
-            dispatchIndex,
             toolClient,
             approvalWaiters,
             scheduler,
@@ -322,27 +308,26 @@ public final class Harness<O> {
 
   /**
    * {@link DefaultAgent#ask}'s Parked-detection seam (front-ends spec §1): registers a fresh,
-   * unresolved wait for the next {@link ApprovalRequest} the harness's approval notifier captures
-   * for {@code id} — see {@link org.jwcarman.nessy.agent.host.HarnessConfig#finish()}'s
-   * capturing-notifier wrapper, which completes the live registration here (if any) before handing
-   * the request on to the caller's own configured notifier. Registering before {@code tell} avoids
-   * the obvious race; a stale, never-completed registration left behind by a turn that replied or
-   * failed instead of parking is the caller's job to retire via {@link #cancelApprovalWait}.
+   * unresolved wait for the next park on {@code id} — completed by {@link #parked(AgentId,
+   * TurnOutcome.Parked)}, which the {@code ApprovalDeferred} fold calls once the phase names the
+   * ask. Registering before {@code tell} avoids the obvious race; a stale, never-completed
+   * registration left behind by a turn that replied or failed instead of parking is the caller's
+   * job to retire via {@link #cancelApprovalWait}.
    *
    * <p><b>One in-flight registration per id</b> (fix round 2, I2b): a {@code putIfAbsent}-style
    * guard refuses a SECOND registration for an id that already has one live, throwing rather than
    * silently overwriting it — an overwrite would orphan the first caller's waiter forever (nothing
-   * would ever complete it, since the notifier only ever completes whichever registration is
-   * CURRENTLY in the map). This mirrors the retired {@code CliAgent}'s own one-turn-in-flight
-   * precedent for the same reason: a second concurrent {@link DefaultAgent#ask} on one id is a
-   * caller bug, not a queueable request.
+   * would ever complete it, since only whichever registration is CURRENTLY in the map is ever
+   * completed). This mirrors the retired {@code CliAgent}'s own one-turn-in-flight precedent for
+   * the same reason: a second concurrent {@link DefaultAgent#ask} on one id is a caller bug, not a
+   * queueable request.
    *
    * @throws IllegalStateException if {@code id} already has a live, uncompleted registration
    */
-  CompletableFuture<ApprovalRequest> awaitApproval(AgentId id) {
+  CompletableFuture<TurnOutcome.Parked> awaitApproval(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
-    CompletableFuture<ApprovalRequest> future = new CompletableFuture<>();
-    CompletableFuture<ApprovalRequest> existing = approvalWaiters.putIfAbsent(id, future);
+    CompletableFuture<TurnOutcome.Parked> future = new CompletableFuture<>();
+    CompletableFuture<TurnOutcome.Parked> existing = approvalWaiters.putIfAbsent(id, future);
     if (existing != null) {
       throw new IllegalStateException("a previous ask is still in flight for this id");
     }
@@ -350,13 +335,27 @@ public final class Harness<O> {
   }
 
   /**
-   * Retires {@code id}'s registration from {@link #awaitApproval(AgentId)} — but only if it is
-   * still exactly {@code future}: a registration the capturing notifier already completed and
-   * removed is left alone rather than torn out from under whatever completed it. (A LATER {@code
-   * ask} on the same id can no longer have replaced it first — {@link #awaitApproval} refuses a
-   * second live registration outright, fix round 2, I2b.)
+   * The park, as a fact (approval-lifecycle spec §1.3): completes {@code id}'s live wait, if it has
+   * one, with the question the fold just recorded. Called from the {@code ApprovalDeferred} fold
+   * itself, so a caller learns of the park only once the phase names it.
    */
-  void cancelApprovalWait(AgentId id, CompletableFuture<ApprovalRequest> future) {
+  void parked(AgentId id, TurnOutcome.Parked parked) {
+    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(parked, "parked must not be null");
+    CompletableFuture<TurnOutcome.Parked> waiting = approvalWaiters.remove(id);
+    if (waiting != null) {
+      waiting.complete(parked);
+    }
+  }
+
+  /**
+   * Retires {@code id}'s registration from {@link #awaitApproval(AgentId)} — but only if it is
+   * still exactly {@code future}: a registration {@link #parked} already completed and removed is
+   * left alone rather than torn out from under whatever completed it. (A LATER {@code ask} on the
+   * same id can no longer have replaced it first — {@link #awaitApproval} refuses a second live
+   * registration outright, fix round 2, I2b.)
+   */
+  void cancelApprovalWait(AgentId id, CompletableFuture<TurnOutcome.Parked> future) {
     approvalWaiters.remove(id, future);
   }
 

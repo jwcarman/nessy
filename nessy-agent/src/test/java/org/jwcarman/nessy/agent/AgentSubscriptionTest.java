@@ -39,6 +39,7 @@ import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
+import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -49,17 +50,18 @@ import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -133,9 +135,8 @@ class AgentSubscriptionTest {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-    var dispatchIndex = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(type));
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
-    ToolCallExecutor noTools = (call, responseId, sink) -> {};
+    ToolCallExecutor noTools = new NoToolsExecutor();
     Harness<String> harness =
         Harness.of(
             type,
@@ -160,7 +161,6 @@ class AgentSubscriptionTest {
             substrate,
             mapper,
             approvalClient,
-            dispatchIndex,
             toolClient,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
@@ -186,11 +186,16 @@ class AgentSubscriptionTest {
       var substrate = new InMemorySubstrate();
       var type = AgentType.of("subscription-worker");
       var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-      var dispatchIndex = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(type));
       var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
-      var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
+      var notifications = new CopyOnWriteArrayList<ComputationId>();
+      Approver deferring =
+          context -> {
+            ApprovalOutcome outcome = context.defer();
+            notifications.add(((ApprovalOutcome.Deferred) outcome).id());
+            return outcome;
+          };
       var tool = new RecordingTool();
-      var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
+      var registry = ToolRegistry.of(ToolGrant.grant(tool, deferring));
       var pump = new PumpedExecutor();
       var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
       var model =
@@ -228,17 +233,17 @@ class AgentSubscriptionTest {
                       id,
                       turnObserver,
                       pump,
-                      new ComputationDeferredToolCallPolicy(dispatchIndex, toolClient),
-                      new ComputationApprover(
-                          approvalClient,
-                          dispatchIndex,
-                          storeFactory.apply(id.value()),
-                          notifications::add),
+                      new ComputationDeferredToolCallPolicy(toolClient),
+                      (gatedCall, responseId, request, sink) ->
+                          new ComputationApprovalContext(
+                              approvalClient,
+                              new Routing(type.name(), id.value(), responseId.value(), gatedCall),
+                              request,
+                              sink),
                       mapper),
               substrate,
               mapper,
               approvalClient,
-              dispatchIndex,
               toolClient,
               new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
@@ -252,7 +257,8 @@ class AgentSubscriptionTest {
 
         assertThat(notifications).hasSize(1); // parked: the tool call is awaiting approval
 
-        harness.approvals().approve(notifications.getFirst().id()); // grants and nudges the worker
+        // answers and nudges the worker
+        harness.approvals().approve(notifications.getFirst(), "test", "");
         // approve() only submits the drain now (continuum-adoption spec §7): the fold runs on the
         // harness's own ComputationScheduler thread, which dispatches the resumed model call onto
         // `pump` from that background thread at some point AFTER the tool itself ran — polling on
@@ -388,11 +394,10 @@ class AgentSubscriptionTest {
       var substrate = new InMemorySubstrate();
       var type = AgentType.of("subscription-throw-isolation");
       var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-      var dispatchIndex = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(type));
       var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
       var pump = new PumpedExecutor();
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
-      ToolCallExecutor noTools = (call, responseId, sink) -> {};
+      ToolCallExecutor noTools = new NoToolsExecutor();
       String scopeId = "scope-a";
 
       Harness<String> harness =
@@ -419,7 +424,6 @@ class AgentSubscriptionTest {
               substrate,
               mapper,
               approvalClient,
-              dispatchIndex,
               toolClient,
               new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
@@ -460,11 +464,10 @@ class AgentSubscriptionTest {
       var substrate = new InMemorySubstrate();
       var type = AgentType.of("subscription-global-throw");
       var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-      var dispatchIndex = new DispatchIndex(substrate, mapper, Kinds.dispatchIndex(type));
       var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
       var pump = new PumpedExecutor();
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
-      ToolCallExecutor noTools = (call, responseId, sink) -> {};
+      ToolCallExecutor noTools = new NoToolsExecutor();
       String scopeId = "scope-a";
       TurnObserver throwingGlobal =
           event -> {
@@ -497,7 +500,6 @@ class AgentSubscriptionTest {
               substrate,
               mapper,
               approvalClient,
-              dispatchIndex,
               toolClient,
               new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);

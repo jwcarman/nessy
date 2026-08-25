@@ -28,7 +28,7 @@ import org.jwcarman.nessy.agent.Phase;
  *
  * <p>{@link Phase} carries its own Jackson annotations (spec §7); this codec is the mapper-binding
  * boundary. {@code AwaitingTools} round-trips through its canonical constructor, so its
- * pending-non-empty and pending-subset-of-the-turn invariants are re-checked on every read — a
+ * calls-non-empty and calls-subset-of-the-turn invariants are re-checked on every read — a
  * violation surfaces as a Jackson failure this codec translates into an {@link
  * IllegalArgumentException} naming the offense, same as a malformed payload or an unrecognized
  * discriminator.
@@ -52,8 +52,6 @@ public final class StateCodec {
   public Phase phase(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, "phase");
-    Codecs.requireArrayIfPresent(root, "pending", "awaiting-tools phase");
-    Codecs.requireArrayIfPresent(root, "gathered", "awaiting-tools phase");
     return codecs.bind(root, Phase.class, "phase");
   }
 }

@@ -20,7 +20,6 @@ import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DefaultAgent;
-import org.jwcarman.nessy.agent.DispatchIndex;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
@@ -162,7 +161,6 @@ public final class TestAgents {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
-    var dispatchIndex = new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(type));
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
     Harness<O> harness =
         Harness.of(
@@ -180,7 +178,6 @@ public final class TestAgents {
             lifeSupportSubstrate,
             mapper,
             approvalClient,
-            dispatchIndex,
             toolClient,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);

@@ -17,12 +17,11 @@ package org.jwcarman.nessy.agent;
 
 /**
  * The one place a kind-scoped name is composed (computation-identity spec §3; continuum-adoption
- * spec §3): {@code tool/<agentType>}, {@code approval/<agentType>}, {@code dispatch/<agentType>}.
- * Every caller — {@link DeliveryWorker} in this package, and {@link
- * org.jwcarman.nessy.agent.host.HarnessConfig}/{@link org.jwcarman.nessy.agent.host.Nessy} building
- * a harness's backends — derives its kind through here, never by hand, so the strings can never
- * drift apart. Isolation across agent types is by construction: two harnesses of different types
- * over one substrate never share a kind.
+ * spec §3): {@code tool/<agentType>} and {@code approval/<agentType>}. Every caller — {@link
+ * DeliveryWorker} in this package, and {@link org.jwcarman.nessy.agent.host.HarnessConfig}/{@link
+ * org.jwcarman.nessy.agent.host.Nessy} building a harness's backends — derives its kind through
+ * here, never by hand, so the strings can never drift apart. Isolation across agent types is by
+ * construction: two harnesses of different types over one substrate never share a kind.
  *
  * <p>{@link #approval(AgentType)} and {@link #tool(AgentType)} both name Continuum {@code
  * ContinuumClient} kinds rather than {@code SubstrateComputations} ones (continuum-adoption spec
@@ -39,7 +38,6 @@ public final class Kinds {
 
   private static final String TOOL_PREFIX = "tool/";
   private static final String APPROVAL_PREFIX = "approval/";
-  private static final String DISPATCH_INDEX_PREFIX = "dispatch/";
 
   private Kinds() {}
 
@@ -57,16 +55,5 @@ public final class Kinds {
 
   public static String approval(AgentType type) {
     return APPROVAL_PREFIX + type.name();
-  }
-
-  /**
-   * The dispatch index's kind for {@code type} (computation-identity spec §3): {@code
-   * dispatch/<agentType>}.
-   *
-   * @param type the agent type
-   * @return the dispatch index kind
-   */
-  public static String dispatchIndex(AgentType type) {
-    return DISPATCH_INDEX_PREFIX + type.name();
   }
 }
