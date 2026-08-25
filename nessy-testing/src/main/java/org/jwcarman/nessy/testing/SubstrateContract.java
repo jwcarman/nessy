@@ -132,6 +132,14 @@ public abstract class SubstrateContract {
   }
 
   @Test
+  void deletingAnAbsentKeyAtANonzeroExpectedVersionConflicts() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.delete(KIND, "never-written", 3))
+        .isInstanceOf(ConflictException.class);
+  }
+
+  @Test
   void aDeletedKeyIsWrittenAgainAtVersionZero() {
     Substrate substrate = createSubstrate();
     substrate.write(KIND, "k", "one".getBytes(UTF_8), 0);
@@ -171,7 +179,7 @@ public abstract class SubstrateContract {
   }
 
   @Test
-  void journalSequencesStartAtOne() {
+  void anAppendedEntryIsReadableAtTheSequenceItWasAppendedAt() {
     Substrate substrate = createSubstrate();
 
     substrate.append(KIND, "k", 1, "first".getBytes(UTF_8));
@@ -354,5 +362,131 @@ public abstract class SubstrateContract {
 
     assertThat(conflicts).hasValue(1);
     assertThat(substrate.entries(KIND, "k", 1)).hasSize(1);
+  }
+
+  @Test
+  void readingWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.read(null, "k")).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void readingWithANullKeyThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.read(KIND, null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void writingWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+    byte[] payload = "one".getBytes(UTF_8);
+
+    assertThatThrownBy(() -> substrate.write(null, "k", payload, 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void writingWithANullKeyThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+    byte[] payload = "one".getBytes(UTF_8);
+
+    assertThatThrownBy(() -> substrate.write(KIND, null, payload, 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void writingWithANullPayloadThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.write(KIND, "k", null, 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void deletingWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.delete(null, "k", 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void deletingWithANullKeyThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.delete(KIND, null, 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void listingKeysWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.keys(null, 10)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void listingKeysWithALimitOfZeroThrowsIllegalArgumentException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.keys(KIND, 0)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void listingKeysWithANegativeLimitThrowsIllegalArgumentException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.keys(KIND, -1)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void appendingWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+    byte[] payload = "first".getBytes(UTF_8);
+
+    assertThatThrownBy(() -> substrate.append(null, "k", 1, payload))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void appendingWithANullKeyThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+    byte[] payload = "first".getBytes(UTF_8);
+
+    assertThatThrownBy(() -> substrate.append(KIND, null, 1, payload))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void appendingWithANullPayloadThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.append(KIND, "k", 1, null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void readingEntriesWithANullKindThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.entries(null, "k", 1))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void readingEntriesWithANullKeyThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.entries(KIND, null, 1))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void applyingABatchOfNullOpsThrowsNullPointerException() {
+    Substrate substrate = createSubstrate();
+
+    assertThatThrownBy(() -> substrate.batch(null)).isInstanceOf(NullPointerException.class);
   }
 }
