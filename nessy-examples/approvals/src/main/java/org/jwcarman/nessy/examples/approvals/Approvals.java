@@ -32,23 +32,25 @@ import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolGrant;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.testing.ScriptedModel;
 
 /**
- * The harness door plus a desk: one DURABLE {@code restart} tool behind {@link
- * UsagePolicy#requireApproval()}, so a call parks until a human decides it. {@code --scripted}
- * drives a short deterministic conversation — no key, no network — that tells the scope one
- * observation, waits for the approval request, approves it, and prints the advertised sentinel once
- * the model's reply lands; without it, this runs a console loop against a real provider from {@link
- * ModelDiscovery#select()}: free text is told to the scope, {@code approve}/{@code deny <reason>}
- * answer whatever's pending, and {@code quit} exits.
+ * The harness door plus a desk: one DURABLE {@code restart} tool behind an approver that parks, so
+ * a call parks until a human decides it. {@code --scripted} drives a short deterministic
+ * conversation — no key, no network — that tells the scope one observation, waits for the approval
+ * request, approves it, and prints the advertised sentinel once the model's reply lands; without
+ * it, this runs a console loop against a real provider from {@link ModelDiscovery#select()}: free
+ * text is told to the scope, {@code approve}/{@code deny <reason>} answer whatever's pending, and
+ * {@code quit} exits.
  */
 public final class Approvals {
 
@@ -79,7 +81,7 @@ public final class Approvals {
   static String runScripted() throws InterruptedException {
     Model model = scriptedModel();
     ModelSettings settings = new ModelSettings(1024, Set.of(), null);
-    BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
+    BlockingQueue<ComputationId> requests = new LinkedBlockingQueue<>();
     BlockingQueue<String> replies = new LinkedBlockingQueue<>();
     TurnObserver observer =
         TurnObserver.observe(
@@ -101,18 +103,15 @@ public final class Approvals {
                     .model(model)
                     .systemPrompt(SYSTEM_PROMPT)
                     .settings(settings)
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                    .approvalNotifier(request -> printRequest(request, requests))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parking(requests)))
                     .turnObserver(observer));
     try {
       System.out.println("== posting: please restart prod-eu ==");
       harness.bind(AgentId.of(SCOPE_ID)).tell("please restart prod-eu");
 
-      ApprovalRequest firstAsk = await(requests, "the approval request");
-      System.out.println("== approving " + firstAsk.id().value() + " ==");
-      harness.approvals().approve(firstAsk.id());
+      ComputationId firstAsk = await(requests, "the approval request");
+      System.out.println("== approving " + firstAsk.value() + " ==");
+      harness.approvals().approve(firstAsk, "demo", "");
 
       String reply = await(replies, "the assistant's reply after the grant");
       System.out.println("== assistant replied: " + reply + " ==");
@@ -135,7 +134,7 @@ public final class Approvals {
   private static void runInteractive() throws IOException {
     var selection = ModelDiscovery.select();
     var settings = new ModelSettings(1024, Set.of(), null);
-    var pending = new LinkedBlockingQueue<ApprovalRequest>();
+    var pending = new LinkedBlockingQueue<ComputationId>();
 
     // The harness is immortal, not closeable (spec §4): it is kept for the process's lifetime, not
     // shut down when this loop exits.
@@ -146,10 +145,7 @@ public final class Approvals {
                     .model(selection.model())
                     .systemPrompt(SYSTEM_PROMPT)
                     .settings(settings)
-                    .grants(
-                        ToolGrant.grant(
-                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                    .approvalNotifier(request -> printRequest(request, pending))
+                    .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parking(pending)))
                     .turnObserver(
                         TurnObserver.observe(
                             o ->
@@ -163,25 +159,36 @@ public final class Approvals {
       if ("quit".equals(line)) {
         break;
       }
-      ApprovalRequest open = pending.peek();
+      ComputationId open = pending.peek();
       if ("approve".equals(line) && open != null) {
-        harness.approvals().approve(pending.poll().id());
+        harness.approvals().approve(pending.poll(), "demo", "");
       } else if (line.startsWith("deny ") && open != null) {
-        harness.approvals().deny(pending.poll().id(), line.substring(5));
+        harness.approvals().deny(pending.poll(), "demo", line.substring(5));
       } else {
         harness.bind(AgentId.of(SCOPE_ID)).tell(line);
       }
     }
   }
 
-  /** Prints the request (computation id + rendered action) and queues it for the loop to answer. */
-  private static void printRequest(ApprovalRequest request, BlockingQueue<ApprovalRequest> queue) {
+  /**
+   * The demo's approver: it parks the question, then tells the demo — telling people is the
+   * approver's job (approval-lifecycle spec §1.3), so the queue lives behind the approver rather
+   * than behind a harness-level notifier.
+   */
+  private static Approver parking(BlockingQueue<ComputationId> queue) {
+    return context -> {
+      ApprovalOutcome outcome = context.defer();
+      ComputationId id = ((ApprovalOutcome.Deferred) outcome).id();
+      printRequest(context.request(), id);
+      queue.add(id);
+      return outcome;
+    };
+  }
+
+  /** Prints the parked question (computation id + rendered action). */
+  private static void printRequest(ApprovalRequest request, ComputationId id) {
     System.out.println(
-        "approval requested: computation="
-            + request.id().value()
-            + " action="
-            + request.context().action().orElse(null));
-    queue.add(request);
+        "approval requested: computation=" + id.value() + " action=" + request.action());
   }
 
   private static ScriptedModel scriptedModel() {

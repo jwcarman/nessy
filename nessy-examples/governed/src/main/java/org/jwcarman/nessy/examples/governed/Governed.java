@@ -29,24 +29,27 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolGrant;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Impact;
 import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
-import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
+import org.jwcarman.nessy.api.tool.authorization.RiskRules;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.intent.IntentEnricher;
-import org.jwcarman.nessy.intent.IntentPolicies;
+import org.jwcarman.nessy.intent.IntentRules;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.SubstrateIntentStore;
-import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.testing.ScriptedModel;
@@ -54,12 +57,11 @@ import org.jwcarman.nessy.testing.ScriptedModel;
 /**
  * The full gate as consumer code (vocabulary amendment §3): an org's own sealed intent vocabulary,
  * {@link OpsIntent}, rides the generic {@link IntentTool} kit, and a risk-assessing {@link
- * Enricher} feeds {@link RiskPolicies#threshold}, composed with {@link
- * IntentPolicies#requireDeclared} via {@link UsagePolicy#allOf(List)}. One scripted, deterministic
- * run — no key, no network — narrates every checkpoint of a single turn: a restart with no declared
- * intent is denied in-band (the bounce), the model declares its intent, the retried restart parks
- * for a human (the risk assessment lands in the approval band), a human approves it, and the turn
- * completes.
+ * Enricher} feeds {@link RiskRules#threshold}, laddered behind {@link IntentRules#requireDeclared}
+ * by {@link Approvers#rules}. One scripted, deterministic run — no key, no network — narrates every
+ * checkpoint of a single turn: a restart with no declared intent is denied in-band (the bounce),
+ * the model declares its intent, the retried restart parks for a human (the risk assessment lands
+ * in the approval band), a human approves it, and the turn completes.
  */
 public final class Governed {
 
@@ -104,11 +106,15 @@ public final class Governed {
         new SubstrateIntentStore<>(substrate, SCOPE_ID, OpsIntent.class, intentMapper);
     ModelSettings settings = new ModelSettings(1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
+    BlockingQueue<TurnEvent.ToolCallDecided> decisions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
-    BlockingQueue<ApprovalRequest> approvalRequests = new LinkedBlockingQueue<>();
+    BlockingQueue<Ask> approvalRequests = new LinkedBlockingQueue<>();
     TurnObserver observer =
         TurnObserver.observe(
-            o -> o.onToolCallCompleted(toolCompletions::add).onTurnEnded(completions::add));
+            o ->
+                o.onToolCallCompleted(toolCompletions::add)
+                    .onToolCallDecided(decisions::add)
+                    .onTurnEnded(completions::add));
 
     Harness<String> harness =
         Nessy.harness(
@@ -119,32 +125,30 @@ public final class Governed {
                     .settings(settings)
                     .grants(
                         ToolGrant.grant(
-                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                        restartGrant(intentStore))
-                    .approvalNotifier(approvalRequests::add)
+                            new IntentTool<>(OpsIntent.class, intentStore), Approvers.allow()),
+                        restartGrant(intentStore, approvalRequests))
                     .turnObserver(observer)
                     .substrate(substrate));
     try {
       System.out.println("== posting: please restart prod-eu ==");
       harness.bind(AgentId.of(SCOPE_ID)).tell("please restart prod-eu");
 
-      TurnEvent.ToolCallCompleted bounce =
-          await(toolCompletions, "the bounced restart's completion");
-      System.out.println("bounce: " + bounce.result().content());
+      // The bounce is an ANSWER now, not a completion (approval-lifecycle spec §3): the approver
+      // denies the undeclared restart, and the reducer turns that denial into the error result the
+      // model reads.
+      String bounceMessage = denialReason(await(decisions, "the bounced restart's denial"));
+      System.out.println("bounce: " + bounceMessage);
 
       await(toolCompletions, "the declare-intent completion");
       OpsIntent declared = intentStore.latest().orElseThrow();
       System.out.println("declared: " + declared);
       String declaredTarget = declared instanceof Restart(String target, _) ? target : null;
 
-      ApprovalRequest request = await(approvalRequests, "the approval request");
+      Ask ask = await(approvalRequests, "the approval request");
       System.out.println(
-          "parked: computation="
-              + request.id().value()
-              + " action="
-              + request.context().action().orElse(null));
+          "parked: computation=" + ask.id().value() + " action=" + ask.request().action());
 
-      harness.approvals().approve(request.id());
+      harness.approvals().approve(ask.id(), "demo", "");
       System.out.println("approved");
 
       // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call
@@ -153,28 +157,53 @@ public final class Governed {
       System.out.println("restarted: " + restarted.result().content());
       TurnEvent.TurnEnded ended = await(completions, "the turn's completion");
       System.out.println("turn ended: failed=" + ended.failed());
-      return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN COMPLETE");
+      return new Result(bounceMessage, declaredTarget, "GOVERNED TURN COMPLETE");
     } finally {
       harness.shutdown();
     }
   }
 
-  private static ToolGrant restartGrant(IntentStore<OpsIntent> intentStore) {
-    List<UsagePolicy> policies =
-        List.of(
-            IntentPolicies.requireDeclared(OpsIntent.class),
-            RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+  private static String denialReason(TurnEvent.ToolCallDecided decided) {
+    if (decided.approval() instanceof Approval.Denied(String reason, var _)) {
+      return reason;
+    }
+    throw new IllegalStateException("expected a denial, got " + decided.approval());
+  }
+
+  /** What the demo's approver tells its queue once it has parked a question. */
+  record Ask(ComputationId id, ApprovalRequest request) {}
+
+  private static ToolGrant restartGrant(
+      IntentStore<OpsIntent> intentStore, BlockingQueue<Ask> asks) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_ACTION,
-        List.of(new IntentEnricher(intentStore), riskAssessor()),
-        UsagePolicy.allOf(policies));
+        List.of(new IntentEnricher<>(intentStore, OpsIntent.class), riskAssessor()),
+        queueing(asks));
+  }
+
+  /**
+   * The demo's approver: the ladder judges, and when it parks, the demo (a queue) is told — telling
+   * people is the approver's job (approval-lifecycle spec §1.3).
+   */
+  private static Approver queueing(BlockingQueue<Ask> asks) {
+    Approver ladder =
+        Approvers.rules(
+            IntentRules.requireDeclared(OpsIntent.class),
+            RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+    return context -> {
+      ApprovalOutcome outcome = ladder.approve(context);
+      if (outcome instanceof ApprovalOutcome.Deferred deferred) {
+        asks.add(new Ask(deferred.id(), context.request()));
+      }
+      return outcome;
+    };
   }
 
   private static Enricher riskAssessor() {
     RiskAssessment assessment =
         RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE);
-    return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
+    return Enricher.named("risk", draft -> draft.deposit(ApprovalRequest.RISK, assessment));
   }
 
   /**
