@@ -78,19 +78,24 @@ replaces `Decision` (the Continuum result) and the `Granted`/`Refused` arms of
 ```java
 public sealed interface PolicyOutcome {
   record Answered(Approval approval) implements PolicyOutcome {}
-  record RequiresApproval(ApprovalRequest request) implements PolicyOutcome {}
+  record Escalated(ApprovalRequest request) implements PolicyOutcome {}
 }
 ```
 
-`RequiresApproval` carries the **dossier** — `ApprovalRequest`, which already
+`Escalated` carries the **dossier** — `ApprovalRequest`, which already
 exists: the call, the agent coordinates, and the assembled `AuthzContext` with
 the rendered action, risk assessment and every enricher's contribution. Today
 the policy says `RequireApproval()` empty-handed and the gate assembles the
-context in a second step; here the policy that requires approval is the one that
+context in a second step; here the policy that escalates is the one that
 hands over everything a decider needs. `PolicyDecision` retires;
 `UsagePolicy.evaluate(AuthzContext)` returns `PolicyOutcome`. The three
 statics keep their names and meanings: `allow()` answers `Approved`, `deny(r)`
-answers `Denied(r)`, `requireApproval()` requires approval and hands over the dossier.
+answers `Denied(r)`, and `requireApproval()` becomes `escalate()`: it cannot
+decide on its own and hands the question up with the dossier. What is on the
+other side of that hand-off — one human, a chain of approvers, an automated
+service that defers to a person — is the approver's business, and the policy
+assumes nothing about it. That opacity is deliberate: chains, delegation and
+fan-out are approver implementations, never new concepts in the policy.
 
 **The approver** takes a dossier and answers — now, or later:
 
@@ -113,7 +118,7 @@ same for both. `Adjudication` retires; its `Suspended(computation)` arm was the
 phase this spec adds, misfiled as a return value.
 
 The policy never sees `Awaited`, Continuum, or a lease. It answers or it
-requires approval. How that approval is sought is the harness's business, and the
+escalates. How the escalation is carried is the harness's business, and the
 policy stays pure and re-evaluable, as §4.2 of the scope design requires.
 
 ## 2. The phase — one arm, richer entries
@@ -169,7 +174,7 @@ signature; parallel tool calls mean independent tool calls. The scope is not
 and *some of those calls are awaiting approval*. That derived view is what
 the console narrates and the metrics count. An operator who wants "nothing in
 this turn runs until a human has seen all of it" expresses that as a policy
-that requires approval for the whole turn, not as a reducer rule for everyone.
+that escalates the whole turn, not as a reducer rule for everyone.
 
 **Ruled: the model never knows.** `assistantTurn` and the `Finished` results
 are what reach the model on the next `CallModel`; `AwaitingApproval` and its
@@ -252,7 +257,7 @@ the dispatching stack. Inside:
    a call that cannot be understood cannot be approved.
 3. `grant.policy().evaluate(context)`:
    - `Answered(a)` → deliver `ApprovalAnswered(∅, a)`.
-   - `RequiresApproval(dossier)` → `approver.approve(dossier)`:
+   - `Escalated(dossier)` → `approver.approve(dossier)`:
      - `Ready(a)` → deliver `ApprovalAnswered(∅, a)`.
      - `Deferred` → the approver has created an approval computation whose
        result type is `Approval`, with the call's routing as its
@@ -316,7 +321,7 @@ five-second tool.
 
 One window is named rather than closed: a crash *after* the approver created
 the approval computation and *before* `ApprovalRequested` folded leaves the
-call `Pending`, and the re-fire re-evaluates it — the policy requires approval again,
+call `Pending`, and the re-fire re-evaluates it — the policy escalates again,
 a second computation is created, and a human may be asked twice. Only the
 answer whose id the phase names is honoured (§3, row five); the other is an
 orphan, acknowledged and ignored, exactly the §11.3 resolution today. The
@@ -382,8 +387,8 @@ it and was ruled out.
   delivery that arrives against a `Pending` call is released and re-delivered
   rather than acknowledged and lost. This is the test that distinguishes
   "ordered by construction" from "usually fast enough."
-- **The dossier.** A `RequiresApproval` outcome carries the assembled context
-  a `requireApproval()` grant used to build in the gate.
+- **The dossier.** An `Escalated` outcome carries the assembled context a
+  `requireApproval()` grant used to build in the gate.
 
 ## 10. Documentation
 
@@ -399,7 +404,7 @@ Unreleased section records the vocabulary collapse as a breaking change.
 2. Every call is approved; the policy is the first approver, answering now or
    handing over a dossier.
 3. One answer type, `Approval {Approved, Denied}`; `PolicyOutcome {Answered,
-   RequiresApproval(ApprovalRequest)}`; `Approver` returns `Awaited<Approval>`.
+   Escalated(ApprovalRequest)}`; `Approver` returns `Awaited<Approval>`.
 4. Each call has its own lifecycle, folded into the state — per call, not as
    a set.
 
@@ -414,6 +419,8 @@ Unreleased section records the vocabulary collapse as a breaking change.
    and `executeGrantedToolNow`.
 4. **Model visibility stays off** (§2) and **crash means re-run** (§6) —
    both ruled here by me from the conversation's direction; both reversible.
+5. **`UsagePolicy.escalate()`** replacing `requireApproval()` — a public
+   static's rename, so the policy's act and its outcome share one word.
 
 ## 13. Rejected
 
