@@ -65,6 +65,7 @@
     <module>nessy-model-gemini</module>
     <module>nessy-model-bedrock</module>
     <module>nessy-model-env</module>
+    <module>nessy-model-discovery</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-substrate-jdbc</module>
     <module>nessy-examples</module>

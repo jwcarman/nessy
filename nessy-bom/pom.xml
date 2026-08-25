@@ -86,6 +86,11 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-model-discovery</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-tool-mcp</artifactId>
                 <version>${project.version}</version>
             </dependency>
