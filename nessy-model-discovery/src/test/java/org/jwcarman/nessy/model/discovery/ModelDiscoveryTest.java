@@ -28,9 +28,9 @@ import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 /**
  * Drives {@link ModelDiscovery#select(Map, Iterable)} through its two seams — an env map and an
  * explicit registration list — so every outcome in the design's §4 is pinned with no real provider
- * on the classpath. One test at the end goes through the real {@link java.util.ServiceLoader} path
- * against {@link RegisteredFakeBootstrap}, which is the only registration this module's test
- * classpath carries.
+ * on the classpath. A handful of tests, at the end, go through the real {@link
+ * java.util.ServiceLoader} path against {@link RegisteredFakeBootstrap}, which is the only
+ * registration this module's test classpath carries.
  */
 class ModelDiscoveryTest {
 
@@ -86,6 +86,13 @@ class ModelDiscoveryTest {
 
       assertThat(selection.providerName()).isEqualTo("alpha");
     }
+
+    @Test
+    void from_env_returns_the_bound_model_directly() {
+      var model = ModelDiscovery.fromEnv(Map.of("ALPHA_KEY", "k"), List.of(ALPHA));
+
+      assertThat(model.id()).isEqualTo("alpha-default");
+    }
   }
 
   @Nested
@@ -136,6 +143,17 @@ class ModelDiscoveryTest {
     }
 
     @Test
+    void a_blank_nessy_provider_fails_like_an_unset_one() {
+      var env = withProvider(both, "   ");
+      List<ModelProviderBootstrap> pair = List.of(ALPHA, BETA);
+
+      assertThatThrownBy(() -> ModelDiscovery.select(env, pair))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("(alpha, beta)")
+          .hasMessageNotContaining("names none of them");
+    }
+
+    @Test
     void a_registered_provider_whose_key_is_absent_is_not_a_candidate() {
       // Only alpha's key is present, so two registrations still yield one candidate: no tie.
       var selection = ModelDiscovery.select(Map.of("ALPHA_KEY", "a"), List.of(ALPHA, BETA));
@@ -155,14 +173,15 @@ class ModelDiscoveryTest {
 
     @Test
     void two_registrations_sharing_a_name_fail_naming_the_token_and_both_classes() {
-      var alphaAgain = new FakeBootstrap("alpha", "OTHER_KEY", "other-default");
+      var alphaAgain = new OtherFakeBootstrap("alpha", "OTHER_KEY", "other-default");
       List<ModelProviderBootstrap> clash = List.of(ALPHA, alphaAgain);
       Map<String, String> env = Map.of();
 
       assertThatThrownBy(() -> ModelDiscovery.select(env, clash))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("share the name 'alpha'")
-          .hasMessageContaining(FakeBootstrap.class.getName());
+          .hasMessageContaining(FakeBootstrap.class.getName())
+          .hasMessageContaining(OtherFakeBootstrap.class.getName());
     }
 
     @Test
@@ -174,6 +193,42 @@ class ModelDiscoveryTest {
       assertThatThrownBy(() -> ModelDiscovery.select(env, only))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("BROKEN_KEY is malformed");
+    }
+
+    @Test
+    void a_blank_name_fails_naming_the_class() {
+      var blank = new FakeBootstrap("  ", "BLANK_KEY", "blank-default");
+      List<ModelProviderBootstrap> only = List.of(blank);
+      Map<String, String> env = Map.of();
+
+      assertThatThrownBy(() -> ModelDiscovery.select(env, only))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(FakeBootstrap.class.getName())
+          .hasMessageContaining("blank name()");
+    }
+
+    @Test
+    void a_non_lowercase_name_fails_naming_the_class_and_the_name() {
+      var acme = new FakeBootstrap("Acme", "ACME_KEY", "acme-default");
+      List<ModelProviderBootstrap> only = List.of(acme);
+      Map<String, String> env = Map.of();
+
+      assertThatThrownBy(() -> ModelDiscovery.select(env, only))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(FakeBootstrap.class.getName())
+          .hasMessageContaining("'Acme'");
+    }
+
+    @Test
+    void null_environment_variables_fail_naming_the_class() {
+      var broken = FakeBootstrap.withNullVariables("broken");
+      List<ModelProviderBootstrap> only = List.of(broken);
+      Map<String, String> env = Map.of();
+
+      assertThatThrownBy(() -> ModelDiscovery.select(env, only))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining(FakeBootstrap.class.getName())
+          .hasMessageContaining("environmentVariables()");
     }
   }
 
@@ -239,6 +294,20 @@ class ModelDiscoveryTest {
       Map<String, String> env = Map.of();
 
       assertThatThrownBy(() -> ModelDiscovery.select(env))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("registered [REGISTERED_FAKE_KEY]");
+    }
+
+    @Test
+    void from_env_through_the_service_loader_finds_the_registration() {
+      var model = ModelDiscovery.fromEnv(Map.of(RegisteredFakeBootstrap.ENV_VAR, "k"));
+
+      assertThat(model.id()).isEqualTo("registered-default");
+    }
+
+    @Test
+    void the_public_from_env_fails_naming_what_is_registered() {
+      assertThatThrownBy(ModelDiscovery::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("registered [REGISTERED_FAKE_KEY]");
     }

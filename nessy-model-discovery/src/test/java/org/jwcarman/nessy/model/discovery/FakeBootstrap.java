@@ -38,22 +38,33 @@ final class FakeBootstrap implements ModelProviderBootstrap {
   private final String environmentVariable;
   private final String defaultModelId;
   private final boolean throwsOnPresentKey;
+  private final boolean nullVariables;
 
   FakeBootstrap(String name, String environmentVariable, String defaultModelId) {
-    this(name, environmentVariable, defaultModelId, false);
+    this(name, environmentVariable, defaultModelId, false, false);
   }
 
   private FakeBootstrap(
-      String name, String environmentVariable, String defaultModelId, boolean throwsOnPresentKey) {
+      String name,
+      String environmentVariable,
+      String defaultModelId,
+      boolean throwsOnPresentKey,
+      boolean nullVariables) {
     this.name = name;
     this.environmentVariable = environmentVariable;
     this.defaultModelId = defaultModelId;
     this.throwsOnPresentKey = throwsOnPresentKey;
+    this.nullVariables = nullVariables;
   }
 
   /** The malformed-configuration case: a present key it cannot honour. */
   static FakeBootstrap throwingOnPresentKey(String name, String environmentVariable) {
-    return new FakeBootstrap(name, environmentVariable, name + "-default", true);
+    return new FakeBootstrap(name, environmentVariable, name + "-default", true, false);
+  }
+
+  /** The SPI-contract-violating case: {@code environmentVariables()} returns null. */
+  static FakeBootstrap withNullVariables(String name) {
+    return new FakeBootstrap(name, "UNUSED_KEY", name + "-default", false, true);
   }
 
   @Override
@@ -63,7 +74,7 @@ final class FakeBootstrap implements ModelProviderBootstrap {
 
   @Override
   public Set<String> environmentVariables() {
-    return Set.of(environmentVariable);
+    return nullVariables ? null : Set.of(environmentVariable);
   }
 
   @Override

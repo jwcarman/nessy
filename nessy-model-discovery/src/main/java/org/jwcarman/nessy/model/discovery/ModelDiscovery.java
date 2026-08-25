@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
@@ -56,6 +57,9 @@ import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
  *
  * <p>Nothing here depends on {@code ServiceLoader}'s iteration order, which varies with classpath
  * layout: messages list providers sorted by name, and no outcome is decided by position.
+ *
+ * <p>Registrations whose {@code name()} breaks the SPI contract — blank, non-lowercase, or a
+ * duplicate — fail at discovery, like duplicates.
  */
 public final class ModelDiscovery {
 
@@ -72,6 +76,10 @@ public final class ModelDiscovery {
   /**
    * The door for applications that also want to show what was chosen: the bound model plus the
    * winning provider's registered name, from the real process environment.
+   *
+   * <p>Registrations are loaded through {@link ServiceLoader#load(Class)}, i.e. the thread context
+   * class loader — the JDK's default, and the one that finds provider jars in a container where
+   * this module sits in a shared library and the providers in the application.
    */
   public static Selection select() {
     return select(System.getenv());
@@ -80,6 +88,16 @@ public final class ModelDiscovery {
   /** The offline seam for the environment: real registrations, caller-supplied {@code env}. */
   static Selection select(Map<String, String> env) {
     return select(env, ServiceLoader.load(ModelProviderBootstrap.class));
+  }
+
+  /** The offline seam for {@link #fromEnv()}: real registrations, caller-supplied {@code env}. */
+  static Model fromEnv(Map<String, String> env) {
+    return select(env).model();
+  }
+
+  /** The offline seam for both: caller-supplied {@code env} and registrations. */
+  static Model fromEnv(Map<String, String> env, Iterable<ModelProviderBootstrap> bootstraps) {
+    return select(env, bootstraps).model();
   }
 
   /** The offline seam for both: caller-supplied {@code env} and caller-supplied registrations. */
@@ -114,15 +132,35 @@ public final class ModelDiscovery {
     var byName = new HashMap<String, ModelProviderBootstrap>();
     var all = new ArrayList<ModelProviderBootstrap>();
     for (var bootstrap : bootstraps) {
-      var previous = byName.putIfAbsent(bootstrap.name(), bootstrap);
+      var name = bootstrap.name();
+      if (name == null || name.isBlank()) {
+        throw new IllegalStateException(
+            "model provider bootstrap " + bootstrap.getClass().getName() + " has a blank name()");
+      }
+      if (!name.equals(name.toLowerCase(Locale.ROOT))) {
+        throw new IllegalStateException(
+            "model provider bootstrap "
+                + bootstrap.getClass().getName()
+                + " has a non-lowercase name() '"
+                + name
+                + "'");
+      }
+      Objects.requireNonNull(
+          bootstrap.environmentVariables(),
+          () -> bootstrap.getClass().getName() + " returned null from environmentVariables()");
+      var previous = byName.putIfAbsent(name, bootstrap);
       if (previous != null) {
+        var names =
+            Stream.of(previous.getClass().getName(), bootstrap.getClass().getName())
+                .sorted()
+                .toList();
         throw new IllegalStateException(
             "two model provider bootstraps share the name '"
-                + bootstrap.name()
+                + name
                 + "': "
-                + previous.getClass().getName()
+                + names.get(0)
                 + " and "
-                + bootstrap.getClass().getName());
+                + names.get(1));
       }
       all.add(bootstrap);
     }
