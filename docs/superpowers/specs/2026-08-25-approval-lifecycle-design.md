@@ -73,53 +73,51 @@ human at a console, by a webhook, or delivered by Continuum days later. It
 replaces `Decision` (the Continuum result) and the `Granted`/`Refused` arms of
 `Adjudication` outright.
 
-**The policy** answers, or hands over the case file:
+**An approver** is anything that, handed the question, either answers it or
+says it cannot and passes it on:
 
 ```java
-public sealed interface PolicyOutcome {
-  record Answered(Approval approval) implements PolicyOutcome {}
-  record Escalated(ApprovalRequest request) implements PolicyOutcome {}
+public sealed interface ApprovalOutcome {
+  record Answered(Approval approval) implements ApprovalOutcome {}
+  record Escalated(ApprovalRequest request) implements ApprovalOutcome {}
+}
+
+public interface Approver {
+  ApprovalOutcome approve(ApprovalRequest request);
 }
 ```
+
+"Cannot decide, might escalate" is common enough to be *the* notion, and
+there is only one of it. A `UsagePolicy` is an approver — the one attached to
+a grant, first in line, reading the dossier's `AuthzContext`. A risk service
+is an approver. A console prompting `approve? [y/N]` is an approver. A test
+double is an approver. The harness holds them as a **chain**: the grant's
+policy first, then whatever the application configured after it, each one
+answering or escalating with the dossier — annotated with what it saw and
+why it passed. **If the last approver escalates, the harness parks the
+dossier on Continuum** as an approval computation whose result type is
+`Approval`, and the call waits. Parking is not an approver; it is what the
+harness does with an escalation nobody in-process could answer.
 
 `Escalated` carries the **dossier** — `ApprovalRequest`, which already
 exists: the call, the agent coordinates, and the assembled `AuthzContext` with
 the rendered action, risk assessment and every enricher's contribution. Today
 the policy says `RequireApproval()` empty-handed and the gate assembles the
-context in a second step; here the policy that escalates is the one that
-hands over everything a decider needs. `PolicyDecision` retires;
-`UsagePolicy.evaluate(AuthzContext)` returns `PolicyOutcome`. The three
-statics keep their names and meanings: `allow()` answers `Approved`, `deny(r)`
-answers `Denied(r)`, and `requireApproval()` becomes `escalate()`: it cannot
-decide on its own and hands the question up with the dossier. What is on the
-other side of that hand-off — one human, a chain of approvers, an automated
-service that defers to a person — is the approver's business, and the policy
-assumes nothing about it. That opacity is deliberate: chains, delegation and
-fan-out are approver implementations, never new concepts in the policy.
+context in a second step; here the gate assembles the dossier once, before
+the chain, and every approver reads and may annotate the same file.
+`PolicyDecision` and `Adjudication` retire; `Adjudication.Suspended
+(computation)` was the phase this spec adds, misfiled as a return value. The
+existing `org.jwcarman.nessy.spi.approval.Approver` keeps its name and gains
+this signature; `UsagePolicy` implements it. The three statics keep their
+meanings: `allow()` answers `Approved`, `deny(r)` answers `Denied(r)`, and
+`requireApproval()` becomes `escalate()`.
 
-**The approver** takes a dossier and answers — now, or later:
-
-```java
-public interface Approver {
-  Awaited<Approval> approve(ApprovalRequest request);
-}
-```
-
-This is the existing `org.jwcarman.nessy.spi.approval.Approver` with its
-signature changed — `adjudicate(request) → Adjudication` becomes
-`approve(request) → Awaited<Approval>` — not a second seam beside it.
-`Awaited` is the type tools already return, and it means the same thing here:
-`Ready(approval)` — answered on the spot (the console's `approve? [y/N]`, a
-test approver, an automated risk service); `Deferred` — the answer will arrive
-as the result of an approval computation whose result type is `Approval`. A
-tool computation's result is a `ToolResult`; an approval computation's result
-is an `Approval`; the delivery path, the lease rule and the fold shape are the
-same for both. `Adjudication` retires; its `Suspended(computation)` arm was the
-phase this spec adds, misfiled as a return value.
-
-The policy never sees `Awaited`, Continuum, or a lease. It answers or it
-escalates. How the escalation is carried is the harness's business, and the
-policy stays pure and re-evaluable, as §4.2 of the scope design requires.
+No approver sees `Awaited`, Continuum, or a lease — `Awaited` stays with
+tools, where a *tool* decides whether its own result comes now or later. An
+approver only ever answers or escalates. How an escalation that reaches the
+end of the chain is carried — parked, delivered, folded — is the harness's
+business, so every approver stays pure and re-evaluable, as §4.2 of the scope
+design requires of the policy today.
 
 ## 2. The phase — one arm, richer entries
 
@@ -137,9 +135,19 @@ public sealed interface CallStatus {
   record Pending() implements CallStatus {}                       // approval sought, no answer yet
   record Escalated(String approvalId) implements CallStatus {} // asked and parked; Continuum holds it
   record Running() implements CallStatus {}                        // approved; the tool is executing
+  record Deferred(String toolId) implements CallStatus {}          // the tool parked its result; Continuum holds it
   record Finished(ToolResultBlock result) implements CallStatus {} // an outcome, success or failure
 }
 ```
+
+Two of the five statuses wait on Continuum, and they are the same mechanism
+used twice: **a call waiting on a computation records that computation's id
+in its status, is resolved by that computation's delivery, recognises the
+delivery by the id, and is never re-fired.** `Escalated(id)` waits on an
+`Approval` (the approval kind); `Deferred(id)` waits on a `ToolResult` (the
+tool kind). Same shape, different payload, different next step. The dispatch
+index existed to remember both of these outside the phase; the phase now
+remembers them itself, and remembers them the same way.
 
 `AwaitingTools` keeps its name. Its `pending` set and `gathered` list merge
 into one map whose values say, per call, where that call is. Nothing else in
@@ -155,11 +163,12 @@ or from Continuum later — and the fold of an `Approved` answer is what emits
 fact between the two, whoever spoke it:
 
 ```
-Pending ──ApprovalAnswered(Approved)──────────► Running ──ToolFinished──► Finished
-Pending ──ApprovalAnswered(Denied(r))──────────────────────────────────► Finished(failed r)
+Pending ──ApprovalAnswered(Approved)──────────► Running ──ToolFinished(∅)──► Finished
+Pending ──ApprovalAnswered(Denied(r))──────────────────────────────────────► Finished(failed r)
 Pending ──Escalated(id)──► Escalated(id)
-Escalated(id) ──ApprovalAnswered(id, Approved)──► Running ──────► Finished
-Escalated(id) ──ApprovalAnswered(id, Denied(r))─────────────────► Finished(failed r)
+Escalated(id) ──ApprovalAnswered(id, Approved)──► Running ──────────────────► Finished
+Escalated(id) ──ApprovalAnswered(id, Denied(r))─────────────────────────────► Finished(failed r)
+Running ──Deferred(id)──► Deferred(id) ──ToolFinished(id, outcome)──────────► Finished
 ```
 
 An immediate answer costs one fold more than today — the policy says
@@ -167,17 +176,18 @@ An immediate answer costs one fold more than today — the policy says
 call, in exchange for every call's lifecycle being recorded and identical.
 
 **`Escalated` is one word at three levels, meaning the same thing at each.**
-`PolicyOutcome.Escalated(dossier)` is the policy's act — "I cannot decide;
+`ApprovalOutcome.Escalated(dossier)` is an approver's act — "I cannot decide;
 here is the file." `AgentEvent.Escalated(call, id)` is the fact that folds —
 "this call was parked with the approver under this id." `CallStatus.Escalated
 (id)` is the call's state — "out of our hands until an answer comes back."
 `Deferred` already plays this role across `Awaited` and `ToolExecution`; this
 is the same house style. A call whose escalation is answered on the spot — a
 console's `approve? [y/N]`, a test approver, an automated service — was
-escalated as an act but is never *in* the escalated state: the approver's
-`Ready(a)` folds as `ApprovalAnswered(∅, a)` inside the same `SeekApproval`
-effect and the call goes `Pending → Running` directly. Only an approver that
-returns `Deferred` puts a call into `Escalated(id)`. The reducer cannot tell
+escalated as an act but is never *in* the escalated state: the next approver's
+`Answered(a)` folds as `ApprovalAnswered(∅, a)` inside the same `SeekApproval`
+effect and the call goes `Pending → Running` directly. Only a chain that
+ends escalated — nobody in-process could answer — puts a call into
+`Escalated(id)`. The reducer cannot tell
 a policy's answer from a synchronous approver's, and must not: which approver
 is wired is harness configuration, not a lifecycle branch.
 
@@ -199,7 +209,8 @@ context renderer does not show it.
 
 ## 3. Events and effects
 
-Two events join the grammar; one effect is split into two; nothing leaves:
+Three events join the grammar and one gains an id; one effect is split into
+two; nothing leaves:
 
 ```java
 sealed interface AgentEvent {
@@ -207,7 +218,8 @@ sealed interface AgentEvent {
   record ModelFinished(...)                                       // unchanged
   record Escalated(ToolCall call, String approvalId)      // the ask was parked on Continuum
   record ApprovalAnswered(ToolCall call, Optional<String> approvalId, Approval approval)
-  record ToolFinished(ToolCall call, ToolOutcome outcome)         // unchanged
+  record Deferred(ToolCall call, String toolId)                   // the tool parked its result on Continuum
+  record ToolFinished(ToolCall call, Optional<String> toolId, ToolOutcome outcome) // id present when delivered
 }
 
 sealed interface Effect {
@@ -234,7 +246,10 @@ with exactly one kind of result.
 | `Escalated(id)` | `ApprovalAnswered(id, Approved)` | `Running` | `RunTool(call)` |
 | `Escalated(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
 | `Escalated(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
-| `Running` | `ToolFinished` | `Finished` | `CallModel` if all finished |
+| `Running` | `ToolFinished(∅, o)` | `Finished` | `CallModel` if all finished |
+| `Running` | `Deferred(id)` | `Deferred(id)` | — |
+| `Deferred(id)` | `ToolFinished(id, o)` | `Finished` | `CallModel` if all finished |
+| `Deferred(id)` | `ToolFinished(other, _)` | unchanged | — (stale: an orphan computation's result, ignored) |
 | `Finished` | anything for this call | unchanged | — (stale, ignored) |
 | any | event for an unknown call | unchanged | — (stale, ignored) |
 
@@ -249,8 +264,10 @@ stale — a duplicate delivery of an answer already folded — and ignored.
 from the fold that emitted `SeekApproval` until an `ApprovalAnswered` or
 `Escalated` folds. The staleness re-fire (§6.1) re-emits
 `SeekApproval` for every `Pending` call and `RunTool` for every `Running`
-call, and leaves `Escalated` alone — Continuum holds those and will
-deliver.
+call, and leaves `Escalated` and `Deferred` alone — Continuum holds those
+and will deliver. A tool that deferred yesterday is not run again today
+because the phase says it deferred; that is the absorption the dispatch
+index used to provide, now a status.
 
 ## 4. The executor — two doors, neither with a conditional inside
 
@@ -270,18 +287,23 @@ the dispatching stack. Inside:
 2. Convert the input; assemble the `AuthzContext` (rung 0 statics skip this).
    A conversion or assembly failure is `ApprovalAnswered(∅, Denied(reason))` —
    a call that cannot be understood cannot be approved.
-3. `grant.policy().evaluate(context)`:
-   - `Answered(a)` → deliver `ApprovalAnswered(∅, a)`.
-   - `Escalated(dossier)` → `approver.approve(dossier)`:
-     - `Ready(a)` → deliver `ApprovalAnswered(∅, a)`.
-     - `Deferred` → the approver has created an approval computation whose
-       result type is `Approval`, with the call's routing as its
-       continuation; deliver `Escalated(call, id)`. Nothing is
-       narrated to the model.
+3. Build the dossier — `ApprovalRequest(call, coordinates, context)` — and
+   walk the chain, the grant's policy first, then the harness's configured
+   approvers in order. Each `approve(dossier)`:
+   - `Answered(a)` → stop; deliver `ApprovalAnswered(∅, a)`.
+   - `Escalated(dossier')` → continue with the annotated dossier.
+4. The chain is exhausted and the last outcome was `Escalated(dossier')`:
+   park it — create an approval computation whose result type is `Approval`,
+   with the call's routing as its continuation — and deliver
+   `Escalated(call, id)`. Nothing is narrated to the model; the notifier is
+   told only after that fold commits (below).
 
 This door never runs a tool. `RunTool(call)` reaches `runTool`: find the
-grant, convert, run, deliver `ToolFinished`. This door never consults a
-policy or an approver — the answer is already a fact in the phase. Today's
+grant, convert, run. `Awaited.Ready(result)` → deliver `ToolFinished(∅,
+outcome)`. `Awaited.Deferred` → the tool has parked its result on the tool
+kind's computation, whose id the executor holds; deliver `Deferred(call, id)`.
+This door never consults a policy or an approver — the answer is already a
+fact in the phase. Today's
 `executeTool` (evaluate-then-maybe-run) and `executeGrantedToolNow` (run,
 synchronously, from the delivery) are each replaced by the half they were
 doing.
@@ -291,7 +313,7 @@ defers has created a computation somebody could answer at once — a test
 approver, a webhook, a human already looking at a queue. If that answer were
 delivered before `Escalated` had folded, the phase would not yet name
 the id, §3's stale row would discard the answer, and the call would then wait
-forever on a question already answered. So the `Deferred` arm delivers
+forever on a question already answered. So the park step delivers
 `Escalated` through the sink and **waits for that fold to commit
 before the dossier reaches the `approvalNotifier`** — the harness's
 one-recipient, point-to-point hand-off. Today the notifier fires inside
@@ -303,10 +325,14 @@ committed. `Escalated` is therefore the one event whose fold is
 awaited by its producer; every other event is fire-and-forget through the
 sink.
 
-The tool kind's own deferral — a tool returning `Awaited.Deferred` — is
-untouched. A deferred tool's `ToolFinished` arrives through the tool
-computation's delivery as it does today; the only change is that the fold
-that records it looks the call up in `calls` instead of `pending`.
+The same ordering rule binds `Deferred`: the tool computation exists the
+moment the tool returns `Awaited.Deferred`, and its result could in principle
+arrive before the `Deferred` fact folds. The worker treats a `ToolFinished(id)`
+against a `Running` call the way it treats an early approval — released, not
+acknowledged — and the fold commits before any completion door is handed the
+id. A deferred tool's result then arrives through the tool computation's
+delivery as it does today, folding `ToolFinished(id, outcome)` against
+`Deferred(id)`.
 
 ## 5. Delivery — the lease pays for a message
 
@@ -323,7 +349,8 @@ The tool kind's consumer is unchanged: it folds a `ToolFinished`.
 
 A crash anywhere is answered by the existing re-fire arm (§6.1): a quiet
 `AwaitingTools` re-emits `SeekApproval` for each `Pending` call and `RunTool`
-for each `Running` call. That is at-least-once with a re-run
+for each `Running` call, and nothing for `Escalated` or `Deferred`. That is
+at-least-once with a re-run
 on real crash, which is what the lease used to buy and what "run inside the
 lease" confused with slowness. A tool that ran before the crash may run again
 after it and makes itself idempotent like every other tool (scope design §6).
@@ -349,7 +376,7 @@ it and was ruled out.
 ## 7. What retires
 
 - `PolicyDecision`, `Adjudication`, `Decision` — replaced by `Approval` and
-  `PolicyOutcome`.
+  `ApprovalOutcome`.
 - `DispatchIndex`, `CallAddress.indexKey()`, `ComputationDeferredToolCallPolicy
   .pendingComputation` absorption, and `DeliveryWorker.isCurrentDispatch` — the
   phase names its computations.
@@ -393,7 +420,9 @@ it and was ruled out.
   test parks two slow approvals and asserts a third, unrelated deferred tool's
   result is folded while they run.
 - **Re-fire per status.** A `Pending` call is re-dispatched, a `Running` call
-  is re-run, an `Escalated` call is left alone.
+  is re-run, an `Escalated` or `Deferred` call is left alone — the deferred
+  case is the absorption test `AbsorptionTest` used to be, re-homed on the
+  phase.
 - **Stale answers.** An `ApprovalAnswered` naming an id the phase does not
   hold is ignored, with the scope unchanged.
 - **Early answers.** An approver whose computation is answered *immediately*
@@ -418,14 +447,16 @@ Unreleased section records the vocabulary collapse as a breaking change.
 1. The lease pays for delivering a message, never for doing the work.
 2. Every call is approved; the policy is the first approver, answering now or
    handing over a dossier.
-3. One answer type, `Approval {Approved, Denied}`; `PolicyOutcome {Answered,
-   Escalated(ApprovalRequest)}`; `Approver` returns `Awaited<Approval>`.
+3. One answer type, `Approval {Approved, Denied}`, and one notion of
+   deciding: `Approver.approve(request) → ApprovalOutcome {Answered,
+   Escalated(ApprovalRequest)}`. A policy is an approver; approvers chain;
+   the harness parks what the chain cannot answer.
 4. Each call has its own lifecycle, folded into the state — per call, not as
    a set.
 
 ## 12. Needs sign-off
 
-1. **`CallStatus`** and its four arms inside `AwaitingTools` — the phase
+1. **`CallStatus`** and its five arms inside `AwaitingTools` — the phase
    grammar is the most spec-bound type in the tree.
 2. **`Escalated` / `ApprovalAnswered`** as event arms, and
    **`SeekApproval` / `RunTool`** replacing `ExecuteTool` — the event grammar
@@ -436,6 +467,10 @@ Unreleased section records the vocabulary collapse as a breaking change.
    both ruled here by me from the conversation's direction; both reversible.
 5. **`UsagePolicy.escalate()`** replacing `requireApproval()` — a public
    static's rename, so the policy's act and its outcome share one word.
+6. **`UsagePolicy implements Approver`**, and **`HarnessConfig.approvers(...)`**
+   as the chain the harness walks after the grant's policy — one seam
+   replacing today's single `Approver`, and the first place a chain is
+   configurable.
 
 ## 13. Rejected
 
@@ -453,7 +488,8 @@ Unreleased section records the vocabulary collapse as a breaking change.
 
 ## 14. Deliberately not done
 
-- No change to the tool kind's deferral path or to `CompletionDesk`.
+- No change to how a tool *defers* (`Awaited.Deferred`) or completes
+  (`CompletionDesk`); only to how the scope remembers that it did.
 - No change to what the model sees.
 - No metrics or spans — this spec gives them a place to attach; the o11y
   generation attaches them.
