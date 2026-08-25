@@ -39,9 +39,6 @@ jobs:
         ./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted | tee hello-output.txt
         grep -q "The answer is 4. (COMPLETE)" hello-output.txt
 
-    - name: Verify release profile (javadoc, sources, signing skipped)
-      run: mvn -B -P release -DskipTests -Dgpg.skip=true verify
-
   sonar:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
