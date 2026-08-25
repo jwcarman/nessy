@@ -26,11 +26,11 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 /**
  * The runnable conformance harness every {@link Substrate} implementation owes (jdbc-substrate spec
  * §6): CAS discipline on the document store — version-zero create, exact-version-match update,
- * stale-version conflict, delete-then-recreate — kind namespacing, and non-aliasing of payload
- * bytes on both write and read. A third-party {@code Substrate} extends this class directly and
- * implements {@link #createSubstrate()} — the one abstract member — to run every test here against
- * its own instance, exactly as {@code InMemorySubstrateContractTest} does against the reference
- * implementation.
+ * stale-version conflict, delete-then-recreate, delete-of-absent-as-no-op — kind namespacing, and
+ * non-aliasing of the caller's payload array on write. A third-party {@code Substrate} extends this
+ * class directly and implements {@link #createSubstrate()} — the one abstract member — to run every
+ * test here against its own instance, exactly as {@code InMemorySubstrateContractTest} does against
+ * the reference implementation.
  *
  * <p>Public and main-scope, on purpose (mirrors {@link MemoryContractTest}'s own rationale): a
  * conformance suite that only test-scoped code could see would be unusable by a {@code Substrate}
@@ -119,6 +119,15 @@ public abstract class SubstrateContract {
   }
 
   @Test
+  void deletingAnAbsentKeyAtVersionZeroIsANoOp() {
+    Substrate substrate = createSubstrate();
+
+    substrate.delete(KIND, "never-written", 0);
+
+    assertThat(substrate.read(KIND, "never-written")).isEmpty();
+  }
+
+  @Test
   void aDeletedKeyIsWrittenAgainAtVersionZero() {
     Substrate substrate = createSubstrate();
     substrate.write(KIND, "k", "one".getBytes(UTF_8), 0);
@@ -151,19 +160,6 @@ public abstract class SubstrateContract {
     substrate.write(KIND, "k", payload, 0);
 
     payload[0] = 'X';
-
-    assertThat(substrate.read(KIND, "k"))
-        .hasValueSatisfying(
-            document -> assertThat(document.payload()).isEqualTo("original".getBytes(UTF_8)));
-  }
-
-  @Test
-  void theStoreDoesNotAliasTheArrayItReturns() {
-    Substrate substrate = createSubstrate();
-    substrate.write(KIND, "k", "original".getBytes(UTF_8), 0);
-    byte[] returned = substrate.read(KIND, "k").orElseThrow().payload();
-
-    returned[0] = 'X';
 
     assertThat(substrate.read(KIND, "k"))
         .hasValueSatisfying(

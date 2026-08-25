@@ -517,7 +517,7 @@ The four document methods:
 - `read` — `SELECT payload, version, updated_at FROM nessy_document WHERE kind = ? AND key = ?`, mapping to `new Substrate.Document(rs.getBytes("payload"), rs.getLong("version"), rs.getTimestamp("updated_at").toInstant())`.
 - `write` at `expectedVersion == 0` — `INSERT INTO nessy_document (kind, key, payload, version, updated_at) VALUES (?, ?, ?, 1, ?)`. Catch `SQLException` whose `getSQLState()` is `"23505"` (unique violation) and throw `ConflictException`. **Do not** match on the message text.
 - `write` at any other version — `UPDATE nessy_document SET payload = ?, version = version + 1, updated_at = ? WHERE kind = ? AND key = ? AND version = ?`; `executeUpdate()` returning 0 is the conflict.
-- `delete` — `DELETE FROM nessy_document WHERE kind = ? AND key = ? AND version = ?`; 0 affected rows is the conflict.
+- `delete` — `DELETE FROM nessy_document WHERE kind = ? AND key = ? AND version = ?`; 0 affected rows is **not** automatically the conflict. `Substrate#delete`'s own contract makes deleting a genuinely absent document at `expectedVersion == 0` an idempotent no-op success, so on 0 affected rows check whether the row exists (within the same transaction): absent and `expectedVersion == 0` is success; a row present at a different version, or absent at any other `expectedVersion`, is the conflict.
 - `keys` — `SELECT key FROM nessy_document WHERE kind = ? ORDER BY key LIMIT ?`.
 
 Timestamps come from the injected `Clock`, never SQL `now()` — `InMemorySubstrate` stamps in the JVM and the two must agree. Default the constructor to `Clock.systemUTC()`.

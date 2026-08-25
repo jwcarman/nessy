@@ -87,7 +87,7 @@ lookup or a prefix scan of one, which the PK's own index serves.
 | `read(kind, key)` | `SELECT payload, version, updated_at … WHERE kind = ? AND key = ?` |
 | `write(…, expectedVersion = 0)` | `INSERT`; a primary-key violation **is** the conflict |
 | `write(…, expectedVersion = v)` | `UPDATE … SET payload = ?, version = version + 1, updated_at = ? WHERE kind = ? AND key = ? AND version = ?`; **zero affected rows is the conflict** |
-| `delete(kind, key, v)` | `DELETE … WHERE kind = ? AND key = ? AND version = ?`; zero affected rows is the conflict |
+| `delete(kind, key, v)` | `DELETE … WHERE kind = ? AND key = ? AND version = ?`; zero affected rows does **not** by itself mean conflict — `Substrate#delete`'s own contract makes deleting a genuinely absent document at `expectedVersion == 0` an idempotent no-op success, so on zero affected rows check existence within the same transaction: absent **and** `expectedVersion == 0` is success; present-at-another-version (or absent at any other `expectedVersion`) is the conflict |
 | `keys(kind, limit)` | `SELECT key … WHERE kind = ? ORDER BY key LIMIT ?` — ascending, per storage.md |
 | `append(…, expectedSeq)` | `INSERT`; a primary-key violation on `(kind, key, seq)` is the conflict |
 | `entries(kind, key, fromSeq)` | `SELECT … WHERE kind = ? AND key = ? AND seq >= ? ORDER BY seq` — inclusive, ascending |
