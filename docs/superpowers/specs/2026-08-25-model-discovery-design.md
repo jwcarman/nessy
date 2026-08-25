@@ -371,20 +371,16 @@ environment — but "env" names the configuration source, and the module's job
 is now discovery. Rejected with James on 2026-08-25; `nessy-model-discovery`
 chosen.
 
-## 11. Needs sign-off
+## 11. Sign-offs (all granted 2026-08-25)
 
-1. **`ModelProviderBootstrap`** — agreed in conversation 2026-08-25: name,
-   the four members, and the intent-signal rule. Recorded here so the yes is
-   on the record.
-2. **`ModelDiscovery`** as the public class name replacing
-   `EnvModelProviders`. Not yet discussed. Alternatives:
-   `DiscoveredModels`, or keeping `EnvModelProviders` under the new package
-   (accurate, but carries the old premise in its name).
-3. **`hello`'s dependency shape**: discovery plus Anthropic only, as the
-   template new users copy, versus all three keyed providers so it runs with
-   whatever key the reader has. This spec chooses the minimal shape because
-   `hello`'s compile tree is the measurement that started this, and a
-   template that ships 99 jars teaches the old premise.
+1. **`ModelProviderBootstrap`** — name, the four members, and the
+   intent-signal rule.
+2. **`ModelDiscovery`** as the public class replacing `EnvModelProviders`.
+3. **`hello` depends on discovery plus Anthropic only** — the minimal
+   template. `hello`'s compile tree is the measurement that started this,
+   and a template that ships 99 jars teaches the old premise. `approvals`
+   keeps all three keyed providers to demonstrate the switch.
+4. **`nessy-model-discovery`** as the module name.
 
 ## 12. Deliberately not done
 
