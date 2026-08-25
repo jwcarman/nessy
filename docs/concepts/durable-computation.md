@@ -75,7 +75,8 @@ computation directly:
 ```java
 sealed interface CallStatus {
   record Pending() implements CallStatus {}                             // approval sought, no answer yet
-  record AwaitingApproval(ComputationId approval) implements CallStatus {} // Continuum holds the ask
+  record AwaitingApproval(ComputationId approval,
+                           ApprovalRequest request) implements CallStatus {} // Continuum holds the ask
   record Running() implements CallStatus {}                             // approved; the tool is executing
   record AwaitingResult(ComputationId tool) implements CallStatus {}    // Continuum holds the result
   record Finished(ToolResultBlock result) implements CallStatus {}      // an outcome, success or failure
@@ -85,12 +86,15 @@ sealed interface CallStatus {
 **The phase is the map.** A call waiting on a computation records that
 computation's id in its own status, is resolved by that computation's
 delivery, recognizes the delivery by the id, and is never re-fired while it
-waits. A delivery that names an id the call's current status doesn't hold —
-an orphan, a duplicate, an answer against a call already `Finished` — is
-dropped with a `WARN` log naming the scope, the call, the computation, and
-the status the phase actually found; nothing is released for redelivery.
-That WARN, not a silent absorb, is what a mismatched delivery looks like
-today.
+waits. `AwaitingApproval` carries the frozen `ApprovalRequest` itself,
+alongside the id — that is how `harness.approvals().request(agentId,
+callId)` can hand back the exact document a human or an approver saw, with
+no separate read door on Continuum. A delivery that names an id the call's
+current status doesn't hold — an orphan, a duplicate, an answer against a
+call already `Finished` — is dropped with a `WARN` log naming the scope,
+the call, the computation, and the status the phase actually found;
+nothing is released for redelivery. That WARN, not a silent absorb, is
+what a mismatched delivery looks like today.
 
 A quiet `AwaitingTools` re-fires on staleness the same way any other phase
 does: every `Pending` call is asked again, every `Running` call is run
@@ -116,11 +120,16 @@ sealed interface Approval {
 
 A `Denied` approval and an expired or failed computation all fold as an
 in-band failure the model reads and reacts to. A denial that finishes a
-call is committed to the transcript like any other outcome — the fold
-narrates both `ToolCallDecided` and `ToolCallCompleted`, so a human
-reviewing the turn later sees the refusal, not a gap. A thrown Java
-exception stays reserved for the computation *infrastructure* breaking, a
-different problem than the work coming back negative.
+call is committed to the transcript like any other outcome, on both paths
+a denial can travel: an approver that answers on the spot narrates
+`ToolCallDecided` and `ToolCallCompleted` through the turn's live
+`TurnObserver`, same as an in-process tool failure; a denial that arrives
+through the desk, folded by `DeliveryWorker` on no thread anyone is
+listening from, is written to `Memory` the same way but narrates no turn
+event — a known gap, not yet closed. Either way the transcript holds the
+refusal, so a human reading it back later sees it. A thrown Java exception
+stays reserved for the computation *infrastructure* breaking, a different
+problem than the work coming back negative.
 
 ## Audit: what the core owes, and what it does not
 

@@ -741,33 +741,41 @@ sequence of renames and interim shapes that produced it.
   (breaking).** Three sealed types that each said "yes/no" a different
   way — `PolicyDecision {Allow, Deny, RequireApproval}`, `Adjudication
   {Granted, Refused, Suspended}`, `Decision {Allow, Deny}` — collapse into
-  one: `Approval {Approved(reference), Denied(reason, reference)}`. A grant
-  now takes an `Approver` (`ToolGrant.grant(tool, approver, ...)`) instead
-  of a `UsagePolicy`; `Approvers.allow()`/`.deny(reason)`/`.defer()` are the
-  three built-ins, `Approvers.rules(...)` is a ladder (first answer wins,
-  `Rule.Verdict.Defer` parks), and `Approvers.allOf(...)` is a gate (every
-  member must approve). `UsagePolicy`, `RiskPolicies`, and `IntentPolicies`
-  retire in favor of `Approver`/`Approvers`/`Rule`/`RiskRules`/`IntentRules`.
-  `AuthzContext` retires; its typed-fact mechanism survives as `Facts`, and
-  its role — the enriched question — is `ApprovalRequest`, a JSON document
-  by contract: every field renders through the harness's pinned mapper,
-  once, at enrichment, and the rendered document is the record of what was
-  decided on. `Approver.approve(ApprovalContext) -> ApprovalOutcome` is the
-  facade (one method, a world behind it, like `Memory`); `ApprovalContext
-  .defer()` does the plumbing — it parks the question, folds
-  `ApprovalDeferred` into the scope, waits for that fold to commit, and only
-  then hands back the id, so nobody can be told about a question the scope
-  has not yet recorded.
+  one: `Approval {Approved(reference), Denied(reason, reference)}`;
+  `DecisionCodec` retires with them. A grant now takes an `Approver`
+  (`ToolGrant.grant(tool, ..., approver)` — the approver is always last)
+  instead of a `UsagePolicy`; `Approvers.allow()`/`.deny(reason)`/`.defer()`
+  are the three built-ins, `Approvers.rules(...)` is a ladder (first answer
+  wins, `Rule.Verdict.Defer` parks), and `Approvers.allOf(...)` is a gate
+  (every member must approve). `UsagePolicy`, `RiskPolicies`, and
+  `IntentPolicies` retire in favor of
+  `Approver`/`Approvers`/`Rule`/`RiskRules`/`IntentRules`. `AuthzContext`
+  retires; its typed-fact mechanism survives as `Facts`, and its role — the
+  enriched question — is `ApprovalRequest`, a JSON document by contract:
+  every field renders through the harness's pinned mapper, once, at
+  enrichment, and the rendered document is the record of what was decided
+  on. The two-step `grant.assemble` then `grant.decide` retires with it —
+  the harness builds the request once, and the approver reads it.
+  `Approver.approve(ApprovalContext) -> ApprovalOutcome` is the facade (one
+  method, a world behind it, like `Memory`); `ApprovalContext.defer()` does
+  the plumbing — it parks the question, folds `ApprovalDeferred` into the
+  scope, waits for that fold to commit, and only then hands back the id, so
+  nobody can be told about a question the scope has not yet recorded.
 - **A call's lifecycle is in the phase, not a side index.** `AwaitingTools`
   replaces its `pending` set and `gathered` list with one `calls` map,
-  callId to `CallStatus` — `Pending`, `AwaitingApproval(ComputationId)`,
-  `Running`, `AwaitingResult(ComputationId)`, `Finished(ToolResultBlock)` —
-  so the persisted `awaiting-tools` phase's own wire format changes: a call
-  waiting on a parked computation now names that computation's id in its
-  own status, in the scope's own state document, rather than in a separate
-  substrate kind. `DispatchIndex`, `CallAddress.indexKey()`, and the
-  gate's index-read absorption retire outright — nothing outside the phase
-  remembers "this call is already in flight" anymore. Three events join the
+  callId to `CallStatus` — `Pending`, `AwaitingApproval(ComputationId
+  approval, ApprovalRequest request)`, `Running`, `AwaitingResult
+  (ComputationId)`, `Finished(ToolResultBlock)` — so the persisted
+  `awaiting-tools` phase's own wire format changes: a call waiting on a
+  parked computation now names that computation's id in its own status, in
+  the scope's own state document, rather than in a separate substrate kind.
+  The frozen `ApprovalRequest` itself lives in `AwaitingApproval` too — that
+  is how `ApprovalDesk.request(agentId, callId)` finds the same document a
+  human or an approver saw, with no separate read door on Continuum.
+  `DispatchIndex`, `CallAddress.indexKey()`, the gate's index-read
+  absorption, and `DeliveryWorker.isCurrentDispatch` retire outright —
+  nothing outside the phase remembers "this call is already in flight"
+  anymore. Three events join the
   grammar (`ApprovalDeferred`, `ApprovalAnswered`, `ToolDeferred`) and
   `ToolFinished` gains an `Optional<ComputationId>`; `ExecuteTool` splits
   into two effects, `SeekApproval` and `RunTool`, each producing exactly one
@@ -795,9 +803,13 @@ sequence of renames and interim shapes that produced it.
   retires — releasing the delivery for a later retry was never the right
   response once the race it was released for no longer exists. A denial
   that finishes a call is committed to the transcript exactly like any
-  other outcome: the fold narrates both `ToolCallDecided` and
-  `ToolCallCompleted`, so a human reviewing the turn later sees the
-  refusal, not a gap.
+  other outcome, on both paths: the in-band path (an approver that answers
+  on the spot, inside `seekApproval`) additionally narrates both
+  `ToolCallDecided` and `ToolCallCompleted` through the turn's
+  `TurnObserver`; a desk-delivered answer — folded by `DeliveryWorker`,
+  days later, on no thread anyone is listening from — narrates neither.
+  `Memory` records it either way; live turn narration of a desk-delivered
+  denial is a known gap, not yet closed.
 - **The desk gains doors, and a principal.** `harness.approvals()` now
   answers `approve`/`deny` two ways — by the computation's own opaque id,
   for whoever was handed one, and by `(agentId, callId)`, for whoever has
