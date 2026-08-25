@@ -1,0 +1,413 @@
+# Every call is approved — the approval lifecycle folds into the scope
+
+**Date:** 2026-08-25
+**Status:** draft for review
+**Amends:** `2026-08-18-agent-as-scope-design.md` §2.2 (the phase grammar) and
+§4.3 ("parks are not a state"); `2026-08-20-action-and-tool-vocabulary.md`
+(the decision vocabulary); `2026-08-24-continuum-adoption-design.md` §5 (the
+dispatch index), §11.2, §11.3 and §11.6 (the lease risks).
+
+Every tool call is approved before it runs. The policy is the first approver
+and answers immediately — yes, no, or "not mine to say," handing over a
+dossier for whoever decides. An approval is a question with exactly two
+answers, and the scope records, for each call, where that question stands.
+That record is the lifecycle: **each tool call has its own, folded into the
+state.** Nothing runs inside a delivery lease; the lease pays for a message.
+
+## 0. The thesis this reverses
+
+The agent-as-scope design ruled (§4.3): *"From a phase's view there is no
+difference between a tool that returns in 200ms and one that returns in three
+days. Both are a pending call that will produce a `ToolFinished`."* Approval
+was deliberately invisible to the reducer: the gate parked a call, a human
+answered, and a `ToolFinished` arrived by the same path as a slow HTTP call.
+The phase never knew anyone hesitated.
+
+That ruling bought a small grammar, and it cost four things that have now all
+come due at once:
+
+1. **The lease.** Because the reducer has no fact to fold when a human says
+   yes, the grant delivery has to *do the work* — run the approved tool on the
+   pump thread, inside Continuum's lease. A tool slower than the lease is
+   re-claimed and run twice (§11.2); two slow tools starve every other pump on
+   the harness (§11.6). James's ruling on 2026-08-25: *the lease pays for
+   delivering a message, never for doing the work.* Under the old thesis that
+   rule cannot be kept, because there is no message to deliver.
+2. **The index.** The reducer's ignorance forced call→computation into a side
+   store, `DispatchIndex`, which can disagree with Continuum. Its orphan path
+   logs `ERROR` and continues; the stale-grant guard exists to reconcile it;
+   and the sharing rule — "two harnesses of one type share both stores or
+   neither" — is a contract nobody can check, because the contradiction lives
+   between two stores the builder cannot see together.
+3. **Observability.** "Awaiting a human" is the one state an operator most
+   wants to see, and it is unrepresentable. `Console`'s own javadoc records the
+   consequence: parking is off-channel, no event is emitted, and a second park
+   in one turn hangs the console unrecoverably. Park dwell time — the metric
+   unique to this system — has nowhere to live.
+4. **Vocabulary.** Three sealed types say "yes/no" three ways: `PolicyDecision
+   {Allow, Deny, RequireApproval}`, `Adjudication {Granted, Refused,
+   Suspended}`, `Decision {Allow, Deny}`. `Allow` means two different things.
+   `Suspended` is not an answer at all — it is the parked state the reducer
+   was not allowed to have.
+
+The new thesis: **there is no difference, from a phase's view, between a
+policy that answers now and a human who answers in three days. Both produce
+one `Approval` for the call.** The difference the phase *does* record is
+whether that answer has arrived — and that record is what makes the lease
+rule keepable, the index unnecessary, the wait observable, and the vocabulary
+one word.
+
+## 1. Vocabulary — three types, one question
+
+**The question** is *may this call run?* **The answer** is:
+
+```java
+public sealed interface Approval {
+  record Approved() implements Approval {}
+  record Denied(String reason) implements Approval {}
+}
+```
+
+One type, wherever the answer travels: spoken by a policy in-process, by a
+human at a console, by a webhook, or delivered by Continuum days later. It
+replaces `Decision` (the Continuum result) and the `Granted`/`Refused` arms of
+`Adjudication` outright.
+
+**The policy** answers, or hands over the case file:
+
+```java
+public sealed interface PolicyOutcome {
+  record Answered(Approval approval) implements PolicyOutcome {}
+  record RequiresApproval(ApprovalRequest request) implements PolicyOutcome {}
+}
+```
+
+`RequiresApproval` carries the **dossier** — `ApprovalRequest`, which already
+exists: the call, the agent coordinates, and the assembled `AuthzContext` with
+the rendered action, risk assessment and every enricher's contribution. Today
+the policy says `RequireApproval()` empty-handed and the gate assembles the
+context in a second step; here the policy that escalates is the one that
+hands over everything a decider needs. `PolicyDecision` retires;
+`UsagePolicy.evaluate(AuthzContext)` returns `PolicyOutcome`. The three
+statics keep their names and meanings: `allow()` answers `Approved`, `deny(r)`
+answers `Denied(r)`, `requireApproval()` escalates with the dossier.
+
+**The approver** takes a dossier and answers — now, or later:
+
+```java
+public interface Approver {
+  Awaited<Approval> approve(ApprovalRequest request);
+}
+```
+
+This is the existing `org.jwcarman.nessy.spi.approval.Approver` with its
+signature changed — `adjudicate(request) → Adjudication` becomes
+`approve(request) → Awaited<Approval>` — not a second seam beside it.
+`Awaited` is the type tools already return, and it means the same thing here:
+`Ready(approval)` — answered on the spot (the console's `approve? [y/N]`, a
+test approver, an automated risk service); `Deferred` — the answer will arrive
+as the result of an approval computation whose result type is `Approval`. A
+tool computation's result is a `ToolResult`; an approval computation's result
+is an `Approval`; the delivery path, the lease rule and the fold shape are the
+same for both. `Adjudication` retires; its `Suspended(computation)` arm was the
+phase this spec adds, misfiled as a return value.
+
+The policy never sees `Awaited`, Continuum, or a lease. It answers or it
+escalates. How the escalation is asked is the harness's business, and the
+policy stays pure and re-evaluable, as §4.2 of the scope design requires.
+
+## 2. The phase — one arm, richer entries
+
+```java
+public sealed interface Phase {
+  record Idle() implements Phase {}
+  record AwaitingModel() implements Phase {}
+  record AwaitingCalls(
+      Message assistantTurn,
+      Map<String, CallStatus> calls,     // callId → where its lifecycle stands
+      ModelResponseId responseId) implements Phase {}
+}
+
+public sealed interface CallStatus {
+  record Pending() implements CallStatus {}                       // dispatched, not yet evaluated
+  record AwaitingApproval(String approvalId) implements CallStatus {} // escalated; Continuum holds it
+  record Running() implements CallStatus {}                        // approved; the tool is executing
+  record Finished(ToolResultBlock result) implements CallStatus {} // an outcome, success or failure
+}
+```
+
+`AwaitingTools` becomes `AwaitingCalls`. Its `pending` set and `gathered` list
+merge into one map whose values say, per call, where that call is. Nothing
+else in the grammar changes: the scope enters `AwaitingCalls` on
+`ModelFinished` with tool calls, and leaves it — for `AwaitingModel` — when
+every entry is `Finished`.
+
+**Each call walks its own machine:**
+
+```
+Pending ──policy Approved──────────────────► Running ──ToolFinished──► Finished
+Pending ──policy Denied────────────────────────────────────────────────► Finished(failed)
+Pending ──policy RequiresApproval, approver Ready(a)──► (as above, by a)
+Pending ──policy RequiresApproval, approver Deferred──► AwaitingApproval(id)
+AwaitingApproval(id) ──ApprovalAnswered(id, Approved)──► Running ──► Finished
+AwaitingApproval(id) ──ApprovalAnswered(id, Denied)────────────────────► Finished(failed)
+```
+
+**Ruled: per call, not as a set.** The moment one call's approval lands, its
+tool runs. A turn that asked for `read_config` and `restart_prod` together
+does not hold the harmless read for eight hours because the restart needs a
+signature; parallel tool calls mean independent tool calls. The scope is not
+"awaiting approvals" as a phase it must march through — it is awaiting calls,
+and *some of those calls are awaiting approval*. That derived view is what
+the console narrates and the metrics count. An operator who wants "nothing in
+this turn runs until a human has seen all of it" expresses that as a policy
+that escalates the whole turn, not as a reducer rule for everyone.
+
+**Ruled: the model never knows.** `assistantTurn` and the `Finished` results
+are what reach the model on the next `CallModel`; `AwaitingApproval` and its
+dwell are for operators, memory, and metrics. The scope design's stance — the
+model never knew anyone hesitated — is unchanged. The phase records it; the
+context renderer does not show it.
+
+## 3. Events and effects
+
+Two events join the grammar; one effect joins; nothing leaves:
+
+```java
+sealed interface AgentEvent {
+  record Observed(...)                                            // unchanged
+  record ModelFinished(...)                                       // unchanged
+  record ApprovalRequested(ToolCall call, String approvalId)      // the escalation was parked
+  record ApprovalAnswered(ToolCall call, String approvalId, Approval approval)
+  record ToolFinished(ToolCall call, ToolOutcome outcome)         // unchanged
+}
+
+sealed interface Effect {
+  record CallModel()                                              // unchanged
+  record ExecuteTool(ToolCall call)                               // unchanged: evaluate, then run or escalate
+  record RunApprovedTool(ToolCall call)                           // new: past the gate, by an answer already folded
+}
+```
+
+`AwaitingCalls.handle` is the whole reducer change, and it is a matrix:
+
+| status of `call` | event | next status | effects |
+|---|---|---|---|
+| `Pending` | `ApprovalRequested(id)` | `AwaitingApproval(id)` | — |
+| `Pending` | `ToolFinished` | `Finished` | `CallModel` if all finished |
+| `AwaitingApproval(id)` | `ApprovalAnswered(id, Approved)` | `Running` | `RunApprovedTool(call)` |
+| `AwaitingApproval(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
+| `AwaitingApproval(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
+| `Pending` | `ApprovalAnswered(id, _)` | unchanged | — (early: the request has not folded yet; the worker releases, not acks — §4) |
+| `Running` | `ToolFinished` | `Finished` | `CallModel` if all finished |
+| `Finished` | anything for this call | unchanged | — (stale, ignored) |
+| any | event for an unknown call | unchanged | — (stale, ignored) |
+
+The identity check in row five is the whole of the §11.3 stale-grant guard,
+relocated: a grant is honoured iff the phase names its computation. No index,
+no second store, no reconciliation. `Transition.ignore()` for the stale rows
+is the same dedup that already makes at-least-once delivery safe (§2.5).
+
+**`Pending` exists for one reason: recovery.** A call is `Pending` from the
+fold that dispatched `ExecuteTool` until the executor reports back — either a
+`ToolFinished` (the policy answered and the tool ran) or an
+`ApprovalRequested` (the policy escalated and the approver deferred). The
+staleness re-fire (§6.1) re-dispatches `ExecuteTool` for every `Pending` call
+and `RunApprovedTool` for every `Running` call, and leaves `AwaitingApproval`
+alone — Continuum holds those and will deliver.
+
+## 4. The executor — evaluate, then run or escalate
+
+`ExecuteTool(call)` reaches `ToolCallExecutor.executeTool(call, responseId,
+sink)` exactly as today, on the harness executor, never on the dispatching
+stack. Inside:
+
+1. Find the grant. Unknown tool → `ToolFinished(failed)`.
+2. Convert the input; assemble the `AuthzContext` (rung 0 statics skip this).
+3. `grant.policy().evaluate(context)`:
+   - `Answered(Approved)` → run the tool → `ToolFinished`.
+   - `Answered(Denied(r))` → `ToolFinished(failed r)`.
+   - `RequiresApproval(dossier)` → `approver.approve(dossier)`:
+     - `Ready(Approved)` → run → `ToolFinished`.
+     - `Ready(Denied(r))` → `ToolFinished(failed r)`.
+     - `Deferred` → the approver has created an approval computation whose
+       result type is `Approval`, with the call's routing as its
+       continuation; the executor delivers `ApprovalRequested(call, id)` to
+       the sink. Nothing runs, nothing is narrated to the model.
+
+**Ordering: the fact commits before anyone is told.** An approver that
+defers has created a computation somebody could answer at once — a test
+approver, a webhook, a human already looking at a queue. If that answer were
+delivered before `ApprovalRequested` had folded, the phase would not yet name
+the id, §3's stale row would discard the answer, and the call would then wait
+forever on a question already answered. So the `Deferred` arm delivers
+`ApprovalRequested` through the sink and **waits for that fold to commit
+before the dossier reaches the `approvalNotifier`** — the harness's
+one-recipient, point-to-point hand-off. Today the notifier fires inside
+`ComputationApprover.adjudicate`, before any fold; that moves. A delivery
+that still races the fold (the computation existed for a moment before the
+notifier ran) is released by the worker rather than acknowledged, so
+Continuum re-delivers it after the backoff, by which time the fact is
+committed. `ApprovalRequested` is therefore the one event whose fold is
+awaited by its producer; every other event is fire-and-forget through the
+sink.
+
+`RunApprovedTool(call)` reaches a second executor door, `runApproved(call,
+sink)`: find the grant, convert, run, `ToolFinished`. It skips policy and
+approver both — the answer is already a fact in the phase. This is today's
+`executeGrantedToolNow` with its synchrony removed: it is an effect, it runs
+on the executor, and it is dispatched after the fold that admitted it
+committed.
+
+The tool kind's own deferral — a tool returning `Awaited.Deferred` — is
+untouched. A deferred tool's `ToolFinished` arrives through the tool
+computation's delivery as it does today; the only change is that the fold
+that records it looks the call up in `calls` instead of `pending`.
+
+## 5. Delivery — the lease pays for a message
+
+`DeliveryWorker`'s approval consumer becomes: read the delivery's `Approval`
+and routing, fold `ApprovalAnswered(call, id, approval)` into the scope, commit,
+return. If the fold produced `RunApprovedTool`, it is dispatched after the
+commit on the harness executor, the way every effect is dispatched. The lease
+covers one `Substrate.batch`. §11.2 and §11.6 are not mitigated; they are
+unrepresentable — no consumer of either kind ever runs a tool.
+
+The tool kind's consumer is unchanged: it folds a `ToolFinished`.
+
+## 6. Recovery — one arm, per call
+
+A crash anywhere is answered by the existing re-fire arm (§6.1): a quiet
+`AwaitingCalls` re-dispatches `ExecuteTool` for each `Pending` call and
+`RunApprovedTool` for each `Running` call. That is at-least-once with a re-run
+on real crash, which is what the lease used to buy and what "run inside the
+lease" confused with slowness. A tool that ran before the crash may run again
+after it and makes itself idempotent like every other tool (scope design §6).
+
+**Ruled: re-run, not expire.** The alternative — give every approved run a
+computation with a deadline and let a crash expire loudly — was considered
+and rejected as machinery for a case the re-fire arm already covers; it also
+turns a one-day default deadline into a one-day silence for a crashed
+five-second tool.
+
+One window is named rather than closed: a crash *after* the approver created
+the approval computation and *before* `ApprovalRequested` folded leaves the
+call `Pending`, and the re-fire re-evaluates it — the policy escalates again,
+a second computation is created, and a human may be asked twice. Only the
+answer whose id the phase names is honoured (§3, row five); the other is an
+orphan, acknowledged and ignored, exactly the §11.3 resolution today. The
+dossier can carry a "re-asked after recovery" note so a human who sees two
+requests understands why. This is the same window the create-then-index
+ordering has now, and it stays because computation ids are opaque
+(`computation-ids-stay-opaque`): a deterministic address per call would close
+it and was ruled out.
+
+## 7. What retires
+
+- `PolicyDecision`, `Adjudication`, `Decision` — replaced by `Approval` and
+  `PolicyOutcome`.
+- `DispatchIndex`, `CallAddress.indexKey()`, `ComputationDeferredToolCallPolicy
+  .pendingComputation` absorption, and `DeliveryWorker.isCurrentDispatch` — the
+  phase names its computations.
+- `ToolCallExecutor.executeGrantedToolNow` — replaced by `runApproved`.
+- The two-step `grant.assemble` then `grant.decide` — the policy returns the
+  dossier.
+- The sharing rule's Continuum half. Two harnesses sharing a type and a
+  substrate still write one set of scopes, so they must share the Continuum
+  those scopes name — but the failure when they do not is now *loud*: an
+  answer arrives for a computation no phase names and is ignored with a WARN,
+  rather than draining into a scope that reads `Idle`. The rule is documented
+  the same way; its violation stops being silent.
+
+## 8. What this buys, measured
+
+- **Park dwell, per call:** `AwaitingApproval` entered → `ApprovalAnswered`
+  folded. The number the o11y generation most wanted, with a home.
+- **Approval latency, tagged by approver:** ~0 for the policy, seconds for a
+  console, hours for a desk — one metric, not a special case.
+- **A narratable wait.** `TurnEvent` gains nothing; `AgentObserver` sees the
+  phase and can say "awaiting approval of `restart_prod` for 3h12m." The
+  console's second-park hang is gone because the console can *see* the second
+  park.
+- **`nessy-agent` loses a class and a hazard** (`DispatchIndex` and its orphan
+  path) and `nessy-api` loses two types.
+
+## 9. Testing
+
+- The reducer matrix in §3, cell by cell, in `PhaseTest` — every stated row,
+  every stale row, and the all-finished → `CallModel` transition.
+- `HarnessApprovalDemo`, `SharedContinuumTest`, `DurableResumeTest` pass with
+  one change: the phase assertion reads `AwaitingCalls` with the call
+  `AwaitingApproval`, then `Idle`. Their outcome is unchanged; their *middle*
+  is now observable.
+- **A slow approved tool runs once.** An approval-gated `Ready` tool that
+  sleeps past a deliberately tiny approval lease completes exactly once and
+  the turn finishes — the §11.2 test that could not be written before.
+- **Two slow grants do not starve the harness.** With both pool threads busy
+  under the old design, the tool-kind deliver pump could not run; the new
+  test parks two slow approvals and asserts a third, unrelated deferred tool's
+  result is folded while they run.
+- **Re-fire per status.** A `Pending` call is re-dispatched, a `Running` call
+  is re-run, an `AwaitingApproval` call is left alone.
+- **Stale answers.** An `ApprovalAnswered` naming an id the phase does not
+  hold is ignored, with the scope unchanged.
+- **Early answers.** An approver whose computation is answered *immediately*
+  on creation (a test approver that approves in the same breath) still
+  resolves the call: the request folds before the notifier fires, and a
+  delivery that arrives against a `Pending` call is released and re-delivered
+  rather than acknowledged and lost. This is the test that distinguishes
+  "ordered by construction" from "usually fast enough."
+- **The dossier.** A `RequiresApproval` outcome carries the assembled context
+  a `requireApproval()` grant used to build in the gate.
+
+## 10. Documentation
+
+`docs/concepts/durable-computation.md` and `docs/guides/harness.md` are
+rewritten where they describe parks as an address book, the dispatch index,
+and the "one desk answers approvals" wiring; `docs/guides/providers.md`'s
+`ApprovalPlayground` walkthrough gains the narrated wait. The CHANGELOG's
+Unreleased section records the vocabulary collapse as a breaking change.
+
+## 11. Decisions ruled in conversation (2026-08-25)
+
+1. The lease pays for delivering a message, never for doing the work.
+2. Every call is approved; the policy is the first approver, answering now or
+   handing over a dossier.
+3. One answer type, `Approval {Approved, Denied}`; `PolicyOutcome {Answered,
+   RequiresApproval(ApprovalRequest)}`; `Approver` returns `Awaited<Approval>`.
+4. Each call has its own lifecycle, folded into the state — per call, not as
+   a set.
+
+## 12. Needs sign-off
+
+1. **`CallStatus`** and its four arms, and **`AwaitingCalls`** replacing
+   `AwaitingTools` — the phase grammar is the most spec-bound type in the tree.
+2. **`ApprovalRequested` / `ApprovalAnswered`** as event arms, and
+   **`RunApprovedTool`** as an effect arm — the event grammar was called a
+   "designed ceiling" in §2.4; this raises it by two.
+3. **`ToolCallExecutor.runApproved(call, sink)`** replacing
+   `executeGrantedToolNow`.
+4. **Model visibility stays off** (§2) and **crash means re-run** (§6) —
+   both ruled here by me from the conversation's direction; both reversible.
+
+## 13. Rejected
+
+- **A distinct `AwaitingApprovals` phase the scope marches through.** Holds
+  allowed calls hostage to their escalated siblings; adds a second arm and a
+  second set of transitions for a property that is better derived (§2).
+- **Approved runs as tool computations with deadlines** (the earlier
+  proposal). Correct but heavier: a completion door on the policy SPI, a
+  computation per approved call, and a crash that goes quiet for a day. The
+  re-fire arm already does the job (§6).
+- **Bounding the inline run with a stopwatch.** Still does the work inside
+  the lease; violates decision 1.
+- **Deterministic approval addresses** to close the re-ask window (§6).
+  Ruled out earlier: computation ids stay opaque.
+
+## 14. Deliberately not done
+
+- No change to the tool kind's deferral path or to `CompletionDesk`.
+- No change to what the model sees.
+- No metrics or spans — this spec gives them a place to attach; the o11y
+  generation attaches them.
+- `nessy-intent` and `nessy-tool-mcp` adapt to the vocabulary rename only.
