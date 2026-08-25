@@ -135,7 +135,7 @@ public sealed interface Phase {
 
 public sealed interface CallStatus {
   record Pending() implements CallStatus {}                       // approval sought, no answer yet
-  record AwaitingApproval(String approvalId) implements CallStatus {} // asked and parked; Continuum holds it
+  record Escalated(String approvalId) implements CallStatus {} // asked and parked; Continuum holds it
   record Running() implements CallStatus {}                        // approved; the tool is executing
   record Finished(ToolResultBlock result) implements CallStatus {} // an outcome, success or failure
 }
@@ -157,14 +157,29 @@ fact between the two, whoever spoke it:
 ```
 Pending ──ApprovalAnswered(Approved)──────────► Running ──ToolFinished──► Finished
 Pending ──ApprovalAnswered(Denied(r))──────────────────────────────────► Finished(failed r)
-Pending ──ApprovalRequested(id)──► AwaitingApproval(id)
-AwaitingApproval(id) ──ApprovalAnswered(id, Approved)──► Running ──────► Finished
-AwaitingApproval(id) ──ApprovalAnswered(id, Denied(r))─────────────────► Finished(failed r)
+Pending ──Escalated(id)──► Escalated(id)
+Escalated(id) ──ApprovalAnswered(id, Approved)──► Running ──────► Finished
+Escalated(id) ──ApprovalAnswered(id, Denied(r))─────────────────► Finished(failed r)
 ```
 
 An immediate answer costs one fold more than today — the policy says
 `Approved`, that commits, then the tool runs — one `Substrate.batch` per
 call, in exchange for every call's lifecycle being recorded and identical.
+
+**`Escalated` is one word at three levels, meaning the same thing at each.**
+`PolicyOutcome.Escalated(dossier)` is the policy's act — "I cannot decide;
+here is the file." `AgentEvent.Escalated(call, id)` is the fact that folds —
+"this call was parked with the approver under this id." `CallStatus.Escalated
+(id)` is the call's state — "out of our hands until an answer comes back."
+`Deferred` already plays this role across `Awaited` and `ToolExecution`; this
+is the same house style. A call whose escalation is answered on the spot — a
+console's `approve? [y/N]`, a test approver, an automated service — was
+escalated as an act but is never *in* the escalated state: the approver's
+`Ready(a)` folds as `ApprovalAnswered(∅, a)` inside the same `SeekApproval`
+effect and the call goes `Pending → Running` directly. Only an approver that
+returns `Deferred` puts a call into `Escalated(id)`. The reducer cannot tell
+a policy's answer from a synchronous approver's, and must not: which approver
+is wired is harness configuration, not a lifecycle branch.
 
 **Ruled: per call, not as a set.** The moment one call's approval lands, its
 tool runs. A turn that asked for `read_config` and `restart_prod` together
@@ -177,7 +192,7 @@ this turn runs until a human has seen all of it" expresses that as a policy
 that escalates the whole turn, not as a reducer rule for everyone.
 
 **Ruled: the model never knows.** `assistantTurn` and the `Finished` results
-are what reach the model on the next `CallModel`; `AwaitingApproval` and its
+are what reach the model on the next `CallModel`; `Escalated` and its
 dwell are for operators, memory, and metrics. The scope design's stance — the
 model never knew anyone hesitated — is unchanged. The phase records it; the
 context renderer does not show it.
@@ -190,7 +205,7 @@ Two events join the grammar; one effect is split into two; nothing leaves:
 sealed interface AgentEvent {
   record Observed(...)                                            // unchanged
   record ModelFinished(...)                                       // unchanged
-  record ApprovalRequested(ToolCall call, String approvalId)      // the ask was parked on Continuum
+  record Escalated(ToolCall call, String approvalId)      // the ask was parked on Continuum
   record ApprovalAnswered(ToolCall call, Optional<String> approvalId, Approval approval)
   record ToolFinished(ToolCall call, ToolOutcome outcome)         // unchanged
 }
@@ -214,16 +229,16 @@ with exactly one kind of result.
 |---|---|---|---|
 | `Pending` | `ApprovalAnswered(∅, Approved)` | `Running` | `RunTool(call)` |
 | `Pending` | `ApprovalAnswered(∅, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
-| `Pending` | `ApprovalRequested(id)` | `AwaitingApproval(id)` | — |
+| `Pending` | `Escalated(id)` | `Escalated(id)` | — |
 | `Pending` | `ApprovalAnswered(id, _)` | unchanged | — (early: the request has not folded yet; the worker releases, not acks — §4) |
-| `AwaitingApproval(id)` | `ApprovalAnswered(id, Approved)` | `Running` | `RunTool(call)` |
-| `AwaitingApproval(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
-| `AwaitingApproval(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
+| `Escalated(id)` | `ApprovalAnswered(id, Approved)` | `Running` | `RunTool(call)` |
+| `Escalated(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
+| `Escalated(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
 | `Running` | `ToolFinished` | `Finished` | `CallModel` if all finished |
 | `Finished` | anything for this call | unchanged | — (stale, ignored) |
 | any | event for an unknown call | unchanged | — (stale, ignored) |
 
-The identity check in the `AwaitingApproval` rows is the whole of the §11.3
+The identity check in the `Escalated` rows is the whole of the §11.3
 stale-grant guard, relocated: a parked answer is honoured iff the phase names
 its computation. No index, no second store, no reconciliation.
 `Transition.ignore()` for the stale rows is the same dedup that already makes
@@ -232,9 +247,9 @@ stale — a duplicate delivery of an answer already folded — and ignored.
 
 **`Pending` means "approval sought, no answer recorded."** A call is `Pending`
 from the fold that emitted `SeekApproval` until an `ApprovalAnswered` or
-`ApprovalRequested` folds. The staleness re-fire (§6.1) re-emits
+`Escalated` folds. The staleness re-fire (§6.1) re-emits
 `SeekApproval` for every `Pending` call and `RunTool` for every `Running`
-call, and leaves `AwaitingApproval` alone — Continuum holds those and will
+call, and leaves `Escalated` alone — Continuum holds those and will
 deliver.
 
 ## 4. The executor — two doors, neither with a conditional inside
@@ -243,7 +258,7 @@ deliver.
 
 ```java
 public interface ToolCallExecutor {
-  void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink); // yields ApprovalRequested or ApprovalAnswered
+  void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink); // yields Escalated or ApprovalAnswered
   void runTool(ToolCall call, ModelResponseId responseId, Sink sink);      // yields ToolFinished
 }
 ```
@@ -261,7 +276,7 @@ the dispatching stack. Inside:
      - `Ready(a)` → deliver `ApprovalAnswered(∅, a)`.
      - `Deferred` → the approver has created an approval computation whose
        result type is `Approval`, with the call's routing as its
-       continuation; deliver `ApprovalRequested(call, id)`. Nothing is
+       continuation; deliver `Escalated(call, id)`. Nothing is
        narrated to the model.
 
 This door never runs a tool. `RunTool(call)` reaches `runTool`: find the
@@ -274,17 +289,17 @@ doing.
 **Ordering: the fact commits before anyone is told.** An approver that
 defers has created a computation somebody could answer at once — a test
 approver, a webhook, a human already looking at a queue. If that answer were
-delivered before `ApprovalRequested` had folded, the phase would not yet name
+delivered before `Escalated` had folded, the phase would not yet name
 the id, §3's stale row would discard the answer, and the call would then wait
 forever on a question already answered. So the `Deferred` arm delivers
-`ApprovalRequested` through the sink and **waits for that fold to commit
+`Escalated` through the sink and **waits for that fold to commit
 before the dossier reaches the `approvalNotifier`** — the harness's
 one-recipient, point-to-point hand-off. Today the notifier fires inside
 `ComputationApprover.adjudicate`, before any fold; that moves. A delivery
 that still races the fold (the computation existed for a moment before the
 notifier ran) is released by the worker rather than acknowledged, so
 Continuum re-delivers it after the backoff, by which time the fact is
-committed. `ApprovalRequested` is therefore the one event whose fold is
+committed. `Escalated` is therefore the one event whose fold is
 awaited by its producer; every other event is fire-and-forget through the
 sink.
 
@@ -320,7 +335,7 @@ turns a one-day default deadline into a one-day silence for a crashed
 five-second tool.
 
 One window is named rather than closed: a crash *after* the approver created
-the approval computation and *before* `ApprovalRequested` folded leaves the
+the approval computation and *before* `Escalated` folded leaves the
 call `Pending`, and the re-fire re-evaluates it — the policy escalates again,
 a second computation is created, and a human may be asked twice. Only the
 answer whose id the phase names is honoured (§3, row five); the other is an
@@ -351,7 +366,7 @@ it and was ruled out.
 
 ## 8. What this buys, measured
 
-- **Park dwell, per call:** `AwaitingApproval` entered → `ApprovalAnswered`
+- **Park dwell, per call:** `Escalated` entered → `ApprovalAnswered`
   folded. The number the o11y generation most wanted, with a home.
 - **Approval latency, tagged by approver:** ~0 for the policy, seconds for a
   console, hours for a desk — one metric, not a special case.
@@ -368,7 +383,7 @@ it and was ruled out.
   every stale row, and the all-finished → `CallModel` transition.
 - `HarnessApprovalDemo`, `SharedContinuumTest`, `DurableResumeTest` pass with
   one change: the phase assertion reads `AwaitingTools` with the call
-  `AwaitingApproval`, then `Idle`. Their outcome is unchanged; their *middle*
+  `Escalated`, then `Idle`. Their outcome is unchanged; their *middle*
   is now observable.
 - **A slow approved tool runs once.** An approval-gated `Ready` tool that
   sleeps past a deliberately tiny approval lease completes exactly once and
@@ -378,7 +393,7 @@ it and was ruled out.
   test parks two slow approvals and asserts a third, unrelated deferred tool's
   result is folded while they run.
 - **Re-fire per status.** A `Pending` call is re-dispatched, a `Running` call
-  is re-run, an `AwaitingApproval` call is left alone.
+  is re-run, an `Escalated` call is left alone.
 - **Stale answers.** An `ApprovalAnswered` naming an id the phase does not
   hold is ignored, with the scope unchanged.
 - **Early answers.** An approver whose computation is answered *immediately*
@@ -412,7 +427,7 @@ Unreleased section records the vocabulary collapse as a breaking change.
 
 1. **`CallStatus`** and its four arms inside `AwaitingTools` — the phase
    grammar is the most spec-bound type in the tree.
-2. **`ApprovalRequested` / `ApprovalAnswered`** as event arms, and
+2. **`Escalated` / `ApprovalAnswered`** as event arms, and
    **`SeekApproval` / `RunTool`** replacing `ExecuteTool` — the event grammar
    was called a "designed ceiling" in §2.4; this raises it by two.
 3. **`ToolCallExecutor.seekApproval` and `runTool`** replacing `executeTool`
