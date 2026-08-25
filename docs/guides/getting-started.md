@@ -110,8 +110,8 @@ Tool<Add> addTool =
 ```
 
 `.tools(Tool<?>...)` on the harness config grants each tool
-`UsagePolicy.allow()` for you — allow-by-default sugar. Reach for
-`.grants(ToolGrant...)` directly when a tool needs a real authority rule;
+`Approvers.allow()` for you — allow-by-default sugar. Reach for
+`.grants(ToolGrant...)` directly when a tool needs a real `Approver`;
 see [Authorization](../concepts/authorization.md).
 
 ## The smallest harness
@@ -184,13 +184,15 @@ TurnOutcome outcome = harness.bind(AgentId.of("scope-1")).ask("what is 2+2?");
 ```
 
 `TurnOutcome` is a sealed three-way: `Replied(String text)` — the
-assistant's final reply; `Parked(ApprovalRequest ask)` — the turn suspended
-on a §5a approval, carrying the ticket `harness.approvals().approve(id)`/
-`.deny(id, reason)` answers; `Failed(String reason)` — the turn ended in
-failure, narrated honestly rather than thrown. `ask` blocks the calling
-thread until one of the three settles; `agent.subscribe(TurnObserver)`
-underneath it is the lower-level door — a `Subscription` your code can hold
-onto for as long as it wants to keep watching an id's turns, closed to stop.
+assistant's final reply; `Parked(ComputationId approval, ApprovalRequest
+request)` — the turn suspended on an approval, carrying the computation
+`harness.approvals().approve(id, principal, note)`/`.deny(id, principal,
+reason)` answers and the frozen question that was asked; `Failed(String
+reason)` — the turn ended in failure, narrated honestly rather than thrown.
+`ask` blocks the calling thread until one of the three settles;
+`agent.subscribe(TurnObserver)` underneath it is the lower-level door — a
+`Subscription` your code can hold onto for as long as it wants to keep
+watching an id's turns, closed to stop.
 
 ## The cli door
 
@@ -215,7 +217,7 @@ try (Console console =
 `harness.approvals()`) and waits for the same turn to settle, and `Failed`
 prints the reason honestly. `.grants(ToolGrant...)` reaches the cli door's
 harness the same way `.tools(Tool...)` does, for a tool that needs a real
-policy rather than allow-by-default — including `UsagePolicy.requireApproval()`,
+`Approver` rather than allow-by-default — including `Approvers.defer()`,
 which `console.approver()` exists to answer. `.in(InputStream)`/
 `.out(PrintStream)` swap the terminal for scripted streams — how a test (or
 an embedding app) drives the console without a real one; see

@@ -1,9 +1,9 @@
 # Intent
 
 Intent is the model's own untrusted claim of what it is about to do and
-why — a declaration, recorded before it calls any other tool, that a
-policy may read back and weigh alongside everything else it gathers. It is
-never a grant of authority on its own.
+why — a declaration, recorded before it calls any other tool, that a rule
+may read back and weigh alongside everything else the request carries. It
+is never a grant of authority on its own.
 
 The whole feature ships as its own artifact, `org.jwcarman.nessy:nessy-intent`
 (package `org.jwcarman.nessy.intent`), depending on `nessy-api` and
@@ -80,11 +80,27 @@ public interface IntentStore<T> {
 ```
 
 One store, pre-scoped like `Memory` — no id parameter anywhere. Last write
-wins. `IntentEnricher` reads that store and deposits its latest declaration
-under `AuthzContext.DECLARED_INTENT_KEY` for a policy to read back through
-`context.declaredIntent(Class<T> type)`. Absent a declaration, the context
-passes through untouched — a missing claim is a policy's own choice to
-weigh, not the enricher's failure to report.
+wins. `IntentEnricher<T>` reads that store and deposits its latest
+declaration onto the approval request's draft:
+
+```java
+public final class IntentEnricher<T> implements Enricher {
+  public IntentEnricher(IntentStore<T> store, Class<T> vocabulary) { ... }
+
+  public static <T> Key<T> declared(Class<T> vocabulary) {
+    return new Key<>(vocabulary, "intent.declared");
+  }
+
+  @Override
+  public void enrich(ApprovalRequest.Draft draft) {
+    store.latest().ifPresent(intent -> draft.deposit(declared(vocabulary), intent));
+  }
+}
+```
+
+A rule reads it back with `request.facts().get(IntentEnricher.declared(OpsIntent.class))`.
+Absent a declaration, the draft passes through untouched — a missing claim
+is a rule's own choice to weigh, not the enricher's failure to report.
 
 `SubstrateIntentStore<T>` is the shipped implementation: one document per
 scope, `kind=intent`, written by a read-then-CAS retry loop over
@@ -102,9 +118,9 @@ var intentStore = new SubstrateIntentStore<>(substrate, "prod-eu", OpsIntent.cla
 
 ## `requireDeclared` — the teaching loop
 
-`IntentPolicies.requireDeclared(vocabulary)` denies unless a declaration of
-that exact type is on the context — absence and a wrong-typed declaration
-both deny the same way:
+`IntentRules.requireDeclared(vocabulary)` is a `Rule`: it passes the ladder
+on when a declaration of that exact type is present, and denies otherwise —
+absence and a wrong-typed declaration both deny the same way:
 
 ```java
 "no OpsIntent declared — declare your intent with the declare-intent tool before acting"
@@ -118,45 +134,52 @@ a `restart_prod` call with no declaration is denied; the model declares a
 approval and completes once granted.
 
 ```java
-List.of(
-    IntentPolicies.requireDeclared(OpsIntent.class),
-    RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH))
+Approvers.rules(
+    IntentRules.requireDeclared(OpsIntent.class),
+    RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH))
 ```
 
-Composed with `UsagePolicy.allOf(...)`, `requireDeclared` and a risk
-threshold gate the same grant together — no declaration denies before risk
-is even consulted.
+A ladder is first-answer-wins: `requireDeclared` denies before the risk
+rule is ever reached when no intent was declared, and passes it on
+(`Undecided`) once one is — no declaration denies before risk is even
+consulted.
 
 ## The consistency tripwire
 
-A vocabulary buys more than "did it declare something" — a policy can check
+A vocabulary buys more than "did it declare something" — a rule can check
 that what was declared and what was attempted **agree**. `TypedIntentDemo`
-wires its own consistency policy alongside the two above:
+wires its own consistency rule into the same ladder:
 
 ```java
-UsagePolicy.of(context -> {
-  Optional<OpsIntent> declared = context.declaredIntent(OpsIntent.class);
-  if (declared.isEmpty()) {
-    return new PolicyDecision.Allow();
-  }
-  return switch (declared.get()) {
-    case Restart(String target, _) -> {
-      String rendered = context.action(String.class).orElse("");
-      yield rendered.contains(target)
-          ? new PolicyDecision.Allow()
-          : new PolicyDecision.Deny(
-              "declared intent targets \"" + target + "\" but the action is \"" + rendered + "\"");
-    }
-    case Diagnose _ -> new PolicyDecision.Allow();
-  };
-});
+Rule consistencyRule() {
+  return Rule.named(
+      "target consistency",
+      request -> {
+        Optional<OpsIntent> declared = request.facts().get(IntentEnricher.declared(OpsIntent.class));
+        if (declared.isEmpty()) {
+          return new Rule.Verdict.Undecided();
+        }
+        return switch (declared.get()) {
+          case Restart(String target, _) -> {
+            String rendered = request.action();
+            yield rendered.contains(target)
+                ? new Rule.Verdict.Undecided()
+                : new Rule.Verdict.Answered(
+                    Approval.denied(
+                        "declared intent targets \"" + target + "\" but the action is \""
+                            + rendered + "\""));
+          }
+          case Diagnose _ -> new Rule.Verdict.Undecided();
+        };
+      });
+}
 ```
 
 When the model declares `Restart("prod-eu", ...)` and then attempts to
-restart `prod-us`, this policy denies naming both targets — before any
+restart `prod-us`, this rule denies naming both targets — before any
 approver is ever asked. The declared claim and the rendered action are two
-independent facts on the same context; nothing forces them to agree except
-a policy that checks.
+independent facts on the same request; nothing forces them to agree except
+a rule that checks.
 
 ## The unrepresentable declaration
 
@@ -171,9 +194,9 @@ the shape of the declaration, one on its content.
 
 ## Where next
 
-- [Authorization](authorization.md) — where `declaredIntent()` fits among
-  the other facts a policy judges, and the grant that wires
-  `IntentEnricher` alongside a risk assessor.
+- [Authorization](authorization.md) — where a declared intent fits among
+  the other facts a rule judges, and the grant that wires `IntentEnricher`
+  alongside a risk assessor.
 - [Tools](tools.md) — the sealed-input schema and annotated discriminator
   binding `IntentTool` rides for free.
 - [Agent as Scope](agent-as-scope.md) — how a tool call, denied or

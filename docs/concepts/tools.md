@@ -178,7 +178,7 @@ snapshot.
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
   Tool<JsonNode> search = toolbox.tool("web-search");
-  var grant = ToolGrant.grant(search, UsagePolicy.requireApproval());
+  var grant = ToolGrant.grant(search, Approvers.defer());
 }
 ```
 

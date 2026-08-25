@@ -74,19 +74,20 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      AgentObserver observer,
+      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      Function<Memory, ModelCallExecutor> modelExecutorFactory,
-      Function<AgentId, ToolCallExecutor> toolExecutorFactory,
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      ContinuumClient<Decision, Routing> approvalClient,
-      DispatchIndex dispatchIndex,
-      ContinuumClient<ToolResult, Routing> toolClient) { ... }
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
+      ContinuumClient<ToolResult, Routing> toolClient,
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters) { ... }
 
   public Agent<O> bind(AgentId id) { ... }
   public ApprovalDesk approvals() { ... }
@@ -99,8 +100,12 @@ public final class Harness<O> {
 application API — `Nessy.harness(...)` is the door an application actually
 calls, and it alone turns a filled-in `HarnessConfig` into the `Harness` it
 describes. Nothing about `Harness.of(...)` invites building one by hand: it
-takes thirteen positional arguments on purpose, to stay unpleasant to
-hand-call.
+takes sixteen positional arguments on purpose, to stay unpleasant to
+hand-call. There is no `DispatchIndex` parameter — a call's status lives in
+the phase itself (see [Storage](storage.md) and [Durable
+Computation](durable-computation.md)); `approvalWaiters` is the map
+`Agent#ask` registers its per-id waiter in, resolved by the scope's own
+`ApprovalDeferred` fold.
 
 The harness is kept, not closed. It is not `AutoCloseable`; `shutdown()` is
 the one undecorated lifecycle method, and it exists for infrastructure —

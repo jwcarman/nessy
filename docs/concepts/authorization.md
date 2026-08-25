@@ -6,7 +6,7 @@ whether one particular call may proceed.
 
 ## The trust gradient
 
-Five words carry the whole design, from least to most trusted:
+Four words carry the whole design, from least to most trusted:
 
 - **Claim** — something the model asserts about itself, such as a declared
   intent. Untrusted by construction.
@@ -14,12 +14,9 @@ Five words carry the whole design, from least to most trusted:
   rendered by the application from the bound input.
 - **Assessment** — a fact an enricher gathers about the action or its
   context: a risk level, a resolved principal, a quota check.
-- **Judgment** — the pure act of deciding, from the assembled facts alone;
-  its verdict is a `PolicyDecision`: allow, deny, or require approval.
-- **Adjudication** — the stage a call enters only when judgment's verdict is
-  require approval: a human or an external system decides — `Granted`,
-  `Refused`, or its most interesting state, `Suspended`: not decided yet,
-  parked in a durable computation.
+- **Approval** — the answer to "may this call run?", either spoken on the
+  spot by the grant's own approver or parked for someone else to answer
+  later. Every call gets exactly one, whoever spoke it.
 
 Each stage only ever adds information; nothing downstream can widen what an
 upstream stage already narrowed.
@@ -28,23 +25,23 @@ upstream stage already narrowed.
 
 `ToolGrant` names four things together: which `Tool` an agent may call, the
 `ActionContributor` that states what one call will do, the ordered
-`Enricher`s that gather facts into the context, and the `UsagePolicy` the
+`Enricher`s that gather facts onto the request, and the `Approver` the
 executor consults before it runs.
 
 `ToolGrant` is a **final class with a private constructor** — the `grant`
 factories are the only supported way to write one. There is no bare grant,
-no derived floor, no re-dressing an existing grant with a different policy:
-a grant does not exist until its authority is answered.
+no derived floor, no re-dressing an existing grant with a different
+approver: a grant does not exist until its authority is answered.
 
 ```java
-// rung 0/1 — any Tool, judged by a policy that reads at most the context
-ToolGrant.grant(tool, UsagePolicy policy);
+// rung 0/1 — any Tool, judged by an approver that reads at most the request
+ToolGrant.grant(tool, approver);
 
 // rung 2 — a typed ActionContributor renders the action, no enrichers
-ToolGrant.grant(tool, ActionContributor<? super I, ?> contributor, UsagePolicy policy);
+ToolGrant.grant(tool, contributor, approver);
 
 // rung 2/3 — the same contributor, plus an ordered list of enrichers
-ToolGrant.grant(tool, contributor, List<Enricher> enrichers, UsagePolicy policy);
+ToolGrant.grant(tool, contributor, enrichers, approver);
 ```
 
 The application states the action, even for a third-party tool — an MCP
@@ -74,63 +71,54 @@ reads; an undecorated lambda reports as `unnamed`. The grant's own default
 contributor — used when a caller wires no contributor at all — is
 `String.valueOf(input)`, and it always reports as `action(String.valueOf)`.
 
-## The context is the pipeline
+## The request is the pipeline
 
-`AuthzContext` is one concrete, immutable, typed-key bag over the facts an
-authorization decision may need. It is deliberately **not generic** over
-the grant's own action type, so an `Enricher` or `UsagePolicy` written
-against this interface composes into any grant, regardless of what action
-type that grant welded — the whole pipeline is monomorphic.
+`ApprovalRequest` is the question an approver answers: this call, on this
+agent, with these facts.
 
 ```java
-public interface AuthzContext {
-  String agentName();
-  ToolCall call();
-  <T> Optional<T> get(Key<T> key);
-  default <T, S extends T> Optional<S> get(Key<T> key, Class<S> type) { ... }
-  <T> AuthzContext with(Key<T> key, T value);
-}
+public record ApprovalRequest(
+    String agentType, String agentId, ToolCall call, String action, Facts facts) {}
 ```
 
-`agentName()` and `call()` are known before any application code runs.
-Everything else starts empty and is filled in by enrichers via `with`,
-functionally — each call returns a new context, so an earlier enricher's
-view is never mutated out from under it.
+**A JSON document, by contract.** Every field renders through the harness's
+pinned mapper, deterministically, and the rendered document is the record
+of what was decided on: read by the approver, parked with the computation
+when the approver defers, and shown to the desk later. Rendered **once** —
+the `action` line and every fact are fixed at enrichment and never
+re-derived at read time, so a later change to a contributor or an enricher
+cannot rewrite what a human saw.
 
-A missing key is `Optional.empty()`, never an exception. `get(key, type)`
-narrows by class token: a non-instance and an absence both read as empty —
-a reader fails closed on its own terms either way, with no way to tell
-"nothing was deposited" from "something else was."
-
-The action travels only as `AuthzContext.ACTION_KEY`, deposited by the
-grant's own `assemble` step before any enricher runs. Three sugar methods
-sit on top of the general typed read for the well-known slots:
+`Facts` is the typed fact bag. `deposit(key, value)` (on the mutable
+`Draft`) encodes the value through the pinned mapper immediately; `get(key)`
+decodes it back to `key.type()`. A value the mapper cannot render fails
+*inside the enricher, at the line that deposited it* — not later, on a pump
+thread, when a human's answer tries to park the request:
 
 ```java
-context.action(Class<A> type)          // sugar over get(ACTION_KEY, type)
-context.principal(Class<P> type)       // sugar over get(PRINCIPAL_KEY, type)
-context.declaredIntent(Class<T> type)  // sugar over get(DECLARED_INTENT_KEY, type)
+public record Key<T>(Class<T> type, String name) {}
 ```
 
-An application or enricher library declares its own key exactly the same
-way nessy declares its well-known ones — `new Key<>(Foo.class, "foo")` — and
-deposits into it with `context.with(key, value)`. `Key` equality is
-identity, deliberately: two modules that happen to pick the same name never
-collide.
+`Key` is **value-equal**, deliberately: facts are stored by name in a JSON
+document, so two keys with the same name address the same fact wherever
+they were constructed — an enricher in one module and a rule in another
+agree on `new Key<>(Intent.class, "intent.declared")` by construction. An
+application declares its own key exactly the way Nessy declares its
+well-known ones (`ApprovalRequest.PRINCIPAL`, `ApprovalRequest.RISK`) —
+`new Key<>(Foo.class, "foo")` — and deposits into it with `draft.deposit(key,
+value)`.
 
-## `assemble` / `decide` — the two-method pipeline
+Enrichment builds the request through a short-lived mutable draft, which
+`ToolGrant#request` drives:
 
 ```java
-AuthzContext assemble(AuthzContext base, Object input);
-PolicyDecision decide(AuthzContext assembled);
+ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, pinned);
+draft.action(renderAction.apply(input));            // once
+for (Enricher e : enrichers) e.enrich(draft);        // each deposits typed facts
+ApprovalRequest request = draft.freeze();            // immutable from here on
 ```
 
-`assemble` binds the input, renders the action, deposits it under
-`ACTION_KEY`, and runs the enrichers in order, returning the enriched
-context. `decide` lets the policy judge that context. There is no result
-record — the assembled context **is** the carrier, read back by the caller
-with `context.action()` and its own typed keys.
-
+Nothing outside enrichment ever sees a `Draft`, and a `Draft` freezes once.
 A `RuntimeException` escaping the action render or any enricher is caught
 and rethrown as an `IllegalStateException` naming the stage that broke —
 `"action stage: ..."` or `"enricher stage «name»: ..."` — with the original
@@ -142,145 +130,133 @@ a bare throw.
 ```java
 @FunctionalInterface
 public interface Enricher {
-  AuthzContext enrich(AuthzContext context);
+  void enrich(ApprovalRequest.Draft draft);
 }
 ```
 
 Enrichers **may do I/O** — a principal exchange, a risk service call, a
-quota read — because the policy that follows them stays pure, and all of
-that impurity has to live somewhere. Each enricher receives the previous
-enricher's own context and returns the next one; nothing upstream ever sees
-a later enricher's deposit.
+quota read — because the approver that follows them stays free to be pure,
+and all of that impurity has to live somewhere. Each enricher deposits onto
+the same draft in order; it must not freeze it.
 
 A throwing enricher fails the whole call closed, naming its own stage.
-`Enrichers.principal(Supplier<?> resolver)` is the shipped principal kit —
-nessy imposes no identity shape, since authorization here is never
+`Enrichers.principal(Supplier<String> resolver)` is the shipped principal
+kit — Nessy imposes no identity shape, since authorization here is never
 authentication; `resolver` hands over an already-authenticated identity of
 whatever type the deployment prefers.
 
-## Policies — pure judgment
+## The approver — one method, a world behind it
 
 ```java
-public interface UsagePolicy {
-  PolicyDecision evaluate(AuthzContext context);
+public interface Approver {
+  ApprovalOutcome approve(ApprovalContext context);
+}
+
+public interface ApprovalContext {
+  ApprovalRequest request();     // the question, enriched and frozen
+  ApprovalOutcome defer();       // "I'll get back to you"
+}
+
+public sealed interface ApprovalOutcome {
+  record Answered(Approval approval) implements ApprovalOutcome {}
+  record Deferred(ComputationId id) implements ApprovalOutcome {}   // minted only by defer()
+}
+
+public sealed interface Approval {
+  record Approved(Optional<String> reference) implements Approval {}
+  record Denied(String reason, Optional<String> reference) implements Approval {}
 }
 ```
 
-`evaluate` must be pure: no I/O, no mutation, nothing beyond a function of
-the final assembled context. The executor may call it from any thread, and
-treats an escaping `RuntimeException` as a `Deny` naming the policy stage —
-a broken policy fails closed rather than becoming an allow.
+`Approver` is a facade in the way `Memory` is: one method, and a world
+behind it — a rule ladder, a risk service, a Slack post, an OPA call, a
+quorum vote, a person at a terminal — none of it visible to the harness,
+and all of it free to be asynchronous through `defer()`. `defer()` does the
+plumbing: it parks the question, folds `ApprovalDeferred` into the scope,
+waits for that fold to commit, and only then hands back the id. By the time
+an approver could tell anyone about a question, the phase already names it.
+Telling people is the approver's own business — there is no harness-level
+notifier.
 
-Three canonical statics:
+`Approvers.allow()`, `Approvers.deny(reason)`, and `Approvers.defer()` are
+the three one-liners. `allow()` and `deny()` implement the sealed marker
+`Approvers.Static`, which the executor recognises and answers **without
+building the request** — no action rendered, no enricher run, for a call
+nobody will read the file of. A bare `Tool` in `.tools(...)` still means
+`allow()`.
+
+There is no chain on the `Approver` interface. Composition is code inside
+an approver, and the toolkit ships the two shapes people reach for:
 
 ```java
-UsagePolicy.allow()             // every call proceeds, approver never consulted
-UsagePolicy.deny(String reason) // every call refused, same reason every time
-UsagePolicy.requireApproval()   // every call defers to the approver
+Approvers.rules(                                  // a ladder: first answer wins; a Defer parks
+    IntentRules.requireDeclared(OpsIntent.class),
+    RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH))
+
+Approvers.allOf(a, b, c)                          // gates: every one must approve; any denial denies
 ```
 
-`allow()` and `deny(...)` implement the sealed marker `UsagePolicy.Static`
-— a verdict that never depends on context or action — so the chokepoint
-fast-paths them: no action rendered, no context assembled, no enrichers
-run. `requireApproval()` deliberately does **not** implement `Static`: the
-approver still needs the rendered action and the assembled context, so it
-must pay the assembly cost even though its own verdict never varies.
+A `Rule` has three outcomes — `Answered`, `Undecided`, or `Defer` — and the
+toolkit's own vocabulary, never `Approver`'s: "I am unable to decide" is a
+rule's word. `RiskRules.threshold(approveAt, denyAt)` and
+`IntentRules.requireDeclared(vocabulary)` are the two shipped
+context-reading rules; see [Intent](intent.md) and the risk kit below.
 
-`UsagePolicy.allOf(List<UsagePolicy>)` is the deny-biased conjunction:
-evaluates in order, stops at the first `Deny`, and — if none deny but any
-requires approval — the composite requires approval; only when every
-policy allows does the composite allow.
-
-`IntentPolicies.requireDeclared(vocabulary)` and
-`RiskPolicies.threshold(approveAt, denyAt)` are the two shipped
-context-reading policies; see [Intent](intent.md) and the risk kit below.
+`nessy-testing` ships `ScriptedApprover` (answers or defers per a script,
+like `ScriptedModel`) and `RecordingApprover`, since approvers are the
+thing people most want to unit-test their agents against.
 
 ## The chokepoint's flow
 
-`RegistryToolCallExecutor` is the one place every call passes through:
+`RegistryToolCallExecutor` is the one place every call passes through, and
+it is two doors, neither with a conditional inside: `seekApproval` asks,
+`runTool` runs. `seekApproval`'s inner logic:
 
 ```java
-if (grant.policy() instanceof UsagePolicy.Static fixed) {
-  decision = fixed.decision();                    // rung 0: nothing assembled
-} else {
-  AuthzContext assembled = grant.assemble(AuthzContext.of(type.name(), call), input);
-  decision = grant.decide(assembled);
+if (grant.approver() instanceof Approvers.Static fixed) {
+  return answered(call, fixed.answer());          // rung 0: nothing built
 }
-
-switch (decision) {
-  case Allow _            -> run(tool, input, call, address);
-  case Deny(String reason)-> failed(call, reason);
-  case RequireApproval _  -> switch (approver.adjudicate(
-      new ApprovalRequest(address.approval(), call, address.agentType(), address.agentId(),
-                           assembled))) {
-      case Granted _              -> run(tool, input, call, address);
-      case Refused(String reason) -> failed(call, reason);
-      case Suspended(var computation) -> deferred(computation);
-    };
-}
+ApprovalRequest request = grant.request(type.name(), id.value(), call, input, mapper);
+ApprovalContext context = approvalContexts.contextFor(call, responseId, request, sink);
+ApprovalOutcome outcome = grant.approver().approve(context);
+return switch (outcome) {
+  case ApprovalOutcome.Answered(Approval approval) -> answered(call, approval);
+  case ApprovalOutcome.Deferred _ -> null;         // defer() already delivered ApprovalDeferred
+};
 ```
 
-A `Deny` and a `Refused` adjudication both deliver **in-band, narrated**:
-the model reads the reason as a tool result and reacts. An `Allow` and a
-`Granted` adjudication run the tool. The model has no say in any of it — it
-only ever sees the outcome.
-
-## `RequireApproval` → the `Approver` seam
-
-`RequireApproval` routes to the wiring's `Approver`:
-
-```java
-@FunctionalInterface
-public interface Approver {
-  Adjudication adjudicate(ApprovalRequest request);
-}
-
-public sealed interface Adjudication {
-  record Granted() implements Adjudication {}
-  record Refused(String reason) implements Adjudication {}
-  record Suspended(ComputationId computation) implements Adjudication {}
-}
-```
-
-`ApprovalRequest` is `(id, call, agentType, agentId, context)` — the ticket,
-the call, a plain-string agent coordinate for display, and the assembled
-`AuthzContext`, never less. The rendered action is not a component of its
-own; it lives in `context`, read back the same way anywhere else does:
-`context.action()`, `context.principal()`, `context.risk()`,
-`context.declaredIntent()`. It is a human decision surface, not a routing
-packet — a computation-backed approver that needs the committed model
-response reads it from the agent's own state at ask time instead.
-
-The default approver (the executor's 5- and 6-arg constructors) refuses
-loudly in-band — approval is a capability of the wiring, not a right of
-every deployment. A durable wiring's approver instead suspends into a
-computation and returns `Suspended`; the desk mechanics — approval
-computations, `approve`/`deny`, a granted call dispatching straight through
-the delivery pipeline with no re-asked policy — belong to
-[Durable Computation](durable-computation.md), not here.
+A denial and an approval both narrate `ToolCallDecided`; a denial also
+narrates `ToolCallCompleted` — the model reads the reason as a tool result
+right away, because a denied call is a finished call. An approval instead
+folds `Pending → Running`, and `runTool` — a separate door, reached only
+once the answer is already a fact in the phase — runs the tool. Neither
+door ever holds a tool call inside a delivery lease; see [Durable
+Computation](durable-computation.md) for what that buys.
 
 ## `AuthorizationReport` — the report is the wiring
 
 `AuthorizationReport.of(grants)` reads each grant's own `tool()`,
-`policy()`, `enrichers()`, and `contributor().displayName()` — by
+`approver()`, `enrichers()`, and `contributor().displayName()` — by
 declaration, never by reflection over an erased lambda, and never by
-calling `actionOf`, `enrich`, or `evaluate`. It cannot drift from the
-wiring it reads, because it never runs anything the wiring does.
+calling `actionOf`, `enrich`, or `approve`. It cannot drift from the wiring
+it reads, because it never runs anything the wiring does.
 
 ```
-restart_prod: action(restart-statement) → intent → risk → policy (ThresholdPolicy)
+restart_prod: action(restart-statement) → intent → risk → approver (RestartApprover)
 read-balance: allow()
 ```
 
-A grant whose policy is `UsagePolicy.Static` reports honestly as its own
+A grant whose approver is `Approvers.Static` reports honestly as its own
 factory call (`allow()`, `deny("reason")`) with no action and no
 enrichers, no matter what the grant's `enrichers()` list happens to
-hold — that mirrors the chokepoint's own rung-0 skip exactly.
+hold — that mirrors the chokepoint's own rung-0 skip exactly. Any other
+approver reports its own `getClass().getSimpleName()` — the one identity
+every approver already carries without a new field to declare.
 
 ## The risk kit
 
 `RiskAssessment` is the shipped, opinionated shape a risk-assessing
-enricher deposits under `AuthzContext.RISK_KEY`:
+enricher deposits under `ApprovalRequest.RISK`:
 
 ```java
 public record RiskAssessment(
@@ -301,36 +277,41 @@ the matrix wouldn't.
 
 `RiskFactors` seeds an open vocabulary — `DESTRUCTIVE`, `IRREVERSIBLE`,
 `EXTERNAL_WORLD`, `READ_ONLY`, `SPENDS_MONEY`, `TOUCHES_PII` — drawn from
-MCP tool annotations plus nessy's own additions. An org's own factor is
+MCP tool annotations plus Nessy's own additions. An org's own factor is
 just another `RiskFactor`; this is a starting vocabulary, not a sealed
 grammar.
 
-`RiskPolicies.threshold(approveAt, denyAt)` reads `context.risk()` and
-judges by severity: below `approveAt` allows, from `approveAt` up to (but
-below) `denyAt` requires approval, `denyAt` or above denies naming the
-severity and the threshold. An absent assessment fails closed with a `Deny`
-naming the empty slot — wiring no risk-assessing enricher at all is not the
-same as wiring a lenient one.
+`RiskRules.threshold(approveAt, denyAt)` reads `request.facts().get(ApprovalRequest.RISK)`
+and judges by severity: below `approveAt` answers `Approved`; from
+`approveAt` up to (but below) `denyAt` returns `Defer`, so the ladder parks
+for a human; `denyAt` or above answers `Denied`, naming the severity. An
+absent assessment fails closed with a denial naming the empty slot —
+wiring no risk-assessing enricher at all is not the same as wiring a
+lenient one.
 
 ```java
 ToolGrant.grant(
     new RestartTool(),
     RESTART_ACTION,
-    List.of(new IntentEnricher(intentStore), riskAssessor, Enrichers.principal(() -> "jcarman")),
-    RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+    List.of(new IntentEnricher<>(intentStore, OpsIntent.class), riskAssessor, Enrichers.principal(() -> "jcarman")),
+    Approvers.rules(
+        IntentRules.requireDeclared(OpsIntent.class),
+        RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH)));
 ```
 
-`GovernedTurnDemo` is the worked example: severity `HIGH` parks for a
-human and completes once approved; severity `VERY_HIGH` is denied outright,
-in-band, before any approver is ever asked; no risk assessment at all fails
-the same door closed with `"no risk assessment deposited under RISK_KEY"`.
+See [the harness guide's governed-turn
+section](../guides/harness.md#the-governed-turn-intent-risk-and-threshold-together)
+for this grant worked end to end against `nessy-examples/governed`: a
+severity of `HIGH` parks for a human and completes once approved; `VERY_HIGH`
+is denied outright, in-band, before any approver is ever asked; no risk
+assessment at all fails the same door closed with `"no risk assessment
+deposited under 'risk'"`.
 
 ## Where next
 
 - [Intent](intent.md) — the claim channel enrichers read, and the
-  teaching loop `IntentPolicies.requireDeclared` drives.
+  teaching loop `IntentRules.requireDeclared` drives.
 - [Tools](tools.md) — what a granted `Tool` actually is, and the sealed
   vocabulary a grant's input can take.
-- [Durable Computation](durable-computation.md) — the computation an
-  approval suspends into and how a granted call dispatches once it's
-  answered.
+- [Durable Computation](durable-computation.md) — what `defer()` parks,
+  and how a granted call dispatches once it's answered.

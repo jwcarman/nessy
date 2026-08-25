@@ -7,9 +7,11 @@ and it stores bytes, not text.
 
 Durable computations — approvals and deferred tool calls — are not part of
 `Substrate` anymore. They live in a separate store owned by
-`org.jwcarman.continuum`. `Substrate` keeps only the dispatch index that
-remembers which computation a call is currently in flight under. See the
-warning below.
+`org.jwcarman.continuum`. `Substrate` keeps no side index of which
+computation a call is in flight under — a call's `CallStatus`, inside the
+scope's own `AwaitingTools` phase, names the computation directly. See
+[Durable Computation](durable-computation.md#a-calls-lifecycle-is-in-the-phase)
+and the warning below.
 
 ## The substrate in one paragraph
 
@@ -23,7 +25,7 @@ JSON is the house convention *above* the seam, not a substrate promise. The
 store is the lock: every mutation carries a CAS expectation, and a miss
 is a conflict, never a wait. Seven methods, two tables, and an adapter that
 implements them gets the entire system on Nessy's side — state,
-transcripts, intent, backlogs, and the dispatch index.
+transcripts, intent, and backlogs.
 
 !!! warning "Two stores, one durability tier"
     A harness now writes to two stores: this `Substrate`, and Continuum's
@@ -37,17 +39,16 @@ transcripts, intent, backlogs, and the dispatch index.
     `Idle`, whose reducer ignores it — a tool result that never arrives and
     a call that never completes, with nothing logged as an error.
     In-memory computations over a durable substrate: a restart wipes
-    Continuum's pending work but not the dispatch index naming it, so the
-    gate absorbs every redrive against a computation that no longer exists
-    — the call hangs permanently.
+    Continuum's pending work but not the scope's own phase, which still
+    names the computation a call's `CallStatus` is `AwaitingApproval`/
+    `AwaitingResult` over — nothing will ever deliver against that id
+    again, and the call waits forever.
 
-    `InMemorySubstrate` is the only `Substrate` Nessy ships today, so the
-    only coherent wiring right now is both in memory — the default
-    `Nessy.harness(...)` gives you. A durable pairing needs a durable
-    `Substrate`, which does not exist yet; Continuum's own `continuum-jdbc`
-    provider is a TCK-certified PostgreSQL backend and is not what's
-    missing. See [Durable Computation](durable-computation.md) for the full
-    story.
+    Both in memory is what `Nessy.harness(...)` gives you by default. Both
+    durable is `.substrate(new JdbcSubstrate(ds))` with `.continuum(...)`
+    handed a `continuum-jdbc`-backed Continuum over the same database — see
+    [Durable Computation](durable-computation.md) for the full story and
+    the startup warning that catches a mismatched pairing.
 
 ```java
 public interface Substrate {
@@ -221,14 +222,15 @@ reserved — a feature jar declares its own kinds and must not reuse one:
 | `summary` | document | agentId | summarization sidecar (future) |
 | `intent` | document | agentId | `nessy-intent` |
 | `backlog` | document | agentId | backlog recipe |
-| `dispatch/<agentType>` | document | call address digest | dispatch index |
 
 Approvals and deferred tool calls no longer live in `Substrate` at all —
 `org.jwcarman.continuum` owns that store now, under its own `approval/<agentType>`
-and `tool/<agentType>` kinds. `dispatch/<agentType>` is what `Substrate`
-keeps instead: one entry per in-flight call, naming which Continuum
-computation currently owns it, so a staleness redrive can be absorbed
-without asking Continuum again. See
+and `tool/<agentType>` kinds. `Substrate` keeps no side index naming which
+computation a call is in flight under: the `state` document's own phase
+carries a `CallStatus` per call, and two of its five states —
+`AwaitingApproval`/`AwaitingResult` — name the Continuum computation
+directly, so a staleness redrive is absorbed by reading the phase Nessy
+already has to load. See
 [Durable Computation](durable-computation.md#a-calls-lifecycle-is-in-the-phase).
 
 ## Layout rules
@@ -282,13 +284,12 @@ never sees anything but bytes.
 - **Durable computations** live outside `Substrate` entirely — approvals
   and deferred tool calls are owned by `org.jwcarman.continuum`, under its
   own `approval/<agentType>` and `tool/<agentType>` kinds, including its
-  own outbox. What `Substrate` still holds is the **dispatch index**
-  (`kind=dispatch/<agentType>`) — one document per in-flight call, `{
-  computationId, kind }`, naming which Continuum computation currently
-  owns that call. There is no status field and no terminal record —
-  presence alone means in flight; the entry is deleted in the same batch
-  as the fold that resolves it. See
-  [Durable Computation](durable-computation.md).
+  own outbox. `Substrate` holds no index of them at all: a call's own
+  `CallStatus`, folded into the scope's `state` document alongside
+  everything else in `AwaitingTools`, is the map — `AwaitingApproval(id)`
+  or `AwaitingResult(id)` names the computation directly, and the entry
+  simply becomes `Finished` in the same batch as the fold that resolves it.
+  See [Durable Computation](durable-computation.md).
 - **Intent** (`kind=intent`) — one document per scope, last-write-wins via
   read-then-CAS retry, shipped in `nessy-intent` — see [Intent](intent.md).
 
@@ -450,4 +451,5 @@ once specified alongside now lives in Continuum's own store, not
 - [Memory](memory.md) — the journal recipe in full, and why the transcript
   is never rewritten.
 - [Durable Computation](durable-computation.md) — Continuum's half of the
-  pipeline, the dispatch index, and the durability rule that binds them.
+  pipeline, how a call's `CallStatus` names its computation, and the
+  durability rule that binds them.
