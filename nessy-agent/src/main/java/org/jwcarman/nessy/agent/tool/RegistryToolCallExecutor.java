@@ -195,9 +195,17 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     };
   }
 
-  /** Narrates the answer onto the turn and hands back the event the reducer folds. */
+  /**
+   * Narrates the answer onto the turn and hands back the event the reducer folds. A denial narrates
+   * BOTH the decision and a completion: the reducer turns it into the error result the model reads,
+   * so the call is finished, and a finished call is a completion whatever finished it. An approval
+   * narrates only the decision — that call has not run yet.
+   */
   private AgentEvent answered(ToolCall call, Approval approval) {
     turn.on(new TurnEvent.ToolCallDecided(call, approval));
+    if (approval instanceof Approval.Denied(String reason, var _)) {
+      turn.on(new TurnEvent.ToolCallCompleted(call, ToolResult.error(reason)));
+    }
     return new AgentEvent.ApprovalAnswered(call, Optional.empty(), approval);
   }
 

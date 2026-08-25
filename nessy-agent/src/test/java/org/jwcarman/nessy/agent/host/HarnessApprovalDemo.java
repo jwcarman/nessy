@@ -137,10 +137,9 @@ class HarnessApprovalDemo {
         Thread.sleep(20);
       }
 
-      // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker reads the grant's
-      // continuation directly and dispatches the call past the gate via
-      // ToolCallExecutor#executeGrantedToolNow — no re-derivation, no second ask. The tool runs
-      // exactly once and the turn completes; the notifier fires exactly once, on the original ask.
+      // The answer arc (approval-lifecycle spec §5): the delivery worker only folds the answer, and
+      // THAT fold emits RunTool — the lease pays for a message, never for the work. The tool runs
+      // exactly once and the turn completes.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
     } finally {

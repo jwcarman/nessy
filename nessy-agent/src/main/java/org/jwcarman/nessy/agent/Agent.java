@@ -51,9 +51,9 @@ public interface Agent<O> {
   /**
    * The pattern over the plain API above, not new machinery (front-ends spec §1): subscribe, tell,
    * block for the turn's own outcome, close — see {@link DefaultAgent#ask} for the exact mechanics.
-   * {@code Replied} carries the assistant's final text; {@code Parked} carries the §5a {@link
-   * org.jwcarman.nessy.spi.approval.ApprovalRequest} the turn suspended on; {@code Failed} carries
-   * {@code TurnEnded}'s own reason.
+   * {@code Replied} carries the assistant's final text; {@code Parked} carries the parked
+   * computation and the {@link org.jwcarman.nessy.api.tool.approval.ApprovalRequest} the turn
+   * suspended on; {@code Failed} carries {@code TurnEnded}'s own reason.
    *
    * <p><b>The blocking contract, stated plainly (fix round 2, I1):</b> this call blocks the
    * caller's thread until this id's next {@code TurnEnded} — indefinitely, with no timeout. There

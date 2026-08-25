@@ -79,10 +79,11 @@ public final class ComputationScheduler implements AutoCloseable, Executor {
   private static final Duration PURGE_DELAY = Duration.ofMinutes(10);
 
   /**
-   * Two, not one (fix round 1 item 3: dropped from an eager four): {@link
-   * DeliveryWorker#drainApprovals} runs a granted tool inline via {@code executeGrantedToolNow}, so
-   * a single thread would let one slow approval wedge the expire and purge pumps behind it. Two is
-   * enough — fixed-delay is exactly the discipline (§7) that makes one runner per pump unnecessary.
+   * Two, not one (fix round 1 item 3: dropped from an eager four): no pump does the work any more —
+   * both consumers only fold (approval-lifecycle spec §5) — but a fold still reads and CAS-writes a
+   * scope, so a single thread would let one slow substrate wedge the expire and purge pumps behind
+   * it. Two is enough — fixed-delay is exactly the discipline (§7) that makes one runner per pump
+   * unnecessary.
    */
   private static final int POOL_SIZE = 2;
 

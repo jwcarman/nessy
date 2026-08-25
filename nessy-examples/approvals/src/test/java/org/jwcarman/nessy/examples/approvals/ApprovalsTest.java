@@ -30,8 +30,8 @@ import org.junit.jupiter.api.Timeout;
 class ApprovalsTest {
 
   /**
-   * The grant arc (durable-deliveries spec §5a — see {@link Approvals#runScripted()}'s javadoc):
-   * approving the parked computation dispatches the call past the gate directly, with no second
+   * The answer arc (approval-lifecycle spec §5 — see {@link Approvals#runScripted()}'s javadoc):
+   * approving the parked computation folds one answer, and the fold emits the run, with no second
    * ask, so the scripted arc observes a completed restart.
    */
   @Test

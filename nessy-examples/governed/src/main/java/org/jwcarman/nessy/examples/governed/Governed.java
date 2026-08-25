@@ -139,7 +139,9 @@ public final class Governed {
       String bounceMessage = denialReason(await(decisions, "the bounced restart's denial"));
       System.out.println("bounce: " + bounceMessage);
 
-      await(toolCompletions, "the declare-intent completion");
+      // A denial is a completion too (it finishes the call), so this waits for the completion of
+      // the call it actually means rather than for whichever lands first.
+      awaitCompletionOf(toolCompletions, "declare-intent");
       OpsIntent declared = intentStore.latest().orElseThrow();
       System.out.println("declared: " + declared);
       String declaredTarget = declared instanceof Restart(String target, _) ? target : null;
@@ -151,9 +153,9 @@ public final class Governed {
       harness.approvals().approve(ask.id(), "demo", "");
       System.out.println("approved");
 
-      // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call
-      // directly past the gate from the grant's own continuation — no second ask, no re-suspend.
-      TurnEvent.ToolCallCompleted restarted = await(toolCompletions, "the granted restart");
+      // The answer arc (approval-lifecycle spec §5): the delivery worker only folds the answer; the
+      // fold is what emits RunTool, and the tool runs on the harness's executor — no second ask.
+      TurnEvent.ToolCallCompleted restarted = awaitCompletionOf(toolCompletions, "restart");
       System.out.println("restarted: " + restarted.result().content());
       TurnEvent.TurnEnded ended = await(completions, "the turn's completion");
       System.out.println("turn ended: failed=" + ended.failed());
@@ -204,6 +206,23 @@ public final class Governed {
     RiskAssessment assessment =
         RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE);
     return Enricher.named("risk", draft -> draft.deposit(ApprovalRequest.RISK, assessment));
+  }
+
+  /**
+   * The completion of the call named {@code toolName}, skipping any other call's — bounded the same
+   * way {@link #await} is.
+   */
+  private static TurnEvent.ToolCallCompleted awaitCompletionOf(
+      BlockingQueue<TurnEvent.ToolCallCompleted> queue, String toolName)
+      throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (System.nanoTime() < deadline) {
+      TurnEvent.ToolCallCompleted completed = queue.poll(1, TimeUnit.SECONDS);
+      if (completed != null && completed.call().name().equals(toolName)) {
+        return completed;
+      }
+    }
+    throw new IllegalStateException("timed out waiting for " + toolName + "'s completion");
   }
 
   /**

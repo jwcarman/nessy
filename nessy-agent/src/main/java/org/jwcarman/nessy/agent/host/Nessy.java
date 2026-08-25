@@ -227,18 +227,18 @@ public final class Nessy {
      * Sugar composing a harness with a fresh {@link Console} (spec §3): builds the SAME kept {@link
      * Harness} every door in this class produces — through {@link
      * Nessy#harness(HarnessCustomizer)}, not a bespoke wiring of its own — so the cli door gets
-     * exactly the generic door's correct fanout-routed narration and its {@link
-     * org.jwcarman.nessy.agent.ComputationApprover}-backed §5a gate for free: an approval-requiring
-     * tool call PARKS here exactly as it does everywhere else, which is what makes {@link
-     * Console#approver()} reachable at all. (Fix round context: an earlier hand-rolled wiring here
-     * pointed its {@link org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} straight at {@code
-     * relay}, bypassing the harness's internal per-id fanout entirely — {@code AssistantSaid}/
-     * {@code TurnEnded} reached {@code relay} but never an {@link Agent#subscribe}d observer, so
-     * {@link Agent#ask} hung forever on a cli-built agent. Delegating to the generic door retires
-     * that wiring outright: {@code relay}, passed below as this harness's {@code turnObserver()},
-     * is composed as one more subscriber inside the SAME internal fanout every id-scoped subscriber
-     * shares — {@code relay} and any {@code subscribe}d observer (including {@link Agent#ask}'s own
-     * capture) each see every event exactly once, never twice, and neither starves the other.)
+     * exactly the generic door's correct fanout-routed narration and its Continuum-backed approval
+     * parking for free (approval-lifecycle spec §1.3): a grant whose approver defers PARKS here
+     * exactly as it does everywhere else, which is what makes {@link Console#approver()} reachable
+     * at all. (Fix round context: an earlier hand-rolled wiring here pointed its {@link
+     * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} straight at {@code relay}, bypassing
+     * the harness's internal per-id fanout entirely — {@code AssistantSaid}/ {@code TurnEnded}
+     * reached {@code relay} but never an {@link Agent#subscribe}d observer, so {@link Agent#ask}
+     * hung forever on a cli-built agent. Delegating to the generic door retires that wiring
+     * outright: {@code relay}, passed below as this harness's {@code turnObserver()}, is composed
+     * as one more subscriber inside the SAME internal fanout every id-scoped subscriber shares —
+     * {@code relay} and any {@code subscribe}d observer (including {@link Agent#ask}'s own capture)
+     * each see every event exactly once, never twice, and neither starves the other.)
      */
     public Console build() {
       Objects.requireNonNull(model, MODEL_MUST_NOT_BE_NULL);

@@ -25,9 +25,8 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 /**
  * A {@link Substrate} whose {@link #write} throws a caller-supplied {@link RuntimeException} for
  * every document under {@code kind}, delegating everything else — stands in for a genuinely broken
- * store beneath {@link org.jwcarman.nessy.agent.DispatchIndex#record}, which retries {@link
- * org.jwcarman.nessy.spi.substrate.ConflictException} forever but has no answer for anything else
- * (continuum-adoption spec §11.5).
+ * store beneath a caller that retries {@link org.jwcarman.nessy.spi.substrate.ConflictException}
+ * but has no answer for anything else.
  */
 public final class ThrowingOnWriteSubstrate implements Substrate {
 

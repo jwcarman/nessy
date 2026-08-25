@@ -174,6 +174,49 @@ class AwaitingToolsPhaseTest {
                     new CallStatus.Pending())));
   }
 
+  /**
+   * A duplicate delivery of an answer already folded (spec §3): {@code Running} means the tool is
+   * already going, so a second {@code Approved} must not emit a second {@link Effect.RunTool} — the
+   * assertion is on the effects, not merely on {@code isIgnored()}, so an implementation that
+   * re-ran the tool would fail here.
+   */
+  @Test
+  void runningIgnoresAnApprovalAnswerRatherThanRunningTheToolTwice() {
+    var phase = awaiting(calls(new CallStatus.Running(), new CallStatus.Pending()));
+
+    var inProcess = phase.handle(answered(CALL_A, Optional.empty(), Approval.approved()));
+    var delivered = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
+
+    assertThat(inProcess.isIgnored()).isTrue();
+    assertThat(inProcess.effects()).isEmpty();
+    assertThat(inProcess.commit()).isEmpty();
+    assertThat(delivered.isIgnored()).isTrue();
+    assertThat(delivered.effects()).isEmpty();
+    assertThat(delivered.commit()).isEmpty();
+    assertThat(phase.calls()).isEqualTo(calls(new CallStatus.Running(), new CallStatus.Pending()));
+  }
+
+  /**
+   * The tool has already deferred and Continuum holds its result; a late answer for the same call
+   * must not put it back on the {@code Running} path with a fresh {@link Effect.RunTool}.
+   */
+  @Test
+  void awaitingResultIgnoresAnApprovalAnswerRatherThanRunningTheToolTwice() {
+    var phase = awaiting(calls(new CallStatus.AwaitingResult(PARKED), new CallStatus.Pending()));
+
+    var byItsOwnId = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
+    var inProcess = phase.handle(answered(CALL_A, Optional.empty(), Approval.approved()));
+
+    assertThat(byItsOwnId.isIgnored()).isTrue();
+    assertThat(byItsOwnId.effects()).isEmpty();
+    assertThat(byItsOwnId.commit()).isEmpty();
+    assertThat(inProcess.isIgnored()).isTrue();
+    assertThat(inProcess.effects()).isEmpty();
+    assertThat(inProcess.commit()).isEmpty();
+    assertThat(phase.calls())
+        .isEqualTo(calls(new CallStatus.AwaitingResult(PARKED), new CallStatus.Pending()));
+  }
+
   @Test
   void runningDeferredBecomesAwaitingResult() {
     var phase = awaiting(calls(new CallStatus.Running(), new CallStatus.Pending()));

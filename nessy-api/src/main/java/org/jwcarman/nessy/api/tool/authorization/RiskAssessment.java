@@ -22,7 +22,7 @@ import java.util.Set;
  * The standard risk shape (action-wave spec §2, amended 2026-08-21): a likelihood, an impact, the
  * assessor's stored conclusion, and the open-vocabulary factors that justified it. Not a mandate —
  * an org with its own risk model deposits its own type under its own {@link Key}; this is the
- * opinionated default that makes {@link RiskPolicies} shippable out of the box.
+ * opinionated default that makes {@link RiskRules} shippable out of the box.
  *
  * <p>The canonical constructor is the explicit-override door: it stores {@code risk} verbatim, so
  * an org's assessor may conclude a level the standard combination would not — deliberate elevation

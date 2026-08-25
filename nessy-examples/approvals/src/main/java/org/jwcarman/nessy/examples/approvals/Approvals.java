@@ -74,9 +74,10 @@ public final class Approvals {
    * {@link #main} prints. Every wait is bounded: a hung host fails loudly with a named timeout
    * instead of hanging the build.
    *
-   * <p>The grant arc (durable-deliveries spec §5a): approving the computation dispatches the call
-   * directly past the gate from the grant's own continuation — no re-derivation, no second ask. The
-   * notifier fires exactly once, the tool runs exactly once, and the model's reply lands.
+   * <p>The answer arc (approval-lifecycle spec §5): approving the computation folds one {@code
+   * ApprovalAnswered} into the scope, and THAT fold is what emits the run — the desk's delivery
+   * never runs a tool itself. The approver parks exactly once, the tool runs exactly once, and the
+   * model's reply lands.
    */
   static String runScripted() throws InterruptedException {
     Model model = scriptedModel();

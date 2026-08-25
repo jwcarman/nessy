@@ -68,7 +68,7 @@ import org.slf4j.LoggerFactory;
  * {@link InMemorySubstrate} that has never had a {@code state} document written for the scope —
  * mirrors {@code DeferredToolOnContinuumTest}'s own direct-construction fixture shape. The appender
  * is wired directly onto {@link DeliveryWorker}'s own class logger, the same technique {@code
- * DurabilityMismatchWarningTest} and {@code ComputationApproverTest} use.
+ * DurabilityMismatchWarningTest} uses.
  */
 class DeliveryWorkerSilentLossWarningTest {
 

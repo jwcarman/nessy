@@ -30,9 +30,9 @@ import org.junit.jupiter.api.Timeout;
 class GovernedTest {
 
   /**
-   * The grant arc (durable-deliveries spec §5a): approving the parked restart dispatches it past
-   * the gate directly from the grant's own continuation — no second ask, no re-suspend — so this
-   * scripted run observes the turn's completion.
+   * The answer arc (approval-lifecycle spec §5): approving the parked restart folds one answer, and
+   * the fold emits the run — no second ask, no re-suspend — so this scripted run observes the
+   * turn's completion.
    */
   @Test
   void the_bounced_and_declared_restart_completes_once_approved() throws InterruptedException {

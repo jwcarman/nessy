@@ -26,9 +26,8 @@ package org.jwcarman.nessy.agent;
  * ToolContext}'s last public forcer is gone — it now carries only the opaque execution {@link
  * org.jwcarman.nessy.api.tool.ComputationId} — so this type no longer needs {@code nessy-api}. It
  * still needs public visibility here because the durable-wiring SPI ({@link
- * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#onDeferred}, {@link
- * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow}), both in the cross-package
- * {@code agent.spi}, still carry it across the package line.
+ * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#onDeferred}, in the cross-package {@code
+ * agent.spi}) still carries it across the package line.
  */
 public record ToolInvocationId(String responseId, String callId) {
 

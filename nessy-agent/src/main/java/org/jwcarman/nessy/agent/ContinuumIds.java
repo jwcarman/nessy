@@ -32,7 +32,7 @@ final class ContinuumIds {
 
   /**
    * @param nessyComputationId a Nessy {@code ComputationId}'s own {@code value()} — itself a
-   *     Continuum-minted UUID rendered as text (see {@link ComputationApprover#adjudicate})
+   *     Continuum-minted UUID rendered as text (see {@link ComputationApprovalContext#defer()})
    * @return the same identity, as Continuum's own {@link ComputationId}
    */
   static ComputationId continuumId(String nessyComputationId) {

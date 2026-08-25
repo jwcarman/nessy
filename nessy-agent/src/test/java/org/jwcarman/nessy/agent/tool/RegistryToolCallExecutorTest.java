@@ -434,8 +434,67 @@ class RegistryToolCallExecutorTest {
     var answered = (AgentEvent.ApprovalAnswered) delivered.getFirst();
     assertThat(answered.approval()).isEmpty();
     assertThat(((Approval.Denied) answered.answer()).reason()).isEqualTo("not today");
+    // A denial narrates BOTH: the decision, and the completion it amounts to — the reducer turns it
+    // into the error result the model reads, so the call is finished, and a finished call is a
+    // completion whatever finished it.
     assertThat(turn.events())
-        .contains(new TurnEvent.ToolCallDecided(call, Approval.denied("not today")));
+        .containsExactly(
+            new TurnEvent.ToolCallDecided(call, Approval.denied("not today")),
+            new TurnEvent.ToolCallCompleted(call, ToolResult.error("not today")));
+  }
+
+  @Test
+  void anApprovalNarratesOnlyTheDecisionBecauseThatCallHasNotRunYet() {
+    var registry = ToolRegistry.of(ToolGrant.grant(new EchoTool(), Approvers.allow()));
+    var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
+    var turn = new RecordingTurnObserver();
+
+    seek(registry, call, turn);
+
+    assertThat(turn.events())
+        .containsExactly(new TurnEvent.ToolCallDecided(call, Approval.approved()));
+  }
+
+  @Test
+  void anUnknownToolsDenialNarratesItsCompletionToo() {
+    var call = new ToolCall("c1", "nope", JsonNodeFactory.instance.objectNode());
+    var turn = new RecordingTurnObserver();
+
+    seek(ToolRegistry.of(new EchoTool()), call, turn);
+
+    assertThat(turn.events()).isNotEmpty();
+    assertThat(turn.events())
+        .anySatisfy(
+            event ->
+                assertThat(event)
+                    .isInstanceOfSatisfying(
+                        TurnEvent.ToolCallCompleted.class,
+                        completed -> {
+                          assertThat(completed.result().isError()).isTrue();
+                          assertThat(completed.result().content()).contains("unknown tool");
+                        }));
+  }
+
+  /**
+   * The run door never consults an approver (approval-lifecycle spec §4): the answer is already a
+   * fact in the phase by the time this effect is dispatched, so asking again would be a second
+   * judgment on a decided call. The grant's approver throws AND records; the tool must still run.
+   */
+  @Test
+  void runToolNeverConsultsTheApprover() {
+    var consulted = new ArrayList<ApprovalRequest>();
+    Approver mustNotBeAsked =
+        context -> {
+          consulted.add(context.request());
+          throw new AssertionError("runTool must never consult an approver");
+        };
+    var registry = ToolRegistry.of(ToolGrant.grant(new EchoTool(), mustNotBeAsked));
+    var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
+
+    var finished = run(registry, call, new RecordingTurnObserver());
+
+    assertThat(consulted).isEmpty();
+    assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));
   }
 
   @Test
