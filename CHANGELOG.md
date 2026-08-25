@@ -737,3 +737,82 @@ sequence of renames and interim shapes that produced it.
   [the harness guide](https://jwcarman.github.io/nessy/guides/harness/)
   (design of record:
   `docs/superpowers/specs/2026-08-23-front-ends-design.md` §1/§5).
+- **Every call is approved: the approval lifecycle folds into the scope
+  (breaking).** Three sealed types that each said "yes/no" a different
+  way — `PolicyDecision {Allow, Deny, RequireApproval}`, `Adjudication
+  {Granted, Refused, Suspended}`, `Decision {Allow, Deny}` — collapse into
+  one: `Approval {Approved(reference), Denied(reason, reference)}`. A grant
+  now takes an `Approver` (`ToolGrant.grant(tool, approver, ...)`) instead
+  of a `UsagePolicy`; `Approvers.allow()`/`.deny(reason)`/`.defer()` are the
+  three built-ins, `Approvers.rules(...)` is a ladder (first answer wins,
+  `Rule.Verdict.Defer` parks), and `Approvers.allOf(...)` is a gate (every
+  member must approve). `UsagePolicy`, `RiskPolicies`, and `IntentPolicies`
+  retire in favor of `Approver`/`Approvers`/`Rule`/`RiskRules`/`IntentRules`.
+  `AuthzContext` retires; its typed-fact mechanism survives as `Facts`, and
+  its role — the enriched question — is `ApprovalRequest`, a JSON document
+  by contract: every field renders through the harness's pinned mapper,
+  once, at enrichment, and the rendered document is the record of what was
+  decided on. `Approver.approve(ApprovalContext) -> ApprovalOutcome` is the
+  facade (one method, a world behind it, like `Memory`); `ApprovalContext
+  .defer()` does the plumbing — it parks the question, folds
+  `ApprovalDeferred` into the scope, waits for that fold to commit, and only
+  then hands back the id, so nobody can be told about a question the scope
+  has not yet recorded.
+- **A call's lifecycle is in the phase, not a side index.** `AwaitingTools`
+  replaces its `pending` set and `gathered` list with one `calls` map,
+  callId to `CallStatus` — `Pending`, `AwaitingApproval(ComputationId)`,
+  `Running`, `AwaitingResult(ComputationId)`, `Finished(ToolResultBlock)` —
+  so the persisted `awaiting-tools` phase's own wire format changes: a call
+  waiting on a parked computation now names that computation's id in its
+  own status, in the scope's own state document, rather than in a separate
+  substrate kind. `DispatchIndex`, `CallAddress.indexKey()`, and the
+  gate's index-read absorption retire outright — nothing outside the phase
+  remembers "this call is already in flight" anymore. Three events join the
+  grammar (`ApprovalDeferred`, `ApprovalAnswered`, `ToolDeferred`) and
+  `ToolFinished` gains an `Optional<ComputationId>`; `ExecuteTool` splits
+  into two effects, `SeekApproval` and `RunTool`, each producing exactly one
+  kind of result. `ToolCallExecutor.executeTool`/`executeGrantedToolNow`
+  retire in favor of `seekApproval`/`runTool`, neither with a conditional
+  inside: `seekApproval` never runs a tool, `runTool` never consults an
+  approver — the answer is already a fact in the phase by the time it runs.
+- **The lease pays for a message, never for the work.** Both
+  `DeliveryWorker` consumers — approval and tool — now only fold a result
+  into the scope and return; neither ever runs a tool inline. An `Approved`
+  answer's fold is what emits `RunTool`, dispatched afterward on the
+  harness's own executor, outside any Continuum lease — closing the
+  double-run and pump-starvation hazards a slow granted tool used to open
+  under the old lease-runs-the-tool design. The approval kind's own lease
+  drops to 30 seconds accordingly.
+- **A mismatched delivery is dropped with a `WARN`, never redelivered.**
+  With both windows that could once race closed by construction (`defer()`
+  folds and commits before it ever hands back an id; a `Running` call names
+  no computation until `ToolDeferred` folds), a delivery whose scope is not
+  in the status that awaits it can only be an orphan or a duplicate — never
+  a race worth retrying. `DeliveryWorker` logs it at `WARN`, naming the
+  agent, the call, the computation, and the status the phase actually
+  found, and consumes it; nothing is released for redelivery, and there is
+  no backoff-and-retry path for a permanent failure. `EarlyDeliveryException`
+  retires — releasing the delivery for a later retry was never the right
+  response once the race it was released for no longer exists. A denial
+  that finishes a call is committed to the transcript exactly like any
+  other outcome: the fold narrates both `ToolCallDecided` and
+  `ToolCallCompleted`, so a human reviewing the turn later sees the
+  refusal, not a gap.
+- **The desk gains doors, and a principal.** `harness.approvals()` now
+  answers `approve`/`deny` two ways — by the computation's own opaque id,
+  for whoever was handed one, and by `(agentId, callId)`, for whoever has
+  only the question, resolved through the scope's own phase (`AwaitingApproval`
+  names the id; a caller who answers before the park has folded is refused
+  with a loud "not awaiting approval" rather than losing the answer). Both
+  doors take a `principal` and a `note`/`reason`, folded into the answer's
+  `reference` — the desk is the one door with no subsystem behind it, so it
+  refuses to let a yes in anonymously. `withdraw(id, reason)` folds a
+  parked ask as a denial; `request(agentId, callId)` returns the same
+  frozen `ApprovalRequest` document the approver was handed. `HarnessConfig
+  .approvalNotifier` retires outright — telling people is the approver's
+  own job now, not a harness-level, one-recipient callback; see
+  [Writing an approver](https://jwcarman.github.io/nessy/guides/harness/#writing-an-approver).
+  `ComputationApprover` retires along with it. See
+  [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/)
+  and [the harness guide](https://jwcarman.github.io/nessy/guides/harness/)
+  (design of record: `docs/superpowers/specs/2026-08-25-approval-lifecycle-design.md`).

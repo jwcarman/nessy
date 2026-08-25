@@ -1287,3 +1287,21 @@ own words, doing voice work; the precision terms around them are the industry's.
    core sheds the old loop (§9's table is the checklist) and no rename ever happens. The layering
    is enforced by dependency direction — core must never grow a reference to the machine — checked
    mechanically in the build.
+
+## Amendment (2026-08-25): §2.2 gains a status per call, and §4.3 reverses
+
+§2.2's `AwaitingTools` traded its `pending` set and `gathered` list for one `calls` map, callId to
+`CallStatus` — `Pending`, `AwaitingApproval(id)`, `Running`, `AwaitingResult(id)`, `Finished`. §4.3's
+own ruling — *"parks are not a state; from a phase's view there is no difference between a tool
+that returns in 200ms and one that returns in three days"* — is the thesis `2026-08-25-approval-
+lifecycle-design.md` reverses for approval, and only for approval: the difference the phase now
+records is not how long an answer takes, but whether it has arrived. A `DispatchIndex` that used
+to live beside the phase, remembering which computation owns an in-flight call, is deleted — the
+phase remembers that itself, in the status, and a staleness re-fire leaves `AwaitingApproval`/
+`AwaitingResult` alone exactly as §6.1 already licensed for any re-askable rendezvous.
+
+Everything else about the reducer stays: the phase is still the single source of truth for
+outstanding effects, `Transition` is still `(next, commit, emit)`, and the model still never learns
+that an answer took three days rather than three hundred milliseconds — §4.3's model-blindness
+ruling survives even as its "parks are invisible to the reducer" half does not. See
+`2026-08-25-approval-lifecycle-design.md` §2, §3, §6.

@@ -3,7 +3,7 @@
 `nessy-tool-mcp` turns an MCP server's tools into plain Nessy `Tool<JsonNode>`
 instances. `McpToolbox` opens a server; each tool it hands back is granted the
 same way a hand-written `Tool` is — named individually, paired with its own
-`UsagePolicy`.
+`Approver`.
 
 ## Import is not authority
 
@@ -19,11 +19,14 @@ var harness =
             h.model(claude)
                 .systemPrompt(prompt)
                 .grants(
-                    ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-                    ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-                .approvalNotifier(pending::add));
+                    ToolGrant.grant(toolbox.tool("search"), Approvers.allow()),
+                    ToolGrant.grant(toolbox.tool("purchase"), Approvers.defer())));
 harness.bind(AgentId.of("agent-1")).tell("find the cheapest flight and buy it");
 ```
+
+`Approvers.defer()` parks every call for someone else to answer — see
+[Writing an approver](harness.md#writing-an-approver) for one that also
+tells a human it's waiting.
 
 The toolbox is deliberately not opened in a `try`-with-resources here: a
 granted `Tool` keeps working only as long as the session that produced it
@@ -50,14 +53,14 @@ swallowing the closed session.
 
 An MCP tool is governed exactly like a hand-written one, because nothing
 about authorization lives on the `Tool` interface itself — a granted MCP
-tool rides the same `ToolGrant.grant(tool, contributor, policy)` rungs as
+tool rides the same `ToolGrant.grant(tool, contributor, approver)` rungs as
 any first-party tool, `ActionContributor` included:
 
 ```java
 ActionContributor<JsonNode, String> PURCHASE_ACTION =
     ActionContributor.named("purchase", in -> "purchase " + in.get("item").asText());
 
-ToolGrant.grant(toolbox.tool("purchase"), PURCHASE_ACTION, UsagePolicy.requireApproval());
+ToolGrant.grant(toolbox.tool("purchase"), PURCHASE_ACTION, Approvers.defer());
 ```
 
 `McpTool#execute` is always a single request/response round trip — never a
@@ -92,6 +95,14 @@ researching public GitHub repositories — a convenient real server to import
 against, since it needs no credential of its own:
 
 ```java
+var pending = new LinkedBlockingQueue<ComputationId>();
+Approver parkAndQueue =
+    context -> {
+      ApprovalOutcome outcome = context.defer();
+      pending.add(((ApprovalOutcome.Deferred) outcome).id());
+      return outcome;
+    };
+
 McpToolbox toolbox =
     McpToolbox.connect(
         HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
@@ -101,20 +112,20 @@ var harness =
             h.model(claude)
                 .systemPrompt(prompt)
                 .grants(
-                    ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-                    ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-                    ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-                .approvalNotifier(pending::add));
+                    ToolGrant.grant(toolbox.tool("read_wiki_structure"), Approvers.allow()),
+                    ToolGrant.grant(toolbox.tool("read_wiki_contents"), Approvers.allow()),
+                    ToolGrant.grant(toolbox.tool("ask_question"), parkAndQueue)));
 harness.bind(AgentId.of("researcher")).tell("what does jwcarman/nessy's harness module do?");
 ```
 
 `read_wiki_structure` and `read_wiki_contents` are free — the agent can look
 around and read without asking. `ask_question` is DeepWiki's own
 AI-in-the-loop tool (it burns DeepWiki's own model budget to answer), so
-it's the one gated behind `requireApproval()`: the `ApprovalRequest` that
-reaches `pending` carries the rendered action for a human to read before
-`harness.approvals().approve(...)` lets the call out to a remote server. See
-[The harness guide](harness.md) for the rest of that flow.
+it's the one gated behind an approver that parks: the `ApprovalRequest` a
+human reads off `context.request()` carries the rendered action, before
+`harness.approvals().approve(id, principal, note)` lets the call out to a
+remote server. See [The harness guide](harness.md) for the rest of that
+flow.
 
 Tool names granted this way are verified against the live server, not
 guessed from documentation. That's the covenant of importing someone else's

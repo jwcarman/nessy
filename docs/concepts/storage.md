@@ -229,7 +229,7 @@ and `tool/<agentType>` kinds. `dispatch/<agentType>` is what `Substrate`
 keeps instead: one entry per in-flight call, naming which Continuum
 computation currently owns it, so a staleness redrive can be absorbed
 without asking Continuum again. See
-[Durable Computation](durable-computation.md#the-dispatch-index-what-survives-a-redrive).
+[Durable Computation](durable-computation.md#a-calls-lifecycle-is-in-the-phase).
 
 ## Layout rules
 

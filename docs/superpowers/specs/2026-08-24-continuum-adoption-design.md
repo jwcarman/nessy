@@ -648,3 +648,22 @@ this spec made possible but did not deliver now exists: `DurableResumeTest`,
 `JdbcSubstrate` plus `continuum-jdbc` over one PostgreSQL container. Continuum
 is pinned at 0.4.0, whose `continuum-jdbc` certifies PostgreSQL, MySQL and
 MariaDB on every build.
+
+## Amendment (2026-08-25): §5's index retires; §11.2, §11.3, and §11.6 close, not mitigate
+
+§5's `DispatchIndex` — the `Substrate`-side memory of which computation currently owns an
+in-flight call — is deleted outright. `2026-08-25-approval-lifecycle-design.md` gives the phase
+itself the same memory: `AwaitingApproval(id)`/`AwaitingResult(id)` name the computation a call is
+waiting on, so a staleness redrive already knows what the index used to tell it, and there is no
+second store that can disagree with Continuum's own.
+
+§11.2's lease-expiry re-run, §11.3's orphaned-approval double-run, and §11.6's pool starvation were
+all consequences of one design choice this amendment reverses: the approval consumer running a
+granted tool inline, inside Continuum's lease. Under the new design neither Continuum consumer
+ever runs a tool — each only folds a fact, and an `Approved` answer's fold is what emits `RunTool`,
+dispatched on the harness's own executor, outside any lease. §11.2 and §11.6 are not mitigated by a
+shorter lease or a bigger pool; they are unrepresentable, because there is no longer any consumer
+holding a lease open for the duration of a tool call. §11.3's orphan-resolution mechanism — "only
+the answer whose id the phase names is honoured, the other is acknowledged and ignored" — survives
+verbatim as the general mismatch rule every delivery now obeys, approval or tool, dropped with a
+`WARN` rather than redriven. See `2026-08-25-approval-lifecycle-design.md` §3, §4, §5, §9.

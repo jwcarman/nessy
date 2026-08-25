@@ -81,28 +81,35 @@ tool that needs a human decides
 that through the same harness, fronted with an `ApprovalDesk`:
 
 ```java
-var pending = new LinkedBlockingQueue<ApprovalRequest>();
+var pending = new LinkedBlockingQueue<ComputationId>();
+Approver parkAndQueue =
+    context -> {
+      ApprovalOutcome outcome = context.defer();
+      pending.add(((ApprovalOutcome.Deferred) outcome).id());
+      return outcome;
+    };
 
 var harness =
     Nessy.harness(
         h ->
             h.model(claude)
                 .systemPrompt("You are the ops assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                .approvalNotifier(pending::add));
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parkAndQueue)));
 
 harness.bind(AgentId.of("ops")).tell("restart prod-1");
 
-ApprovalRequest request = pending.take();
-harness.approvals().approve(request.id());
+ComputationId id = pending.take();
+harness.approvals().approve(id, "demo", "");
 ```
 
-If `RestartTool`'s grant requires approval, the call suspends on a durable
-computation and `approvalNotifier` fires once with the `ApprovalRequest`
-that `harness.approvals().approve(...)` or `.deny(...)` decides. Whether
-that computation survives a restart of the process that opened it depends
-on the `Substrate` behind `.substrate(...)` — the default in-memory
-substrate does not, a durable implementation does. See
+If `RestartTool`'s grant defers, the call parks on a durable computation
+and the scope's phase records it — telling people is the approver's own
+job, which is why this one hands its id to a queue as it parks. `id` is
+what `harness.approvals().approve(id, principal, note)` or `.deny(id,
+principal, reason)` decides. Whether that computation survives a restart
+of the process that opened it depends on the `Substrate` behind
+`.substrate(...)` — the default in-memory substrate does not, a durable
+implementation does. See
 [Storage](concepts/storage.md).
 
 See [Getting Started](guides/getting-started.md) for this door walked

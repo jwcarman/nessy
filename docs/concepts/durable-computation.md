@@ -24,19 +24,19 @@ A harness holds two Continuum clients, one per kind, both named
 
 | Kind | Client | Carries |
 |---|---|---|
-| `approval/<agentType>` | `ContinuumClient<Decision, Routing>` | a human decision |
+| `approval/<agentType>` | `ContinuumClient<Approval, ApprovalRouting>` | an approver's answer |
 | `tool/<agentType>` | `ContinuumClient<ToolResult, Routing>` | a deferred tool's answer |
 
-Both clients complete with a `Routing` continuation — the scope's
+Both clients complete with a routing continuation — the scope's
 coordinates plus the originating `ToolCall` — so folding a result needs no
 lookup back into the fold that started it.
 
 !!! warning "The two stores must have matching durability"
     A harness now writes to two stores: Nessy's own [`Substrate`](storage.md)
-    (state, transcripts, memory, intent, backlogs, and the dispatch index
-    below) and Continuum's own computation store (approvals and deferred
-    tool calls, plus their outbox). **Both must be in memory, or both must
-    be durable — never one of each.**
+    (state, transcripts, memory, intent, and backlogs) and Continuum's own
+    computation store (approvals and deferred tool calls, plus their
+    outbox). **Both must be in memory, or both must be durable — never one
+    of each.**
 
     Mixing them breaks differently in each direction:
 
@@ -46,13 +46,13 @@ lookup back into the fold that started it.
       result that never arrives, and a call that never completes — nothing
       logs an error, because nothing failed in the ordinary sense.
     - **In-memory computations, durable substrate.** A restart wipes
-      Continuum's pending work but not the dispatch index that names it.
-      The gate finds an index entry for a computation that no longer
-      exists and absorbs every redrive as "already in flight," forever.
-      Calls hang permanently.
+      Continuum's pending work but not the scope's own phase, which still
+      names the computation a status is `AwaitingApproval`/`AwaitingResult`
+      over. Nothing will ever deliver against that id again — the call
+      waits forever, and nothing logs an error, because nothing failed in
+      the ordinary sense.
 
-    Silent loss is bad; a permanent hang the absorption machinery actively
-    sustains is worse. Both in memory is what `Nessy.harness(...)` gives
+    Silent loss is bad either way. Both in memory is what `Nessy.harness(...)` gives
     you by default. Both durable is `.substrate(new JdbcSubstrate(ds))`
     with `.continuum(...)` handed a `continuum-jdbc`-backed Continuum over
     the same database — `DurableResumeTest` in `nessy-agent` is that
@@ -64,52 +64,86 @@ lookup back into the fold that started it.
     wiring them together
     correctly.
 
-## The dispatch index: what survives a redrive
+## A call's lifecycle is in the phase
 
 Continuum mints its own opaque computation ids — Nessy no longer derives
-them by digest. That means Nessy needs its own memory of "this call is
-already in flight," so a staleness redrive doesn't ask a human twice or run
-a tool twice. `CallAddress` — `(agentType, agentId, responseId, callId)` —
-still derives a stable key the same way it always identified a call:
+them by digest — and, unlike an earlier design, Nessy keeps no side index
+of "this call is already in flight." Every tool call inside `AwaitingTools`
+carries its own `CallStatus`, and two of its five states name a parked
+computation directly:
 
 ```java
-public record CallAddress(String agentType, String agentId,
-                          String responseId, String callId) {
-  public String indexKey() { ... } // SHA-256 over the four coordinates
+sealed interface CallStatus {
+  record Pending() implements CallStatus {}                             // approval sought, no answer yet
+  record AwaitingApproval(ComputationId approval) implements CallStatus {} // Continuum holds the ask
+  record Running() implements CallStatus {}                             // approved; the tool is executing
+  record AwaitingResult(ComputationId tool) implements CallStatus {}    // Continuum holds the result
+  record Finished(ToolResultBlock result) implements CallStatus {}      // an outcome, success or failure
 }
 ```
 
-`DispatchIndex` (`nessy-agent`, one document per call, `kind=dispatch/<agentType>`
-in `Substrate`) maps that key to a `DispatchEntry(computationId, kind)`, where
-`kind` is `APPROVAL` or `TOOL` — whichever Continuum client currently owns the
-call. Creating a computation and recording its index entry happen in that
-order, never reversed: the return address must be durable before anything
-can suspend on it. `RegistryToolCallExecutor`'s gate reads the index before
-running the tool, assembling enrichers, or asking the policy at all — a
-redrive that reaches a call already indexed absorbs there, silently,
-whether it's still pending an approval, already a tool computation, or
-already folded and the entry is simply gone.
+**The phase is the map.** A call waiting on a computation records that
+computation's id in its own status, is resolved by that computation's
+delivery, recognizes the delivery by the id, and is never re-fired while it
+waits. A delivery that names an id the call's current status doesn't hold —
+an orphan, a duplicate, an answer against a call already `Finished` — is
+dropped with a `WARN` log naming the scope, the call, the computation, and
+the status the phase actually found; nothing is released for redelivery.
+That WARN, not a silent absorb, is what a mismatched delivery looks like
+today.
+
+A quiet `AwaitingTools` re-fires on staleness the same way any other phase
+does: every `Pending` call is asked again, every `Running` call is run
+again, and `AwaitingApproval`/`AwaitingResult` calls are left alone —
+Continuum holds those and will deliver. That re-fire is the whole of what
+used to need a separate index: the phase already remembers which calls are
+someone else's problem right now.
 
 ## Outcomes
 
 A computation completes with a value, not an exception. Continuum's own
 `TypedOutcome<T>` — `Success`, `Failure`, `Expired` — is what a delivery
 consumer reads; Nessy maps `Failure` and `Expired` onto an ordinary in-band
-tool failure, and `Success` onto whatever the kind carries: a `Decision`
-for an approval, a `ToolResult` for a tool.
+tool failure, and `Success` onto whatever the kind carries: an `Approval`
+for the approval kind, a `ToolResult` for the tool kind.
 
 ```java
-sealed interface Decision {
-  record Allow() implements Decision {}
-  record Deny(String reason) implements Decision {}
+sealed interface Approval {
+  record Approved(Optional<String> reference) implements Approval {}
+  record Denied(String reason, Optional<String> reference) implements Approval {}
 }
 ```
 
-A denied approval and an expired or failed computation all fold as
-`ToolFinished(Failed)` — in-band, exactly like any other tool failure the
-model reads and reacts to. A thrown Java exception stays reserved for the
-computation *infrastructure* breaking, a different problem than the work
-coming back negative.
+A `Denied` approval and an expired or failed computation all fold as an
+in-band failure the model reads and reacts to. A denial that finishes a
+call is committed to the transcript like any other outcome — the fold
+narrates both `ToolCallDecided` and `ToolCallCompleted`, so a human
+reviewing the turn later sees the refusal, not a gap. A thrown Java
+exception stays reserved for the computation *infrastructure* breaking, a
+different problem than the work coming back negative.
+
+## Audit: what the core owes, and what it does not
+
+Evidence, identity, votes, ledgers, and retention belong to the approver
+subsystem — the thing that talked to the humans, ran the policy engine, or
+called the risk service. Pulling that into Nessy's core would make it a
+worse audit log than the thing that did the work. What the core owes is
+only what nothing outside it can produce:
+
+1. **The question, as asked** — the `ApprovalRequest` JSON, built at the
+   moment of the call from state only the harness has.
+2. **A handle whose completion resumes the agent** — `defer()`'s id.
+3. **The resumption** — the fold that runs the tool once the answer lands.
+4. **The clock** — Continuum's own deadline on the parked computation.
+
+And one join: the answer's `reference` (`Approval.Approved`/`Denied`'s own
+field), pointing from the fold's record to the subsystem's. The subsystem
+holds — or hashes — the request document it received, so "what did the
+approver see when it said yes?" is answerable from *its* storage; the desk
+shows the *same* document from Nessy's, through `harness.approvals()
+.request(agentId, callId)`. The desk is the one door that must not take an
+anonymous yes, because nothing stands behind it (see
+[The harness guide](../guides/harness.md#writing-an-approver)).
 
 ## The two desks
 
@@ -118,7 +152,7 @@ resolves a durable computation through — reachable for as long as the
 harness is kept, from any thread, any time:
 
 ```java
-public ApprovalDesk approvals();   // approve(id) / deny(id, reason)
+public ApprovalDesk approvals();     // approve(id, principal, note) / deny(id, principal, reason)
 public CompletionDesk completions(); // complete(id, result) / fail(id, reason)
 ```
 
@@ -126,24 +160,29 @@ Both desks hold a `ContinuumClient` directly — there is no Nessy-owned
 adapter between a desk and Continuum. Completing (or approving, or denying)
 nudges the delivery worker afterward, so the fold runs promptly rather than
 waiting for the next scheduled drain; the call returns before that fold has
-actually landed.
+actually landed. `ApprovalDesk` takes a principal and a note because it is
+the one door with no subsystem behind it — when a person answers there
+directly, nobody else is collecting evidence, so it refuses to fold in an
+anonymous yes. Both fold into the answer's `reference`.
 
 ## Delivery
 
 `DeliveryWorker` is the one consumer of both clients' `deliverResults`. For
-each delivery it resolves the destination scope from the `Routing`
+each delivery it resolves the destination scope from the routing
 continuation, folds the outcome through the pure reducer, remembers what
 the fold implies, and commits one `Substrate` batch — the scope's state CAS
-plus the dispatch index entry's own deletion. Continuum acknowledges the
-delivery once the consumer returns normally; a thrown exception releases
-the claim for a later retry, backed by Continuum's own lease and backoff
-rather than a Substrate-side reaper.
+alone; there is no second document to keep in step. Continuum acknowledges
+the delivery once the consumer returns normally; a thrown exception
+releases the claim for a later retry, backed by Continuum's own lease and
+backoff rather than a Substrate-side reaper.
 
-An approval's `Allow` decision is not itself a completion — the tool hasn't
-run yet. The worker dispatches the call directly through the same
-post-gate door a fresh dispatch uses, using the address the grant's own
-continuation carries. There is no re-entry through the policy or the
-approver: a call that has already cleared the gate is never re-judged.
+**Neither consumer ever runs a tool.** The approval consumer's whole job is
+to fold `ApprovalAnswered` into the scope; if that answer was an approval,
+the fold itself is what emits `RunTool`, dispatched afterward on the
+harness's own executor — never inside the delivery's lease. That is why the
+approval kind's lease can be short (30 seconds): it only ever pays for
+writing one fact, never for the work a human approved. The tool kind's
+consumer is the same shape — it folds `ToolFinished`, nothing more.
 
 Pumping — drain, expire, purge, for both kinds — runs on one shared
 scheduler per harness, not a per-harness heartbeat thread. `nudge()` is the
@@ -173,13 +212,13 @@ never resubmitted automatically.
 
 ```java
 harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
-// ... the tool defers; DeliveryWorker has nothing to drain yet ...
+// ... the approver defers; DeliveryWorker has nothing to drain yet ...
 
-ApprovalRequest request = requests.getFirst();
-harness.approvals().approve(request.id());
-// ... any node, any time later: the grant dispatches the call, the tool's
-//     own completion arrives through harness.completions(), and the turn
-//     completes ...
+ComputationId id = requests.getFirst();
+harness.approvals().approve(id, "demo", "");
+// ... any node, any time later: the answer folds, RunTool dispatches, the
+//     tool's own completion arrives through harness.completions() if it
+//     also defers, and the turn completes ...
 ```
 
 The instance that dispatched the call never has to still be running — as

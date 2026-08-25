@@ -252,10 +252,12 @@ day something does, `defer(Duration)` is one method, not a concept.
 ```java
 harness.approvals().approve(ComputationId id, String principal, String note)
 harness.approvals().deny(ComputationId id, String principal, String reason)
-harness.approvals().approve(String agentType, String agentId, String callId, String principal, String note)
+harness.approvals().approve(AgentId id, String callId, String principal, String note)
 harness.approvals().deny(...)                                   // by coordinates likewise
 harness.approvals().withdraw(ComputationId id, String reason)  // folds as a denial; the ask is abandoned
-harness.approvals().request(ComputationId id)                  // the parked ApprovalRequest, from storage
+harness.approvals().request(AgentId id, String callId)         // the parked ApprovalRequest, by coordinates — the
+                                                                 // Continuum client has no read door, so this reads
+                                                                 // the request straight off the scope's own phase
 ```
 
 Two doors to the same fold: by id, for whoever was handed one — a Slack

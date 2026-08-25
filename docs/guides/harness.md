@@ -10,9 +10,8 @@ var harness =
             h.type("ops")
                 .model(anthropic.model("claude-sonnet-5"))
                 .systemPrompt("You are the ops assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                .substrate(substrate)
-                .approvalNotifier(requests::add));
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
+                .substrate(substrate));
 
 harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
 ```
@@ -67,8 +66,9 @@ The builder surface, piece by piece:
 - **`.type(String)`** — the recipe's name, the first coordinate of every
   durable address (`AgentType`); default `"agent"`.
 - **`.grants(ToolGrant...)`** — the tool grants every scope carries,
-  authority and all; `.tools(Tool<?>...)` is sugar for granting each an
-  answered-allow policy.
+  authority and all; each grant pairs a `Tool` with the `Approver` the
+  executor consults before it runs. `.tools(Tool<?>...)` is sugar for
+  granting each `Approvers.allow()`.
 - **`.substrate(Substrate)`** — the one storage seam (see
   [Storage](../concepts/storage.md)): every scope's state, memory, and
   backlog live as documents in this substrate; default a fresh
@@ -101,10 +101,6 @@ The builder surface, piece by piece:
   [Storage](../concepts/storage.md#the-one-mapper-story)) and threads that
   one pinned copy through every recipe that binds JSON. User-registered
   modules and serializers survive the copy.
-- **`.approvalNotifier(Consumer<ApprovalRequest>)`** — fires once,
-  point-to-point, the moment an approval computation is first asked. One
-  recipient, never narrated — see
-  [Durable Computation](../concepts/durable-computation.md).
 - **`.staleness(StalenessPolicy)`** — the judgment call for when a quiet
   phase counts as dead enough to re-fire; default five minutes.
 - **`.backlogCapacity(int)`** — the per-scope capacity of the shared
@@ -126,21 +122,20 @@ the shape a second process over the same database gets for free with a
 `continuum-jdbc`-backed Continuum on each side (`DurableResumeTest`).
 
 The rule that follows: **harnesses that share `.type(...)` must share
-both stores or neither.** Two things are keyed by type alone. The
-`dispatch/<agentType>` index is plain `Substrate` state, so two harnesses
-sharing type and substrate write into the very same index — and if each is
-backed by a *different* Continuum, an entry one records points at a
-computation the other's client has never heard of. And Continuum's kinds
-are `approval/<agentType>` and `tool/<agentType>`, drained with no
-substrate discriminator — so two harnesses sharing type and Continuum but
-*different* substrates cross-drain: one claims a delivery for a scope that
-exists only in the other's substrate, folds it against a scope that reads
-`Idle` there, the reducer ignores it, and the original call hangs forever
-with no error anywhere. Share type, substrate and Continuum together; or
-give the harnesses distinct types; or give them both a distinct substrate
-*and* a distinct Continuum. Sharing exactly one store is the one shape
-that is never right. This is a contract the caller keeps, not something
-the builder can check for you.
+both stores or neither.** Continuum's kinds are `approval/<agentType>` and
+`tool/<agentType>`, drained with no substrate discriminator — so two
+harnesses sharing type and Continuum but *different* substrates cross-drain:
+one claims a delivery for a scope that exists only in the other's
+substrate. Share type, substrate and Continuum together; or give the
+harnesses distinct types; or give them both a distinct substrate *and* a
+distinct Continuum. Sharing exactly one store is the one shape that is
+never right. This is a contract the caller keeps, not something the
+builder can check for you — but the failure when it's broken is now
+**loud, not silent**: the cross-drained answer names a computation the
+phase it lands on does not hold, so a delivered fact against any status
+other than the one that's waiting for it is dropped with a `WARN` naming
+the scope, the call, and the computation — never absorbed quietly into a
+scope that reads `Idle`.
 
 ## `bind` and `tell`
 
@@ -181,19 +176,18 @@ close. It resolves a sealed `TurnOutcome`:
 ```java
 sealed interface TurnOutcome {
   record Replied(String text) implements TurnOutcome {}
-  record Parked(ApprovalRequest ask) implements TurnOutcome {}
+  record Parked(ComputationId approval, ApprovalRequest request) implements TurnOutcome {}
   record Failed(String reason) implements TurnOutcome {}
 }
 ```
 
 `Replied` and `Failed` read straight off `AssistantSaid`/`TurnEnded` — the
-same two events `subscribe` always delivered. `Parked` resolves
-off-channel, through the same approval notifier `.approvalNotifier(...)`
-already fires into, since a parked call is never narrated as a `TurnEvent`
-at all (see "The approval arc" below) — `ask` registers its own wait for
-the next `ApprovalRequest` on that id before ever calling `tell`, so a
-turn that parks synchronously, inside the very call that registers it,
-still resolves to `Parked` rather than hanging.
+same two events `subscribe` always delivered. `Parked` resolves off-channel:
+a parked call is never narrated as a `TurnEvent` at all (see "The approval
+arc" below), so `ask` registers its own per-id waiter, keyed off the
+scope's own `ApprovalDeferred` fold, before ever calling `tell` — a turn
+that parks synchronously, inside the very call that registers it, still
+resolves to `Parked` rather than hanging.
 
 ## The console
 
@@ -206,20 +200,21 @@ try (Console console =
     Nessy.cli()
         .model(claude)
         .systemPrompt("You are the ops assistant.")
-        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, Approvers.defer()))
         .build()) {
   console.run();
 }
 ```
 
-`console.approver()` is the §5a immediate-decision arm as a face: it
-renders the flattened `ApprovalRequest` (`id`, `call`, `agentType`,
-`agentId`), reads `y`/`n`(+reason), and answers through
-`harness.approvals().approve(id)`/`.deny(id, reason)` — the exact same desk
-"The approval arc" below describes, reached by hand instead of read back
-off a notifier. `console.run()` is the read-`ask`-print loop: a `Replied`
-prints; a `Parked` hands the ticket to `approver()` and waits for the same
-turn to settle before printing what it settled on; a `Failed` prints the
+`console.approver()` is the immediate-decision arm as a face: it renders
+the flattened `ApprovalRequest` (agent coordinates, call name, arguments,
+action), reads `y`/`n`(+reason), and answers through
+`harness.approvals().approve(id, "console", "")`/`.deny(id, "console",
+reason)` — the exact same desk "The approval arc" below describes, reached
+by hand instead of by a queued callback. `console.run()` is the
+read-`ask`-print loop: a `Replied` prints; a `Parked` hands the ticket to
+`approver()` and waits for the same turn to settle before printing what it
+settled on; a `Failed` prints the
 reason honestly. `Nessy.cli()`'s builder mirrors `HarnessConfig`'s own surface for the
 pieces a terminal session needs (`.model`, `.systemPrompt`, `.settings`,
 `.grants`/`.tools`, `.objectMapper`) — its substrate is always a fresh
@@ -249,14 +244,73 @@ harnessB.bind(AgentId.of("shared-scope")).tell("message two");
 Nothing about the object graph ties these two harnesses together — only
 the shared `Substrate` does.
 
-## The approval arc
+## Writing an approver
 
-`GovernedTurnDemo` and `ApprovalPlayground` (in `nessy-agent`'s test
-sources) are the flagship: a model asks to restart production, the grant
-requires approval, the call suspends, and the desk resumes it.
+A grant carries an `Approver` — one method, and a world behind it: a rule
+ladder, a risk service, a Slack post, a policy engine, a person at a
+terminal. None of that is visible to the harness, and all of it is free to
+be asynchronous through `ApprovalContext.defer()`. An approver either
+answers now or says it will get back to us; `defer()` does the plumbing —
+it parks the question, folds `ApprovalDeferred` into the scope, waits for
+that fold to commit, and only then hands back the id. By the time an
+approver could tell anyone about a question, the phase already names it.
+
+**Telling people is the approver's own business.** There is no
+harness-level notifier: the thing that decided a human was needed is the
+thing that knows which human. A Slack approver, complete:
 
 ```java
-var requests = new CopyOnWriteArrayList<ApprovalRequest>();
+context -> {
+  var deferred = context.defer();                       // parked; the phase says AwaitingApproval(id)
+  slack.post("#ops", render(context.request(), deferred.id()));
+  return deferred;
+}
+```
+
+The built-ins are one-liners: `Approvers.allow()` and `Approvers.deny(reason)`
+answer without ever building a request — no enricher runs for a call
+nobody will read the file of — and `Approvers.defer()` parks every call for
+someone else to answer, telling nobody. A bare `Tool` in `.tools(...)`
+still means `allow()`.
+
+There is no chain on the `Approver` interface itself; composition is code
+inside an approver, and the toolkit ships the two shapes people reach for
+— a ladder, where the first answer wins and the last word parks:
+
+```java
+Approvers.rules(
+    IntentRules.requireDeclared(OpsIntent.class),
+    RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH))
+```
+
+and a gate, where every member must approve and the first denial wins:
+
+```java
+Approvers.allOf(a, b, c)
+```
+
+`nessy-testing` ships `ScriptedApprover` (answers or defers per a script,
+like `ScriptedModel`) and `RecordingApprover` for asserting on what an
+approver saw.
+
+## The approval arc
+
+`nessy-examples/approvals` and `nessy-examples/governed` are the flagship,
+runnable with no key at all
+(`./mvnw -q -pl nessy-examples/approvals -am compile
+exec:java -Dexec.args=--scripted`): a model asks to restart production, the
+grant's approver parks, and the desk resumes it.
+
+```java
+var requests = new LinkedBlockingQueue<ComputationId>();
+Approver parking =
+    context -> {
+      ApprovalOutcome outcome = context.defer();
+      ComputationId id = ((ApprovalOutcome.Deferred) outcome).id();
+      System.out.println("approval requested: " + id.value() + " action=" + context.request().action());
+      requests.add(id);
+      return outcome;
+    };
 
 var harness =
     Nessy.harness(
@@ -264,43 +318,43 @@ var harness =
             h.type("ops")
                 .model(claude)
                 .systemPrompt("You are the ops assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                .substrate(substrate)
-                .approvalNotifier(requests::add));
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parking))
+                .substrate(substrate));
 
 harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
-// ... turn runs, the tool call parks in the approval/ops kind ...
+// ... turn runs, the call's status goes Pending, then AwaitingApproval(id)
+//     the instant the approver defers ...
 
-ApprovalRequest request = requests.getFirst();
-// request.id() is the ticket — the approval's own opaque ComputationId
-// request.context().action() is "restart prod-eu", from the ActionContributor
-
-harness.approvals().approve(request.id());
-// ... any node, any time later; the call dispatches and the turn completes ...
+ComputationId firstAsk = requests.take();
+harness.approvals().approve(firstAsk, "demo", "");
+// ... any node, any time later; the answer folds, the tool runs, and the
+//     turn completes ...
 ```
 
-The arc: **park** — the gate sees `RequireApproval`, creates the approval
-computation (kind `approval/<agentType>`) whose continuation carries the
-tool call itself (routing, invocation id, call name and arguments), and
-suspends; **notifier** — `approvalNotifier` fires once with the
-`ApprovalRequest`, carrying the ticket (`id`), the plain-string
-`agentType`/`agentId` for display, and the assembled `AuthzContext` (action,
-declared intent, risk, principal — whatever the grant's enrichers
-deposited); **desk** — `harness.approvals().approve(...)` or `.deny(...,
-reason)` completes the computation with a `Decision`, which is itself the
-ownership transfer into one outbox delivery; **dispatch** — the delivery
-worker drains that delivery and, because its destination continuation
-already carries the call, dispatches it directly — no re-read of the fold,
-no re-derivation of the pending computation, and no second run through the
-policy or the approver. A denial completes the same computation with
-`Decision.Deny`, and the delivery worker folds it as an ordinary failed
-tool result: the model reads the refusal in-band and reacts to it.
+The arc: **park** — the executor builds the `ApprovalRequest`, hands it to
+the approver, and `defer()` creates the approval computation (kind
+`approval/<agentType>`) whose continuation carries the tool call itself,
+folds `ApprovalDeferred(call, id)` into the scope — the call's status is
+now `AwaitingApproval(id)` — and only then returns; **tell** — whatever the
+approver does after `defer()` hands it an id (a queue, a Slack post, a
+ticket) is how a human learns there is a question; **desk** —
+`harness.approvals().approve(id, principal, note)` or `.deny(id, principal,
+reason)` completes the computation with an `Approval`, the ownership
+transfer into one outbox delivery; **fold, then dispatch** — the delivery
+worker folds `ApprovalAnswered(call, id, approval)` into the scope; an
+`Approved` answer is what emits `RunTool`, dispatched afterward on the
+harness's own executor — **never inside the delivery's lease**. A `Denied`
+answer folds the call straight to `Finished`, and the model reads the
+refusal in-band: the delivery worker never runs a tool, whether the answer
+was yes or no.
 
 `harness.approvals()` and `harness.completions()` are the two doors:
-`approvals()` answers `approve(id)`/`deny(id, reason)`; `completions()`
-answers `complete(id, result)`/`fail(id, reason)` for a durable tool's own
-eventual result. Both are the harness's own desks — reachable for as long
-as the harness is kept, from any thread, any time.
+`approvals()` answers `approve(id, principal, note)`/`deny(id, principal,
+reason)`, plus the by-coordinates pair `approve(agentId, callId, principal,
+note)`/`deny(...)` for whoever has only the question, not a ticket;
+`completions()` answers `complete(id, result)`/`fail(id, reason)` for a
+durable tool's own eventual result. Both are the harness's own desks —
+reachable for as long as the harness is kept, from any thread, any time.
 
 Nothing here holds a thread open waiting. Whether a park survives a
 restart depends on both stores behind the harness, not just
@@ -318,55 +372,55 @@ substrate share the Continuum too" above).
 !!! note "Delivery is per-harness, not per-cluster"
     Within one harness, Continuum's own lease gives one winner per
     delivery — claimed, processed, then acknowledged or released back for
-    another pump to pick up. That lease mechanism is Continuum's, already
-    shipped; it replaces an older, unbuilt "outbox lease" idea from before
-    this migration.
-
-    A slower hazard remains even within a single process: the approval
-    kind's consumer runs a granted `Awaited.Ready` tool inline, holding
-    the lease for as long as that tool takes. A tool slower than the
-    lease gets reclaimed and **run a second time** while the first run is
-    still in flight. Retryable redispatch is not implemented in Nessy
-    today — an overdue *durable* computation is expired once and folded as
-    a failure, never resubmitted — so a tool that might run long under an
-    approval-gated grant should still be idempotent, or should defer
-    rather than answer `Awaited.Ready`. See
-    [Durable Computation](../concepts/durable-computation.md#honest-limits).
+    another pump to pick up. Neither the approval nor the tool kind's
+    consumer ever runs a tool inline: each only folds one fact and returns,
+    so the approval kind's lease is short (30 seconds) — it pays for
+    delivering a message, never for doing the work. A tool an approver
+    granted still runs on the harness's own executor, outside any lease, so
+    a slow tool cannot be reclaimed and run twice the way it once could.
+    See [Durable Computation](../concepts/durable-computation.md) for the
+    delivery pipeline this replaces.
 
 ## The governed turn: intent, risk, and threshold together
 
-A single grant can compose more than a yes/no policy. `GovernedTurnDemo`
-wires a restart tool where the gate reads three separate facts before it
-judges:
+A single grant can compose more than a yes/no answer. `nessy-examples/governed`
+wires a restart tool where a rule ladder reads two separate facts before it
+answers:
 
 ```java
 ToolGrant.grant(
     new RestartTool(),
-    RESTART_STATEMENT,
-    List.of(new IntentEnricher(intentStore), riskAssessor, Enrichers.principal(() -> "jcarman")),
-    RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
+    RESTART_ACTION,
+    List.of(new IntentEnricher<>(intentStore, OpsIntent.class), riskAssessor()),
+    Approvers.rules(
+        IntentRules.requireDeclared(OpsIntent.class),
+        RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH)));
 ```
 
 `IntentEnricher` reads back whatever the model declared through the
-`declare-intent` tool (see [Intent](../concepts/intent.md)); a risk assessor
-enricher deposits a `RiskAssessment` under `AuthzContext.RISK_KEY`;
-`Enrichers.principal` states who's asking. `RiskPolicies.threshold` reads
-the assembled context and judges three ways:
+`declare-intent` tool (see [Intent](../concepts/intent.md)) and deposits it
+under `IntentEnricher.declared(OpsIntent.class)`; a risk-assessing
+`Enricher` deposits a `RiskAssessment` under `ApprovalRequest.RISK`. The
+ladder judges in order, first answer wins:
 
-- severity below `MODERATE` → `Allow`, no approval needed.
-- severity `MODERATE` up to (not including) `VERY_HIGH` → `RequireApproval`,
-  the same park-and-dispatch arc as above; the approval request carries the
-  declared intent, the risk assessment, and the principal for a human to
-  weigh.
-- severity `VERY_HIGH` → `Deny`, in-band, **before any approver is ever
-  asked** — the notifier fires zero times, and the model reads the refusal
-  directly.
+- **`IntentRules.requireDeclared(OpsIntent.class)`** denies, in-band,
+  before the risk rule is ever reached, when no intent was declared for
+  this call — the model reads the refusal and learns to call
+  `declare-intent` first.
+- **`RiskRules.threshold(MODERATE, VERY_HIGH)`** then reads the deposited
+  `RiskAssessment` and judges three ways: severity below `MODERATE`
+  approves, no human involved; `MODERATE` up to (not including) `VERY_HIGH`
+  defers — the same park-and-answer arc as above, and the approval request
+  carries the declared intent and the risk assessment for a human to weigh;
+  `VERY_HIGH` or above denies, in-band, **before any human is ever told** —
+  telling is the approver's job, and a ladder that denies never reaches a
+  step that would.
 
-And a threshold policy **fails closed**: if no risk assessor is wired at
-all, there's nothing under `RISK_KEY` to judge, and the call is denied with
-"no risk assessment deposited under `RISK_KEY`" rather than defaulting to
-allow. Composing a gate from enrichers is opt-in per fact; leaving one out
-is a denial, not a silent pass.
+And `RiskRules.threshold` **fails closed**: if no risk assessor is wired at
+all, there's nothing deposited under `ApprovalRequest.RISK` to judge, and
+the call is denied with "no risk assessment deposited under `risk`" rather
+than defaulting to allow. Composing a gate from enrichers is opt-in per
+fact; leaving one out is a denial, not a silent pass.
 
 ## Typed intent, in your own vocabulary
 
@@ -384,12 +438,12 @@ sealed interface OpsIntent permits Restart, Diagnose {}
 record Restart(String target, String reason) implements OpsIntent {}
 record Diagnose(String target) implements OpsIntent {}
 
-ToolGrant.grant(new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow());
+ToolGrant.grant(new IntentTool<>(OpsIntent.class, intentStore), Approvers.allow());
 ```
 
 Three things fall out of typing the intent:
 
-- **`IntentPolicies.requireDeclared(OpsIntent.class)`** denies an
+- **`IntentRules.requireDeclared(OpsIntent.class)`** denies an
   undeclared restart in-band, teaching the model to call `declare-intent`
   first. Once declared, the retried restart proceeds through the risk
   threshold as before.
@@ -457,21 +511,28 @@ observation, watch a restart request park, type `approve` or `deny
 
 ```java
 var selection = ModelDiscovery.select();
+var pending = new LinkedBlockingQueue<ComputationId>();
+Approver queueing =
+    context -> {
+      ApprovalOutcome outcome = context.defer();
+      System.out.println("  [parked] " + context.request().action());
+      pending.add(((ApprovalOutcome.Deferred) outcome).id());
+      return outcome;
+    };
 var harness =
     Nessy.harness(
         h ->
             h.type("playground")
                 .model(selection.model())
                 .systemPrompt("You are a terse assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-                .approvalNotifier(pending::add)
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, queueing))
                 .turnObserver(event -> System.out.println("  [turn] " + event)));
-// ... read lines; "approve" / "deny <reason>" answer pending.peek();
+// ... read lines; "approve" / "deny <reason>" answer pending.peek() by id;
 //     everything else is harness.bind(AgentId.of("tinker")).tell(line) ...
 ```
 
 Run it from the IDE with a provider key set — see
-[Providers](providers.md) — to watch the park-notify-approve-dispatch arc
+[Providers](providers.md) — to watch the park-tell-approve-dispatch arc
 happen live, narrated turn by turn.
 
 For this same arc as consumer code, runnable with no key at all, see

@@ -506,6 +506,15 @@ $ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
     NESSY_MODEL=<loaded-model> # then run ApprovalPlayground.main
 ```
 
+Whichever provider answers, the wait itself looks the same: type an
+observation, and the moment the model asks to restart something,
+`ApprovalPlayground`'s own approver defers and prints `[parked] restart
+<target>` before returning control to the prompt. Nothing blocks — the
+turn is genuinely suspended on a durable computation, not a spinner — so
+the same terminal is still free to type `approve` or `deny <reason>`,
+which resolves the ticket at the front of the queue and lets the turn's
+reply print once the tool runs.
+
 ## Where next
 
 - [Getting Started](getting-started.md) — the smallest harness, model swap

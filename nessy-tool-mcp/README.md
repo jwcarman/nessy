@@ -7,19 +7,21 @@ agent may call it — importing a whole server's toolbox does not import
 authority along with it. `McpToolbox` opens a server's tools as plain
 nessy `Tool<JsonNode>` instances; nothing about that act pre-authorizes
 anything. Each one is wired into an agent the same way a hand-written
-`Tool` is — named individually, paired with its own `UsagePolicy` — so a
+`Tool` is — named individually, paired with its own `Approver` — so a
 server offering ten tools yields ten separate grant decisions, not one
 blanket "trust this server":
 
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
-  Agent<String> agent =
-      harness.agent(
-          a ->
-              a.name("researcher")
-                  .tools(
-                      ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-                      ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval())));
+  var harness =
+      Nessy.harness(
+          h ->
+              h.type("researcher")
+                  .model(claude)
+                  .systemPrompt(prompt)
+                  .grants(
+                      ToolGrant.grant(toolbox.tool("search"), Approvers.allow()),
+                      ToolGrant.grant(toolbox.tool("purchase"), Approvers.defer())));
 }
 ```
 
@@ -27,9 +29,9 @@ try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
 tool the server actually advertised — rather than handing back `null` for
 a typo. `toolbox.tools()` returns every tool the server advertised, in
 `tools/list` order, for callers that want to grant the whole set (still
-one `ToolGrant` per tool — `AgentConfig#tools` has no bulk-grant form,
+one `ToolGrant` per tool — `HarnessConfig#grants` has no bulk-grant form,
 because a tool carries zero authority content on its own; every
-attachment states its policy or does not compile). Two servers make two
+attachment states its approver or does not compile). Two servers make two
 toolboxes and two namespaces: a name collision between them is the
 application's business, made visible in the grant list itself — you
 still grant what you name.

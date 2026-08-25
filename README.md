@@ -86,39 +86,44 @@ exists for a container's destroy callback, never application hygiene.
 
 The same harness fronts a tool that needs a human, with an `ApprovalDesk`.
 `RestartTool` here is an ordinary `Tool<RestartInput>`, shaped just like
-`AddTool` above, granted `UsagePolicy.requireApproval()` instead of
-`allow()` and an `ActionContributor` (`RESTART_ACTION`) stating what the
-call will do:
+`AddTool` above, granted an `Approver` that parks instead of `allow()`, and
+an `ActionContributor` (`RESTART_ACTION`) stating what the call will do.
+Telling people is the approver's own job — there is no harness-level
+notifier — so this one hands its parked id to a queue as it defers:
 
 ```java
-var pending = new LinkedBlockingQueue<ApprovalRequest>();
+var pending = new LinkedBlockingQueue<ComputationId>();
+Approver parkAndQueue =
+    context -> {
+      ApprovalOutcome outcome = context.defer();
+      pending.add(((ApprovalOutcome.Deferred) outcome).id());
+      return outcome;
+    };
 
 var harness =
     Nessy.harness(
         h ->
             h.model(anthropic.model("claude-sonnet-5"))
                 .systemPrompt("You are the ops assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parkAndQueue)));
                 // The default substrate is a fresh InMemorySubstrate — durable only for this
                 // process's lifetime. Supply .substrate(Substrate) with a durable implementation
                 // in production so a suspended approval survives a restart.
-                .approvalNotifier(pending::add));
 
 harness.bind(AgentId.of("ops")).tell("restart prod-1");
 
-ApprovalRequest request = pending.take();
-harness.approvals().approve(request.id());
+ComputationId id = pending.take();
+harness.approvals().approve(id, "demo", "");
 ```
 
 `.tell(observation)` enqueues a fact for that scope and returns
-immediately; the scope drains it, and if `RestartTool`'s grant requires
-approval, the call suspends on a durable computation and `approvalNotifier`
-fires once with the `ApprovalRequest` — `request.id()` is
-the computation id `harness.approvals().approve(...)`/`.deny(..., reason)`
-decides. Nothing here holds a thread open waiting; whether that computation
-outlives a restart of the process that opened it depends entirely on the
-`Substrate` behind `.substrate(...)` — the in-memory default does not, a
-durable implementation does. See
+immediately; the scope drains it, and if `RestartTool`'s grant defers, the
+call parks on a durable computation and the scope's phase records it —
+`id` is what `harness.approvals().approve(id, principal, note)`/
+`.deny(id, principal, reason)` decides. Nothing here holds a thread open
+waiting; whether that computation outlives a restart of the process that
+opened it depends entirely on the `Substrate` behind `.substrate(...)` —
+the in-memory default does not, a durable implementation does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough, and
 [Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the
@@ -183,7 +188,7 @@ for applications that want it.
 
 ```xml
 <dependencies>
-  <!-- The shared vocabulary: Tool, ToolGrant, UsagePolicy, the authorization chokepoint. -->
+  <!-- The shared vocabulary: Tool, ToolGrant, Approver, the authorization chokepoint. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-api</artifactId>

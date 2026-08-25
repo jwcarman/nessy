@@ -248,3 +248,19 @@ Ruled:
 - **The ladder law simplifies**: "typed" stops being a rung of its own — a typed policy is one
   that reads a typed key. Stage-named fail-closed, render-once, and the Static rung-0 fast
   path are unchanged.
+
+## Amendment (2026-08-25): the decision vocabulary collapses to `Approval`
+
+`PolicyDecision {Allow, Deny, RequireApproval}` and `AuthzContext`'s `decide` step retire.
+`2026-08-25-approval-lifecycle-design.md` §1 replaces the three-way verdict with one type,
+`Approval {Approved(reference), Denied(reason, reference)}`, answered by an `Approver` a grant
+carries directly instead of a `UsagePolicy`; a policy that used to answer `RequireApproval` now
+calls `context.defer()` and the harness records the wait in the scope's own phase rather than a
+`Judged`-adjacent side channel. `RiskPolicies`/`IntentPolicies` become `RiskRules`/`IntentRules`,
+rules for the ladder `Approvers.rules(...)` runs; `AuthzContext`'s typed-fact mechanism survives
+as `Facts`, and its role — the enriched question this section built — is `ApprovalRequest`, now a
+JSON document by contract rather than a live object graph.
+
+The render-once, stage-named-fail-closed, and Static rung-0 fast-path rulings above all carry
+forward unchanged — only the verdict's shape and the parked branch's mechanics move. See
+`2026-08-25-approval-lifecycle-design.md` §1, §4.
