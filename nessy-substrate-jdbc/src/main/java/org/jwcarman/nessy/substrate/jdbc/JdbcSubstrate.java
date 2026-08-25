@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -46,10 +47,10 @@ import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
  * — {@code updatedAt} and {@code appendedAt} are informational, since {@code version} is the CAS
  * token and {@code seq} is the journal's own order.
  *
- * <p>The shipped DDL pins {@code key} to the {@code "C"} collation on both tables, so {@code
- * #keys(String, int)}'s ascending order is byte order — matching {@code InMemorySubstrate}'s {@code
- * String.compareTo} and this interface's documented "ascending lexicographic order" — regardless of
- * the database's own default collation.
+ * <p>The shipped DDL pins {@code key} to the {@code "C"} collation on both tables, so {@link
+ * #keys(String, int)}'s ascending order is byte order, which matches {@code String.compareTo} for
+ * all keys in the Basic Multilingual Plane below U+E000 — the whole of Nessy's key space of digests
+ * and identifiers — regardless of the database's own default collation.
  *
  * <p>{@link #batch(java.util.List)} applies every op in one transaction, in list order, by calling
  * the same private per-shape methods that back {@link #write(String, String, byte[], long)}, {@link
@@ -60,6 +61,20 @@ import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
 public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
 
   private static final String UNIQUE_VIOLATION_SQLSTATE = "23505";
+  private static final String DEADLOCK_DETECTED_SQLSTATE = "40P01";
+  private static final String SERIALIZATION_FAILURE_SQLSTATE = "40001";
+
+  // These three SQLSTATEs share a fate: each one means the caller lost a race and must re-read
+  // and retry, which is precisely what ConflictException exists to signal. 23505 (unique
+  // violation) is a lost race against another writer's insert; 40P01 (deadlock detected) is
+  // PostgreSQL picking this transaction as the victim to break a cycle with a concurrent
+  // transaction; 40001 (serialization failure) is the serializable-isolation equivalent, a
+  // transaction aborted because committing it would violate serializability. None of the three
+  // is a programming error or a connectivity problem — they are exactly the shape of failure a
+  // retry can resolve.
+  static final Set<String> CONFLICT_SQLSTATES =
+      Set.of(UNIQUE_VIOLATION_SQLSTATE, DEADLOCK_DETECTED_SQLSTATE, SERIALIZATION_FAILURE_SQLSTATE);
+
   private static final String KIND_NULL_MESSAGE = "kind must not be null";
   private static final String KEY_NULL_MESSAGE = "key must not be null";
   private static final String PAYLOAD_NULL_MESSAGE = "payload must not be null";
@@ -127,8 +142,23 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
         throw e;
       }
     } catch (SQLException e) {
+      if (isConflict(e)) {
+        throw new ConflictException(
+            "lost a race with a concurrent transaction (SQLSTATE "
+                + e.getSQLState()
+                + "); re-read and retry");
+      }
       throw new IllegalStateException("substrate operation failed", e);
     }
+  }
+
+  /**
+   * True when {@code e}'s SQLSTATE is one of {@link #CONFLICT_SQLSTATES} — a signal the caller lost
+   * a race, not a programming error or connectivity failure. Keyed on SQLSTATE alone, never on
+   * message text, which varies across driver versions and locales.
+   */
+  static boolean isConflict(SQLException e) {
+    return CONFLICT_SQLSTATES.contains(e.getSQLState());
   }
 
   /**
@@ -314,7 +344,7 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
               }
             }
           }
-          return keys;
+          return List.copyOf(keys);
         });
   }
 
@@ -381,7 +411,7 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
               }
             }
           }
-          return entries;
+          return List.copyOf(entries);
         });
   }
 
