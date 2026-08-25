@@ -38,7 +38,8 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  * -Dtest=...} run without any key skips cleanly instead of failing. This is the intended tinkering
  * entry point for this module: point one of {@code ANTHROPIC_API_KEY}, {@code OPENAI_API_KEY},
  * {@code GEMINI_API_KEY}/{@code GOOGLE_API_KEY}, or {@code XAI_API_KEY} at a real key and run it
- * directly.
+ * directly. With two or more keys set at once, {@code NESSY_PROVIDER} must name one of them or
+ * {@link ModelDiscovery} fails fast rather than picking one.
  */
 @Tag("live")
 class CliLiveSmokeTest {

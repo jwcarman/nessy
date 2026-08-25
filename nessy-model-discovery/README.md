@@ -58,9 +58,9 @@ construct it directly: `BedrockModelProvider.fromEnv().model("...")`.
 
 Offline, entirely: the public doors read the real environment, but every
 test drives the package-private `select(Map<String, String>, Iterable<ModelProviderBootstrap>)`
-seam with hand-written fakes and no provider module on the classpath. One
-test goes through the real `ServiceLoader` against a registration in this
-module's own test resources, proving the wiring.
+seam with hand-written fakes and no provider module on the classpath. A
+handful of tests go through the real `ServiceLoader` against a registration
+in this module's own test resources, proving the wiring.
 
 ## Writing your own
 

@@ -59,7 +59,8 @@
       <artifactId>continuum-memory</artifactId>
     </dependency>
     <!-- ApprovalPlayground and CliLiveSmokeTest run against whichever real key the developer has;
-         every keyed provider rides the test classpath so any of them works. -->
+         every keyed provider rides the test classpath so any of them works. With two or more keys
+         set at once, NESSY_PROVIDER must name one or ModelDiscovery fails fast. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-discovery</artifactId>

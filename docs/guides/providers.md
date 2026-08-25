@@ -217,6 +217,7 @@ public final class AcmeModelProviderBootstrap implements ModelProviderBootstrap 
 
   @Override
   public Optional<ModelProvider> bootstrap(Map<String, String> env) {
+    Objects.requireNonNull(env, "env must not be null");
     var key = env.get("ACME_API_KEY");
     return key == null ? Optional.empty() : Optional.of(AcmeModelProvider.create(c -> c.apiKey(key)));
   }
@@ -234,7 +235,9 @@ needs both. Read only the `env` map you are handed, never `System.getenv()`;
 return empty for an absent key and throw for a present key you cannot honour.
 Write one test that `ServiceLoader.load(ModelProviderBootstrap.class)` finds
 your class: the services file is a resource, and a typo in it fails at runtime
-with no compiler to notice.
+with no compiler to notice. `name()` is lowercase, non-blank, and unique
+across the classpath — discovery fails fast at startup, naming your class, if
+it is not.
 
 ## Retrying: `RetryingModel`
 
