@@ -20,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -45,24 +48,28 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * Spec §10, proof 1: the delivery worker only ever FOLDS an approval answer — it dispatches the
  * granted tool's own execution ({@code RegistryToolCallExecutor#runTool}) onto the harness's
  * executor and returns immediately, never blocking on the tool itself (see {@code DeliveryWorker}'s
- * own javadoc: "neither runs a tool"). A regression that made the fold BLOCK until the tool
- * finished would risk the approval delivery's own lease (30s) elapsing mid-fold, inviting Continuum
- * to treat the delivery as unacknowledged and hand it to a second claim — which would dispatch
- * {@code RunTool} a second time and run the (slow) tool twice.
+ * own javadoc: "neither runs a tool"). A regression that ran the tool INLINE on the fold thread
+ * instead of dispatching it through the executor would risk the approval delivery's own lease (30s)
+ * elapsing mid-fold, inviting Continuum to treat the delivery as unacknowledged and hand it to a
+ * second claim — which would dispatch {@code RunTool} a second time and run the tool twice.
  *
- * <p>Driven deterministically with {@link PumpedExecutor}: the tool sleeps a small, real amount of
- * wall-clock time (representing "slow" without literally waiting out the 30s lease — the resolution
- * this task shipped under says the wall-clock must stay small), and the test pumps the executor
- * several times after approving, polling for the task to land rather than assuming a single pump
- * catches a fold that runs on the harness's own background {@code ComputationScheduler} thread.
+ * <p>Driven with a {@link PumpedExecutor} and a tool that blocks on a gate, rather than a
+ * wall-clock sleep (fix round 1, finding 1): {@code RunTool}'s dispatch happens on the harness's
+ * own background {@code ComputationScheduler} thread, and this test asserts the task lands on
+ * {@code pump}'s queue — i.e. is dispatched THROUGH the executor rather than run inline — before
+ * ever draining it. A tool merely sleeping proves nothing: an inline-executed tool would also
+ * finish and leave {@code invocations == 1}, so the old version of this test could not fail against
+ * the very regression it named (see the fix-round report for the red/green proof).
  */
 class SlowApprovedToolRunsOnceTest {
 
   record NoInput() {}
 
-  /** Sleeps a little on every invocation and counts how many times it actually ran. */
-  static final class SlowTool implements Tool<NoInput> {
+  /** Counts invocations; blocks on {@code gate} once entered, after signalling {@code started}. */
+  static final class GatedTool implements Tool<NoInput> {
     private final AtomicInteger invocations = new AtomicInteger();
+    private final CountDownLatch started = new CountDownLatch(1);
+    private final CountDownLatch gate = new CountDownLatch(1);
 
     @Override
     public String name() {
@@ -71,7 +78,7 @@ class SlowApprovedToolRunsOnceTest {
 
     @Override
     public String description() {
-      return "a granted tool that takes a moment to run";
+      return "a granted tool that blocks until released";
     }
 
     @Override
@@ -87,7 +94,8 @@ class SlowApprovedToolRunsOnceTest {
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
       invocations.incrementAndGet();
-      sleepQuietly();
+      started.countDown();
+      awaitGate();
       return Awaited.ready(ToolResult.ok("done"));
     }
 
@@ -95,9 +103,18 @@ class SlowApprovedToolRunsOnceTest {
       return invocations.get();
     }
 
-    private static void sleepQuietly() {
+    /** Blocks up to 5s for {@link #execute} to have been entered; true once it has. */
+    boolean awaitStarted() throws InterruptedException {
+      return started.await(5, TimeUnit.SECONDS);
+    }
+
+    void release() {
+      gate.countDown();
+    }
+
+    private void awaitGate() {
       try {
-        Thread.sleep(200);
+        gate.await(10, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
@@ -114,7 +131,7 @@ class SlowApprovedToolRunsOnceTest {
         new SubstrateAgentStateStore(
             substrate, "svc", Clock.systemUTC(), TestMappers.plainlyPinned());
     var call = new ToolCall("c1", "slow_op", JsonNodeFactory.instance.objectNode());
-    var tool = new SlowTool();
+    var tool = new GatedTool();
     var provider =
         new ScriptedModel(
             List.of(
@@ -136,26 +153,43 @@ class SlowApprovedToolRunsOnceTest {
       pump.pumpUntilQuiet();
       assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
 
-      // approve() only submits the drain (continuum-adoption spec §7): the fold, and its RunTool
-      // dispatch onto `pump`, happen on the harness's own background scheduler thread.
+      // approve() only submits the drain (continuum-adoption spec §7): the fold, its commit of
+      // CallStatus.Running, and its RunTool dispatch onto `pump` all happen on the harness's own
+      // background scheduler thread, asynchronous to this one.
       harness.approvals().approve(AgentId.of("svc"), "c1", "ops-desk", "");
 
+      // (a) The task must land on `pump`'s queue — i.e. be dispatched THROUGH the executor —
+      // before this test ever drains it. If RunTool were ever run inline on the fold thread
+      // instead, nothing would land here and this would time out still quiet.
       long deadline = System.currentTimeMillis() + 5000;
       while (pump.isQuiet() && System.currentTimeMillis() < deadline) {
         Thread.sleep(5);
       }
-      // The tool's own invocation happens synchronously inside this pump call and blocks the
-      // pumping thread for its ~200ms "slowness" — the point under test: nothing else got to
-      // dispatch RunTool a second time while that was in flight.
-      pump.pumpUntilQuiet();
+      assertThat(pump.isQuiet())
+          .as("RunTool must be dispatched onto the executor, not run inline on the fold thread")
+          .isFalse();
 
-      // Pump twice more: if a regression ever caused the approval delivery's lease to be missed
-      // and the answer redelivered, a second dispatch of RunTool would land on `pump` here and a
-      // second SlowTool invocation would follow.
-      pump.pumpUntilQuiet();
-      pump.pumpUntilQuiet();
+      // (b) The fold already committed CallStatus.Running for c1 as part of THAT same state
+      // write, strictly before the tool has been given any chance to run — Running is part of
+      // the Transition the fold produces, and dispatchEffects (which merely calls
+      // executor.execute(...) here) only runs after the CAS write already succeeded.
+      assertThat(callStatus(state, "c1")).isInstanceOf(CallStatus.Running.class);
+      assertThat(tool.invocations()).isEqualTo(0); // not yet run — only dispatched
 
+      // Now actually drain it, on a thread of its own: the tool blocks on its gate once entered,
+      // so pumping it here would otherwise block this test thread indefinitely.
+      Thread pumping = new Thread(pump::pumpUntilQuiet, "test-pump");
+      pumping.start();
+      assertThat(tool.awaitStarted()).isTrue();
+
+      // Still exactly one invocation while blocked, and the phase is unchanged — nothing
+      // re-dispatched RunTool a second time while the first was in flight.
       assertThat(tool.invocations()).isEqualTo(1);
+      assertThat(callStatus(state, "c1")).isInstanceOf(CallStatus.Running.class);
+
+      tool.release();
+      pumping.join(5000);
+      assertThat(pumping.isAlive()).isFalse();
 
       deadline = System.currentTimeMillis() + 5000;
       while (!(state.load().phase() instanceof Phase.Idle)
@@ -166,7 +200,16 @@ class SlowApprovedToolRunsOnceTest {
       assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(tool.invocations()).isEqualTo(1); // still exactly once after the turn completed
     } finally {
+      tool.release(); // in case an assertion above failed before the release, so nothing hangs
       harness.shutdown();
     }
+  }
+
+  private static CallStatus callStatus(SubstrateAgentStateStore state, String callId) {
+    Phase phase = state.load().phase();
+    if (phase instanceof Phase.AwaitingTools awaiting) {
+      return awaiting.calls().get(callId);
+    }
+    throw new IllegalStateException("expected AwaitingTools, was " + phase);
   }
 }

@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
-import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -216,16 +215,42 @@ class ApprovalDeskTest {
             Approval.Denied.class, denied -> assertThat(denied.reason()).startsWith("withdrawn:"));
   }
 
+  /**
+   * Real fold, not a stand-in: threads {@link AgentEvent.ApprovalDeferred} through {@link
+   * Phase#handle} exactly as {@code DeliveryWorker.fold} would, minus effect dispatch (deferring
+   * has none) — so the request the store ends up holding is the one that actually passed through
+   * the reducer, not a second, separately-constructed-but-equal instance.
+   */
+  private static void fold(AgentStateStore store, AgentEvent event) {
+    State current = store.load();
+    Transition transition = current.phase().handle(event);
+    store.save(new State(transition.next(), current.version()));
+  }
+
+  /**
+   * Seeds the scope with {@code c1} freshly {@link CallStatus.Pending} — {@code defer()}'s
+   * precondition ({@link Phase.AwaitingTools#handle} only admits {@code ApprovalDeferred} from
+   * {@code Pending}).
+   */
+  private static void seedPending(AgentStateStore store) {
+    Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL, null)));
+    Phase phase =
+        Phase.AwaitingTools.opening(turn, List.of(CALL), ModelResponseId.of("response-1"));
+    store.save(new State(phase, store.load().version()));
+  }
+
   @Test
   void theByCoordinatesDoorShowsExactlyWhatTheApproverSaw() {
     ApprovalRequest question = request();
     ScriptedApprover approver = ScriptedApprover.deferring();
+    AgentStateStore store = storeFor(SCOPE.value());
+    seedPending(store);
     ComputationApprovalContext context =
-        new ComputationApprovalContext(client, routing(), question, event -> {});
+        new ComputationApprovalContext(client, routing(), question, event -> fold(store, event));
 
-    ApprovalOutcome outcome = approver.approve(context);
-    ComputationId id = ((ApprovalOutcome.Deferred) outcome).id();
-    scopeAwaits(id);
+    // defer() folds ApprovalDeferred synchronously, on this thread, before returning — by the
+    // time approve() returns, the store already holds the request the approver was handed.
+    approver.approve(context);
 
     assertThat(desk.request(SCOPE, "c1")).isEqualTo(approver.requests().getFirst());
   }

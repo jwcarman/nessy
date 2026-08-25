@@ -66,7 +66,7 @@ class PumpsAreNeverStarvedTest {
   static final class BlockingTool implements Tool<NoInput> {
     private final String name;
     private final CountDownLatch gate = new CountDownLatch(1);
-    private volatile boolean started;
+    private final CountDownLatch started = new CountDownLatch(1);
 
     BlockingTool(String name) {
       this.name = name;
@@ -94,7 +94,7 @@ class PumpsAreNeverStarvedTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      started = true;
+      started.countDown();
       await(gate);
       return Awaited.ready(ToolResult.ok("released"));
     }
@@ -103,8 +103,14 @@ class PumpsAreNeverStarvedTest {
       gate.countDown();
     }
 
+    /** Blocks up to 5s for {@link #execute} to have been entered; true once it has. */
+    boolean awaitStarted() throws InterruptedException {
+      return started.await(5, TimeUnit.SECONDS);
+    }
+
+    /** Whether {@link #execute} has been entered — the gate itself may still be held. */
     boolean hasStarted() {
-      return started;
+      return started.getCount() == 0;
     }
 
     private static void await(CountDownLatch latch) {
@@ -198,8 +204,8 @@ class PumpsAreNeverStarvedTest {
       // Approve both — each dispatches RunTool, and each tool immediately blocks on its own gate.
       harnessA.approvals().approve(AgentId.of("svc-a"), "c1", "ops", "");
       harnessB.approvals().approve(AgentId.of("svc-b"), "c1", "ops", "");
-      awaitStarted(toolA);
-      awaitStarted(toolB);
+      assertThat(toolA.awaitStarted()).isTrue();
+      assertThat(toolB.awaitStarted()).isTrue();
 
       // While both blocking tools are still in flight, complete the wholly unrelated deferred
       // tool. If the shared ComputationScheduler pool were starved by the two blocked folds, this
@@ -234,14 +240,6 @@ class PumpsAreNeverStarvedTest {
                 .settings(TestSettings.settings())
                 .grants(grant)
                 .substrate(substrate));
-  }
-
-  private static void awaitStarted(BlockingTool tool) throws InterruptedException {
-    long deadline = System.currentTimeMillis() + 5000;
-    while (!tool.hasStarted() && System.currentTimeMillis() < deadline) {
-      Thread.sleep(10);
-    }
-    assertThat(tool.hasStarted()).isTrue();
   }
 
   private static void awaitPhase(SubstrateAgentStateStore state, Class<? extends Phase> expected)

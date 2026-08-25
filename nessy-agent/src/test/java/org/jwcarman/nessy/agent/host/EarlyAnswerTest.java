@@ -145,7 +145,11 @@ class EarlyAnswerTest {
     try {
       harness.bind(AgentId.of("svc")).tell("please do the op");
 
-      long deadline = System.currentTimeMillis() + 5000;
+      // 2s, deliberately well under DeliveryWorker's 5s approval backoff: if the early answer
+      // ever missed defer()'s synchronous fold and fell into the isEarly/backoff-and-retry path,
+      // healing would take at least 5s and this deadline would catch it — a deadline equal to (or
+      // above) the backoff would let a regressed implementation still squeak through.
+      long deadline = System.currentTimeMillis() + 2000;
       while (!(state.load().phase() instanceof Phase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
