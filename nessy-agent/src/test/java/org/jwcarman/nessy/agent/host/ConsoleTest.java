@@ -291,10 +291,10 @@ class ConsoleTest {
     }
 
     /**
-     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2b): {@link
-     * Console#close()}'s {@code ownsExecutor} conditional is console-specific and was untested —
-     * this must fail against a flipped {@code if}. A caller-supplied executor is never the
-     * console's to close.
+     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2b). Executor ownership
+     * now lives in the harness: {@link Console#close()} shuts the harness down, and the harness
+     * closes only an executor it created for itself. A caller-supplied executor must survive — this
+     * fails against a harness that closes whatever executor it was handed.
      */
     @Test
     void a_caller_supplied_executor_survives_console_close() {

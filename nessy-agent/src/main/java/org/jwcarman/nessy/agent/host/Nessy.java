@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.Agent;
@@ -188,7 +187,10 @@ public final class Nessy {
       return this;
     }
 
-    /** A caller-supplied executor; when omitted, the built agent owns and closes its own. */
+    /**
+     * A caller-supplied executor, never closed by the console or its harness; when omitted, the
+     * built harness creates its own and closes it when {@link Console#close()} shuts it down.
+     */
     public CliBuilder executor(ExecutorService executor) {
       this.executor = Objects.requireNonNull(executor, "executor must not be null");
       return this;
@@ -242,10 +244,12 @@ public final class Nessy {
       Objects.requireNonNull(model, MODEL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(systemPrompt, SYSTEM_PROMPT_MUST_NOT_BE_NULL);
       ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
-      boolean ownsExecutor = executor == null;
-      ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
       var relay = new RelayTurnObserver();
       Memory constantMemory = memory;
+      // Executor ownership is the harness's concern, not this door's: a caller-supplied executor
+      // is passed through and never closed by anyone here; when none was supplied, the harness
+      // creates its own and closes it in Harness#shutdown(), which Console#close() calls.
+      ExecutorService callerExecutor = executor;
       Harness<String> harness =
           Nessy.harness(
               config -> {
@@ -254,16 +258,18 @@ public final class Nessy {
                     .systemPrompt(systemPrompt)
                     .settings(effectiveSettings)
                     .type(typeName)
-                    .executor(exec)
                     .objectMapper(objectMapper)
                     .turnObserver(relay);
+                if (callerExecutor != null) {
+                  config.executor(callerExecutor);
+                }
                 toolConfigurer.accept(config);
                 if (constantMemory != null) {
                   config.memoryFactory(rawId -> constantMemory);
                 }
               });
       Agent<String> agent = harness.bind(AgentId.of(id));
-      return new Console(agent, harness, relay, in, out, exec, ownsExecutor);
+      return new Console(agent, harness, relay, in, out);
     }
   }
 }

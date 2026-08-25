@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jwcarman.continuum.ContinuumClient;
@@ -80,6 +81,13 @@ public final class Harness<O> {
   private final CompletionDesk completions;
   private final ComputationScheduler scheduler;
 
+  /**
+   * The executor this harness created for itself because its door was handed none, and therefore
+   * the one {@link #shutdown()} closes — or null when the caller supplied an executor, which is
+   * never the harness's to close.
+   */
+  private final ExecutorService ownedExecutor;
+
   private Harness(
       AgentType type,
       ObservationRenderer<O> renderer,
@@ -98,7 +106,8 @@ public final class Harness<O> {
       DispatchIndex dispatchIndex,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters,
-      ComputationScheduler scheduler) {
+      ComputationScheduler scheduler,
+      ExecutorService ownedExecutor) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.agentObserverFactory =
@@ -123,6 +132,7 @@ public final class Harness<O> {
     Objects.requireNonNull(dispatchIndex, "dispatchIndex must not be null");
     Objects.requireNonNull(toolClient, "toolClient must not be null");
     this.scheduler = Objects.requireNonNull(scheduler, "scheduler must not be null");
+    this.ownedExecutor = ownedExecutor;
     this.worker =
         new DeliveryWorker<>(
             substrate,
@@ -166,6 +176,52 @@ public final class Harness<O> {
       DispatchIndex dispatchIndex,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
+    return of(
+        type,
+        renderer,
+        agentObserverFactory,
+        turnObserver,
+        drainOnIdle,
+        stalenessPolicy,
+        memoryFactory,
+        storeFactory,
+        backlogFactory,
+        modelExecutorFactory,
+        toolExecutorFactory,
+        substrate,
+        mapper,
+        approvalClient,
+        dispatchIndex,
+        toolClient,
+        approvalWaiters,
+        null);
+  }
+
+  /**
+   * The form the {@code Nessy} doors use: {@code ownedExecutor} is an executor the door created
+   * because its caller supplied none, and which this harness therefore owns and closes in {@link
+   * #shutdown()}. Pass null when the caller supplied the executor the factories capture — a
+   * caller-supplied executor is never the harness's to close.
+   */
+  public static <O> Harness<O> of(
+      AgentType type,
+      ObservationRenderer<O> renderer,
+      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      TurnObserver turnObserver,
+      boolean drainOnIdle,
+      StalenessPolicy stalenessPolicy,
+      Function<String, Memory> memoryFactory,
+      Function<String, AgentStateStore> storeFactory,
+      Function<String, Backlog<O>> backlogFactory,
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
+      Substrate substrate,
+      ObjectMapper mapper,
+      ContinuumClient<Decision, Routing> approvalClient,
+      DispatchIndex dispatchIndex,
+      ContinuumClient<ToolResult, Routing> toolClient,
+      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters,
+      ExecutorService ownedExecutor) {
     // Constructed here, not shared across separate Harness.of(...) calls (continuum-adoption spec
     // §7 leaves that wider sharing to a future task): one small pool per harness, replacing the
     // one-heartbeat-thread-per-harness this superseded.
@@ -189,7 +245,8 @@ public final class Harness<O> {
             dispatchIndex,
             toolClient,
             approvalWaiters,
-            scheduler);
+            scheduler,
+            ownedExecutor);
     // Registered here, after the constructor returns, not inside it: a scheduled pump reads
     // `harness.worker` the instant it first fires, and registering from inside a constructor risks
     // handing a background thread a `this` reference before the object is fully and safely
@@ -411,5 +468,11 @@ public final class Harness<O> {
    */
   public void shutdown() {
     scheduler.close();
+    // After the pumps, never before: a pump still firing could otherwise submit to a closed
+    // executor. Only an executor this harness created for itself is closed here; a
+    // caller-supplied one belongs to the caller.
+    if (ownedExecutor != null) {
+      ownedExecutor.close();
+    }
   }
 }

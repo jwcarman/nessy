@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -366,11 +367,14 @@ public final class HarnessConfig<O> {
     // Codec.json call (the retired .backlogCodec derivation seam).
     Codec<O> effectiveBacklogCodec =
         backlogCodec != null ? backlogCodec : effectiveSubstrate.codecs().create(observationType);
-    // The harness is immortal, not closeable (spec §4): an owned executor here lives exactly as
-    // long as the process, same as the delivery worker's deliver/expire/purge pumps running on
-    // ComputationScheduler's own pool (spec §7) — there is no lifecycle door to shut it down
-    // through, and none is needed.
-    Executor exec = executor != null ? executor : Executors.newVirtualThreadPerTaskExecutor();
+    // An executor created here because the caller supplied none is the harness's own: it is handed
+    // to Harness.of as `ownedExecutor` and closed by Harness#shutdown() after the scheduler's
+    // pumps, the same door that already closes the ComputationScheduler (continuum-adoption spec
+    // §7). A caller-supplied executor is never the harness's to close, so `ownedExecutor` is null
+    // for it and only `exec` — what the model and tool executors below capture — carries it.
+    ExecutorService ownedExecutor =
+        executor == null ? Executors.newVirtualThreadPerTaskExecutor() : null;
+    Executor exec = executor != null ? executor : ownedExecutor;
     var agentType = AgentType.of(typeName);
     ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
     ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
@@ -508,7 +512,8 @@ public final class HarnessConfig<O> {
             effectiveApprovalClient,
             effectiveDispatchIndex,
             effectiveToolClient,
-            approvalWaiters);
+            approvalWaiters,
+            ownedExecutor);
 
     return harness;
   }

@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
@@ -165,6 +167,66 @@ class HarnessTest {
         dispatchIndex,
         toolClient,
         new ConcurrentHashMap<>());
+  }
+
+  /**
+   * The doors' form of {@link Harness#of}: every fixture defaulted, and {@code ownedExecutor}
+   * handed through as the executor the harness created for itself (or null when a caller supplied
+   * one). The model and tool executors here capture nothing, so what {@code ownedExecutor} pins is
+   * ownership alone — who closes what on {@link Harness#shutdown()}.
+   */
+  private static Harness<String> harnessOwning(ExecutorService ownedExecutor) {
+    Substrate lifeSupportSubstrate = new InMemorySubstrate();
+    var mapper = TestMappers.plainlyPinned();
+    return Harness.of(
+        TYPE,
+        RENDERER,
+        perIdTurnObserver -> OBSERVER,
+        TurnObserver.noop(),
+        false,
+        STALENESS_POLICY,
+        id -> MEMORY,
+        id -> STORE,
+        id -> BACKLOG,
+        (memory, turnObserver) -> MODEL,
+        (id, turnObserver) -> TOOLS,
+        lifeSupportSubstrate,
+        mapper,
+        TestApprovalClients.client(Kinds.approval(TYPE), mapper),
+        new DispatchIndex(lifeSupportSubstrate, mapper, Kinds.dispatchIndex(TYPE)),
+        TestToolClients.client(Kinds.tool(TYPE), mapper),
+        new ConcurrentHashMap<>(),
+        ownedExecutor);
+  }
+
+  @Nested
+  class Shutdown {
+
+    /**
+     * The executor a door creates because its caller supplied none is the harness's own, and {@link
+     * Harness#shutdown()} is the one place it is closed — the leak Sonar's S2095 reported against
+     * {@code HarnessConfig} before ownership had a home. Fails against a {@code shutdown()} that
+     * closes only the scheduler.
+     */
+    @Test
+    void closesTheExecutorTheHarnessOwns() {
+      ExecutorService owned = Executors.newVirtualThreadPerTaskExecutor();
+      var harness = harnessOwning(owned);
+
+      harness.shutdown();
+
+      assertThat(owned.isShutdown()).isTrue();
+    }
+
+    /** The null form the doors use for a caller-supplied executor: nothing to close, no failure. */
+    @Test
+    void shutsDownCleanlyWithNoOwnedExecutor() {
+      var harness = harnessOwning(null);
+
+      harness.shutdown();
+
+      assertThat(harness).isNotNull();
+    }
   }
 
   @Nested

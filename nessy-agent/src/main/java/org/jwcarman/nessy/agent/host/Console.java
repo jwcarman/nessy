@@ -24,7 +24,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.TurnOutcome;
@@ -66,17 +65,13 @@ public final class Console implements AutoCloseable {
   private final RelayTurnObserver relay;
   private final BufferedReader in;
   private final PrintStream out;
-  private final ExecutorService executor;
-  private final boolean ownsExecutor;
 
   Console(
       Agent<String> agent,
       Harness<String> harness,
       RelayTurnObserver relay,
       InputStream in,
-      PrintStream out,
-      ExecutorService executor,
-      boolean ownsExecutor) {
+      PrintStream out) {
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     this.relay = Objects.requireNonNull(relay, "relay must not be null");
@@ -85,8 +80,6 @@ public final class Console implements AutoCloseable {
             new InputStreamReader(
                 Objects.requireNonNull(in, "in must not be null"), StandardCharsets.UTF_8));
     this.out = Objects.requireNonNull(out, "out must not be null");
-    this.executor = Objects.requireNonNull(executor, "executor must not be null");
-    this.ownsExecutor = ownsExecutor;
     // The spec §3 console observer (fix round 2, M9): installs itself as relay's one delegate, so
     // every id's TextDelta streams live to `out`, flushed per delta, the instant it narrates —
     // exactly-once via the SAME relay/global path the fanout composition already guarantees (relay
@@ -194,16 +187,13 @@ public final class Console implements AutoCloseable {
   }
 
   /**
-   * Shuts down this console's harness (its shared {@code ComputationScheduler}, continuum-adoption
-   * spec §7), then closes the owned executor if any — the reverse of build-time construction order,
-   * matching {@code Harness}'s own lifecycle discipline (harness-first spec §4).
+   * Shuts down this console's harness — its {@code ComputationScheduler} pumps (continuum-adoption
+   * spec §7) and then whatever executor the harness created for itself. Executor ownership lives in
+   * the harness, not here: a caller-supplied executor is never closed by anyone on this path.
    */
   @Override
   public void close() {
     harness.shutdown();
-    if (ownsExecutor) {
-      executor.close();
-    }
   }
 
   /**
