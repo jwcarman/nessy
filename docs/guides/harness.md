@@ -78,12 +78,15 @@ The builder surface, piece by piece:
   bullet. There is no per-id cache: `bind(id)` stamps a fresh handle on
   every call, and the substrate document each recipe reads is what makes a
   scope's history survive from one binding to the next.
-- **Approvals and deferred tool calls** are not configured through
-  `HarnessConfig` at all — `.finish()` mints a fresh, in-memory Continuum
-  computation store for the harness, with no override seam today. That
-  store's durability must match `.substrate(...)`'s: both in memory (the
-  only coherent wiring today, since `InMemorySubstrate` is the only
-  `Substrate` Nessy ships) or both durable. See
+- **`.continuum(Continuum)`** — the computation store for approvals and
+  deferred tool calls. Omitted, `.finish()` mints a private, in-memory
+  Continuum that lives exactly as long as the harness and is visible to no
+  other. Supplied, the harness uses yours: a `continuum-jdbc`-backed one
+  makes parked calls survive the process, and the *same instance* handed
+  to two harnesses lets either deliver what the other parked. Its
+  durability must match `.substrate(...)`'s — both in memory or both
+  durable — and the harness warns when it can tell they differ (a durable
+  substrate with no Continuum supplied). See
   [Durable Computation](../concepts/durable-computation.md) for the rule
   and what mismatching them does.
 - **`.memoryFactory(Function<String, Memory>)`** — overrides the default
@@ -110,26 +113,27 @@ The builder surface, piece by piece:
   and threading seams, each defaulting to a sane no-op or an owned
   virtual-thread executor that lives as long as the harness does.
 
-## One harness per agent type per substrate
+## Two harnesses over one substrate share the Continuum too
 
-Each `HarnessConfig.finish()` mints its own, private, in-memory Continuum
-computation store — there is no seam yet for two harnesses to share one.
-So two harnesses over the same `.substrate(...)` do **not** currently
-double-drain each other's approvals or deferred tool calls; each harness's
-computations are invisible to the other. That is its own gap, not a
-safety net: it means computation state cannot survive a "restart" modeled
-as a second harness over the same substrate, and it stays true even once a
-durable `Substrate` exists, until a caller-supplied Continuum seam ships.
+Computation state is exactly as shared as you make it. A harness that was
+handed no `.continuum(...)` mints a private one, so two such harnesses over
+the same `.substrate(...)` never see each other's approvals or deferred
+tool calls — and a "restart" modeled as a second harness over the same
+substrate finds the scope's history but not its parked computations. Hand
+both harnesses the same `Continuum` and they do: either one's pumps can
+claim and deliver what the other parked (`SharedContinuumTest`), which is
+the shape a second process over the same database gets for free with a
+`continuum-jdbc`-backed Continuum on each side (`DurableResumeTest`).
 
-What *is* still shared is the `dispatch/<agentType>` index — plain
-`Substrate` state, keyed only by `(agentType, agentId, responseId,
-callId)`. Two harnesses sharing both `.type(...)` and `.substrate(...)`
-would write into the very same index while each backed by a *different*,
-private Continuum store — an entry one harness records can point at a
-computation the other harness's client has never heard of. Give two
-harnesses over one substrate distinct types, or give them distinct
-substrates. This is a contract the caller keeps, not something the builder
-can check for you.
+The rule that follows: **harnesses that share `.type(...)` and
+`.substrate(...)` must share `.continuum(...)` as well.** The
+`dispatch/<agentType>` index is plain `Substrate` state keyed by
+`(agentType, agentId, responseId, callId)`, so two harnesses sharing type
+and substrate write into the very same index — and if each is backed by a
+*different* Continuum, an entry one records points at a computation the
+other's client has never heard of. Share all three, or give the harnesses
+distinct types or substrates. This is a contract the caller keeps, not
+something the builder can check for you.
 
 ## `bind` and `tell`
 
@@ -295,12 +299,14 @@ Nothing here holds a thread open waiting. Whether a park survives a
 restart depends on both stores behind the harness, not just
 `.substrate(...)` — see
 [Durable Computation](../concepts/durable-computation.md) for the rule.
-Today, with `InMemorySubstrate` and Continuum's in-memory repository both
-the only options Nessy wires, a park never survives a restart, full stop —
-and a *second* harness instance over the same `.substrate(...)`, even a
-future durable one, still can't see the first harness's pending
-approvals or tool computations either, because each harness's Continuum
-store is private (see "One harness per agent type per substrate" above).
+With the defaults — `InMemorySubstrate` and a minted in-memory Continuum —
+a park never survives a restart, full stop. With `JdbcSubstrate` and a
+`continuum-jdbc`-backed `.continuum(...)` over the same database, it does:
+a fresh harness in a fresh process claims the delivery and finishes the
+turn the old one started. And a *second* harness over the same
+`.substrate(...)` sees the first's pending approvals and tool computations
+exactly when it shares the first's Continuum (see "Two harnesses over one
+substrate share the Continuum too" above).
 
 !!! note "Delivery is per-harness, not per-cluster"
     Within one harness, Continuum's own lease gives one winner per

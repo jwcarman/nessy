@@ -25,6 +25,18 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **`HarnessConfig.continuum(Continuum)`: the harness accepts its computation
+  store.** Omitted, the harness mints a private in-memory Continuum as before;
+  supplied, it uses yours — a `continuum-jdbc`-backed one for parked calls that
+  survive the process, or one instance shared by several harnesses so any of
+  them delivers what another parked. The durability-mismatch warning now fires
+  only when it knows the tiers differ (a durable substrate with no Continuum
+  supplied) rather than comparing against a hard-coded `true`. Proven twice:
+  `SharedContinuumTest` (two harnesses, one in-memory Continuum, no database)
+  and `DurableResumeTest` (`JdbcSubstrate` + `continuum-jdbc` over one
+  PostgreSQL container: park on harness A, shut it down, approve on a fresh
+  harness B, watch the turn complete) — the first test in the tree to exercise
+  a durable computation store. Continuum is now 0.4.0.
 - **Model provider discovery: `nessy-model-env` becomes `nessy-model-discovery`,
   and depends on no provider module.** Providers register a new SPI type,
   `ModelProviderBootstrap`, through `ServiceLoader`; `ModelDiscovery` loads

@@ -113,5 +113,35 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test-only: DurableResumeTest composes both halves of durability — JdbcSubstrate and a
+         continuum-jdbc-backed Continuum over one PostgreSQL container — to prove a call parked by
+         one harness is delivered by a fresh one after the first is gone. The driver is `provided`
+         in both JDBC modules and so has to be named here at test scope. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-substrate-jdbc</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.continuum</groupId>
+      <artifactId>continuum-jdbc</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

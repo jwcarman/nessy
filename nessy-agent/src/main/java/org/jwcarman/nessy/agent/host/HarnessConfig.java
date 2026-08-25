@@ -108,6 +108,7 @@ public final class HarnessConfig<O> {
   private List<ToolGrant> grants = List.of();
   private Function<String, Memory> memoryFactory;
   private Substrate substrate;
+  private Continuum continuum;
   private Consumer<ApprovalRequest> approvalNotifier = request -> {};
   private TurnObserver turnObserver = TurnObserver.noop();
   // null until the caller sets one — finish() defaults it to a TurnNarrationAdapter over
@@ -273,10 +274,24 @@ public final class HarnessConfig<O> {
   }
 
   /**
-   * A caller-supplied executor; when omitted, {@link #finish()} owns one of its own — a virtual-
-   * thread-per-task executor that, like the rest of the harness's life-support, lives exactly as
-   * long as the process (spec §4): there is no lifecycle door to shut it down through, and none is
-   * needed.
+   * The computation store for the approval and tool kinds (continuum-adoption spec §3): the {@link
+   * Continuum} whose deliveries this harness's pumps claim and whose computations its desks decide.
+   * When omitted, {@link #finish()} mints a private, in-memory one — computations then live exactly
+   * as long as this harness and are visible to no other. Supply one to change either property: a
+   * {@code continuum-jdbc}-backed Continuum makes parked calls survive the process, and the SAME
+   * instance handed to two harnesses lets either one deliver what the other parked. Pair it with a
+   * substrate of the same durability tier — a durable computation store over a volatile substrate
+   * silently drops every delivery onto a scope restored to {@code Idle}; the reverse hangs calls.
+   */
+  public HarnessConfig<O> continuum(Continuum continuum) {
+    this.continuum = Objects.requireNonNull(continuum, "continuum must not be null");
+    return this;
+  }
+
+  /**
+   * A caller-supplied executor, never closed by the harness; when omitted, {@link #finish()}
+   * creates a virtual-thread-per-task executor the harness owns and closes in {@code
+   * Harness#shutdown()}, after its pumps.
    */
   public HarnessConfig<O> executor(Executor executor) {
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
@@ -387,33 +402,34 @@ public final class HarnessConfig<O> {
     Function<String, Backlog<O>> effectiveBacklogFactory =
         id ->
             new SubstrateBacklog<>(effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);
-    // The approval and tool kinds' own stores, on Continuum rather than Substrate (continuum-
-    // adoption spec §3): wired to continuum-memory, never continuum-jdbc — both kinds still share
-    // one durability tier with the scope's own Substrate state, and InMemorySubstrate is the only
-    // shipped Substrate (spec §11.1) until a durable one exists.
-    InMemoryContinuumRepository repository = new InMemoryContinuumRepository();
-    Continuum continuum = new DefaultContinuum(repository, InstantSource.system());
-    // Guard 1 (continuum-adoption spec §11.1): the two stores must share one durability tier —
-    // both volatile or both durable. `computationsVolatile` is not a live instanceof check: there
-    // is no seam yet to wire continuum-jdbc here (spec §10 — no JdbcSubstrate), so `repository`'s
-    // static type is always InMemoryContinuumRepository and this is always true. That makes the
-    // guard structurally one-sided as shipped — it can only fire when the substrate is durable and
-    // the computation store is (still, always) volatile, which is the hang direction, the worse of
-    // the two mismatches this guard exists to catch. It is left in, as a placeholder for the day a
-    // durable ContinuumRepository seam exists here, rather than deleted outright. A warning, not a
-    // throw, matching how Continuum's own auto-configuration handles the equivalent situation.
-    boolean substrateVolatile = effectiveSubstrate instanceof InMemorySubstrate;
-    boolean computationsVolatile = true;
-    if (substrateVolatile != computationsVolatile) {
+    // The approval and tool kinds' own store, on Continuum rather than Substrate (continuum-
+    // adoption spec §3). Caller-supplied through continuum(Continuum) — a continuum-jdbc-backed
+    // one, or one instance shared by several harnesses — or, when omitted, minted here: private,
+    // in-memory, and gone with this harness.
+    boolean computationsMinted = continuum == null;
+    Continuum effectiveContinuum =
+        computationsMinted
+            ? new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system())
+            : continuum;
+    // Guard 1 (continuum-adoption spec §11.1): the two stores must share one durability tier.
+    // This warns only when it KNOWS they do not — a substrate that is not InMemorySubstrate is
+    // durable, and a computation store minted here is volatile by construction. That is the hang
+    // direction: a parked call's delivery dies with the process while the scope it belonged to
+    // survives in the substrate. A caller-supplied Continuum is not inspected — the harness cannot
+    // tell a durable repository from a volatile one through the Continuum interface, and a shared
+    // in-memory Continuum over an in-memory substrate is a legitimate shape — so the caller who
+    // supplies one is trusted to have matched the tiers. A warning, not a throw, matching how
+    // Continuum's own auto-configuration handles the equivalent situation.
+    boolean substrateDurable = !(effectiveSubstrate instanceof InMemorySubstrate);
+    if (substrateDurable && computationsMinted) {
       log.warn(
-          "Durability mismatch: the substrate is {} and the computation store is {}. "
-              + "These must match — a durable computation store against a volatile substrate "
-              + "silently drops every delivery, and the reverse hangs calls permanently.",
-          substrateVolatile ? "in-memory" : "durable",
-          computationsVolatile ? "in-memory" : "durable");
+          "Durability mismatch: the substrate is durable but no Continuum was supplied, so the"
+              + " computation store is in-memory. A parked call's delivery will not survive the"
+              + " process while the scope it belongs to will — supply a durable Continuum via"
+              + " continuum(...) to match.");
     }
     ContinuumClient<Decision, Routing> effectiveApprovalClient =
-        continuum.client(
+        effectiveContinuum.client(
             Kinds.approval(agentType),
             Decision.class,
             Routing.class,
@@ -425,7 +441,7 @@ public final class HarnessConfig<O> {
     // sealed Allow/Deny), so the substrate's own pinned Jackson2 codec factory binds it directly —
     // no hand-rolled codec needed the way DecisionCodec exists for the approval kind.
     ContinuumClient<ToolResult, Routing> effectiveToolClient =
-        continuum.client(
+        effectiveContinuum.client(
             Kinds.tool(agentType),
             ToolResult.class,
             Routing.class,

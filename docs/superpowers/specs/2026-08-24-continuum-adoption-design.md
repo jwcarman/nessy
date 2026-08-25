@@ -632,3 +632,19 @@ harness, and §11.2 rules the approval consumer runs `Awaited.Ready` tools
 inline. The risk is named here because the threshold is concrete and easy
 to hit by accident — **two** concurrent slow approvals is enough to starve
 one harness's pool completely, with a default pool size of two.
+
+## Amendment (2026-08-25): the caller-supplied Continuum seam ships
+
+§10's "no `HarnessConfig.continuum(...)` seam" and §11.1's half-durability
+rule are amended: `HarnessConfig.continuum(Continuum)` now exists, optional,
+defaulting to the private in-memory Continuum `finish()` always minted. Guard
+1 is no longer a placeholder comparing against a hard-coded `true` — it warns
+exactly when the substrate is durable and no Continuum was supplied, and
+trusts a caller who supplies one, since the harness cannot see a Continuum's
+repository through the interface. The regression the §11.1 rollout accepted —
+two harnesses over one substrate holding disjoint computation state — is
+closed by sharing one instance, and the end-to-end durability test §10 said
+this spec made possible but did not deliver now exists: `DurableResumeTest`,
+`JdbcSubstrate` plus `continuum-jdbc` over one PostgreSQL container. Continuum
+is pinned at 0.4.0, whose `continuum-jdbc` certifies PostgreSQL, MySQL and
+MariaDB on every build.

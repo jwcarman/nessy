@@ -21,10 +21,13 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.time.InstantSource;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.continuum.DefaultContinuum;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.support.DelegatingSubstrate;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -34,12 +37,13 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link HarnessConfig#finish()}'s durability-mismatch guard (continuum-adoption spec §11.1): the
- * approval and tool kinds' Continuum store is minted in-memory unconditionally today (no override
- * seam exists yet), so a caller-supplied {@link Substrate} that is anything other than {@link
- * InMemorySubstrate} is exactly the realistic mismatch this guard exists to catch — the substrate
- * durable, the computation store still volatile. The appender is wired directly onto {@link
- * HarnessConfig}'s own class logger, the same technique {@code TurnObserverLoggingTest} uses.
+ * {@link HarnessConfig#finish()}'s durability-mismatch guard (continuum-adoption spec §11.1). It
+ * warns only when it knows the tiers differ: a caller-supplied {@link Substrate} that is anything
+ * other than {@link InMemorySubstrate} is durable, and a computation store the harness had to mint
+ * itself — because {@link HarnessConfig#continuum} was never called — is volatile by construction.
+ * A caller-supplied Continuum is not inspected and never warns; whoever supplies one is trusted to
+ * have matched the tiers. The appender is wired directly onto {@link HarnessConfig}'s own class
+ * logger, the same technique {@code TurnObserverLoggingTest} uses.
  */
 class DurabilityMismatchWarningTest {
 
@@ -60,6 +64,42 @@ class DurabilityMismatchWarningTest {
     classicLogger.detachAppender(appender);
     classicLogger.setLevel(null);
     HarnessTeardown.shutdownAllTracked();
+  }
+
+  /**
+   * The seam's half of the guard: the same durable-looking substrate, but a Continuum supplied by
+   * the caller. The harness cannot see through a Continuum to its repository, so it trusts the
+   * caller and says nothing — this fails against a guard that warns on "supplied at all", or one
+   * that still hardcodes the computation store as volatile.
+   */
+  @Test
+  void a_durable_looking_substrate_with_a_caller_supplied_continuum_logs_nothing() {
+    var substrate = new DelegatingSubstrate(new InMemorySubstrate());
+    var model = new ScriptedModel(List.of());
+    var supplied = new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
+
+    var harness =
+        Nessy.harness(
+            h ->
+                h.model(model)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                    .settings(TestSettings.settings())
+                    .substrate(substrate)
+                    .continuum(supplied));
+    HarnessTeardown.track(harness);
+
+    assertThat(appender.list).noneMatch(event -> event.getLevel() == Level.WARN);
+
+    // S5841 guard, as below: prove the appender is live by driving the mismatched build through it.
+    var mismatched =
+        Nessy.harness(
+            h ->
+                h.model(model)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                    .settings(TestSettings.settings())
+                    .substrate(substrate));
+    HarnessTeardown.track(mismatched);
+    assertThat(appender.list).anyMatch(event -> event.getLevel() == Level.WARN);
   }
 
   @Test
