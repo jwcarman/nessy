@@ -188,7 +188,9 @@ public sealed interface Phase {
             case CallStatus.Running _, CallStatus.AwaitingResult _, CallStatus.Finished _ -> false;
           };
       if (!admitted) {
-        return Transition.ignore(); // early (Pending + delivered id), stale (orphan), or duplicate
+        // Permanent, every one of them: an orphan, a duplicate, or a §6 re-ask's loser. defer()
+        // folds AwaitingApproval before it hands back the id, so nothing legitimate lands here.
+        return Transition.ignore();
       }
       return switch (answer) {
         case Approval.Approved _ ->
@@ -206,7 +208,13 @@ public sealed interface Phase {
       }
       boolean admitted =
           switch (current.get()) {
-            case CallStatus.Running _ -> tool.isEmpty();
+            // Any id, not just an in-process answer (the 2026-08-25 ruling, spec §3): a
+            // ToolFinished is addressed to THIS call, and while it is Running the only computation
+            // that can produce one is the call's own — the reaper expiring a short-timeout() tool
+            // whose ToolDeferred has not folded yet. Admitting it finishes the call in-band; the
+            // deferral that lost the race then meets Finished and is ignored as stale. Ignoring it
+            // instead would drop the delivery and let a redrive run the tool a second time.
+            case CallStatus.Running _ -> true;
             case CallStatus.AwaitingResult(var id) -> tool.filter(id::equals).isPresent();
             case CallStatus.Pending _, CallStatus.AwaitingApproval _, CallStatus.Finished _ ->
                 false;

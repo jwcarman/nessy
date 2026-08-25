@@ -385,11 +385,12 @@ exactly one kind of result.
 | `Pending` | `ApprovalAnswered(∅, Approved)` | `Running` | `RunTool(call)` |
 | `Pending` | `ApprovalAnswered(∅, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
 | `Pending` | `ApprovalDeferred(id)` | `AwaitingApproval(id)` | — |
-| `Pending` | `ApprovalAnswered(id, _)` | unchanged | — (early: the park has not folded; the desk refuses, the worker releases — §4) |
+| `Pending` | `ApprovalAnswered(id, _)` | unchanged | — (permanent: `defer()` folds before it hands back the id, so this is an orphan or a duplicate; the worker drops it with a WARN — §4) |
 | `AwaitingApproval(id)` | `ApprovalAnswered(id, Approved)` | `Running` | `RunTool(call)` |
 | `AwaitingApproval(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
 | `AwaitingApproval(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
 | `Running` | `ToolFinished(∅, o)` | `Finished` | `CallModel` if all finished |
+| `Running` | `ToolFinished(id, o)` | `Finished` | `CallModel` if all finished |
 | `Running` | `ToolDeferred(id)` | `AwaitingResult(id)` | — |
 | `AwaitingResult(id)` | `ToolFinished(id, o)` | `Finished` | `CallModel` if all finished |
 | `AwaitingResult(id)` | `ToolFinished(other, _)` | unchanged | — (stale: an orphan computation's result, ignored) |
@@ -402,6 +403,21 @@ names its computation. No index, no second store, no reconciliation.
 `Transition.ignore()` for the stale rows is the same dedup that already makes
 at-least-once delivery safe (§2.5). `Running` + `ApprovalAnswered` is also
 stale — a duplicate delivery of an answer already folded — and ignored.
+
+**`Running` + `ToolFinished(id, o)` is admitted, not ignored** (James's ruling,
+2026-08-25). A `ToolFinished` is addressed to THIS call, and while the call is
+`Running` the only computation that can produce one is the call's own — the
+reaper expiring a short-`timeout()` tool whose `ToolDeferred` has not folded
+yet, or a result whose deferral loses the race in some future door. No id
+comparison is possible or wanted here: the phase does not name a computation
+until `ToolDeferred` folds, and Continuum's minted id is not derivable from the
+call's coordinates. Admitting the result finishes the call in-band — a
+short-timeout tool fails with its expiry as its result — and the `ToolDeferred`
+that arrives afterwards meets `Finished` and is ignored as stale, so the tool
+ran exactly once and nothing re-dispatches. `AwaitingResult(id)` +
+`ToolFinished(other)` stays ignored: there the phase DOES name its computation,
+so a mismatch is a genuine orphan. `Pending`/`AwaitingApproval` +
+`ToolFinished` stays ignored too: no tool has been started.
 
 **`Pending` means "approval sought, no answer recorded."** A call is `Pending`
 from the fold that emitted `SeekApproval` until an `ApprovalAnswered` or
@@ -450,24 +466,36 @@ replaced by the half they were doing.
 **Ordering, and where it lives.** A parked question could be answered the
 instant it exists — a test approver, a webhook, a person already watching a
 queue. If that answer could arrive before the park had folded, the phase
-would not yet name the id, the stale row would discard the answer, and the
+would not yet name the id, the mismatch row would discard the answer, and the
 call would wait forever on a question already answered. The design closes
 that in two places, neither of them a rule the harness enforces around the
-approver:
+approver — one by ordering, one by admission:
 
 - **Approvals: inside `defer()`.** It folds `ApprovalDeferred` and waits for
   the commit *before returning the id*. Nobody can be told about a question
   the scope has not recorded, because nobody has the id yet. The desk's
   by-coordinates door, which needs no id, refuses a `Pending` call loudly
   (§1.6).
-- **Tools: inside `runTool`.** A tool returning `Awaited.Deferred` has
-  already handed its computation id to an external system through
-  `ToolContext`, which could complete it at once. `runTool` folds
-  `ToolDeferred` before the effect returns, and the worker treats a
-  `ToolFinished(id)` against a `Running` call as early — released, not
-  acknowledged — so Continuum re-delivers it after the fact commits. The
-  tool-side window is narrower than a `defer()`-style door would make it and
-  is left as is; giving `ToolContext` the same door is noted in §14.
+- **Tools: closed by admission, not by ordering.** `runTool` cannot use the
+  `defer()` trick: the tool holds its `ToolContext` — and so its idempotency
+  key — before it runs, and the computation Continuum mints on
+  `Awaited.Deferred` is not created until the tool has already returned. There
+  is no point in the sequence at which the phase could learn the id first. So
+  the window is closed at the other end: the reducer ADMITS
+  `ToolFinished(id, o)` against a `Running` call (§3). Whatever arrives is
+  this call's own result, it finishes the call in-band, and the `ToolDeferred`
+  that lost the race meets `Finished` and goes stale. The tool runs once;
+  nothing is released and nothing is re-dispatched. Giving `ToolContext` a
+  `defer()`-style door remains the symmetric next step (§15), but it is no
+  longer needed for correctness — this admission already buys what it would.
+
+**Everything else is permanent, and is dropped.** With both windows closed, a
+delivery whose scope is not in the status that awaits it can never improve:
+it is an orphan, a duplicate, or a §6 re-ask's loser. `DeliveryWorker` logs it
+at WARN — naming the agent, the call, the computation, and the status it
+found — and CONSUMES the delivery. Nothing is released for redelivery; there
+is no early-delivery exception and no backoff-and-retry path. Retrying a
+permanent failure every 5s until a 7-day deadline is noise, not durability.
 
 ## 5. Delivery — the lease pays for a message
 
@@ -602,11 +630,20 @@ about 600 lines of tests that existed only for them. Roughly 300 come in.
 - **Stale answers.** An `ApprovalAnswered` naming an id the phase does not
   hold is ignored, with the scope unchanged.
 - **Early answers.** An approver that defers and whose computation is
-  answered in the same breath still resolves the call: `defer()` does not
-  return until the park has folded, and a delivery against a `Pending` call
-  is released and re-delivered rather than acknowledged and lost. The desk's
-  by-coordinates door refuses a `Pending` call with a message. These are the
-  tests that distinguish "ordered by construction" from "usually fast enough."
+  answered in the same breath still resolves the call, on the FIRST drain:
+  `defer()` does not return until the park has folded, so a legitimate early
+  answer never meets a `Pending` call. The desk's by-coordinates door refuses
+  a `Pending` call with a message. These are the tests that distinguish
+  "ordered by construction" from "usually fast enough."
+- **Mismatched deliveries are dropped, not redelivered.** An answer against a
+  `Pending` call, an answer naming a computation an `AwaitingApproval` call
+  does not hold, and a result naming a computation an `AwaitingResult` call
+  does not hold are each logged at WARN and consumed — the assertion is that
+  a later drain returns zero, i.e. nothing came back.
+- **A tool's own result may precede its deferral.** A reaper expiry reaching a
+  still-`Running` call folds in-band as that call's error result, with no WARN
+  and no drop; the `ToolDeferred` that arrives afterwards finds `Finished` and
+  changes nothing, so no second `RunTool` is ever dispatched.
 - **The request is a document.** `ApprovalRequest` round-trips through the
   pinned mapper byte-for-byte; an enricher depositing an unrenderable value
   fails inside `deposit`, naming the key; the desk's `request(id)` returns
@@ -665,6 +702,10 @@ records the vocabulary collapse as a breaking change.
    `RecordingApprover`.
 7. **`approvalNotifier` retires.**
 8. **Model visibility stays off** (§2) and **crash means re-run** (§6).
+9. **A mismatched delivery is dropped with a WARN, never redelivered**
+   (James's ruling, 2026-08-25) — and its corollary, that the reducer admits
+   `Running` + `ToolFinished(id)` so a tool's own result may legitimately
+   arrive before its deferral (§3, §4). `EarlyDeliveryException` retires.
 
 ## 14. Rejected
 

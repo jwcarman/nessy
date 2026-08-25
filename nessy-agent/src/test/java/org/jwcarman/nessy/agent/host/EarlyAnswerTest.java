@@ -60,10 +60,13 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * synchronously, on the approver's own thread, before minting the outcome it returns (see that
  * class's own javadoc: "nobody can be told about a question the scope has not recorded, because
  * nobody has the id yet"). By the time the approver's early answer reaches the desk, the phase
- * already names the call {@code AwaitingApproval} — never {@code Pending} — so the delivery
- * worker's own early-delivery guard ({@code DeliveryWorker#isEarly}) never fires and the answer
- * resolves on the very first drain, rather than being thrown away and waiting out the approval
- * kind's 5s backoff.
+ * already names the call {@code AwaitingApproval} — never {@code Pending} — so the answer resolves
+ * on the very first drain.
+ *
+ * <p>That ordering is what makes James's 2026-08-25 ruling safe: because no answer can outrun its
+ * own park, an answer that DOES meet a {@code Pending} call is a permanent orphan, and the delivery
+ * worker drops it with a WARN instead of releasing it for redelivery. This test is the proof that
+ * the legitimate early answer never lands in that bucket.
  *
  * <p>Deliberately NOT built from {@code ScriptedApprover} (the resolution this task shipped under):
  * the kit's approver never touches a desk from inside {@code approve()}, so this is a one-off,
@@ -145,10 +148,11 @@ class EarlyAnswerTest {
     try {
       harness.bind(AgentId.of("svc")).tell("please do the op");
 
-      // 2s, deliberately well under DeliveryWorker's 5s approval backoff: if the early answer
-      // ever missed defer()'s synchronous fold and fell into the isEarly/backoff-and-retry path,
-      // healing would take at least 5s and this deadline would catch it — a deadline equal to (or
-      // above) the backoff would let a regressed implementation still squeak through.
+      // 2s, deliberately well under DeliveryWorker's 5s approval backoff: an implementation that
+      // let the early answer miss defer()'s synchronous fold would now have the delivery DROPPED
+      // against a Pending call, so the turn would never reach Idle at all and this deadline would
+      // catch it. It stays under the backoff so that even the older release-and-retry regression —
+      // which healed only after 5s — could not squeak through either.
       long deadline = System.currentTimeMillis() + 2000;
       while (!(state.load().phase() instanceof Phase.Idle)
           && System.currentTimeMillis() < deadline) {

@@ -365,11 +365,15 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * One fold-advance for either kind: read state, reduce, remember, CAS-write, dispatch. An ignored
-   * transition is acknowledged as stale — EXCEPT when the call is still {@code Pending}/{@code
-   * Running} for THIS delivery's kind, which means the park has not folded yet (approval-lifecycle
-   * spec §4): throw, so Continuum releases the delivery and re-delivers after the backoff, by which
-   * time it has.
+   * One fold-advance for either kind: read state, reduce, remember, CAS-write, dispatch.
+   *
+   * <p>An ignored transition is DROPPED — logged at WARN and acknowledged, never released for
+   * redelivery (James's 2026-08-25 ruling, approval-lifecycle spec §4). A delivery whose scope is
+   * not in the status that awaits it is a permanent failure, not a race worth retrying: {@code
+   * ComputationApprovalContext#defer()} folds {@code AwaitingApproval} and commits BEFORE it hands
+   * back the id, so no answer can outrun its own park, and a tool result reaching a still-{@code
+   * Running} call is admitted by the reducer rather than deferred to a retry (spec §3). What
+   * remains is an orphan or a duplicate, and no amount of backoff makes it fold.
    */
   private void fold(Routing routing, AgentEvent event, ComputationId delivered) {
     AgentType type = AgentType.of(routing.agentType());
@@ -378,10 +382,8 @@ final class DeliveryWorker<O> implements ComputationPump {
       State state = warnIfNoStoredState(id, readState(id));
       Transition transition = state.phase().handle(event);
       if (transition.isIgnored()) {
-        if (isEarly(state.phase(), event)) {
-          throw new EarlyDeliveryException(delivered);
-        }
-        return; // stale or duplicate — acknowledged
+        warnDropped(id, routing, delivered, state.phase());
+        return; // dropped — acknowledged, never redelivered
       }
       if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
         ToolFoldRemembrance.remember(
@@ -406,24 +408,27 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /**
-   * Whether an ignored delivery is early rather than stale: the call is still awaiting the very
-   * park this delivery answers, so the fold that records it has not committed yet.
+   * Names the dropped delivery loudly enough to chase: which scope, which call, which computation,
+   * and the status the phase was actually in — the four coordinates that distinguish an orphan from
+   * a duplicate when someone reads the log afterwards.
    */
-  private static boolean isEarly(Phase phase, AgentEvent event) {
+  private static void warnDropped(
+      AgentId id, Routing routing, ComputationId delivered, Phase phase) {
+    log.warn(
+        "dropping a delivery this scope is not awaiting: agent={} call={} computation={} status={}",
+        id.value(),
+        routing.call().id(),
+        delivered.value(),
+        statusOf(phase, routing.call().id()));
+  }
+
+  /** How the phase describes this call right now, for {@link #warnDropped}'s message. */
+  private static String statusOf(Phase phase, String callId) {
     if (!(phase instanceof Phase.AwaitingTools awaiting)) {
-      return false;
+      return phase.getClass().getSimpleName();
     }
-    return switch (event) {
-      case AgentEvent.ApprovalAnswered(var call, var _, var _) ->
-          awaiting.calls().get(call.id()) instanceof CallStatus.Pending;
-      case AgentEvent.ToolFinished(var call, var _, var _) ->
-          awaiting.calls().get(call.id()) instanceof CallStatus.Running;
-      case AgentEvent.Observed _,
-          AgentEvent.ModelFinished _,
-          AgentEvent.ApprovalDeferred _,
-          AgentEvent.ToolDeferred _ ->
-          false;
-    };
+    CallStatus status = awaiting.calls().get(callId);
+    return status == null ? "no such call" : status.getClass().getSimpleName();
   }
 
   /**

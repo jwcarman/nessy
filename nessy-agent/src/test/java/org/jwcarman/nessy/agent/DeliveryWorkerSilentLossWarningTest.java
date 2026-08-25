@@ -172,8 +172,15 @@ class DeliveryWorkerSilentLossWarningTest {
             Instant.EPOCH,
             1));
 
+    // Two warnings now, not one: the missing-state warning this test is about, and — since an
+    // Idle scope ignores the fold — the mismatched-delivery drop warning (James's 2026-08-25
+    // ruling). The size assertion below is on the silent-loss warning alone, so it keeps saying
+    // exactly what it always said: that instant is logged once, and distinguishably.
     List<ILoggingEvent> warnings =
-        appender.list.stream().filter(event -> event.getLevel() == Level.WARN).toList();
+        appender.list.stream()
+            .filter(event -> event.getLevel() == Level.WARN)
+            .filter(event -> event.getFormattedMessage().contains("no stored state"))
+            .toList();
     assertThat(warnings).hasSize(1);
     assertThat(warnings.getFirst().getFormattedMessage())
         .contains("test-scope")
