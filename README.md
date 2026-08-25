@@ -60,10 +60,10 @@ harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
 
 This snippet runs — nothing else is required. `OPENAI_API_KEY` and
 `OpenAiModelProvider.fromEnv()` are the one-line swap for OpenAI instead,
-with nothing else about the shape above changing. `EnvModelProviders.fromEnv()`
-(from `nessy-model-env`) reads whichever key is set and picks the model for
-you, so an application switches vendors by switching an environment
-variable, not its code.
+with nothing else about the shape above changing. `ModelDiscovery.fromEnv()`
+(from `nessy-model-discovery`) picks whichever provider module you shipped
+and configures it from its key, so an application switches vendors by
+swapping one dependency and one environment variable, not its code.
 
 `Nessy.harness(HarnessCustomizer<String>)` is the one front door: the
 lambda fills in a live `HarnessConfig`, and Nessy alone turns it into the
@@ -225,12 +225,12 @@ for applications that want it.
     <artifactId>nessy-model-bedrock</artifactId>
   </dependency>
 
-  <!-- Optional: all four providers non-optionally, switched by which API key is set (Bedrock is
-       the one exception: it has no key of its own and is only ever chosen explicitly, via
-       NESSY_PROVIDER=bedrock). -->
+  <!-- Optional: discovery. Resolves a model from whichever provider modules above are on the
+       classpath, configured by their keys; depends on none of them itself. Bedrock is never
+       discovered — construct BedrockModelProvider directly. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-env</artifactId>
+    <artifactId>nessy-model-discovery</artifactId>
   </dependency>
 
   <!-- ScriptedModel: the offline, no-key test double — see the docs

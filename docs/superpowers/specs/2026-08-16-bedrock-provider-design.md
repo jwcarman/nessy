@@ -81,3 +81,11 @@ explicitly rejected: it re-fragments exactly what Converse unified.
 - Guardrails configuration, Bedrock Knowledge Bases, provisioned throughput knobs.
 - Auto-detection of AWS credentials in EnvModelProviders (explicit ruling above).
 - Azure OpenAI and Vertex — next on the ruled roadmap, separate generations.
+
+## Amendment (2026-08-25): §4's mechanism changes, its rule survives
+
+Explicit-only selection is now enforced by non-registration:
+`nessy-model-bedrock` ships no `ModelProviderBootstrap`, so there is no code
+path by which it enters discovery's candidate list. `NESSY_PROVIDER=bedrock`
+retires; applications construct `BedrockModelProvider` directly. See
+`2026-08-25-model-discovery-design.md` §6.

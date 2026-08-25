@@ -14,6 +14,13 @@ or, for the common no-argument case:
 ModelProvider provider = BedrockModelProvider.fromEnv();
 ```
 
+Bedrock is **never discovered** by `nessy-model-discovery`: this module
+registers no `ModelProviderBootstrap`, because AWS credentials are ambient on
+far too many machines to mean "talk to Bedrock". Construct it as above and
+bind a model explicitly — `us.anthropic.claude-haiku-4-5-20251001-v1:0` is
+the `us` cross-region inference profile for Claude Haiku 4.5, a documented
+starting point rather than a default.
+
 ## Credentials
 
 `BedrockModelProvider.create(BedrockProviderCustomizer)` hands the customizer a

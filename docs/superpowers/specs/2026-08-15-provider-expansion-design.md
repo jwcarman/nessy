@@ -101,3 +101,10 @@ honestly), BOM entry, starter passthrough. The configuration reference page gain
   asymmetry). Text turns AND tool round-trips validated through both nessy providers against
   `google/gemma-4-e4b`. The providers guide gains an Anthropic-compatible note beside the
   OpenAI universe section, stated as validated fact with the date.
+
+## Amendment (2026-08-25): §3's precedence table retires
+
+The Anthropic → OpenAI → Gemini → xAI precedence, and the `grok` alias, are
+gone with the warn-and-default they served. Two providers that both
+bootstrap now fail fast unless `NESSY_PROVIDER` names one. See
+`2026-08-25-model-discovery-design.md` §4.

@@ -64,9 +64,10 @@ outsider implements — `Model`, `Memory`, `Substrate`) for free:
 ```
 
 `nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock` are the
-other provider gateways; `nessy-model-env` picks whichever key the
-environment has set, so an application switches vendors by switching an
-environment variable rather than its code — see [Providers](providers.md).
+other provider gateways; `nessy-model-discovery` resolves whichever of them
+is on the classpath from its key, so an application switches vendors by
+swapping a dependency and a variable rather than its code — see
+[Providers](providers.md).
 Tool, policy, and enricher authors compile against `nessy-api` alone;
 adapter authors — a custom `Memory` or `Substrate` — add `nessy-spi`.
 

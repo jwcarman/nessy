@@ -181,3 +181,14 @@ calls `System.exit(0)` right after its try-with-resources block closes
 thread that outlives `close()`, so without the explicit exit the process
 lingers seconds after a clean run — the farewell prints instantly either way,
 this only shortens what came after.
+
+## Amendment (2026-08-25): §4a superseded
+
+§4a's premise — a micro-module depending on both provider modules
+non-optionally so any key just works — is superseded by
+`2026-08-25-model-discovery-design.md`. `nessy-model-env` is now
+`nessy-model-discovery`, depends on no provider module, and finds providers
+through `ServiceLoader`. Switching provider is swapping a dependency, then
+setting its key. §4a's "no reflection" clause is amended, not broken:
+`ServiceLoader` instantiates registered classes through a no-arg constructor
+and inspects nothing else, which is not what that clause exists to forbid.

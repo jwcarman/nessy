@@ -443,7 +443,7 @@ observation, watch a restart request park, type `approve` or `deny
 <reason>` to answer it.
 
 ```java
-var selection = EnvModelProviders.select();
+var selection = ModelDiscovery.select();
 var harness =
     Nessy.harness(
         h ->

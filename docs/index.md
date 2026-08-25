@@ -120,9 +120,9 @@ Four modules, each with a persona in mind:
 | `nessy-intent` | `nessy-api`, `nessy-spi` | applications that want the declared-intent claim channel — `IntentTool`, `IntentStore`, `IntentEnricher` |
 
 A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
-`nessy-model-gemini`, `nessy-model-bedrock`, or `nessy-model-env` to pick
-between them from the environment) sits alongside `nessy-agent` in every
-application's dependency list.
+`nessy-model-gemini`, or `nessy-model-bedrock`) sits alongside `nessy-agent`
+in every application's dependency list; `nessy-model-discovery` resolves the
+one you shipped from the environment.
 
 ## Where to go next
 

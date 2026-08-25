@@ -25,6 +25,15 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **Model provider discovery: `nessy-model-env` becomes `nessy-model-discovery`,
+  and depends on no provider module.** Providers register a new SPI type,
+  `ModelProviderBootstrap`, through `ServiceLoader`; `ModelDiscovery` loads
+  whatever is on the classpath and bootstraps it from the environment. A
+  hello-world agent's compile classpath drops from 99 jars to under 40.
+  Removed with it: `NESSY_PROVIDER=bedrock` (Bedrock registers nothing —
+  construct it directly), the `grok` alias for `xai`, and the
+  warn-and-default on ambiguous keys, which now fails fast naming every
+  candidate.
 - **Codec adoption: the homegrown `Codec`/`CodecFactory` retire in favor of
   `org.jwcarman.codec` 0.2.0.** `org.jwcarman.nessy.spi.substrate.Codec` and
   its `CodecFactory` are deleted; every reference moves to
@@ -347,11 +356,12 @@ sequence of renames and interim shapes that produced it.
   reserved for a future token-aware `AgentMemory`.
 - **Native model providers.** `nessy-model-anthropic`, `nessy-model-openai`,
   `nessy-model-gemini`, and `nessy-model-bedrock` each implement
-  `ModelProvider` against their own SDK; `nessy-model-env` picks between
-  installed providers from the environment (`ANTHROPIC_API_KEY`,
-  `OPENAI_API_KEY`, `GEMINI_API_KEY`, or an explicit `NESSY_PROVIDER=bedrock`
-  for the one provider with no key of its own), so an application switches
-  providers by switching an environment variable, not its code.
+  `ModelProvider` against their own SDK; `nessy-model-discovery` resolves
+  whichever of them is on the classpath from the environment
+  (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — Bedrock is
+  never discovered, constructed directly instead — so an application
+  switches providers by swapping a dependency and an environment variable,
+  not its code.
 - **`nessy-console`.** A terminal front door for any `Agent<String>` — read
   a line, tell the agent, render deltas, prompt again — one line to run,
   `ConsoleApprover` included.
@@ -435,7 +445,7 @@ sequence of renames and interim shapes that produced it.
   alike — now describes the agent-as-scope shape rather than the harness it
   replaced: `Nessy.cli()`/`Nessy.autonomous()`, `Harness`/`Binding`, the
   `ToolGrant` authorization ladder, `TurnObserver`/`AgentObserver`, and the
-  four native model providers plus `nessy-model-env`, each claim checked
+  four native model providers plus `nessy-model-discovery`, each claim checked
   against source rather than carried forward from the old narrative. The
   closing wave rewrites Providers, MCP Clients, and Observability against
   the current API — including two MCP examples that had drifted onto a
@@ -654,8 +664,8 @@ sequence of renames and interim shapes that produced it.
   `systemPrompt`. Wrappers rebase one level down: `RetryingModelProvider`
   becomes `RetryingModel`, a decorator over the thing that runs requests
   rather than the gateway, with each vendor's `RETRYABLE` predicate feeding
-  it unchanged. `EnvModelProviders.fromEnv()` now returns a bound `Model`
-  directly, and `EnvModelProviders.select()`'s `Selection` carries a
+  it unchanged. `ModelDiscovery.fromEnv()` returns a bound `Model`
+  directly, and `ModelDiscovery.select()`'s `Selection` carries a
   `Model` alongside the chosen provider's name rather than a
   `ModelProvider`. See [Providers](https://jwcarman.github.io/nessy/guides/providers/).
 - **Durable dissolves: the spine stops pretending to be a tier.** The

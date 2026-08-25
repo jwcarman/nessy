@@ -298,10 +298,11 @@ premise is corrected, not annotated:
 
 **`nessy-model-discovery`** tests discovery with **no real provider on its
 classpath at all**. A test-scope `ModelProviderBootstrap` implementation, or
-two, registered through a services file under `src/test/resources`, returning
-a `ScriptedModelProvider` from `nessy-testing`. That proves the mechanism
-independently of any SDK, and it is the only way to test the zero-registration
-message. Cases:
+two, hand-written with a fake `ModelProvider` and `Model` behind it — no SDK,
+no `nessy-testing` dependency — injected through a package-private seam; one
+test goes through the real `ServiceLoader` against a registration in
+`src/test/resources`. That proves the mechanism independently of any SDK, and
+it is the only way to test the zero-registration message. Cases:
 
 - no registrations → the "no model provider modules" message
 - one registered, key absent → the no-credentials message names that
