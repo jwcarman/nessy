@@ -39,8 +39,6 @@ public final class XaiModelProviderBootstrap implements ModelProviderBootstrap {
    */
   static final String DEFAULT_MODEL_ID = "grok-4.6";
 
-  public XaiModelProviderBootstrap() {}
-
   @Override
   public String name() {
     return "xai";

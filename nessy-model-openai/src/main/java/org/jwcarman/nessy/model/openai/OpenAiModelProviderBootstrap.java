@@ -35,8 +35,6 @@ public final class OpenAiModelProviderBootstrap implements ModelProviderBootstra
   static final String BASE_URL_ENV_VAR = "OPENAI_BASE_URL";
   static final String DEFAULT_MODEL_ID = "gpt-4o-mini";
 
-  public OpenAiModelProviderBootstrap() {}
-
   @Override
   public String name() {
     return "openai";

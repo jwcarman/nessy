@@ -34,8 +34,6 @@ public final class GeminiModelProviderBootstrap implements ModelProviderBootstra
   /** per ai.google.dev, 2026-08-16; model availability churns — override with NESSY_MODEL. */
   static final String DEFAULT_MODEL_ID = "gemini-3.6-flash";
 
-  public GeminiModelProviderBootstrap() {}
-
   @Override
   public String name() {
     return "gemini";
