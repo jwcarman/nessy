@@ -46,8 +46,10 @@ class XaiModelProviderBootstrapTest {
   }
 
   @Test
-  void never_reads_openai_base_url() {
-    // xAI's URL is fixed; an OPENAI_BASE_URL alongside an xAI key must be invisible here.
+  void a_stray_openai_base_url_still_builds_a_provider_and_is_not_declared() {
+    // xAI's URL is fixed by BASE_URL and OpenAiModelProvider does not expose it, so the fixed URL
+    // is pinned by the constant, not by this test. What this pins: an OPENAI_BASE_URL alongside
+    // an xAI key neither breaks construction nor appears among the variables xAI declares.
     var provider =
         bootstrap.bootstrap(
             Map.of("XAI_API_KEY", "fake-xai-key", "OPENAI_BASE_URL", "http://should.be.ignored"));
