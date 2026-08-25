@@ -448,7 +448,13 @@ git commit -m "test: the contract's journal, listing, batch and concurrency halv
 
 Add `<module>nessy-substrate-jdbc</module>` to the reactor list in `pom.xml` (the existing list is around lines 57-69 — append after `nessy-tool-mcp`).
 
-Then add it to `nessy-bom/pom.xml` only. **The root `pom.xml` has no `dependencyManagement` entries for Nessy's own modules** — I checked; inter-module versions come from the BOM alone. Follow the existing entries' exact shape:
+Then add it to `nessy-bom/pom.xml` only.
+
+**Correction to an earlier claim in this plan:** I originally wrote that the root `pom.xml` has no `dependencyManagement` entries for Nessy's own modules. **That was wrong** — it manages `nessy-api`, `nessy-spi` and `nessy-tck`. I had grepped for `nessy-testing` alone, found nothing in the root pom, and generalised from one module to all of them.
+
+The instruction is unchanged, but for the real reason: `nessy-testing` is *not* among the managed three, so a module depending on it declares the version directly — which is what `nessy-tool-mcp` already does. Follow that convention. Do not add the new module to the root pom's `dependencyManagement`; the BOM is where consumers pick it up.
+
+Follow the BOM's existing entries' exact shape:
 
 ```xml
 <dependency>
