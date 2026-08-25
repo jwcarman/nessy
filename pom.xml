@@ -66,6 +66,7 @@
     <module>nessy-model-bedrock</module>
     <module>nessy-model-env</module>
     <module>nessy-tool-mcp</module>
+    <module>nessy-substrate-jdbc</module>
     <module>nessy-examples</module>
   </modules>
 
@@ -93,7 +94,11 @@
     <!-- org.jwcarman.codec 0.4.0 (Central release, no snapshots): the typed-
          serialization seam nessy-spi's homegrown Codec/CodecFactory retired
          into (2026-08-24 codec-adoption spec). Matches the codec version
-         continuum 0.3.0 itself depends on. -->
+         continuum 0.3.0 itself depends on. Also the version that stopped
+         codec-core dragging spring-boot-autoconfigure -> spring-boot ->
+         spring-core/context/aop/beans/expression onto the compile classpath
+         of every Nessy application, Spring-free ones included: 0.4.0's
+         codec-core has no compile dependencies at all. -->
     <codec.version>0.4.0</codec.version>
     <!-- org.jwcarman.continuum 0.3.0 (Central release): the durable-computation
          library Nessy adopts for pending/deadline/expiry/memoized-outcome/outbox

@@ -48,7 +48,10 @@ adds a schema variant and a container matrix ahead of it.
 
 ## 3. Schema — two tables, and they are yours
 
-The mapping `docs/concepts/storage.md` already ratifies:
+The mapping `docs/concepts/storage.md` ratifies, minus one detail — `key`'s
+`COLLATE "C"` pin, needed so ascending key order is byte order rather than a
+locale-dependent collation (storage.md's own schema block carries the pin;
+this one is trimmed for brevity):
 
 ```sql
 CREATE TABLE IF NOT EXISTS nessy_document (
@@ -87,7 +90,7 @@ lookup or a prefix scan of one, which the PK's own index serves.
 | `read(kind, key)` | `SELECT payload, version, updated_at … WHERE kind = ? AND key = ?` |
 | `write(…, expectedVersion = 0)` | `INSERT`; a primary-key violation **is** the conflict |
 | `write(…, expectedVersion = v)` | `UPDATE … SET payload = ?, version = version + 1, updated_at = ? WHERE kind = ? AND key = ? AND version = ?`; **zero affected rows is the conflict** |
-| `delete(kind, key, v)` | `DELETE … WHERE kind = ? AND key = ? AND version = ?`; zero affected rows is the conflict |
+| `delete(kind, key, v)` | `DELETE … WHERE kind = ? AND key = ? AND version = ?`; zero affected rows does **not** by itself mean conflict — `Substrate#delete`'s own contract makes deleting a genuinely absent document at `expectedVersion == 0` an idempotent no-op success, so on zero affected rows check existence within the same transaction: absent **and** `expectedVersion == 0` is success; present-at-another-version (or absent at any other `expectedVersion`) is the conflict |
 | `keys(kind, limit)` | `SELECT key … WHERE kind = ? ORDER BY key LIMIT ?` — ascending, per storage.md |
 | `append(…, expectedSeq)` | `INSERT`; a primary-key violation on `(kind, key, seq)` is the conflict |
 | `entries(kind, key, fromSeq)` | `SELECT … WHERE kind = ? AND key = ? AND seq >= ? ORDER BY seq` — inclusive, ascending |
@@ -156,8 +159,8 @@ conflicts; at the current version succeeds and stores **exactly
 `SET version = version + 1` agrees rather than merely resembling it. `delete` at the current version removes; at a stale version
 conflicts. A deleted key reads as absent, and writing it again requires version
 0. Payload bytes round-trip unchanged, and the store does not alias the caller's
-array — mutating the array after a write must not change stored truth, and
-mutating a returned array must not either.
+array on write — mutating the array after a write must not change stored
+truth.
 
 **Journal semantics.** Sequences start at 1. `append` at a taken seq conflicts
 rather than overwriting. `entries` from a seq is inclusive and ascending.
