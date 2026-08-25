@@ -52,14 +52,16 @@ lookup back into the fold that started it.
       Calls hang permanently.
 
     Silent loss is bad; a permanent hang the absorption machinery actively
-    sustains is worse. `InMemorySubstrate` is the only `Substrate` Nessy
-    ships today, so the only coherent wiring right now is both in memory —
-    which is exactly what `Nessy.harness(...)` gives you by default. A
-    durable pairing needs a durable `Substrate`, which does not exist yet;
-    Continuum's own `continuum-jdbc` provider is a TCK-certified PostgreSQL
-    backend and is not the blocker. `HarnessConfig.finish()` logs a warning
-    at startup if exactly one of the two stores looks like the in-memory
-    default — a backstop, not a substitute for wiring them together
+    sustains is worse. Both in memory is what `Nessy.harness(...)` gives
+    you by default. Both durable is `.substrate(new JdbcSubstrate(ds))`
+    with `.continuum(...)` handed a `continuum-jdbc`-backed Continuum over
+    the same database — `DurableResumeTest` in `nessy-agent` is that
+    pairing, verbatim. `HarnessConfig.finish()` warns at startup when it
+    can tell the tiers differ: a substrate other than `InMemorySubstrate`
+    with no Continuum supplied, the hang direction. A supplied Continuum is
+    not inspected — the harness cannot see its repository — so the caller
+    who supplies one owns the match. A backstop, not a substitute for
+    wiring them together
     correctly.
 
 ## The dispatch index: what survives a redrive
@@ -182,9 +184,10 @@ harness.approvals().approve(request.id());
 
 The instance that dispatched the call never has to still be running — as
 long as the process it eventually completes on shares the same Continuum
-store and the same `Substrate`. Today, with both in memory, that instance
-is always the same process; only a durable pairing would let it be a
-different one.
+store and the same `Substrate`. With both in memory, that instance is
+always the same process; with a durable pairing it can be a different
+one — a fresh process over the same database picks up the delivery and
+finishes the turn.
 
 ## Honest limits
 
@@ -201,13 +204,15 @@ exactly-once external work.
   effect is safe to redrive, that has to be handled outside this pipeline
   today — Continuum's own retryable client exists for exactly this, unused
   by Nessy so far.
-- **Durability is all-or-nothing across two stores, and only one half
-  exists.** See the warning above.
+- **Durability is all-or-nothing across two stores.** See the warning
+  above; both halves exist, and the harness only warns about the mismatch
+  it can see.
 
 None of this is exactly-once anywhere it isn't claimed. What's promised —
 stable dispatch identity, ownership-transfer delivery, in-band failure on
-timeout or denial — is what the pipeline actually gives, today, over two
-in-memory stores.
+timeout or denial — is what the pipeline actually gives, over two
+in-memory stores by default and over two durable ones when both are
+supplied.
 
 ## Where next
 

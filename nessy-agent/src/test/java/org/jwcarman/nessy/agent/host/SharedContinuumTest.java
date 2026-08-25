@@ -51,9 +51,9 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * The {@link HarnessConfig#continuum} seam, without a database: two harnesses handed the SAME
  * Continuum and the same substrate see each other's parked calls. A parks an approval-gated call
  * and is shut down, never having decided it; B — fresh objects, shared stores — approves it, claims
- * the delivery through its own pumps, and finishes the turn A started. This is the property {@code
- * ThreeRuntimeProcessLossTest} lost when each {@code finish()} began minting a private Continuum,
- * restored: computation state is now as shared as the caller makes it.
+ * the delivery through its own pumps, and finishes the turn A started. This is the property the
+ * since-deleted {@code ThreeRuntimeProcessLossTest} lost when each {@code finish()} began minting a
+ * private Continuum, restored: computation state is now as shared as the caller makes it.
  */
 class SharedContinuumTest {
 

@@ -125,15 +125,22 @@ claim and deliver what the other parked (`SharedContinuumTest`), which is
 the shape a second process over the same database gets for free with a
 `continuum-jdbc`-backed Continuum on each side (`DurableResumeTest`).
 
-The rule that follows: **harnesses that share `.type(...)` and
-`.substrate(...)` must share `.continuum(...)` as well.** The
-`dispatch/<agentType>` index is plain `Substrate` state keyed by
-`(agentType, agentId, responseId, callId)`, so two harnesses sharing type
-and substrate write into the very same index — and if each is backed by a
-*different* Continuum, an entry one records points at a computation the
-other's client has never heard of. Share all three, or give the harnesses
-distinct types or substrates. This is a contract the caller keeps, not
-something the builder can check for you.
+The rule that follows: **harnesses that share `.type(...)` must share
+both stores or neither.** Two things are keyed by type alone. The
+`dispatch/<agentType>` index is plain `Substrate` state, so two harnesses
+sharing type and substrate write into the very same index — and if each is
+backed by a *different* Continuum, an entry one records points at a
+computation the other's client has never heard of. And Continuum's kinds
+are `approval/<agentType>` and `tool/<agentType>`, drained with no
+substrate discriminator — so two harnesses sharing type and Continuum but
+*different* substrates cross-drain: one claims a delivery for a scope that
+exists only in the other's substrate, folds it against a scope that reads
+`Idle` there, the reducer ignores it, and the original call hangs forever
+with no error anywhere. Share type, substrate and Continuum together; or
+give the harnesses distinct types; or give them both a distinct substrate
+*and* a distinct Continuum. Sharing exactly one store is the one shape
+that is never right. This is a contract the caller keeps, not something
+the builder can check for you.
 
 ## `bind` and `tell`
 

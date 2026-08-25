@@ -139,20 +139,18 @@ public final class HarnessConfig<O> {
   /**
    * The recipe's name — the first coordinate of every durable address; default {@code "agent"}.
    *
-   * <p><b>Two harnesses sharing both the same {@code type} and the same {@link
-   * #substrate(Substrate)} do NOT share computation state</b> (continuum-adoption spec §11.1, the
-   * regression this migration introduced): {@link #finish()} mints a private {@code Continuum} per
-   * call, with no override seam, so each harness's approval and tool computations are invisible to
-   * every other harness — even one built with the identical {@code type} over the identical {@link
-   * Substrate}. Before this migration, when computations lived as {@code Substrate} documents,
-   * sharing both coordinates made two harnesses double-drain each other's deliveries; that hazard
-   * is gone, replaced by a subtler one: the {@code dispatch/<agentType>} index is still a plain
-   * {@code Substrate} document store, so a second harness sharing {@code type} and {@code
-   * substrate} CAN read dispatch-index entries naming computations its own private {@code
-   * Continuum} has never heard of — the gate's absorption logic (§5) sees a live-looking entry it
-   * can never resolve. Give two harnesses over one substrate distinct types, or give them distinct
-   * substrates, until a caller-supplied {@code Continuum} seam exists to let them genuinely share
-   * computation state again.
+   * <p><b>Two harnesses sharing a {@code type} must share both {@link #substrate(Substrate)} and
+   * {@link #continuum(Continuum)}, or neither.</b> Two things are keyed by type alone. The {@code
+   * dispatch/<agentType>} index is plain {@code Substrate} state: harnesses sharing type and
+   * substrate write the same index, and if each is backed by a different Continuum (the default —
+   * {@link #finish()} mints a private one when none is supplied), an entry one records names a
+   * computation the other's client has never heard of, and the gate's absorption logic sees a
+   * live-looking entry it can never resolve. Continuum's kinds are {@code approval/<agentType>} and
+   * {@code tool/<agentType>}, drained with no substrate discriminator: harnesses sharing type and
+   * Continuum over DIFFERENT substrates cross-drain, one claiming a delivery for a scope that
+   * exists only in the other's substrate and folding it against a scope that reads {@code Idle} —
+   * the call hangs forever, silently. Share all three; or use distinct types; or use a distinct
+   * substrate AND a distinct Continuum. Sharing exactly one store is never right.
    */
   public HarnessConfig<O> type(String typeName) {
     this.typeName = Objects.requireNonNull(typeName, "typeName must not be null");
@@ -279,9 +277,12 @@ public final class HarnessConfig<O> {
    * When omitted, {@link #finish()} mints a private, in-memory one — computations then live exactly
    * as long as this harness and are visible to no other. Supply one to change either property: a
    * {@code continuum-jdbc}-backed Continuum makes parked calls survive the process, and the SAME
-   * instance handed to two harnesses lets either one deliver what the other parked. Pair it with a
-   * substrate of the same durability tier — a durable computation store over a volatile substrate
-   * silently drops every delivery onto a scope restored to {@code Idle}; the reverse hangs calls.
+   * instance handed to two harnesses that also share a type and a substrate lets either one deliver
+   * what the other parked. Pair it with a substrate of the same durability tier — a durable
+   * computation store over a volatile substrate silently drops every delivery onto a scope restored
+   * to {@code Idle}; the reverse hangs calls. And never share it between two harnesses of one type
+   * over DIFFERENT substrates: its kinds are keyed by type alone, so one harness would claim and
+   * drop deliveries meant for scopes that exist only in the other's substrate.
    */
   public HarnessConfig<O> continuum(Continuum continuum) {
     this.continuum = Objects.requireNonNull(continuum, "continuum must not be null");
