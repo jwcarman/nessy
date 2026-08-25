@@ -22,11 +22,11 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 
 class TurnObserverConfigTest {
 
@@ -41,7 +41,7 @@ class TurnObserverConfigTest {
         new TurnEvent.ThinkingDelta("hmm"),
         new TurnEvent.RedactedThinking("opaque"),
         new TurnEvent.ToolCallRequested(CALL),
-        new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
+        new TurnEvent.ToolCallDecided(CALL, Approval.approved()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
         new TurnEvent.ToolCallProgressed(CALL, "halfway"),
         new TurnEvent.AssistantSaid(ASSISTANT_MESSAGE),

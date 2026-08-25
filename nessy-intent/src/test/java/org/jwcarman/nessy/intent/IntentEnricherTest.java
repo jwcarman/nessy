@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentEnricherTest {
@@ -31,11 +31,11 @@ class IntentEnricherTest {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-  private static AuthzContext freshContext() {
+  private static ApprovalRequest.Draft freshDraft() {
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
-    return AuthzContext.of("ops", call);
+    return ApprovalRequest.draft("ops", "agent-a", call, MAPPER);
   }
 
   private static SubstrateIntentStore<Intent> freshStore() {
@@ -44,7 +44,7 @@ class IntentEnricherTest {
 
   @Test
   void itIsNamedIntentForTheAuthorizationReport() {
-    var enricher = new IntentEnricher(freshStore());
+    var enricher = new IntentEnricher<>(freshStore(), Intent.class);
 
     assertThat(enricher.displayName()).contains("intent");
   }
@@ -53,22 +53,24 @@ class IntentEnricherTest {
   void itDepositsTheLatestDeclarationWhenOneWasRecorded() {
     var store = freshStore();
     store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
-    var enricher = new IntentEnricher(store);
+    var enricher = new IntentEnricher<>(store, Intent.class);
+    var draft = freshDraft();
 
-    AuthzContext enriched = enricher.enrich(freshContext());
+    enricher.enrich(draft);
 
-    assertThat(enriched.declaredIntent())
+    assertThat(draft.freeze().facts().get(IntentEnricher.declared(Intent.class)))
         .contains(new Intent("restart prod-eu to clear the stuck deploy"));
   }
 
   @Test
-  void itLeavesTheContextUntouchedWhenNoDeclarationWasEverRecorded() {
-    var enricher = new IntentEnricher(freshStore());
-    var context = freshContext();
+  void itLeavesTheDraftUntouchedWhenNoDeclarationWasEverRecorded() {
+    var enricher = new IntentEnricher<>(freshStore(), Intent.class);
+    var draft = freshDraft();
 
-    AuthzContext enriched = enricher.enrich(context);
+    enricher.enrich(draft);
 
-    assertThat(enriched.declaredIntent()).isEmpty();
-    assertThat(enriched).isEqualTo(context);
+    ApprovalRequest request = draft.freeze();
+    assertThat(request.facts().names()).isEmpty();
+    assertThat(request.facts().get(IntentEnricher.declared(Intent.class))).isEmpty();
   }
 }

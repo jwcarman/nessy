@@ -17,32 +17,29 @@ package org.jwcarman.nessy.api.tool.authorization;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
- * The impure gathering stage: deposits assessments into the context before the {@code UsagePolicy}
- * judges (design of record 2026-08-16-authorization §4, amended by action-wave spec §1). A grant
- * wires these as an ordered list; each receives the previous enricher's own context and returns the
- * next context — {@link AuthzContext#with} functionally, so nothing upstream ever sees a later
- * enricher's deposit.
+ * The impure gathering stage: deposits facts onto the request the approver will read
+ * (approval-lifecycle spec §1.2). A grant wires these as an ordered list; each receives the same
+ * short-lived {@link ApprovalRequest.Draft} and deposits onto it, never freezing it.
  *
- * <p>Enrichers MAY do I/O — a principal exchange, a risk service call, a quota read — the policy
- * stays pure so all of that impurity belongs here instead.
+ * <p>Enrichers MAY do I/O — a principal exchange, a risk service call, a quota read — the approver
+ * stays free to be pure, so all of that impurity belongs here instead.
  *
- * <p>The pipeline is monomorphic (action-wave spec §8): no type parameter here or on {@link
- * org.jwcarman.nessy.api.tool.UsagePolicy}. The action travels only as {@link
- * AuthzContext#ACTION_KEY}, deposited before any enricher runs; an action-aware enricher recovers
- * it with {@link AuthzContext#action(Class)} and fails closed on its own terms if the slot is empty
- * or mistyped.
+ * <p>The pipeline is monomorphic (action-wave spec §8): no type parameter here or on the {@code
+ * Approver}. The action is set on the draft before any enricher runs; an action-aware enricher
+ * reads it back with {@link ApprovalRequest.Draft} coordinates and fails closed on its own terms.
  *
- * <p>A throwing enricher fails the whole call closed: the chokepoint turns it into a {@code Deny}
- * naming the enricher stage, never lets the exception escape into the conversation loop, and never
- * lets a broken enricher become an allow.
+ * <p>A throwing enricher fails the whole call closed: the chokepoint turns it into a denial naming
+ * the enricher stage, never lets the exception escape into the conversation loop, and never lets a
+ * broken enricher become an approval.
  */
 @FunctionalInterface
 public interface Enricher {
 
-  /** Returns the next context — {@code context} functionally extended, never mutated. */
-  AuthzContext enrich(AuthzContext context);
+  /** Deposits facts on {@code draft}; must not freeze it. */
+  void enrich(ApprovalRequest.Draft draft);
 
   /**
    * A human-readable label for this enricher, read by {@link AuthorizationReport} (design §8) —
@@ -66,8 +63,8 @@ public interface Enricher {
     Objects.requireNonNull(delegate, "delegate must not be null");
     return new Enricher() {
       @Override
-      public AuthzContext enrich(AuthzContext context) {
-        return delegate.enrich(context);
+      public void enrich(ApprovalRequest.Draft draft) {
+        delegate.enrich(draft);
       }
 
       @Override

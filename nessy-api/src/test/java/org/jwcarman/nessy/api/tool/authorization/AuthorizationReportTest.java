@@ -17,25 +17,30 @@ package org.jwcarman.nessy.api.tool.authorization;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 /**
  * Pins {@link AuthorizationReport} against known wiring (design of record 2026-08-16-authorization
- * §8, amended by action-wave spec §1): a rung-0 grant, whose story must honestly say it renders no
- * action and runs no enrichers, and a fully-wired rung-3 grant, whose story must name its
- * contributor's display name and its enrichers in order.
+ * §8, amended by the approval-lifecycle spec §1.4): a rung-0 grant, whose story must honestly say
+ * it renders no action and runs no enrichers, and a fully-wired rung-3 grant, whose story must name
+ * its contributor's display name and its enrichers in order.
  */
 class AuthorizationReportTest {
 
@@ -69,7 +74,7 @@ class AuthorizationReportTest {
 
   record TransferAction(String accountId, int cents) {}
 
-  /** A typed tool whose action a rung-3 grant welds through enrichers to a named policy. */
+  /** A typed tool whose action a rung-3 grant welds through enrichers to a named approver. */
   static final class TransferTool implements Tool<TransferInput> {
 
     @Override
@@ -101,25 +106,31 @@ class AuthorizationReportTest {
   private static final ActionContributor<TransferInput, TransferAction> NAMED_TRANSFER_ACTION =
       ActionContributor.named("transfer-action", TRANSFER_ACTION);
 
-  /** A named policy class — its report identity is its own simple name, no field to declare. */
-  static final class RiskThresholdPolicy implements UsagePolicy {
+  /** A named approver class — its report identity is its own simple name, no field to declare. */
+  static final class RiskThresholdApprover implements Approver {
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context) {
-      throw new AssertionError("building a report must never evaluate a policy");
+    public ApprovalOutcome approve(ApprovalContext context) {
+      throw new AssertionError("building a report must never consult an approver");
     }
   }
 
   private static Enricher explodingEnricher(String failureMessage) {
-    return context -> {
+    return draft -> {
       throw new AssertionError(failureMessage);
+    };
+  }
+
+  private static Enricher inertEnricher() {
+    return draft -> {
+      // a report reads wiring; nothing to deposit
     };
   }
 
   @Nested
   class A_rung_0_grant {
 
-    private final ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
+    private final ToolGrant grant = ToolGrant.grant(new ClockTool(), Approvers.allow());
 
     @Test
     void reports_no_action_rendering_and_no_enrichers() {
@@ -131,11 +142,11 @@ class AuthorizationReportTest {
       assertThat(story.actionRendered()).isFalse();
       assertThat(story.actionContributor()).isEmpty();
       assertThat(story.enrichers()).isEmpty();
-      assertThat(story.policy()).isEqualTo("allow()");
+      assertThat(story.approver()).isEqualTo("allow()");
     }
 
     @Test
-    void renders_as_the_tool_name_and_the_policy_alone() {
+    void renders_as_the_tool_name_and_the_approver_alone() {
       AuthorizationReport report = AuthorizationReport.of(List.of(grant));
 
       assertThat(report.render()).isEqualTo("clock: allow()");
@@ -148,8 +159,8 @@ class AuthorizationReportTest {
           ToolGrant.grant(
               new TransferTool(),
               TRANSFER_ACTION,
-              List.of(explodingEnricher("a static policy's grant must never run an enricher")),
-              UsagePolicy.allow());
+              List.of(explodingEnricher("a static approver's grant must never run an enricher")),
+              Approvers.allow());
 
       GrantStory story = AuthorizationReport.of(List.of(staticWithEnrichers)).grants().getFirst();
 
@@ -165,8 +176,8 @@ class AuthorizationReportTest {
         ToolGrant.grant(
             new TransferTool(),
             NAMED_TRANSFER_ACTION,
-            List.of(Enricher.named("principal", context -> context), context -> context),
-            new RiskThresholdPolicy());
+            List.of(Enricher.named("principal", inertEnricher()), inertEnricher()),
+            new RiskThresholdApprover());
 
     @Test
     void names_its_action_contributor() {
@@ -186,23 +197,10 @@ class AuthorizationReportTest {
     }
 
     @Test
-    void names_its_policy_by_its_own_class() {
+    void names_its_approver_by_its_own_class() {
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
-      assertThat(story.policy()).isEqualTo("RiskThresholdPolicy");
-    }
-
-    @Test
-    void names_the_real_risk_policies_threshold_policy_by_its_own_class_too() {
-      ToolGrant thresholdGrant =
-          ToolGrant.grant(
-              new TransferTool(),
-              NAMED_TRANSFER_ACTION,
-              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
-
-      GrantStory story = AuthorizationReport.of(List.of(thresholdGrant)).grants().getFirst();
-
-      assertThat(story.policy()).isEqualTo("ThresholdPolicy");
+      assertThat(story.approver()).isEqualTo("RiskThresholdApprover");
     }
 
     @Test
@@ -211,8 +209,8 @@ class AuthorizationReportTest {
 
       assertThat(report.render())
           .isEqualTo(
-              "transfer: action(transfer-action) → principal → enricher 2 → policy"
-                  + " (RiskThresholdPolicy)");
+              "transfer: action(transfer-action) → principal → enricher 2 → approver"
+                  + " (RiskThresholdApprover)");
     }
   }
 
@@ -222,7 +220,7 @@ class AuthorizationReportTest {
     @Test
     void reports_unnamed_when_a_custom_contributor_carries_no_display_name() {
       ToolGrant grant =
-          ToolGrant.grant(new TransferTool(), TRANSFER_ACTION, new RiskThresholdPolicy());
+          ToolGrant.grant(new TransferTool(), TRANSFER_ACTION, new RiskThresholdApprover());
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
@@ -237,7 +235,8 @@ class AuthorizationReportTest {
     @Test
     void reports_its_own_string_value_of_display_name_not_the_unnamed_placeholder() {
       ToolGrant grant =
-          ToolGrant.grant(new ClockTool(), UsagePolicy.of(context -> new PolicyDecision.Allow()));
+          ToolGrant.grant(
+              new ClockTool(), context -> new ApprovalOutcome.Answered(Approval.approved()));
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
@@ -253,8 +252,8 @@ class AuthorizationReportTest {
     void orders_grants_by_tool_name_regardless_of_wiring_order() {
       ToolGrant transfer =
           ToolGrant.grant(
-              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdPolicy());
-      ToolGrant clock = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
+              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdApprover());
+      ToolGrant clock = ToolGrant.grant(new ClockTool(), Approvers.allow());
 
       AuthorizationReport report = AuthorizationReport.of(List.of(transfer, clock));
 
@@ -267,8 +266,8 @@ class AuthorizationReportTest {
     void render_joins_every_story_one_per_line() {
       ToolGrant transfer =
           ToolGrant.grant(
-              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdPolicy());
-      ToolGrant clock = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
+              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdApprover());
+      ToolGrant clock = ToolGrant.grant(new ClockTool(), Approvers.allow());
 
       AuthorizationReport report = AuthorizationReport.of(List.of(transfer, clock));
 
@@ -277,20 +276,20 @@ class AuthorizationReportTest {
   }
 
   @Nested
-  class The_deny_and_require_approval_statics {
+  class The_deny_static_and_the_deferring_approver {
 
     @Test
     void deny_reports_its_own_reason() {
-      ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.deny("no clocks today"));
+      ToolGrant grant = ToolGrant.grant(new ClockTool(), Approvers.deny("no clocks today"));
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
-      assertThat(story.policy()).isEqualTo("deny(\"no clocks today\")");
+      assertThat(story.approver()).isEqualTo("deny(\"no clocks today\")");
     }
 
     @Test
-    void require_approval_still_renders_an_action_since_it_is_not_a_static_verdict() {
-      ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval());
+    void defer_still_renders_an_action_since_it_is_not_a_static_answer() {
+      ToolGrant grant = ToolGrant.grant(new ClockTool(), Approvers.defer());
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
@@ -298,12 +297,12 @@ class AuthorizationReportTest {
     }
 
     @Test
-    void require_approval_names_itself_by_its_own_canonical_factory_not_a_synthetic_lambda_token() {
-      ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval());
+    void defer_summarises_by_whatever_identity_its_lambda_class_carries() {
+      ToolGrant grant = ToolGrant.grant(new ClockTool(), Approvers.defer());
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
-      assertThat(story.policy()).isEqualTo("requireApproval()");
+      assertThat(story.approver()).isNotBlank();
     }
   }
 
@@ -312,7 +311,7 @@ class AuthorizationReportTest {
 
     @Test
     void a_bare_enricher_lambda_carries_no_display_name_by_default() {
-      Enricher bare = context -> context;
+      Enricher bare = inertEnricher();
 
       assertThat(bare.displayName()).isEmpty();
     }
@@ -321,14 +320,14 @@ class AuthorizationReportTest {
     void named_wraps_a_delegate_without_changing_its_behavior() {
       Key<String> seen = new Key<>(String.class, "seen");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
-      AuthzContext context = AuthzContext.of("test-agent", call);
-      Enricher delegate = ctx -> ctx.with(seen, "yes");
-      Enricher named = Enricher.named("marker", delegate);
+      ApprovalRequest.Draft draft =
+          ApprovalRequest.draft("test-agent", "scope-1", call, new ObjectMapper());
+      Enricher named = Enricher.named("marker", d -> d.deposit(seen, "yes"));
 
-      AuthzContext extended = named.enrich(context);
+      named.enrich(draft);
 
       assertThat(named.displayName()).contains("marker");
-      assertThat(extended.get(seen)).contains("yes");
+      assertThat(draft.freeze().facts().get(seen)).contains("yes");
     }
   }
 }

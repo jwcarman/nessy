@@ -18,37 +18,39 @@ package org.jwcarman.nessy.api.tool.authorization;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class EnrichersTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "spend", JsonNodeFactory.instance.objectNode());
 
-  private static AuthzContext freshContext() {
-    return AuthzContext.of("test-agent", CALL);
+  private final ObjectMapper mapper = new ObjectMapper();
+
+  private ApprovalRequest.Draft freshDraft() {
+    return ApprovalRequest.draft("test-agent", "scope-1", CALL, mapper);
   }
 
   @Test
-  void principalDepositsTheResolvedValueUnderPrincipalKey() {
+  void principalDepositsTheResolvedValueUnderThePrincipalKey() {
     Enricher enricher = Enrichers.principal(() -> "ada");
+    ApprovalRequest.Draft draft = freshDraft();
 
-    AuthzContext enriched = enricher.enrich(freshContext());
+    enricher.enrich(draft);
 
-    assertThat(enriched.get(AuthzContext.PRINCIPAL_KEY)).contains("ada");
+    assertThat(draft.freeze().facts().get(ApprovalRequest.PRINCIPAL)).contains("ada");
   }
 
   @Test
-  void principalNeverMutatesTheContextItWasGiven() {
-    Enricher enricher = Enrichers.principal(() -> "ada");
-    AuthzContext context = freshContext();
+  void principalLeavesADraftItNeverTouchedWithoutAPrincipal() {
+    ApprovalRequest.Draft untouched = freshDraft();
 
-    enricher.enrich(context);
-
-    assertThat(context.principal()).isEmpty();
+    assertThat(untouched.freeze().facts().get(ApprovalRequest.PRINCIPAL)).isEmpty();
   }
 
   @Test
@@ -62,12 +64,14 @@ class EnrichersTest {
   void principalCallsTheResolverFreshOnEveryEnrichment() {
     AtomicInteger calls = new AtomicInteger();
     Enricher enricher = Enrichers.principal(() -> "principal-" + calls.incrementAndGet());
+    ApprovalRequest.Draft first = freshDraft();
+    ApprovalRequest.Draft second = freshDraft();
 
-    AuthzContext first = enricher.enrich(freshContext());
-    AuthzContext second = enricher.enrich(freshContext());
+    enricher.enrich(first);
+    enricher.enrich(second);
 
-    assertThat(first.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-1");
-    assertThat(second.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-2");
+    assertThat(first.freeze().facts().get(ApprovalRequest.PRINCIPAL)).contains("principal-1");
+    assertThat(second.freeze().facts().get(ApprovalRequest.PRINCIPAL)).contains("principal-2");
   }
 
   @Test

@@ -33,10 +33,10 @@ public interface ActionContributor<I, A> {
 
   /**
    * Renders the action for one call, bound from {@code input}. Must not return {@code null}: the
-   * grant deposits the result under {@code AuthzContext.ACTION_KEY} in the same action stage that
-   * calls this method, and that deposit itself refuses a {@code null} value — so a {@code null}
-   * action fails the call closed there, naming the action stage, rather than surfacing later as an
-   * unnamed {@code NullPointerException}.
+   * grant sets the result as the request's {@code action} in the same action stage that calls this
+   * method, and that setter itself refuses a {@code null} value — so a {@code null} action fails
+   * the call closed there, naming the action stage, rather than surfacing later as an unnamed
+   * {@code NullPointerException}.
    */
   A actionOf(I input);
 

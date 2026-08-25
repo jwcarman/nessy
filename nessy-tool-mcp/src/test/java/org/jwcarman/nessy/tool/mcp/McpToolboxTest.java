@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -40,8 +39,9 @@ import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 class McpToolboxTest {
 
@@ -239,7 +239,7 @@ class McpToolboxTest {
      * Spec §0's claim that a third-party tool is governable via {@code ToolGrant} alone, no wrapper
      * class of nessy's own: {@link McpTool} (obtained here through {@link McpToolbox#tool(String)},
      * package-private and never subclassed by this test) goes straight into {@code ToolGrant.grant}
-     * with an {@link ActionContributor} that states the call and a pinned {@code deny} policy.
+     * with an {@link ActionContributor} that states the call and a pinned {@code deny} approver.
      */
     @Test
     void governs_a_fetched_mcp_tool_directly_with_no_wrapper_class() {
@@ -249,15 +249,15 @@ class McpToolboxTest {
         JsonNode arguments = echoArguments("hi there");
         ActionContributor<JsonNode, String> statement =
             ActionContributor.named("mcp-statement", args -> tool.name() + " " + args);
-        ToolGrant grant = ToolGrant.grant(tool, statement, UsagePolicy.deny("pinned"));
+        ToolGrant grant = ToolGrant.grant(tool, statement, Approvers.deny("pinned"));
         ToolCall call = new ToolCall("call-1", "echo", arguments);
-        AuthzContext context = AuthzContext.of("test-agent", call);
 
-        AuthzContext assembled = grant.assemble(context, arguments);
-        PolicyDecision decision = grant.decide(assembled);
+        ApprovalRequest request =
+            grant.request("test-agent", "scope-1", call, arguments, new ObjectMapper());
+        Approval answer = ((Approvers.Static) grant.approver()).answer();
 
-        assertThat(assembled.action()).contains("echo " + arguments);
-        assertThat(decision).isEqualTo(new PolicyDecision.Deny("pinned"));
+        assertThat(request.action()).isEqualTo("echo " + arguments);
+        assertThat(answer).isEqualTo(Approval.denied("pinned"));
       }
     }
   }

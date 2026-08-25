@@ -23,19 +23,20 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 /**
  * An agent's authorization story, generated from its own grants' wiring — never a second place to
  * declare anything, and never a call that perturbs evaluation (design of record
  * 2026-08-16-authorization §8: "the report is the wiring"). Building one reads {@link
- * ToolGrant#tool()}, {@link ToolGrant#policy()}, {@link ToolGrant#enrichers()}, and {@link
+ * ToolGrant#tool()}, {@link ToolGrant#approver()}, {@link ToolGrant#enrichers()}, and {@link
  * ToolGrant#contributor()}'s own {@link ActionContributor#displayName()} — by declaration, never by
  * reflection over an erased lambda (action-wave spec §1) — and never calls {@link
- * ActionContributor#actionOf}, {@link Enricher#enrich}, or {@link UsagePolicy#evaluate}. Since it
+ * ActionContributor#actionOf}, {@link Enricher#enrich}, or {@link Approver#approve}. Since it
  * cannot drift from the wiring it reads, it is the audit surface's own raw material.
  */
 public final class AuthorizationReport {
@@ -71,20 +72,21 @@ public final class AuthorizationReport {
 
   /**
    * Reads one grant's story. {@code actionRendered} mirrors the chokepoint's own rung-0 test
-   * ({@code policy instanceof UsagePolicy.Static}) exactly (design §1): when a grant's policy is a
-   * canonical static verdict, the executor never renders an action and never runs an enricher for
-   * it, no matter what the grant's own {@code enrichers()} list happens to hold — so this reports
-   * that list as empty too, honest about what actually runs rather than what is merely declared.
+   * ({@code approver instanceof Approvers.Static}) exactly (approval-lifecycle spec §1.4): when a
+   * grant's approver is a canonical static answer, the executor never builds a request and never
+   * runs an enricher for it, no matter what the grant's own {@code enrichers()} list happens to
+   * hold — so this reports that list as empty too, honest about what actually runs rather than what
+   * is merely declared.
    */
   private static GrantStory story(ToolGrant grant) {
     Tool<?> tool = grant.tool();
-    UsagePolicy policy = grant.policy();
-    boolean actionRendered = !(policy instanceof UsagePolicy.Static);
+    Approver approver = grant.approver();
+    boolean actionRendered = !(approver instanceof Approvers.Static);
     Optional<String> contributorName =
         actionRendered ? grant.contributor().displayName() : Optional.empty();
     List<String> enricherNames = actionRendered ? enricherNames(grant.enrichers()) : List.of();
     return new GrantStory(
-        tool.name(), actionRendered, contributorName, enricherNames, policySummary(policy));
+        tool.name(), actionRendered, contributorName, enricherNames, approverSummary(approver));
   }
 
   private static List<String> enricherNames(List<Enricher> enrichers) {
@@ -98,37 +100,20 @@ public final class AuthorizationReport {
 
   /**
    * The canonical statics render as their own factory names ({@code allow()}, {@code
-   * deny("reason")}, {@code requireApproval()}); any other policy — a rung-1 lambda pinned via
-   * {@code UsagePolicy.of}, or a named class like a threshold policy — reports its own {@code
-   * getClass().getSimpleName()}, the one identity every policy already carries without a new field
-   * to declare. {@code UsagePolicy.requireApproval()}'s canonical singleton is checked by reference
-   * equality ahead of that fallback — the same motivation the framework's own {@code Allow}/{@code
-   * Deny} classes are named types rather than bare lambdas (design of record
-   * 2026-08-16-authorization §8) — because its own {@code getClass().getSimpleName()} would
-   * otherwise print {@code "RequireApproval"}, not the canonical factory call the docs promise.
-   * Reference equality, not an {@code instanceof} on a named type, because that canonical class is
-   * package-private to {@code org.jwcarman.nessy.api.tool} and this report lives one package over;
-   * the singleton {@link UsagePolicy#requireApproval()} always returns is itself the only handle
-   * this report needs.
+   * deny("reason")}); any other approver — a bare lambda, a rule ladder, a named class — reports
+   * its own {@code getClass().getSimpleName()}, the one identity every approver already carries
+   * without a new field to declare. {@code Approvers.defer()} cannot be told apart by identity (it
+   * is a lambda), so it summarises by class name like any other non-static approver, or {@code
+   * "approver"} when that name is blank.
    */
-  private static String policySummary(UsagePolicy policy) {
-    if (policy instanceof UsagePolicy.Static staticPolicy) {
-      return switch (staticPolicy.decision()) {
-        case PolicyDecision.Allow _ -> "allow()";
-        case PolicyDecision.Deny(String reason) -> "deny(\"" + reason + "\")";
-        // Unreachable: Static is sealed to the framework's own Allow/Deny (see its own javadoc),
-        // and neither's decision() ever returns RequireApproval — UsagePolicy.requireApproval()
-        // deliberately does not implement Static, so it never reaches this switch at all; it is
-        // caught by the reference-equality check just below instead. Kept only so this switch
-        // stays exhaustive over PolicyDecision's three cases without a default arm masking a
-        // future one.
-        case PolicyDecision.RequireApproval _ -> "requireApproval()";
+  private static String approverSummary(Approver approver) {
+    if (approver instanceof Approvers.Static fixed) {
+      return switch (fixed.answer()) {
+        case Approval.Approved _ -> "allow()";
+        case Approval.Denied(String reason, var _) -> "deny(\"" + reason + "\")";
       };
     }
-    if (policy == UsagePolicy.requireApproval()) {
-      return "requireApproval()";
-    }
-    String simpleName = policy.getClass().getSimpleName();
-    return simpleName.isBlank() ? "policy" : simpleName;
+    String simpleName = approver.getClass().getSimpleName();
+    return simpleName.isBlank() ? "approver" : simpleName;
   }
 }

@@ -16,10 +16,10 @@
 package org.jwcarman.nessy.api.turn;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 
 /**
  * The live story of one turn, for whoever is watching it happen.
@@ -73,11 +73,11 @@ public sealed interface TurnEvent {
     }
   }
 
-  /** The gate's verdict for one call: approved, or denied with reason. */
-  record ToolCallDecided(ToolCall call, Decision decision) implements TurnEvent {
+  /** The approver's answer for one call: approved, or denied with reason. */
+  record ToolCallDecided(ToolCall call, Approval approval) implements TurnEvent {
     public ToolCallDecided {
       Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(decision, "decision must not be null");
+      Objects.requireNonNull(approval, "approval must not be null");
     }
   }
 

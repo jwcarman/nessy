@@ -20,12 +20,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 
 class ToolResolutionTest {
 
   @Test
   void a_decision_resolves_a_parked_gate() {
-    ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
+    ToolResolution resolution = new ToolResolution.Decided(Approval.approved());
     assertThat(resolution).isInstanceOf(ToolResolution.class);
   }
 

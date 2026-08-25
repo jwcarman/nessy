@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 
 /**
  * What a parked tool call was waiting for, now arrived.
@@ -31,9 +32,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 public sealed interface ToolResolution {
 
   /** The gate's verdict arrived. */
-  record Decided(Decision decision) implements ToolResolution {
+  record Decided(Approval approval) implements ToolResolution {
     public Decided {
-      Objects.requireNonNull(decision, "decision must not be null");
+      Objects.requireNonNull(approval, "approval must not be null");
     }
   }
 

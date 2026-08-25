@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 class ToolRegistryTest {
 
@@ -161,7 +162,7 @@ class ToolRegistryTest {
       ToolRegistry sugared = ToolRegistry.of(new GreetTool());
 
       assertThat(sugared.find("greet")).isPresent();
-      assertThat(sugared.find("greet").orElseThrow().policy()).isSameAs(UsagePolicy.allow());
+      assertThat(sugared.find("greet").orElseThrow().approver()).isSameAs(Approvers.allow());
     }
   }
 

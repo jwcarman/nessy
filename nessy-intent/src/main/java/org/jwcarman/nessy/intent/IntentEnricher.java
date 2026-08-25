@@ -17,34 +17,48 @@ package org.jwcarman.nessy.intent;
 
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
+import org.jwcarman.nessy.api.tool.authorization.Key;
 
 /**
  * Reads the {@link IntentStore} this enricher was built over and deposits its latest declaration
- * under {@link AuthzContext#DECLARED_INTENT_KEY} — the claim a policy may read back through {@link
- * AuthzContext#declaredIntent()}. Absent a declaration, the context passes through untouched: a
- * missing claim is not this enricher's failure to report, only a policy's own choice to weigh.
+ * under {@link #declared(Class)} — the claim a rule may read back. Absent a declaration, the draft
+ * passes through untouched: a missing claim is not this enricher's failure to report, only a rule's
+ * own choice to weigh.
  *
- * <p>Carries no type parameter of its own (vocabulary amendment §3): it deposits whatever {@link
- * IntentStore#latest()} yields, untyped, since {@link AuthzContext#DECLARED_INTENT_KEY} holds any
- * declaration by {@link Object}. Typed recovery is a policy's own concern, through {@link
- * AuthzContext#declaredIntent(Class)}.
+ * <p>Typed, now that facts are (approval-lifecycle spec §1.2): the key names {@code vocabulary}
+ * concretely, so the deposit renders through the pinned mapper and the read decodes back to it.
+ *
+ * @param <T> the declared-intent vocabulary
  */
-public final class IntentEnricher implements Enricher {
+public final class IntentEnricher<T> implements Enricher {
 
-  private final IntentStore<?> store;
+  private final IntentStore<T> store;
+  private final Class<T> vocabulary;
 
-  public IntentEnricher(IntentStore<?> store) {
+  public IntentEnricher(IntentStore<T> store, Class<T> vocabulary) {
     this.store = Objects.requireNonNull(store, "store must not be null");
+    this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+  }
+
+  /**
+   * The key a declaration of {@code vocabulary} lives under — value-equal wherever it is built, so
+   * an enricher in one module and a rule in another address the same fact by construction.
+   *
+   * @param vocabulary the declared-intent vocabulary
+   * @param <T> the declared-intent vocabulary
+   * @return the key
+   */
+  public static <T> Key<T> declared(Class<T> vocabulary) {
+    Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+    return new Key<>(vocabulary, "intent.declared");
   }
 
   @Override
-  public AuthzContext enrich(AuthzContext context) {
-    Optional<?> declared = store.latest();
-    return declared
-        .map(intent -> context.with(AuthzContext.DECLARED_INTENT_KEY, intent))
-        .orElse(context);
+  public void enrich(ApprovalRequest.Draft draft) {
+    Optional<T> declared = store.latest();
+    declared.ifPresent(intent -> draft.deposit(declared(vocabulary), intent));
   }
 
   @Override

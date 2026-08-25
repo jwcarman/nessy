@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.tool.authorization;
 
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
  * Canonical {@link Enricher} factories — the principal kit (action-wave spec §4). Nessy never
@@ -28,12 +29,12 @@ public final class Enrichers {
   private Enrichers() {}
 
   /**
-   * Deposits {@code resolver}'s result under {@link AuthzContext#PRINCIPAL_KEY}; named "principal"
+   * Deposits {@code resolver}'s result under {@link ApprovalRequest#PRINCIPAL}; named "principal"
    * for {@link AuthorizationReport}.
    */
-  public static Enricher principal(Supplier<?> resolver) {
+  public static Enricher principal(Supplier<String> resolver) {
     Objects.requireNonNull(resolver, "resolver must not be null");
     return Enricher.named(
-        "principal", context -> context.with(AuthzContext.PRINCIPAL_KEY, resolver.get()));
+        "principal", draft -> draft.deposit(ApprovalRequest.PRINCIPAL, resolver.get()));
   }
 }

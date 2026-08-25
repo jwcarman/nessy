@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 /** Which grants this agent has. */
 public interface ToolRegistry {
@@ -29,12 +30,12 @@ public interface ToolRegistry {
   }
 
   /**
-   * Sugar: each tool granted {@link UsagePolicy#allow()} — an answered authority, not a bare grant.
+   * Sugar: each tool granted {@link Approvers#allow()} — an answered authority, not a bare grant.
    */
   static ToolRegistry of(Tool<?>... tools) {
     ToolGrant[] grants = new ToolGrant[tools.length];
     for (int i = 0; i < tools.length; i++) {
-      grants[i] = ToolGrant.grant(tools[i], UsagePolicy.allow());
+      grants[i] = ToolGrant.grant(tools[i], Approvers.allow());
     }
     return DefaultToolRegistry.of(grants);
   }
