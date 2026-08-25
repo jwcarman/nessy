@@ -25,11 +25,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
- * Exercises the {@code cli} door (§7.1) against whichever real provider {@link EnvModelProviders}
+ * Exercises the {@code cli} door (§7.1) against whichever real provider {@link ModelDiscovery}
  * resolves from the environment.
  *
  * <p>The test starts with {@code assumeTrue} on at least one provider API key being present, so the
@@ -47,7 +47,7 @@ class CliLiveSmokeTest {
   void aRealProviderSaysHello() throws Exception {
     assumeTrue(anyProviderKeyPresent(), "no model provider API key set");
 
-    var selection = EnvModelProviders.select();
+    var selection = ModelDiscovery.select();
     var settings = new ModelSettings(64, Set.of(), null);
     var input =
         new ByteArrayInputStream(

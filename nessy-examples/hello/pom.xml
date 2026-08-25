@@ -50,9 +50,18 @@
       <artifactId>nessy-agent</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- One provider, on purpose: this is the template a new application copies, and it should
+         teach the minimal shape — discovery plus the one SDK you actually use. Swap
+         nessy-model-anthropic for nessy-model-openai or nessy-model-gemini (or add a second) and
+         set that provider's key; nothing else changes. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-env</artifactId>
+      <artifactId>nessy-model-discovery</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-anthropic</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Compile scope, unlike every other module's test-only ScriptedModelProvider: this demo's

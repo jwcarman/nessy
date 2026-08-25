@@ -26,7 +26,7 @@ import java.util.Set;
 import org.jwcarman.nessy.agent.host.Console;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.testing.ScriptedModel;
@@ -34,8 +34,8 @@ import org.jwcarman.nessy.testing.ScriptedModel;
 /**
  * The root README's five-minute promise, made runnable: one calculator tool, one turn, printed for
  * real. {@code --scripted} swaps in {@link ScriptedModel} so the promise needs no key, no network,
- * and no Docker; without it, {@link EnvModelProviders#select()} picks a real, bound model handle
- * from whichever API key is set in the environment.
+ * and no Docker; without it, {@link ModelDiscovery#select()} picks a real, bound model handle from
+ * the one provider on this example's classpath, configured by {@code ANTHROPIC_API_KEY}.
  */
 public final class Hello {
 
@@ -54,7 +54,7 @@ public final class Hello {
    */
   static String run(Iterable<String> args) {
     boolean scripted = contains(args, "--scripted");
-    Model model = scripted ? scriptedModel() : EnvModelProviders.select().model();
+    Model model = scripted ? scriptedModel() : ModelDiscovery.select().model();
     ModelSettings settings = new ModelSettings(1024, Set.of(), null);
     Tool<Calculate> calculator =
         Tool.of(

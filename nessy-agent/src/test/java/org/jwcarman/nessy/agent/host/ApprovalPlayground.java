@@ -29,14 +29,14 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
- * Run me from the IDE (needs a provider key in the environment — see {@code nessy-model-env}). Type
- * observations; when the agent wants an approval you'll see the request and the computation id;
- * type "approve" or "deny &lt;reason&gt;" to answer; "quit" exits.
+ * Run me from the IDE (needs a provider key in the environment — see {@code
+ * nessy-model-discovery}). Type observations; when the agent wants an approval you'll see the
+ * request and the computation id; type "approve" or "deny &lt;reason&gt;" to answer; "quit" exits.
  *
  * <p>Never run by surefire (no {@code @Test} methods, and the class name avoids the default {@code
  * *Test}/{@code *Tests}/{@code *TestCase} include patterns) — this is a tinker door only.
@@ -79,7 +79,7 @@ public final class ApprovalPlayground {
   private ApprovalPlayground() {}
 
   public static void main(String[] args) throws Exception {
-    var selection = EnvModelProviders.select();
+    var selection = ModelDiscovery.select();
     var settings = new ModelSettings(1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
     var harness =

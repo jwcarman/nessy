@@ -58,9 +58,29 @@
       <groupId>org.jwcarman.continuum</groupId>
       <artifactId>continuum-memory</artifactId>
     </dependency>
+    <!-- ApprovalPlayground and CliLiveSmokeTest run against whichever real key the developer has;
+         every keyed provider rides the test classpath so any of them works. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-env</artifactId>
+      <artifactId>nessy-model-discovery</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-anthropic</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-gemini</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>

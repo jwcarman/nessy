@@ -40,8 +40,8 @@ import org.junit.jupiter.api.Test;
  * {@code src/main/java} and is part of the public nessy surface: {@code nessy-api} (this module),
  * {@code nessy-spi}, the four model providers ({@code nessy-model-anthropic}, {@code
  * nessy-model-openai}, {@code nessy-model-gemini}, {@code nessy-model-bedrock}), {@code
- * nessy-model-env}, {@code nessy-testing}, {@code nessy-tool-mcp}, and {@code nessy-intent}. {@code
- * nessy-bom} ships no Java at all; {@code nessy-spring-boot-starter} ships only a {@code
+ * nessy-model-discovery}, {@code nessy-testing}, {@code nessy-tool-mcp}, and {@code nessy-intent}.
+ * {@code nessy-bom} ships no Java at all; {@code nessy-spring-boot-starter} ships only a {@code
  * src/main/javadoc} placeholder type, not a real public class; {@code nessy-examples} is demo code
  * with its own nested reactor, not a published module. None of those three are scanned.
  *
@@ -84,7 +84,7 @@ class NoPublicBuildersTest {
           "nessy-model-openai",
           "nessy-model-gemini",
           "nessy-model-bedrock",
-          "nessy-model-env",
+          "nessy-model-discovery",
           "nessy-testing",
           "nessy-tool-mcp",
           "nessy-intent");

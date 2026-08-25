@@ -25,8 +25,8 @@ import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 
 /**
  * Drives the bootstrap through its env-map argument only — no real environment variable, no
- * network. Construction of {@link AnthropicModelProvider} from a fake key is offline, as the
- * retired {@code EnvModelProvidersTest} already relied on.
+ * network. Construction of {@link AnthropicModelProvider} from a fake key is offline, the same way
+ * the retired env-provider test relied on.
  */
 class AnthropicModelProviderBootstrapTest {
 

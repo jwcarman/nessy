@@ -51,9 +51,26 @@
       <artifactId>nessy-agent</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- All three keyed providers, on purpose: this demo shows the environment switch — set a
+         different key, get a different vendor, no code change. hello shows the minimal shape. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-env</artifactId>
+      <artifactId>nessy-model-discovery</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-anthropic</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-gemini</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Compile scope, unlike every other module's test-only ScriptedModelProvider: this demo's

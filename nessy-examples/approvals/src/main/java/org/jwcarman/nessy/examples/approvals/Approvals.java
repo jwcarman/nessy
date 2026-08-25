@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -47,8 +47,8 @@ import org.jwcarman.nessy.testing.ScriptedModel;
  * drives a short deterministic conversation — no key, no network — that tells the scope one
  * observation, waits for the approval request, approves it, and prints the advertised sentinel once
  * the model's reply lands; without it, this runs a console loop against a real provider from {@link
- * EnvModelProviders#select()}: free text is told to the scope, {@code approve}/{@code deny
- * <reason>} answer whatever's pending, and {@code quit} exits.
+ * ModelDiscovery#select()}: free text is told to the scope, {@code approve}/{@code deny <reason>}
+ * answer whatever's pending, and {@code quit} exits.
  */
 public final class Approvals {
 
@@ -133,7 +133,7 @@ public final class Approvals {
   }
 
   private static void runInteractive() throws IOException {
-    var selection = EnvModelProviders.select();
+    var selection = ModelDiscovery.select();
     var settings = new ModelSettings(1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
