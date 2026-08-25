@@ -35,6 +35,12 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
     </dependency>
+    <!-- ScriptedApprover/RecordingApprover speak the approval vocabulary (Approver, ApprovalContext,
+         ApprovalOutcome, ApprovalRequest), which lives in nessy-api, not nessy-spi. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+    </dependency>
     <!-- MemoryContractTest is a main-scope class that imports only the annotation/assertion API,
          never the engine (mirrors nessy-tck's own convention, pom.xml's dependencyManagement
          comment on junit-jupiter-api): a third-party Memory extends it directly, so its own

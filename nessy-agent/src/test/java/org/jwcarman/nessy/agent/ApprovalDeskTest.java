@@ -25,8 +25,11 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.api.BatchSize;
+import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
@@ -37,9 +40,11 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.testing.ScriptedApprover;
 
 /**
  * The two doors of the desk (approval-lifecycle spec §1.6): by the computation's own id, and by
@@ -190,5 +195,38 @@ class ApprovalDeskTest {
     desk.approve(id, "ada", "");
 
     assertThatCode(() -> desk.deny(id, "ada", "too late")).doesNotThrowAnyException();
+  }
+
+  @Test
+  void withdrawingFoldsADenialWhoseReasonStartsWithWithdrawn() {
+    ComputationId id = park();
+
+    desk.withdraw(id, "the incident closed itself");
+
+    AtomicReference<Approval> delivered = new AtomicReference<>();
+    client.deliverResults(
+        BatchSize.of(10),
+        delivery -> {
+          if (delivery.outcome() instanceof TypedOutcome.Success<Approval> success) {
+            delivered.set(success.value());
+          }
+        });
+    assertThat(delivered.get())
+        .isInstanceOfSatisfying(
+            Approval.Denied.class, denied -> assertThat(denied.reason()).startsWith("withdrawn:"));
+  }
+
+  @Test
+  void theByCoordinatesDoorShowsExactlyWhatTheApproverSaw() {
+    ApprovalRequest question = request();
+    ScriptedApprover approver = ScriptedApprover.deferring();
+    ComputationApprovalContext context =
+        new ComputationApprovalContext(client, routing(), question, event -> {});
+
+    ApprovalOutcome outcome = approver.approve(context);
+    ComputationId id = ((ApprovalOutcome.Deferred) outcome).id();
+    scopeAwaits(id);
+
+    assertThat(desk.request(SCOPE, "c1")).isEqualTo(approver.requests().getFirst());
   }
 }
