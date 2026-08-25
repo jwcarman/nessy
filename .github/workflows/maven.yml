@@ -30,7 +30,17 @@ jobs:
         cache: maven
 
     - name: Build with Maven
-      run: mvn -B verify -Dnessy.excludedGroups=live,vendor
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # One build, analysed in place — the same job shape substrate, codec, odyssey,
+      # continuum and accent use. Dependabot-triggered workflows cannot see repository
+      # secrets, so the SonarCloud goal only runs when a token is present.
+      run: |
+        if [ -n "$SONAR_TOKEN" ]; then
+          mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live,vendor
+        else
+          mvn -Pci -B verify -Dnessy.excludedGroups=live,vendor
+        fi
 
     - name: Verify hello's five-minute promise runs for real
       shell: bash
@@ -38,24 +48,3 @@ jobs:
         set -o pipefail
         ./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted | tee hello-output.txt
         grep -q "The answer is 4. (COMPLETE)" hello-output.txt
-
-  sonar:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v7
-      with:
-        fetch-depth: 0
-
-    - name: Set up JDK 25
-      uses: actions/setup-java@v5
-      with:
-        java-version: '25'
-        distribution: 'liberica'
-        cache: maven
-
-    - name: Build and analyze with SonarCloud
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live,vendor
