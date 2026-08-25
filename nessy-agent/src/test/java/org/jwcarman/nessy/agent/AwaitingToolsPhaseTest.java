@@ -74,15 +74,6 @@ class AwaitingToolsPhaseTest {
         call, tool, new ToolOutcome.Returned(ToolResult.ok(content)));
   }
 
-  /**
-   * What the reaper's expiry looks like once {@code DeliveryWorker} has mapped it to an outcome.
-   */
-  private static AgentEvent.ToolFinished expired(
-      ToolCall call, ComputationId tool, String message) {
-    return new AgentEvent.ToolFinished(
-        call, Optional.of(tool), new ToolOutcome.Failed(new ToolError(message)));
-  }
-
   @Test
   void pendingApprovedInProcessRunsTheTool() {
     var phase = awaiting(calls(new CallStatus.Pending(), new CallStatus.Pending()));
@@ -239,48 +230,25 @@ class AwaitingToolsPhaseTest {
   }
 
   /**
-   * The 2026-08-25 ruling (spec §3, §4): a delivered {@code ToolFinished} is addressed to THIS
-   * call, and while the call is {@code Running} the only computation that can produce one is the
-   * call's own — the reaper's expiry of a short-{@code timeout()} tool whose {@code ToolDeferred}
-   * has not folded yet. Admitting it finishes the call in-band with the expiry as its result rather
-   * than dropping it and letting a redrive run the tool a second time. The assertion is on the
-   * folded status, not merely on {@code isIgnored()}, so an implementation that still treated this
-   * as early would fail here.
+   * A {@code Running} call names no computation, so a delivered id is by definition one the scope
+   * knows nothing of — ignored, exactly like every other mismatch (spec §3). There is no timing gap
+   * this could be rescuing: the tool's computation is created inside the tool's own run with a
+   * one-day default deadline, so its expiry could only land here if the reaper and the deliver pump
+   * beat the executor thread already holding the deferral. On the crash path the re-fired {@code
+   * RunTool} creates a second computation, and the orphan's expiry meets {@code
+   * AwaitingResult(id2)} — a mismatch, dropped there. Admitting it would let a stale orphan finish
+   * a live call.
    */
   @Test
-  void runningWithADeliveredExpiryFinishesInBandRatherThanWaitingForTheDeferral() {
+  void runningIgnoresAToolFinishedBeforeItsDeferralFolded() {
     var phase = awaiting(calls(new CallStatus.Running(), new CallStatus.Pending()));
 
-    var t = phase.handle(expired(CALL_A, PARKED, "deadline: the tool never answered"));
-
-    assertThat(t.isIgnored()).isFalse();
-    assertThat(t.next())
-        .isEqualTo(
-            awaiting(
-                calls(
-                    new CallStatus.Finished(
-                        new ToolResultBlock("c1", "deadline: the tool never answered", true)),
-                    new CallStatus.Pending())));
-    assertThat(t.effects()).isEmpty();
-    assertThat(t.commit()).isEmpty();
-  }
-
-  /**
-   * The other half of the same ruling: the {@code ToolDeferred} that lost the race arrives to find
-   * the call already {@code Finished} and is ignored as stale — an existing matrix cell, asserted
-   * here in sequence so the pair reads as the one story it is.
-   */
-  @Test
-  void aDeferralArrivingAfterItsOwnResultIsIgnoredAsStale() {
-    var running = awaiting(calls(new CallStatus.Running(), new CallStatus.Pending()));
-    var finished =
-        (Phase.AwaitingTools) running.handle(expired(CALL_A, PARKED, "timed out")).next();
-
-    var t = finished.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED));
+    var t = phase.handle(returned(CALL_A, Optional.of(PARKED), "42"));
 
     assertThat(t.isIgnored()).isTrue();
     assertThat(t.effects()).isEmpty();
-    assertThat(finished.calls().get("c1")).isInstanceOf(CallStatus.Finished.class);
+    assertThat(t.commit()).isEmpty();
+    assertThat(phase.calls()).isEqualTo(calls(new CallStatus.Running(), new CallStatus.Pending()));
   }
 
   @Test

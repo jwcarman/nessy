@@ -390,7 +390,7 @@ exactly one kind of result.
 | `AwaitingApproval(id)` | `ApprovalAnswered(id, Denied(r))` | `Finished(failed r)` | `CallModel` if all finished |
 | `AwaitingApproval(id)` | `ApprovalAnswered(other, _)` | unchanged | — (stale: an orphan's answer, ignored) |
 | `Running` | `ToolFinished(∅, o)` | `Finished` | `CallModel` if all finished |
-| `Running` | `ToolFinished(id, o)` | `Finished` | `CallModel` if all finished |
+| `Running` | `ToolFinished(id, _)` | unchanged | — (mismatch: a `Running` call names no computation, so this is one the scope knows nothing of — §4) |
 | `Running` | `ToolDeferred(id)` | `AwaitingResult(id)` | — |
 | `AwaitingResult(id)` | `ToolFinished(id, o)` | `Finished` | `CallModel` if all finished |
 | `AwaitingResult(id)` | `ToolFinished(other, _)` | unchanged | — (stale: an orphan computation's result, ignored) |
@@ -404,20 +404,12 @@ names its computation. No index, no second store, no reconciliation.
 at-least-once delivery safe (§2.5). `Running` + `ApprovalAnswered` is also
 stale — a duplicate delivery of an answer already folded — and ignored.
 
-**`Running` + `ToolFinished(id, o)` is admitted, not ignored** (James's ruling,
-2026-08-25). A `ToolFinished` is addressed to THIS call, and while the call is
-`Running` the only computation that can produce one is the call's own — the
-reaper expiring a short-`timeout()` tool whose `ToolDeferred` has not folded
-yet, or a result whose deferral loses the race in some future door. No id
-comparison is possible or wanted here: the phase does not name a computation
-until `ToolDeferred` folds, and Continuum's minted id is not derivable from the
-call's coordinates. Admitting the result finishes the call in-band — a
-short-timeout tool fails with its expiry as its result — and the `ToolDeferred`
-that arrives afterwards meets `Finished` and is ignored as stale, so the tool
-ran exactly once and nothing re-dispatches. `AwaitingResult(id)` +
-`ToolFinished(other)` stays ignored: there the phase DOES name its computation,
-so a mismatch is a genuine orphan. `Pending`/`AwaitingApproval` +
-`ToolFinished` stays ignored too: no tool has been started.
+**`Running` + `ToolFinished(id, _)` is ignored like every other mismatch.** A
+`Running` call names no computation — it does not until `ToolDeferred` folds —
+so a delivered id is by definition one the scope knows nothing of, and there is
+no check that could tell the call's own result from an orphan's. Admitting it
+unchecked would let a stale orphan finish a live call. Nothing is lost by
+ignoring it, because the window does not open in practice (§4).
 
 **`Pending` means "approval sought, no answer recorded."** A call is `Pending`
 from the fold that emitted `SeekApproval` until an `ApprovalAnswered` or
@@ -469,25 +461,28 @@ queue. If that answer could arrive before the park had folded, the phase
 would not yet name the id, the mismatch row would discard the answer, and the
 call would wait forever on a question already answered. The design closes
 that in two places, neither of them a rule the harness enforces around the
-approver — one by ordering, one by admission:
+approver:
 
 - **Approvals: inside `defer()`.** It folds `ApprovalDeferred` and waits for
   the commit *before returning the id*. Nobody can be told about a question
   the scope has not recorded, because nobody has the id yet. The desk's
   by-coordinates door, which needs no id, refuses a `Pending` call loudly
   (§1.6).
-- **Tools: closed by admission, not by ordering.** `runTool` cannot use the
-  `defer()` trick: the tool holds its `ToolContext` — and so its idempotency
-  key — before it runs, and the computation Continuum mints on
-  `Awaited.Deferred` is not created until the tool has already returned. There
-  is no point in the sequence at which the phase could learn the id first. So
-  the window is closed at the other end: the reducer ADMITS
-  `ToolFinished(id, o)` against a `Running` call (§3). Whatever arrives is
-  this call's own result, it finishes the call in-band, and the `ToolDeferred`
-  that lost the race meets `Finished` and goes stale. The tool runs once;
-  nothing is released and nothing is re-dispatched. Giving `ToolContext` a
-  `defer()`-style door remains the symmetric next step (§15), but it is no
-  longer needed for correctness — this admission already buys what it would.
+- **Tools: the window does not exist in practice.** `runTool` cannot use the
+  `defer()` trick — the tool holds its `ToolContext`, and so its idempotency
+  key, before it runs, and the computation Continuum mints on
+  `Awaited.Deferred` is not created until the tool has already returned — but
+  it does not need to. That computation is created *inside the tool's own run*,
+  carrying a one-day default deadline, and the very next thing that thread does
+  is fold `ToolDeferred`. For a result or an expiry to arrive first, the reaper
+  and the deliver pump would have to beat a thread hop, against a deadline
+  measured in days. Nor does the crash path open it: a crash between `create`
+  and the fold leaves an orphan computation, the re-fired `RunTool` creates a
+  SECOND one, and the orphan's eventual expiry meets `AwaitingResult(id2)` —
+  a mismatch, correctly dropped, with the live computation untouched. So there
+  is no exception to make: `Running` + `ToolFinished(id)` is ignored (§3) and
+  the delivery is dropped. Giving `ToolContext` a `defer()`-style door remains
+  the symmetric next step (§15), not a correctness fix.
 
 **Everything else is permanent, and is dropped.** With both windows closed, a
 delivery whose scope is not in the status that awaits it can never improve:
@@ -637,13 +632,10 @@ about 600 lines of tests that existed only for them. Roughly 300 come in.
   "ordered by construction" from "usually fast enough."
 - **Mismatched deliveries are dropped, not redelivered.** An answer against a
   `Pending` call, an answer naming a computation an `AwaitingApproval` call
-  does not hold, and a result naming a computation an `AwaitingResult` call
-  does not hold are each logged at WARN and consumed — the assertion is that
-  a later drain returns zero, i.e. nothing came back.
-- **A tool's own result may precede its deferral.** A reaper expiry reaching a
-  still-`Running` call folds in-band as that call's error result, with no WARN
-  and no drop; the `ToolDeferred` that arrives afterwards finds `Finished` and
-  changes nothing, so no second `RunTool` is ever dispatched.
+  does not hold, a result naming a computation an `AwaitingResult` call does
+  not hold, and a result reaching a call still `Running` are each logged at
+  WARN and consumed — the assertion is that a later drain returns zero, i.e.
+  nothing came back. The rule has no exception.
 - **The request is a document.** `ApprovalRequest` round-trips through the
   pinned mapper byte-for-byte; an enricher depositing an unrenderable value
   fails inside `deposit`, naming the key; the desk's `request(id)` returns
@@ -703,9 +695,11 @@ records the vocabulary collapse as a breaking change.
 7. **`approvalNotifier` retires.**
 8. **Model visibility stays off** (§2) and **crash means re-run** (§6).
 9. **A mismatched delivery is dropped with a WARN, never redelivered**
-   (James's ruling, 2026-08-25) — and its corollary, that the reducer admits
-   `Running` + `ToolFinished(id)` so a tool's own result may legitimately
-   arrive before its deferral (§3, §4). `EarlyDeliveryException` retires.
+   (James's ruling, 2026-08-25), with NO exception: a result reaching a call
+   still `Running` is a mismatch like any other, because that call names no
+   computation and the window it would rescue does not open in practice —
+   a one-day deadline versus a thread hop, and a crash re-creates rather than
+   races (§3, §4). `EarlyDeliveryException` retires.
 
 ## 14. Rejected
 

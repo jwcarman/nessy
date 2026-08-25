@@ -65,12 +65,9 @@ import org.slf4j.LoggerFactory;
  * replaces the retired release-and-redeliver behaviour (and its {@code EarlyDeliveryException}):
  * {@code ComputationApprovalContext.defer()} folds {@code AwaitingApproval} and commits BEFORE it
  * returns the id, so no approval answer can outrun its own park — anything that arrives against a
- * {@code Pending} call is an orphan or a duplicate, and never gets better.
- *
- * <p>The tool side is the exception the ruling admits: a {@code ToolFinished} against a {@code
- * Running} call is the call's own computation reporting in ahead of its {@code ToolDeferred}, so
- * the reducer FOLDS it and the late deferral goes stale — proven here end-to-end through the
- * reaper, which is the one door that can produce such a delivery without holding the phase's id.
+ * {@code Pending} call is an orphan or a duplicate, and never gets better. The tool side is no
+ * exception: a {@code ToolFinished} against a still-{@code Running} call names a computation the
+ * scope knows nothing of, and is dropped the same way.
  *
  * <p>The capturing appender is wired onto {@link DeliveryWorker}'s own class logger, the technique
  * {@code DeliveryWorkerSilentLossWarningTest} uses.
@@ -239,28 +236,31 @@ class DeliveryWorkerMismatchedDeliveryTest {
   }
 
   /**
-   * The admitted case (spec §3): a short-{@code timeout()} tool's computation is expired by the
-   * reaper — the one door that produces a tool delivery without holding the id the phase names —
-   * while the call is still {@code Running} because its {@code ToolDeferred} has not folded. The
-   * expiry folds in-band as the call's result — no WARN, no drop, and the call is finished, so no
-   * redrive can dispatch {@link Effect.RunTool} a second time. (The late {@code ToolDeferred}
-   * meeting {@code Finished} is the reducer's own cell, pinned in {@code AwaitingToolsPhaseTest}.)
+   * The rule has no exception on the tool side either: a result reaching a call still {@code
+   * Running} — before its own {@code ToolDeferred} has folded — names a computation the scope knows
+   * nothing of, so it is dropped with a WARN like any other mismatch. In practice this window does
+   * not open (§4): the computation is created inside the tool's own run with a one-day default
+   * deadline, so nothing can complete or expire it ahead of the executor thread already holding the
+   * deferral.
    */
   @Test
-  void a_reaper_expiry_reaching_a_still_running_call_folds_in_band_rather_than_being_dropped() {
+  void a_result_for_a_call_still_running_is_dropped_with_a_warning() {
     scopeWith(new CallStatus.Running());
-    toolClient.create(new Routing("test", "test-scope", "r1", CALL), Duration.ofSeconds(1));
-    clock.advance(Duration.ofSeconds(2));
-    worker.expireTools(BatchSize.of(10));
+    var created = toolClient.create(new Routing("test", "test-scope", "r1", CALL));
+    toolClient.complete(created.id(), ToolResult.ok("done"));
 
     worker.drainTools(BatchSize.of(10));
 
-    // folded, not dropped: the call finished in-band with the expiry as its error result, which
-    // was the turn's last call — so the phase advanced and nothing is left to re-run
-    assertThat(warnings()).isEmpty();
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
-    assertThat(store.load().phase().outstandingEffects())
-        .doesNotContain(new Effect.RunTool(CALL))
-        .containsExactly(new Effect.CallModel());
+    assertThat(status()).isInstanceOf(CallStatus.Running.class);
+    assertThat(warnings()).hasSize(1);
+    assertThat(warnings().getFirst().getFormattedMessage())
+        .contains("test-scope")
+        .contains("c1")
+        .contains(created.id().value().toString())
+        .contains("Running");
+
+    clock.advance(PAST_THE_BACKOFF);
+
+    assertThat(worker.drainTools(BatchSize.of(10))).isZero();
   }
 }
