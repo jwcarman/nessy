@@ -86,11 +86,11 @@ public sealed interface PolicyOutcome {
 exists: the call, the agent coordinates, and the assembled `AuthzContext` with
 the rendered action, risk assessment and every enricher's contribution. Today
 the policy says `RequireApproval()` empty-handed and the gate assembles the
-context in a second step; here the policy that escalates is the one that
+context in a second step; here the policy that requires approval is the one that
 hands over everything a decider needs. `PolicyDecision` retires;
 `UsagePolicy.evaluate(AuthzContext)` returns `PolicyOutcome`. The three
 statics keep their names and meanings: `allow()` answers `Approved`, `deny(r)`
-answers `Denied(r)`, `requireApproval()` escalates with the dossier.
+answers `Denied(r)`, `requireApproval()` requires approval and hands over the dossier.
 
 **The approver** takes a dossier and answers — now, or later:
 
@@ -113,7 +113,7 @@ same for both. `Adjudication` retires; its `Suspended(computation)` arm was the
 phase this spec adds, misfiled as a return value.
 
 The policy never sees `Awaited`, Continuum, or a lease. It answers or it
-escalates. How the escalation is asked is the harness's business, and the
+requires approval. How that approval is sought is the harness's business, and the
 policy stays pure and re-evaluable, as §4.2 of the scope design requires.
 
 ## 2. The phase — one arm, richer entries
@@ -130,7 +130,7 @@ public sealed interface Phase {
 
 public sealed interface CallStatus {
   record Pending() implements CallStatus {}                       // approval sought, no answer yet
-  record AwaitingApproval(String approvalId) implements CallStatus {} // escalated; Continuum holds it
+  record AwaitingApproval(String approvalId) implements CallStatus {} // asked and parked; Continuum holds it
   record Running() implements CallStatus {}                        // approved; the tool is executing
   record Finished(ToolResultBlock result) implements CallStatus {} // an outcome, success or failure
 }
@@ -169,7 +169,7 @@ signature; parallel tool calls mean independent tool calls. The scope is not
 and *some of those calls are awaiting approval*. That derived view is what
 the console narrates and the metrics count. An operator who wants "nothing in
 this turn runs until a human has seen all of it" expresses that as a policy
-that escalates the whole turn, not as a reducer rule for everyone.
+that requires approval for the whole turn, not as a reducer rule for everyone.
 
 **Ruled: the model never knows.** `assistantTurn` and the `Finished` results
 are what reach the model on the next `CallModel`; `AwaitingApproval` and its
@@ -200,7 +200,7 @@ sealed interface Effect {
 `ApprovalAnswered.approvalId` is present when the answer came from a parked
 computation and absent when the policy or a synchronous approver spoke; the
 reducer uses it only for the identity check below. `ExecuteTool` — today's
-"evaluate, then run or escalate" — is gone; each of its halves is an effect
+"evaluate, then run or park" — is gone; each of its halves is an effect
 with exactly one kind of result.
 
 `AwaitingTools.handle` is the whole reducer change, and it is a matrix:
@@ -316,7 +316,7 @@ five-second tool.
 
 One window is named rather than closed: a crash *after* the approver created
 the approval computation and *before* `ApprovalRequested` folded leaves the
-call `Pending`, and the re-fire re-evaluates it — the policy escalates again,
+call `Pending`, and the re-fire re-evaluates it — the policy requires approval again,
 a second computation is created, and a human may be asked twice. Only the
 answer whose id the phase names is honoured (§3, row five); the other is an
 orphan, acknowledged and ignored, exactly the §11.3 resolution today. The
@@ -418,7 +418,7 @@ Unreleased section records the vocabulary collapse as a breaking change.
 ## 13. Rejected
 
 - **A distinct `AwaitingApprovals` phase the scope marches through.** Holds
-  allowed calls hostage to their escalated siblings; adds a second arm and a
+  allowed calls hostage to siblings still awaiting approval; adds a second arm and a
   second set of transitions for a property that is better derived (§2).
 - **Approved runs as tool computations with deadlines** (the earlier
   proposal). Correct but heavier: a completion door on the policy SPI, a
