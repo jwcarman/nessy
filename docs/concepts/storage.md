@@ -344,29 +344,40 @@ concurrency discipline to get right. The reference mapping onto two plain
 tables:
 
 ```sql
-CREATE TABLE nessy_document (
-    kind        VARCHAR(64)   NOT NULL,
-    doc_key     VARCHAR(255)  NOT NULL,
-    payload     BYTEA         NOT NULL,   -- BLOB on Oracle/MySQL/H2; never a JSON-typed column
-    version     BIGINT        NOT NULL,
-    updated_at  TIMESTAMP(6)  NOT NULL,   -- database server time
-    PRIMARY KEY (kind, doc_key)
+CREATE TABLE IF NOT EXISTS nessy_document (
+  kind        TEXT             NOT NULL,
+  key         TEXT COLLATE "C" NOT NULL,
+  payload     BYTEA            NOT NULL,
+  version     BIGINT           NOT NULL,
+  updated_at  TIMESTAMPTZ      NOT NULL,   -- stamped from a JVM Clock, never SQL now()
+  PRIMARY KEY (kind, key)
 );
 
-CREATE TABLE nessy_journal (
-    kind         VARCHAR(64)   NOT NULL,
-    doc_key      VARCHAR(255)  NOT NULL,
-    seq          BIGINT        NOT NULL,
-    payload      BYTEA         NOT NULL,
-    appended_at  TIMESTAMP(6)  NOT NULL,
-    PRIMARY KEY (kind, doc_key, seq)
+CREATE TABLE IF NOT EXISTS nessy_journal (
+  kind         TEXT             NOT NULL,
+  key          TEXT COLLATE "C" NOT NULL,
+  seq          BIGINT           NOT NULL,
+  payload      BYTEA            NOT NULL,
+  appended_at  TIMESTAMPTZ      NOT NULL,
+  PRIMARY KEY (kind, key, seq)
 );
 ```
+
+`key` is pinned to the `"C"` collation on both tables — PostgreSQL's raw
+byte-order comparison — so `keys`' ascending order matches this interface's
+documented lexicographic order regardless of the database's own default
+collation, rather than a locale-aware dictionary ordering that would sort
+`"a"`, `"a-b"`, `"ab"`, `"B"` instead.
+
+`updated_at`/`appended_at` are stamped from a JVM `Clock` on every write,
+never SQL `now()` (spec §4): the reference in-memory substrate stamps in
+the JVM too, so both implementations agree and a test can control time by
+injecting a fixed clock.
 
 `read` is a point `SELECT`. A create-mode `write` (`expectedVersion == 0`)
 is an `INSERT`, where a duplicate-key error *is* the conflict. An
 update-mode `write` is `UPDATE … SET version = version + 1 WHERE kind = ?
-AND doc_key = ? AND version = ?`, where a zero rowcount *is* the conflict.
+AND key = ? AND version = ?`, where a zero rowcount *is* the conflict.
 `keys` is an index range walk with `LIMIT`. `append` is an `INSERT`, again
 reading a duplicate key as the conflict. `entries` is a range `SELECT`.
 `batch` is one transaction. No secondary indexes, no `SELECT FOR UPDATE` —
@@ -379,11 +390,9 @@ Ops readability on untransformed payloads is one incantation away —
 elsewhere — and stops working the moment a codec wraps the payload in a
 transform, exactly as expected of encrypted or compressed bytes.
 
-!!! note "No JDBC adapter ships yet"
-    This schema is the reference mapping the spec ratifies, not a shipped
-    class. The in-memory substrate (`InMemorySubstrate`, `nessy-spi`) is
-    what ships on this branch; a JDBC adapter is the next piece of work,
-    not part of it.
+`nessy-substrate-jdbc` ships a PostgreSQL-backed `Substrate`; its DDL is a
+classpath resource the application runs through its own migration tool.
+Nessy never creates or migrates schema.
 
 ## What the substrate deliberately leaves out
 

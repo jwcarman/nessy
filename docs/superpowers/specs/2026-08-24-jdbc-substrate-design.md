@@ -48,7 +48,10 @@ adds a schema variant and a container matrix ahead of it.
 
 ## 3. Schema — two tables, and they are yours
 
-The mapping `docs/concepts/storage.md` already ratifies:
+The mapping `docs/concepts/storage.md` ratifies, minus one detail — `key`'s
+`COLLATE "C"` pin, needed so ascending key order is byte order rather than a
+locale-dependent collation (storage.md's own schema block carries the pin;
+this one is trimmed for brevity):
 
 ```sql
 CREATE TABLE IF NOT EXISTS nessy_document (
@@ -156,8 +159,8 @@ conflicts; at the current version succeeds and stores **exactly
 `SET version = version + 1` agrees rather than merely resembling it. `delete` at the current version removes; at a stale version
 conflicts. A deleted key reads as absent, and writing it again requires version
 0. Payload bytes round-trip unchanged, and the store does not alias the caller's
-array — mutating the array after a write must not change stored truth, and
-mutating a returned array must not either.
+array on write — mutating the array after a write must not change stored
+truth.
 
 **Journal semantics.** Sequences start at 1. `append` at a taken seq conflicts
 rather than overwriting. `entries` from a seq is inclusive and ascending.
