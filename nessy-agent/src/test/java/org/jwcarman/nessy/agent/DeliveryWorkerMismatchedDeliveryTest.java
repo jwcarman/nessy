@@ -239,9 +239,10 @@ class DeliveryWorkerMismatchedDeliveryTest {
    * The rule has no exception on the tool side either: a result reaching a call still {@code
    * Running} — before its own {@code ToolDeferred} has folded — names a computation the scope knows
    * nothing of, so it is dropped with a WARN like any other mismatch. In practice this window does
-   * not open (§4): the computation is created inside the tool's own run with a one-day default
-   * deadline, so nothing can complete or expire it ahead of the executor thread already holding the
-   * deferral.
+   * not open (§4): the executor mints the computation on the {@code Awaited.Deferred} arm, right
+   * after the tool body returns, and the very next statement on that same thread folds {@code
+   * ToolDeferred} — with a one-day default deadline, and with the phase the only handle to the id,
+   * nothing can complete or expire it inside a single thread hop.
    */
   @Test
   void a_result_for_a_call_still_running_is_dropped_with_a_warning() {
@@ -262,5 +263,40 @@ class DeliveryWorkerMismatchedDeliveryTest {
     clock.advance(PAST_THE_BACKOFF);
 
     assertThat(worker.drainTools(BatchSize.of(10))).isZero();
+  }
+
+  /**
+   * The scope is in {@code AwaitingTools}, but for a DIFFERENT turn's calls — the delivery names a
+   * call id the phase has no status for at all. The WARN says so rather than rendering a null.
+   */
+  @Test
+  void a_delivery_for_a_call_the_phase_has_no_status_for_says_no_such_call() {
+    ToolCall other = new ToolCall("c2", "other", JsonNodeFactory.instance.objectNode());
+    Message turn = Message.assistant(List.of(new ToolUseBlock(other)));
+    Phase phase =
+        new Phase.AwaitingTools(
+            turn, Map.of("c2", new CallStatus.Running()), ModelResponseId.of("r1"));
+    store.save(new State(phase, store.load().version()));
+    answerAnApproval(); // routed to call "c1", which this phase does not hold
+
+    worker.drainApprovals(BatchSize.of(10));
+
+    assertThat(warnings()).hasSize(1);
+    assertThat(warnings().getFirst().getFormattedMessage()).contains("no such call");
+  }
+
+  /**
+   * The scope is not in {@code AwaitingTools} at all — the turn finished long ago. There is no
+   * per-call status to name, so the WARN names the phase itself.
+   */
+  @Test
+  void a_delivery_reaching_a_scope_that_is_no_longer_awaiting_tools_names_the_phase() {
+    store.save(new State(new Phase.Idle(), store.load().version()));
+    answerAnApproval();
+
+    worker.drainApprovals(BatchSize.of(10));
+
+    assertThat(warnings()).hasSize(1);
+    assertThat(warnings().getFirst().getFormattedMessage()).contains("status=Idle");
   }
 }

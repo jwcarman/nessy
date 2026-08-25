@@ -232,10 +232,11 @@ class AwaitingToolsPhaseTest {
   /**
    * A {@code Running} call names no computation, so a delivered id is by definition one the scope
    * knows nothing of — ignored, exactly like every other mismatch (spec §3). There is no timing gap
-   * this could be rescuing: the tool's computation is created inside the tool's own run with a
-   * one-day default deadline, so its expiry could only land here if the reaper and the deliver pump
-   * beat the executor thread already holding the deferral. On the crash path the re-fired {@code
-   * RunTool} creates a second computation, and the orphan's expiry meets {@code
+   * this could be rescuing: the executor mints the computation on the {@code Awaited.Deferred} arm,
+   * in the statement right after the tool body returns, and the very next statement on that same
+   * thread folds {@code ToolDeferred}; with a one-day default deadline, an expiry could only land
+   * here if the reaper and the deliver pump beat a single thread hop. On the crash path the
+   * re-fired {@code RunTool} mints a second computation, and the orphan's expiry meets {@code
    * AwaitingResult(id2)} — a mismatch, dropped there. Admitting it would let a stale orphan finish
    * a live call.
    */

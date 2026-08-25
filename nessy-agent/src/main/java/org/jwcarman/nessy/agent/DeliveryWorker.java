@@ -371,9 +371,11 @@ final class DeliveryWorker<O> implements ComputationPump {
    * redelivery (James's 2026-08-25 ruling, approval-lifecycle spec §4). A delivery whose scope is
    * not in the status that awaits it is a permanent failure, not a race worth retrying: {@code
    * ComputationApprovalContext#defer()} folds {@code AwaitingApproval} and commits BEFORE it hands
-   * back the id, so no answer can outrun its own park, and a tool result reaching a still-{@code
-   * Running} call is admitted by the reducer rather than deferred to a retry (spec §3). What
-   * remains is an orphan or a duplicate, and no amount of backoff makes it fold.
+   * back the id, so no answer can outrun its own park; and a {@code Running} call names no
+   * computation at all, so a delivered id reaching one is by definition an id the scope knows
+   * nothing of (spec §3). Nothing is lost by dropping that last case, because the window does not
+   * open in practice (spec §4). What remains is an orphan or a duplicate, and no amount of backoff
+   * makes it fold.
    */
   private void fold(Routing routing, AgentEvent event, ComputationId delivered) {
     AgentType type = AgentType.of(routing.agentType());

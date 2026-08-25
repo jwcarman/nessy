@@ -469,20 +469,23 @@ approver:
   by-coordinates door, which needs no id, refuses a `Pending` call loudly
   (§1.6).
 - **Tools: the window does not exist in practice.** `runTool` cannot use the
-  `defer()` trick — the tool holds its `ToolContext`, and so its idempotency
-  key, before it runs, and the computation Continuum mints on
-  `Awaited.Deferred` is not created until the tool has already returned — but
-  it does not need to. That computation is created *inside the tool's own run*,
-  carrying a one-day default deadline, and the very next thing that thread does
-  is fold `ToolDeferred`. For a result or an expiry to arrive first, the reaper
-  and the deliver pump would have to beat a thread hop, against a deadline
-  measured in days. Nor does the crash path open it: a crash between `create`
-  and the fold leaves an orphan computation, the re-fired `RunTool` creates a
-  SECOND one, and the orphan's eventual expiry meets `AwaitingResult(id2)` —
-  a mismatch, correctly dropped, with the live computation untouched. So there
-  is no exception to make: `Running` + `ToolFinished(id)` is ignored (§3) and
-  the delivery is dropped. Giving `ToolContext` a `defer()`-style door remains
-  the symmetric next step (§15), not a correctness fix.
+  `defer()` trick: the tool body never holds the Continuum id at all. What it
+  gets in `ToolContext` is the address digest, an idempotency key; the
+  computation is minted by the EXECUTOR, on the `Awaited.Deferred` arm, in the
+  statement immediately after the tool body returns. But no trick is needed,
+  because that leaves nothing to race. The `create` carries a one-day default
+  deadline, and the very next statement on that same thread folds
+  `ToolDeferred`. For a result or an expiry to arrive first, the reaper and the
+  deliver pump would have to beat a single thread hop, against a deadline
+  measured in days — and nobody outside can complete the computation anyway,
+  since the only handle to its id is the phase the fold is about to write. Nor
+  does the crash path open it: a crash between `create` and the fold leaves an
+  orphan computation, the re-fired `RunTool` mints a SECOND one, and the
+  orphan's eventual expiry meets `AwaitingResult(id2)` — a mismatch, correctly
+  dropped, with the live computation untouched. So there is no exception to
+  make: `Running` + `ToolFinished(id)` is ignored (§3) and the delivery is
+  dropped. Giving `ToolContext` a `defer()`-style door remains the symmetric
+  next step (§15), not a correctness fix.
 
 **Everything else is permanent, and is dropped.** With both windows closed, a
 delivery whose scope is not in the status that awaits it can never improve:
