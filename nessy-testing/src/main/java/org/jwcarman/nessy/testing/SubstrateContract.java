@@ -19,6 +19,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -164,5 +168,175 @@ public abstract class SubstrateContract {
     assertThat(substrate.read(KIND, "k"))
         .hasValueSatisfying(
             document -> assertThat(document.payload()).isEqualTo("original".getBytes(UTF_8)));
+  }
+
+  @Test
+  void journalSequencesStartAtOne() {
+    Substrate substrate = createSubstrate();
+
+    substrate.append(KIND, "k", 1, "first".getBytes(UTF_8));
+
+    assertThat(substrate.entries(KIND, "k", 1))
+        .singleElement()
+        .satisfies(entry -> assertThat(entry.seq()).isEqualTo(1L));
+  }
+
+  @Test
+  void appendingAtATakenSequenceConflictsRatherThanOverwriting() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "first".getBytes(UTF_8));
+
+    assertThatThrownBy(() -> substrate.append(KIND, "k", 1, "second".getBytes(UTF_8)))
+        .isInstanceOf(ConflictException.class);
+  }
+
+  @Test
+  void entriesFromASequenceAreInclusiveAndAscending() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "one".getBytes(UTF_8));
+    substrate.append(KIND, "k", 2, "two".getBytes(UTF_8));
+    substrate.append(KIND, "k", 3, "three".getBytes(UTF_8));
+
+    assertThat(substrate.entries(KIND, "k", 2))
+        .extracting(Substrate.Entry::seq)
+        .containsExactly(2L, 3L);
+  }
+
+  @Test
+  void entriesBeyondTheEndAreEmpty() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "one".getBytes(UTF_8));
+
+    assertThat(substrate.entries(KIND, "k", 2)).isEmpty();
+  }
+
+  @Test
+  void keysAreAscendingAndScopedToOneKind() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "c", "3".getBytes(UTF_8), 0);
+    substrate.write(KIND, "a", "1".getBytes(UTF_8), 0);
+    substrate.write(KIND, "b", "2".getBytes(UTF_8), 0);
+    substrate.write("other", "z", "z".getBytes(UTF_8), 0);
+
+    assertThat(substrate.keys(KIND, 10)).containsExactly("a", "b", "c");
+  }
+
+  @Test
+  void keysRespectsItsLimit() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "a", "1".getBytes(UTF_8), 0);
+    substrate.write(KIND, "b", "2".getBytes(UTF_8), 0);
+    substrate.write(KIND, "c", "3".getBytes(UTF_8), 0);
+
+    assertThat(substrate.keys(KIND, 2)).containsExactly("a", "b");
+  }
+
+  @Test
+  void aBatchAppliesAcrossBothShapes() {
+    Substrate substrate = createSubstrate();
+
+    substrate.batch(
+        List.of(
+            new Substrate.Op.WriteDocument(KIND, "k", "doc".getBytes(UTF_8), 0),
+            new Substrate.Op.AppendEntry(KIND, "k", 1, "entry".getBytes(UTF_8))));
+
+    assertThat(substrate.read(KIND, "k")).isPresent();
+    assertThat(substrate.entries(KIND, "k", 1)).hasSize(1);
+  }
+
+  @Test
+  void aConflictAnywhereInABatchRollsBackEveryOp() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "existing", "already".getBytes(UTF_8), 0);
+    List<Substrate.Op> ops =
+        List.of(
+            new Substrate.Op.WriteDocument(KIND, "fresh", "new".getBytes(UTF_8), 0),
+            new Substrate.Op.AppendEntry(KIND, "j", 1, "entry".getBytes(UTF_8)),
+            new Substrate.Op.WriteDocument(KIND, "existing", "clobber".getBytes(UTF_8), 0));
+
+    assertThatThrownBy(() -> substrate.batch(ops)).isInstanceOf(ConflictException.class);
+
+    assertThat(substrate.read(KIND, "fresh")).isEmpty();
+    assertThat(substrate.entries(KIND, "j", 1)).isEmpty();
+    assertThat(substrate.read(KIND, "existing"))
+        .hasValueSatisfying(
+            document -> assertThat(document.payload()).isEqualTo("already".getBytes(UTF_8)));
+  }
+
+  @Test
+  void aDeleteInABatchIsRolledBackToo() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "doomed", "here".getBytes(UTF_8), 0);
+    substrate.write(KIND, "existing", "already".getBytes(UTF_8), 0);
+    List<Substrate.Op> ops =
+        List.of(
+            new Substrate.Op.DeleteDocument(KIND, "doomed", 1),
+            new Substrate.Op.WriteDocument(KIND, "existing", "clobber".getBytes(UTF_8), 0));
+
+    assertThatThrownBy(() -> substrate.batch(ops)).isInstanceOf(ConflictException.class);
+
+    assertThat(substrate.read(KIND, "doomed")).isPresent();
+  }
+
+  @Test
+  void twoWritersAtTheSameVersionProduceExactlyOneWinner() throws Exception {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "k", "seed".getBytes(UTF_8), 0);
+    var conflicts = new AtomicInteger();
+    var barrier = new CyclicBarrier(2);
+    Runnable writer =
+        () -> {
+          try {
+            barrier.await(5, TimeUnit.SECONDS);
+            substrate.write(KIND, "k", "mine".getBytes(UTF_8), 1);
+          } catch (ConflictException e) {
+            conflicts.incrementAndGet();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+    var one = new Thread(writer);
+    var two = new Thread(writer);
+
+    one.start();
+    two.start();
+    one.join(10_000);
+    two.join(10_000);
+
+    assertThat(conflicts).hasValue(1);
+    assertThat(substrate.read(KIND, "k"))
+        .hasValueSatisfying(document -> assertThat(document.version()).isEqualTo(2L));
+  }
+
+  @Test
+  void twoAppendersAtTheSameSequenceProduceExactlyOneWinner() throws Exception {
+    Substrate substrate = createSubstrate();
+    var conflicts = new AtomicInteger();
+    var barrier = new CyclicBarrier(2);
+    Runnable appender =
+        () -> {
+          try {
+            barrier.await(5, TimeUnit.SECONDS);
+            substrate.append(KIND, "k", 1, "mine".getBytes(UTF_8));
+          } catch (ConflictException e) {
+            conflicts.incrementAndGet();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+    var one = new Thread(appender);
+    var two = new Thread(appender);
+
+    one.start();
+    two.start();
+    one.join(10_000);
+    two.join(10_000);
+
+    assertThat(conflicts).hasValue(1);
+    assertThat(substrate.entries(KIND, "k", 1)).hasSize(1);
   }
 }
