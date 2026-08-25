@@ -40,7 +40,16 @@ import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
  * <p>Document and journal timestamps ({@code updated_at}, {@code appended_at}) come from an
  * injected {@link Clock}, never SQL {@code now()} — {@code InMemorySubstrate} stamps in the JVM,
  * and the two implementations must agree for the shared contract battery to hold both to the same
- * standard.
+ * standard. {@code TIMESTAMPTZ} is microsecond-resolution, so a nanosecond-precision {@link
+ * Instant} passed to a write is rounded to the nearest microsecond on round-trip through {@link
+ * #read} or {@link #entries}; this is a documented, deliberate loss of precision, not a silent one
+ * — {@code updatedAt} and {@code appendedAt} are informational, since {@code version} is the CAS
+ * token and {@code seq} is the journal's own order.
+ *
+ * <p>The shipped DDL pins {@code key} to the {@code "C"} collation on both tables, so {@code
+ * #keys(String, int)}'s ascending order is byte order — matching {@code InMemorySubstrate}'s {@code
+ * String.compareTo} and this interface's documented "ascending lexicographic order" — regardless of
+ * the database's own default collation.
  *
  * <p>{@link #batch(java.util.List)} applies every op in one transaction, in list order, by calling
  * the same private per-shape methods that back {@link #write(String, String, byte[], long)}, {@link
@@ -114,11 +123,25 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
         connection.commit();
         return result;
       } catch (SQLException | RuntimeException e) {
-        connection.rollback();
+        rollbackPreserving(connection, e);
         throw e;
       }
     } catch (SQLException e) {
       throw new IllegalStateException("substrate operation failed", e);
+    }
+  }
+
+  /**
+   * Rolls back {@code connection}, attaching a rollback failure to {@code original} as a suppressed
+   * exception rather than letting it replace {@code original} — a caller must still see the {@link
+   * ConflictException} (or whatever else failed the unit of work), not an unrelated {@link
+   * SQLException} from the rollback itself.
+   */
+  private void rollbackPreserving(Connection connection, Exception original) {
+    try {
+      connection.rollback();
+    } catch (SQLException rollbackFailure) {
+      original.addSuppressed(rollbackFailure);
     }
   }
 

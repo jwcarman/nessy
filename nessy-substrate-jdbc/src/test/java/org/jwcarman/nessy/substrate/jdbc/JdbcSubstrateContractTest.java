@@ -38,9 +38,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class JdbcSubstrateContractTest extends SubstrateContract {
 
+  // Deliberately not the -alpine image: musl's strcoll degenerates to a byte-order strcmp, so
+  // alpine hides collation-dependent ordering bugs that a glibc PostgreSQL (Debian, RDS, and
+  // essentially every production deployment) would expose. Certifying against the image whose
+  // libc masks this class of defect would be worse than not certifying at all.
   @Container
-  private static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:17-alpine");
+  private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17");
 
   @Override
   protected Substrate createSubstrate() {

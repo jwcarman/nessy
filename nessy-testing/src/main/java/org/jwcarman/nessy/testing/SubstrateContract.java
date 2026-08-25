@@ -232,6 +232,22 @@ public abstract class SubstrateContract {
   }
 
   @Test
+  void keysOrderMatchesStringCompareToNotADictionaryCollation() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "B", "1".getBytes(UTF_8), 0);
+    substrate.write(KIND, "a", "2".getBytes(UTF_8), 0);
+    substrate.write(KIND, "a-b", "3".getBytes(UTF_8), 0);
+    substrate.write(KIND, "ab", "4".getBytes(UTF_8), 0);
+
+    // "a", "a-b", "ab", "B" is dictionary order (a glibc-collated database's default). Ascending
+    // lexicographic order — Substrate#keys's own promise, and how String.compareTo orders these
+    // four — is "B", "a", "a-b", "ab": every uppercase letter's code point precedes every
+    // lowercase one, and "-" (0x2D) precedes "b" (0x62) so "a-b" sorts before "ab". A key set of
+    // "a"/"b"/"c" alone can't tell these two orderings apart.
+    assertThat(substrate.keys(KIND, 10)).containsExactly("B", "a", "a-b", "ab");
+  }
+
+  @Test
   void aBatchAppliesAcrossBothShapes() {
     Substrate substrate = createSubstrate();
 
