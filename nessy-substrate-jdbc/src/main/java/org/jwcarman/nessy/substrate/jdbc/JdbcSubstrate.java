@@ -37,13 +37,16 @@ import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
  * ambient-transaction participation. Schema is application-owned; run the classpath resource {@code
  * org/jwcarman/nessy/substrate/jdbc/nessy-postgresql.sql} before first use.
  *
- * <p>Document timestamps ({@code updated_at}) come from an injected {@link Clock}, never SQL {@code
- * now()} — {@code InMemorySubstrate} stamps in the JVM, and the two implementations must agree for
- * the shared contract battery to hold both to the same standard.
+ * <p>Document and journal timestamps ({@code updated_at}, {@code appended_at}) come from an
+ * injected {@link Clock}, never SQL {@code now()} — {@code InMemorySubstrate} stamps in the JVM,
+ * and the two implementations must agree for the shared contract battery to hold both to the same
+ * standard.
  *
- * <p>{@link #append(String, String, long, byte[])}, {@link #entries(String, String, long)}, and
- * {@link #batch(java.util.List)} — the journal half — are not yet implemented; a future task adds
- * them. See each method's own javadoc.
+ * <p>{@link #batch(java.util.List)} applies every op in one transaction, in list order, by calling
+ * the same private per-shape methods that back {@link #write(String, String, byte[], long)}, {@link
+ * #delete(String, String, long)}, and {@link #append(String, String, long, byte[])} — never a
+ * second copy of their SQL. Any CAS or sequence miss throws {@link ConflictException}, which the
+ * {@code inTransaction} helper's rollback then makes atomic across every op the batch touched.
  */
 public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
 
@@ -64,6 +67,11 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
       "DELETE FROM nessy_document WHERE kind = ? AND key = ? AND version = ?";
   private static final String SELECT_KEYS_SQL =
       "SELECT key FROM nessy_document WHERE kind = ? ORDER BY key LIMIT ?";
+  private static final String INSERT_JOURNAL_SQL =
+      "INSERT INTO nessy_journal (kind, key, seq, payload, appended_at) VALUES (?, ?, ?, ?, ?)";
+  private static final String SELECT_JOURNAL_SQL =
+      "SELECT seq, payload, appended_at FROM nessy_journal "
+          + "WHERE kind = ? AND key = ? AND seq >= ? ORDER BY seq";
 
   private final DataSource dataSource;
   private final Clock clock;
@@ -84,7 +92,8 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
    * InMemorySubstrate}'s.
    *
    * @param dataSource the PostgreSQL data source; the application owns pooling and schema
-   * @param clock the clock every document's {@code updatedAt} is stamped from
+   * @param clock the clock every document's {@code updatedAt} and journal entry's {@code
+   *     appendedAt} is stamped from
    */
   public JdbcSubstrate(DataSource dataSource, Clock clock) {
     super();
@@ -145,14 +154,29 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
     Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE);
     inTransaction(
         connection -> {
-          Instant now = clock.instant();
-          if (expectedVersion == 0) {
-            insertDocument(connection, kind, key, payload, now);
-          } else {
-            updateDocument(connection, kind, key, payload, expectedVersion, now);
-          }
+          writeDocument(connection, kind, key, payload, expectedVersion, clock.instant());
           return null;
         });
+  }
+
+  /**
+   * Dispatches to {@link #insertDocument} or {@link #updateDocument} by {@code expectedVersion},
+   * exactly as {@link #write(String, String, byte[], long)} does — the single code path both the
+   * public method and {@link #batch(List)} call, so the two can never drift apart.
+   */
+  private void writeDocument(
+      Connection connection,
+      String kind,
+      String key,
+      byte[] payload,
+      long expectedVersion,
+      Instant now)
+      throws SQLException {
+    if (expectedVersion == 0) {
+      insertDocument(connection, kind, key, payload, now);
+    } else {
+      updateDocument(connection, kind, key, payload, expectedVersion, now);
+    }
   }
 
   private void insertDocument(
@@ -273,22 +297,98 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
 
   @Override
   public void append(String kind, String key, long expectedSeq, byte[] payload) {
-    // The journal half is Task 4's to implement; Task 4's first step expects exactly this
-    // failure as its red state.
-    throw new UnsupportedOperationException("append: implemented in task 4");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
+    Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE);
+    inTransaction(
+        connection -> {
+          appendEntry(connection, kind, key, expectedSeq, payload, clock.instant());
+          return null;
+        });
+  }
+
+  /**
+   * Inserts a journal entry, create-only: a primary-key violation on {@code (kind, key, seq)} is
+   * the conflict. The single code path both {@link #append(String, String, long, byte[])} and
+   * {@link #batch(List)} call.
+   */
+  private void appendEntry(
+      Connection connection, String kind, String key, long seq, byte[] payload, Instant now)
+      throws SQLException {
+    try (PreparedStatement insert = connection.prepareStatement(INSERT_JOURNAL_SQL)) {
+      insert.setString(1, kind);
+      insert.setString(2, key);
+      insert.setLong(3, seq);
+      insert.setBytes(4, payload);
+      insert.setTimestamp(5, Timestamp.from(now));
+      insert.executeUpdate();
+    } catch (SQLException e) {
+      // Detect by SQLSTATE, never by message text — matching the document insert's own rule.
+      if (UNIQUE_VIOLATION_SQLSTATE.equals(e.getSQLState())) {
+        throw new ConflictException(
+            "stale append at kind="
+                + kind
+                + " key="
+                + key
+                + ": an entry already exists at seq "
+                + seq);
+      }
+      throw e;
+    }
   }
 
   @Override
   public List<Entry> entries(String kind, String key, long fromSeq) {
-    // The journal half is Task 4's to implement; Task 4's first step expects exactly this
-    // failure as its red state.
-    throw new UnsupportedOperationException("entries: implemented in task 4");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
+    return inTransaction(
+        connection -> {
+          List<Entry> entries = new ArrayList<>();
+          try (PreparedStatement select = connection.prepareStatement(SELECT_JOURNAL_SQL)) {
+            select.setString(1, kind);
+            select.setString(2, key);
+            select.setLong(3, fromSeq);
+            try (ResultSet row = select.executeQuery()) {
+              while (row.next()) {
+                entries.add(
+                    new Entry(
+                        row.getLong("seq"),
+                        row.getBytes("payload"),
+                        row.getTimestamp("appended_at").toInstant()));
+              }
+            }
+          }
+          return entries;
+        });
   }
 
   @Override
   public void batch(List<Op> ops) {
-    // The atomic cross-shape batch is Task 4's to implement; Task 4's first step expects exactly
-    // this failure as its red state.
-    throw new UnsupportedOperationException("batch: implemented in task 4");
+    Objects.requireNonNull(ops, "ops must not be null");
+    List<Op> snapshot = List.copyOf(ops);
+    inTransaction(
+        connection -> {
+          Instant now = clock.instant();
+          for (Op op : snapshot) {
+            applyOp(connection, op, now);
+          }
+          return null;
+        });
+  }
+
+  /**
+   * Applies one batch op by calling the exact same private method the corresponding single-op
+   * public method calls, so a batched write/delete/append can never diverge from its standalone
+   * counterpart's SQL.
+   */
+  private void applyOp(Connection connection, Op op, Instant now) throws SQLException {
+    switch (op) {
+      case Op.WriteDocument(String wKind, String wKey, byte[] wPayload, long wExpectedVersion) ->
+          writeDocument(connection, wKind, wKey, wPayload, wExpectedVersion, now);
+      case Op.DeleteDocument(String dKind, String dKey, long dExpectedVersion) ->
+          deleteDocument(connection, dKind, dKey, dExpectedVersion);
+      case Op.AppendEntry(String aKind, String aKey, long aSeq, byte[] aPayload) ->
+          appendEntry(connection, aKind, aKey, aSeq, aPayload, now);
+    }
   }
 }
