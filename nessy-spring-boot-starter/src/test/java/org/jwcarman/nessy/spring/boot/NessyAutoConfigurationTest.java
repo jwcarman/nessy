@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
@@ -28,13 +29,16 @@ import org.jwcarman.nessy.agent.ApprovalDesk;
 import org.jwcarman.nessy.agent.CompletionDesk;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.host.Nessy;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.jwcarman.nessy.testing.ScriptedModel;
+import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -79,6 +83,15 @@ class NessyAutoConfigurationTest {
     }
 
     @Test
+    void nothing_projects_pending_approvals_without_a_database() {
+      runner.run(
+          context ->
+              assertThat(context)
+                  .doesNotHaveBean(PendingApprovals.class)
+                  .doesNotHaveBean(PendingApprovalsRepository.class));
+    }
+
+    @Test
     void the_agent_type_and_backlog_capacity_come_from_the_properties() {
       runner
           .withPropertyValues("nessy.type=watchman", "nessy.backlog-capacity=7")
@@ -112,6 +125,43 @@ class NessyAutoConfigurationTest {
                       .getFailure()
                       .rootCause()
                       .hasMessageContaining("nessy.system-prompt"));
+    }
+  }
+
+  /**
+   * A {@code DataSource} bean is the whole switch (spec §1.1): it turns the stores durable and it
+   * turns the projection on. No database is contacted here — none of these beans opens a connection
+   * to be constructed, which is exactly why this can stay a wiring test.
+   */
+  @Nested
+  class WithADataSource {
+
+    private final ApplicationContextRunner durable =
+        runner.withBean(DataSource.class, NessyAutoConfigurationTest::unreachableDataSource);
+
+    @Test
+    void the_stores_become_the_jdbc_pair() {
+      durable.run(
+          context ->
+              assertThat(context.getBean(Substrate.class)).isInstanceOf(JdbcSubstrate.class));
+    }
+
+    @Test
+    void the_projection_and_its_read_door_appear() {
+      durable.run(
+          context ->
+              assertThat(context)
+                  .hasSingleBean(PendingApprovals.class)
+                  .hasSingleBean(PendingApprovalsRepository.class));
+    }
+
+    @Test
+    void the_projection_is_subscribed_to_the_fact_stream_like_any_other_observer() {
+      durable.run(
+          context ->
+              assertThat(context.getBeanProvider(HarnessObserver.class).orderedStream().toList())
+                  .isNotEmpty()
+                  .hasAtLeastOneElementOfType(PendingApprovals.class));
     }
   }
 
@@ -201,6 +251,16 @@ class NessyAutoConfigurationTest {
                     .untilAsserted(() -> assertThat(observer.applied()).isPositive());
               });
     }
+  }
+
+  /**
+   * A DataSource that would fail on first use and never gets one: these tests assert which beans
+   * the conditions chose, and no bean here opens a connection to be built.
+   */
+  private static DataSource unreachableDataSource() {
+    PGSimpleDataSource dataSource = new PGSimpleDataSource();
+    dataSource.setUrl("jdbc:postgresql://localhost:1/never-contacted");
+    return dataSource;
   }
 
   private static Tool<Note> tool(String name) {

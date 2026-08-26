@@ -43,12 +43,14 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * A Nessy harness, assembled from Spring beans (watchman spec §1).
@@ -231,6 +233,40 @@ public class NessyAutoConfiguration {
     @ConditionalOnMissingBean
     Continuum nessyContinuum() {
       return new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
+    }
+  }
+
+  /**
+   * The pending-approvals projection (spec §1.3), wired only when there is a database to project
+   * into. {@code @ConditionalOnBean(DataSource.class)} is right here where an {@link
+   * ObjectProvider} is right for the stores: a table has no in-memory fallback, so the beans must
+   * be absent, not degraded — and the condition is safe to evaluate because this auto-configuration
+   * declares itself after Boot's own {@code DataSourceAutoConfiguration}.
+   *
+   * <p>{@link PendingApprovals} is a {@code HarnessObserver} bean like any other, so the harness
+   * bean method picks it up and subscribes it with the rest. It is not special-cased anywhere.
+   */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(JdbcTemplate.class)
+  @ConditionalOnBean(DataSource.class)
+  static class Projection {
+
+    @Bean
+    @ConditionalOnMissingBean
+    PendingApprovals pendingApprovals(
+        ObjectProvider<JdbcTemplate> jdbcTemplates,
+        DataSource dataSource,
+        ObjectProvider<ObjectMapper> objectMappers) {
+      return new PendingApprovals(
+          jdbcTemplates.getIfAvailable(() -> new JdbcTemplate(dataSource)), pinned(objectMappers));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PendingApprovalsRepository pendingApprovalsRepository(
+        ObjectProvider<JdbcTemplate> jdbcTemplates, DataSource dataSource) {
+      return new PendingApprovalsRepository(
+          jdbcTemplates.getIfAvailable(() -> new JdbcTemplate(dataSource)));
     }
   }
 }
