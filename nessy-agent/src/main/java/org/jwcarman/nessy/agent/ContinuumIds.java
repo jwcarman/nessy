@@ -21,21 +21,25 @@ import org.jwcarman.continuum.api.ComputationId;
 
 /**
  * The one place Nessy's string-valued {@code org.jwcarman.nessy.api.tool.ComputationId} becomes
- * Continuum's UUID-valued {@link ComputationId} (continuum-adoption spec §3) — package-private so
- * every caller in this package converts through here rather than scattering {@code UUID.fromString}
- * calls. Takes the unwrapped string value, not Nessy's own {@code ComputationId} type, so this file
- * never needs to import a type whose simple name collides with Continuum's own.
+ * Continuum's UUID-valued {@link ComputationId} (continuum-adoption spec §3), so every caller
+ * converts here rather than scattering {@code UUID.fromString} calls. Takes the unwrapped string
+ * value, not Nessy's own {@code ComputationId} type, so this file never needs to import a type
+ * whose simple name collides with Continuum's own.
+ *
+ * <p>Public for the reason the other wiring in this package is: {@code RegistryToolCallExecutor}
+ * lives one package over and is where the two handoff doors now tidy up a failed deferral. Wiring,
+ * never application vocabulary.
  */
-final class ContinuumIds {
+public final class ContinuumIds {
 
   private ContinuumIds() {}
 
   /**
    * @param nessyComputationId a Nessy {@code ComputationId}'s own {@code value()} — itself a
-   *     Continuum-minted UUID rendered as text (see {@link ComputationApprovalContext#defer()})
+   *     Continuum-minted UUID rendered as text
    * @return the same identity, as Continuum's own {@link ComputationId}
    */
-  static ComputationId continuumId(String nessyComputationId) {
+  public static ComputationId continuumId(String nessyComputationId) {
     Objects.requireNonNull(nessyComputationId, "nessyComputationId must not be null");
     return new ComputationId(UUID.fromString(nessyComputationId));
   }

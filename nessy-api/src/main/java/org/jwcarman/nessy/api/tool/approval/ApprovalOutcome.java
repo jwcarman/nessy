@@ -15,11 +15,13 @@
  */
 package org.jwcarman.nessy.api.tool.approval;
 
+import java.time.Duration;
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 
 /**
- * What an approver returns (spec §1.3): decided, or parked under a computation someone will answer.
+ * What an approver returns (spec §1.3): decided, or parked — where parking is a pure RETURN
+ * (deferral-by-callback spec §1), not a call into plumbing that folds from inside the ask.
  */
 public sealed interface ApprovalOutcome {
 
@@ -29,10 +31,23 @@ public sealed interface ApprovalOutcome {
     }
   }
 
-  /** Minted only by {@link ApprovalContext#defer()}; the id names the parked computation. */
-  record Deferred(ComputationId id) implements ApprovalOutcome {
+  /**
+   * "I'll get back to you."
+   *
+   * @param callback what to run once the approval computation exists — the only thing that tells a
+   *     human there is a question, and the id they answer on
+   * @param term how long the approver wants the question to stand; REQUIRED (spec §5), clipped by
+   *     the harness to its own approval ceiling
+   */
+  record Deferred(ComputationCallback callback, Duration term) implements ApprovalOutcome {
     public Deferred {
-      Objects.requireNonNull(id, "id must not be null");
+      Objects.requireNonNull(callback, "callback must not be null");
+      Objects.requireNonNull(term, "term must not be null");
     }
+  }
+
+  /** {@link Deferred}: what to do once the id exists, and for how long the question stands. */
+  static ApprovalOutcome deferred(ComputationCallback callback, Duration term) {
+    return new Deferred(callback, term);
   }
 }

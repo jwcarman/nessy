@@ -24,7 +24,6 @@ import java.time.Duration;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
@@ -68,13 +67,8 @@ class RemediationGrantsTest {
     return grant.approver().approve(context);
   }
 
-  /** An approval context whose {@code defer()} is the only door this test needs. */
-  private record ParkingContext(ApprovalRequest request) implements ApprovalContext {
-    @Override
-    public ApprovalOutcome defer() {
-      return new ApprovalOutcome.Deferred(ComputationId.of("parked"));
-    }
-  }
+  /** The whole of an approval context now (deferral-by-callback spec §7). */
+  private record ParkingContext(ApprovalRequest request) implements ApprovalContext {}
 
   @Nested
   class Restart_unit {

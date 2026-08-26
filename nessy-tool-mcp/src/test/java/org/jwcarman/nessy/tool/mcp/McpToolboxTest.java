@@ -35,7 +35,6 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
-import org.jwcarman.nessy.api.tool.ToolEvent;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -77,25 +76,7 @@ class McpToolboxTest {
 
   private static ToolContext contextFor(JsonNode arguments) {
     ToolCall call = new ToolCall("call-1", "echo", arguments);
-    return new TestContext(call, ToolEventListener.noop());
-  }
-
-  /** The plain test double: no computation behind it, so {@code defer()} refuses. */
-  private record TestContext(ToolCall call, ToolEventListener events) implements ToolContext {
-    @Override
-    public ComputationId invocation() {
-      return ComputationId.of("execution-id");
-    }
-
-    @Override
-    public void progress(String message) {
-      events.on(new ToolEvent.Progress(message));
-    }
-
-    @Override
-    public ComputationId defer() {
-      throw new UnsupportedOperationException("this test never defers");
-    }
+    return new ToolContext(call, ToolEventListener.noop(), ComputationId.of("execution-id"));
   }
 
   private static ToolResult readyResult(Awaited<ToolResult> awaited) {

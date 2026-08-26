@@ -414,13 +414,13 @@ final class DeliveryWorker<O> implements ComputationPump {
    *
    * <p>An ignored transition is DROPPED — logged at WARN and acknowledged, never released for
    * redelivery (James's 2026-08-25 ruling, approval-lifecycle spec §4). A delivery whose scope is
-   * not in the status that awaits it is a permanent failure, not a race worth retrying: {@code
-   * ComputationApprovalContext#defer()} folds {@code AwaitingApproval} and commits BEFORE it hands
-   * back the id, so no answer can outrun its own park; and a {@code Running} call names no
-   * computation at all, so a delivered id reaching one is by definition an id the scope knows
-   * nothing of (spec §3). Nothing is lost by dropping that last case, because the window does not
-   * open in practice (spec §4). What remains is an orphan or a duplicate, and no amount of backoff
-   * makes it fold.
+   * not in the status that awaits it is a permanent failure, not a race worth retrying: the handoff
+   * effect folds {@code ApprovalDeferred}/{@code ToolCallDeferred} only AFTER the callback has run,
+   * so no answer can outrun its own park; and a {@code RunningTool} or {@code Deferring…} call
+   * names no computation at all, so a delivered id reaching one is by definition an id the scope
+   * knows nothing of (spec §3). Nothing is lost by dropping that last case, because the window does
+   * not open in practice (spec §4). What remains is an orphan or a duplicate, and no amount of
+   * backoff makes it fold.
    */
   private void fold(Routing routing, AgentEvent event, ComputationId delivered) {
     AgentType type = AgentType.of(routing.agentType());
@@ -566,6 +566,25 @@ final class DeliveryWorker<O> implements ComputationPump {
             harness
                 .toolExecutorFor(id)
                 .runTool(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
+        case Effect.DeferApproval(var call, var request, var callback, var term) ->
+            harness
+                .toolExecutorFor(id)
+                .deferApproval(
+                    call,
+                    request,
+                    callback,
+                    term,
+                    responseIdOf(phase),
+                    event -> binder.deliver(type, id, event));
+        case Effect.DeferToolCall(var call, var callback, var term) ->
+            harness
+                .toolExecutorFor(id)
+                .deferToolCall(
+                    call,
+                    callback,
+                    term,
+                    responseIdOf(phase),
+                    event -> binder.deliver(type, id, event));
       }
     }
   }

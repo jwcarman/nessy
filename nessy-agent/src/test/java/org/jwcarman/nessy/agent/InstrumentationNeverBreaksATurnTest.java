@@ -27,6 +27,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -94,6 +95,11 @@ import org.slf4j.LoggerFactory;
  * turn that was already having a bad day.
  */
 class InstrumentationNeverBreaksATurnTest {
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
 
   /**
    * The Micrometer NAMES of the two executor-minted observations — semconv's own per-operation
@@ -391,7 +397,9 @@ class InstrumentationNeverBreaksATurnTest {
               TestToolClients.client("tool/test", mapper),
               mapper,
               registry,
-              () -> null);
+              () -> null,
+              APPROVAL_CEILING,
+              TOOL_CEILING);
       AtomicReference<AgentEvent> delivered = new AtomicReference<>();
       tools.runTool(RESTART, ModelResponseId.of("r1"), delivered::set);
       return delivered.get();

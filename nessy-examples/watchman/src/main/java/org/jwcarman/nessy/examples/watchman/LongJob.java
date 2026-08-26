@@ -15,21 +15,21 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@code long_job} — the one tool here that exists to exercise {@code ToolContext.defer()} for real
- * (spec §2.1).
+ * {@code long_job} — the one tool here that exists to exercise deferral for real (spec §2.1).
  *
  * <p>The remediation tools do not need it: an approved {@code systemctl restart} is over in a
  * second, and their waiting is the <i>approval</i>, not the work. A whole-disk {@code fstrim} is
@@ -39,15 +39,14 @@ import org.slf4j.LoggerFactory;
  * <p>The shape, and why each half of it matters:
  *
  * <ol>
- *   <li>{@code context.defer()} is called <b>on the tool's own thread, before anything is
- *       started</b>. It folds {@code AwaitingResult} and commits before it hands the id back, which
- *       is what makes the next step safe.
- *   <li>The id goes to a watcher on a different executor. The watcher runs the command and then
- *       completes the computation — from a thread that is emphatically not the tool's, which is the
- *       real-world shape (a callback, a webhook, a queue consumer) rather than a convenient
- *       fiction.
- *   <li>The tool returns {@code Awaited.deferred()} — here by way of {@code defers(...)}, whose
- *       whole job is to return it for you.
+ *   <li>The tool RETURNS a deferral: a callback and a term. Nothing is started yet, and no id
+ *       exists yet — the harness creates the computation, folds the wait, commits, and only then
+ *       runs the callback (deferral-by-callback spec §1). There is no longer a way to hand out an
+ *       id the scope has not recorded, because there is no way to get one early.
+ *   <li>The callback hands the id to a watcher on a different executor. The watcher runs the
+ *       command and then completes the computation — from a thread that is emphatically not the
+ *       tool's, which is the real-world shape (a callback, a webhook, a queue consumer) rather than
+ *       a convenient fiction.
  * </ol>
  *
  * <p>The completion door is a plain {@link BiConsumer} rather than the {@code CompletionDesk} type
@@ -65,6 +64,13 @@ public final class LongJob {
   private static final Logger LOG = LoggerFactory.getLogger(LongJob.class);
 
   private static final List<String> ARGV = List.of("fstrim", "-av");
+
+  /**
+   * How long a trim may take before the harness gives up on it. A whole-disk {@code fstrim} on a
+   * spinning array is minutes, not hours; an hour is generous and still bounds the leak a watcher
+   * that died would otherwise be.
+   */
+  private static final Duration TERM = Duration.ofHours(1);
 
   private LongJob() {}
 
@@ -90,18 +96,15 @@ public final class LongJob {
                     "Starts a whole-disk trim (fstrim -av) in the background. It returns"
                         + " immediately; the result arrives later, in a following turn.")
                 .requires(CompletionPolicy.DURABLE)
-                .defers((input, context) -> start(context, runner, completions, watchers)));
+                .defers((input, context) -> start(runner, completions, watchers)));
   }
 
-  private static void start(
-      ToolContext context,
-      CommandRunner runner,
-      BiConsumer<ComputationId, ToolResult> completions,
-      Executor watchers) {
-    // Ordered by construction: the id exists, and the phase already names the wait, BEFORE any
-    // thread that could answer it has been handed anything.
-    ComputationId id = context.defer();
-    watchers.execute(() -> watch(id, runner, completions));
+  private static Awaited.Deferred<ToolResult> start(
+      CommandRunner runner, BiConsumer<ComputationId, ToolResult> completions, Executor watchers) {
+    // Ordered by construction, and now by the type system: the callback cannot run until the
+    // computation exists and the phase already names the wait, because the harness is what runs it.
+    return new Awaited.Deferred<>(
+        (id, deadline) -> watchers.execute(() -> watch(id, runner, completions)), TERM);
   }
 
   /**

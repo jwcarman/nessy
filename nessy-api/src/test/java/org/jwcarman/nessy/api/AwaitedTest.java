@@ -16,8 +16,11 @@
 package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 
 class AwaitedTest {
 
@@ -35,8 +38,27 @@ class AwaitedTest {
   }
 
   @Test
-  void deferred_is_a_marker() {
-    Awaited<String> awaited = Awaited.deferred();
-    assertThat(awaited).isEqualTo(new Awaited.Deferred<String>());
+  void deferred_carries_the_callback_and_the_term_and_nothing_else() {
+    ComputationCallback callback = (id, deadline) -> {};
+
+    Awaited<String> awaited = Awaited.deferred(callback, Duration.ofDays(30));
+
+    assertThat(awaited).isEqualTo(new Awaited.Deferred<String>(callback, Duration.ofDays(30)));
+  }
+
+  @Test
+  void a_deferral_without_a_callback_is_refused() {
+    var term = Duration.ofDays(30);
+
+    assertThatThrownBy(() -> new Awaited.Deferred<String>(null, term))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_deferral_without_a_term_is_refused() {
+    ComputationCallback callback = (id, deadline) -> {};
+
+    assertThatThrownBy(() -> new Awaited.Deferred<String>(callback, null))
+        .isInstanceOf(NullPointerException.class);
   }
 }

@@ -28,7 +28,7 @@ final class Tools {
 
   /** The content of a tool's ready result; a failure if the tool deferred instead. */
   static <I> String content(Tool<I> tool, I input) {
-    return switch (tool.execute(input, new FakeContext())) {
+    return switch (tool.execute(input, FakeContext.toolContext())) {
       case Awaited.Ready<ToolResult> ready -> ready.value().content();
       case Awaited.Deferred<ToolResult> deferred ->
           throw new AssertionError(tool.name() + " deferred; a ready result was expected");
@@ -46,7 +46,8 @@ final class Tools {
    * and no suppression.
    */
   static <I> void runWithPlaceholderInput(Tool<I> tool) {
-    tool.execute(tool.inputType().cast(placeholderInput(tool.inputType())), new FakeContext());
+    tool.execute(
+        tool.inputType().cast(placeholderInput(tool.inputType())), FakeContext.toolContext());
   }
 
   private static Object placeholderInput(Class<?> inputType) {

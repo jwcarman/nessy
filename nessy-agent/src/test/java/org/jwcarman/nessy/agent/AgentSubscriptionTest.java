@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -76,6 +77,14 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * handed.
  */
 class AgentSubscriptionTest {
+
+  /** Any term: nothing in this test clips it. */
+  private static final Duration TERM = Duration.ofDays(7);
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
 
   @AfterEach
   void shutdownTrackedHarnesses() {
@@ -194,12 +203,10 @@ class AgentSubscriptionTest {
       var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
       var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
       var notifications = new CopyOnWriteArrayList<ComputationId>();
+      // The notification is the CALLBACK now: it runs once the harness has parked the question,
+      // which is the only moment an id exists (deferral-by-callback spec §1).
       Approver deferring =
-          context -> {
-            ApprovalOutcome outcome = context.defer();
-            notifications.add(((ApprovalOutcome.Deferred) outcome).id());
-            return outcome;
-          };
+          context -> ApprovalOutcome.deferred((id, deadline) -> notifications.add(id), TERM);
       var tool = new RecordingTool();
       var registry = ToolRegistry.of(ToolGrant.grant(tool, deferring));
       var pump = new PumpedExecutor();
@@ -247,7 +254,9 @@ class AgentSubscriptionTest {
                       toolClient,
                       mapper,
                       ObservationRegistry.NOOP,
-                      () -> null),
+                      () -> null,
+                      APPROVAL_CEILING,
+                      TOOL_CEILING),
               substrate,
               mapper,
               approvalClient,

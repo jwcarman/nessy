@@ -78,6 +78,9 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  */
 class StaleRetryCounterTest {
 
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
+
   private static final AgentType TYPE = AgentType.of("test");
   private static final AgentId SCOPE = AgentId.of("prod-eu");
   private static final ToolCall RESTART =

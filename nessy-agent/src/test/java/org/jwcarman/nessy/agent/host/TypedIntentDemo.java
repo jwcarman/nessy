@@ -178,8 +178,13 @@ class TypedIntentDemo {
                 RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
     return context -> {
       ApprovalOutcome outcome = ladder.approve(context);
-      if (outcome instanceof ApprovalOutcome.Deferred deferred) {
-        asks.add(new Ask(deferred.id(), context.request()));
+      if (outcome instanceof ApprovalOutcome.Deferred(var park, var term)) {
+        return ApprovalOutcome.deferred(
+            (id, deadline) -> {
+              park.accept(id, deadline);
+              asks.add(new Ask(id, context.request()));
+            },
+            term);
       }
       return outcome;
     };

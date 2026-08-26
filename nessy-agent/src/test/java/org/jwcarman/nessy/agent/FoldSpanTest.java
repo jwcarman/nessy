@@ -24,6 +24,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -76,6 +77,9 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  * trace instead of only in a counter.
  */
 class FoldSpanTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final AgentType TYPE = AgentType.of("test");
   private static final AgentId SCOPE = AgentId.of("prod-eu");

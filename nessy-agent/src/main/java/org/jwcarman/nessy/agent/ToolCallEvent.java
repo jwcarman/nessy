@@ -25,9 +25,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * not {@code ToolCallEvent}s at all.
  */
 public sealed interface ToolCallEvent extends AgentEvent
-    permits AgentEvent.ApprovalDeferred,
+    permits AgentEvent.ApprovalDeferralRequested,
+        AgentEvent.ApprovalDeferred,
         AgentEvent.ApprovalAnswered,
-        AgentEvent.ToolDeferred,
+        AgentEvent.ToolCallDeferralRequested,
+        AgentEvent.ToolCallDeferred,
         AgentEvent.ToolFinished {
 
   /** The call this fact is about. */

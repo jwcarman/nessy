@@ -83,20 +83,22 @@ public final class HarnessConfig<O> {
   private static final Logger log = LoggerFactory.getLogger(HarnessConfig.class);
 
   /**
-   * The approval kind's Continuum deadline (continuum-adoption spec §7, §9, ruled): an approval
-   * waiting forever is a leak; expiry arrives through the normal delivery path. Harness-level, not
-   * per-tool — a per-tool override is deferred until something needs it.
+   * The approval kind's CEILING (deferral-by-callback spec §5): the longest an approval may stand,
+   * whatever term an approver asks for. An approval waiting forever is a leak; expiry arrives
+   * through the normal delivery path. Two ceilings, because an approval waits on a person and a
+   * call waits on a machine. Still private constants here — promoting them to configuration is task
+   * C3's, not this one's.
    */
   private static final Duration APPROVAL_DEADLINE = Duration.ofDays(7);
 
   /**
-   * The tool kind's default Continuum deadline (continuum-adoption spec §3, §11.2): what a tool
-   * with no declared {@link org.jwcarman.nessy.api.tool.Tool#timeout()} gets stamped with — {@code
-   * ComputationToolContext#defer()} passes a declared timeout straight through to {@code
-   * create(routing, timeout)} instead, overriding this default. Continuum requires every
-   * computation to carry a deadline (no deadline-less wait survives adoption, spec §3), so a tool
-   * that never used to expire now does — a day is generous for an external system to answer while
-   * still bounding the leak a truly abandoned computation would otherwise be.
+   * The tool kind's CEILING, and the deadline every tool computation is created with when a tool
+   * asks for more (deferral-by-callback spec §5). {@code Tool.timeout()} is retired: a duration
+   * declared at registration, for invocations that may never defer, was the wrong place for it — a
+   * deferring tool states its own term at the moment it defers, and this clips it. Continuum
+   * requires every computation to carry a deadline (continuum-adoption spec §3), and a day is
+   * generous for an external system to answer while still bounding the leak an abandoned
+   * computation would otherwise be.
    */
   private static final Duration DEFAULT_TOOL_DEADLINE = Duration.ofDays(1);
 
@@ -544,7 +546,9 @@ public final class HarnessConfig<O> {
                     effectiveToolClient,
                     pinned,
                     observationRegistry,
-                    () -> openSegments.get(scopeId)),
+                    () -> openSegments.get(scopeId),
+                    APPROVAL_DEADLINE,
+                    DEFAULT_TOOL_DEADLINE),
             effectiveSubstrate,
             pinned,
             effectiveApprovalClient,

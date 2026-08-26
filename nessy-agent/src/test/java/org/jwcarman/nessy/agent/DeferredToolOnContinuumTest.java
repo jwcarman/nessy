@@ -86,6 +86,18 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  */
 class DeferredToolOnContinuumTest {
 
+  /** Any term: nothing in these tests clips it. */
+  /**
+   * Short on purpose: the expiry test advances a controllable clock past it. A term is what the
+   * TOOL asks for now, so a test that wants an expiry asks for one it can reach.
+   */
+  private static final Duration TERM = Duration.ofHours(1);
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
+
   @AfterEach
   void shutdownTrackedHarnesses() {
     HarnessTeardown.shutdownAllTracked();
@@ -125,8 +137,7 @@ class DeferredToolOnContinuumTest {
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
       invocations.incrementAndGet();
-      handedOut = context.defer();
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> handedOut = id, TERM);
     }
   }
 
@@ -159,8 +170,7 @@ class DeferredToolOnContinuumTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      context.defer();
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> {}, TERM);
     }
   }
 
@@ -217,7 +227,9 @@ class DeferredToolOnContinuumTest {
           toolClient,
           mapper,
           ObservationRegistry.NOOP,
-          () -> null);
+          () -> null,
+          APPROVAL_CEILING,
+          TOOL_CEILING);
   private final Harness<String> harness =
       TestAgents.<String>harness(
           memory,

@@ -25,6 +25,8 @@ import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.tck.TestObservationRegistry;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -49,6 +52,14 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
  * would break the segment rules breaks this file too.
  */
 class ObservationsTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  /** Any callback and any term: this file is about spans, not about who gets told. */
+  private static final ComputationCallback TELL = (id, deadline) -> {};
+
+  private static final Duration TERM = Duration.ofDays(7);
+
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final AgentType TYPE = AgentType.of("ops");
   private static final String PROVIDER = "anthropic";
@@ -75,6 +86,19 @@ class ObservationsTest {
     }
     phase = transition.next();
     observations.applied(SCOPE, event, transition);
+  }
+
+  /** The two facts a deferral folds now (deferral-by-callback spec §9a): the ask, then the park. */
+  private void parksApproval(ToolCall call, ComputationId id) {
+    ApprovalRequest question = requestFor(call);
+    fold(new AgentEvent.ApprovalDeferralRequested(call, question, TELL, TERM));
+    fold(new AgentEvent.ApprovalDeferred(call, id, question, DEADLINE));
+  }
+
+  /** The tool side's {@link #parksApproval}. */
+  private void parksTool(ToolCall call, ComputationId id) {
+    fold(new AgentEvent.ToolCallDeferralRequested(call, TELL, TERM));
+    fold(new AgentEvent.ToolCallDeferred(call, id, DEADLINE));
   }
 
   private void observed() {
@@ -235,9 +259,7 @@ class ObservationsTest {
     void a_park_closes_the_segment_rather_than_straddling_it() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
 
       assertThat(
               only("invoke_agent ops")
@@ -254,9 +276,7 @@ class ObservationsTest {
     void a_park_with_a_sibling_still_pending_keeps_the_segment_open() {
       observed();
       modelAsksFor(RESTART, DRAIN);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
 
       // Declared at start as the placeholder, never overwritten: nothing ended the segment.
       assertThat(
@@ -278,9 +298,7 @@ class ObservationsTest {
     void a_delivery_resuming_a_parked_scope_opens_a_second_segment() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
       fold(
           new AgentEvent.ApprovalAnswered(
               RESTART, Optional.of(ComputationId.of("approval-1")), Approval.approved()));
@@ -296,9 +314,7 @@ class ObservationsTest {
     void an_approval_wait_opens_at_the_park_and_stays_open_across_it() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
 
       Observation.Context wait = only("nessy.approval.wait restart");
       assertThat(wait.getName()).isEqualTo(Observations.APPROVAL_WAIT);
@@ -316,9 +332,7 @@ class ObservationsTest {
     void the_approval_wait_is_a_child_of_the_segment_that_parked_it() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
 
       assertThat(only("nessy.approval.wait restart").getParentObservation()).isNotNull();
       assertThat(only("nessy.approval.wait restart").getParentObservation().getContextView())
@@ -329,9 +343,7 @@ class ObservationsTest {
     void an_answer_closes_the_approval_wait_carrying_what_the_desk_said() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
       fold(
           new AgentEvent.ApprovalAnswered(
               RESTART,
@@ -354,7 +366,7 @@ class ObservationsTest {
       observed();
       modelAsksFor(RESTART);
       fold(new AgentEvent.ApprovalAnswered(RESTART, Optional.empty(), Approval.approved()));
-      fold(new AgentEvent.ToolDeferred(RESTART, ComputationId.of("tool-1")));
+      parksTool(RESTART, ComputationId.of("tool-1"));
       fold(
           new AgentEvent.ToolFinished(
               RESTART,
@@ -398,9 +410,7 @@ class ObservationsTest {
     void a_segment_reopened_by_a_delivery_leaves_nothing_open_once_it_ends() {
       observed();
       modelAsksFor(RESTART);
-      fold(
-          new AgentEvent.ApprovalDeferred(
-              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      parksApproval(RESTART, ComputationId.of("approval-1"));
       // Parked: the first segment closed. The delivered denial reopens one, finishes the call, and
       // sends the turn back to the model; the model's own answer is what ends this segment.
       fold(

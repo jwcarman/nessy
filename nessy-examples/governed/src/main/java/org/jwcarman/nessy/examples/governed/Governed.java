@@ -185,8 +185,9 @@ public final class Governed {
   }
 
   /**
-   * The demo's approver: the ladder judges, and when it parks, the demo (a queue) is told — telling
-   * people is the approver's job (approval-lifecycle spec §1.3).
+   * The demo's approver: the ladder judges, and when it defers, the demo (a queue) is told —
+   * telling people is the approver's job (approval-lifecycle spec §1.3), and it happens through the
+   * callback, once the harness has a computation for the answer to ride.
    */
   private static Approver queueing(BlockingQueue<Ask> asks) {
     Approver ladder =
@@ -195,8 +196,16 @@ public final class Governed {
             RiskRules.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
     return context -> {
       ApprovalOutcome outcome = ladder.approve(context);
-      if (outcome instanceof ApprovalOutcome.Deferred deferred) {
-        asks.add(new Ask(deferred.id(), context.request()));
+      if (outcome instanceof ApprovalOutcome.Deferred(var park, var term)) {
+        // The ladder's own callback runs first, then this one: composing an approver is composing
+        // its callback now, because the id does not exist until the harness has parked the
+        // question (deferral-by-callback spec §1).
+        return ApprovalOutcome.deferred(
+            (id, deadline) -> {
+              park.accept(id, deadline);
+              asks.add(new Ask(id, context.request()));
+            },
+            term);
       }
       return outcome;
     };

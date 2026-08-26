@@ -20,15 +20,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -37,6 +41,9 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /** The §3 matrix, row by row: one test per stated transition, plus every stale row. */
 class AwaitingToolsPhaseTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final ToolCall CALL_A =
       new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
@@ -49,6 +56,16 @@ class AwaitingToolsPhaseTest {
           List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, null)));
   private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
   private static final ComputationId PARKED = ComputationId.of("parked-1");
+
+  /** The first callback a party returns, and the term with it. */
+  private static final ComputationCallback TELL = (id, deadline) -> {};
+
+  private static final Duration TERM = Duration.ofDays(30);
+
+  /** What the SAME party returns when recovery asks it again — a different closure, a new term. */
+  private static final ComputationCallback RETELL = (id, deadline) -> {};
+
+  private static final Duration AGAIN = Duration.ofDays(3);
   private static final ComputationId OTHER = ComputationId.of("parked-other");
   private static final ApprovalRequest REQUEST =
       ApprovalRequest.draft("ops", "prod-1", CALL_A, Map.of(), new ObjectMapper())
@@ -105,11 +122,25 @@ class AwaitingToolsPhaseTest {
   }
 
   @Test
-  void pendingDeferredBecomesAwaitingApproval() {
+  void seeking_approval_takes_a_deferral_request_and_asks_for_the_handoff() {
     var phase =
         awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
-    var t = phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST));
+    var t = phase.handle(new AgentEvent.ApprovalDeferralRequested(CALL_A, REQUEST, TELL, TERM));
+
+    assertThat(t.next())
+        .isEqualTo(
+            awaiting(
+                calls(new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval())));
+    assertThat(t.effects()).containsExactly(new Effect.DeferApproval(CALL_A, REQUEST, TELL, TERM));
+  }
+
+  @Test
+  void deferring_approval_takes_the_park_and_becomes_awaiting_approval() {
+    var phase =
+        awaiting(calls(new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval()));
+
+    var t = phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST, DEADLINE));
 
     assertThat(t.next())
         .isEqualTo(
@@ -241,11 +272,25 @@ class AwaitingToolsPhaseTest {
   }
 
   @Test
-  void runningDeferredBecomesAwaitingResult() {
+  void running_a_tool_takes_a_deferral_request_and_asks_for_the_handoff() {
     var phase =
         awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
-    var t = phase.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED));
+    var t = phase.handle(new AgentEvent.ToolCallDeferralRequested(CALL_A, TELL, TERM));
+
+    assertThat(t.next())
+        .isEqualTo(
+            awaiting(
+                calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval())));
+    assertThat(t.effects()).containsExactly(new Effect.DeferToolCall(CALL_A, TELL, TERM));
+  }
+
+  @Test
+  void deferring_a_result_takes_the_park_and_becomes_awaiting_result() {
+    var phase =
+        awaiting(calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval()));
+
+    var t = phase.handle(new AgentEvent.ToolCallDeferred(CALL_A, PARKED, DEADLINE));
 
     assertThat(t.next())
         .isEqualTo(
@@ -254,6 +299,123 @@ class AwaitingToolsPhaseTest {
                     new ToolCallPhase.AwaitingResult(PARKED),
                     new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).isEmpty();
+  }
+
+  /**
+   * §9a's first mandatory cell, and the reason the {@code Deferring…} states are recoverable at
+   * all.
+   *
+   * <p>Recovery from {@code Deferring…} re-fires the ORIGINATING step, so the party runs again and
+   * returns a NEW deferral — a fresh callback, a fresh term — which folds a SECOND {@code
+   * …DeferralRequested}. That event is naturally admitted only from {@code SeekingApproval} /
+   * {@code RunningTool}. Unless {@code Deferring…} admits it too and replaces itself, the re-ask
+   * can never land: the call sits in {@code Deferring…} forever while every staleness tick re-fires
+   * a step whose answer is then dropped, and the whole suite stays green while it happens.
+   *
+   * <p>What must be true is that the SECOND request wins — its callback and its term are the ones
+   * that reach the handoff — and that no effect is lost on the way.
+   */
+  @Nested
+  class A_deferring_call_that_is_asked_again {
+
+    @Test
+    void replaces_itself_and_emits_a_handoff_for_the_new_callback() {
+      var phase =
+          awaiting(
+              calls(new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval()));
+
+      var t =
+          phase.handle(new AgentEvent.ApprovalDeferralRequested(CALL_A, REQUEST, RETELL, AGAIN));
+
+      assertThat(t.next())
+          .isEqualTo(
+              awaiting(
+                  calls(
+                      new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval())));
+      assertThat(t.effects())
+          .containsExactly(new Effect.DeferApproval(CALL_A, REQUEST, RETELL, AGAIN));
+    }
+
+    @Test
+    void replaces_itself_and_emits_a_handoff_for_the_new_callback_on_the_tool_side() {
+      var phase =
+          awaiting(calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval()));
+
+      var t = phase.handle(new AgentEvent.ToolCallDeferralRequested(CALL_A, RETELL, AGAIN));
+
+      assertThat(t.next())
+          .isEqualTo(
+              awaiting(
+                  calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval())));
+      assertThat(t.effects()).containsExactly(new Effect.DeferToolCall(CALL_A, RETELL, AGAIN));
+    }
+
+    @Test
+    void re_fires_the_originating_step_and_never_its_own_handoff() {
+      var deferringApproval =
+          awaiting(
+              calls(new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval()));
+      var deferringResult =
+          awaiting(calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval()));
+
+      assertThat(deferringApproval.outstanding())
+          .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));
+      assertThat(deferringResult.outstanding())
+          .containsExactly(new Effect.RunTool(CALL_A), new Effect.SeekApproval(CALL_B));
+    }
+  }
+
+  /**
+   * §9a's second mandatory cell, seen from the reducer's end. A handoff whose callback threw is
+   * reported as an ordinary id-less failure — {@code Deferring…} recorded no id, so an id-less
+   * completion is the only shape it could admit — and the call goes terminal rather than sitting in
+   * {@code Deferring…} while the failure is dropped.
+   */
+  @Nested
+  class A_deferring_call_whose_handoff_failed {
+
+    @Test
+    void goes_terminal_rather_than_staying_deferring() {
+      var phase =
+          awaiting(
+              calls(new ToolCallPhase.DeferringApproval(), new ToolCallPhase.SeekingApproval()));
+
+      var t =
+          phase.handle(
+              new AgentEvent.ToolFinished(
+                  CALL_A,
+                  Optional.empty(),
+                  new ToolOutcome.Failed(new ToolError("deferral handoff failed: boom"))));
+
+      assertThat(t.next())
+          .isEqualTo(
+              awaiting(
+                  calls(
+                      new ToolCallPhase.Failed(
+                          new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                      new ToolCallPhase.SeekingApproval())));
+    }
+
+    @Test
+    void goes_terminal_rather_than_staying_deferring_on_the_tool_side() {
+      var phase =
+          awaiting(calls(new ToolCallPhase.DeferringResult(), new ToolCallPhase.SeekingApproval()));
+
+      var t =
+          phase.handle(
+              new AgentEvent.ToolFinished(
+                  CALL_A,
+                  Optional.empty(),
+                  new ToolOutcome.Failed(new ToolError("deferral handoff failed: boom"))));
+
+      assertThat(t.next())
+          .isEqualTo(
+              awaiting(
+                  calls(
+                      new ToolCallPhase.Failed(
+                          new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                      new ToolCallPhase.SeekingApproval())));
+    }
   }
 
   /**
@@ -316,8 +478,12 @@ class AwaitingToolsPhaseTest {
     assertThat(phase.handle(returned(CALL_A, Optional.empty(), "again")).isDropped()).isTrue();
     assertThat(phase.handle(answered(CALL_A, Optional.empty(), Approval.approved())).isDropped())
         .isTrue();
-    assertThat(phase.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED)).isDropped()).isTrue();
-    assertThat(phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST)).isDropped())
+    assertThat(phase.handle(new AgentEvent.ToolCallDeferred(CALL_A, PARKED, DEADLINE)).isDropped())
+        .isTrue();
+    assertThat(
+            phase
+                .handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST, DEADLINE))
+                .isDropped())
         .isTrue();
   }
 

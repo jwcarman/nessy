@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,9 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.authorization.Key;
 
 class StateCodecTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final ObjectMapper PINNED = Codecs.copyAndPin(new ObjectMapper());
   private static final StateCodec CODEC = new StateCodec(PINNED);
@@ -59,6 +63,12 @@ class StateCodecTest {
       new ToolCall("f", "revoke", JsonNodeFactory.instance.objectNode());
   private static final ToolCall CALL_G =
       new ToolCall("g", "purge", JsonNodeFactory.instance.objectNode());
+
+  private static final ToolCall CALL_H =
+      new ToolCall("h", "notify", JsonNodeFactory.instance.objectNode());
+
+  private static final ToolCall CALL_I =
+      new ToolCall("i", "reindex", JsonNodeFactory.instance.objectNode());
 
   private static Message turnOf(ToolCall... calls) {
     List<ContentBlock> blocks = new ArrayList<>();
@@ -92,15 +102,25 @@ class StateCodecTest {
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
+    /**
+     * The {@code Deferring…} states round-trip because they carry NOTHING (James, 2026-08-26): the
+     * callback cannot be written to state and the term need not be, since a re-ask after a restart
+     * produces a fresh one of each. What survives is the variant itself, which is the whole of the
+     * recoverable fact — "this call is mid-handoff, re-fire its originating step".
+     */
     @Test
     void everyToolCallPhaseRoundTripsIncludingTheParkedRequest() {
-      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G);
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G, CALL_H, CALL_I);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
                   new ToolCallPhase.SeekingApproval(),
+                  "h",
+                  new ToolCallPhase.DeferringApproval(),
+                  "i",
+                  new ToolCallPhase.DeferringResult(),
                   "b",
                   new ToolCallPhase.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
@@ -156,13 +176,17 @@ class StateCodecTest {
 
     @Test
     void everyToolCallPhaseCarriesItsOwnTypeDiscriminatorOnTheWire() {
-      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G);
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G, CALL_H, CALL_I);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
                   new ToolCallPhase.SeekingApproval(),
+                  "h",
+                  new ToolCallPhase.DeferringApproval(),
+                  "i",
+                  new ToolCallPhase.DeferringResult(),
                   "b",
                   new ToolCallPhase.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
@@ -182,8 +206,10 @@ class StateCodecTest {
       assertThat(json)
           .contains("\"type\":\"awaiting-tools\"")
           .contains("\"type\":\"seeking-approval\"")
+          .contains("\"type\":\"deferring-approval\"")
           .contains("\"type\":\"awaiting-approval\"")
           .contains("\"type\":\"running-tool\"")
+          .contains("\"type\":\"deferring-result\"")
           .contains("\"type\":\"awaiting-result\"")
           .contains("\"type\":\"completed\"")
           .contains("\"type\":\"denied\"")

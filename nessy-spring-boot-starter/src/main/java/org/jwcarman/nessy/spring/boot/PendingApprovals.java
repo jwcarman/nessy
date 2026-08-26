@@ -157,11 +157,11 @@ public class PendingApprovals implements HarnessObserver {
    * <p>This was worth being explicit about because the page presents {@code parked_at} as a dwell
    * time, and a dwell measured from the wrong clock is a number that quietly means something else.
    * The honest position: <b>nothing in the fact carries a time.</b> {@code AgentEvent}'s two
-   * approval variants carry the call, the computation id and the request; {@code AgentTransition}
-   * carries the next phase, the messages to commit and the effects to fire; {@code
-   * ToolCallPhase.AwaitingApproval} carries the computation id and the request. There is no
-   * timestamp on any of them to prefer over this one, so this is the best available reading and the
-   * javadoc says so rather than implying the fact was consulted.
+   * approval variants carry the call, the computation id, the request and — since
+   * deferral-by-callback — the agreed DEADLINE. A deadline is not a parking time: it says when the
+   * question stops being answerable, not when it was asked. There is still no timestamp on any fact
+   * saying when the park happened, so this is the best available reading and the javadoc says so
+   * rather than implying the fact was consulted.
    *
    * <p>How wrong it can be: as wrong as the gap between the fold committing and this observer
    * running. On a healthy box that is milliseconds. After a backlog, a slow database or a
@@ -185,13 +185,17 @@ public class PendingApprovals implements HarnessObserver {
   @Override
   public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     switch (event) {
-      case AgentEvent.ApprovalDeferred(var call, var approval, var request) ->
+      case AgentEvent.ApprovalDeferred(var call, var approval, var request, var _) ->
           parked(approval.value(), request, call.id());
       case AgentEvent.ApprovalAnswered(var call, var approval, var answer) ->
           approval.ifPresent(computation -> answered(computation.value(), answer));
       case AgentEvent.Observed _ -> noProjection();
       case AgentEvent.ModelFinished _ -> noProjection();
-      case AgentEvent.ToolDeferred _ -> noProjection();
+      // Asked for, not yet parked: no id exists to key a row on (deferral-by-callback spec §9a),
+      // and the ApprovalDeferred that follows is the fact this page is about.
+      case AgentEvent.ApprovalDeferralRequested _ -> noProjection();
+      case AgentEvent.ToolCallDeferralRequested _ -> noProjection();
+      case AgentEvent.ToolCallDeferred _ -> noProjection();
       case AgentEvent.ToolFinished _ -> noProjection();
     }
   }

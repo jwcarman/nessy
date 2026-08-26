@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.tck.TestObservationRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -49,6 +50,9 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
  * with, so one filter reads the execution and the dwell it opened.
  */
 class ToolOutcomeOnTheSpanTest {
+
+  /** Any term: nothing in these tests clips it. */
+  private static final Duration TERM = Duration.ofDays(1);
 
   private static final AgentId SCOPE = AgentId.of("prod-eu");
   private static final String OUTCOME = "nessy.tool.outcome";
@@ -197,8 +201,7 @@ class ToolOutcomeOnTheSpanTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      context.defer();
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> {}, TERM);
     }
   }
 }

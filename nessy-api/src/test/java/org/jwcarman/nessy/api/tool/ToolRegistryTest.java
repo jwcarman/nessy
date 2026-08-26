@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -99,7 +100,7 @@ class ToolRegistryTest {
 
     @Override
     public Awaited<ToolResult> execute(Named input, ToolContext context) {
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> {}, Duration.ofMinutes(1));
     }
 
     @Override

@@ -62,11 +62,6 @@ class RecordingApproverTest {
         .containsExactly("first", "second");
   }
 
-  /** Never defers — this file's delegates always answer from a script. */
-  private record AnsweringContext(ApprovalRequest request) implements ApprovalContext {
-    @Override
-    public ApprovalOutcome defer() {
-      throw new IllegalStateException("this fixture never defers");
-    }
-  }
+  /** The whole of a context now: the frozen question, and nothing to call. */
+  private record AnsweringContext(ApprovalRequest request) implements ApprovalContext {}
 }

@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.agent.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +29,7 @@ import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
@@ -39,6 +42,12 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
  * {@link #executed()} records {@code runTool} calls only.
  */
 public final class ScriptedToolExecutor implements ToolCallExecutor {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
+
+  /** Any term: the scripted handoff below never clips it. */
+  private static final Duration TERM = Duration.ofDays(7);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -69,17 +78,52 @@ public final class ScriptedToolExecutor implements ToolCallExecutor {
 
   @Override
   public void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink) {
-    ComputationId parked = deferrals.get(call.id());
-    if (parked != null) {
-      ApprovalRequest request =
-          ApprovalRequest.draft("scripted", "scripted", call, Map.of(), MAPPER).freeze();
-      pump.execute(() -> sink.deliver(new AgentEvent.ApprovalDeferred(call, parked, request)));
+    if (deferrals.containsKey(call.id())) {
+      // The ask only ASKS now (deferral-by-callback spec §9a): no id is minted here, because the
+      // scripted one is minted by the handoff door below, exactly as Continuum would mint the real
+      // one there.
+      pump.execute(
+          () ->
+              sink.deliver(
+                  new AgentEvent.ApprovalDeferralRequested(
+                      call, requestFor(call), (id, deadline) -> {}, TERM)));
       return;
     }
     String denied = denials.get(call.id());
     Approval answer = denied == null ? Approval.approved() : Approval.denied(denied);
     pump.execute(
         () -> sink.deliver(new AgentEvent.ApprovalAnswered(call, Optional.empty(), answer)));
+  }
+
+  @Override
+  public void deferApproval(
+      ToolCall call,
+      ApprovalRequest request,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
+    ComputationId parked = deferrals.get(call.id());
+    if (parked == null) {
+      throw new IllegalStateException("no scripted deferral for call " + call.id());
+    }
+    callback.accept(parked, DEADLINE);
+    pump.execute(
+        () -> sink.deliver(new AgentEvent.ApprovalDeferred(call, parked, request, DEADLINE)));
+  }
+
+  @Override
+  public void deferToolCall(
+      ToolCall call,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
+    throw new IllegalStateException("this executor scripts no tool deferrals");
+  }
+
+  private static ApprovalRequest requestFor(ToolCall call) {
+    return ApprovalRequest.draft("scripted", "scripted", call, Map.of(), MAPPER).freeze();
   }
 
   @Override

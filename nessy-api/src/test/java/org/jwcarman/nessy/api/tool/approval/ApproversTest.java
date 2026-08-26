@@ -20,12 +20,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ApproversTest {
@@ -42,25 +42,12 @@ class ApproversTest {
         .freeze();
   }
 
-  /** A context whose defer() parks nothing durable — it just mints an id and counts. */
-  static final class FakeContext implements ApprovalContext {
-    final AtomicInteger defers = new AtomicInteger();
-    private final ApprovalRequest request = request();
-    private ApprovalOutcome deferred;
+  /** The whole of a context now: the frozen question, and nothing to call. */
+  record FakeContext(ApprovalRequest request) implements ApprovalContext {}
 
-    @Override
-    public ApprovalRequest request() {
-      return request;
-    }
-
-    @Override
-    public ApprovalOutcome defer() {
-      if (deferred == null) {
-        defers.incrementAndGet();
-        deferred = new ApprovalOutcome.Deferred(ComputationId.of("fake-" + defers.get()));
-      }
-      return deferred;
-    }
+  /** The context every test in this file hands an approver. */
+  static FakeContext fakeContext() {
+    return new FakeContext(request());
   }
 
   @Nested
@@ -68,24 +55,37 @@ class ApproversTest {
 
     @Test
     void allowAnswersApprovedWithoutReadingTheRequest() {
-      assertThat(Approvers.allow().approve(new FakeContext()))
+      assertThat(Approvers.allow().approve(fakeContext()))
           .isEqualTo(new ApprovalOutcome.Answered(APPROVED));
     }
 
     @Test
     void denyAnswersDeniedWithTheReason() {
-      assertThat(Approvers.deny("nope").approve(new FakeContext()))
+      assertThat(Approvers.deny("nope").approve(fakeContext()))
           .isEqualTo(new ApprovalOutcome.Answered(new Approval.Denied("nope", Optional.empty())));
     }
 
     @Test
-    void deferParksThroughTheContext() {
-      var context = new FakeContext();
+    void defer_returns_a_deferral_carrying_a_callback_and_a_term() {
+      ApprovalOutcome outcome = Approvers.defer().approve(fakeContext());
 
-      ApprovalOutcome outcome = Approvers.defer().approve(context);
+      assertThat(outcome)
+          .isInstanceOfSatisfying(
+              ApprovalOutcome.Deferred.class,
+              deferred -> {
+                assertThat(deferred.callback()).isNotNull();
+                assertThat(deferred.term()).isPositive();
+              });
+    }
 
-      assertThat(outcome).isInstanceOf(ApprovalOutcome.Deferred.class);
-      assertThat(context.defers).hasValue(1);
+    @Test
+    void defer_takes_the_term_an_approver_names() {
+      ApprovalOutcome outcome = Approvers.defer(Duration.ofHours(3)).approve(fakeContext());
+
+      assertThat(outcome)
+          .isInstanceOfSatisfying(
+              ApprovalOutcome.Deferred.class,
+              deferred -> assertThat(deferred.term()).isEqualTo(Duration.ofHours(3)));
     }
 
     @Test
@@ -109,7 +109,7 @@ class ApproversTest {
     void everyMemberApprovingApproves() {
       Approver gate = Approvers.allOf(Approvers.allow(), Approvers.allow());
 
-      assertThat(gate.approve(new FakeContext())).isEqualTo(new ApprovalOutcome.Answered(APPROVED));
+      assertThat(gate.approve(fakeContext())).isEqualTo(new ApprovalOutcome.Answered(APPROVED));
     }
 
     @Test
@@ -122,7 +122,7 @@ class ApproversTest {
           };
       Approver gate = Approvers.allOf(Approvers.deny("first"), counting);
 
-      ApprovalOutcome outcome = gate.approve(new FakeContext());
+      ApprovalOutcome outcome = gate.approve(fakeContext());
 
       assertThat(outcome)
           .isEqualTo(new ApprovalOutcome.Answered(new Approval.Denied("first", Optional.empty())));
@@ -132,12 +132,11 @@ class ApproversTest {
     @Test
     void aMemberThatDefersIsAProgrammingError() {
       Approver gate = Approvers.allOf(Approvers.allow(), Approvers.defer());
-      var context = new FakeContext();
+      var context = fakeContext();
 
       assertThatThrownBy(() -> gate.approve(context))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("allOf");
-      assertThat(context.defers).hasValue(0);
     }
 
     @Test

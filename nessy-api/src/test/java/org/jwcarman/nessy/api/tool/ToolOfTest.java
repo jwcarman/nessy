@@ -33,27 +33,14 @@ class ToolOfTest {
 
   record Widget3D(String label) {}
 
-  /** The plain test double: no computation behind it, so {@code defer()} refuses. */
-  private record TestContext(ToolCall call, ToolEventListener events) implements ToolContext {
-    @Override
-    public ComputationId invocation() {
-      return ComputationId.of("execution-id");
-    }
+  /** What a deferring tool in this file asks for; nothing here reads it back but the assertions. */
+  private static final Duration TERM = Duration.ofMinutes(5);
 
-    @Override
-    public void progress(String message) {
-      events.on(new ToolEvent.Progress(message));
-    }
-
-    @Override
-    public ComputationId defer() {
-      throw new UnsupportedOperationException("this test never defers");
-    }
-  }
+  private static final ComputationCallback TELL_NOBODY = (id, deadline) -> {};
 
   private static ToolContext contextFor(ToolEventListener listener) {
     ToolCall call = new ToolCall("c1", "create-account", JsonNodeFactory.instance.objectNode());
-    return new TestContext(call, listener);
+    return new ToolContext(call, listener, ComputationId.of("execution-id"));
   }
 
   private static ToolContext noopContext() {
@@ -248,11 +235,15 @@ class ToolOfTest {
               CreateAccount.class,
               t ->
                   t.description("Create a new bank account.")
-                      .defers((cmd, ctx) -> starterSaw.add(cmd.name() + ":" + ctx.call().id())));
+                      .defers(
+                          (cmd, ctx) -> {
+                            starterSaw.add(cmd.name() + ":" + ctx.call().id());
+                            return new Awaited.Deferred<>(TELL_NOBODY, TERM);
+                          }));
 
       Awaited<ToolResult> result = tool.execute(new CreateAccount("ann"), noopContext());
 
-      assertThat(result).isInstanceOf(Awaited.Deferred.class);
+      assertThat(result).isEqualTo(new Awaited.Deferred<ToolResult>(TELL_NOBODY, TERM));
       assertThat(starterSaw).containsExactly("ann:c1");
     }
 
@@ -261,7 +252,9 @@ class ToolOfTest {
       Tool<CreateAccount> tool =
           Tool.of(
               CreateAccount.class,
-              t -> t.description("Create a new bank account.").defers((cmd, ctx) -> {}));
+              t ->
+                  t.description("Create a new bank account.")
+                      .defers((cmd, ctx) -> new Awaited.Deferred<>(TELL_NOBODY, TERM)));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.DURABLE);
     }
@@ -273,7 +266,7 @@ class ToolOfTest {
               CreateAccount.class,
               t ->
                   t.description("Create a new bank account.")
-                      .defers((cmd, ctx) -> {})
+                      .defers((cmd, ctx) -> new Awaited.Deferred<>(TELL_NOBODY, TERM))
                       .requires(CompletionPolicy.AWAITABLE));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.AWAITABLE);
@@ -287,36 +280,9 @@ class ToolOfTest {
               t ->
                   t.description("Create a new bank account.")
                       .requires(CompletionPolicy.AWAITABLE)
-                      .defers((cmd, ctx) -> {}));
+                      .defers((cmd, ctx) -> new Awaited.Deferred<>(TELL_NOBODY, TERM)));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.AWAITABLE);
-    }
-  }
-
-  @Nested
-  class Deadline {
-
-    @Test
-    void a_tool_defaults_to_no_timeout() {
-      Tool<CreateAccount> tool =
-          Tool.of(
-              CreateAccount.class,
-              t -> t.description("Create a new bank account.").executes(cmd -> "ok"));
-
-      assertThat(tool.timeout()).isEmpty();
-    }
-
-    @Test
-    void a_declared_timeout_is_carried_on_the_built_tool() {
-      Tool<CreateAccount> tool =
-          Tool.of(
-              CreateAccount.class,
-              t ->
-                  t.description("Create a new bank account.")
-                      .timeout(Duration.ofMinutes(5))
-                      .executes(cmd -> "ok"));
-
-      assertThat(tool.timeout()).contains(Duration.ofMinutes(5));
     }
   }
 

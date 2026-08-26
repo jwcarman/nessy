@@ -21,6 +21,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -53,6 +55,9 @@ import org.jwcarman.nessy.testing.ScriptedModel;
  * {@code quit} exits.
  */
 public final class Approvals {
+
+  /** How long this demo's questions stand — clipped by the harness's own approval ceiling. */
+  private static final Duration DEMO_TERM = Duration.ofDays(7);
 
   private static final String SYSTEM_PROMPT = "You are a terse operations assistant.";
   private static final String SCOPE_ID = "ops";
@@ -172,24 +177,30 @@ public final class Approvals {
   }
 
   /**
-   * The demo's approver: it parks the question, then tells the demo — telling people is the
-   * approver's job (approval-lifecycle spec §1.3), so the queue lives behind the approver rather
-   * than behind a harness-level notifier.
+   * The demo's approver: it says how to tell the demo, and the harness runs that once the question
+   * has a computation to answer on (deferral-by-callback spec §1). Telling people is still the
+   * approver's job — the queue lives behind the approver, not behind a harness-level notifier — but
+   * the approver no longer has to park anything itself to do it.
    */
   private static Approver parking(BlockingQueue<ComputationId> queue) {
-    return context -> {
-      ApprovalOutcome outcome = context.defer();
-      ComputationId id = ((ApprovalOutcome.Deferred) outcome).id();
-      printRequest(context.request(), id);
-      queue.add(id);
-      return outcome;
-    };
+    return context ->
+        ApprovalOutcome.deferred(
+            (id, deadline) -> {
+              printRequest(context.request(), id, deadline);
+              queue.add(id);
+            },
+            DEMO_TERM);
   }
 
-  /** Prints the parked question (computation id + rendered action). */
-  private static void printRequest(ApprovalRequest request, ComputationId id) {
+  /** Prints the parked question (computation id, rendered action, and when it stops standing). */
+  private static void printRequest(ApprovalRequest request, ComputationId id, Instant deadline) {
     System.out.println(
-        "approval requested: computation=" + id.value() + " action=" + request.action());
+        "approval requested: computation="
+            + id.value()
+            + " action="
+            + request.action()
+            + " answerable-until="
+            + deadline);
   }
 
   private static ScriptedModel scriptedModel() {

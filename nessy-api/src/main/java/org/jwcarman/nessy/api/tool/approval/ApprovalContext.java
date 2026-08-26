@@ -16,17 +16,14 @@
 package org.jwcarman.nessy.api.tool.approval;
 
 /**
- * What an approver learns about the invocation it is serving, plus what it can do with it — the
- * mirror of {@code ToolContext} (spec §1.3). {@link #defer()} does the plumbing: it parks the
- * question, records the fact in the scope, waits for that record to commit, and only then hands
- * back the id. By the time an approver can tell anyone, the phase already names the ask.
- * Idempotent: a second call returns the same outcome.
+ * What an approver learns about the invocation it is serving — the mirror of {@code ToolContext}
+ * (spec §1.3), collapsed to one accessor by the deferral-by-callback reform (spec §7): parking is a
+ * returned {@link ApprovalOutcome.Deferred} now, so the context has no plumbing left to expose and
+ * reaches Continuum not at all.
  */
+@FunctionalInterface
 public interface ApprovalContext {
 
   /** The question, enriched and frozen. */
   ApprovalRequest request();
-
-  /** "I'll get back to you": the outcome to return, carrying the parked computation's id. */
-  ApprovalOutcome defer();
 }

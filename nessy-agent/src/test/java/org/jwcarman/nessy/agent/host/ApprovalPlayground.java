@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.host;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.jwcarman.nessy.agent.AgentId;
@@ -84,12 +85,13 @@ public final class ApprovalPlayground {
     var settings = new ModelSettings(1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ComputationId>();
     Approver queueing =
-        context -> {
-          ApprovalOutcome outcome = context.defer();
-          System.out.println("  [parked] " + context.request().action());
-          pending.add(((ApprovalOutcome.Deferred) outcome).id());
-          return outcome;
-        };
+        context ->
+            ApprovalOutcome.deferred(
+                (id, deadline) -> {
+                  System.out.println("  [parked] " + context.request().action());
+                  pending.add(id);
+                },
+                Duration.ofDays(7));
     var harness =
         Nessy.harness(
             h ->

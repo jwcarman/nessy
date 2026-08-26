@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +60,9 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * unrelated scope's own tool invocation from starting.
  */
 class PumpsAreNeverStarvedTest {
+
+  /** Any term: nothing in these tests clips it. */
+  private static final Duration TERM = Duration.ofDays(1);
 
   record NoInput() {}
 
@@ -148,8 +152,7 @@ class PumpsAreNeverStarvedTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      context.defer();
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> {}, TERM);
     }
   }
 

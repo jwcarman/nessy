@@ -393,7 +393,7 @@ class ReadOnlyToolsTest {
       String gate = gateOf("longJob");
       Tool<LongJob.Job> tool = LongJob.tool(runner, (id, result) -> {}, Runnable::run);
 
-      tool.execute(new LongJob.Job(), new FakeContext());
+      FakeContext.handOff(tool.execute(new LongJob.Job(), FakeContext.toolContext()));
 
       assertThat(runner.onlyAsked().getFirst()).isEqualTo(gate);
       assertThat(Detect.COMMANDS).contains(gate);

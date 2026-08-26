@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +34,9 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class IdlePhaseTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   @Test
   void anObservationCommitsTheUserMessageAndCallsTheModel() {
@@ -67,7 +71,7 @@ class IdlePhaseTest {
 
     assertThat(
             new AgentPhase.Idle()
-                .handle(new AgentEvent.ApprovalDeferred(call, parked, request))
+                .handle(new AgentEvent.ApprovalDeferred(call, parked, request, DEADLINE))
                 .isDropped())
         .isTrue();
     assertThat(
@@ -76,7 +80,10 @@ class IdlePhaseTest {
                     new AgentEvent.ApprovalAnswered(call, Optional.empty(), Approval.approved()))
                 .isDropped())
         .isTrue();
-    assertThat(new AgentPhase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isDropped())
+    assertThat(
+            new AgentPhase.Idle()
+                .handle(new AgentEvent.ToolCallDeferred(call, parked, DEADLINE))
+                .isDropped())
         .isTrue();
   }
 }

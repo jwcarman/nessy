@@ -15,34 +15,38 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.util.Objects;
+
 /**
- * What a tool learns about the invocation it is serving, plus what it can do with it — the mirror
- * of {@code ApprovalContext} (tool-context-defer spec §1.1). {@link #defer()} does the plumbing: it
- * creates the durable computation, records the wait in the scope, waits for that record to commit,
- * and only then hands back the id. By the time a tool can give the id to anyone, the phase already
- * names the wait.
+ * What a tool learns about the invocation it is serving — a RECORD again (deferral-by-callback spec
+ * §7). {@code defer()} is gone: a tool that means to wait returns {@link
+ * org.jwcarman.nessy.api.Awaited.Deferred} carrying a {@link ComputationCallback} and a term, and
+ * the plumbing creates the computation after the fold. Nothing here reaches Continuum, so there is
+ * nothing left for an interface to hide.
+ *
+ * @param call the call being served
+ * @param events where {@link ToolEvent}s a tool narrates are heard
+ * @param invocation this execution's opaque, stable idempotency key (computation-identity spec §4
+ *     addendum): the execution {@link ComputationId} — stable across every redispatch and replay, a
+ *     tool wants this for logging, correlation, or deduplicating an external effect under
+ *     at-least-once redelivery. Carries no extractable structure (spec §1) — a tool reads it as an
+ *     opaque token, never parses it. NOT the computation a deferral parks under: that one does not
+ *     exist yet when a tool runs, which is the whole point of the callback.
  */
-public interface ToolContext {
+public record ToolContext(ToolCall call, ToolEventListener events, ComputationId invocation) {
 
-  /** The call being served. */
-  ToolCall call();
-
-  /**
-   * This execution's opaque, stable idempotency key — deterministic from the call's coordinates,
-   * identical across every redispatch and replay. NOT the computation id: a tool deduplicates an
-   * external side effect under this, and hands out the id {@link #defer()} returns as the callback
-   * address.
-   */
-  ComputationId invocation();
-
-  /** Reports progress from inside a long-running tool ({@link ToolEvent.Progress}). */
-  void progress(String message);
+  public ToolContext {
+    Objects.requireNonNull(call, "call must not be null");
+    Objects.requireNonNull(events, "events must not be null");
+    Objects.requireNonNull(invocation, "invocation must not be null");
+  }
 
   /**
-   * "The answer arrives later": creates this call's durable computation with the tool's declared
-   * timeout as its deadline, folds {@code ToolDeferred}, commits, and returns the computation's id.
-   * Idempotent: a second call returns the same id and creates nothing. Throws if the wait could not
-   * be recorded — nothing was parked, and the tool should let the exception propagate.
+   * Reports progress from inside a long-running tool. {@link ToolEvent.Progress} carries only
+   * {@code message} — no call or provider id travels with it, so a tool reporting progress has
+   * nothing to distrust because there is nothing untrusted to carry (spec §2).
    */
-  ComputationId defer();
+  public void progress(String message) {
+    events.on(new ToolEvent.Progress(message));
+  }
 }

@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 /**
@@ -139,7 +140,7 @@ class ApprovalSeekSpanTest {
 
     @Test
     void an_approver_that_defers_yields_deferred() {
-      turnGatedBy(context -> context.defer());
+      turnGatedBy(Approvers.defer());
 
       assertThat(only(SEEK).getLowCardinalityKeyValue(OUTCOME).getValue()).isEqualTo("deferred");
     }

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +37,9 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class AwaitingModelPhaseTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final ToolCall CALL_A =
       new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
@@ -114,7 +118,7 @@ class AwaitingModelPhaseTest {
 
     assertThat(
             new AgentPhase.AwaitingModel()
-                .handle(new AgentEvent.ApprovalDeferred(CALL_A, parked, request))
+                .handle(new AgentEvent.ApprovalDeferred(CALL_A, parked, request, DEADLINE))
                 .isDropped())
         .isTrue();
     assertThat(
@@ -125,7 +129,7 @@ class AwaitingModelPhaseTest {
         .isTrue();
     assertThat(
             new AgentPhase.AwaitingModel()
-                .handle(new AgentEvent.ToolDeferred(CALL_A, parked))
+                .handle(new AgentEvent.ToolCallDeferred(CALL_A, parked, DEADLINE))
                 .isDropped())
         .isTrue();
   }

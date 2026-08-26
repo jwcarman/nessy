@@ -22,6 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,6 +42,8 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.authorization.Key;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -52,6 +56,12 @@ import org.jwcarman.nessy.testing.ScriptedApprover;
  * coordinates resolved through the scope's phase — which is the map.
  */
 class ApprovalDeskTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  /** Any term: this test never clips it. */
+  private static final Duration TERM = Duration.ofDays(7);
+
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -243,9 +253,8 @@ class ApprovalDeskTest {
   }
 
   /**
-   * Seeds the scope with {@code c1} freshly {@link ToolCallPhase.SeekingApproval} — {@code
-   * defer()}'s precondition ({@link AgentPhase.AwaitingTools#handle} only admits {@code
-   * ApprovalDeferred} from {@code Pending}).
+   * Seeds the scope with {@code c1} freshly {@link ToolCallPhase.SeekingApproval} — the state that
+   * admits {@code ApprovalDeferralRequested}, which is where every deferral starts.
    */
   private static void seedPending(AgentPhaseStore store) {
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL, null)));
@@ -254,19 +263,24 @@ class ApprovalDeskTest {
     store.save(new Versioned<>(phase, store.load().version()));
   }
 
+  /** The whole of an approval context now (deferral-by-callback spec §7). */
+  private record Question(ApprovalRequest request) implements ApprovalContext {}
+
   @Test
   void theByCoordinatesDoorShowsExactlyWhatTheApproverSaw() {
     ApprovalRequest question = request();
     ScriptedApprover approver = ScriptedApprover.deferring();
     AgentPhaseStore store = storeFor(SCOPE.value());
     seedPending(store);
-    ComputationApprovalContext context =
-        new ComputationApprovalContext(client, routing(), question, event -> fold(store, event));
 
-    // defer() folds ApprovalDeferred synchronously, on this thread, before returning — by the
-    // time approve() returns, the store already holds the request the approver was handed.
-    approver.approve(context);
+    ApprovalOutcome outcome = approver.approve(new Question(question));
+    // The two facts a deferral folds (spec §9a): the ask, then the park the handoff produced.
+    fold(store, new AgentEvent.ApprovalDeferralRequested(CALL, question, (id, at) -> {}, TERM));
+    fold(
+        store,
+        new AgentEvent.ApprovalDeferred(CALL, ComputationId.of("approval-1"), question, DEADLINE));
 
+    assertThat(outcome).isInstanceOf(ApprovalOutcome.Deferred.class);
     assertThat(desk.request(SCOPE, "c1")).isEqualTo(approver.requests().getFirst());
   }
 }

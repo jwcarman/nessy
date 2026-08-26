@@ -132,10 +132,10 @@ public final class DefaultAgent<O> implements Agent<O> {
    * ignored (§3.4).
    *
    * <p>A fold that cannot commit narrates {@link HarnessObserver#applyFailed} and then
-   * <b>rethrows</b> (tool-context-defer spec §3). What the rethrow buys is the caller that must
-   * know: {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()}
-   * promise that an id they hand back is an id the scope names, and only a throw can keep that
-   * promise honest. A DROPPED event is not a failure: this returns normally, as it always has.
+   * <b>rethrows</b>. Nothing outside now depends on that rethrow to stay honest — no door hands out
+   * an id any more (deferral-by-callback spec §7) — but it stays: a caller that drove this fold
+   * synchronously should learn that nothing was written. A DROPPED event is not a failure: this
+   * returns normally, as it always has.
    *
    * <p><b>Only the commit is guarded.</b> {@link #commit} covers handle → remember → save; the
    * transition's effects are dispatched afterwards, by {@link #follow}, OUTSIDE the catch. That
@@ -205,7 +205,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     facts().applied(binding.id(), event, committed.get());
     // The fold IS the park (approval-lifecycle spec §1.3): by the time this commits, the phase
     // names the ask, so whoever is waiting on this turn can be told about it.
-    if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request)) {
+    if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request, var _)) {
       harness.parked(binding.id(), new TurnOutcome.Parked(approval, request));
     }
     return committed;
@@ -257,10 +257,12 @@ public final class DefaultAgent<O> implements Agent<O> {
       case AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _)) ->
           ToolFoldRemembrance.rememberDenial(
               memory, harness.type(), binding.id(), priorPhase, call, reason, t);
-      case AgentEvent.ApprovalDeferred _,
+      case AgentEvent.ApprovalDeferralRequested _,
+          AgentEvent.ApprovalDeferred _,
           AgentEvent.ApprovalAnswered _,
-          AgentEvent.ToolDeferred _ -> {
-        // an approval, a park: no message committed, nothing to remember
+          AgentEvent.ToolCallDeferralRequested _,
+          AgentEvent.ToolCallDeferred _ -> {
+        // an approval, a deferral asked for, a park: no message committed, nothing to remember
       }
     }
   }
@@ -343,6 +345,10 @@ public final class DefaultAgent<O> implements Agent<O> {
       case Effect.SeekApproval(var call) ->
           tools.seekApproval(call, responseIdOf(phase), this::deliver);
       case Effect.RunTool(var call) -> tools.runTool(call, responseIdOf(phase), this::deliver);
+      case Effect.DeferApproval(var call, var request, var callback, var term) ->
+          tools.deferApproval(call, request, callback, term, responseIdOf(phase), this::deliver);
+      case Effect.DeferToolCall(var call, var callback, var term) ->
+          tools.deferToolCall(call, callback, term, responseIdOf(phase), this::deliver);
     }
   }
 

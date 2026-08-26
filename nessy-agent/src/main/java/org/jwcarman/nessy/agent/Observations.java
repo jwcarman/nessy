@@ -308,11 +308,12 @@ final class Observations implements HarnessObserver {
   public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     openSegmentIfAbsent(id);
     switch (event) {
-      case AgentEvent.ApprovalDeferred(ToolCall call, var _, var _) ->
+      case AgentEvent.ApprovalDeferred(ToolCall call, var _, var _, var _) ->
           openWait(id, APPROVAL_WAIT, call);
       case AgentEvent.ApprovalAnswered(ToolCall call, var _, Approval answer) ->
           closeWait(id, call, NESSY_APPROVAL_ANSWER, answerOf(answer));
-      case AgentEvent.ToolDeferred(ToolCall call, var _) -> openWait(id, TOOL_WAIT, call);
+      case AgentEvent.ToolCallDeferred(ToolCall call, var _, var _) ->
+          openWait(id, TOOL_WAIT, call);
       case AgentEvent.ToolFinished(ToolCall call, var computation, ToolOutcome outcome) -> {
         // Only a DELIVERED result closes a wait: a call the door never deferred ran to completion
         // in-band and never opened one.
@@ -320,8 +321,13 @@ final class Observations implements HarnessObserver {
           closeWait(id, call, NESSY_TOOL_OUTCOME, outcomeOf(outcome));
         }
       }
-      case AgentEvent.Observed _, AgentEvent.ModelFinished _ -> {
-        // Neither opens nor closes a wait; both are ordinary segment traffic.
+      case AgentEvent.Observed _,
+          AgentEvent.ModelFinished _,
+          // A deferral REQUESTED opens no wait: nothing has been created and nobody has been told,
+          // so there is no dwell yet — the wait opens when the park itself folds (spec §9a).
+          AgentEvent.ApprovalDeferralRequested _,
+          AgentEvent.ToolCallDeferralRequested _ -> {
+        // None of these opens or closes a wait; all are ordinary segment traffic.
       }
     }
     closeSegmentIfEnded(id, event, transition);
@@ -624,7 +630,13 @@ final class Observations implements HarnessObserver {
 
   private static boolean isInFlight(ToolCallPhase status) {
     return switch (status) {
-      case ToolCallPhase.SeekingApproval _, ToolCallPhase.RunningTool _ -> true;
+      // Deferring… is in flight like the two it sits between: the handoff effect is running in
+      // THIS process, and nothing outside holds the work until it folds its park.
+      case ToolCallPhase.SeekingApproval _,
+          ToolCallPhase.DeferringApproval _,
+          ToolCallPhase.RunningTool _,
+          ToolCallPhase.DeferringResult _ ->
+          true;
       case ToolCallPhase.AwaitingApproval _,
           ToolCallPhase.AwaitingResult _,
           ToolCallPhase.Completed _,
@@ -721,8 +733,10 @@ final class Observations implements HarnessObserver {
       case AgentEvent.ToolFinished(var _, var tool, var _) -> tool.isPresent();
       case AgentEvent.Observed _,
           AgentEvent.ModelFinished _,
+          AgentEvent.ApprovalDeferralRequested _,
           AgentEvent.ApprovalDeferred _,
-          AgentEvent.ToolDeferred _ ->
+          AgentEvent.ToolCallDeferralRequested _,
+          AgentEvent.ToolCallDeferred _ ->
           false;
     };
   }

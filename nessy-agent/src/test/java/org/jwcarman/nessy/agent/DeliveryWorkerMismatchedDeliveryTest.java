@@ -78,6 +78,9 @@ import org.slf4j.LoggerFactory;
  */
 class DeliveryWorkerMismatchedDeliveryTest {
 
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
+
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
   private static final Duration PAST_THE_BACKOFF = Duration.ofSeconds(6);

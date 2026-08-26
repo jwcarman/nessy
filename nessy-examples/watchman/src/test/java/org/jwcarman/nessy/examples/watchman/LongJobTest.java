@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -51,7 +52,7 @@ class LongJobTest {
   private final BlockingQueue<Map.Entry<ComputationId, ToolResult>> completed =
       new ArrayBlockingQueue<>(4);
   private final ExecutorService watchers = Executors.newSingleThreadExecutor();
-  private final FakeContext context = new FakeContext();
+  private final ToolContext context = FakeContext.toolContext();
 
   private final Tool<LongJob.Job> tool =
       LongJob.tool(
@@ -75,26 +76,26 @@ class LongJobTest {
   @Test
   void returns_deferred_while_the_process_is_still_running() {
     Awaited<ToolResult> awaited = tool.execute(new LongJob.Job(), context);
+    FakeContext.handOff(awaited);
 
     assertThat(awaited).isInstanceOf(Awaited.Deferred.class);
     assertThat(completed).isEmpty();
-    assertThat(context.defers()).isEqualTo(1);
   }
 
   @Test
-  void takes_its_id_before_it_starts_anything() {
+  void starts_nothing_until_the_harness_runs_its_callback() {
     tool.execute(new LongJob.Job(), context);
 
-    // The id existed — and the phase already named the wait — before any thread that could answer
-    // it had been handed anything. Ordered by construction, not by being fast enough.
-    assertThat(context.defers()).isEqualTo(1);
+    // Ordered by construction, not by being fast enough: the work cannot begin before the wait is
+    // recorded, because the harness is what runs the callback that begins it.
+    assertThat(runner.asked()).isEmpty();
     assertThat(completed).isEmpty();
   }
 
   @Test
   void completes_with_the_very_id_it_handed_out_when_the_process_finishes()
       throws InterruptedException {
-    tool.execute(new LongJob.Job(), context);
+    FakeContext.handOff(tool.execute(new LongJob.Job(), context));
     runner.release();
 
     Map.Entry<ComputationId, ToolResult> entry = awaitCompletion();
@@ -114,7 +115,7 @@ class LongJobTest {
             (id, result) -> completed.add(new AbstractMap.SimpleImmutableEntry<>(id, result)),
             watchers);
 
-    failingTool.execute(new LongJob.Job(), context);
+    FakeContext.handOff(failingTool.execute(new LongJob.Job(), context));
     Map.Entry<ComputationId, ToolResult> entry = awaitCompletion();
 
     assertThat(entry.getValue().isError()).isTrue();
@@ -144,7 +145,7 @@ class LongJobTest {
         throws InterruptedException {
       Tool<LongJob.Job> tool = LongJob.tool(exploding, LongJobTest.this::record, watchers);
 
-      tool.execute(new LongJob.Job(), context);
+      FakeContext.handOff(tool.execute(new LongJob.Job(), context));
       Map.Entry<ComputationId, ToolResult> entry = awaitCompletion();
 
       assertThat(entry.getKey()).isEqualTo(FakeContext.DEFERRED);
@@ -172,7 +173,7 @@ class LongJobTest {
               },
               watchers);
 
-      tool.execute(new LongJob.Job(), context);
+      FakeContext.handOff(tool.execute(new LongJob.Job(), context));
 
       assertThat(attempted.await(30, TimeUnit.SECONDS)).isTrue();
     }
@@ -192,6 +193,7 @@ class LongJobTest {
     long before = System.nanoTime();
 
     Awaited<ToolResult> awaited = tool.execute(new LongJob.Job(), context);
+    FakeContext.handOff(awaited);
 
     // The runner is blocked and stays blocked; if the tool had run it inline on this thread, this
     // call would not have returned at all.

@@ -63,6 +63,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
 import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Versioned;
 
@@ -74,6 +75,11 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  * computation the phase does not name is ignored: the phase is the map.
  */
 class ApprovalOnContinuumTest {
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
 
   @AfterEach
   void shutdownTrackedHarnesses() {
@@ -124,7 +130,7 @@ class ApprovalOnContinuumTest {
     @Override
     public ApprovalOutcome approve(ApprovalContext context) {
       asks.incrementAndGet();
-      return context.defer();
+      return Approvers.defer().approve(context);
     }
   }
 
@@ -162,7 +168,9 @@ class ApprovalOnContinuumTest {
           toolClient,
           mapper,
           ObservationRegistry.NOOP,
-          () -> null);
+          () -> null,
+          APPROVAL_CEILING,
+          TOOL_CEILING);
   private final Harness<String> harness =
       TestAgents.<String>harness(
           memory,

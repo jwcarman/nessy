@@ -15,9 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import java.time.Duration;
 import java.util.Objects;
-import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 
@@ -64,9 +62,10 @@ public interface Tool<T> {
 
   /**
    * Runs the tool. Returns {@link Awaited.Deferred} only if the answer genuinely arrives through a
-   * durable computation — a callback, an approval, a job. The deferred marker carries no identity:
-   * the wiring derives the computation's deterministic id from the work's coordinates and registers
-   * the continuation (durable spec, submit-once discipline).
+   * durable computation — a callback, an approval, a job. It carries no id, because there is none
+   * yet: it says what to do once the plumbing has created the computation, and how long the tool
+   * wants (deferral-by-callback spec §1, §5). {@code Tool.timeout()} is retired with it — a
+   * duration declared at registration for invocations that may never defer (spec §5).
    */
   Awaited<ToolResult> execute(T input, ToolContext context);
 
@@ -83,17 +82,5 @@ public interface Tool<T> {
    */
   default CompletionPolicy requiredCompletion() {
     return CompletionPolicy.IMMEDIATE;
-  }
-
-  /**
-   * How long a durable computation this tool starts may stay pending before Continuum treats it as
-   * overdue and fails it (continuum-adoption spec §3, §9.3) — expiry ends the wait, it does not
-   * retry it. Empty does NOT mean no deadline: an unset timeout is stamped with a one-day default
-   * ({@code HarnessConfig.DEFAULT_TOOL_DEADLINE}), not left unbounded. Approvals are not unbounded
-   * either — they carry their own fixed, harness-level 7-day deadline (spec §9.3), unaffected by
-   * this method.
-   */
-  default Optional<Duration> timeout() {
-    return Optional.empty();
   }
 }

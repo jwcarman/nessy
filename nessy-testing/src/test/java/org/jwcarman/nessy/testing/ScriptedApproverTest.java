@@ -20,10 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
@@ -40,43 +37,8 @@ class ScriptedApproverTest {
     return ApprovalRequest.draft("ops", "prod-eu", CALL, Map.of(), mapper).action(action).freeze();
   }
 
-  /** Never defers — every test here scripts an answer, so a real deferring door is unneeded. */
-  private static final class AnsweringContext implements ApprovalContext {
-    private final ApprovalRequest request;
-
-    AnsweringContext(ApprovalRequest request) {
-      this.request = Objects.requireNonNull(request, "request must not be null");
-    }
-
-    @Override
-    public ApprovalRequest request() {
-      return request;
-    }
-
-    @Override
-    public ApprovalOutcome defer() {
-      throw new IllegalStateException("this fixture never defers");
-    }
-  }
-
-  /** Parks unconditionally — the fixture the empty-script and out-of-script cases exercise. */
-  private static final class DeferringContext implements ApprovalContext {
-    private final ApprovalRequest request;
-
-    DeferringContext(ApprovalRequest request) {
-      this.request = Objects.requireNonNull(request, "request must not be null");
-    }
-
-    @Override
-    public ApprovalRequest request() {
-      return request;
-    }
-
-    @Override
-    public ApprovalOutcome defer() {
-      return new ApprovalOutcome.Deferred(ComputationId.of(UUID.randomUUID().toString()));
-    }
-  }
+  /** The whole of a context now: the frozen question, and nothing to call. */
+  private record AnsweringContext(ApprovalRequest request) implements ApprovalContext {}
 
   @Test
   void answers_in_the_scripted_order_then_defers() {
@@ -85,7 +47,7 @@ class ScriptedApproverTest {
 
     ApprovalOutcome first = approver.approve(new AnsweringContext(requestNamed("first")));
     ApprovalOutcome second = approver.approve(new AnsweringContext(requestNamed("second")));
-    ApprovalOutcome third = approver.approve(new DeferringContext(requestNamed("third")));
+    ApprovalOutcome third = approver.approve(new AnsweringContext(requestNamed("third")));
 
     assertThat(first).isEqualTo(new ApprovalOutcome.Answered(Approval.approved()));
     assertThat(second).isEqualTo(new ApprovalOutcome.Answered(Approval.denied("no")));
@@ -96,7 +58,7 @@ class ScriptedApproverTest {
   void an_empty_script_defers_immediately() {
     ScriptedApprover approver = ScriptedApprover.deferring();
 
-    ApprovalOutcome outcome = approver.approve(new DeferringContext(requestNamed("only")));
+    ApprovalOutcome outcome = approver.approve(new AnsweringContext(requestNamed("only")));
 
     assertThat(outcome).isInstanceOf(ApprovalOutcome.Deferred.class);
   }

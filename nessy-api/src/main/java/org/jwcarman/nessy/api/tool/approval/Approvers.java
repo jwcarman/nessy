@@ -15,11 +15,24 @@
  */
 package org.jwcarman.nessy.api.tool.approval;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.tool.ComputationId;
 
 /** The built-in approvers and the two compositions people reach for (spec §1.4). */
 public final class Approvers {
+
+  /**
+   * What {@link #defer()} asks for when the approver has no opinion: everything, which the
+   * harness's own approval ceiling then clips to what it allows (spec §5). The desk-driven approver
+   * genuinely does not know how long its question should stand — nobody is told about it, so nobody
+   * is promised anything — and asking for the maximum is the honest way to say so. Never reaches
+   * Continuum unclipped: the harness takes {@code min(term, ceiling)} before it creates anything.
+   */
+  private static final Duration UNTIL_THE_CEILING = ChronoUnit.FOREVER.getDuration();
 
   private Approvers() {}
 
@@ -33,9 +46,28 @@ public final class Approvers {
     return new Deny(Approval.denied(reason));
   }
 
-  /** Every call is parked for someone else to answer; nobody is told. */
+  /**
+   * Every call is parked for someone else to answer; nobody is told, which is exactly what its
+   * callback does. Asks for {@link #UNTIL_THE_CEILING} — see there for why an approver with no
+   * opinion asks for the maximum.
+   */
   public static Approver defer() {
-    return ApprovalContext::defer;
+    return defer(UNTIL_THE_CEILING);
+  }
+
+  /**
+   * As {@link #defer()}, but for an approver that knows how long its question should stand.
+   *
+   * @param term how long the question stays answerable, clipped by the harness's approval ceiling
+   */
+  public static Approver defer(Duration term) {
+    Objects.requireNonNull(term, "term must not be null");
+    return context -> ApprovalOutcome.deferred(Approvers::tellNobody, term);
+  }
+
+  /** {@link #defer()}'s callback: the desk is the notifier, so there is nobody to tell. */
+  private static void tellNobody(ComputationId id, Instant deadline) {
+    // nothing: whoever polls the pending-approvals projection finds the question on their own
   }
 
   /**
@@ -68,7 +100,7 @@ public final class Approvers {
             return new ApprovalOutcome.Answered(approval);
           }
           case Rule.Verdict.Defer _ -> {
-            return context.defer();
+            return ApprovalOutcome.deferred(Approvers::tellNobody, UNTIL_THE_CEILING);
           }
           case Rule.Verdict.Undecided _ -> {
             // next rule
@@ -151,11 +183,10 @@ public final class Approvers {
     }
   }
 
-  /** The context {@link #allOf} hands its members: the same request, a door that refuses. */
-  private record AnsweringOnly(ApprovalRequest request) implements ApprovalContext {
-    @Override
-    public ApprovalOutcome defer() {
-      throw new IllegalStateException("allOf members must answer; defer() is not available here");
-    }
-  }
+  /**
+   * The context {@link #allOf} hands its members. Nothing is withheld any more — a context is only
+   * the frozen question now (spec §7) — so a member that means to park is refused where it always
+   * mattered: at {@link #allOf}'s own switch, when it returns a deferral.
+   */
+  private record AnsweringOnly(ApprovalRequest request) implements ApprovalContext {}
 }

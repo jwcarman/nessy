@@ -29,26 +29,24 @@ class RulesTest {
   void theFirstAnswerWins() {
     Approver ladder = Approvers.rules(Rules.undecided(), Rules.deny("second"), Rules.allow());
 
-    assertThat(ladder.approve(new ApproversTest.FakeContext()))
+    assertThat(ladder.approve(ApproversTest.fakeContext()))
         .isEqualTo(new ApprovalOutcome.Answered(new Approval.Denied("second", Optional.empty())));
   }
 
   @Test
   void deferAsTheLastWordParks() {
     Approver ladder = Approvers.rules(Rules.undecided(), Rules.defer());
-    var context = new ApproversTest.FakeContext();
 
-    ApprovalOutcome outcome = ladder.approve(context);
+    ApprovalOutcome outcome = ladder.approve(ApproversTest.fakeContext());
 
     assertThat(outcome).isInstanceOf(ApprovalOutcome.Deferred.class);
-    assertThat(context.defers).hasValue(1);
   }
 
   @Test
   void aLadderThatEndsUndecidedDeniesLoudly() {
     Approver ladder = Approvers.rules(Rules.undecided());
 
-    ApprovalOutcome outcome = ladder.approve(new ApproversTest.FakeContext());
+    ApprovalOutcome outcome = ladder.approve(ApproversTest.fakeContext());
 
     assertThat(outcome).isInstanceOf(ApprovalOutcome.Answered.class);
     Approval answer = ((ApprovalOutcome.Answered) outcome).approval();
@@ -66,7 +64,7 @@ class RulesTest {
             });
     Approver ladder = Approvers.rules(broken, Rules.allow());
 
-    ApprovalOutcome outcome = ladder.approve(new ApproversTest.FakeContext());
+    ApprovalOutcome outcome = ladder.approve(ApproversTest.fakeContext());
 
     Approval answer = ((ApprovalOutcome.Answered) outcome).approval();
     assertThat(((Approval.Denied) answer).reason()).contains("broken").contains("kaboom");
@@ -79,7 +77,7 @@ class RulesTest {
 
   @Test
   void allowIsAnAnswer() {
-    assertThat(Rules.allow().judge(new ApproversTest.FakeContext().request()))
+    assertThat(Rules.allow().judge(ApproversTest.fakeContext().request()))
         .isEqualTo(new Rule.Verdict.Answered(APPROVED));
   }
 }

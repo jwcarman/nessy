@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,7 +42,6 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -123,16 +123,15 @@ class EarlyAnswerTest {
     AtomicInteger earlyAnswers = new AtomicInteger();
     AtomicReference<Harness<String>> harnessRef = new AtomicReference<>();
     Approver earlyAnswering =
-        context -> {
-          ApprovalOutcome outcome = context.defer();
-          if (outcome instanceof ApprovalOutcome.Deferred(ComputationId id)) {
-            // defer() has already folded ApprovalDeferred and returned — the phase names this
-            // call AwaitingApproval before this line runs.
-            earlyAnswers.incrementAndGet();
-            harnessRef.get().approvals().approve(id, "test", "");
-          }
-          return outcome;
-        };
+        context ->
+            ApprovalOutcome.deferred(
+                (id, deadline) -> {
+                  // The callback runs only after the park has folded and committed — the phase
+                  // names this call AwaitingApproval before this line runs.
+                  earlyAnswers.incrementAndGet();
+                  harnessRef.get().approvals().approve(id, "test", "");
+                },
+                Duration.ofDays(7));
 
     var harness =
         Nessy.harness(

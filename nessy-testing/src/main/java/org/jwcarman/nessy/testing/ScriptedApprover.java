@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
 import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.tool.approval.Approvers;
 
 /**
  * An approver that answers from a script, like {@code ScriptedModel}; when the script runs out it
@@ -66,7 +67,7 @@ public final class ScriptedApprover implements Approver {
     Objects.requireNonNull(context, "context must not be null");
     requests.add(context.request());
     Approval next = answers.poll();
-    return next == null ? context.defer() : new ApprovalOutcome.Answered(next);
+    return next == null ? Approvers.defer().approve(context) : new ApprovalOutcome.Answered(next);
   }
 
   /** A snapshot of every request this approver was handed, oldest first. */

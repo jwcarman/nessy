@@ -19,25 +19,29 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.api.Computation;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ApprovalRouting;
-import org.jwcarman.nessy.agent.ComputationApprovalContext;
-import org.jwcarman.nessy.agent.ComputationToolContext;
+import org.jwcarman.nessy.agent.ContinuumIds;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Routing;
+import org.jwcarman.nessy.agent.ToolCallAddress;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -67,8 +71,10 @@ import org.slf4j.LoggerFactory;
  * {@code RuntimeException} escaping conversion, the contributor or an enricher becomes a
  * fail-closed denial naming the stage; a {@code RuntimeException} escaping the approver becomes a
  * denial too. A deferral has already parked and folded itself through {@link
- * ApprovalContext#defer()} — there is nothing left to deliver, and nothing is narrated to the
- * model.
+ * A deferral is now an ordinary RETURN (deferral-by-callback spec §9a): the outcome becomes {@code
+ * ApprovalDeferralRequested}, carrying the callback and the term but no id, because at that moment
+ * nothing has been created. The creating is {@link #deferApproval}'s job, dispatched only after
+ * that fold has committed.
  *
  * <p>The {@code execute_tool} span (agentic-o11y spec §1.1, §3.1) is opened here rather than
  * derived from the fact stream, because for a DEFERRING tool the execution ends when the body
@@ -80,10 +86,16 @@ import org.slf4j.LoggerFactory;
  * fold.
  *
  * <p>{@link #runTool} is past the gate: find, bind, run. It never consults an approver — the answer
- * is already a fact in the phase. It creates no computation either (tool-context-defer spec §0): a
- * tool that means to wait says so through {@link ToolContext#defer()}, which creates, folds and
- * commits before it hands the id back. All this door does afterwards is police {@link Awaited}'s
- * two arms against what the door recorded (spec §1.2).
+ * is already a fact in the phase — and it creates no computation. A tool that means to wait returns
+ * {@link Awaited.Deferred}, and there is nothing left to police: an id it could lie about does not
+ * exist yet, so the two in-band failures the old {@code defer()} door made writable are gone along
+ * with their guard code (spec §7).
+ *
+ * <p>{@link #deferApproval} and {@link #deferToolCall} are the handoff doors, and the only place in
+ * this executor that touches Continuum. Each creates the computation, clips the term to its side's
+ * ceiling, reads the deadline Continuum actually stamped, and runs the callback. A callback that
+ * throws fails the computation and fails the CALL (spec §9a): all we know is that it threw, not
+ * whether it reached the world first, so re-asking would risk telling the world twice.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -100,6 +112,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final ObjectMapper mapper;
   private final ObservationRegistry observations;
   private final Supplier<Observation> parentSegment;
+  private final Duration approvalCeiling;
+  private final Duration toolCeiling;
 
   /**
    * The semconv names this executor's own span carries (agentic-o11y spec §1.1, corrected by the
@@ -123,9 +137,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   /**
    * What the tool's BODY did (in-the-loop amendment §2), beside the boolean above. The boolean
-   * answers "is a wait coming"; this answers "what happened", and the two diverge on the failure
-   * paths — a tool that throws AFTER a successful {@code defer()} is {@code deferred=true} and
-   * {@code outcome=failed} at once. Deliberately the same three words {@code nessy.tool.wait}
+   * answers "is a wait coming"; this answers "what happened". They no longer diverge — a tool that
+   * throws has created nothing to be waiting on — but both are still carried, because the boolean
+   * is what a dashboard filters on. Deliberately the same three words {@code nessy.tool.wait}
    * closes with, so one filter reads the execution and the dwell it opened.
    */
   private static final String NESSY_TOOL_OUTCOME = "nessy.tool.outcome";
@@ -153,12 +167,6 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private static final String DENIED = "denied";
   private static final String DEFERRED = "deferred";
 
-  /** A tool returned {@code Awaited.ready(x)} after its own {@code defer()} recorded the wait. */
-  static final String ANSWERED_AFTER_DEFERRING = "tool answered after deferring";
-
-  /** A tool returned {@code Awaited.deferred()} without ever calling {@code context.defer()}. */
-  static final String DEFERRED_WITHOUT_DEFER = "deferring tool never called context.defer()";
-
   /**
    * @param registry the grants this executor serves
    * @param type the recipe's name
@@ -172,6 +180,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
    *     ObservationRegistry.NOOP} unless the application supplied one
    * @param parentSegment this scope's open {@code invoke_agent} observation, or null when none is
    *     open
+   * @param approvalCeiling the longest an approval may stand, whatever term an approver asks for
+   *     (spec §5)
+   * @param toolCeiling the longest a deferred tool call may stand, whatever term a tool asks for
    */
   public RegistryToolCallExecutor(
       ToolRegistry registry,
@@ -183,7 +194,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       ContinuumClient<ToolResult, Routing> toolClient,
       ObjectMapper mapper,
       ObservationRegistry observations,
-      Supplier<Observation> parentSegment) {
+      Supplier<Observation> parentSegment,
+      Duration approvalCeiling,
+      Duration toolCeiling) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");
@@ -195,6 +208,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.codecs = new Codecs(this.mapper);
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.parentSegment = Objects.requireNonNull(parentSegment, "parentSegment must not be null");
+    this.approvalCeiling = Objects.requireNonNull(approvalCeiling, "approvalCeiling must not null");
+    this.toolCeiling = Objects.requireNonNull(toolCeiling, "toolCeiling must not be null");
   }
 
   @Override
@@ -212,51 +227,144 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   @Override
   public void runTool(ToolCall call, ModelResponseId responseId, Sink sink) {
     Objects.requireNonNull(responseId, "responseId must not be null");
-    executor.execute(
-        () ->
-            runPastGate(call, responseId, sink)
-                .ifPresent(
-                    answer -> {
-                      sink.deliver(
-                          new AgentEvent.ToolFinished(call, answer.riding(), answer.outcome()));
-                      // The call is finished now, so end the computation nobody is waiting on. A
-                      // no-op unless this dispatch actually deferred.
-                      answer.door().ifPresent(door -> door.abandon(reasonOf(answer.outcome())));
-                    }));
+    executor.execute(() -> sink.deliver(runPastGate(call, responseId)));
   }
 
-  private static String reasonOf(ToolOutcome outcome) {
-    return switch (outcome) {
-      case ToolOutcome.Failed(ToolError error) -> error.message();
-      case ToolOutcome.Returned(ToolResult result) -> result.content();
-    };
+  @Override
+  public void deferApproval(
+      ToolCall call,
+      ApprovalRequest request,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
+    Objects.requireNonNull(request, "request must not be null");
+    Objects.requireNonNull(callback, "callback must not be null");
+    Objects.requireNonNull(term, "term must not be null");
+    Objects.requireNonNull(responseId, "responseId must not be null");
+    executor.execute(
+        () ->
+            sink.deliver(
+                handOff(
+                    call,
+                    callback,
+                    () ->
+                        approvalClient.create(
+                            new ApprovalRouting(routing(call, responseId), request),
+                            clipped(term, approvalCeiling)),
+                    approvalClient,
+                    (id, deadline) ->
+                        new AgentEvent.ApprovalDeferred(call, id, request, deadline))));
+  }
+
+  @Override
+  public void deferToolCall(
+      ToolCall call,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
+    Objects.requireNonNull(callback, "callback must not be null");
+    Objects.requireNonNull(term, "term must not be null");
+    Objects.requireNonNull(responseId, "responseId must not be null");
+    executor.execute(
+        () ->
+            sink.deliver(
+                handOff(
+                    call,
+                    callback,
+                    () -> toolClient.create(routing(call, responseId), clipped(term, toolCeiling)),
+                    toolClient,
+                    (id, deadline) -> new AgentEvent.ToolCallDeferred(call, id, deadline))));
+  }
+
+  /** What a party asked for, or what the harness allows — whichever is shorter (spec §5). */
+  private static Duration clipped(Duration term, Duration ceiling) {
+    return term.compareTo(ceiling) < 0 ? term : ceiling;
   }
 
   /**
-   * One dispatch's answer, and the door it ran behind — empty only when there was no tool to run at
-   * all.
+   * One handoff, both sides (spec §9a). Create the computation, read the deadline Continuum
+   * actually stamped — never {@code Instant.now()} plus a guess, so what the callback is told is
+   * exactly what will expire — run the callback, then fold the park.
    *
-   * @param outcome what to tell the reducer
-   * @param door this dispatch's context, which knows whether it ever deferred
+   * <p>Everything that can go wrong here fails the CALL rather than re-asking. If {@code create}
+   * threw there is no computation and nothing was told; if the CALLBACK threw we know only that it
+   * threw, not whether it reached the world first, and re-asking would assume it did not — an
+   * assumption we are not entitled to make and one that risks telling the world twice. Failing
+   * hands the decision about what to do next to the model, which is where every other failure in
+   * this executor already puts it.
+   *
+   * @param mint creates the computation and returns it
+   * @param client the kind's client, used only to tidy up after a thrown callback
+   * @param parked the fact to fold when the callback ran
    */
-  private record Answer(ToolOutcome outcome, Optional<ComputationToolContext> door) {
+  private AgentEvent handOff(
+      ToolCall call,
+      ComputationCallback callback,
+      Supplier<Computation> mint,
+      ContinuumClient<?, ?> client,
+      Parked parked) {
+    ComputationId id;
+    Instant deadline;
+    try {
+      Computation created = mint.get();
+      id = ComputationId.of(created.id().value().toString());
+      deadline = created.deadline();
+    } catch (RuntimeException e) {
+      LOG.warn("could not create the computation for call {}; failing the call", call.id(), e);
+      return finishedFailing(call, "deferral failed: " + detailOf(e));
+    }
+    try {
+      callback.accept(id, deadline);
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "the deferral callback for call {} threw; failing the call and the computation {}",
+          call.id(),
+          id.value(),
+          e);
+      failQuietly(client, call, id);
+      return finishedFailing(call, "deferral handoff failed: " + detailOf(e));
+    }
+    return parked.of(id, deadline);
+  }
 
-    /**
-     * The computation this answer must ride to be admitted.
-     *
-     * <p>Empty for a call the door never deferred — a {@code Running} call names no computation,
-     * and the reducer admits only an id-less result against one. <b>Present</b> whenever {@code
-     * defer()} succeeded and the dispatch nevertheless ended in a failure: the phase already says
-     * {@code AwaitingResult(id)}, so an id-less {@code ToolFinished} would be ignored and the call
-     * would hang. Riding the id the phase names is what lets the reducer fold {@code Finished} now.
-     */
-    Optional<ComputationId> riding() {
-      return door.flatMap(ComputationToolContext::deferral);
+  /** The fact a successful handoff folds — {@code ApprovalDeferred} or {@code ToolCallDeferred}. */
+  @FunctionalInterface
+  private interface Parked {
+    AgentEvent of(ComputationId id, Instant deadline);
+  }
+
+  /**
+   * The failure the call reads in-band when a handoff broke. Rides NO computation id on purpose:
+   * the phase is still {@code Deferring…}, which recorded none, so an id-less completion is the
+   * only shape it admits.
+   */
+  private AgentEvent finishedFailing(ToolCall call, String reason) {
+    return new AgentEvent.ToolFinished(call, Optional.empty(), failed(call, reason));
+  }
+
+  /**
+   * Ends the computation a thrown callback left behind (spec §9a). Continuum then delivers that
+   * failure to a call this executor has ALREADY failed, so it is dropped with a WARN — accepted
+   * deliberately: the alternative is the same dropped delivery seven days later, harder to
+   * correlate, or a window in which a crash parks the call for its full term on something nobody
+   * was told about. <b>A WARN'd drop immediately following a handoff failure is the cleanup, not a
+   * fault.</b>
+   *
+   * <p>Best effort: if Continuum itself is down, failing to tidy up must not mask the in-band
+   * failure the model is about to read.
+   */
+  private static void failQuietly(ContinuumClient<?, ?> client, ToolCall call, ComputationId id) {
+    try {
+      client.fail(ContinuumIds.continuumId(id.value()), "deferral handoff failed for " + call.id());
+    } catch (RuntimeException e) {
+      LOG.warn("could not fail the computation {}; it will expire on its own", id.value(), e);
     }
   }
 
   /**
-   * The ask, measured. Returns the event to deliver; a deferral has already delivered its own.
+   * The ask, measured. Returns the event to deliver — always exactly one, deferral or not.
    *
    * <p>The {@code nessy.approval.seek} span (in-the-loop amendment §2) covers everything the ask
    * does — building the frozen request, the grant's action contributor, every enricher, and the
@@ -270,11 +378,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     Observation ask = startSeek(call);
     Observation.Scope scope = opened(ask);
     try {
-      ApprovalOutcome outcome = decide(call, responseId, sink, ask);
-      ask.lowCardinalityKeyValue(NESSY_APPROVAL_OUTCOME, outcomeOf(outcome));
-      return switch (outcome) {
+      Decision decided = decide(call, ask);
+      ask.lowCardinalityKeyValue(NESSY_APPROVAL_OUTCOME, outcomeOf(decided.outcome()));
+      return switch (decided.outcome()) {
         case ApprovalOutcome.Answered(Approval approval) -> answered(call, approval);
-        case ApprovalOutcome.Deferred _ -> null; // defer() delivered ApprovalDeferred itself
+        // No id yet, and none can exist: the effect this fact produces is what creates one.
+        case ApprovalOutcome.Deferred(var callback, var term) ->
+            new AgentEvent.ApprovalDeferralRequested(call, decided.request(), callback, term);
       };
     } finally {
       quietly(scope::close);
@@ -288,16 +398,15 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
    * two failure arms additionally stamp {@code error.type} on {@code ask}, so a denial the executor
    * manufactured is distinguishable from one an approver meant.
    */
-  private ApprovalOutcome decide(
-      ToolCall call, ModelResponseId responseId, Sink sink, Observation ask) {
+  private Decision decide(ToolCall call, Observation ask) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return new ApprovalOutcome.Answered(Approval.denied("unknown tool: " + call.name()));
+      return Decision.answering(Approval.denied("unknown tool: " + call.name()));
     }
     ToolGrant grant = found.get();
     if (grant.approver() instanceof Approvers.Static fixed) {
       // rung 0: no request built, no enricher run
-      return new ApprovalOutcome.Answered(fixed.answer());
+      return Decision.answering(fixed.answer());
     }
     ApprovalRequest request;
     try {
@@ -310,19 +419,35 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           call.name(),
           e);
       ask.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
-      return new ApprovalOutcome.Answered(Approval.denied("authorization failed: " + detailOf(e)));
+      return Decision.answering(Approval.denied("authorization failed: " + detailOf(e)));
     }
-    ApprovalContext context =
-        new ComputationApprovalContext(approvalClient, routing(call, responseId), request, sink);
     try {
-      return grant.approver().approve(context);
+      return new Decision(grant.approver().approve(new Question(request)), request);
     } catch (RuntimeException e) {
       LOG.warn(
           "the approver failed answering call {} on tool {}; denying", call.id(), call.name(), e);
       ask.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
-      return new ApprovalOutcome.Answered(Approval.denied("approver failed: " + detailOf(e)));
+      return Decision.answering(Approval.denied("approver failed: " + detailOf(e)));
     }
   }
+
+  /**
+   * What the ask produced, and the frozen question it was asked about. The request travels with a
+   * deferral because the approval computation's continuation is built from it, and re-running the
+   * enrichers to get it back would build a different one.
+   *
+   * <p>{@code request} is null on every arm that answered without ever building one — an unknown
+   * tool, a {@link Approvers.Static} approver, a request that would not build — which is exactly
+   * the set of arms that can never be a deferral.
+   */
+  private record Decision(ApprovalOutcome outcome, ApprovalRequest request) {
+    static Decision answering(Approval approval) {
+      return new Decision(new ApprovalOutcome.Answered(approval), null);
+    }
+  }
+
+  /** The whole of an {@link ApprovalContext} now (spec §7): the frozen question, and nothing. */
+  private record Question(ApprovalRequest request) implements ApprovalContext {}
 
   /**
    * The outcome as the span records it, mapped from the sealed {@link ApprovalOutcome}/{@link
@@ -341,19 +466,18 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * What the body did, as the span records it. An EMPTY answer is the one shape that means the door
-   * recorded a wait and there is nothing left to deliver — that is a deferral. Otherwise the sealed
-   * {@link ToolOutcome} grammar decides, with no default arm, so a new variant fails this build.
+   * What a returned body did, as the span records it. Mapped from the sealed {@link ToolOutcome}
+   * grammar with no default arm, so a new variant fails this build; the deferral case never reaches
+   * here, because its caller names it before asking.
    */
-  private static String toolOutcomeOf(Optional<Answer> answer) {
-    return answer
-        .map(
-            found ->
-                switch (found.outcome()) {
-                  case ToolOutcome.Returned _ -> RETURNED;
-                  case ToolOutcome.Failed _ -> FAILED;
-                })
-        .orElse(DEFERRED);
+  private static String outcomeOf(AgentEvent event) {
+    if (!(event instanceof AgentEvent.ToolFinished(var _, var _, ToolOutcome outcome))) {
+      return KeyValue.NONE_VALUE;
+    }
+    return switch (outcome) {
+      case ToolOutcome.Returned _ -> RETURNED;
+      case ToolOutcome.Failed _ -> FAILED;
+    };
   }
 
   /** The ask's span, parented like every other this executor mints. */
@@ -394,23 +518,15 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return new AgentEvent.ApprovalAnswered(call, Optional.empty(), approval);
   }
 
-  /** Empty means the door already recorded the wait; there is nothing left to deliver. */
-  private Optional<Answer> runPastGate(ToolCall call, ModelResponseId responseId, Sink sink) {
+  /** One dispatch, one fact: what the tool returned, or the deferral it asked for. */
+  private AgentEvent runPastGate(ToolCall call, ModelResponseId responseId) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return Optional.of(
-          new Answer(failed(call, "unknown tool: " + call.name()), Optional.empty()));
+      return finishedFailing(call, "unknown tool: " + call.name());
     }
     ToolGrant grant = found.get();
-    // Built before conversion so the catch below can ask whether the door was ever opened. Creating
-    // one costs nothing and touches no Continuum: only defer() creates a computation.
-    ComputationToolContext context =
-        new ComputationToolContext(
-            toolClient,
-            routing(call, responseId),
-            grant.tool().timeout(),
-            event -> narrate(call, event),
-            sink);
+    ToolContext context =
+        new ToolContext(call, event -> narrate(call, event), invocation(call, responseId));
     Observation execution = startExecuteTool(call);
     // The scope is what lets the tool's OWN work nest (in-the-loop amendment §1, §2): an HTTP call,
     // a query, a nested agent invocation inside the body attaches beneath this span instead of
@@ -418,26 +534,41 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     Observation.Scope scope = opened(execution);
     try {
       Object input = convert(call, grant.tool());
-      Optional<Answer> answer = run(grant.tool(), input, call, context);
+      AgentEvent produced = run(grant.tool(), input, call, context);
       // The execution ended when the body returned, deferral or not — that is exactly what this
-      // span measures, and the flag says which of the two happened (spec §1.1).
+      // span measures, and the flag says which of the two happened (spec §1.1). A deferral has
+      // still created nothing: the wait it asked for is opened by the effect this fact produces.
+      boolean deferred = produced instanceof AgentEvent.ToolCallDeferralRequested;
+      execution.lowCardinalityKeyValue(NESSY_TOOL_DEFERRED, Boolean.toString(deferred));
       execution.lowCardinalityKeyValue(
-          NESSY_TOOL_DEFERRED, Boolean.toString(context.deferral().isPresent()));
-      execution.lowCardinalityKeyValue(NESSY_TOOL_OUTCOME, toolOutcomeOf(answer));
-      return answer;
+          NESSY_TOOL_OUTCOME, deferred ? DEFERRED : outcomeOf(produced));
+      return produced;
     } catch (RuntimeException e) {
-      // Two shapes land here. A throw propagated OUT of defer() means nothing was parked, and
-      // context.deferral() is empty — the call is answered in-band and nothing dangles (spec §3).
-      // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
-      // rides that id or the call hangs until the orphan expires.
+      // Nothing dangles: a tool that throws has created no computation, because a tool cannot
+      // create one at all any more (spec §7). The call is answered in-band and that is the whole
+      // of it.
+      execution.lowCardinalityKeyValue(NESSY_TOOL_DEFERRED, Boolean.toString(false));
       execution.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
       execution.lowCardinalityKeyValue(NESSY_TOOL_OUTCOME, FAILED);
       quietly(() -> execution.error(e));
-      return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
+      return finishedFailing(call, detailOf(e));
     } finally {
       quietly(scope::close);
       quietly(execution::stop);
     }
+  }
+
+  /**
+   * This execution's opaque, stable idempotency key — deterministic from the call's coordinates,
+   * identical across every redispatch and replay (computation-identity spec §4 addendum). NOT the
+   * computation a deferral parks under: that one does not exist while a tool runs.
+   */
+  private ComputationId invocation(ToolCall call, ModelResponseId responseId) {
+    Routing routing = routing(call, responseId);
+    return ComputationId.of(
+        new ToolCallAddress(
+                routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id())
+            .digest());
   }
 
   /**
@@ -543,24 +674,19 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
-  private <T> Optional<Answer> run(
-      Tool<T> tool, Object input, ToolCall call, ComputationToolContext context) {
+  /**
+   * The body, and the fact it produced. Two arms, no guards: {@link Awaited}'s own grammar is now
+   * the whole truth about what happened, because a tool has no side door to contradict it through.
+   */
+  private <T> AgentEvent run(Tool<T> tool, Object input, ToolCall call, ToolContext context) {
     T typed = tool.inputType().cast(input);
-    Awaited<ToolResult> outcome = tool.execute(typed, context);
-    Optional<ComputationToolContext> door = Optional.of(context);
-    boolean deferred = context.deferral().isPresent();
-    return switch (outcome) {
-      case Awaited.Ready<ToolResult>(ToolResult value) when !deferred -> {
+    return switch (tool.execute(typed, context)) {
+      case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
-        yield Optional.of(new Answer(new ToolOutcome.Returned(value), door));
+        yield new AgentEvent.ToolFinished(call, Optional.empty(), new ToolOutcome.Returned(value));
       }
-      // The phase already says AwaitingResult(id): the failure rides that id so the reducer folds
-      // Finished now, rather than leaving the call to hang until the orphan expires.
-      case Awaited.Ready<ToolResult> _ ->
-          Optional.of(new Answer(failed(call, ANSWERED_AFTER_DEFERRING), door));
-      case Awaited.Deferred<ToolResult> _ when deferred -> Optional.empty();
-      case Awaited.Deferred<ToolResult> _ ->
-          Optional.of(new Answer(failed(call, DEFERRED_WITHOUT_DEFER), door));
+      case Awaited.Deferred<ToolResult>(var callback, var term) ->
+          new AgentEvent.ToolCallDeferralRequested(call, callback, term);
     };
   }
 

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.tck.TestObservationRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -60,6 +61,9 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * fact.
  */
 class ObservedTurnTest {
+
+  /** Any term: nothing in these tests clips it. */
+  private static final Duration TERM = Duration.ofDays(1);
 
   private static final AgentId SCOPE = AgentId.of("prod-eu");
 
@@ -704,8 +708,7 @@ class ObservedTurnTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      parked = context.defer();
-      return Awaited.deferred();
+      return Awaited.deferred((id, deadline) -> parked = id, TERM);
     }
   }
 }

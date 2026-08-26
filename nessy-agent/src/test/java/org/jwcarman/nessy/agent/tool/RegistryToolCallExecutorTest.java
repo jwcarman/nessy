@@ -24,6 +24,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,14 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 
 class RegistryToolCallExecutorTest {
 
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
+
   record EchoInput(String value) {}
 
   static final class EchoTool implements Tool<EchoInput> {
@@ -83,9 +93,11 @@ class RegistryToolCallExecutorTest {
     }
   }
 
-  /** Goes through the door: {@code defer()} first, and it keeps the id the door handed back. */
+  /** Returns a deferral; its callback records whatever id the handoff door mints for it. */
   static final class ParkingTool implements Tool<EchoInput> {
     ComputationId handedOut;
+
+    Duration term = Duration.ofHours(2);
 
     @Override
     public String name() {
@@ -104,57 +116,7 @@ class RegistryToolCallExecutorTest {
 
     @Override
     public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
-      handedOut = context.defer();
-      return Awaited.deferred();
-    }
-  }
-
-  /**
-   * Returns {@code deferred()} having never called {@code defer()} — nowhere for an answer to go.
-   */
-  static final class ForgetfulTool implements Tool<EchoInput> {
-    @Override
-    public String name() {
-      return "forgetful";
-    }
-
-    @Override
-    public String description() {
-      return "defers without deferring";
-    }
-
-    @Override
-    public Class<EchoInput> inputType() {
-      return EchoInput.class;
-    }
-
-    @Override
-    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
-      return Awaited.deferred();
-    }
-  }
-
-  /** Answers in hand AFTER the door already committed the wait — two answers for one call. */
-  static final class TalkativeTool implements Tool<EchoInput> {
-    @Override
-    public String name() {
-      return "talkative";
-    }
-
-    @Override
-    public String description() {
-      return "answers after deferring";
-    }
-
-    @Override
-    public Class<EchoInput> inputType() {
-      return EchoInput.class;
-    }
-
-    @Override
-    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
-      context.defer();
-      return Awaited.ready(ToolResult.ok("too late"));
+      return Awaited.deferred((id, deadline) -> handedOut = id, term);
     }
   }
 
@@ -260,7 +222,9 @@ class RegistryToolCallExecutorTest {
         toolClient,
         mapper,
         ObservationRegistry.NOOP,
-        () -> null);
+        () -> null,
+        APPROVAL_CEILING,
+        TOOL_CEILING);
   }
 
   /** The run door: every event it delivered, in order. */
@@ -427,11 +391,13 @@ class RegistryToolCallExecutorTest {
   }
 
   /**
-   * The executor creates nothing (spec §0): the one {@code ToolDeferred} the sink saw was folded by
-   * the door, on the tool's own thread, and it carries the very id the tool was handed.
+   * The run door creates nothing at all (deferral-by-callback spec §9a): a deferring tool yields
+   * one {@code ToolCallDeferralRequested} carrying the callback and the term it asked for, and no
+   * id, because none exists yet. The tool's own callback has not run either — nobody outside knows
+   * anything until the handoff door below folds the park.
    */
   @Test
-  void aToolThatDefersFoldsItsOwnToolDeferredAndTheExecutorDeliversNothingMore() {
+  void a_deferring_tool_yields_a_deferral_request_carrying_its_term_and_no_id() {
     var call =
         new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var tool = new ParkingTool();
@@ -439,36 +405,42 @@ class RegistryToolCallExecutorTest {
 
     var delivered = runDelivering(ToolRegistry.of(tool), call, turn);
 
-    assertThat(tool.handedOut).isNotNull();
-    assertThat(delivered).containsExactly(new AgentEvent.ToolDeferred(call, tool.handedOut));
+    assertThat(delivered).hasSize(1);
+    assertThat(delivered.getFirst())
+        .isInstanceOfSatisfying(
+            AgentEvent.ToolCallDeferralRequested.class,
+            requested -> {
+              assertThat(requested.call()).isEqualTo(call);
+              assertThat(requested.term()).isEqualTo(tool.term);
+            });
+    assertThat(tool.handedOut).isNull();
     assertThat(turn.events()).isEmpty();
   }
 
+  /**
+   * The handoff door is where a computation is created, and it clips the tool's term to the
+   * harness's ceiling before it does (spec §5). What the callback is told is the deadline Continuum
+   * actually stamped, which is also what rides the fold.
+   */
   @Test
-  void aDeferredArmWithoutTheDoorFailsInBand() {
+  void the_handoff_door_creates_the_computation_runs_the_callback_and_folds_the_park() {
     var call =
-        new ToolCall("c1", "forgetful", JsonNodeFactory.instance.objectNode().put("value", "x"));
+        new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var tool = new ParkingTool();
+    var pump = new PumpedExecutor();
+    var delivered = new ArrayList<AgentEvent>();
 
-    var finished = run(ToolRegistry.of(new ForgetfulTool()), call, new RecordingTurnObserver());
+    executorOver(ToolRegistry.of(tool), new RecordingTurnObserver(), pump)
+        .deferToolCall(
+            call, (id, deadline) -> tool.handedOut = id, tool.term, RESPONSE_ID, delivered::add);
+    pump.pumpUntilQuiet();
 
-    var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message()).isEqualTo(RegistryToolCallExecutor.DEFERRED_WITHOUT_DEFER);
-  }
-
-  @Test
-  void anAnswerAfterTheDoorCommittedTheWaitFailsInBandBehindTheFoldTheDoorAlreadyMade() {
-    var call =
-        new ToolCall("c1", "talkative", JsonNodeFactory.instance.objectNode().put("value", "x"));
-
-    var delivered =
-        runDelivering(ToolRegistry.of(new TalkativeTool()), call, new RecordingTurnObserver());
-
-    assertThat(delivered).hasSize(2);
-    assertThat(delivered.getFirst()).isInstanceOf(AgentEvent.ToolDeferred.class);
-    var finished = (AgentEvent.ToolFinished) delivered.get(1);
-    var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message())
-        .isEqualTo(RegistryToolCallExecutor.ANSWERED_AFTER_DEFERRING);
+    assertThat(tool.handedOut).isNotNull();
+    assertThat(delivered).hasSize(1);
+    assertThat(delivered.getFirst())
+        .isInstanceOfSatisfying(
+            AgentEvent.ToolCallDeferred.class,
+            parked -> assertThat(parked.tool()).isEqualTo(tool.handedOut));
   }
 
   @Test
@@ -637,7 +609,7 @@ class RegistryToolCallExecutorTest {
   }
 
   @Test
-  void aDeferringApproverDeliversNothingItselfBecauseDeferAlreadyFolded() {
+  void a_deferring_approver_yields_a_deferral_request_and_the_ask_creates_nothing() {
     var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), Approvers.defer()));
     var call =
         new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
@@ -646,7 +618,8 @@ class RegistryToolCallExecutorTest {
     var folded = seek(registry, call, turn);
 
     assertThat(folded).hasSize(1);
-    assertThat(folded.getFirst()).isInstanceOf(AgentEvent.ApprovalDeferred.class);
+    // The ask ASKS: a callback and a term, and no id, because nothing has been created yet.
+    assertThat(folded.getFirst()).isInstanceOf(AgentEvent.ApprovalDeferralRequested.class);
     assertThat(turn.events()).isEmpty();
   }
 }

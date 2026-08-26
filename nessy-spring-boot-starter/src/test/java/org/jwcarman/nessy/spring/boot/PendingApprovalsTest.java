@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -57,6 +58,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Tag("container")
 @Testcontainers
 class PendingApprovalsTest {
+
+  /** Any deadline: this projection records when it SAW the fact, never the fact's own time. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   // glibc image, never -alpine: see JdbcSubstrateContractTest for why. Same image and tag as
   // DurableResumeTest, deliberately — one Postgres to pull for the whole reactor.
@@ -271,7 +275,7 @@ class PendingApprovalsTest {
   }
 
   private static AgentEvent deferred() {
-    return new AgentEvent.ApprovalDeferred(call(), PARKED, request());
+    return new AgentEvent.ApprovalDeferred(call(), PARKED, request(), DEADLINE);
   }
 
   private static AgentEvent answered(Approval answer) {

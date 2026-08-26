@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +33,9 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class EventGrammarTest {
+
+  /** Any deadline: these tests are about routing, not about when a wait ends. */
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
   private static final ComputationId PARKED = ComputationId.of("parked-1");
   private static final ApprovalRequest REQUEST =
@@ -98,7 +102,7 @@ class EventGrammarTest {
 
   @Test
   void anApprovalDeferralCarriesTheParkedComputationAndTheQuestion() {
-    var deferred = new AgentEvent.ApprovalDeferred(call("c1"), PARKED, REQUEST);
+    var deferred = new AgentEvent.ApprovalDeferred(call("c1"), PARKED, REQUEST, DEADLINE);
 
     assertThat(deferred.approval()).isEqualTo(PARKED);
     assertThat(deferred.request()).isEqualTo(REQUEST);
@@ -108,7 +112,7 @@ class EventGrammarTest {
   void anApprovalDeferralRejectsANullRequest() {
     var call = call("c1");
 
-    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(call, PARKED, null))
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(call, PARKED, null, DEADLINE))
         .isInstanceOf(NullPointerException.class);
   }
 
@@ -131,14 +135,15 @@ class EventGrammarTest {
 
   @Test
   void aToolDeferralCarriesTheParkedComputation() {
-    assertThat(new AgentEvent.ToolDeferred(call("c1"), PARKED).tool()).isEqualTo(PARKED);
+    assertThat(new AgentEvent.ToolCallDeferred(call("c1"), PARKED, DEADLINE).tool())
+        .isEqualTo(PARKED);
   }
 
   @Test
   void aToolDeferralRejectsANullComputation() {
     var call = call("c1");
 
-    assertThatThrownBy(() -> new AgentEvent.ToolDeferred(call, null))
+    assertThatThrownBy(() -> new AgentEvent.ToolCallDeferred(call, null, DEADLINE))
         .isInstanceOf(NullPointerException.class);
   }
 

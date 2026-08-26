@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -76,6 +77,14 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * module's.
  */
 class GrantRaceTest {
+
+  /** Any term: nothing in this test clips it. */
+  private static final Duration TERM = Duration.ofDays(7);
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
 
   /**
    * Fix round 1, item 5: reclaims every harness this test class built (directly or via {@link
@@ -146,11 +155,7 @@ class GrantRaceTest {
     var toolClient = TestToolClients.client(Kinds.tool(testType), mapper);
     var notifications = new CopyOnWriteArrayList<ComputationId>();
     Approver approver =
-        context -> {
-          ApprovalOutcome outcome = context.defer();
-          notifications.add(((ApprovalOutcome.Deferred) outcome).id());
-          return outcome;
-        };
+        context -> ApprovalOutcome.deferred((id, deadline) -> notifications.add(id), TERM);
     var tool = new CountingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, approver));
     var pump = new PumpedExecutor();
@@ -173,7 +178,9 @@ class GrantRaceTest {
             toolClient,
             mapper,
             ObservationRegistry.NOOP,
-            () -> null);
+            () -> null,
+            APPROVAL_CEILING,
+            TOOL_CEILING);
     var harness =
         TestAgents.<String>harness(
             memory,

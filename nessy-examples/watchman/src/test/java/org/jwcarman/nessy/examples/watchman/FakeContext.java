@@ -16,50 +16,52 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolEventListener;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * The harness's side of a tool call, standing in.
  *
- * <p>{@link #defer()} hands out a fixed id and remembers that it was asked — which is exactly the
- * thing {@code LongJobTest} needs to check against what the completion door was later told.
+ * <p>A {@link ToolContext} is a plain record now (deferral-by-callback spec §7), so there is
+ * nothing left to fake about it. What DOES need standing in is the harness's half of a deferral:
+ * {@link #handOff} is what the {@code DeferToolCall} effect does for real — create the computation,
+ * then run the tool's callback with the id and the agreed deadline. A tool cannot start its own
+ * work until that happens, which is exactly the property the tests here assert.
  */
-final class FakeContext implements ToolContext {
+final class FakeContext {
 
   static final ComputationId DEFERRED = ComputationId.of("computation-under-test");
 
-  private final ToolCall call =
-      new ToolCall("call-under-test", "tool-under-test", JsonNodeFactory.instance.objectNode());
-  private final List<String> progress = new ArrayList<>();
-  private int defers;
+  private static final Instant DEADLINE = Instant.parse("2030-01-01T00:00:00Z");
 
-  @Override
-  public ToolCall call() {
-    return call;
+  private FakeContext() {}
+
+  /** The context a tool under test is handed. */
+  static ToolContext toolContext() {
+    return toolContext(ToolEventListener.noop());
   }
 
-  @Override
-  public ComputationId invocation() {
-    return ComputationId.of("invocation-under-test");
+  /** As {@link #toolContext()}, with somewhere for a tool's progress to be heard. */
+  static ToolContext toolContext(ToolEventListener events) {
+    ToolCall call =
+        new ToolCall("call-under-test", "tool-under-test", JsonNodeFactory.instance.objectNode());
+    return new ToolContext(call, events, ComputationId.of("invocation-under-test"));
   }
 
-  @Override
-  public void progress(String message) {
-    progress.add(message);
-  }
-
-  @Override
-  public ComputationId defer() {
-    defers++;
-    return DEFERRED;
-  }
-
-  /** How many times the tool asked for an id. */
-  int defers() {
-    return defers;
+  /**
+   * What the harness does once it has parked the work: run the deferral's callback with {@link
+   * #DEFERRED} and a deadline. Fails loudly on a tool that did not defer, because every caller here
+   * is asserting about one that did.
+   */
+  static void handOff(Awaited<ToolResult> awaited) {
+    if (!(awaited instanceof Awaited.Deferred<ToolResult>(var callback, var _))) {
+      throw new AssertionError("expected a deferral, got " + awaited);
+    }
+    callback.accept(DEFERRED, DEADLINE);
   }
 }

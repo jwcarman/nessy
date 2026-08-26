@@ -24,6 +24,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +57,11 @@ import org.slf4j.LoggerFactory;
  * DeliveryWorkerSilentLossWarningTest} uses.
  */
 class AuthorizationFailureWarningTest {
+
+  /** The harness ceilings, as HarnessConfig sets them (deferral-by-callback spec §5). */
+  private static final Duration APPROVAL_CEILING = Duration.ofDays(7);
+
+  private static final Duration TOOL_CEILING = Duration.ofDays(1);
 
   private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
   private static final ToolCall CALL =
@@ -150,7 +156,9 @@ class AuthorizationFailureWarningTest {
             TestToolClients.client("tool/cli", MAPPER),
             MAPPER,
             ObservationRegistry.NOOP,
-            () -> null);
+            () -> null,
+            APPROVAL_CEILING,
+            TOOL_CEILING);
     var delivered = new ArrayList<AgentEvent>();
     executor.seekApproval(CALL, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();

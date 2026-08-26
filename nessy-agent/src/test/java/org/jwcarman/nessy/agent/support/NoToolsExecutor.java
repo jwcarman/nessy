@@ -15,12 +15,15 @@
  */
 package org.jwcarman.nessy.agent.support;
 
+import java.time.Duration;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.api.tool.ComputationCallback;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
-/** Both doors, silent: for scopes whose scripts never ask for a tool. */
+/** Every door, silent: for scopes whose scripts never ask for a tool. */
 public final class NoToolsExecutor implements ToolCallExecutor {
 
   @Override
@@ -29,7 +32,28 @@ public final class NoToolsExecutor implements ToolCallExecutor {
   }
 
   @Override
+  public void deferApproval(
+      ToolCall call,
+      ApprovalRequest request,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
+    // no tools in this wiring
+  }
+
+  @Override
   public void runTool(ToolCall call, ModelResponseId responseId, Sink sink) {
+    // no tools in this wiring
+  }
+
+  @Override
+  public void deferToolCall(
+      ToolCall call,
+      ComputationCallback callback,
+      Duration term,
+      ModelResponseId responseId,
+      Sink sink) {
     // no tools in this wiring
   }
 }

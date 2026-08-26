@@ -17,11 +17,8 @@ package org.jwcarman.nessy.api.tool;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.Awaited;
@@ -39,7 +36,7 @@ import org.jwcarman.nessy.api.CompletionPolicy;
  * }</pre>
  *
  * <p>Exactly one handler door must be filled in: {@link #executes(Function)}, {@link
- * #executes(BiFunction)}, or {@link #defers(BiConsumer)}. {@link #description(String)} is mandatory
+ * #executes(BiFunction)}, or {@link #defers(BiFunction)}. {@link #description(String)} is mandatory
  * — it is written for the model, not for the developer.
  */
 public final class ToolConfig<T> {
@@ -51,9 +48,8 @@ public final class ToolConfig<T> {
   private String description;
   private Function<T, ?> plainHandler;
   private BiFunction<T, ToolContext, ?> contextHandler;
-  private BiConsumer<T, ToolContext> deferStarter;
+  private BiFunction<T, ToolContext, Awaited.Deferred<ToolResult>> deferStarter;
   private CompletionPolicy explicitCompletion;
-  private Duration timeout;
 
   ToolConfig(Class<T> inputType) {
     this.inputType = inputType;
@@ -90,22 +86,17 @@ public final class ToolConfig<T> {
 
   /**
    * The handler door for a tool whose answer arrives through a durable computation. {@code starter}
-   * kicks off the work and returns; the built tool's {@code execute} always answers {@link
-   * Awaited#deferred()}. Sets {@link #requires(CompletionPolicy)} to {@link
-   * CompletionPolicy#DURABLE} unless an explicit call to {@link #requires(CompletionPolicy)}
-   * overrides it, in either order.
+   * kicks off the work and RETURNS the deferral (deferral-by-callback spec §1): what to run once
+   * the computation exists, and how long the tool wants it to stand. Sets {@link
+   * #requires(CompletionPolicy)} to {@link CompletionPolicy#DURABLE} unless an explicit call to
+   * {@link #requires(CompletionPolicy)} overrides it, in either order.
    *
-   * <p><b>The starter MUST call {@link ToolContext#defer()}</b> — that is why it is handed the
-   * context — and must do so before it returns. {@code defer()} creates the durable computation,
-   * folds the wait into the scope, commits, and hands back the id: the callback address the started
-   * work is supposed to answer on. A starter that returns without calling it leaves the built tool
-   * answering {@code deferred()} with nowhere for an answer to go, and the call fails in-band with
-   * {@code "deferring tool never called context.defer()"}. This door does not call {@code defer()}
-   * on the starter's behalf: only the starter knows whether the work was actually handed off, and
-   * an id minted for work that was never started is exactly the lie {@code defer()} exists to
-   * prevent.
+   * <p>There is no {@code defer()} left to forget to call, and no window in which a tool holds an
+   * id the scope has not recorded: the plumbing creates the computation, folds the wait, commits,
+   * and only then runs the callback the starter returned. The starter's own job is to hand the work
+   * off and say where the answer should be sent when the address is known.
    */
-  public ToolConfig<T> defers(BiConsumer<T, ToolContext> starter) {
+  public ToolConfig<T> defers(BiFunction<T, ToolContext, Awaited.Deferred<ToolResult>> starter) {
     this.deferStarter = Objects.requireNonNull(starter, "starter must not be null");
     return this;
   }
@@ -113,17 +104,6 @@ public final class ToolConfig<T> {
   /** Overrides the completion policy the built tool declares. Always wins over {@link #defers}. */
   public ToolConfig<T> requires(CompletionPolicy policy) {
     this.explicitCompletion = Objects.requireNonNull(policy, "policy must not be null");
-    return this;
-  }
-
-  /**
-   * How long a durable computation this tool starts may stay pending before Continuum treats it as
-   * overdue and fails it (continuum-adoption spec §3, §9.3) — expiry ends the wait, it does not
-   * retry it. Unset does NOT mean no deadline: {@link Tool#timeout()}'s own javadoc explains the
-   * one-day default an unset timeout is stamped with instead.
-   */
-  public ToolConfig<T> timeout(Duration timeout) {
-    this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     return this;
   }
 
@@ -145,13 +125,7 @@ public final class ToolConfig<T> {
           "tool '%s' must declare exactly one handler door (executes/executes/defers), found %d"
               .formatted(name, handlerCount));
     }
-    return new Configured<>(
-        name,
-        description,
-        inputType,
-        buildExecutor(),
-        completionPolicy(),
-        Optional.ofNullable(timeout));
+    return new Configured<>(name, description, inputType, buildExecutor(), completionPolicy());
   }
 
   private CompletionPolicy completionPolicy() {
@@ -177,10 +151,7 @@ public final class ToolConfig<T> {
 
   private BiFunction<T, ToolContext, Awaited<ToolResult>> buildExecutor() {
     if (deferStarter != null) {
-      return (input, context) -> {
-        deferStarter.accept(input, context);
-        return Awaited.deferred();
-      };
+      return deferStarter::apply;
     }
     if (contextHandler != null) {
       return (input, context) -> Awaited.ready(render(contextHandler.apply(input, context)));
@@ -226,21 +197,18 @@ public final class ToolConfig<T> {
     private final Class<T> inputType;
     private final BiFunction<T, ToolContext, Awaited<ToolResult>> executor;
     private final CompletionPolicy requiredCompletion;
-    private final Optional<Duration> timeout;
 
     Configured(
         String name,
         String description,
         Class<T> inputType,
         BiFunction<T, ToolContext, Awaited<ToolResult>> executor,
-        CompletionPolicy requiredCompletion,
-        Optional<Duration> timeout) {
+        CompletionPolicy requiredCompletion) {
       this.name = name;
       this.description = description;
       this.inputType = inputType;
       this.executor = executor;
       this.requiredCompletion = requiredCompletion;
-      this.timeout = timeout;
     }
 
     @Override
@@ -266,11 +234,6 @@ public final class ToolConfig<T> {
     @Override
     public CompletionPolicy requiredCompletion() {
       return requiredCompletion;
-    }
-
-    @Override
-    public Optional<Duration> timeout() {
-      return timeout;
     }
   }
 }

@@ -39,8 +39,10 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = ToolCallPhase.SeekingApproval.class, name = "seeking-approval"),
+  @JsonSubTypes.Type(value = ToolCallPhase.DeferringApproval.class, name = "deferring-approval"),
   @JsonSubTypes.Type(value = ToolCallPhase.AwaitingApproval.class, name = "awaiting-approval"),
   @JsonSubTypes.Type(value = ToolCallPhase.RunningTool.class, name = "running-tool"),
+  @JsonSubTypes.Type(value = ToolCallPhase.DeferringResult.class, name = "deferring-result"),
   @JsonSubTypes.Type(value = ToolCallPhase.AwaitingResult.class, name = "awaiting-result"),
   @JsonSubTypes.Type(value = ToolCallPhase.Completed.class, name = "completed"),
   @JsonSubTypes.Type(value = ToolCallPhase.Denied.class, name = "denied"),
@@ -82,9 +84,11 @@ public sealed interface ToolCallPhase {
    */
   default ToolCallTransition handle(ToolCallEvent event) {
     return switch (event) {
+      case AgentEvent.ApprovalDeferralRequested e -> onApprovalDeferralRequested(e);
       case AgentEvent.ApprovalDeferred e -> onApprovalDeferred(e);
       case AgentEvent.ApprovalAnswered e -> onApprovalAnswered(e);
-      case AgentEvent.ToolDeferred e -> onToolDeferred(e);
+      case AgentEvent.ToolCallDeferralRequested e -> onToolCallDeferralRequested(e);
+      case AgentEvent.ToolCallDeferred e -> onToolCallDeferred(e);
       case AgentEvent.ToolFinished e -> onToolFinished(e);
     };
   }
@@ -94,23 +98,54 @@ public sealed interface ToolCallPhase {
    * {@link ToolCallEvent} is a sub-hierarchy — a state can never be handed an observation or a
    * model completion, so everything reaching here genuinely is unexpected for this state.
    */
+  default ToolCallTransition onApprovalDeferralRequested(
+      AgentEvent.ApprovalDeferralRequested event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** See {@link #onApprovalDeferralRequested}: dropped unless this state names it. */
   default ToolCallTransition onApprovalDeferred(AgentEvent.ApprovalDeferred event) {
     return ToolCallTransition.dropped();
   }
 
-  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
+  /** See {@link #onApprovalDeferralRequested}: dropped unless this state names it. */
   default ToolCallTransition onApprovalAnswered(AgentEvent.ApprovalAnswered event) {
     return ToolCallTransition.dropped();
   }
 
-  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
-  default ToolCallTransition onToolDeferred(AgentEvent.ToolDeferred event) {
+  /** See {@link #onApprovalDeferralRequested}: dropped unless this state names it. */
+  default ToolCallTransition onToolCallDeferralRequested(
+      AgentEvent.ToolCallDeferralRequested event) {
     return ToolCallTransition.dropped();
   }
 
-  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
+  /** See {@link #onApprovalDeferralRequested}: dropped unless this state names it. */
+  default ToolCallTransition onToolCallDeferred(AgentEvent.ToolCallDeferred event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** See {@link #onApprovalDeferralRequested}: dropped unless this state names it. */
   default ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
     return ToolCallTransition.dropped();
+  }
+
+  /**
+   * An admitted approval deferral request, from either of the two states that may take one — the
+   * state that asked, and the state that is already mid-handoff and is asking again (spec §9a).
+   * Both produce the same thing: a fresh {@link DeferringApproval} and a fresh effect carrying this
+   * request's callback and term.
+   */
+  private static ToolCallTransition deferringApproval(AgentEvent.ApprovalDeferralRequested event) {
+    return ToolCallTransition.to(
+        new DeferringApproval(),
+        new Effect.DeferApproval(event.call(), event.request(), event.callback(), event.term()));
+  }
+
+  /** The tool side's {@link #deferringApproval}. */
+  private static ToolCallTransition deferringResult(AgentEvent.ToolCallDeferralRequested event) {
+    return ToolCallTransition.to(
+        new DeferringResult(),
+        new Effect.DeferToolCall(event.call(), event.callback(), event.term()));
   }
 
   /** An admitted answer, from either of the two states that may take one. */
@@ -151,9 +186,15 @@ public sealed interface ToolCallPhase {
       return List.of(new Effect.SeekApproval(call));
     }
 
+    /**
+     * The approver returned a deferral. Nothing is parked yet — no computation exists and no id
+     * does either (spec §9a) — so the call moves to {@link DeferringApproval} and the handoff rides
+     * an effect, which is the only thing that may carry the callback.
+     */
     @Override
-    public ToolCallTransition onApprovalDeferred(AgentEvent.ApprovalDeferred event) {
-      return ToolCallTransition.to(new AwaitingApproval(event.approval(), event.request()));
+    public ToolCallTransition onApprovalDeferralRequested(
+        AgentEvent.ApprovalDeferralRequested event) {
+      return deferringApproval(event);
     }
 
     /**
@@ -166,7 +207,94 @@ public sealed interface ToolCallPhase {
     }
   }
 
-  /** The approver deferred; Continuum holds the ask. Never re-fired. */
+  /**
+   * The approver deferred and the handoff is in flight: the {@code DeferApproval} effect is
+   * creating the computation and running the callback, and until it folds {@code ApprovalDeferred}
+   * NOBODY OUTSIDE KNOWS ANYTHING — not the id, because it may not exist yet, and not the question,
+   * because the callback may not have run.
+   *
+   * <p><b>Carries nothing</b> (James, 2026-08-26). The callback cannot be written to state, and the
+   * term need not be: after a restart the re-ask produces a fresh callback and a fresh term, so a
+   * persisted one would only be a stale copy of something about to be replaced. What the variant
+   * itself says — "this call is mid-approval-handoff" — is the whole of the recoverable fact.
+   */
+  record DeferringApproval() implements ToolCallPhase {
+
+    @Override
+    public Optional<ToolResultBlock> result() {
+      return Optional.empty();
+    }
+
+    /**
+     * <b>The ORIGINATING effect, never this state's own.</b> Recovery re-fires {@code SeekApproval}
+     * — the ask runs again from the top — rather than re-firing the {@code DeferApproval} that was
+     * in flight.
+     *
+     * <p>The reason is that {@code outstanding()} rebuilds instructions from PERSISTED state, and
+     * {@code DeferApproval} carries a {@link org.jwcarman.nessy.api.tool.ComputationCallback} — a
+     * closure. A closure is not persisted and cannot be reconstructed from anything that is, so
+     * there is no honest way to re-issue that instruction. Re-asking is honest and it is also SAFE,
+     * for the reason this state exists at all: until the callback has run, nothing outside has been
+     * told anything, so doing it again tells nobody twice. The moment that stops being true is the
+     * moment the call leaves for {@link AwaitingApproval}, which owes nothing.
+     *
+     * <p>Its cost is the at-least-once caveat a crash always carried (spec §9a): if the process
+     * died AFTER the callback ran but before {@code ApprovalDeferred} folded, the world holds an id
+     * this scope has forgotten, and the re-ask leaves it holding two. A crash tells us nothing at
+     * all — not even that anything failed — so that is the honest trade. A callback that THREW is a
+     * different case entirely and does not come here: it fails the call outright, because "it
+     * threw" and "it never reached the world" are not the same knowledge.
+     */
+    @Override
+    public List<Effect> outstanding(ToolCall call) {
+      return List.of(new Effect.SeekApproval(call));
+    }
+
+    /**
+     * <b>Asked again</b> (spec §9a, the first mandatory cell). Recovery re-fired {@code
+     * SeekApproval}, the approver ran again, and it returned a NEW deferral — a new closure, a new
+     * term. This event is naturally admitted only from {@link SeekingApproval}; unless this state
+     * admits it too and REPLACES itself, the re-ask can never land, and the call sits here forever
+     * while every staleness tick re-fires an ask whose answer is thrown away. The new request wins:
+     * its callback and its term are the ones the handoff carries.
+     */
+    @Override
+    public ToolCallTransition onApprovalDeferralRequested(
+        AgentEvent.ApprovalDeferralRequested event) {
+      return deferringApproval(event);
+    }
+
+    /** The handoff succeeded: the callback ran, so the world may now know the id. */
+    @Override
+    public ToolCallTransition onApprovalDeferred(AgentEvent.ApprovalDeferred event) {
+      return ToolCallTransition.to(new AwaitingApproval(event.approval(), event.request()));
+    }
+
+    /**
+     * <b>The handoff failed</b> (spec §9a, the second mandatory cell): the callback threw, so the
+     * effect killed the computation and reported an ordinary in-band failure. It is id-LESS, and
+     * must be — this state recorded no id — and it is admitted here so the call goes terminal
+     * instead of sitting in a handoff that will never be attempted again.
+     *
+     * <p>Why a failure and not a re-ask: all we know is that the callback threw, never whether it
+     * reached the world first. Re-asking would assume it did not, and would risk telling the world
+     * twice. Failing hands the decision about what to do next to the model.
+     */
+    @Override
+    public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+      return event.tool().isEmpty() ? finished(event) : ToolCallTransition.dropped();
+    }
+  }
+
+  /**
+   * The approver deferred; Continuum holds the ask. Never re-fired.
+   *
+   * <p><b>The agreed deadline rides the EVENT, not this state</b> — a deliberate narrowing of spec
+   * §5's "the deadline rides the event into the state". The consumer §5 names is the
+   * pending-approvals projection, and a projection reads the fact, not the phase; putting an {@link
+   * java.time.Instant} on the wire here would need a JSR-310 Jackson module the pinned mapper does
+   * not carry, and adding one is a new dependency. Nothing else reads it, so it stays on the fact.
+   */
   record AwaitingApproval(ComputationId approval, ApprovalRequest request)
       implements ToolCallPhase {
     public AwaitingApproval {
@@ -206,19 +334,20 @@ public sealed interface ToolCallPhase {
       return List.of(new Effect.RunTool(call));
     }
 
+    /** The tool side's mirror of {@link SeekingApproval#onApprovalDeferralRequested}. */
     @Override
-    public ToolCallTransition onToolDeferred(AgentEvent.ToolDeferred event) {
-      return ToolCallTransition.to(new AwaitingResult(event.tool()));
+    public ToolCallTransition onToolCallDeferralRequested(
+        AgentEvent.ToolCallDeferralRequested event) {
+      return deferringResult(event);
     }
 
     /**
      * Only an in-process result: a {@code RunningTool} call names no computation, so a delivered id
-     * is by definition one the scope knows nothing of. There is no timing gap to rescue — the door
-     * ({@code ToolContext#defer}, tool-context-defer spec §2) folds {@code ToolDeferred} and
-     * commits BEFORE it hands the id back, so nothing outside can hold an id this scope does not
-     * already name. On the crash path the re-fired {@code RunTool} defers again, minting a SECOND
-     * computation; the orphan's expiry then meets {@code AwaitingResult(id2)} — a mismatch,
-     * correctly dropped there.
+     * is by definition one the scope knows nothing of. There is no timing gap to rescue — a tool
+     * cannot hand out an id, because when it returns its deferral no id exists
+     * (deferral-by-callback spec §9a). On the crash path the re-fired {@code RunTool} defers again,
+     * minting a SECOND computation; the orphan's expiry then meets {@code AwaitingResult(id2)} — a
+     * mismatch, correctly dropped there.
      */
     @Override
     public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
@@ -226,7 +355,49 @@ public sealed interface ToolCallPhase {
     }
   }
 
-  /** The tool deferred; Continuum holds the result. Never re-fired. */
+  /** The tool side's {@link DeferringApproval}, carrying nothing for the same reasons. */
+  record DeferringResult() implements ToolCallPhase {
+
+    @Override
+    public Optional<ToolResultBlock> result() {
+      return Optional.empty();
+    }
+
+    /**
+     * The ORIGINATING effect — {@code RunTool} — never this state's own {@code DeferToolCall}. See
+     * {@link DeferringApproval#outstanding(ToolCall)} for the whole argument; it is the same one,
+     * about a closure that cannot be rebuilt from persisted state and a re-run that is safe
+     * precisely because nobody outside has been told anything yet.
+     */
+    @Override
+    public List<Effect> outstanding(ToolCall call) {
+      return List.of(new Effect.RunTool(call));
+    }
+
+    /** Asked again — see {@link DeferringApproval#onApprovalDeferralRequested}. */
+    @Override
+    public ToolCallTransition onToolCallDeferralRequested(
+        AgentEvent.ToolCallDeferralRequested event) {
+      return deferringResult(event);
+    }
+
+    /** The handoff succeeded: the callback ran, so the world may now know the id. */
+    @Override
+    public ToolCallTransition onToolCallDeferred(AgentEvent.ToolCallDeferred event) {
+      return ToolCallTransition.to(new AwaitingResult(event.tool()));
+    }
+
+    /** The handoff failed — see {@link DeferringApproval#onToolFinished}. */
+    @Override
+    public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+      return event.tool().isEmpty() ? finished(event) : ToolCallTransition.dropped();
+    }
+  }
+
+  /**
+   * The tool deferred; Continuum holds the result. Never re-fired; see {@link AwaitingApproval} for
+   * why the agreed deadline stays on the fact rather than on the state.
+   */
   record AwaitingResult(ComputationId tool) implements ToolCallPhase {
     public AwaitingResult {
       Objects.requireNonNull(tool, "tool must not be null");
