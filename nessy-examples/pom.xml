@@ -47,5 +47,6 @@
     <module>approvals</module>
     <module>governed</module>
     <module>observed</module>
+    <module>watchman</module>
   </modules>
 </project>

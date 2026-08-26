@@ -1,0 +1,60 @@
+spring:
+  application:
+    # The service name every span, metric and log line is tagged with in Grafana.
+    name: watchman
+  datasource:
+    # The durable pair. The starter turns a DataSource plus the two JDBC adapters into a
+    # JdbcSubstrate and a JdbcContinuumRepository; without it, the watchman forgets everything it
+    # was waiting for the moment it restarts, which is the one thing the soak is measuring.
+    url: ${WATCHMAN_DB_URL:jdbc:postgresql://localhost:5432/watchman}
+    username: ${WATCHMAN_DB_USER:watchman}
+    password: ${WATCHMAN_DB_PASSWORD:watchman}
+  threads:
+    virtual:
+      enabled: true
+
+nessy:
+  type: watchman
+  # A prompt this long belongs in a file, not a properties value.
+  system-prompt-file: classpath:system-prompt.md
+  # The re-fire policy. Deliberately long: a round that is genuinely waiting on a human should not
+  # be re-driven every five minutes for three days. See nessy.state.stale_retries on the dashboard —
+  # near zero is the healthy reading.
+  staleness: 30m
+  backlog-capacity: 256
+
+watchman:
+  # Every half hour, on the half hour.
+  cron: ${WATCHMAN_CRON:0 */30 * * * *}
+  scheduling:
+    enabled: true
+  notes-dir: ${WATCHMAN_NOTES_DIR:./notes}
+  note-history: 3
+  command-timeout: 30s
+  # No defaults, on purpose (see WatchmanProperties): the application refuses to start without
+  # them rather than shipping a password.
+  user: ${WATCHMAN_USER:}
+  password: ${WATCHMAN_PASSWORD:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  otlp:
+    metrics:
+      export:
+        url: ${OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
+        step: 30s
+    tracing:
+      endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
+  tracing:
+    sampling:
+      # A round every half hour is not a traffic problem. Sample all of it: the interesting round is
+      # always the rare one, and 10% sampling is how you lose it.
+      probability: 1.0
+
+logging:
+  level:
+    org.jwcarman.nessy: INFO
+    org.jwcarman.nessy.examples.watchman: DEBUG
