@@ -204,7 +204,6 @@ class FailureAfterDeferringTest {
             new PumpedExecutor(),
             approvalClient,
             toolClient);
-    completions = new CompletionDesk(toolClient, worker::nudge);
     store.save(
         new State(
             new Phase.AwaitingTools(
@@ -218,7 +217,6 @@ class FailureAfterDeferringTest {
   }
 
   private DeliveryWorker<String> worker;
-  private CompletionDesk completions;
 
   private ToolResultBlock theOneFoldedResult() {
     assertThat(foldedResults()).isNotEmpty();
@@ -253,21 +251,23 @@ class FailureAfterDeferringTest {
   }
 
   /**
-   * The other half of the ruling: finishing the call in-band leaves a live computation nobody is
-   * waiting on. Its eventual answer meets a call that is already finished, and the existing
-   * mismatch rule drops it with a WARN rather than folding a second result over the first.
+   * The other half of the ruling: finishing the call in-band leaves a computation nobody is waiting
+   * on, so the executor ends it there and then rather than letting it sit a day for the reaper.
+   * Note what this test does NOT do — it completes nothing and advances no clock. The delivery is
+   * already waiting, it meets a call the reducer has finished, and the existing mismatch rule drops
+   * it with a WARN rather than folding a second result over the first.
    */
   @Test
-  void theOrphanedComputationsLaterAnswerIsDroppedRatherThanFolded() {
+  void theOrphanedComputationIsEndedAtOnceAndItsDeliveryIsDropped() {
     DefersThenTool tool =
         driveOnceWith((input, context) -> Awaited.ready(ToolResult.ok("too late")));
     assertThat(warnings()).isEmpty();
     List<ToolResultBlock> afterTheFailure = foldedResults();
 
-    completions.complete(tool.handedOut, ToolResult.ok("the ticket finally closed"));
-    worker.drainTools(BatchSize.of(10));
+    int delivered = worker.drainTools(BatchSize.of(10));
     pump.pumpUntilQuiet();
 
+    assertThat(delivered).isEqualTo(1); // terminal already — no expiry needed
     assertThat(foldedResults()).isEqualTo(afterTheFailure);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage())

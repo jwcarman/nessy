@@ -94,18 +94,23 @@ Continuum-backed callback address.
 
 ```java
 @Override
-public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-  handedOut = context.defer();
-  completions.complete(handedOut, ToolResult.ok("answered at once"));
-  worker.drainTools(BatchSize.of(10));
+public Awaited<ToolResult> execute(RestartHost input, ToolContext context) {
+  ComputationId id = context.defer();          // creates, folds, commits — then returns
+  tickets.open(input.host(), callbackFor(id)); // the id IS the callback address
   return Awaited.deferred();
 }
 ```
 
-(from `ToolHandsOutItsIdBeforeReturningTest` — it proves the ordering: an
-external system that answers on the same thread, before the tool even
-returns, still reaches the turn. Nothing is dropped, because `defer()`'s
-fold already committed before it handed the id back.)
+The order matters, and it is the whole point: by the time `defer()` returns,
+the scope's phase already says it is awaiting that computation. So the
+ticket system may answer a millisecond later — or on the same thread, before
+`execute` has even returned — and the answer still lands. There is no window
+to lose it in, and nothing has to be fast enough. Whoever holds the id
+completes it later through the harness's own door:
+
+```java
+harness.completions().complete(id, ToolResult.ok("host restarted"));
+```
 
 `Awaited.deferred()` is legal only after this call's own `defer()`. An
 executor that never saw `defer()` called fails the call in-band with

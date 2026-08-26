@@ -199,12 +199,22 @@ narration and loses its `return`. Every other caller of a sink runs inside
 an executor task — the model executor's completion, the tool executor's
 completions, the delivery worker's redrives — where the narration was
 already the only trace of a failure and the task ends either way; nothing
-observable changes for them. One exception is observable: with an inline
-executor (`HarnessConfig.executor(Runnable::run)`) a fold failure escapes the
-Continuum consumer, so the delivery is released rather than consumed and comes
-back after the backoff; the redelivery meets an advanced phase and is dropped
-under §6's mismatch rule. Nothing is lost, but the WARN and the extra round
-trip are visible. `ComputationApprovalContext.defer()` and
+observable changes for them.
+
+An **inline executor** (`HarnessConfig.executor(Runnable::run)`) is the case
+that does see a difference, in two places. A dispatched effect runs on the
+delivering thread, so its own `deliver` re-enters on top of the outer one; a
+failure in that nested fold propagates all the way out to whoever called the
+outer `deliver` — `ask()`/`tell()` — rather than dying in a pool thread. It is
+narrated **once**, by the frame that failed: `DefaultAgent.deliver` guards only
+handle → remember → save, and dispatches the transition's effects *outside* that
+catch, precisely so the outer frame neither re-narrates the nested failure
+against its own (already committed) event nor swallows it. Separately, a fold
+failure inside the Continuum consumer escapes it, so the delivery is released
+rather than consumed and comes back after the backoff; the redelivery meets an
+advanced phase and is dropped under §6's mismatch rule. Nothing is lost either
+way, but the WARN, the extra round trip, and the throw out of `ask()` are
+visible. `ComputationApprovalContext.defer()` and
 `ComputationToolContext.defer()` simply let the throw propagate. `Sink`
 stays a one-method functional interface; nothing is added.
 

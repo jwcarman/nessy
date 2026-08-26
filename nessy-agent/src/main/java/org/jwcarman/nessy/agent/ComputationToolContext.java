@@ -27,6 +27,8 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolEvent;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The Continuum-backed door behind {@link ToolContext#defer()} (tool-context-defer spec §1.1, §2):
@@ -39,6 +41,8 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * wiring, never application vocabulary.
  */
 public final class ComputationToolContext implements ToolContext {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ComputationToolContext.class);
 
   private final ContinuumClient<ToolResult, Routing> client;
   private final Routing routing;
@@ -115,5 +119,37 @@ public final class ComputationToolContext implements ToolContext {
    */
   public synchronized Optional<ComputationId> deferral() {
     return Optional.ofNullable(deferred);
+  }
+
+  /**
+   * Ends the computation {@link #defer()} created, for a dispatch that deferred and then failed
+   * anyway (spec §1.2). The executor has just answered the call in-band, so nobody is waiting on
+   * this computation any more; without this it would sit until its deadline — a day, by default —
+   * before the reaper noticed. Failing it now sends its delivery at the next drain, where it meets
+   * a call the reducer has already finished and is dropped with the usual WARN. Same destination,
+   * today instead of tomorrow.
+   *
+   * <p>A no-op when this context never deferred. Best effort by design: if Continuum itself is
+   * down, failing to tidy up must not mask the in-band result the model is about to read — the call
+   * is answered either way, and an untidied computation still expires on its own.
+   *
+   * <p>Public for the same reason {@link #deferral()} is: the executor lives one package over.
+   *
+   * @param reason why the dispatch failed — the same detail the model reads in-band
+   */
+  public void abandon(String reason) {
+    Objects.requireNonNull(reason, "reason must not be null");
+    Optional<ComputationId> orphan = deferral();
+    if (orphan.isEmpty()) {
+      return;
+    }
+    try {
+      client.fail(ContinuumIds.continuumId(orphan.get().value()), reason);
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "could not abandon the orphaned tool computation {}; it will expire on its own",
+          orphan.get().value(),
+          e);
+    }
   }
 }

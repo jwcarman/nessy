@@ -846,9 +846,13 @@ sequence of renames and interim shapes that produced it.
   hands it a narrower view. `Sink#deliver` (`DefaultAgent.deliver`) now
   narrates `AgentObserver.applyFailed` and **rethrows** on a fold that
   cannot commit, closing a hole where `defer()` could hand back an id for a
-  park that was never actually recorded; every other caller already ran
-  inside an executor task where the narration was the only trace, so
-  nothing observable changes for them. `ApprovalRequest.draft(...)` gains a
+  park that was never actually recorded. Callers that hand their sink to a
+  pooled executor see no change — the narration was already the only trace,
+  and the task ends either way. A wiring with an INLINE executor
+  (`executor(Runnable::run)`) does see the throw: a dispatched effect folds
+  on the delivering thread, so a failure in that nested fold now propagates
+  out through `ask()`/`tell()`. It is narrated exactly once, by the frame
+  that failed. `ApprovalRequest.draft(...)` gains a
   fifth argument, the bound tool input, which an enricher reads back typed
   through the new `Draft#input(Class<T>)` — transient, never serialized
   into the frozen document, since `call().arguments()` is already that

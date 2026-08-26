@@ -38,12 +38,15 @@ import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class DefaultAgentApplyTest {
@@ -254,6 +257,73 @@ class DefaultAgentApplyTest {
 
     assertThat(failures).containsExactly(observed);
     assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
+  }
+
+  /**
+   * The inline-executor shape (tool-context-defer spec §3, fix round 2): {@code
+   * HarnessConfig.executor(Runnable::run)} runs a dispatched effect on the delivering thread, so
+   * the model call's own {@code deliver} re-enters on top of the observation's. When that NESTED
+   * fold fails, exactly one {@code applyFailed} must describe it — the nested frame's, naming the
+   * event that actually failed. Before the commit/follow split, the outer frame narrated the same
+   * failure a second time against {@code Observed}, the event that had already committed fine.
+   */
+  @Test
+  void aNestedFoldFailureUnderAnInlineExecutorIsNarratedOnceByTheFrameThatFailed() {
+    var store =
+        new SubstrateAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var failures = new ArrayList<AgentEvent>();
+    var queue = new ArrayDeque<String>();
+    Backlog<String> backlog =
+        new Backlog<>() {
+          @Override
+          public void add(String observation) {
+            queue.add(observation);
+          }
+
+          @Override
+          public Optional<String> poll() {
+            return Optional.ofNullable(queue.poll());
+          }
+        };
+    var responded =
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("hello back")), List.of(), ModelResponseId.of("response-1"));
+    var agent =
+        TestAgents.<String>wired(
+            new RefusesTheAssistantTurn(new RecordingMemory()),
+            store,
+            backlog,
+            text -> List.of(new TextBlock(text)),
+            // the inline executor, in one line: the model "call" delivers on the caller's thread
+            sink -> sink.deliver(new AgentEvent.ModelFinished(responded)),
+            new NoToolsExecutor(),
+            new FailureRecorder(failures),
+            false,
+            StalenessPolicy.never());
+
+    assertThatThrownBy(() -> agent.tell("hello")).isInstanceOf(IllegalStateException.class);
+
+    assertThat(failures).hasSize(1);
+    assertThat(failures.getFirst()).isInstanceOf(AgentEvent.ModelFinished.class);
+    // the observation itself committed cleanly — only the nested model fold failed
+    assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+  }
+
+  /** Remembers everything except an assistant turn, which it refuses — a Memory half down. */
+  private record RefusesTheAssistantTurn(Memory delegate) implements Memory {
+    @Override
+    public void remember(Remembrance remembrance) {
+      if (remembrance instanceof Remembrance.AssistantMessage) {
+        throw new IllegalStateException("memory refused the assistant turn");
+      }
+      delegate.remember(remembrance);
+    }
+
+    @Override
+    public Context recall() {
+      return delegate.recall();
+    }
   }
 
   private static final class NoopBacklog implements Backlog<String> {

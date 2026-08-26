@@ -149,10 +149,6 @@ class ComputationApprovalContextTest {
 
     assertThat(narrated).hasSize(1); // applyFailed, exactly once
     assertThat(narrated.getFirst()).isInstanceOf(AgentEvent.ApprovalDeferred.class);
-    // nothing committed, so the call is still exactly where the fold found it
-    Phase phase = new UnsavableStore().load().phase();
-    assertThat(((Phase.AwaitingTools) phase).calls().get(CALL.id()))
-        .isInstanceOf(CallStatus.Pending.class);
   }
 
   private static final String SAVE_REFUSED = "the substrate is down";

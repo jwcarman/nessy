@@ -199,18 +199,25 @@ class ComputationToolContextTest {
    * handing the address to a pool, say. {@code deferral()} must see that write; a stale null would
    * make the executor read a parked call as one that never deferred, and answer it in-band over the
    * top of a wait the scope already names.
+   *
+   * <p>Deliberately NOT {@code join()}ed: a join is itself a happens-before edge, so joining would
+   * make this pass whatever {@code deferral()} did about visibility. Spinning on the reader instead
+   * is the real shape — the executor asking a context another thread opened — and a read with no
+   * memory barrier is free to spin here forever.
    */
   @Test
-  void aDeferralOpenedOnAnotherThreadIsVisibleToTheExecutorAfterTheJoin()
-      throws InterruptedException {
+  void aDeferralOpenedOnAnotherThreadBecomesVisibleToTheExecutorWithoutAJoin() {
     var context = contextOver(event -> {});
     var fromTheWorker = new AtomicReference<ComputationId>();
     Thread worker = new Thread(() -> fromTheWorker.set(context.defer()), "defers-elsewhere");
 
     worker.start();
-    worker.join();
 
-    assertThat(fromTheWorker.get()).isNotNull();
+    long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+    while (context.deferral().isEmpty() && System.nanoTime() < deadline) {
+      Thread.onSpinWait();
+    }
+    assertThat(context.deferral()).isPresent();
     assertThat(context.deferral()).contains(fromTheWorker.get());
   }
 

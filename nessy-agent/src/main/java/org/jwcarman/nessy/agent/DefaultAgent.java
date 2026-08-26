@@ -124,18 +124,33 @@ public final class DefaultAgent<O> implements Agent<O> {
    * ignored (§3.4).
    *
    * <p>A fold that cannot commit narrates {@link AgentObserver#applyFailed} and then
-   * <b>rethrows</b> (tool-context-defer spec §3). Every executor-side caller runs inside an
-   * executor task where the narration was already the only trace and the task ends either way —
-   * nothing observable changes for them. What the rethrow buys is the one caller that must know:
-   * {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()} promise
-   * that an id they hand back is an id the scope names, and only a throw can keep that promise
-   * honest. An IGNORED event is not a failure: this returns normally, as it always has.
+   * <b>rethrows</b> (tool-context-defer spec §3). What the rethrow buys is the caller that must
+   * know: {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()}
+   * promise that an id they hand back is an id the scope names, and only a throw can keep that
+   * promise honest. An IGNORED event is not a failure: this returns normally, as it always has.
+   *
+   * <p><b>Only the commit is guarded.</b> {@link #commit} covers handle → remember → save; the
+   * transition's effects are dispatched afterwards, by {@link #follow}, OUTSIDE the catch. That
+   * separation is what keeps the narration honest when an executor runs inline ({@code
+   * HarnessConfig.executor(Runnable::run)}): a dispatched effect can re-enter this method on the
+   * same thread, and a failure in that NESTED fold is narrated once, by the nested frame, against
+   * the event that actually failed. Were dispatch inside the guarded region, the outer frame would
+   * narrate the same failure a second time against the wrong event before rethrowing. It still
+   * propagates to whoever called the outer {@code deliver} — {@code ask()}/{@code tell()} with an
+   * inline executor — but exactly one {@code applyFailed} describes it.
    */
   void deliver(AgentEvent event) {
+    commit(event).ifPresent(this::follow);
+  }
+
+  /**
+   * The guarded region: decide, remember, commit. Empty when the event was ignored — nothing was
+   * written, so there is nothing to follow.
+   */
+  private Optional<Transition> commit(AgentEvent event) {
     while (true) {
       try {
-        applyOnce(event);
-        return;
+        return applyOnce(binding.store().load(), event);
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
       } catch (RuntimeException e) {
@@ -145,15 +160,11 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
   }
 
-  private void applyOnce(AgentEvent event) {
-    applyOnce(binding.store().load(), event);
-  }
-
-  private void applyOnce(State state, AgentEvent event) {
+  private Optional<Transition> applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
       observer.ignored(event);
-      return;
+      return Optional.empty();
     }
     remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
@@ -163,6 +174,15 @@ public final class DefaultAgent<O> implements Agent<O> {
     if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request)) {
       harness.parked(binding.id(), new TurnOutcome.Parked(approval, request));
     }
+    return Optional.of(t);
+  }
+
+  /**
+   * What a committed transition sets in motion, run OUTSIDE {@link #commit}'s catch — see {@link
+   * #deliver}. With an inline executor these effects re-enter {@code deliver} on this very thread,
+   * so anything that fails in there is already narrated by its own frame.
+   */
+  private void follow(Transition t) {
     t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the drain-on-idle wiring's own drive executor
@@ -237,13 +257,15 @@ public final class DefaultAgent<O> implements Agent<O> {
     if (content.isEmpty()) {
       return; // an empty render is a decline — skip, keep draining (§3.7)
     }
+    Optional<Transition> committed;
     try {
-      applyOnce(state, new AgentEvent.Observed(content));
+      committed = applyOnce(state, new AgentEvent.Observed(content));
     } catch (StaleStateException _) {
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
       observer.observationRequeued(observation);
+      return;
     } catch (RuntimeException e) {
-      // A genuine failure inside applyOnce (e.g. a throwing Memory#remember — Memory's own law 1,
+      // A genuine failure inside the COMMIT (e.g. a throwing Memory#remember — Memory's own law 1,
       // the non-durable shell arm): the observation goes back to the backlog exactly as the
       // stale-state race above does, so it is not lost. Unlike a stale race — an ordinary,
       // expected condition this shell absorbs and keeps draining past — this is NOT swallowed:
@@ -252,6 +274,11 @@ public final class DefaultAgent<O> implements Agent<O> {
       binding.backlog().add(observation);
       throw e;
     }
+    // Outside the catch, for the same reason deliver() dispatches outside its own (see there): with
+    // an inline executor these effects re-enter deliver on this thread. Requeuing the observation
+    // for a failure out HERE would be wrong twice over — it is already committed, so a redrive
+    // would double-apply it, and the nested frame has already narrated the real failure.
+    committed.ifPresent(this::follow);
   }
 
   private boolean isStale(State state) {

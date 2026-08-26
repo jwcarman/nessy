@@ -141,23 +141,44 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         () ->
             runPastGate(call, responseId, sink)
                 .ifPresent(
-                    answer ->
-                        sink.deliver(
-                            new AgentEvent.ToolFinished(call, answer.riding(), answer.outcome()))));
+                    answer -> {
+                      sink.deliver(
+                          new AgentEvent.ToolFinished(call, answer.riding(), answer.outcome()));
+                      // The call is finished now, so end the computation nobody is waiting on. A
+                      // no-op unless this dispatch actually deferred.
+                      answer.door().ifPresent(door -> door.abandon(reasonOf(answer.outcome())));
+                    }));
+  }
+
+  private static String reasonOf(ToolOutcome outcome) {
+    return switch (outcome) {
+      case ToolOutcome.Failed(ToolError error) -> error.message();
+      case ToolOutcome.Returned(ToolResult result) -> result.content();
+    };
   }
 
   /**
-   * One dispatch's answer, and the computation it must ride to be admitted.
+   * One dispatch's answer, and the door it ran behind — empty only when there was no tool to run at
+   * all.
    *
-   * <p>{@code riding} is empty for a call the door never deferred — a {@code Running} call names no
-   * computation, and the reducer admits only an id-less result against one. It is <b>present</b>
-   * whenever {@code defer()} succeeded and the dispatch nevertheless ended in a failure: the phase
-   * already says {@code AwaitingResult(id)}, so an id-less {@code ToolFinished} would be ignored
-   * and the call would hang until the orphan expired. Riding the id the phase names is what lets
-   * the reducer fold {@code Finished} now; the orphan computation's eventual completion or expiry
-   * then meets a {@code Finished} call and is dropped with a WARN under the existing mismatch rule.
+   * @param outcome what to tell the reducer
+   * @param door this dispatch's context, which knows whether it ever deferred
    */
-  private record Answer(ToolOutcome outcome, Optional<ComputationId> riding) {}
+  private record Answer(ToolOutcome outcome, Optional<ComputationToolContext> door) {
+
+    /**
+     * The computation this answer must ride to be admitted.
+     *
+     * <p>Empty for a call the door never deferred — a {@code Running} call names no computation,
+     * and the reducer admits only an id-less result against one. <b>Present</b> whenever {@code
+     * defer()} succeeded and the dispatch nevertheless ended in a failure: the phase already says
+     * {@code AwaitingResult(id)}, so an id-less {@code ToolFinished} would be ignored and the call
+     * would hang. Riding the id the phase names is what lets the reducer fold {@code Finished} now.
+     */
+    Optional<ComputationId> riding() {
+      return door.flatMap(ComputationToolContext::deferral);
+    }
+  }
 
   /** The ask. Returns the event to deliver; a deferral has already delivered its own. */
   private AgentEvent seek(ToolCall call, ModelResponseId responseId, Sink sink) {
@@ -236,7 +257,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       // context.deferral() is empty — the call is answered in-band and nothing dangles (spec §3).
       // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
       // rides that id or the call hangs until the orphan expires.
-      return Optional.of(new Answer(failed(call, detailOf(e)), context.deferral()));
+      return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
     }
   }
 
@@ -260,19 +281,20 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Tool<T> tool, Object input, ToolCall call, ComputationToolContext context) {
     T typed = tool.inputType().cast(input);
     Awaited<ToolResult> outcome = tool.execute(typed, context);
-    Optional<ComputationId> deferral = context.deferral();
+    Optional<ComputationToolContext> door = Optional.of(context);
+    boolean deferred = context.deferral().isPresent();
     return switch (outcome) {
-      case Awaited.Ready<ToolResult>(ToolResult value) when deferral.isEmpty() -> {
+      case Awaited.Ready<ToolResult>(ToolResult value) when !deferred -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
-        yield Optional.of(new Answer(new ToolOutcome.Returned(value), Optional.empty()));
+        yield Optional.of(new Answer(new ToolOutcome.Returned(value), door));
       }
       // The phase already says AwaitingResult(id): the failure rides that id so the reducer folds
       // Finished now, rather than leaving the call to hang until the orphan expires.
       case Awaited.Ready<ToolResult> _ ->
-          Optional.of(new Answer(failed(call, ANSWERED_AFTER_DEFERRING), deferral));
-      case Awaited.Deferred<ToolResult> _ when deferral.isPresent() -> Optional.empty();
+          Optional.of(new Answer(failed(call, ANSWERED_AFTER_DEFERRING), door));
+      case Awaited.Deferred<ToolResult> _ when deferred -> Optional.empty();
       case Awaited.Deferred<ToolResult> _ ->
-          Optional.of(new Answer(failed(call, DEFERRED_WITHOUT_DEFER), Optional.empty()));
+          Optional.of(new Answer(failed(call, DEFERRED_WITHOUT_DEFER), door));
     };
   }
 
