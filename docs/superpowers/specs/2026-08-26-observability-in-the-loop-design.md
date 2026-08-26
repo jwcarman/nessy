@@ -159,6 +159,23 @@ note it will attach under the fold.
   operations). The new spans take `nessy.*` names because semconv has no verb
   for "decide an approval" or "fold an event", the same reasoning that keeps
   the two waits ours.
+
+  **Checked against the registry, 2026-08-26**, rather than asserted: the
+  `gen_ai` attribute registry contains no attribute for approval, permission,
+  consent, elicitation, confirmation, review, escalation, or a paused
+  operation, and `gen_ai.operation.name`'s eighteen values contain no human
+  verb. The nearest neighbour lives in the MCP conventions, where
+  `mcp.method.name` takes `"elicitation/create"` — *"Request from the server
+  to elicit additional information from the user via the client"* — but that
+  is a synchronous protocol RPC over a live connection, an attribute on a
+  method-call span, not an agent-lifecycle state. What has no convention is
+  the thing this design made first-class: **a wait that outlives the
+  connection, the thread and the process, and may last days.** Most frameworks
+  have a blocking call or a callback and so need no word for it. If semconv
+  later adopts one, `nessy.approval.wait`/`nessy.approval.seek` are the two
+  names to migrate.
+  (Sources: `docs/registry/attributes/gen-ai.md`,
+  `docs/registry/attributes/mcp.md` in `open-telemetry/semantic-conventions-genai`.)
 - **Containment** — an observation must never break a fold, a turn, or a tool.
   Opening a scope adds a `close()` that must be in a `finally` and inside the
   same guard as everything else.
