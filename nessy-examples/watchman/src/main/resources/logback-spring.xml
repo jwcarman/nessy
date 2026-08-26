@@ -1,0 +1,27 @@
+<configuration>
+  <!-- logback-spring.xml, not logback.xml, so Boot's own defaults are available to include and the
+       spring.application.name property resolves. -->
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <!-- Logs, ridden alongside the traces and metrics: the OTel logback appender ships every event to
+       the collector's OTLP log endpoint, correlated to whichever span is current on the logging
+       thread — which is what makes a trace id in Grafana clickable through to the lines the round
+       actually wrote. Its own export failures are dropped, never thrown, so a box with no collector
+       listening still logs to the console exactly as before. -->
+  <appender name="OTLP"
+            class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+    <captureExperimentalAttributes>true</captureExperimentalAttributes>
+    <!-- mdcAttributesIncluded, not the older captureMdcAttributes, which the appender deprecates
+         and warns about on every startup. -->
+    <mdcAttributesIncluded>*</mdcAttributesIncluded>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="OTLP"/>
+  </root>
+
+  <logger name="org.jwcarman.nessy.examples.watchman" level="DEBUG"/>
+  <logger name="io.opentelemetry" level="WARN"/>
+</configuration>
