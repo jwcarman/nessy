@@ -198,8 +198,8 @@ class PumpsAreNeverStarvedTest {
       harnessB.bind(AgentId.of("svc-b")).tell("please block b");
       harnessC.bind(AgentId.of("svc-c")).tell("please run the unrelated op");
 
-      awaitPhase(stateA, Phase.AwaitingTools.class);
-      awaitPhase(stateB, Phase.AwaitingTools.class);
+      awaitAwaitingApproval(stateA, "c1");
+      awaitAwaitingApproval(stateB, "c1");
       ComputationId execution = awaitAwaitingResult(stateC, "c1");
 
       // Approve both — each dispatches RunTool, and each tool immediately blocks on its own gate.
@@ -250,6 +250,26 @@ class PumpsAreNeverStarvedTest {
       Thread.sleep(10);
     }
     assertThat(state.load().phase()).isInstanceOf(expected);
+  }
+
+  /**
+   * Polls until {@code callId} is {@code AwaitingApproval}. Waiting for the PHASE to be {@code
+   * AwaitingTools} is not enough: the call inside it is {@code Pending} until the {@code
+   * SeekApproval} effect folds {@code ApprovalDeferred}, and the desk's by-coordinates door refuses
+   * a {@code Pending} call loudly. Under a loaded suite that gap is wide enough to lose, which is
+   * exactly how this test failed once on a full reactor build and never in isolation.
+   */
+  private static void awaitAwaitingApproval(SubstrateAgentStateStore state, String callId)
+      throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 5000;
+    while (System.currentTimeMillis() < deadline) {
+      if (state.load().phase() instanceof Phase.AwaitingTools awaiting
+          && awaiting.calls().get(callId) instanceof CallStatus.AwaitingApproval) {
+        return;
+      }
+      Thread.sleep(10);
+    }
+    throw new IllegalStateException("call " + callId + " never reached AwaitingApproval");
   }
 
   /** Polls until {@code callId} is {@code AwaitingResult} and returns the computation it names. */
