@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
@@ -169,6 +170,17 @@ final class Observations implements HarnessObserver {
   static final String APPROVAL_WAIT = "nessy.approval.wait";
 
   static final String TOOL_WAIT = "nessy.tool.wait";
+
+  /**
+   * The fold, as work (in-the-loop amendment §2, §3): load, handle, remember, CAS save. Its
+   * duration IS the store write plus the reduce plus the remembrance, which is the question the
+   * JDBC library was imported for and the reason that library could retire. Ours, like the waits —
+   * semconv has no verb for reducing an event into a phase — and semconv defines no duration metric
+   * for it, so the Micrometer name and the span name coincide.
+   */
+  static final String FOLD = "nessy.fold";
+
+  static final String ERROR_TYPE = "error.type";
 
   /**
    * Ours, counters (spec §1.2). These are the names of the span EVENTS the three counters record on
@@ -324,6 +336,94 @@ final class Observations implements HarnessObserver {
   void refired(AgentId id, AgentType agentType, int effects) {
     for (int i = 0; i < effects; i++) {
       count(id, EFFECTS_REFIRED, agentType);
+    }
+  }
+
+  /**
+   * One fold attempt, measured and made CURRENT (in-the-loop amendment §2). The scope is the whole
+   * point: a store that records its own observation — a wrapped {@code DataSource}, a document
+   * store's own instrumentation — lands beneath this span instead of starting a trace of its own,
+   * which is exactly what the 2026-08-26 soak found it could not do while the bridge was a mere
+   * subscriber on the fact stream.
+   *
+   * <p>What is INSIDE: load, handle, remember, CAS save — {@code attempt} itself. What is
+   * deliberately OUTSIDE, at both fold sites: publishing the fold's output on the fact stream, and
+   * dispatching the transition's effects. The stream is where the segment opens, and a segment
+   * created inside this scope would become the CHILD of a fold that stops immediately — inverting
+   * §2's rule that the segment is the parent of everything. So each fold site closes this span
+   * first, then publishes.
+   *
+   * <p>Honest consequence: the FIRST fold of a segment has no segment to hang off, because the
+   * segment does not exist until that fold's own output is published. That one span is a root.
+   * Every later fold in the round is a child of the segment, and the whole round remains one trace.
+   *
+   * <p>A CAS conflict propagates out of {@code attempt}, so a retried fold is a SECOND span
+   * carrying {@code error.type}, never one long span that hides the contention.
+   *
+   * @implSpec Never breaks a fold. Every call that can reach an application's {@code
+   *     ObservationHandler} — the start, the scope open, the scope close, the stop — is guarded and
+   *     logged; only the exception {@code attempt} itself throws ever escapes.
+   */
+  <T> T fold(AgentId id, AgentType agentType, Supplier<T> attempt) {
+    Observation span = startFold(id, agentType);
+    Observation.Scope scope = opened(span);
+    try {
+      return attempt.get();
+    } catch (RuntimeException e) {
+      quietly(() -> span.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName()));
+      quietly(() -> span.error(e));
+      throw e;
+    } finally {
+      quietly(scope::close);
+      quietly(span::stop);
+    }
+  }
+
+  private Observation startFold(AgentId id, AgentType agentType) {
+    try {
+      Observation span =
+          Observation.createNotStarted(FOLD, registry)
+              .contextualName(FOLD)
+              .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
+              // Declared now, overwritten when known: one stable low-cardinality key set per name.
+              .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
+              .highCardinalityKeyValue(GEN_AI_AGENT_ID, id.value());
+      Observation parent = foldParent(id);
+      if (parent != null) {
+        span.parentObservation(parent);
+      }
+      return span.start();
+    } catch (RuntimeException e) {
+      log.warn("an observation handler threw starting a fold span; the fold is unaffected", e);
+      return Observation.NOOP;
+    }
+  }
+
+  /**
+   * Who a fold span hangs off: an ENCLOSING observation when there is one — a {@code defer()}
+   * inside an approver folds while {@code nessy.approval.seek} is current, and the nearest open
+   * scope is the truer parent — otherwise the scope's open segment, and otherwise nothing at all
+   * (see {@link #fold}'s note on the first fold of a segment).
+   */
+  private Observation foldParent(AgentId id) {
+    Observation enclosing = registry.getCurrentObservation();
+    return enclosing != null ? enclosing : openSegments.get(id);
+  }
+
+  private Observation.Scope opened(Observation span) {
+    try {
+      return span.openScope();
+    } catch (RuntimeException e) {
+      log.warn("an observation handler threw opening a fold scope; the fold is unaffected", e);
+      return Observation.Scope.NOOP;
+    }
+  }
+
+  private static void quietly(Runnable instrumentation) {
+    try {
+      instrumentation.run();
+    } catch (RuntimeException e) {
+      log.warn("an observation handler threw around a fold span; the fold is unaffected", e);
     }
   }
 

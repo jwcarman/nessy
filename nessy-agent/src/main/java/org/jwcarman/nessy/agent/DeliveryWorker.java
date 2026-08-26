@@ -387,39 +387,61 @@ final class DeliveryWorker<O> implements ComputationPump {
     AgentType type = AgentType.of(routing.agentType());
     AgentId id = AgentId.of(routing.agentId());
     while (true) {
-      State state = warnIfNoStoredState(id, readState(id));
-      Transition transition = state.phase().handle(event);
-      if (transition.isIgnored()) {
-        warnDropped(id, routing, delivered, state.phase());
+      Optional<Transition> committed;
+      try {
+        committed =
+            harness
+                .observations()
+                .fold(id, type, () -> foldOnce(routing, event, delivered, type, id));
+      } catch (ConflictException _) {
+        countStaleRetry(id, type);
+        continue; // lost the race — re-read and re-handle, in a SECOND nessy.fold span
+      }
+      if (committed.isEmpty()) {
         // The drop is a fact about the scope too (agentic-o11y spec §3): it goes out on the same
         // stream an applied fold does, so a subscriber sees the delivery that changed nothing.
         harness.facts().ignored(id, event);
         return; // dropped — acknowledged, never redelivered
       }
-      if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
-        ToolFoldRemembrance.remember(
-            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
-      }
-      // A denial finishes the call with an error result the model reads, so it is remembered the
-      // same way a failed tool is — and it may be the call that commits the whole turn.
-      if (event
-          instanceof
-          AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _))) {
-        ToolFoldRemembrance.rememberDenial(
-            harness.memoryFor(id), type, id, state.phase(), call, reason, transition);
-      }
-      try {
-        states.write(id.value(), transition.next(), state.version());
-      } catch (ConflictException _) {
-        countStaleRetry(id, type);
-        continue; // lost the race — re-read and re-handle
-      }
       // Published only once the write succeeded: the stream carries the fold's OUTPUT, and until
-      // the CAS lands nothing has happened to the scope (agentic-o11y spec §3).
-      harness.facts().applied(id, event, transition);
-      dispatchEffects(type, id, transition.next(), transition.effects());
+      // the CAS lands nothing has happened to the scope (agentic-o11y spec §3). Published OUTSIDE
+      // the fold span too, and for a second reason (in-the-loop amendment §2): the stream is where
+      // the invoke_agent segment opens, and a segment born inside a fold's scope would become the
+      // child of a fold that stops immediately.
+      harness.facts().applied(id, event, committed.get());
+      dispatchEffects(type, id, committed.get().next(), committed.get().effects());
       return;
     }
+  }
+
+  /**
+   * One fold attempt, and exactly what {@code nessy.fold} measures (in-the-loop amendment §2): read
+   * state, reduce, remember, CAS-write. Empty means the delivery was DROPPED. A {@link
+   * ConflictException} propagates, so the caller's retry opens a second span rather than stretching
+   * this one.
+   */
+  private Optional<Transition> foldOnce(
+      Routing routing, AgentEvent event, ComputationId delivered, AgentType type, AgentId id) {
+    State state = warnIfNoStoredState(id, readState(id));
+    Transition transition = state.phase().handle(event);
+    if (transition.isIgnored()) {
+      warnDropped(id, routing, delivered, state.phase());
+      return Optional.empty();
+    }
+    if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
+      ToolFoldRemembrance.remember(
+          harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+    }
+    // A denial finishes the call with an error result the model reads, so it is remembered the
+    // same way a failed tool is — and it may be the call that commits the whole turn.
+    if (event
+        instanceof
+        AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _))) {
+      ToolFoldRemembrance.rememberDenial(
+          harness.memoryFor(id), type, id, state.phase(), call, reason, transition);
+    }
+    states.write(id.value(), transition.next(), state.version());
+    return Optional.of(transition);
   }
 
   /**

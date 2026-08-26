@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -156,7 +157,7 @@ public final class DefaultAgent<O> implements Agent<O> {
   private Optional<Transition> commit(AgentEvent event) {
     while (true) {
       try {
-        return applyOnce(binding.store().load(), event);
+        return publish(event, folded(() -> applyOnce(binding.store().load(), event)));
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
         countStaleRetry();
@@ -167,21 +168,46 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
   }
 
+  /**
+   * One fold attempt, inside the {@code nessy.fold} span (in-the-loop amendment §2): load, handle,
+   * remember, CAS save, and nothing else — so the span's duration IS the store write plus the
+   * reduce plus the remembrance, and so that a store recording its own observation nests under it.
+   * A lost CAS escapes as it always did, which is what makes a retry a SECOND span rather than one
+   * long one.
+   */
+  private Optional<Transition> folded(Supplier<Optional<Transition>> attempt) {
+    return harness.observations().fold(binding.id(), harness.type(), attempt);
+  }
+
   private Optional<Transition> applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
-      facts().ignored(binding.id(), event);
       return Optional.empty();
     }
     remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
-    facts().applied(binding.id(), event, t);
+    return Optional.of(t);
+  }
+
+  /**
+   * The fold's OUTPUT on the harness's one fact stream (agentic-o11y spec §3), published once
+   * {@link #folded}'s span has closed. Deliberately outside that span: the stream is where the
+   * {@code invoke_agent} segment opens, and a segment created inside a fold's scope would become
+   * the child of a fold that stops immediately — inverting the rule that the segment is the parent
+   * of everything (in-the-loop amendment §2).
+   */
+  private Optional<Transition> publish(AgentEvent event, Optional<Transition> committed) {
+    if (committed.isEmpty()) {
+      facts().ignored(binding.id(), event);
+      return committed;
+    }
+    facts().applied(binding.id(), event, committed.get());
     // The fold IS the park (approval-lifecycle spec §1.3): by the time this commits, the phase
     // names the ask, so whoever is waiting on this turn can be told about it.
     if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request)) {
       harness.parked(binding.id(), new TurnOutcome.Parked(approval, request));
     }
-    return Optional.of(t);
+    return committed;
   }
 
   /**
@@ -264,9 +290,10 @@ public final class DefaultAgent<O> implements Agent<O> {
     if (content.isEmpty()) {
       return; // an empty render is a decline — skip, keep draining (§3.7)
     }
+    AgentEvent observed = new AgentEvent.Observed(content);
     Optional<Transition> committed;
     try {
-      committed = applyOnce(state, new AgentEvent.Observed(content));
+      committed = publish(observed, folded(() -> applyOnce(state, observed)));
     } catch (StaleStateException _) {
       countStaleRetry();
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
