@@ -80,7 +80,8 @@ public final class AnthropicStream implements ModelStream {
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
     private long inputTokens;
-    private long cachedInputTokens;
+    private long cacheReadInputTokens;
+    private long cacheWriteInputTokens;
     private boolean turnEnded;
 
     private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
@@ -139,7 +140,8 @@ public final class AnthropicStream implements ModelStream {
       if (event.isMessageStart()) {
         var usage = event.asMessageStart().message().usage();
         inputTokens = usage.inputTokens();
-        cachedInputTokens = usage.cacheReadInputTokens().orElse(0L);
+        cacheReadInputTokens = usage.cacheReadInputTokens().orElse(0L);
+        cacheWriteInputTokens = usage.cacheCreationInputTokens().orElse(0L);
       } else if (event.isContentBlockStart()) {
         translateContentBlockStart(event.asContentBlockStart());
       } else if (event.isContentBlockDelta()) {
@@ -216,7 +218,12 @@ public final class AnthropicStream implements ModelStream {
               .stopReason()
               .orElseThrow(
                   () -> new IllegalStateException("message_delta event is missing stop_reason"));
-      var usage = new Usage(inputTokens, event.usage().outputTokens(), cachedInputTokens);
+      var usage =
+          new Usage(
+              inputTokens,
+              event.usage().outputTokens(),
+              cacheReadInputTokens,
+              cacheWriteInputTokens);
       pending.add(new ModelEvent.TurnEnded(mapStopReason(stopReason), usage));
       turnEnded = true;
     }

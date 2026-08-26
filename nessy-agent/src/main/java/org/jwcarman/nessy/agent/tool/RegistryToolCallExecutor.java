@@ -102,13 +102,19 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final Supplier<Observation> parentSegment;
 
   /**
-   * The semconv names this executor's own span carries (agentic-o11y spec §1.1). {@code
-   * execute_tool} is both the span name and the observation's Micrometer name — see {@code
-   * Observations}' javadoc for why the three GenAI operations cannot share the semconv metric name.
+   * The semconv names this executor's own span carries (agentic-o11y spec §1.1, corrected by the
+   * 2026-08-26 semconv audit). Semconv defines {@code gen_ai.execute_tool.duration} — "the duration
+   * of a single tool execution" — as this operation's own histogram, with its own attribute set
+   * ({@code gen_ai.tool.name} Required, {@code error.type}, {@code gen_ai.agent.name}, {@code
+   * gen_ai.tool.type}); it is the observation's Micrometer NAME, and {@code execute_tool {tool}} is
+   * the semconv SPAN name, carried as the contextual name.
    */
+  private static final String EXECUTE_TOOL_DURATION = "gen_ai.execute_tool.duration";
+
   private static final String EXECUTE_TOOL = "execute_tool";
 
   private static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+  private static final String GEN_AI_AGENT_NAME = "gen_ai.agent.name";
   private static final String GEN_AI_TOOL_NAME = "gen_ai.tool.name";
   private static final String GEN_AI_TOOL_CALL_ID = "gen_ai.tool.call.id";
   private static final String GEN_AI_TOOL_TYPE = "gen_ai.tool.type";
@@ -352,10 +358,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private Observation newExecuteTool(ToolCall call) {
     Observation parent = parentSegment.get();
     Observation execution =
-        Observation.createNotStarted(EXECUTE_TOOL, observations)
+        Observation.createNotStarted(EXECUTE_TOOL_DURATION, observations)
             .contextualName(EXECUTE_TOOL + " " + call.name())
             .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, EXECUTE_TOOL)
             .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
+            // Conditionally Required "when applicable" on both the execute_tool span and
+            // gen_ai.execute_tool.duration: the agent executing the tool always has a name here.
+            .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
             .lowCardinalityKeyValue(GEN_AI_TOOL_TYPE, FUNCTION)
             // Declared now, overwritten when known: one stable low-cardinality key set per name.
             .lowCardinalityKeyValue(NESSY_TOOL_DEFERRED, KeyValue.NONE_VALUE)

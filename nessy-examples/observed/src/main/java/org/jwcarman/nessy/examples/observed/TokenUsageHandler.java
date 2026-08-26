@@ -32,7 +32,13 @@ import io.micrometer.observation.ObservationHandler;
  */
 final class TokenUsageHandler implements ObservationHandler<Observation.Context> {
 
-  private static final String CHAT = "chat";
+  /**
+   * The observation's Micrometer NAME — semconv's duration histogram for a provider-facing client
+   * call, not the {@code chat {model}} SPAN name, which rides as the contextual name. A handler
+   * matching on the span name here would match nothing (2026-08-26 semconv audit).
+   */
+  private static final String CHAT = "gen_ai.client.operation.duration";
+
   private static final String ERROR_TYPE = "error.type";
   private static final String NONE = "none";
 

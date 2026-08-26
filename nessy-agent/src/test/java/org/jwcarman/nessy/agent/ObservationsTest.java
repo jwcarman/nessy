@@ -48,6 +48,8 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 class ObservationsTest {
 
   private static final AgentType TYPE = AgentType.of("ops");
+  private static final String PROVIDER = "anthropic";
+  private static final String MODEL_ID = "claude-test";
   private static final AgentId SCOPE = AgentId.of("prod-eu");
   private static final ToolCall RESTART =
       new ToolCall("call-1", "restart", JsonNodeFactory.instance.objectNode());
@@ -56,7 +58,7 @@ class ObservationsTest {
 
   private final TestObservationRegistry registry = TestObservationRegistry.create();
   private final Observations observations =
-      new Observations(registry, TYPE, new ConcurrentHashMap<>());
+      new Observations(registry, TYPE, PROVIDER, MODEL_ID, new ConcurrentHashMap<>());
 
   /** The scope's phase, advanced by {@link #fold} exactly as a real fold site advances it. */
   private Phase phase = new Phase.Idle();
@@ -124,11 +126,33 @@ class ObservationsTest {
      * rather than a silent break of every query someone wrote.
      */
     @Test
-    void the_semconv_names_are_the_ones_the_spec_pins() {
+    void the_semconv_operation_names_are_the_ones_the_spec_pins() {
       assertThat(Observations.INVOKE_AGENT).isEqualTo("invoke_agent");
       assertThat(Observations.CHAT).isEqualTo("chat");
       assertThat(Observations.EXECUTE_TOOL).isEqualTo("execute_tool");
+      assertThat(Observations.SEARCH_MEMORY).isEqualTo("search_memory");
+      assertThat(Observations.CREATE_MEMORY).isEqualTo("create_memory");
+    }
+
+    /**
+     * Semconv gives each operation boundary its OWN duration histogram, with its own attribute set
+     * — it does NOT share one name across chat, invoke_agent and execute_tool (the 2026-08-26 audit
+     * correcting spec §1.2's first amendment). These three are the Micrometer names; the span names
+     * above ride as contextual names.
+     */
+    @Test
+    void the_semconv_meter_names_are_one_per_operation() {
+      assertThat(Observations.OPERATION_DURATION).isEqualTo("gen_ai.client.operation.duration");
+      assertThat(Observations.INVOKE_AGENT_DURATION).isEqualTo("gen_ai.invoke_agent.duration");
+      assertThat(Observations.EXECUTE_TOOL_DURATION).isEqualTo("gen_ai.execute_tool.duration");
+      assertThat(Observations.TOKEN_USAGE).isEqualTo("gen_ai.client.token.usage");
+    }
+
+    @Test
+    void the_semconv_attribute_keys_are_the_ones_the_spec_pins() {
       assertThat(Observations.GEN_AI_OPERATION_NAME).isEqualTo("gen_ai.operation.name");
+      assertThat(Observations.GEN_AI_PROVIDER_NAME).isEqualTo("gen_ai.provider.name");
+      assertThat(Observations.GEN_AI_REQUEST_MODEL).isEqualTo("gen_ai.request.model");
       assertThat(Observations.GEN_AI_AGENT_NAME).isEqualTo("gen_ai.agent.name");
       assertThat(Observations.GEN_AI_AGENT_ID).isEqualTo("gen_ai.agent.id");
       assertThat(Observations.GEN_AI_CONVERSATION_ID).isEqualTo("gen_ai.conversation.id");
@@ -136,7 +160,11 @@ class ObservationsTest {
       assertThat(Observations.GEN_AI_TOOL_CALL_ID).isEqualTo("gen_ai.tool.call.id");
     }
 
-    /** Ours, where semconv has no word for it (spec §0). */
+    /**
+     * Ours, where semconv has no word for it (spec §0) — re-confirmed by the 2026-08-26 audit
+     * against {@code open-telemetry/semantic-conventions-genai}: the {@code gen_ai.operation.name}
+     * enum has no human-in-the-loop pause and no deferred long-running operation.
+     */
     @Test
     void the_nessy_names_are_the_ones_the_spec_pins() {
       assertThat(Observations.APPROVAL_WAIT).isEqualTo("nessy.approval.wait");
@@ -158,11 +186,15 @@ class ObservationsTest {
       observed();
 
       Observation.Context segment = only("invoke_agent ops");
-      assertThat(segment.getName()).isEqualTo(Observations.INVOKE_AGENT);
+      assertThat(segment.getName()).isEqualTo(Observations.INVOKE_AGENT_DURATION);
       assertThat(segment.getLowCardinalityKeyValue(Observations.GEN_AI_OPERATION_NAME).getValue())
           .isEqualTo("invoke_agent");
       assertThat(segment.getLowCardinalityKeyValue(Observations.GEN_AI_AGENT_NAME).getValue())
           .isEqualTo("ops");
+      assertThat(segment.getLowCardinalityKeyValue(Observations.GEN_AI_PROVIDER_NAME).getValue())
+          .isEqualTo(PROVIDER);
+      assertThat(segment.getLowCardinalityKeyValue(Observations.GEN_AI_REQUEST_MODEL).getValue())
+          .isEqualTo(MODEL_ID);
       assertThat(segment.getHighCardinalityKeyValue(Observations.GEN_AI_AGENT_ID).getValue())
           .isEqualTo("prod-eu");
       assertThat(segment.getHighCardinalityKeyValue(Observations.GEN_AI_CONVERSATION_ID).getValue())
@@ -230,7 +262,7 @@ class ObservationsTest {
                   .getValue())
           .isEqualTo(KeyValue.NONE_VALUE);
       assertThat(registry)
-          .hasObservationWithNameEqualTo(Observations.INVOKE_AGENT)
+          .hasObservationWithNameEqualTo(Observations.INVOKE_AGENT_DURATION)
           .that()
           .isNotStopped();
     }

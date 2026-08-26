@@ -35,6 +35,7 @@ sequence of renames and interim shapes that produced it.
   itself, since an in-process span cannot survive a restart), `chat {model}`
   per model call (carrying the vendor's own `gen_ai.usage.input_tokens`/
   `output_tokens`, discarded until now), `execute_tool {tool}` per tool run,
+  `search_memory`/`create_memory` per memory operation,
   and Nessy's own `nessy.approval.wait`/`nessy.tool.wait` dwell spans plus
   three engine counters (`nessy.delivery.dropped`, `nessy.state.stale_retries`,
   `nessy.effects.refired`). Pinned against the OpenTelemetry GenAI semantic
@@ -916,16 +917,18 @@ sequence of renames and interim shapes that produced it.
   observability roster alike see a durable delivery exactly like a
   synchronous one, with no separate "resumed from durable storage" event
   of its own.
-- **Metric names are the span's own name, not the semconv name
-  `gen_ai.client.operation.duration`.** Micrometer requires every
-  observation sharing one name to carry the same low-cardinality key set;
-  `invoke_agent`, `chat`, and `execute_tool` carry deliberately different
-  attributes, so sharing the one semconv metric name is a meter with
-  unstable tags — Micrometer's own strict test registry rejects it outright
-  and a real backend corrupts it. Each operation is therefore timed under
-  its own name (also its semconv *span* name); an application that wants
-  the exact semconv metric maps the three onto it in its own
-  `ObservationHandler`.
+- **Each operation is timed under its own semconv metric name; the semconv
+  *span* name rides as the Micrometer `contextualName`.** The GenAI
+  conventions define a separate duration histogram per operation boundary,
+  each with its own attribute set:
+  `gen_ai.client.operation.duration` (the `chat {model}` span),
+  `gen_ai.invoke_agent.duration` (`invoke_agent {agentType}`), and
+  `gen_ai.execute_tool.duration` (`execute_tool {tool}`). They are *not* one
+  shared name discriminated by `gen_ai.operation.name`. Three distinct names
+  also satisfy Micrometer's one-stable-key-set-per-meter rule for free,
+  because semconv already partitions the attributes per metric. **An
+  `ObservationHandler` must match on `context.getName()`, which is the
+  metric name — a handler written against `"chat"` matches nothing.**
 - **Every outcome-bearing key value is declared at start as the placeholder
   `"none"`, overwritten once the outcome is known** —
   `nessy.turn.outcome`, `nessy.approval.answer`, `nessy.tool.outcome`,
@@ -944,3 +947,39 @@ sequence of renames and interim shapes that produced it.
   `ObservationHandler` — shipped in `nessy-examples/observed` — reads them
   on `onStop` and records the metric to its own `MeterRegistry`.
   `nessy-agent` never depends on a `MeterRegistry`.
+- **Semantic-conventions audit (2026-08-26), against
+  `open-telemetry/semantic-conventions-genai` (the repository the GenAI
+  conventions split into) at `main`, referencing semantic-conventions
+  v1.44.0.** Every `gen_ai.*` name this build emits was verified against
+  that source. What moved:
+  - `nessy.usage.cached_input_tokens` is **retired** in favour of the
+    standard `gen_ai.usage.cache_read.input_tokens`, joined by
+    `gen_ai.usage.cache_write.input_tokens`. **Breaking, `nessy-api`:**
+    `Usage` is now `(inputTokens, outputTokens, cacheReadInputTokens,
+    cacheWriteInputTokens)` — the third component renamed, a fourth added.
+    Anthropic sources the write count from `cache_creation_input_tokens` and
+    Bedrock from `cacheWriteInputTokens`; OpenAI and Gemini report reads
+    only and honestly report zero.
+  - `chat` gains `gen_ai.request.stream` (always `true` — the harness has no
+    non-streaming door), `gen_ai.request.max_tokens`, and
+    `gen_ai.response.time_to_first_chunk`.
+  - `execute_tool` gains `gen_ai.agent.name`; `invoke_agent` gains
+    `gen_ai.provider.name` and `gen_ai.request.model`.
+  - **Memory operations are instrumented, under semconv's own names.** Every
+    `Memory.recall` is a `search_memory` observation and every
+    `Memory.remember` a `create_memory` one, both carrying
+    `gen_ai.memory.record.count` and both children of the open segment. They
+    wrap whatever `HarnessConfig.memoryFactory(...)` built, so a custom
+    memory — a vector store, a Redis view — is instrumented without knowing
+    it. Records, never bytes: a byte count would mean re-serializing the
+    context purely to describe it.
+  - **Skipped, deliberately:** `gen_ai.response.id`/`gen_ai.response.model`
+    (the `ModelEvent` grammar carries neither — an SPI change, not this
+    round's), `server.address`/`server.port` (a `Model` cannot honestly
+    report its endpoint), and the `time_to_first_chunk`/
+    `time_per_output_chunk` *metrics* (an `ObservationRegistry` cannot
+    record a value histogram; the first-chunk latency rides the span
+    instead).
+  - **Confirmed still ours:** semconv has no convention for a
+    human-in-the-loop wait or a deferred long-running operation, so
+    `nessy.approval.wait` and `nessy.tool.wait` stay `nessy.*`.

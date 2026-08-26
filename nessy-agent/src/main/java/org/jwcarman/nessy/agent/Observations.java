@@ -64,15 +64,22 @@ import org.slf4j.LoggerFactory;
  * chat} observation as key-values and the application's own {@code ObservationHandler} reads them
  * on stop and records them to its {@code MeterRegistry}.
  *
- * <p><b>Why one meter name cannot serve three operations</b> (amending spec §1.2). The spec asked
- * for {@code gen_ai.client.operation.duration} as every duration observation's Micrometer NAME,
- * with the semconv span name carried as the contextual name. Micrometer forbids it: a metrics
- * backend requires every observation sharing a name to carry the SAME set of low-cardinality keys,
- * and {@code invoke_agent}, {@code chat} and {@code execute_tool} carry deliberately different ones
- * — that is a meter with unstable tags, which the TCK rejects outright and a real backend corrupts.
- * So each operation is named for itself ({@code invoke_agent} / {@code chat} / {@code
- * execute_tool}), which is also its semconv SPAN name, and the semconv metric is the application's
- * to derive — the same division of labour spec §1.2 already accepted for the token histogram.
+ * <p><b>Three operations, three semconv METER names — and they are not the span names</b> (spec
+ * §1.2, second amendment, 2026-08-26 semconv audit). Semconv defines a SEPARATE duration histogram
+ * per operation boundary, each with its own attribute set: {@code gen_ai.client.operation.duration}
+ * for a provider-facing client call, {@code gen_ai.invoke_agent.duration} for "a single in-process
+ * agent invocation", and {@code gen_ai.execute_tool.duration} for "a single tool execution". It
+ * does NOT mandate one shared name discriminated by {@code gen_ai.operation.name}; {@code
+ * gen_ai.invoke_agent.duration}'s own note says {@code gen_ai.client.operation.duration} "SHOULD be
+ * used instead" only when instrumentation "can only measure a single provider-facing client
+ * operation", which is not this harness.
+ *
+ * <p>So each observation's Micrometer NAME is its semconv METER name and its {@code contextualName}
+ * is its semconv SPAN name ({@code invoke_agent {agent}}, {@code chat {model}}, {@code execute_tool
+ * {tool}}). This satisfies Micrometer's own rule for free — a metrics backend requires every
+ * observation sharing one name to carry the same set of low-cardinality keys, and three distinct
+ * names each keep their own stable set, which is exactly how semconv already partitions the
+ * attributes.
  *
  * <p>The same rule is why every outcome-bearing key here is set at START, to {@link
  * KeyValue#NONE_VALUE}, and overwritten when the outcome is known: a context stores its
@@ -105,12 +112,17 @@ final class Observations implements HarnessObserver {
   private static final Logger log = LoggerFactory.getLogger(Observations.class);
 
   /**
-   * The semconv duration histogram — named here for the record, and deliberately NOT used as any
-   * observation's Micrometer name (a spec §1.2 amendment; see this class's javadoc, "Why one meter
-   * name cannot serve three operations"). An application that wants precisely this metric maps the
-   * three operation observations onto it in its own {@code ObservationHandler}.
+   * The semconv duration histogram for a provider-facing client call — the Micrometer NAME of the
+   * {@code chat} observation {@code ProviderModelCallExecutor} mints (which declares its own copy
+   * of this string; {@code ObservedTurnTest} pins both ends).
    */
   static final String OPERATION_DURATION = "gen_ai.client.operation.duration";
+
+  /** The semconv duration histogram for one in-process agent invocation — the SEGMENT's name. */
+  static final String INVOKE_AGENT_DURATION = "gen_ai.invoke_agent.duration";
+
+  /** The semconv duration histogram for one tool execution — {@code RegistryToolCallExecutor}'s. */
+  static final String EXECUTE_TOOL_DURATION = "gen_ai.execute_tool.duration";
 
   /**
    * The semconv token histogram — named here for the record, never recorded here: see this class's
@@ -119,10 +131,35 @@ final class Observations implements HarnessObserver {
    */
   static final String TOKEN_USAGE = "gen_ai.client.token.usage";
 
+  /** The {@code gen_ai.operation.name} values, which are also the semconv SPAN name prefixes. */
   static final String INVOKE_AGENT = "invoke_agent";
+
   static final String CHAT = "chat";
   static final String EXECUTE_TOOL = "execute_tool";
+
+  /**
+   * The two memory operations this harness performs, from semconv's own {@code
+   * gen_ai.operation.name} enum — NOT invented {@code nessy.memory.*} names (semconv audit A7).
+   * {@code search_memory} is "search/query memories from a memory store" ({@code Memory#recall});
+   * {@code create_memory} is "create new memory records" ({@code Memory#remember}). Their span name
+   * SHOULD be {@code {gen_ai.operation.name}} alone, with no trailing identifier, and semconv
+   * defines no duration metric for them — so for these two the observation name IS the span name.
+   * Written by {@code ObservingMemory}, which declares its own copies; {@code ObservedMemoryTest}
+   * pins both ends.
+   */
+  static final String SEARCH_MEMORY = "search_memory";
+
+  static final String CREATE_MEMORY = "create_memory";
+
+  /**
+   * Ours, and confirmed still ours by the 2026-08-26 semconv audit: {@code
+   * semantic-conventions-genai} has no convention for a human-in-the-loop pause or a deferred
+   * long-running operation — the {@code gen_ai.operation.name} enum runs chat / generate_content /
+   * text_completion / embeddings / retrieval / fetch_response / execute_tool / the memory verbs /
+   * create_agent / invoke_agent / invoke_workflow / plan, and none of them is a wait.
+   */
   static final String APPROVAL_WAIT = "nessy.approval.wait";
+
   static final String TOOL_WAIT = "nessy.tool.wait";
 
   /** Ours, counters (spec §1.2), tagged {@link #GEN_AI_AGENT_NAME} only. */
@@ -132,6 +169,8 @@ final class Observations implements HarnessObserver {
   static final String EFFECTS_REFIRED = "nessy.effects.refired";
 
   static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+  static final String GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+  static final String GEN_AI_REQUEST_MODEL = "gen_ai.request.model";
   static final String GEN_AI_AGENT_NAME = "gen_ai.agent.name";
   static final String GEN_AI_AGENT_ID = "gen_ai.agent.id";
   static final String GEN_AI_CONVERSATION_ID = "gen_ai.conversation.id";
@@ -151,6 +190,18 @@ final class Observations implements HarnessObserver {
   private final AgentType type;
 
   /**
+   * The provider and model the segment reports (semconv audit A3). {@code gen_ai.request.model} is
+   * Recommended on the {@code invoke_agent} span — "the name of the GenAI model configured for the
+   * agent" — and is one of the three attributes on {@code gen_ai.invoke_agent.duration}. {@code
+   * gen_ai.provider.name} is Required on the invoke_agent CLIENT span (a remote agent) and absent
+   * from the INTERNAL one this harness mints; it is carried anyway, honestly, because the harness
+   * holds the {@link org.jwcarman.nessy.spi.model.Model} and semconv permits extra attributes.
+   */
+  private final String provider;
+
+  private final String modelId;
+
+  /**
    * The open {@code invoke_agent} span per scope — shared with the two executors, which parent
    * their own spans off it (spec §3.2). An absent entry means no segment is open for that scope:
    * either nothing is happening, or the last one closed at a park.
@@ -162,9 +213,15 @@ final class Observations implements HarnessObserver {
       new ConcurrentHashMap<>();
 
   Observations(
-      ObservationRegistry registry, AgentType type, ConcurrentMap<AgentId, Observation> segments) {
+      ObservationRegistry registry,
+      AgentType type,
+      String provider,
+      String modelId,
+      ConcurrentMap<AgentId, Observation> segments) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.modelId = Objects.requireNonNull(modelId, "modelId must not be null");
     this.openSegments = Objects.requireNonNull(segments, "segments must not be null");
   }
 
@@ -281,10 +338,12 @@ final class Observations implements HarnessObserver {
     openSegments.computeIfAbsent(
         id,
         scope ->
-            Observation.createNotStarted(INVOKE_AGENT, registry)
+            Observation.createNotStarted(INVOKE_AGENT_DURATION, registry)
                 .contextualName(INVOKE_AGENT + " " + type.name())
                 .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, INVOKE_AGENT)
                 .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
+                .lowCardinalityKeyValue(GEN_AI_PROVIDER_NAME, provider)
+                .lowCardinalityKeyValue(GEN_AI_REQUEST_MODEL, modelId)
                 .lowCardinalityKeyValue(NESSY_TURN_OUTCOME, KeyValue.NONE_VALUE)
                 .highCardinalityKeyValue(GEN_AI_AGENT_ID, scope.value())
                 .highCardinalityKeyValue(GEN_AI_CONVERSATION_ID, scope.value())

@@ -217,7 +217,8 @@ final class BedrockStream implements ModelStream {
             new Usage(
                 orZero(tokenUsage.inputTokens()),
                 orZero(tokenUsage.outputTokens()),
-                orZero(tokenUsage.cacheReadInputTokens()));
+                orZero(tokenUsage.cacheReadInputTokens()),
+                orZero(tokenUsage.cacheWriteInputTokens()));
       }
     }
 

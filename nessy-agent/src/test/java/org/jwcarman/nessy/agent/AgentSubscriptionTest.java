@@ -140,6 +140,8 @@ class AgentSubscriptionTest {
     Harness<String> harness =
         Harness.of(
             type,
+            "test_provider",
+            "test-model",
             text -> List.of(new TextBlock(text)),
             List.of(HarnessObserver.noop()),
             TurnObserver.noop(),
@@ -213,6 +215,8 @@ class AgentSubscriptionTest {
       Harness<String> harness =
           Harness.of(
               type,
+              "test_provider",
+              "test-model",
               text -> List.of(new TextBlock(text)),
               List.of(HarnessObserver.noop()),
               TurnObserver.noop(),
@@ -408,6 +412,8 @@ class AgentSubscriptionTest {
       Harness<String> harness =
           Harness.of(
               type,
+              "test_provider",
+              "test-model",
               text -> List.of(new TextBlock(text)),
               List.of(HarnessObserver.noop()),
               TurnObserver.noop(),
@@ -488,6 +494,8 @@ class AgentSubscriptionTest {
       Harness<String> harness =
           Harness.of(
               type,
+              "test_provider",
+              "test-model",
               text -> List.of(new TextBlock(text)),
               List.of(),
               throwingGlobal,

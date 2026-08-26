@@ -71,18 +71,23 @@ class ValidationTest {
 
   @Test
   void negative_token_counts_are_rejected() {
-    assertThatThrownBy(() -> new Usage(-1, 0, 0)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Usage(-1, 0, 0, 0)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void a_negative_cached_input_token_count_is_rejected() {
-    assertThatThrownBy(() -> new Usage(0, 0, -1)).isInstanceOf(IllegalArgumentException.class);
+  void a_negative_cache_read_input_token_count_is_rejected() {
+    assertThatThrownBy(() -> new Usage(0, 0, -1, 0)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void plus_sums_all_three_usage_components() {
-    var sum = new Usage(1, 2, 3).plus(new Usage(10, 20, 30));
+  void a_negative_cache_write_input_token_count_is_rejected() {
+    assertThatThrownBy(() -> new Usage(0, 0, 0, -1)).isInstanceOf(IllegalArgumentException.class);
+  }
 
-    assertThat(sum).isEqualTo(new Usage(11, 22, 33));
+  @Test
+  void plus_sums_all_four_usage_components() {
+    var sum = new Usage(1, 2, 3, 4).plus(new Usage(10, 20, 30, 40));
+
+    assertThat(sum).isEqualTo(new Usage(11, 22, 33, 44));
   }
 }

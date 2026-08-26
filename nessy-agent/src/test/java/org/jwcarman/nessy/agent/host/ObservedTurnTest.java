@@ -109,6 +109,105 @@ class ObservedTurnTest {
     }
   }
 
+  /**
+   * The memory spans James asked for on 2026-08-26 — named for semconv's own operation enum rather
+   * than a minted {@code nessy.memory.*}: {@code search_memory} for a recall, {@code create_memory}
+   * for a remember, both children of the open segment, both counting RECORDS and never bytes.
+   */
+  @Nested
+  class MemoryOperations {
+
+    @Test
+    void a_turn_recalls_and_remembers_through_spans_named_by_semconv() {
+      var pump = new PumpedExecutor();
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("hello back"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(5, 2, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("hello");
+      pump.pumpUntilQuiet();
+
+      List<Observation.Context> searches = named("search_memory");
+      assertThat(searches).isNotEmpty();
+      assertThat(searches)
+          .allSatisfy(
+              search -> {
+                assertThat(search.getName()).isEqualTo("search_memory");
+                assertThat(search.getLowCardinalityKeyValue("gen_ai.operation.name").getValue())
+                    .isEqualTo("search_memory");
+                assertThat(search.getLowCardinalityKeyValue("gen_ai.agent.name").getValue())
+                    .isEqualTo("agent");
+                assertThat(
+                        Integer.parseInt(
+                            search
+                                .getHighCardinalityKeyValue("gen_ai.memory.record.count")
+                                .getValue()))
+                    .isNotNegative();
+              });
+
+      List<Observation.Context> creates = named("create_memory");
+      assertThat(creates).isNotEmpty();
+      assertThat(creates)
+          .allSatisfy(
+              create -> {
+                assertThat(create.getName()).isEqualTo("create_memory");
+                assertThat(create.getLowCardinalityKeyValue("gen_ai.operation.name").getValue())
+                    .isEqualTo("create_memory");
+                assertThat(
+                        create.getHighCardinalityKeyValue("gen_ai.memory.record.count").getValue())
+                    .isEqualTo("1");
+              });
+    }
+
+    /** Same containment as every other span: a memory span is a child of the open segment. */
+    @Test
+    void a_memory_span_is_parented_to_the_open_segment() {
+      var pump = new PumpedExecutor();
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("hello back"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(5, 2, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("hello");
+      pump.pumpUntilQuiet();
+
+      Observation.Context segment = only("invoke_agent agent");
+      List<Observation.Context> searches = named("search_memory");
+      assertThat(searches).isNotEmpty();
+      assertThat(searches)
+          .allSatisfy(
+              search -> {
+                assertThat(search.getParentObservation()).isNotNull();
+                assertThat(search.getParentObservation().getContextView()).isSameAs(segment);
+              });
+    }
+  }
+
   @Nested
   class AToolUsingTurn {
 
@@ -129,10 +228,10 @@ class ObservedTurnTest {
                   List.of(
                       new ModelEvent.ToolUseEmitted(restart, null),
                       new ModelEvent.ToolUseEmitted(drain, null),
-                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(120, 34, 8))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(120, 34, 8, 0))),
                   List.of(
                       new ModelEvent.TextChunk("both done"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(200, 12, 0)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(200, 12, 0, 0)))));
 
       Harness<String> harness =
           Nessy.harness(
@@ -204,7 +303,7 @@ class ObservedTurnTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("hello back"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1234, 56, 78)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1234, 56, 78, 90)))));
 
       Harness<String> harness =
           Nessy.harness(
@@ -224,10 +323,96 @@ class ObservedTurnTest {
           .isEqualTo("1234");
       assertThat(chat.getHighCardinalityKeyValue("gen_ai.usage.output_tokens").getValue())
           .isEqualTo("56");
-      assertThat(chat.getHighCardinalityKeyValue("nessy.usage.cached_input_tokens").getValue())
+      assertThat(chat.getHighCardinalityKeyValue("gen_ai.usage.cache_read.input_tokens").getValue())
           .isEqualTo("78");
+      assertThat(
+              chat.getHighCardinalityKeyValue("gen_ai.usage.cache_write.input_tokens").getValue())
+          .isEqualTo("90");
       assertThat(chat.getLowCardinalityKeyValue("gen_ai.response.finish_reasons").getValue())
           .isEqualTo("[end_turn]");
+    }
+
+    /**
+     * The 2026-08-26 semconv audit: each of the three operations carries its OWN semconv duration
+     * histogram as its Micrometer name, with the semconv span name riding as the contextual name.
+     * Pinned end to end here so a drift between {@code Observations}' constants and the two
+     * executors' private copies breaks the build.
+     */
+    @Test
+    void each_operation_is_named_for_its_own_semconv_duration_histogram() {
+      var pump = new PumpedExecutor();
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode()), ""),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0, 0))),
+                  List.of(
+                      new ModelEvent.TextChunk("done"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry)
+                      .tools(new EchoTool("restart")));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("restart prod-eu");
+      pump.pumpUntilQuiet();
+
+      assertThat(only("invoke_agent agent").getName()).isEqualTo("gen_ai.invoke_agent.duration");
+      assertThat(named("chat scripted"))
+          .isNotEmpty()
+          .allSatisfy(
+              chat -> assertThat(chat.getName()).isEqualTo("gen_ai.client.operation.duration"));
+      assertThat(only("execute_tool restart").getName()).isEqualTo("gen_ai.execute_tool.duration");
+    }
+
+    /**
+     * The recommended and conditionally-required request attributes the 2026-08-26 audit added:
+     * {@code gen_ai.request.stream} (conditionally required and always true here — the harness has
+     * no non-streaming door), {@code gen_ai.request.max_tokens} from {@code ModelSettings}, and
+     * {@code gen_ai.response.time_to_first_chunk}, measured to the first content event.
+     */
+    @Test
+    void the_chat_span_carries_the_request_shape_and_the_time_to_first_chunk() {
+      var pump = new PumpedExecutor();
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("hello back"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1, 1, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("hello");
+      pump.pumpUntilQuiet();
+
+      Observation.Context chat = only("chat scripted");
+      assertThat(chat.getLowCardinalityKeyValue("gen_ai.request.stream").getValue())
+          .isEqualTo("true");
+      assertThat(chat.getHighCardinalityKeyValue("gen_ai.request.max_tokens").getValue())
+          .isEqualTo(Integer.toString(TestSettings.settings().maxTokens()));
+      assertThat(
+              Double.parseDouble(
+                  chat.getHighCardinalityKeyValue("gen_ai.response.time_to_first_chunk")
+                      .getValue()))
+          .isNotNegative();
     }
 
     /** §6: a failed model call is still a measured call, and the failure is on the span. */
@@ -281,10 +466,10 @@ class ObservedTurnTest {
               List.of(
                   List.of(
                       new ModelEvent.ToolUseEmitted(restart, null),
-                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0, 0))),
                   List.of(
                       new ModelEvent.TextChunk("restarted"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0, 0)))));
 
       Harness<String> harness =
           Nessy.harness(
@@ -348,10 +533,10 @@ class ObservedTurnTest {
               List.of(
                   List.of(
                       new ModelEvent.ToolUseEmitted(slow, null),
-                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0, 0))),
                   List.of(
                       new ModelEvent.TextChunk("finished"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0, 0)))));
       var tool = new DeferringTool();
 
       Harness<String> harness =
@@ -371,7 +556,10 @@ class ObservedTurnTest {
       Observation.Context execution = only("execute_tool slow");
       assertThat(execution.getLowCardinalityKeyValue("nessy.tool.deferred").getValue())
           .isEqualTo("true");
-      assertThat(registry).hasObservationWithNameEqualTo("execute_tool").that().hasBeenStopped();
+      assertThat(registry)
+          .hasObservationWithNameEqualTo("gen_ai.execute_tool.duration")
+          .that()
+          .hasBeenStopped();
       assertThat(
               only("nessy.tool.wait slow")
                   .getLowCardinalityKeyValue("nessy.tool.outcome")

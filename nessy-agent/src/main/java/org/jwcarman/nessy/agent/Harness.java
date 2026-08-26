@@ -95,6 +95,8 @@ public final class Harness<O> {
 
   private Harness(
       AgentType type,
+      String provider,
+      String modelId,
       ObservationRenderer<O> renderer,
       List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
@@ -141,6 +143,8 @@ public final class Harness<O> {
         new Observations(
             observationRegistry,
             type,
+            Objects.requireNonNull(provider, "provider must not be null"),
+            Objects.requireNonNull(modelId, "modelId must not be null"),
             Objects.requireNonNull(openSegments, "openSegments must not be null"));
     this.facts.subscribe(this.observations);
     this.drainOnIdle = drainOnIdle;
@@ -186,9 +190,16 @@ public final class Harness<O> {
    * invoke_agent} observation per scope, and where the model- and tool-call executors read it to
    * parent their own spans (spec §3.2) — a plain map handed in from outside for the same reason
    * {@code approvalWaiters} is: it belongs to both sides, and neither is a new public type.
+   *
+   * <p>{@code provider} and {@code modelId} are what the {@code invoke_agent} segment reports as
+   * {@code gen_ai.provider.name} and {@code gen_ai.request.model} — two plain strings rather than
+   * the {@code Model} itself, because describing the model is the only thing a harness ever wanted
+   * one for. Take them from {@code Model#provider()} and {@code Model#id()}.
    */
   public static <O> Harness<O> of(
       AgentType type,
+      String provider,
+      String modelId,
       ObservationRenderer<O> renderer,
       List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
@@ -208,6 +219,8 @@ public final class Harness<O> {
       ConcurrentMap<AgentId, Observation> openSegments) {
     return of(
         type,
+        provider,
+        modelId,
         renderer,
         harnessObservers,
         turnObserver,
@@ -236,6 +249,8 @@ public final class Harness<O> {
    */
   public static <O> Harness<O> of(
       AgentType type,
+      String provider,
+      String modelId,
       ObservationRenderer<O> renderer,
       List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
@@ -261,6 +276,8 @@ public final class Harness<O> {
     Harness<O> harness =
         new Harness<>(
             type,
+            provider,
+            modelId,
             renderer,
             harnessObservers,
             turnObserver,

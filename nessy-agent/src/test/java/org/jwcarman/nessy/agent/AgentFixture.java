@@ -74,6 +74,8 @@ final class AgentFixture {
     Harness<String> harness =
         Harness.of(
             fixtureType,
+            "test_provider",
+            "test-model",
             text -> List.of(new TextBlock(text)),
             List.of(observer),
             TurnObserver.noop(),

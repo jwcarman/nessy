@@ -133,9 +133,11 @@ wiring and how to point it at a collector.
 
 | Observation (contextual name) | `gen_ai.operation.name` | opens | closes | attributes |
 |---|---|---|---|---|
-| `invoke_agent {agentType}` | `invoke_agent` | a segment starts | the segment ends | `gen_ai.agent.name`, `gen_ai.agent.id`, `gen_ai.conversation.id`; `nessy.turn.outcome` = complete / parked / failed |
-| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `nessy.usage.cached_input_tokens`; `error.type` |
-| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred` |
+| `invoke_agent {agentType}` | `invoke_agent` | a segment starts | the segment ends | `gen_ai.agent.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.id`, `gen_ai.conversation.id`; `nessy.turn.outcome` = complete / parked / failed |
+| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.stream`=true, `gen_ai.request.max_tokens`, `gen_ai.response.finish_reasons`, `gen_ai.response.time_to_first_chunk`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`; `error.type` |
+| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred` |
+| `search_memory` | `search_memory` | `Memory.recall` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`; `error.type` |
+| `create_memory` | `create_memory` | `Memory.remember` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`=1; `error.type` |
 | `nessy.approval.wait {tool}` | — | `ApprovalDeferred` applied | `ApprovalAnswered` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.approval.answer` |
 | `nessy.tool.wait {tool}` | — | `ToolDeferred` applied | `ToolFinished` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
 
@@ -173,20 +175,29 @@ parks.
 
 ### Metrics
 
-Micrometer's default handlers derive a timer from every span above, named
-for the span itself (`invoke_agent`, `chat`, `execute_tool`, and the two
-`nessy.*` waits) — **not** the semconv name
-`gen_ai.client.operation.duration`. Micrometer requires one stable
-low-cardinality key set per meter name, and `invoke_agent`, `chat`, and
-`execute_tool` carry deliberately different attribute sets; sharing one
-metric name across them is a meter with unstable tags, and Micrometer's own
-test registry rejects it. Want the exact semconv metric name instead? Map
-the three operation spans onto it in your own `ObservationHandler` — see the
-example module.
+Micrometer's default handlers derive a timer from every span above. Semconv
+defines a separate duration histogram per operation boundary, each with its
+own attribute set, and each observation is **named for its own metric** —
+the span name rides as the `contextualName` instead:
 
-`gen_ai.client.token.usage` is application-side for the same reason
-`gen_ai.client.operation.duration` is: an `ObservationRegistry` times
-observations, it cannot record a value histogram. The `chat` span carries
+| Observation name (the meter) | Contextual name (the span) |
+|---|---|
+| `gen_ai.client.operation.duration` | `chat {model}` |
+| `gen_ai.invoke_agent.duration` | `invoke_agent {agentType}` |
+| `gen_ai.execute_tool.duration` | `execute_tool {tool}` |
+| `search_memory` / `create_memory` | same (semconv defines no memory duration metric) |
+| `nessy.approval.wait` / `nessy.tool.wait` | `nessy.approval.wait {tool}` / `nessy.tool.wait {tool}` |
+
+**Match on the meter name, not the span name.** An `ObservationHandler`
+reads `context.getName()`, which is the left column. A handler written
+against `"chat"` matches nothing.
+
+Three names rather than one is what semconv asks for, and it satisfies
+Micrometer's rule for free: a meter requires one stable low-cardinality key
+set per name, and semconv already partitions the attributes per metric.
+
+`gen_ai.client.token.usage` is application-side: an `ObservationRegistry`
+times observations, it cannot record a value histogram. The `chat` span carries
 the vendor's own token counts as key-values
 (`gen_ai.usage.input_tokens`/`output_tokens`); a ten-line
 `ObservationHandler` reads them on `onStop` and records the metric to its

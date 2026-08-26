@@ -220,7 +220,11 @@ final class GeminiStream implements ModelStream {
           new Usage(
               metadata.promptTokenCount().orElse(0),
               metadata.candidatesTokenCount().orElse(0),
-              metadata.cachedContentTokenCount().orElse(0));
+              metadata.cachedContentTokenCount().orElse(0),
+              // Gemini's usage metadata reports cached content read back, never tokens written to
+              // the cache: an explicit CachedContent is created by a separate API call whose cost
+              // never appears on a generateContent response. Zero is the honest value here.
+              0);
     }
 
     /**

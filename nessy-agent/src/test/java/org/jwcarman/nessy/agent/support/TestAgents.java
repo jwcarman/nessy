@@ -198,6 +198,8 @@ public final class TestAgents {
     Harness<O> harness =
         Harness.of(
             type,
+            "test_provider",
+            "test-model",
             renderer,
             List.of(observer),
             TurnObserver.noop(),

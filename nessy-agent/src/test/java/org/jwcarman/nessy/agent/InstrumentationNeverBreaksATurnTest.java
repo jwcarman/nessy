@@ -94,6 +94,16 @@ import org.slf4j.LoggerFactory;
  */
 class InstrumentationNeverBreaksATurnTest {
 
+  /**
+   * The Micrometer NAMES of the two executor-minted observations — semconv's own per-operation
+   * duration histograms, NOT the span names {@code chat}/{@code execute_tool} that ride as
+   * contextual names. A handler matches on {@code context.getName()}, so a test naming the span
+   * here would match nothing and pass vacuously.
+   */
+  private static final String CHAT_METER = "gen_ai.client.operation.duration";
+
+  private static final String EXECUTE_TOOL_METER = "gen_ai.execute_tool.duration";
+
   private static final AgentId SCOPE = AgentId.of("prod-eu");
   private static final ToolCall RESTART =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -173,7 +183,7 @@ class InstrumentationNeverBreaksATurnTest {
 
     @Override
     public void onStop(Observation.Context context) {
-      if ("chat".equals(context.getName())) {
+      if (CHAT_METER.equals(context.getName())) {
         recorded.add(
             Long.parseLong(
                 context.getHighCardinalityKeyValue("gen_ai.usage.input_tokens").getValue()));
@@ -303,13 +313,13 @@ class InstrumentationNeverBreaksATurnTest {
     @Test
     void a_handler_that_throws_starting_chat_leaves_the_model_call_answered() {
       List<ILoggingEvent> captured = warningsFrom(ProviderModelCallExecutor.class);
-      registry.observationConfig().observationHandler(new ThrowsOnStart("chat"));
+      registry.observationConfig().observationHandler(new ThrowsOnStart(CHAT_METER));
       Model model =
           new ScriptedModel(
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("hello back"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 2, 0)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 2, 0, 0)))));
 
       ModelOutcome outcome = outcomeOf(model);
 
@@ -325,13 +335,13 @@ class InstrumentationNeverBreaksATurnTest {
     @Test
     void a_handler_that_throws_stopping_chat_leaves_the_model_call_answered() {
       List<ILoggingEvent> captured = warningsFrom(ProviderModelCallExecutor.class);
-      registry.observationConfig().observationHandler(new ThrowsOnStop("chat"));
+      registry.observationConfig().observationHandler(new ThrowsOnStop(CHAT_METER));
       Model model =
           new ScriptedModel(
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("hello back"),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 2, 0)))));
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 2, 0, 0)))));
 
       ModelOutcome outcome = outcomeOf(model);
 
@@ -390,7 +400,7 @@ class InstrumentationNeverBreaksATurnTest {
     void a_handler_that_throws_starting_execute_tool_still_delivers_the_real_result() {
       List<ILoggingEvent> captured = warningsFrom(RegistryToolCallExecutor.class);
 
-      AgentEvent event = runToolThrough(new ThrowsOnStart("execute_tool"));
+      AgentEvent event = runToolThrough(new ThrowsOnStart(EXECUTE_TOOL_METER));
 
       assertThat(event)
           .isInstanceOfSatisfying(
@@ -405,7 +415,7 @@ class InstrumentationNeverBreaksATurnTest {
     void a_handler_that_throws_stopping_execute_tool_still_delivers_the_real_result() {
       List<ILoggingEvent> captured = warningsFrom(RegistryToolCallExecutor.class);
 
-      AgentEvent event = runToolThrough(new ThrowsOnStop("execute_tool"));
+      AgentEvent event = runToolThrough(new ThrowsOnStop(EXECUTE_TOOL_METER));
 
       assertThat(event)
           .isInstanceOfSatisfying(
@@ -471,7 +481,12 @@ class InstrumentationNeverBreaksATurnTest {
       List<ILoggingEvent> captured = warningsFrom(Observations.class);
       registry.observationConfig().observationHandler(new ThrowsOnStart("nessy.delivery.dropped"));
       var observations =
-          new Observations(registry, AgentType.of("test"), new ConcurrentHashMap<>());
+          new Observations(
+              registry,
+              AgentType.of("test"),
+              "test_provider",
+              "test-model",
+              new ConcurrentHashMap<>());
 
       // An Idle scope ignoring a delivered tool result: the dropped-delivery counter's own arm.
       observations.ignored(

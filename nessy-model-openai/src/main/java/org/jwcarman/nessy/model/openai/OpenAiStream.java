@@ -228,7 +228,7 @@ public final class OpenAiStream implements ModelStream {
     }
 
     private void translateUsage(CompletionUsage completionUsage) {
-      long cachedInputTokens =
+      long cacheReadInputTokens =
           completionUsage
               .promptTokensDetails()
               .flatMap(CompletionUsage.PromptTokensDetails::cachedTokens)
@@ -237,7 +237,10 @@ public final class OpenAiStream implements ModelStream {
           new Usage(
               completionUsage.promptTokens(),
               completionUsage.completionTokens(),
-              cachedInputTokens);
+              cacheReadInputTokens,
+              // OpenAI's prompt caching is automatic and never billed as a write: the completion
+              // usage reports cached prompt tokens READ and nothing else. Zero is honest.
+              0);
     }
 
     // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with

@@ -207,7 +207,7 @@ class OpenAiStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)))
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)))
           .noneMatch(
               event -> event instanceof ModelEvent.TextChunk chunk && chunk.text().isEmpty());
     }
@@ -221,7 +221,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4, 0)));
     }
 
     @Test
@@ -233,7 +233,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
     }
 
     @Test
@@ -266,7 +266,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(7, 3, 0)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(7, 3, 0, 0)));
     }
 
     @Test
@@ -357,7 +357,7 @@ class OpenAiStreamTest {
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
       assertThat(modelEvents.get(2))
-          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(20, 12, 0)));
+          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(20, 12, 0, 0)));
     }
 
     @Test

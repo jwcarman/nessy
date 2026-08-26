@@ -167,7 +167,7 @@ class GeminiStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
     }
 
     @Test
@@ -179,7 +179,7 @@ class GeminiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4, 0)));
     }
 
     @Test
@@ -195,7 +195,7 @@ class GeminiStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(modelEvents.size() - 1)).usage())
-          .isEqualTo(new Usage(10, 5, 0));
+          .isEqualTo(new Usage(10, 5, 0, 0));
     }
 
     @Test

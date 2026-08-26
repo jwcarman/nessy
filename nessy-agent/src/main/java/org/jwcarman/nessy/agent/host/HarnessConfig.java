@@ -420,7 +420,7 @@ public final class HarnessConfig<O> {
     var agentType = AgentType.of(typeName);
     ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
     ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
-    Function<String, Memory> effectiveMemoryFactory =
+    Function<String, Memory> boundMemoryFactory =
         memoryFactory != null
             ? memoryFactory
             : id -> new SubstrateMemory(effectiveSubstrate, id, pinned);
@@ -496,10 +496,24 @@ public final class HarnessConfig<O> {
     // approvalWaiters is: the executor factories are lambdas this method closes over, and they need
     // the same instance the harness will use.
     ConcurrentMap<AgentId, Observation> openSegments = new ConcurrentHashMap<>();
+    // The ONE site a per-scope Memory is built (James 2026-08-26: "add memory spans"), so every
+    // recall and every remember is described — including the model executor's own recall below,
+    // which is the call that decides how big each prompt is. Wrapping here rather than inside
+    // SubstrateMemory covers a caller-supplied memoryFactory too: a vector store, a Redis view, a
+    // custom schema, all instrumented without knowing they are. Inert at ObservationRegistry.NOOP.
+    Function<String, Memory> effectiveMemoryFactory =
+        id ->
+            new ObservingMemory(
+                boundMemoryFactory.apply(id),
+                observationRegistry,
+                agentType.name(),
+                () -> openSegments.get(AgentId.of(id)));
 
     Harness<O> harness =
         Harness.of(
             agentType,
+            effectiveModel.provider(),
+            effectiveModel.id(),
             effectiveRenderer,
             List.copyOf(harnessObservers),
             effectiveTurnObserver,

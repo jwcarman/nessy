@@ -74,9 +74,13 @@ dashboard reads for "how long did the human take."
 **Explore** → **Prometheus** (Mimir, in this image) → query
 `gen_ai_client_token_usage_sum` (Prometheus's own naming: dots become
 underscores) filtered by `gen_ai_token_type="input"` or `"output"`; or any of
-the operation timers Micrometer derives from the spans themselves —
-`invoke_agent_seconds`, `chat_seconds`, `execute_tool_seconds` — each with
-`_count` for a call-volume dashboard. `gen_ai_client_token_usage` is this
+the operation timers Micrometer derives from the spans themselves, which
+carry semconv's own per-operation metric names —
+`gen_ai_client_operation_duration_seconds` (the `chat` span),
+`gen_ai_invoke_agent_duration_seconds`, and
+`gen_ai_execute_tool_duration_seconds` — each with `_count` for a
+call-volume dashboard. The memory spans yield `search_memory_seconds` and
+`create_memory_seconds`. `gen_ai_client_token_usage` is this
 module's own `TokenUsageHandler`, not `nessy-agent`: the `chat` observation
 carries the vendor's token counts as key-values because an
 `ObservationRegistry` can time an operation but cannot record a value

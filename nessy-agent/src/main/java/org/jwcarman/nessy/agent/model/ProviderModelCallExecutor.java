@@ -86,22 +86,40 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private final Supplier<Observation> parentSegment;
 
   /**
-   * The semconv names this executor's own span carries (agentic-o11y spec §1.1). {@code chat} is
-   * both the span name and the observation's Micrometer name: a meter requires one stable
-   * low-cardinality key set per name, so the three GenAI operations cannot share the semconv metric
-   * name {@code gen_ai.client.operation.duration} — see {@code Observations}' javadoc for the full
-   * reasoning and the §1.2 amendment it records.
+   * The semconv names this executor's own span carries (agentic-o11y spec §1.1, corrected by the
+   * 2026-08-26 semconv audit). The observation's Micrometer NAME is the semconv METER name {@code
+   * gen_ai.client.operation.duration} — the histogram semconv defines for a provider-facing client
+   * call — and {@code chat {model}} is its semconv SPAN name, carried as the contextual name.
+   * Semconv gives {@code invoke_agent} and {@code execute_tool} their own meter names with their
+   * own attribute sets, so nothing here is shared with them and every observation under this name
+   * carries one stable low-cardinality key set, which is what a meter requires.
    */
+  private static final String OPERATION_DURATION = "gen_ai.client.operation.duration";
+
   private static final String CHAT = "chat";
 
   private static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
   private static final String GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
   private static final String GEN_AI_REQUEST_MODEL = "gen_ai.request.model";
+  private static final String GEN_AI_REQUEST_STREAM = "gen_ai.request.stream";
+  private static final String GEN_AI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens";
   private static final String GEN_AI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons";
+  private static final String GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK =
+      "gen_ai.response.time_to_first_chunk";
   private static final String GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
   private static final String GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
-  private static final String NESSY_USAGE_CACHED_INPUT_TOKENS = "nessy.usage.cached_input_tokens";
+  private static final String GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS =
+      "gen_ai.usage.cache_read.input_tokens";
+  private static final String GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS =
+      "gen_ai.usage.cache_write.input_tokens";
   private static final String ERROR_TYPE = "error.type";
+
+  /**
+   * {@code gen_ai.request.stream} is Conditionally Required "if and only if the request is
+   * streaming". Every model call this harness makes goes through {@link Model#stream}: there is no
+   * non-streaming door, so this is a constant true rather than a flag read from somewhere.
+   */
+  private static final String ALWAYS_STREAMING = "true";
 
   /**
    * @param observations where the {@code chat} span is recorded — {@code ObservationRegistry.NOOP}
@@ -214,13 +232,18 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private Observation newChat() {
     Observation parent = parentSegment.get();
     Observation chat =
-        Observation.createNotStarted(CHAT, observations)
+        Observation.createNotStarted(OPERATION_DURATION, observations)
             .contextualName(CHAT + " " + model.id())
             .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, CHAT)
             .lowCardinalityKeyValue(GEN_AI_PROVIDER_NAME, model.provider())
             .lowCardinalityKeyValue(GEN_AI_REQUEST_MODEL, model.id())
+            .lowCardinalityKeyValue(GEN_AI_REQUEST_STREAM, ALWAYS_STREAMING)
             .lowCardinalityKeyValue(GEN_AI_RESPONSE_FINISH_REASONS, KeyValue.NONE_VALUE)
-            .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE);
+            .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
+            // Recommended, and high-cardinality by Micrometer's division of labour: a numeric
+            // budget is a span attribute, never a meter tag.
+            .highCardinalityKeyValue(
+                GEN_AI_REQUEST_MAX_TOKENS, Integer.toString(settings.maxTokens()));
     if (parent != null) {
       chat.parentObservation(parent);
     }
@@ -230,8 +253,21 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private ModelOutcome streamInto(ModelRequest request, Observation chat) {
     List<ContentBlock> blocks = new ArrayList<>();
     List<ToolCall> calls = new ArrayList<>();
+    // gen_ai.response.time_to_first_chunk: "measured from when the client issues the generation
+    // request to when the first chunk is received in the response stream", Recommended if the
+    // request was streaming. Measured here rather than as the semconv METRIC of the same shape,
+    // for the reason the token histogram is not recorded here either (spec §1.2): an
+    // ObservationRegistry times observations and cannot record an arbitrary value histogram. It
+    // rides the span; an application handler that wants the metric reads it on stop.
+    long issuedAt = System.nanoTime();
+    boolean firstChunkSeen = false;
     try (ModelStream stream = model.stream(request)) {
       for (ModelEvent event : stream) {
+        if (!firstChunkSeen && isChunk(event)) {
+          firstChunkSeen = true;
+          chat.highCardinalityKeyValue(
+              GEN_AI_RESPONSE_TIME_TO_FIRST_CHUNK, seconds(System.nanoTime() - issuedAt));
+        }
         switch (event) {
           case ModelEvent.TextChunk(String text) -> {
             turn.on(new TurnEvent.TextDelta(text));
@@ -263,12 +299,36 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             chat.highCardinalityKeyValue(
                 GEN_AI_USAGE_OUTPUT_TOKENS, Long.toString(usage.outputTokens()));
             chat.highCardinalityKeyValue(
-                NESSY_USAGE_CACHED_INPUT_TOKENS, Long.toString(usage.cachedInputTokens()));
+                GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, Long.toString(usage.cacheReadInputTokens()));
+            chat.highCardinalityKeyValue(
+                GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
+                Long.toString(usage.cacheWriteInputTokens()));
           }
         }
       }
     }
     return new ModelOutcome.Responded(blocks, calls, ModelResponseId.generate());
+  }
+
+  /**
+   * Whether this event is a CHUNK of the response — the arrival semconv's time-to-first-chunk is
+   * measured to. A signature, a turn-end summary and (deliberately) nothing else are bookkeeping
+   * the provider emits around the content, not content arriving.
+   */
+  private static boolean isChunk(ModelEvent event) {
+    return switch (event) {
+      case ModelEvent.TextChunk _,
+          ModelEvent.ThinkingChunk _,
+          ModelEvent.RedactedThinkingEmitted _,
+          ModelEvent.ToolUseEmitted _ ->
+          true;
+      case ModelEvent.ThinkingSigned _, ModelEvent.TurnEnded _ -> false;
+    };
+  }
+
+  /** Nanoseconds as a seconds string — the unit semconv gives every {@code time_to_*} value. */
+  private static String seconds(long nanos) {
+    return Double.toString(nanos / 1_000_000_000.0d);
   }
 
   /** Merges a chunk into the trailing text block: a hundred deltas become one block. */

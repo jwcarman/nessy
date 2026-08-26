@@ -147,6 +147,8 @@ class HarnessTest {
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
     return Harness.of(
         type,
+        "test_provider",
+        "test-model",
         renderer,
         observers,
         turnObserver,
@@ -177,6 +179,8 @@ class HarnessTest {
     var mapper = TestMappers.plainlyPinned();
     return Harness.of(
         TYPE,
+        "test_provider",
+        "test-model",
         RENDERER,
         List.of(OBSERVER),
         TurnObserver.noop(),

@@ -163,7 +163,7 @@ class ScriptedModelTest {
 
   @Test
   void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
-    Usage usage = new Usage(12, 34, 0);
+    Usage usage = new Usage(12, 34, 0, 0);
     ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn(usage));
 
     assertThat(drain(provider.stream(request())))

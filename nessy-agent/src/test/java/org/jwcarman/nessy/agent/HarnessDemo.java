@@ -118,6 +118,8 @@ class HarnessDemo {
     var harness =
         Harness.<String>of(
             demoType,
+            "test_provider",
+            "test-model",
             text -> List.of(new TextBlock(text)),
             List.of(narrator),
             TurnObserver.noop(),

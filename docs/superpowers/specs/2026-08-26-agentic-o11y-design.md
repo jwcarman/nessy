@@ -31,9 +31,11 @@ Two rulings shape it:
 
 | Observation (contextual name) | `gen_ai.operation.name` | opens | closes | attributes |
 |---|---|---|---|---|
-| `invoke_agent {agentType}` | `invoke_agent` | a segment starts (§2) | the segment ends | `gen_ai.agent.name`=agentType, `gen_ai.agent.id`=agentId, `gen_ai.conversation.id`=agentId; `nessy.turn.outcome` = complete / parked / failed |
-| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.finish_reasons`=[stopReason], `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `nessy.usage.cached_input_tokens`; `error.type` on failure |
-| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type` on failure; `nessy.tool.deferred`=true when it deferred |
+| `invoke_agent {agentType}` | `invoke_agent` | a segment starts (§2) | the segment ends | `gen_ai.agent.name`=agentType, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.id`=agentId, `gen_ai.conversation.id`=agentId; `nessy.turn.outcome` = complete / parked / failed |
+| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.stream`=true, `gen_ai.request.max_tokens`, `gen_ai.response.finish_reasons`=[stopReason], `gen_ai.response.time_to_first_chunk`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`; `error.type` on failure |
+| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type` on failure; `nessy.tool.deferred`=true when it deferred |
+| `search_memory` | `search_memory` | `Memory.recall` is called | it returns | `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.memory.record.count`; `error.type` on failure |
+| `create_memory` | `create_memory` | `Memory.remember` is called | it returns | `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.memory.record.count`=1; `error.type` on failure |
 | `nessy.approval.wait {tool}` | — | `ApprovalDeferred` applied | `ApprovalAnswered` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.approval.answer`=approved / denied |
 | `nessy.tool.wait {tool}` | — | `ToolDeferred` applied | `ToolFinished` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
 
@@ -60,9 +62,50 @@ documented shape, not a bug.
 From semconv, produced by Micrometer's default observation handlers from
 the spans above.
 
-**Amendment (2026-08-26, execution, Task 1's Deviation 2) — `invoke_agent`,
-`chat`, and `execute_tool` are each named for themselves, not
-`gen_ai.client.operation.duration`.** This section originally asked for the
+**Amendment 2b (2026-08-26, the SEMCONV AUDIT — supersedes Amendment 2
+below, which was right for the wrong reason and wrong about the names).**
+
+Verified against `github.com/open-telemetry/semantic-conventions-genai`
+(`docs/gen-ai/gen-ai-metrics.md`, the repository the GenAI conventions moved
+to when they split out in June 2026 — after the model cutoff, which is why
+the roster was built from stale memory). Semconv **does not** mandate one
+shared metric name discriminated by `gen_ai.operation.name`. It defines a
+SEPARATE duration histogram per operation boundary, each with its own
+attribute set:
+
+| Metric | Attributes | Ours |
+|---|---|---|
+| `gen_ai.client.operation.duration` | `gen_ai.operation.name` (Req), `error.type`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.port`, `gen_ai.response.model`, `server.address` | the `chat` observation |
+| `gen_ai.invoke_agent.duration` | `error.type`, `gen_ai.agent.name`, `gen_ai.request.model` | the SEGMENT |
+| `gen_ai.execute_tool.duration` | `gen_ai.tool.name` (Req), `error.type`, `gen_ai.agent.name`, `gen_ai.tool.type` | the tool span |
+
+`gen_ai.invoke_agent.duration`'s own note settles which applies to us: it is
+"intended for instrumentations of agent frameworks … that can reliably bound
+a single agent invocation", and `gen_ai.client.operation.duration` "SHOULD be
+used instead" only "if instrumentation can only measure a single
+provider-facing client operation". This harness bounds all three.
+
+So: **the observation's Micrometer NAME is its semconv METER name, and its
+`contextualName` is its semconv SPAN name** (`invoke_agent {agent}`, `chat
+{model}`, `execute_tool {tool}`). Amendment 2's *conclusion* — three names,
+not one — survives; its *reasoning* and its *names* do not. It argued from
+Micrometer's stable-tag-set rule that semconv's mandate was impossible, and
+then minted the span names as meter names. Both halves were wrong: semconv
+never mandated one name, and the correct three names are the `*.duration`
+ones above. Micrometer's rule is satisfied for free, because semconv already
+partitions the attributes per meter. The `"none"` placeholder idiom (§1.1's
+amendment) still stands — it keeps each name's own key set stable across
+observations whose outcome never arrived.
+
+The two wait observations keep their own `nessy.*` names and their own key
+sets, confirmed still un-conventioned by the same audit (§8b).
+
+---
+
+*Superseded, kept for the record —* **Amendment (2026-08-26, execution, Task
+1's Deviation 2) — `invoke_agent`, `chat`, and `execute_tool` are each named
+for themselves, not `gen_ai.client.operation.duration`.** This section
+originally asked for the
 semconv metric name set explicitly as every duration observation's
 Micrometer name, with the semconv span name carried as the contextual name.
 **Micrometer forbids it**, discovered as a real TCK failure, not by reading:
@@ -330,6 +373,85 @@ the worker narrates `HarnessObserver`).
    `anthropic`. Either each provider overrides `name()` to the semconv
    value, or the executor lowercases and strips `Provider`. Proposed: the
    providers override — it is their name.
+
+## 8b. The semconv audit (2026-08-26) — what was wrong, what stays ours
+
+Verified item by item against
+`github.com/open-telemetry/semantic-conventions-genai` (`docs/gen-ai/`),
+`main`, referencing semantic-conventions v1.44.0. All GenAI conventions are
+**Development** status.
+
+**Corrected.**
+
+- `nessy.usage.cached_input_tokens` → `gen_ai.usage.cache_read.input_tokens`,
+  plus `gen_ai.usage.cache_write.input_tokens`. Both Recommended "When
+  applicable" on the inference span. Semconv note: a cache-read count "SHOULD
+  be included in `gen_ai.usage.input_tokens`". `Usage` (nessy-api) gains a
+  fourth component and its third is renamed to match: `(inputTokens,
+  outputTokens, cacheReadInputTokens, cacheWriteInputTokens)` — a public
+  record change, taken because the vendor data genuinely exists (Anthropic's
+  `Usage.cacheCreationInputTokens()`, Bedrock's
+  `TokenUsage.cacheWriteInputTokens()`). OpenAI and Gemini report reads only
+  and honestly report zero writes.
+- The metric names — Amendment 2b above.
+- `gen_ai.request.stream` = true on `chat`: Conditionally Required "if and
+  only if the request is streaming", and this harness has no non-streaming
+  door.
+- `gen_ai.request.max_tokens` on `chat`, from `ModelSettings.maxTokens()`.
+- `gen_ai.agent.name` on `execute_tool`: Conditionally Required "when
+  applicable", and it always is here.
+- `gen_ai.provider.name` and `gen_ai.request.model` on `invoke_agent`.
+  Nuance, recorded honestly: `gen_ai.request.model` is Recommended on the
+  invoke-agent span and is one of the three attributes on
+  `gen_ai.invoke_agent.duration`, so it is squarely conventional.
+  `gen_ai.provider.name` is Required on the invoke-agent **client** span (a
+  remote agent) and does **not** appear on the **internal** span this
+  harness mints, nor on `gen_ai.invoke_agent.duration`. It is carried anyway
+  — the harness holds the `Model`, so the value is honest, and semconv
+  permits system-specific extra attributes. Flagged rather than buried.
+- Memory: recall is `search_memory`, remember is `create_memory` — both in
+  semconv's own `gen_ai.operation.name` enum, alongside `update_memory`,
+  `upsert_memory`, `delete_memory` and the two store-lifecycle verbs. The
+  proposed `nessy.memory.recall`/`nessy.memory.remember` were never minted.
+  Memory span name SHOULD be `{gen_ai.operation.name}` alone; there is no
+  semconv duration metric for memory operations, so for these two the
+  observation name and the span name coincide. The count is
+  `gen_ai.memory.record.count` (Recommended, int) — messages, never bytes.
+- `gen_ai.response.time_to_first_chunk` on `chat` (Recommended, "if the
+  request was a streaming request"; measured "from when the client issues
+  the generation request to when the first chunk is received").
+
+**Skipped, with reasons.**
+
+- `gen_ai.response.id` and `gen_ai.response.model` (both Recommended). The
+  `ModelEvent` grammar carries neither: `TurnEnded(StopReason, Usage)` is
+  all that reaches the executor, and no provider stream surfaces the
+  response id or the resolved model. Adding them is an SPI change to
+  `ModelEvent` — out of this round's scope, and a real follow-on.
+- `server.address` / `server.port` (Recommended / Conditionally Required if
+  address is set). A `Model` cannot honestly report its endpoint — nothing
+  on the SPI exposes one, and every provider's base URL lives inside its
+  vendor SDK client. Inventing a hostname would be worse than omitting it.
+- `gen_ai.client.operation.time_to_first_chunk` and
+  `gen_ai.client.operation.time_per_output_chunk` as METRICS. Same reason
+  `gen_ai.client.token.usage` is not recorded here (§1.2): an
+  `ObservationRegistry` times observations and cannot record an arbitrary
+  value histogram. The first-chunk latency rides the `chat` span as the
+  attribute above, which an application-side handler can turn into either
+  metric; per-output-chunk timing would additionally need a chunk count the
+  executor does not keep.
+
+**Confirmed still ours.** There is **no** convention for a human-in-the-loop
+wait or a deferred/long-running operation. The `gen_ai.operation.name` enum
+is exactly: `chat`, `create_agent`, `create_memory`, `create_memory_store`,
+`delete_memory`, `delete_memory_store`, `embeddings`, `execute_tool`,
+`fetch_response`, `generate_content`, `invoke_agent`, `invoke_workflow`,
+`plan`, `retrieval`, `search_memory`, `text_completion`, `update_memory`,
+`upsert_memory` — no pause, no wait, no approval. `nessy.approval.wait` and
+`nessy.tool.wait` stay ours, as do the three engine counters
+(`nessy.delivery.dropped`, `nessy.state.stale_retries`,
+`nessy.effects.refired`) and the outcome keys (`nessy.turn.outcome`,
+`nessy.approval.answer`, `nessy.tool.outcome`, `nessy.tool.deferred`).
 
 ## 8a. Next, not now — settled in conversation 2026-08-26
 
