@@ -290,6 +290,7 @@ Two more worth doing over a month:
 | `nessy.approval.wait` | the headline. Real dwell, in days, on approvals a real person really did leave sitting. No test can produce this number. |
 | `nessy.tool.wait` | `long_job`'s own wait — the deferred-tool path, measured rather than asserted. |
 | `invoke_agent` spans | one per round. The shape of a healthy round is minutes; a round that never ends is the first failure mode. |
+| `jdbc.query` / `jdbc.connection` | **the SQL underneath the memory spans.** `search_memory` and `create_memory` are otherwise leaves, and a slow one is ambiguous: is recall slow, or is the transcript huge? Open a memory span and read its children — connection acquisition and query time are separate, and the statement rides the span. Spring Boot does *not* instrument JDBC on its own (the built app has 132 jars and not one of them is a JDBC instrumentation); this comes from `net.ttddyy.observation:datasource-micrometer-spring-boot`, declared in this module's POM and nowhere else. It is an application's choice to have its `DataSource` wrapped — never the starter's, and never `nessy-agent`'s. |
 | `chat` tokens | `gen_ai.client.token.usage` per round, split input/output. What the soak costs per day. |
 | `nessy.delivery.dropped` | **should be zero.** Anything else means an answer arrived for a phase that was not waiting for it. |
 | `nessy.state.stale_retries` | **normal, and proportional to parallelism** — see below. Read it per round against how many calls that round ran at once, never as an absolute. |
@@ -299,6 +300,46 @@ All three are **span events on the round's own `invoke_agent` span**, not
 standalone traces — open the round in Tempo and read its events. (A count
 recorded while no round was running is the exception: that one is its own
 tiny trace, because there was no round to hang it on.)
+
+### Reading the cache numbers
+
+Two observed rounds a minute apart recorded `gen_ai.usage.cache_read.input_tokens`
+and `cache_write.input_tokens` **both zero**, with `nessy.capabilities:
+prompt-caching` set and reaching the request. The cause was placement, not
+plumbing: the Anthropic request marked the system prompt and the last tool
+definition and nothing else, so the only cacheable prefix was the part that never
+grows, while the transcript — 13 records to 45 in that one minute — could never be
+cached at all. The request now also marks the conversation, which is what makes a
+long-running agent's cache worth having.
+
+What to look for on the next run, in order:
+
+1. **`cache_write.input_tokens` > 0 on the first chat of a round.** If this is
+   still zero, the prefix is under the model's minimum cacheable size (model
+   dependent — 1024 tokens on Sonnet 5 and Opus 4.8, 512 on Opus 5, 4096 on Opus
+   4.6 and Haiku 4.5). Nothing is broken; there is simply not enough to cache
+   yet, and it will start once the transcript is long enough.
+2. **`cache_read.input_tokens` > 0 on the *second* chat of the same round.** This
+   is the number that proves the fix. Within a round, the model is called several
+   times — once per tool result batch — seconds apart, and each call should read
+   back what the previous one wrote.
+3. **`cache_read` ACROSS rounds only if rounds are close together.** The cache
+   entries are the 5-minute ephemeral kind. On the default `0 */30 * * * *` cron,
+   every entry has expired long before the next round starts, so cross-round reads
+   are *expected to be zero* and their absence is not a bug. Run the cron every
+   minute or two if you want to watch cross-round reads; otherwise the win is
+   entirely within-round, which for a round that runs several tool batches is
+   still most of the tokens.
+4. **Watch `input_tokens` *against* the transcript length, not on its own.** The
+   Anthropic adapter passes the provider's own `input_tokens` straight through,
+   and Anthropic reports that number *excluding* what it served from cache. So a
+   round whose `input_tokens` stops growing while the transcript keeps growing is
+   the fix working, not a stalled agent — and the prompt's true size is
+   `input_tokens + cache_read + cache_write`. (Note: `TokenUsageHandler`'s javadoc
+   quotes semconv's "SHOULD be included in `gen_ai.usage.input_tokens`" and warns
+   against summing all four series. That warning is correct for a provider that
+   follows the SHOULD; Anthropic does not, so for this soak the four series do not
+   overlap. Read the numbers, not the guidance, until that is reconciled.)
 
 ### Reading `nessy.state.stale_retries`
 
@@ -349,7 +390,7 @@ in plain markdown.
 | `nessy.system-prompt-file` | `classpath:system-prompt.md` | what a round is |
 | `nessy.staleness` | `30m` | how long a quiet phase may sit before the recovery arm re-fires it |
 | `nessy.backlog-capacity` | `256` | per-scope backlog depth |
-| `nessy.capabilities` | `prompt-caching` | what the harness ASKS the provider to use. A round resends the same system prompt and tool schemas every thirty minutes, forever — the cache case. A provider that cannot do it says so and nothing fails; `gen_ai.usage.cache_read.input_tokens` on the chat span is how you tell whether it did. |
+| `nessy.capabilities` | `prompt-caching` | what the harness ASKS the provider to use. A provider that cannot do it says so and nothing fails; `gen_ai.usage.cache_read.input_tokens` and `cache_write.input_tokens` on the chat span are how you tell whether it did. See "Reading the cache numbers" below — the interesting prefix is the transcript, not the system prompt. |
 | `watchman.cron` | `0 */30 * * * *` | when rounds happen |
 | `watchman.scheduling.enabled` | `true` | set `false` and rounds only happen when something calls them — how the tests keep cron out of their assertions |
 | `watchman.notes-dir` | `./notes` | where the daily notes live |

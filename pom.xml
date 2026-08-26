@@ -134,6 +134,17 @@
          published on every release. Pinned to the release whose declared opentelemetry-api
          dependency (1.65.0) matches opentelemetry.version above exactly. -->
     <opentelemetry-logback-appender.version>2.31.1-alpha</opentelemetry-logback-appender.version>
+    <!-- datasource-micrometer: JDBC instrumentation as Micrometer Observations, so a
+         search_memory or create_memory span has the actual query underneath it (watchman soak
+         finding F5, 2026-08-26). Spring Boot instruments no JDBC out of the box — verified by
+         listing the built application's 132 jars, none of which carry a JDBC instrumentation.
+         Pinned here with every other version; the dependency itself is declared ONLY in
+         nessy-examples/watchman. It is an APPLICATION choice, never nessy-agent's and never the
+         starter's: a library does not decide that its user's DataSource gets wrapped. -->
+    <!-- 2.2.1 is the newest release on Central (2026-04-07). Read from the repository's own
+         maven-metadata.xml, NOT from search.maven.org, whose index still tops out at 1.1.1 —
+         a stale search result would have pinned this a whole major line behind. -->
+    <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     <!-- Held at the 1.21 line deliberately: testcontainers 2.0 renamed every module artifact
@@ -279,6 +290,11 @@
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-logback-appender-1.0</artifactId>
         <version>${opentelemetry-logback-appender.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>net.ttddyy.observation</groupId>
+        <artifactId>datasource-micrometer-spring-boot</artifactId>
+        <version>${datasource-micrometer.version}</version>
       </dependency>
       <dependency>
         <groupId>org.testcontainers</groupId>
