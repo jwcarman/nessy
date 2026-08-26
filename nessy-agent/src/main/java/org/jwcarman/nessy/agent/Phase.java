@@ -208,14 +208,14 @@ public sealed interface Phase {
       }
       boolean admitted =
           switch (current.get()) {
-            // Only an in-process result: a Running call names no computation, so a delivered id
-            // is by definition one the scope knows nothing of (spec §3). There is no timing gap to
-            // rescue — the executor mints the computation on the Awaited.Deferred arm, right after
-            // the tool body returns, and the very next statement on that same thread folds
-            // ToolDeferred; with a one-day default deadline, an expiry could only land here if the
-            // reaper and the deliver pump beat a single thread hop. On the crash path the re-fired
-            // RunTool mints a SECOND computation, and the orphan's expiry then meets
-            // AwaitingResult(id2) — a mismatch, correctly dropped there.
+            // Only an in-process result: a Running call names no computation, so a delivered id is
+            // by definition one the scope knows nothing of. There is no timing gap to rescue — the
+            // door (ToolContext#defer, tool-context-defer spec §2) folds ToolDeferred and commits
+            // BEFORE it hands the id back, so nothing outside can hold an id this scope does not
+            // already name. A ToolFinished carrying an id against a Running call therefore names a
+            // computation that was never recorded here, and is ignored. On the crash path the
+            // re-fired RunTool defers again, minting a SECOND computation; the orphan's expiry then
+            // meets AwaitingResult(id2) — a mismatch, correctly dropped there.
             case CallStatus.Running _ -> tool.isEmpty();
             case CallStatus.AwaitingResult(var id) -> tool.filter(id::equals).isPresent();
             case CallStatus.Pending _, CallStatus.AwaitingApproval _, CallStatus.Finished _ ->

@@ -21,15 +21,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.ContinuumClient;
+import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.api.Backoff;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.Lease;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.spi.Sink;
+import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ComputationId;
@@ -47,8 +53,27 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class ComputationToolContextTest {
 
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
+
+  /**
+   * A clock-driven client rather than {@code TestToolClients.client(...)}: expiry is how this file
+   * COUNTS computations — {@code failExpiredComputations} returns how many the door actually
+   * created — and how it proves a declared timeout was the deadline that got stamped. The kind's
+   * own default deadline is an hour, so anything expiring sooner can only be an override.
+   */
+  private static final Duration KIND_DEFAULT_DEADLINE = Duration.ofHours(1);
+
+  private final TestClock clock = new TestClock(Instant.parse("2026-08-25T00:00:00Z"));
+  private final Continuum continuum =
+      new DefaultContinuum(new InMemoryContinuumRepository(), clock);
   private final ContinuumClient<ToolResult, Routing> client =
-      TestToolClients.client("tool/test", mapper);
+      continuum.client(
+          "tool/test",
+          ToolResult.class,
+          Routing.class,
+          cfg ->
+              cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
+                  .continuationCodec(Routing.codec(mapper))
+                  .deadline(KIND_DEFAULT_DEADLINE));
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -131,10 +156,21 @@ class ComputationToolContextTest {
 
     assertThat(second).isEqualTo(first);
     assertThat(delivered).hasSize(1);
+    // one FOLD is not one COMPUTATION: count the computations themselves by expiring them. A
+    // second create would show up here as 2, however few events the sink saw.
+    clock.advance(KIND_DEFAULT_DEADLINE.plusMinutes(1));
+    assertThat(client.failExpiredComputations(BatchSize.of(10))).isEqualTo(1);
   }
 
+  /**
+   * Proves the declared timeout, not the kind's own default deadline (an hour here), is what got
+   * stamped: advancing well past the five-minute override but far short of the default expires the
+   * computation, which only a shorter-than-default deadline explains. Ported from the retired
+   * {@code ComputationDeferredToolCallPolicyTest} onto the door that replaced it — an
+   * implementation that drops {@code timeout} on the floor goes red here.
+   */
   @Test
-  void aDeclaredTimeoutBecomesTheComputationsOwnDeadline() {
+  void aDeclaredTimeoutStampsAShorterDeadlineThanTheKindsDefault() {
     var context =
         new ComputationToolContext(
             client,
@@ -142,10 +178,40 @@ class ComputationToolContextTest {
             Optional.of(Duration.ofMinutes(5)),
             ToolEventListener.noop(),
             event -> {});
+    context.defer();
 
-    ComputationId id = context.defer();
+    clock.advance(Duration.ofMinutes(6));
 
-    assertThat(id.value()).isNotBlank();
+    assertThat(client.failExpiredComputations(BatchSize.of(10))).isEqualTo(1);
+  }
+
+  @Test
+  void noDeclaredTimeoutLeavesTheKindsOwnDefaultDeadlineStanding() {
+    contextOver(event -> {}).defer();
+
+    clock.advance(Duration.ofMinutes(6));
+
+    assertThat(client.failExpiredComputations(BatchSize.of(10))).isZero();
+  }
+
+  /**
+   * A tool is free to defer from a worker thread and return from the executor's — a fan-out tool
+   * handing the address to a pool, say. {@code deferral()} must see that write; a stale null would
+   * make the executor read a parked call as one that never deferred, and answer it in-band over the
+   * top of a wait the scope already names.
+   */
+  @Test
+  void aDeferralOpenedOnAnotherThreadIsVisibleToTheExecutorAfterTheJoin()
+      throws InterruptedException {
+    var context = contextOver(event -> {});
+    var fromTheWorker = new AtomicReference<ComputationId>();
+    Thread worker = new Thread(() -> fromTheWorker.set(context.defer()), "defers-elsewhere");
+
+    worker.start();
+    worker.join();
+
+    assertThat(fromTheWorker.get()).isNotNull();
+    assertThat(context.deferral()).contains(fromTheWorker.get());
   }
 
   /**

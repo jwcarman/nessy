@@ -107,9 +107,13 @@ public final class ComputationToolContext implements ToolContext {
    * agent.tool} — a different package — which is the spec's stated fallback for the package-visible
    * shape it would otherwise prefer.
    *
+   * <p>{@code synchronized} on the same lock {@link #defer()} holds: a tool is free to defer from a
+   * worker thread and return from the executor's, and this must see that write rather than a stale
+   * null — which would make the executor mistake a parked call for one that never deferred.
+   *
    * @return the id {@link #defer()} minted, or empty if this call never deferred
    */
-  public Optional<ComputationId> deferral() {
+  public synchronized Optional<ComputationId> deferral() {
     return Optional.ofNullable(deferred);
   }
 }

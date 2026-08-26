@@ -199,7 +199,12 @@ narration and loses its `return`. Every other caller of a sink runs inside
 an executor task — the model executor's completion, the tool executor's
 completions, the delivery worker's redrives — where the narration was
 already the only trace of a failure and the task ends either way; nothing
-observable changes for them. `ComputationApprovalContext.defer()` and
+observable changes for them. One exception is observable: with an inline
+executor (`HarnessConfig.executor(Runnable::run)`) a fold failure escapes the
+Continuum consumer, so the delivery is released rather than consumed and comes
+back after the backoff; the redelivery meets an advanced phase and is dropped
+under §6's mismatch rule. Nothing is lost, but the WARN and the extra round
+trip are visible. `ComputationApprovalContext.defer()` and
 `ComputationToolContext.defer()` simply let the throw propagate. `Sink`
 stays a one-method functional interface; nothing is added.
 

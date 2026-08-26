@@ -94,6 +94,16 @@ public final class ToolConfig<T> {
    * Awaited#deferred()}. Sets {@link #requires(CompletionPolicy)} to {@link
    * CompletionPolicy#DURABLE} unless an explicit call to {@link #requires(CompletionPolicy)}
    * overrides it, in either order.
+   *
+   * <p><b>The starter MUST call {@link ToolContext#defer()}</b> — that is why it is handed the
+   * context — and must do so before it returns. {@code defer()} creates the durable computation,
+   * folds the wait into the scope, commits, and hands back the id: the callback address the started
+   * work is supposed to answer on. A starter that returns without calling it leaves the built tool
+   * answering {@code deferred()} with nowhere for an answer to go, and the call fails in-band with
+   * {@code "deferring tool never called context.defer()"}. This door does not call {@code defer()}
+   * on the starter's behalf: only the starter knows whether the work was actually handed off, and
+   * an id minted for work that was never started is exactly the lie {@code defer()} exists to
+   * prevent.
    */
   public ToolConfig<T> defers(BiConsumer<T, ToolContext> starter) {
     this.deferStarter = Objects.requireNonNull(starter, "starter must not be null");

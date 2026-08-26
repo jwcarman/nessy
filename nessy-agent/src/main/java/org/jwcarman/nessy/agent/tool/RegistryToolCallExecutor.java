@@ -34,6 +34,7 @@ import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -140,10 +141,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         () ->
             runPastGate(call, responseId, sink)
                 .ifPresent(
-                    outcome ->
+                    answer ->
                         sink.deliver(
-                            new AgentEvent.ToolFinished(call, Optional.empty(), outcome))));
+                            new AgentEvent.ToolFinished(call, answer.riding(), answer.outcome()))));
   }
+
+  /**
+   * One dispatch's answer, and the computation it must ride to be admitted.
+   *
+   * <p>{@code riding} is empty for a call the door never deferred — a {@code Running} call names no
+   * computation, and the reducer admits only an id-less result against one. It is <b>present</b>
+   * whenever {@code defer()} succeeded and the dispatch nevertheless ended in a failure: the phase
+   * already says {@code AwaitingResult(id)}, so an id-less {@code ToolFinished} would be ignored
+   * and the call would hang until the orphan expired. Riding the id the phase names is what lets
+   * the reducer fold {@code Finished} now; the orphan computation's eventual completion or expiry
+   * then meets a {@code Finished} call and is dropped with a WARN under the existing mismatch rule.
+   */
+  private record Answer(ToolOutcome outcome, Optional<ComputationId> riding) {}
 
   /** The ask. Returns the event to deliver; a deferral has already delivered its own. */
   private AgentEvent seek(ToolCall call, ModelResponseId responseId, Sink sink) {
@@ -198,19 +212,31 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /** Empty means the door already recorded the wait; there is nothing left to deliver. */
-  private Optional<ToolOutcome> runPastGate(ToolCall call, ModelResponseId responseId, Sink sink) {
+  private Optional<Answer> runPastGate(ToolCall call, ModelResponseId responseId, Sink sink) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return Optional.of(failed(call, "unknown tool: " + call.name()));
+      return Optional.of(
+          new Answer(failed(call, "unknown tool: " + call.name()), Optional.empty()));
     }
+    ToolGrant grant = found.get();
+    // Built before conversion so the catch below can ask whether the door was ever opened. Creating
+    // one costs nothing and touches no Continuum: only defer() creates a computation.
+    ComputationToolContext context =
+        new ComputationToolContext(
+            toolClient,
+            routing(call, responseId),
+            grant.tool().timeout(),
+            event -> narrate(call, event),
+            sink);
     try {
-      ToolGrant grant = found.get();
       Object input = convert(call, grant.tool());
-      return run(grant.tool(), input, call, responseId, sink);
+      return run(grant.tool(), input, call, context);
     } catch (RuntimeException e) {
-      // Including a throw propagated out of context.defer(): nothing was parked, so this call is
-      // answered in-band with the failure and nothing dangles (spec §3).
-      return Optional.of(failed(call, detailOf(e)));
+      // Two shapes land here. A throw propagated OUT of defer() means nothing was parked, and
+      // context.deferral() is empty — the call is answered in-band and nothing dangles (spec §3).
+      // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
+      // rides that id or the call hangs until the orphan expires.
+      return Optional.of(new Answer(failed(call, detailOf(e)), context.deferral()));
     }
   }
 
@@ -230,26 +256,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
-  private <T> Optional<ToolOutcome> run(
-      Tool<T> tool, Object input, ToolCall call, ModelResponseId responseId, Sink sink) {
+  private <T> Optional<Answer> run(
+      Tool<T> tool, Object input, ToolCall call, ComputationToolContext context) {
     T typed = tool.inputType().cast(input);
-    ComputationToolContext context =
-        new ComputationToolContext(
-            toolClient,
-            routing(call, responseId),
-            tool.timeout(),
-            event -> narrate(call, event),
-            sink);
     Awaited<ToolResult> outcome = tool.execute(typed, context);
-    boolean deferred = context.deferral().isPresent();
+    Optional<ComputationId> deferral = context.deferral();
     return switch (outcome) {
-      case Awaited.Ready<ToolResult>(ToolResult value) when !deferred -> {
+      case Awaited.Ready<ToolResult>(ToolResult value) when deferral.isEmpty() -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
-        yield Optional.of(new ToolOutcome.Returned(value));
+        yield Optional.of(new Answer(new ToolOutcome.Returned(value), Optional.empty()));
       }
-      case Awaited.Ready<ToolResult> _ -> Optional.of(failed(call, ANSWERED_AFTER_DEFERRING));
-      case Awaited.Deferred<ToolResult> _ when deferred -> Optional.empty();
-      case Awaited.Deferred<ToolResult> _ -> Optional.of(failed(call, DEFERRED_WITHOUT_DEFER));
+      // The phase already says AwaitingResult(id): the failure rides that id so the reducer folds
+      // Finished now, rather than leaving the call to hang until the orphan expires.
+      case Awaited.Ready<ToolResult> _ ->
+          Optional.of(new Answer(failed(call, ANSWERED_AFTER_DEFERRING), deferral));
+      case Awaited.Deferred<ToolResult> _ when deferral.isPresent() -> Optional.empty();
+      case Awaited.Deferred<ToolResult> _ ->
+          Optional.of(new Answer(failed(call, DEFERRED_WITHOUT_DEFER), Optional.empty()));
     };
   }
 
