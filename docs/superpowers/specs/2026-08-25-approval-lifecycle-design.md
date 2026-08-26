@@ -45,7 +45,9 @@ come due at once:
    wants to see, and it is unrepresentable. `Console`'s own javadoc records the
    consequence: parking is off-channel, no event is emitted, and a second park
    in one turn hangs the console unrecoverably. Park dwell time — the metric
-   unique to this system — has nowhere to live.
+   unique to this system — has nowhere to live. (What follows makes the park
+   *visible*, on the `AgentObserver` channel; teaching `Console` to read it is
+   a follow-on, so its documented hang is unchanged by this spec.)
 4. **Vocabulary.** Three sealed types say "yes/no" three ways: `PolicyDecision
    {Allow, Deny, RequireApproval}`, `Adjudication {Granted, Refused,
    Suspended}`, `Decision {Allow, Deny}`. `Allow` means two different things.
@@ -126,9 +128,13 @@ Enrichment builds the request through a short-lived mutable draft:
 ```java
 ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, pinned);
 draft.action(contributor.render(input));            // once
-for (Enricher e : grant.enrichers()) e.enrich(draft, input);   // each deposits typed facts
+for (Enricher e : grant.enrichers()) e.enrich(draft);          // each deposits typed facts
 ApprovalRequest request = draft.freeze();            // immutable from here on
 ```
+
+An enricher takes the draft and nothing else: it reads the raw call arguments
+from `draft.call()`, not the tool's typed input, because an enricher is
+registered against a grant of any input type and cannot name one.
 
 Nothing outside enrichment ever sees a `Draft`. `AuthzContext` retires; its
 mechanism lives on as `Facts`, its role — the enriched question — is
@@ -148,7 +154,7 @@ public interface ApprovalContext {
 
 public sealed interface ApprovalOutcome {
   record Answered(Approval approval) implements ApprovalOutcome {}
-  record Deferred(ComputationId id) implements ApprovalOutcome {}   // minted only by defer()
+  record Deferred(ComputationId id) implements ApprovalOutcome {}   // obtain it from defer()
 }
 ```
 
@@ -168,8 +174,10 @@ and waits for that fold to commit, then returns.** By the time the approver
 holds an id it could tell anyone, the phase already names it. `defer()` is
 idempotent: a second call returns the same outcome.
 
-`Deferred` can be constructed only by `defer()`, so "returned Deferred but
-nothing was parked" is unrepresentable. No approver sees Continuum, a kind, a
+An approver must obtain its `Deferred` from `context.defer()`. `Deferred` is
+an ordinary public record, so a hand-built one is constructible — it just
+parks nothing: no computation exists, the phase never leaves `Pending`, and
+the call is re-asked on the next staleness re-fire (§6.1). No approver sees Continuum, a kind, a
 continuation or a lease; `Awaited` stays with tools, where a *tool* decides
 whether its own result comes now or later.
 
@@ -287,7 +295,7 @@ public sealed interface Phase {
 
 public sealed interface CallStatus {
   record Pending() implements CallStatus {}                            // approval sought, no answer yet
-  record AwaitingApproval(ComputationId approval) implements CallStatus {} // the approver deferred; Continuum holds it
+  record AwaitingApproval(ComputationId approval, ApprovalRequest request) implements CallStatus {} // the approver deferred; Continuum holds it, and the frozen question rides along as evidence
   record Running() implements CallStatus {}                            // approved; the tool is executing
   record AwaitingResult(ComputationId tool) implements CallStatus {}   // the tool deferred; Continuum holds it
   record Finished(ToolResultBlock result) implements CallStatus {}     // an outcome, success or failure
@@ -361,7 +369,7 @@ two; nothing leaves:
 sealed interface AgentEvent {
   record Observed(...)                                                    // unchanged
   record ModelFinished(...)                                               // unchanged
-  record ApprovalDeferred(ToolCall call, ComputationId approval)          // the approver parked the question
+  record ApprovalDeferred(ToolCall call, ComputationId approval, ApprovalRequest request) // the approver parked the question, and it rides along
   record ApprovalAnswered(ToolCall call, Optional<ComputationId> approval, Approval answer)
   record ToolDeferred(ToolCall call, ComputationId tool)                  // the tool parked its result
   record ToolFinished(ToolCall call, Optional<ComputationId> tool, ToolOutcome outcome)
@@ -563,7 +571,9 @@ And one join: the answer's `reference` (§1.1), pointing from the fold's
 record to the subsystem's. The subsystem's record holds — or hashes — the
 request document it received, so "what did the approver see when it said
 yes?" is answerable from *its* storage, and the desk shows the *same*
-document from Nessy's (§1.6 `request(id)`). The desk is the one door that
+document from Nessy's (§1.6 `request(AgentId id, String callId)`, by
+coordinates — whoever asks the desk what the question was has the question's
+coordinates, not the computation's opaque id). The desk is the one door that
 must not take an anonymous yes, because nothing stands behind it.
 
 ## 8. What retires
@@ -600,13 +610,19 @@ about 600 lines of tests that existed only for them. Roughly 300 come in.
   folded. The number the o11y generation most wanted, with a home.
 - **Approval latency, tagged by approver:** ~0 for a rule ladder, seconds for
   a console, hours for a desk — one metric, not a special case.
-- **A narratable wait.** `AgentObserver` sees the phase and can say "awaiting
-  approval of `restart_prod` for 3h12m." The console's second-park hang is
-  gone because the console can *see* the second park.
+- **A narratable wait.** The park is an event now: `DefaultAgent` narrates
+  every non-ignored event, so `AgentObserver` sees `ApprovalDeferred` and the
+  phase, and can say "awaiting approval of `restart_prod` for 3h12m." Note
+  what this does *not* fix: `Console` consumes `TurnObserver`, not
+  `AgentObserver`, so the second-park hang its javadoc documents is still
+  there. The information now exists on a channel the console could read —
+  teaching it to is a follow-on.
 - **Failure classes removed, not mitigated:** the lease double-run, pump
   starvation, index/Continuum disagreement, the orphan `ERROR` path, the
-  re-ask-every-five-minutes hazard, the console hang. Reduced from silent to
-  loud: the sharing-rule violation. Unchanged: re-run on crash.
+  re-ask-every-five-minutes hazard. Reduced from silent to
+  loud: the sharing-rule violation. Unchanged: re-run on crash, and the
+  console's second-park hang — the park is visible to `AgentObserver` now,
+  but `Console` has not been taught to use it.
 
 ## 10. Testing
 
@@ -643,8 +659,9 @@ about 600 lines of tests that existed only for them. Roughly 300 come in.
   nothing came back. The rule has no exception.
 - **The request is a document.** `ApprovalRequest` round-trips through the
   pinned mapper byte-for-byte; an enricher depositing an unrenderable value
-  fails inside `deposit`, naming the key; the desk's `request(id)` returns
-  the same document the approver was handed.
+  fails inside `deposit`, naming the key; the desk's
+  `request(AgentId, String)` returns the same document the approver was
+  handed, typed facts and all.
 - **`Static` short-circuit.** An `allow()` grant runs no enricher; an enricher
   that throws never fires for it.
 - **The desk.** By-id and by-coordinates doors reach the same fold; an
@@ -679,7 +696,7 @@ records the vocabulary collapse as a breaking change.
 
 ## 13. Needs sign-off
 
-1. **`CallStatus`** — `Pending | AwaitingApproval(id) | Running |
+1. **`CallStatus`** — `Pending | AwaitingApproval(id, request) | Running |
    AwaitingResult(id) | Finished` — inside `AwaitingTools`. The names are the
    "states say what they await" ruling; `Escalated`/`Deferred` as status
    names were considered and rejected as naming acts, not waits.
@@ -690,9 +707,11 @@ records the vocabulary collapse as a breaking change.
 3. **`Approver.approve(ApprovalContext) → ApprovalOutcome`**, with
    `ApprovalContext.request()` and `defer()`.
 4. **`ApprovalRequest` and `Facts`** replacing `AuthzContext`; concrete types
-   on the built-in keys; `Enricher.enrich(Draft, input)`.
+   on the built-in keys; `Enricher.enrich(Draft)` — one argument; an enricher
+   reads the raw arguments from `draft.call()`.
 5. **`Approval.Approved(reference)` / `Denied(reason, reference)`**, and the
-   desk taking a principal and a note; `withdraw`; `request(id)`.
+   desk taking a principal and a note; `withdraw`;
+   `request(AgentId id, String callId)` — by coordinates, not by id.
 6. **`ToolGrant.grant(tool, approver, ...)`**;
    `Approvers.allow/deny/defer`, `Approvers.rules`, `Approvers.allOf`,
    `Rule`; `RiskRules`, `IntentRules`; `ScriptedApprover`,
@@ -705,6 +724,9 @@ records the vocabulary collapse as a breaking change.
    computation and the window it would rescue does not open in practice —
    a one-day deadline versus a thread hop, and a crash re-creates rather than
    races (§3, §4). `EarlyDeliveryException` retires.
+10. **Enrichers see the draft only, not the typed input** (ruled 2026-08-25,
+    controller; James to confirm). `Enricher.enrich(Draft)` takes one
+    argument; an enricher that wants the arguments reads `draft.call()`.
 
 ## 14. Rejected
 

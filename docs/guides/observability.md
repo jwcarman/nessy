@@ -27,7 +27,7 @@ public sealed interface TurnEvent {
   record ThinkingDelta(String text) implements TurnEvent {}
   record RedactedThinking(String data) implements TurnEvent {}
   record ToolCallRequested(ToolCall call) implements TurnEvent {}
-  record ToolCallDecided(ToolCall call, Decision decision) implements TurnEvent {}
+  record ToolCallDecided(ToolCall call, Approval approval) implements TurnEvent {}
   record ToolCallCompleted(ToolCall call, ToolResult result) implements TurnEvent {}
   record ToolCallProgressed(ToolCall call, String message) implements TurnEvent {}
   record AssistantSaid(Message message) implements TurnEvent {}
@@ -38,10 +38,11 @@ public sealed interface TurnEvent {
 `AssistantSaid` is the settled sentence; the delta variants were only its
 preview. `TurnEnded.failureReason()` is `null` for a completed turn and
 carries the reason when the model call itself failed. A parked call is
-never narrated at all — parking is executor bookkeeping, indistinguishable
+never narrated *here* — from the model's turn a park is indistinguishable
 from a slow call by design, and the resumption token it would carry is a
 capability that handing to every listener would turn into a shadow way to
-act on the call. `TurnEvent` narrates the model's turn, never that.
+act on the call. `TurnEvent` narrates the model's turn, never that. The park
+does have a channel: `AgentObserver` sees `ApprovalDeferred`, below.
 
 Three ways to build one:
 
@@ -159,7 +160,7 @@ underneath it.
 **Observers narrate; they never influence.** Nothing here can change what
 the shell does — no return value feeds back into the transition, and
 nothing about authorization runs through this seam either: a grant's
-policy, its enrichers, and its rendered action are never broadcast to an
+approver, its enrichers, and its rendered action are never broadcast to an
 `AgentObserver`, only their outcome shows up, folded into whichever
 `ToolResult` the applied transition already carries. A listener that could
 affect the flow would create ordering dependence between listeners and a
@@ -172,7 +173,7 @@ not this one.
 
 `TurnObserver` and `AgentObserver` narrate what already happened. What
 *would* happen — which grants render an action, which enrichers run, which
-policy decides — is not a live event at all; it is read back once, statically,
+approver answers — is not a live event at all; it is read back once, statically,
 from the harness's own wiring:
 
 ```java
@@ -181,13 +182,13 @@ System.out.println(report.render());
 ```
 
 ```
-restart_prod: action(restart-statement) → intent → risk → policy (ThresholdPolicy)
+restart_prod: action(restart-statement) → intent → risk → approver (RiskThresholdApprover)
 read-balance: allow()
 ```
 
-`AuthorizationReport.of(...)` reads each grant's `tool()`, `policy()`,
+`AuthorizationReport.of(...)` reads each grant's `tool()`, `approver()`,
 `enrichers()`, and `contributor().displayName()` by declaration — never by
-calling `actionOf`, `enrich`, or `evaluate` — so it cannot drift from the
+calling `actionOf`, `enrich`, or `approve` — so it cannot drift from the
 wiring it describes; there is no way for the report to say one thing while
 the executor does another. See [Authorization](../concepts/authorization.md#authorizationreport-the-report-is-the-wiring)
 for the full grammar of what a grant's story can say.
