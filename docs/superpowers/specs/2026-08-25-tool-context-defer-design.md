@@ -192,27 +192,24 @@ computation — but the approver was told "parked" when it was not, and the
 first answer is lost. This is the "returned Deferred but nothing was parked"
 case, reachable by the back door.
 
-The fix, for both doors:
+The fix is a contract change on the one door that exists, not a second
+door: **`Sink.deliver` narrates `AgentObserver.applyFailed` and then
+rethrows.** `DefaultAgent.deliver`'s `catch (RuntimeException e)` keeps its
+narration and loses its `return`. Every other caller of a sink runs inside
+an executor task — the model executor's completion, the tool executor's
+completions, the delivery worker's redrives — where the narration was
+already the only trace of a failure and the task ends either way; nothing
+observable changes for them. `ComputationApprovalContext.defer()` and
+`ComputationToolContext.defer()` simply let the throw propagate. `Sink`
+stays a one-method functional interface; nothing is added.
 
-```java
-public interface Sink {
-  /** Fire-and-forget: the executor's completions. Failure is narrated, never thrown. */
-  void deliver(AgentEvent event);
-
-  /**
-   * The doors' delivery: folds and commits, or throws. Applied → returns;
-   * ignored (the phase would not admit the event) → throws IllegalStateException
-   * naming the phase; failed → rethrows the cause. A context's defer() calls
-   * this and lets the throw propagate, so no id ever escapes a wait the scope
-   * did not record.
-   */
-  void record(AgentEvent event);
-}
-```
-
-`DefaultAgent` implements both over the same `applyOnce`. `record` retries
-stale reads exactly as `deliver` does. `ComputationApprovalContext.defer()`
-switches to `record`; `ComputationToolContext.defer()` uses it from the start.
+An ignored event (the phase would not admit it) is not a failure: `deliver`
+returns normally, as today. A door that needs to know its event was
+*applied* rather than ignored — `defer()` against a call the phase no
+longer holds — reads the transition through the observer, or, simpler and
+proposed: the door does not check, because the only way its event is
+ignored is a re-ask that has already replaced the call, in which case the
+orphan computation expires into a dropped mismatch exactly as §6 says.
 
 Consequence for a failed `defer()`: the computation was created but the
 scope never named it. Its eventual expiry is a dropped mismatch — the drop
@@ -297,12 +294,7 @@ callback address.
 
 ## 8. Open questions — need James's yes
 
-1. **`Sink.record`** — a second method on the existing `Sink` (proposed) vs
-   a separate seam. One interface keeps `DefaultAgent` the single
-   implementation and the executor holding one object; the cost is that the
-   fire-and-forget door and the throwing door sit side by side and a reader
-   must read the javadoc to know which one a caller wanted.
-2. **How the executor learns the tool deferred** — the executor holds the
+1. **How the executor learns the tool deferred** — the executor holds the
    `ComputationToolContext` it created, so the cheapest answer is a
    package-visible `deferred()` on it, checked after `execute`. The
    alternative is a public `Optional<ComputationId> deferral()` on
@@ -327,12 +319,13 @@ Continuum (§1.4); `Draft.input(Class<T>)`, no type parameter (§1.3).
   **`ready(x)` after `defer()`** fails in-band with the named message; in
   both cases the transcript shows the failure and the phase reaches
   `Finished`.
-- **`defer()` throws when the fold cannot commit** — a `Sink` whose `record`
-  throws; the tool propagates; the call finishes in-band with the failure;
+- **`defer()` throws when the fold cannot commit** — a `Sink` whose
+  `deliver` throws; the tool propagates; the call finishes in-band with the failure;
   the phase never left `Running`. Same test against
   `ComputationApprovalContext` — this is the §3 hole closing, and it must
   fail against today's `deliver`-based implementation.
-- **`Sink.record` throws on an ignored event** — naming the phase.
+- **`DefaultAgent.deliver` rethrows after narrating** — a throwing
+  `Memory.remember` reaches the caller and `applyFailed` was observed once.
 - **Draft carries the input** — an enricher reads `draft.input(T.class)`
   and deposits from it; the frozen document contains the deposit and no
   second copy of the input; `input(Wrong.class)` fails inside that enricher
