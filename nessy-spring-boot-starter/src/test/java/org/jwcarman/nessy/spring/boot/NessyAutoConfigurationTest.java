@@ -147,6 +147,27 @@ class NessyAutoConfigurationTest {
               });
     }
 
+    /**
+     * The hyphen-and-digit spelling of the extended-TTL capability survives relaxed binding, which
+     * is not obvious enough to leave untested: {@code prompt-caching-1h} has to reach {@code
+     * PROMPT_CACHING_1H} for the watchman's {@code application.yml} to mean anything at all.
+     */
+    @Test
+    void the_one_hour_cache_capability_binds_from_its_yaml_spelling() {
+      new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withPropertyValues(
+              "nessy.system-prompt=you are a test harness",
+              "nessy.capabilities=prompt-caching,prompt-caching-1h")
+          .withBean(Model.class, () -> ScriptedModel.script(s -> s.text("nothing").endTurn()))
+          .withUserConfiguration(TellerConfiguration.class)
+          .run(
+              context ->
+                  assertThat(context.getBean(NessyProperties.class).capabilities())
+                      .containsExactlyInAnyOrder(
+                          Capability.PROMPT_CACHING, Capability.PROMPT_CACHING_1H));
+    }
+
     @Test
     void no_capabilities_are_requested_by_default() {
       runner.run(

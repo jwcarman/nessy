@@ -19,14 +19,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.anthropic.models.messages.Base64ImageSource;
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
+import com.anthropic.models.messages.TextBlockParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
@@ -614,6 +618,120 @@ class AnthropicRequestsTest {
               .count();
 
       assertThat(system + toolMarkers + markedIn(blocksOf(params)).size()).isEqualTo(4L);
+    }
+  }
+
+  /**
+   * The 30-minute-cron finding (2026-08-26): the default ephemeral entry lives five minutes, so on
+   * the watchman's real cadence every entry has expired long before the next round starts and
+   * cross-round reads are structurally impossible. Anthropic's answer is {@code "cache_control":
+   * {"type": "ephemeral", "ttl": "1h"}}, at "2 times the base input tokens price" on writes and the
+   * ordinary cheap rate on reads. {@link Capability#PROMPT_CACHING_1H} is how a caller asks.
+   */
+  @Nested
+  class ExtendedCacheTtl {
+
+    private static ModelRequest cachedRequest(Set<Capability> requested) {
+      ObjectNode schema = MAPPER.createObjectNode();
+      schema.put("type", "object");
+      schema.putObject("properties");
+      return new ModelRequest(
+          Context.of(conversation(60)),
+          "sys",
+          1024,
+          List.of(
+              new ToolSpec("read_file", "reads", schema), new ToolSpec("write_file", "w", schema)),
+          requested,
+          null);
+    }
+
+    private static List<Message> conversation(int messages) {
+      return IntStream.range(0, messages)
+          .mapToObj(
+              i ->
+                  i % 2 == 0
+                      ? Message.user("message number " + i)
+                      : Message.assistant(List.of(new TextBlock("message number " + i))))
+          .toList();
+    }
+
+    /** Every {@code cache_control} the request emits, wherever it sits: system, tools, messages. */
+    private static List<CacheControlEphemeral> allCacheControls(MessageCreateParams params) {
+      return Stream.of(
+              params.system().orElseThrow().asTextBlockParams().stream()
+                  .map(TextBlockParam::cacheControl),
+              params.tools().orElseThrow().stream().map(tool -> tool.asTool().cacheControl()),
+              params.messages().stream()
+                  .flatMap(message -> message.content().asBlockParams().stream())
+                  .map(ContentBlockParam::cacheControl))
+          .flatMap(stream -> stream)
+          .flatMap(Optional::stream)
+          .toList();
+    }
+
+    @Test
+    void every_cache_control_block_carries_a_one_hour_ttl_when_the_extended_ttl_is_requested() {
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(Set.of(Capability.PROMPT_CACHING, Capability.PROMPT_CACHING_1H)),
+              "claude-sonnet",
+              THINKING_DISABLED);
+
+      var cacheControls = allCacheControls(params);
+      assertThat(cacheControls).hasSize(4);
+      assertThat(cacheControls)
+          .allSatisfy(
+              cacheControl ->
+                  assertThat(cacheControl.ttl()).contains(CacheControlEphemeral.Ttl.TTL_1H));
+    }
+
+    /**
+     * Asking for the long entry is asking for caching. Requiring both words would let {@code
+     * nessy.capabilities: [prompt-caching-1h]} silently cache nothing at all, which is the one
+     * misconfiguration a caller would never think to look for.
+     */
+    @Test
+    void the_extended_ttl_alone_still_turns_caching_on() {
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(Set.of(Capability.PROMPT_CACHING_1H)),
+              "claude-sonnet",
+              THINKING_DISABLED);
+
+      assertThat(allCacheControls(params)).hasSize(4);
+    }
+
+    /**
+     * The default is the default: no {@code ttl} field at all, which Anthropic reads as the
+     * five-minute entry. Sending {@code "5m"} explicitly would mean the same thing and say more
+     * than the caller asked.
+     */
+    @Test
+    void cache_control_blocks_carry_no_ttl_field_when_only_plain_caching_is_requested() {
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(Set.of(Capability.PROMPT_CACHING)), "claude-sonnet", THINKING_DISABLED);
+
+      var cacheControls = allCacheControls(params);
+      assertThat(cacheControls).hasSize(4);
+      assertThat(cacheControls)
+          .allSatisfy(cacheControl -> assertThat(cacheControl.ttl()).isEmpty());
+    }
+
+    /** The four-breakpoint ceiling is a property of the request, not of which TTL was asked for. */
+    @Test
+    void the_extended_ttl_never_pushes_the_request_past_four_breakpoints() {
+      var withTtl =
+          AnthropicRequests.toParams(
+              cachedRequest(Set.of(Capability.PROMPT_CACHING, Capability.PROMPT_CACHING_1H)),
+              "claude-sonnet",
+              THINKING_DISABLED);
+      var withoutTtl =
+          AnthropicRequests.toParams(
+              cachedRequest(Set.of(Capability.PROMPT_CACHING)), "claude-sonnet", THINKING_DISABLED);
+
+      assertThat(allCacheControls(withTtl)).hasSizeLessThanOrEqualTo(4);
+      assertThat(allCacheControls(withoutTtl)).hasSizeLessThanOrEqualTo(4);
     }
   }
 }

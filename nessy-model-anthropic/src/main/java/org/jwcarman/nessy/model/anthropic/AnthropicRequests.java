@@ -90,18 +90,17 @@ public final class AnthropicRequests {
               .formatted(request.maxTokens(), thinking.budgetTokens()));
     }
 
-    var cachingRequested = request.requested().contains(Capability.PROMPT_CACHING);
+    var marker = cacheMarker(request.requested());
 
     var builder = MessageCreateParams.builder().model(modelId).maxTokens(request.maxTokens());
 
     if (!request.systemPrompt().isBlank()) {
-      builder.systemOfTextBlockParams(
-          List.of(systemBlock(request.systemPrompt(), cachingRequested)));
+      builder.systemOfTextBlockParams(List.of(systemBlock(request.systemPrompt(), marker)));
     }
 
-    addMessages(builder, request.context().messages(), cachingRequested);
+    addMessages(builder, request.context().messages(), marker);
 
-    addTools(builder, request.tools(), cachingRequested);
+    addTools(builder, request.tools(), marker);
 
     if (thinking.enabled()) {
       builder.thinking(
@@ -111,12 +110,38 @@ public final class AnthropicRequests {
     return builder.build();
   }
 
-  private static TextBlockParam systemBlock(String systemPrompt, boolean cachingRequested) {
-    var block = TextBlockParam.builder().text(systemPrompt);
-    if (cachingRequested) {
-      block.cacheControl(ephemeral());
+  /**
+   * The one {@code cache_control} value every breakpoint in this request will carry, or nothing at
+   * all when no caching was asked for.
+   *
+   * <p>{@link Capability#PROMPT_CACHING_1H} selects Anthropic's long entry — {@code
+   * "cache_control": {"type": "ephemeral", "ttl": "1h"}} — and, on its own, also turns caching ON:
+   * asking for the hour-long entry is asking to cache, and demanding both words would let a caller
+   * who listed only the specific one cache nothing while believing they had asked for more.
+   *
+   * <p>Plain {@link Capability#PROMPT_CACHING} omits {@code ttl} entirely rather than sending
+   * {@code "5m"}. The default IS five minutes, so the two are the same request; the shorter one
+   * says only what the caller said.
+   *
+   * <p>One value for the whole request, not one per breakpoint, and that is load-bearing: Anthropic
+   * requires that "cache entries with longer TTL must appear before shorter TTLs", so a request
+   * that mixed them would have to order its breakpoints by lifetime. All-or-nothing sidesteps that
+   * ordering rule entirely.
+   */
+  private static Optional<CacheControlEphemeral> cacheMarker(Set<Capability> requested) {
+    if (requested.contains(Capability.PROMPT_CACHING_1H)) {
+      return Optional.of(
+          CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
     }
-    return block.build();
+    if (requested.contains(Capability.PROMPT_CACHING)) {
+      return Optional.of(CacheControlEphemeral.builder().build());
+    }
+    return Optional.empty();
+  }
+
+  private static TextBlockParam systemBlock(
+      String systemPrompt, Optional<CacheControlEphemeral> marker) {
+    return TextBlockParam.builder().text(systemPrompt).cacheControl(marker).build();
   }
 
   /**
@@ -146,10 +171,12 @@ public final class AnthropicRequests {
    * nearest eligible block at or before the position they wanted.
    */
   private static void addMessages(
-      MessageCreateParams.Builder builder, List<Message> messages, boolean cachingRequested) {
+      MessageCreateParams.Builder builder,
+      List<Message> messages,
+      Optional<CacheControlEphemeral> marker) {
     List<DraftedMessage> drafts =
         messages.stream().map(AnthropicRequests::draft).flatMap(Optional::stream).toList();
-    Set<Integer> marked = cachingRequested ? conversationBreakpoints(drafts) : Set.of();
+    Set<Integer> marked = marker.isPresent() ? conversationBreakpoints(drafts) : Set.of();
 
     List<MessageParam> params = new ArrayList<>(drafts.size());
     int offset = 0;
@@ -157,7 +184,7 @@ public final class AnthropicRequests {
       List<ContentBlockParam> blocks = new ArrayList<>(draft.blocks());
       for (int i = 0; i < blocks.size(); i++) {
         if (marked.contains(offset + i)) {
-          blocks.set(i, toContentBlockParam(draft.source().get(i), true).orElse(blocks.get(i)));
+          blocks.set(i, toContentBlockParam(draft.source().get(i), marker).orElse(blocks.get(i)));
         }
       }
       offset += blocks.size();
@@ -203,7 +230,9 @@ public final class AnthropicRequests {
   }
 
   private static void addTools(
-      MessageCreateParams.Builder builder, List<ToolSpec> tools, boolean cachingRequested) {
+      MessageCreateParams.Builder builder,
+      List<ToolSpec> tools,
+      Optional<CacheControlEphemeral> marker) {
     for (int i = 0; i < tools.size(); i++) {
       var spec = tools.get(i);
       var tool =
@@ -211,15 +240,11 @@ public final class AnthropicRequests {
               .name(spec.name())
               .description(spec.description())
               .inputSchema(AnthropicSchemas.toInputSchema(spec.inputSchema()));
-      if (cachingRequested && i == tools.size() - 1) {
-        tool.cacheControl(ephemeral());
+      if (i == tools.size() - 1) {
+        tool.cacheControl(marker);
       }
       builder.addTool(tool.build());
     }
-  }
-
-  private static CacheControlEphemeral ephemeral() {
-    return CacheControlEphemeral.builder().build();
   }
 
   /**
@@ -238,7 +263,7 @@ public final class AnthropicRequests {
     var source = new ArrayList<ContentBlock>();
     var blocks = new ArrayList<ContentBlockParam>();
     for (ContentBlock block : message.content()) {
-      toContentBlockParam(block, false)
+      toContentBlockParam(block, Optional.empty())
           .ifPresent(
               param -> {
                 source.add(block);
@@ -260,15 +285,14 @@ public final class AnthropicRequests {
    * systemBlock} never sends one: Anthropic rejects empty text blocks. Every other block
    * round-trips.
    *
-   * <p>{@code cached} marks this block as a prompt-cache breakpoint. It reaches each builder as an
-   * {@link Optional} rather than through a branch, so the absent case is spelled once; the two
-   * thinking kinds ignore it because the API defines no {@code cache_control} on either, which is
-   * why {@link #mayCarryCacheControl} never chooses one.
+   * <p>{@code cacheControl} marks this block as a prompt-cache breakpoint — the request's one
+   * marker (see {@link #cacheMarker}) when this block was chosen for one, empty otherwise. It
+   * reaches each builder as an {@link Optional} rather than through a branch, so the absent case is
+   * spelled once; the two thinking kinds ignore it because the API defines no {@code cache_control}
+   * on either, which is why {@link #mayCarryCacheControl} never chooses one.
    */
   private static Optional<ContentBlockParam> toContentBlockParam(
-      ContentBlock block, boolean cached) {
-    Optional<CacheControlEphemeral> cacheControl =
-        cached ? Optional.of(ephemeral()) : Optional.empty();
+      ContentBlock block, Optional<CacheControlEphemeral> cacheControl) {
     return switch (block) {
       case TextBlock(String text) ->
           text.isEmpty()

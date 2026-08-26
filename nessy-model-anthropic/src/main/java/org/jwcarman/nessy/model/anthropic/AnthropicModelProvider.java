@@ -50,6 +50,7 @@ public final class AnthropicModelProvider implements ModelProvider {
       Set.of(
           Capability.THINKING,
           Capability.PROMPT_CACHING,
+          Capability.PROMPT_CACHING_1H,
           Capability.PARALLEL_TOOL_CALLS,
           Capability.IMAGE_INPUT);
 

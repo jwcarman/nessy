@@ -301,13 +301,14 @@ class AnthropicModelProviderTest {
   class Capabilities {
 
     @Test
-    void advertise_thinking_caching_parallel_tools_and_images() {
+    void advertise_thinking_both_cache_lifetimes_parallel_tools_and_images() {
       AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider.model("claude-sonnet").capabilities())
           .containsExactlyInAnyOrder(
               Capability.THINKING,
               Capability.PROMPT_CACHING,
+              Capability.PROMPT_CACHING_1H,
               Capability.PARALLEL_TOOL_CALLS,
               Capability.IMAGE_INPUT);
     }

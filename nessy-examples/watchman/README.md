@@ -315,21 +315,42 @@ long-running agent's cache worth having.
 What to look for on the next run, in order:
 
 1. **`cache_write.input_tokens` > 0 on the first chat of a round.** If this is
-   still zero, the prefix is under the model's minimum cacheable size (model
-   dependent — 1024 tokens on Sonnet 5 and Opus 4.8, 512 on Opus 5, 4096 on Opus
-   4.6 and Haiku 4.5). Nothing is broken; there is simply not enough to cache
-   yet, and it will start once the transcript is long enough.
+   still zero, the prefix is under the model's **minimum cacheable prompt** —
+   below it, a `cache_control` marker is accepted and silently caches nothing.
+   The minimum is model dependent, and the spread is wide:
+
+   | model | minimum cacheable prompt |
+   |---|---|
+   | Claude Opus 5 | 512 tokens |
+   | Claude Sonnet 5, Claude Sonnet 4.6, Claude Opus 4.8 | 1,024 tokens |
+   | **Claude Haiku 4.5** | **4,096 tokens** |
+   | Claude Opus 4.6, Claude Opus 4.5 | 4,096 tokens |
+
+   **That 4,096 on Haiku 4.5 is the whole reason the placement fix below was
+   necessary.** A system prompt plus tool schemas is roughly 1,500–2,000 tokens
+   here — comfortably over the 1,024 a Sonnet would have wanted, and less than
+   half of what Haiku requires. So on Haiku the old placement was not merely
+   caching the wrong thing; the prefix it marked was *never eligible at all*, and
+   both cache counters read zero however many rounds ran. Getting the transcript
+   inside the cached prefix is what pushes the marked prefix past 4,096 and makes
+   caching work on Haiku at all. If you run this soak on Haiku 4.5 and see zeros,
+   check the prefix size against 4,096 before suspecting the plumbing.
 2. **`cache_read.input_tokens` > 0 on the *second* chat of the same round.** This
    is the number that proves the fix. Within a round, the model is called several
    times — once per tool result batch — seconds apart, and each call should read
    back what the previous one wrote.
-3. **`cache_read` ACROSS rounds only if rounds are close together.** The cache
-   entries are the 5-minute ephemeral kind. On the default `0 */30 * * * *` cron,
-   every entry has expired long before the next round starts, so cross-round reads
-   are *expected to be zero* and their absence is not a bug. Run the cron every
-   minute or two if you want to watch cross-round reads; otherwise the win is
-   entirely within-round, which for a round that runs several tool batches is
-   still most of the tokens.
+3. **`cache_read` ACROSS rounds — this is what `prompt-caching-1h` is for.**
+   Anthropic's default ephemeral entry lives five minutes. The cron fires every
+   thirty. So with plain `prompt-caching` alone, every entry a round writes has
+   expired before the next round starts and cross-round reads are not merely
+   unlikely — they are structurally impossible, and their absence is not a bug.
+   `nessy.capabilities` therefore also lists `prompt-caching-1h`, which sends
+   `"cache_control": {"type": "ephemeral", "ttl": "1h"}` on every breakpoint and
+   makes 30 < 60 fit. The bill: 1-hour cache writes are "2 times the base input
+   tokens price" against 1.25x for the default, with reads at 0.1x either way — a
+   trade that only pays while rounds keep landing inside the hour. If the cron
+   ever goes hourly or slower, drop the capability; the entry would have expired
+   regardless and the doubled write rate is then a pure loss.
 4. **`input_tokens` is the WHOLE prompt, cached parts included — so it keeps
    growing with the transcript.** Anthropic's own `input_tokens` is not that
    number: it "represents only the tokens that come after the last cache
@@ -395,7 +416,7 @@ in plain markdown.
 | `nessy.system-prompt-file` | `classpath:system-prompt.md` | what a round is |
 | `nessy.staleness` | `30m` | how long a quiet phase may sit before the recovery arm re-fires it |
 | `nessy.backlog-capacity` | `256` | per-scope backlog depth |
-| `nessy.capabilities` | `prompt-caching` | what the harness ASKS the provider to use. A provider that cannot do it says so and nothing fails; `gen_ai.usage.cache_read.input_tokens` and `cache_write.input_tokens` on the chat span are how you tell whether it did. See "Reading the cache numbers" below — the interesting prefix is the transcript, not the system prompt. |
+| `nessy.capabilities` | `prompt-caching`, `prompt-caching-1h` | what the harness ASKS the provider to use. A provider that cannot do it says so and nothing fails; `gen_ai.usage.cache_read.input_tokens` and `cache_write.input_tokens` on the chat span are how you tell whether it did. See "Reading the cache numbers" below — the interesting prefix is the transcript, not the system prompt, and the 1h entry is what lets a 30-minute cron read back what the previous round wrote. |
 | `watchman.cron` | `0 */30 * * * *` | when rounds happen |
 | `watchman.scheduling.enabled` | `true` | set `false` and rounds only happen when something calls them — how the tests keep cron out of their assertions |
 | `watchman.notes-dir` | `./notes` | where the daily notes live |

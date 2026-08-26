@@ -458,6 +458,30 @@ Verified item by item against
   measurement error visible only once caching WORKED — the better the hit
   rate, the further the input series fell below the real prompt, which reads
   on a dashboard as a cost win rather than as a broken gauge.
+- **Why the cache attributes read zero at all — the minimum cacheable
+  prompt (2026-08-26).** A `cache_control` marker on a prefix shorter than
+  the model's minimum is accepted and caches NOTHING, silently, so both
+  cache counters stay at zero with no error anywhere. The minimum is per
+  model: **4,096 tokens for Claude Haiku 4.5** (and for Opus 4.6 / 4.5),
+  1,024 for Sonnet 5 / Sonnet 4.6 / Opus 4.8, 512 for Opus 5. The watchman's
+  system-prompt-plus-tools prefix is roughly 1,500–2,000 tokens — over a
+  Sonnet's bar, under half of Haiku's — which is why marking only that
+  never-growing prefix produced zeros on Haiku 4.5 no matter how many rounds
+  ran, and why the transcript had to be brought INSIDE the cached prefix for
+  caching to work there at all. Recorded here because it is the reason the
+  placement fix existed, and it is not derivable from any attribute the spans
+  carry.
+- **The cache entry's lifetime is a request-time choice, and a separate
+  capability (2026-08-26).** `Capability.PROMPT_CACHING_1H` emits
+  `"cache_control": {"type": "ephemeral", "ttl": "1h"}` on every breakpoint
+  the request carries. It exists because an agent whose rounds are further
+  apart than the default entry's five minutes can never read one back,
+  however well its breakpoints are placed — the watchman's 30-minute cron is
+  exactly that case. It is a separate word rather than a knob because it has
+  its own bill: 1-hour writes cost "2 times the base input tokens price"
+  against 1.25x for the default, with reads at 0.1x either way. The
+  four-breakpoint ceiling is unchanged; only the TTL on those breakpoints
+  moves.
 - The metric names — Amendment 2b above.
 - `gen_ai.request.stream` = true on `chat`: Conditionally Required "if and
   only if the request is streaming", and this harness has no non-streaming

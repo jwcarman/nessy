@@ -47,7 +47,10 @@ import org.springframework.util.StreamUtils;
  *     provider that cannot do one says so, and nothing fails. {@code PROMPT_CACHING} is the one a
  *     long-running agent wants, since a system prompt and a tool schema resent every few minutes
  *     are exactly what a provider cache is for; the {@code gen_ai.usage.cache_read.input_tokens}
- *     and {@code cache_write} attributes on the chat span are how you tell whether it worked.
+ *     and {@code cache_write} attributes on the chat span are how you tell whether it worked. Add
+ *     {@code prompt-caching-1h} when rounds are further apart than the provider's default entry
+ *     lives — Anthropic's is five minutes, so a half-hourly agent can never read one back — at the
+ *     cost of a higher write rate (2x base input on Anthropic, against 1.25x for the default).
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(

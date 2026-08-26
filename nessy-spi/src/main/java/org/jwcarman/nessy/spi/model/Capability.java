@@ -25,6 +25,22 @@ package org.jwcarman.nessy.spi.model;
 public enum Capability {
   THINKING,
   PROMPT_CACHING,
+
+  /**
+   * Prompt caching with an entry that lives an HOUR rather than the provider's default few minutes.
+   *
+   * <p>A separate word because it is a separate decision with its own bill, not a knob on {@link
+   * #PROMPT_CACHING}. Anthropic's default ephemeral entry lives five minutes; an agent whose rounds
+   * are further apart than that can never read one back, however well its breakpoints are placed.
+   * The long entry costs "2 times the base input tokens price" on WRITES (against 1.25x for the
+   * default), while reads stay at 0.1x — so it pays exactly when rounds land more than five minutes
+   * and less than an hour apart, and is a straight loss when they land closer together.
+   *
+   * <p>Asking for this is asking for caching: a provider that honours it turns caching on, so
+   * {@link #PROMPT_CACHING} need not also be listed. A provider that cannot do the long entry says
+   * so through {@code capabilities()}, exactly as it does for anything else here.
+   */
+  PROMPT_CACHING_1H,
   PARALLEL_TOOL_CALLS,
   IMAGE_INPUT
 }

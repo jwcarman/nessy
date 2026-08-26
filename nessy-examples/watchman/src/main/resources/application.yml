@@ -28,8 +28,23 @@ nessy:
   # asks; a provider that cannot do it says so and nothing fails. Whether it worked shows up as
   # gen_ai.usage.cache_read.input_tokens on the chat span, against cache_write on the round that
   # populated it.
+  #
+  # prompt-caching-1h buys the SECOND half of that. Anthropic's default ephemeral entry lives five
+  # minutes; the cron above fires every thirty. So on the default cadence every entry written by one
+  # round has expired before the next round starts, and cross-round cache reads are not unlikely —
+  # they are impossible. The plain capability therefore buys only within-round reuse (a round calls
+  # the model once per tool-result batch, seconds apart, so that is real but partial). The 1h entry
+  # is what makes 30 < 60 minutes fit inside the window.
+  #
+  # It is not free: Anthropic prices 1-hour cache WRITES at "2 times the base input tokens price",
+  # against 1.25x for the five-minute entry; reads stay at 0.1x either way. One write per round at
+  # 2x, then reads at a tenth for the rest of the hour, beats paying full price for the whole
+  # transcript every thirty minutes — but only while rounds keep landing inside the hour. Drop this
+  # line if the cron ever goes hourly or slower: past sixty minutes the entry has expired anyway and
+  # the doubled write rate is a pure loss.
   capabilities:
     - prompt-caching
+    - prompt-caching-1h
 
 watchman:
   # Every half hour, on the half hour.
