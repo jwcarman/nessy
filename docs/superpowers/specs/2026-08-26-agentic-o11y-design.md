@@ -68,7 +68,7 @@ Ours, counters, tagged `gen_ai.agent.name` only:
 - `nessy.state.stale_retries` — every `StaleStateException` /
   `ConflictException` retry in `DefaultAgent.deliver` and
   `DeliveryWorker.fold`.
-- `nessy.effects.refired` — every `AgentObserver.reFired`.
+- `nessy.effects.refired` — every `HarnessObserver.reFired`.
 
 The wait spans yield `nessy.approval.wait` / `nessy.tool.wait` timers by
 Micrometer's default; those are the dwell histograms. Tags: agentType,
@@ -105,7 +105,7 @@ producer.
 **The stream is the fold's output, not its input.** An event is not a
 fact until the reducer accepts it: a dropped delivery arrived and changed
 nothing. What flows is `(agentId, event, transition)` for an applied fold
-and `(agentId, event)` for an ignored one — exactly what `AgentObserver`'s
+and `(agentId, event)` for an ignored one — exactly what `HarnessObserver`'s
 `applied`/`ignored` already carry. The reform is where it goes: **both
 fold sites publish through one harness-level door, and everything else
 subscribes.**
@@ -118,11 +118,11 @@ DeliveryWorker.fold  ─┘                │
                     subscribers    engine health    this bridge
 ```
 
-- `AgentObserver` stops being a per-scope object built by a factory; the
+- `HarnessObserver` stops being a per-scope object built by a factory; the
   harness holds the stream, `DefaultAgent` and `DeliveryWorker` publish to
-  it, and the configured `AgentObserver` (default: the narrating one) is
+  it, and the configured `HarnessObserver` (default: the narrating one) is
   its first subscriber. `Harness.subscribe` gains an overload taking an
-  `AgentObserver`, alongside the existing `TurnObserver` one — no new
+  `HarnessObserver`, alongside the existing `TurnObserver` one — no new
   noun. Subscribers are isolated as turn subscribers are: a throw is
   logged, never propagated into the fold.
 - The parked "delivered folds narrate nothing" item closes as a
@@ -175,7 +175,7 @@ Tempo.
 subscribes it to the stream, and hands it (with the provider name) to
 `ProviderModelCallExecutor` and to `RegistryToolCallExecutor`.
 `Harness.of(...)` loses the `agentObserverFactory` parameter and gains
-the registry; the configured `AgentObserver` is subscribed at build.
+the registry; the configured `HarnessObserver` is subscribed at build.
 
 The application side — for the home server — is an example module:
 `micrometer-registry-otlp` for metrics, `micrometer-tracing-bridge-otel` +
@@ -214,7 +214,7 @@ something.
 `docs/guides/observability.md` rewritten around this roster (it currently
 describes turn events only), `docs/guides/harness.md` (the seam),
 `CHANGELOG.md` (added: the seam, the roster, the semconv version; changed:
-the worker narrates `AgentObserver`).
+the worker narrates `HarnessObserver`).
 
 ## 8. Open for James
 
@@ -222,10 +222,17 @@ the worker narrates `AgentObserver`).
    alternative is a span that can outlive the process; I do not think
    that is a real alternative.
 2. §3 — settled with James 2026-08-26: one stream at the harness, both
-   folds publish, `AgentObserver` subscribes via `Harness.subscribe`. The
+   folds publish, `HarnessObserver` subscribes via `Harness.subscribe`. The
    default narrating observer will log delivered folds it did not log
    before — intended.
-3. `gen_ai.provider.name` sourced from `ModelProvider.name()`, whose
+3. **Ruled 2026-08-26 during execution (for James's sign-off — public
+   SPI):** the harness holds a `Model`, not a `ModelProvider`. `Model`
+   gains `String provider()` returning the semconv value (`anthropic`,
+   `openai`, `x_ai`, `gcp.gemini`, `aws.bedrock`), set by the provider
+   instance that minted it — the shared `OpenAiModelProvider` is named by
+   its bootstrap, so xAI is right by construction. `ModelProvider.name()`
+   is untouched. The original question, for the record:
+   `gen_ai.provider.name` sourced from `ModelProvider.name()`, whose
    default is the class's simple name (`AnthropicProvider`). Semconv wants
    `anthropic`. Either each provider overrides `name()` to the semconv
    value, or the executor lowercases and strips `Provider`. Proposed: the
@@ -246,6 +253,37 @@ the worker narrates `AgentObserver`).
   `ToolCallCompleted` = `ToolFinished`, `TurnEnded` = the transition into
   `Idle`/parked. One event model. Follow-on; this branch builds the stream
   it would project from.
+
+## 8a. Next, not now — settled in conversation 2026-08-26
+
+- **Tool progress folds.** James: "the only other thing that could be
+  folded would be tool progress updates … it hits the stream, it just
+  doesn't change much; others could do stuff with it." `ToolProgressed(call,
+  message)` as an `AgentEvent` whose transition is applied-but-unchanged —
+  published on the stream, NOT saved when the phase is identical. The
+  stream therefore has three outcomes: applied-and-moved,
+  applied-and-unchanged, ignored. For a `Running` tool no state is kept
+  (a re-fire restarts it); for `AwaitingResult` a persisted last-progress
+  reported through a desk door would earn its write — later.
+- **`TurnEvent` becomes a projection of the stream — and stays the public
+  binding.** With progress and the model's deltas on the stream as
+  unchanged facts, every `TurnEvent` is derivable from a fold; ONE
+  projection function in the harness replaces the mapping smeared across
+  two executors and the worker. James's insulation ruling: `AgentEvent` is
+  the reducer's grammar and changes with the machinery; `TurnEvent`
+  (nessy-api) is named for readers and stayed stable across both of this
+  week's reforms — applications bind to it, never to a `Phase`.
+  `HarnessObserver` (renamed from `AgentObserver` — James: the events carry
+  the agent id, so the observer observes the harness) stays spi, for
+  engine health and this bridge. Subscriptions are owned by the harness —
+  agent instances are one fold's worth of object — as
+  `subscribe(agentId, observer, until)`, dropped by the harness as it
+  publishes the terminal fact; in-memory, dying with the process, as a
+  caller's stack does. Follow-on branch.
+- **`Running(attempts)`** — the one engine-health fact worth folding: a
+  re-fire count on the status, so a ceiling becomes a matrix cell
+  (`Finished(error: gave up after N)`). `applyFailed` cannot fold by
+  construction. Follow-on.
 
 ## 9. Rejected
 
