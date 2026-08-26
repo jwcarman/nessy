@@ -122,6 +122,25 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private static final String NESSY_TOOL_DEFERRED = "nessy.tool.deferred";
   private static final String ERROR_TYPE = "error.type";
 
+  /**
+   * The ask's own span (in-the-loop amendment §2). Ours, not semconv's: the 2026-08-26 registry
+   * audit found no {@code gen_ai} attribute for approval, permission, consent, elicitation,
+   * confirmation, review or escalation, and no human verb among {@code gen_ai.operation.name}'s
+   * eighteen values — so this is named the way the two waits are, and its outcome vocabulary is
+   * deliberately the same one {@code nessy.approval.answer} uses, so one filter spans the decision
+   * and the wait it opened. Semconv defines no duration metric for it either, so for this span the
+   * Micrometer name and the span-name prefix coincide.
+   */
+  private static final String APPROVAL_SEEK = "nessy.approval.seek";
+
+  private static final String NESSY_APPROVAL_OUTCOME = "nessy.approval.outcome";
+
+  /** The three {@link #NESSY_APPROVAL_OUTCOME} values, mapped from the sealed grammar below. */
+  private static final String APPROVED = "approved";
+
+  private static final String DENIED = "denied";
+  private static final String DEFERRED = "deferred";
+
   /** A tool returned {@code Awaited.ready(x)} after its own {@code defer()} recorded the wait. */
   static final String ANSWERED_AFTER_DEFERRING = "tool answered after deferring";
 
@@ -224,15 +243,49 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     }
   }
 
-  /** The ask. Returns the event to deliver; a deferral has already delivered its own. */
+  /**
+   * The ask, measured. Returns the event to deliver; a deferral has already delivered its own.
+   *
+   * <p>The {@code nessy.approval.seek} span (in-the-loop amendment §2) covers everything the ask
+   * does — building the frozen request, the grant's action contributor, every enricher, and the
+   * approver call itself — and holds a SCOPE while it does, because the whole premise of the
+   * approval design is that an approver may call Slack, a policy service or a rules ladder, and
+   * anything it touches should nest inside the ask rather than start a trace of its own. It also
+   * records WHAT was decided: {@code nessy.approval.outcome}, in the same vocabulary {@code
+   * nessy.approval.answer} uses on the wait this ask may open.
+   */
   private AgentEvent seek(ToolCall call, ModelResponseId responseId, Sink sink) {
+    Observation ask = startSeek(call);
+    Observation.Scope scope = opened(ask);
+    try {
+      ApprovalOutcome outcome = decide(call, responseId, sink, ask);
+      ask.lowCardinalityKeyValue(NESSY_APPROVAL_OUTCOME, outcomeOf(outcome));
+      return switch (outcome) {
+        case ApprovalOutcome.Answered(Approval approval) -> answered(call, approval);
+        case ApprovalOutcome.Deferred _ -> null; // defer() delivered ApprovalDeferred itself
+      };
+    } finally {
+      quietly(scope::close);
+      quietly(ask::stop);
+    }
+  }
+
+  /**
+   * The ask's decision, unchanged in behaviour from before the span existed: a fail-closed denial
+   * for an unknown tool, for a request that would not build, and for an approver that threw. The
+   * two failure arms additionally stamp {@code error.type} on {@code ask}, so a denial the executor
+   * manufactured is distinguishable from one an approver meant.
+   */
+  private ApprovalOutcome decide(
+      ToolCall call, ModelResponseId responseId, Sink sink, Observation ask) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return answered(call, Approval.denied("unknown tool: " + call.name()));
+      return new ApprovalOutcome.Answered(Approval.denied("unknown tool: " + call.name()));
     }
     ToolGrant grant = found.get();
     if (grant.approver() instanceof Approvers.Static fixed) {
-      return answered(call, fixed.answer()); // rung 0: no request built, no enricher run
+      // rung 0: no request built, no enricher run
+      return new ApprovalOutcome.Answered(fixed.answer());
     }
     ApprovalRequest request;
     try {
@@ -244,22 +297,59 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           call.id(),
           call.name(),
           e);
-      return answered(call, Approval.denied("authorization failed: " + detailOf(e)));
+      ask.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+      return new ApprovalOutcome.Answered(Approval.denied("authorization failed: " + detailOf(e)));
     }
     ApprovalContext context =
         new ComputationApprovalContext(approvalClient, routing(call, responseId), request, sink);
-    ApprovalOutcome outcome;
     try {
-      outcome = grant.approver().approve(context);
+      return grant.approver().approve(context);
     } catch (RuntimeException e) {
       LOG.warn(
           "the approver failed answering call {} on tool {}; denying", call.id(), call.name(), e);
-      return answered(call, Approval.denied("approver failed: " + detailOf(e)));
+      ask.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+      return new ApprovalOutcome.Answered(Approval.denied("approver failed: " + detailOf(e)));
     }
+  }
+
+  /**
+   * The outcome as the span records it, mapped from the sealed {@link ApprovalOutcome}/{@link
+   * Approval} grammar with NO default arm — a new variant of either fails this build here rather
+   * than quietly reading as one of the three words below.
+   */
+  private static String outcomeOf(ApprovalOutcome outcome) {
     return switch (outcome) {
-      case ApprovalOutcome.Answered(Approval approval) -> answered(call, approval);
-      case ApprovalOutcome.Deferred _ -> null; // defer() delivered ApprovalDeferred itself
+      case ApprovalOutcome.Answered(Approval approval) ->
+          switch (approval) {
+            case Approval.Approved _ -> APPROVED;
+            case Approval.Denied _ -> DENIED;
+          };
+      case ApprovalOutcome.Deferred _ -> DEFERRED;
     };
+  }
+
+  /** The ask's span, parented like every other this executor mints. */
+  private Observation startSeek(ToolCall call) {
+    return started(() -> newSeek(call));
+  }
+
+  private Observation newSeek(ToolCall call) {
+    Observation parent = parentOf();
+    Observation ask =
+        Observation.createNotStarted(APPROVAL_SEEK, observations)
+            .contextualName(APPROVAL_SEEK + " " + call.name())
+            .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
+            // Carried for the same reason the wait spans carry it: one Grafana filter should span
+            // the decision and the dwell it opened, and both are read per agent.
+            .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
+            // Declared now, overwritten when known: one stable low-cardinality key set per name.
+            .lowCardinalityKeyValue(NESSY_APPROVAL_OUTCOME, KeyValue.NONE_VALUE)
+            .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
+            .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, call.id());
+    if (parent != null) {
+      ask.parentObservation(parent);
+    }
+    return ask.start();
   }
 
   /**
@@ -347,7 +437,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     try {
       instrumentation.run();
     } catch (RuntimeException e) {
-      LOG.warn("an observation handler threw around execute_tool; the tool call is unaffected", e);
+      LOG.warn("an observation handler threw around a tool span; the tool call is unaffected", e);
     }
   }
 
@@ -360,8 +450,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     try {
       return start.get();
     } catch (RuntimeException e) {
-      LOG.warn(
-          "an observation handler threw starting execute_tool; the tool call is unaffected", e);
+      LOG.warn("an observation handler threw starting a tool span; the tool call is unaffected", e);
       return Observation.NOOP;
     }
   }
