@@ -45,6 +45,9 @@ class RemediationGrantsTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final CommandRunner RUNNER = new FakeRunner();
 
+  /** One backslash, spelled once, so the quote-escaping assertion stays readable. */
+  private static final String BACKSLASH = "\\";
+
   /** The action a grant would show on the page for {@code input}. */
   private static String action(ToolGrant grant, Object input) {
     ToolCall call = new ToolCall("c1", grant.tool().name(), JsonNodeFactory.instance.objectNode());
@@ -76,7 +79,7 @@ class RemediationGrantsTest {
     @Test
     void shows_the_exact_systemctl_line() {
       assertThat(action(grant, new RestartUnit.Unit("nginx.service")))
-          .isEqualTo("systemctl restart nginx.service");
+          .isEqualTo("systemctl restart -- nginx.service");
     }
 
     @Test
@@ -99,7 +102,7 @@ class RemediationGrantsTest {
     @Test
     void shows_the_exact_docker_line() {
       assertThat(action(grant, new RestartContainer.Container("grafana")))
-          .isEqualTo("docker restart grafana");
+          .isEqualTo("docker restart -- grafana");
     }
 
     @Test
@@ -171,6 +174,56 @@ class RemediationGrantsTest {
     }
   }
 
+  /**
+   * The name in a remediation call comes from the MODEL, and the rendered line is the whole
+   * question a human answers two days later. So the two ways that rendering can lie are worth
+   * pinning: a name with a space that reads as two arguments, and a name starting with a dash that
+   * reads as a flag.
+   */
+  @Nested
+  class A_hostile_name {
+
+    @Test
+    void with_a_space_is_quoted_so_it_cannot_read_as_two_units() {
+      String rendered = action(RestartUnit.grant(RUNNER), new RestartUnit.Unit("web api"));
+
+      assertThat(rendered).isEqualTo("systemctl restart -- 'web api'");
+      // The bug this replaces: "systemctl restart web api" reads as two units on the page and
+      // executes as one unit whose name contains a space.
+      assertThat(rendered).doesNotContain("restart web api");
+    }
+
+    @Test
+    void starting_with_a_dash_is_fenced_off_by_the_end_of_options_marker() {
+      RestartUnit.Unit flagLike = new RestartUnit.Unit("--version");
+
+      assertThat(action(RestartUnit.grant(RUNNER), flagLike))
+          .isEqualTo("systemctl restart -- --version");
+      assertThat(RestartUnit.argv(flagLike))
+          .containsExactly("systemctl", "restart", "--", "--version");
+    }
+
+    @Test
+    void containing_a_quote_is_escaped_rather_than_closing_the_quoting() {
+      String rendered =
+          action(RestartContainer.grant(RUNNER), new RestartContainer.Container("it's here"));
+
+      assertThat(rendered).isEqualTo("docker restart -- 'it'" + BACKSLASH + "''s here'");
+    }
+
+    @Test
+    void with_a_separator_in_it_is_quoted_even_though_no_shell_is_involved() {
+      RestartContainer.Container tricky = new RestartContainer.Container("db; other");
+
+      assertThat(action(RestartContainer.grant(RUNNER), tricky))
+          .isEqualTo("docker restart -- 'db; other'");
+      // Nothing here goes near a shell. The point is that the page must never SHOW something whose
+      // apparent meaning differs from the argv's.
+      assertThat(RestartContainer.argv(tricky))
+          .containsExactly("docker", "restart", "--", "db; other");
+    }
+  }
+
   @Nested
   class Once_approved {
 
@@ -196,7 +249,7 @@ class RemediationGrantsTest {
           Tools.content(RestartUnit.tool(runner), new RestartUnit.Unit("nginx.service"));
 
       assertThat(answer)
-          .contains("systemctl restart nginx.service")
+          .contains("systemctl restart -- nginx.service")
           .contains("exit 5")
           .contains("not found");
     }

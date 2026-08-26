@@ -29,9 +29,17 @@ public final class RestartUnit {
 
   private RestartUnit() {}
 
-  /** The literal command this grant renders and runs. */
+  /**
+   * The literal command this grant renders and runs.
+   *
+   * <p>{@code --} is not decoration. The unit name comes from the model, and without an
+   * end-of-options marker a name beginning with a dash is read by systemctl as a FLAG — {@code
+   * restart_unit("--version")} would render as something that looks like a restart and behave as
+   * something else entirely. With {@code --}, every following word is a unit name and nothing else,
+   * whatever it starts with.
+   */
   public static List<String> argv(Unit unit) {
-    return List.of("systemctl", "restart", unit.name());
+    return List.of("systemctl", "restart", "--", unit.name());
   }
 
   /** The tool: what runs once a human has said yes. */

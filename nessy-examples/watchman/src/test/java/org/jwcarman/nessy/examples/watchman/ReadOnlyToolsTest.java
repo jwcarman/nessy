@@ -18,12 +18,17 @@ package org.jwcarman.nessy.examples.watchman;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /**
  * Every read-only tool, against a host that never existed (spec §4).
@@ -259,16 +264,136 @@ class ReadOnlyToolsTest {
     }
   }
 
+  /**
+   * The drift that feature detection cannot survive: a tool whose argv no longer starts with the
+   * command its bean is gated on.
+   *
+   * <p>Nothing else catches it. Change {@code journal_errors} to shell out to {@code logger} and
+   * every other test here still passes — the tool works against a fake runner, the bean is still
+   * created, and the only symptom is on a real host, where a box with no {@code logger} advertises
+   * a tool that fails every call, or a box with {@code logger} and no {@code journalctl} hides a
+   * tool that would have worked. So each tool is RUN, and the command it actually asked for is
+   * compared against the {@code watchman.detected.*} property {@link ToolBeans} gates it on — read
+   * off the annotation, not restated here.
+   *
+   * <p>This replaces an earlier test that asserted {@code Detect.COMMANDS} equalled a local copy of
+   * the same literal. That is a change-detector: it can only fail when someone edits both halves
+   * inconsistently, and it never once looked at what a tool runs.
+   */
   @Nested
-  class The_commands_the_tools_run {
+  class Every_tools_argv_matches_the_gate_its_bean_is_registered_under {
+
+    /**
+     * The command named by {@code @ConditionalOnProperty} on {@link ToolBeans}'s method of this
+     * name — i.e. what feature detection has to find for this bean to exist at all.
+     */
+    private static String gateOf(String beanMethod) {
+      Method method =
+          Arrays.stream(ToolBeans.class.getDeclaredMethods())
+              .filter(candidate -> candidate.getName().equals(beanMethod))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("no ToolBeans method named " + beanMethod));
+      ConditionalOnProperty gate = method.getAnnotation(ConditionalOnProperty.class);
+      assertThat(gate)
+          .describedAs("%s is expected to be gated on a detected command", beanMethod)
+          .isNotNull();
+      assertThat(gate.name()).hasSize(1);
+      assertThat(gate.name()[0]).startsWith(Detect.PREFIX);
+      return gate.name()[0].substring(Detect.PREFIX.length());
+    }
+
+    private static void assertAgrees(String beanMethod, Function<CommandRunner, Tool<?>> factory) {
+      FakeRunner runner = new FakeRunner();
+      Tool<?> tool = factory.apply(runner);
+      String gate = gateOf(beanMethod);
+
+      Tools.runWithPlaceholderInput(tool);
+      String asked = runner.onlyAsked().getFirst();
+
+      assertThat(asked)
+          .describedAs("%s runs '%s' but its bean is gated on '%s'", tool.name(), asked, gate)
+          .isEqualTo(gate);
+      assertThat(Detect.COMMANDS)
+          .describedAs("'%s' must be something Detect actually looks for", gate)
+          .contains(gate);
+    }
 
     @Test
-    void are_all_detectable() {
-      List<String> firstWords =
-          List.of("df", "systemctl", "journalctl", "docker", "apt", "dnf", "fstrim");
+    void disk_usage() {
+      assertAgrees("diskUsage", runner -> DiskUsage.tool(runner));
+    }
 
-      assertThat(Detect.COMMANDS).isNotEmpty();
-      assertThat(Detect.COMMANDS).containsExactlyInAnyOrderElementsOf(firstWords);
+    @Test
+    void failed_units() {
+      assertAgrees("failedUnits", runner -> FailedUnits.tool(runner));
+    }
+
+    @Test
+    void journal_errors() {
+      assertAgrees("journalErrors", runner -> JournalErrors.tool(runner));
+    }
+
+    @Test
+    void containers() {
+      assertAgrees("containers", runner -> Containers.tool(runner));
+    }
+
+    @Test
+    void restart_unit() {
+      assertAgrees("restartUnit", runner -> RestartUnit.tool(runner));
+    }
+
+    @Test
+    void restart_container() {
+      assertAgrees("restartContainer", runner -> RestartContainer.tool(runner));
+    }
+
+    @Test
+    void prune_images() {
+      assertAgrees("pruneImages", runner -> PruneImages.tool(runner));
+    }
+
+    @Test
+    void clean_journal() {
+      assertAgrees("cleanJournal", runner -> CleanJournal.tool(runner));
+    }
+
+    /**
+     * {@code updates_pending} and {@code apply_updates} are the two that cannot use the check
+     * above, because they are gated on an expression rather than one property. What matters for
+     * them is the same thing stated the other way: whichever package manager was detected, that is
+     * the command the tool runs.
+     */
+    @Test
+    void the_package_manager_pair_runs_whichever_manager_was_detected() {
+      for (PackageManager manager : PackageManager.values()) {
+        FakeRunner checking = new FakeRunner();
+        FakeRunner upgrading = new FakeRunner();
+
+        Tools.content(UpdatesPending.tool(checking, manager), new UpdatesPending.Upgradable());
+        Tools.content(ApplyUpdates.tool(upgrading, manager), new ApplyUpdates.Updates());
+
+        assertThat(checking.onlyAsked().getFirst())
+            .isEqualTo(manager.name().toLowerCase(Locale.ROOT));
+        assertThat(Detect.COMMANDS).contains(manager.name().toLowerCase(Locale.ROOT));
+        // apt's upgrade command is apt-GET, so the gate is the check command's first word, not the
+        // upgrade command's — assert the relationship rather than an equality that is not true.
+        assertThat(upgrading.onlyAsked().getFirst())
+            .startsWith(manager.name().toLowerCase(Locale.ROOT));
+      }
+    }
+
+    /** {@code long_job} defers instead of returning, so it is run through its own door. */
+    @Test
+    void long_job() {
+      FakeRunner runner = new FakeRunner();
+      String gate = gateOf("longJob");
+      Tool<LongJob.Job> tool = LongJob.tool(runner, (id, result) -> {}, Runnable::run);
+
+      tool.execute(new LongJob.Job(), new FakeContext());
+
+      assertThat(runner.onlyAsked().getFirst()).isEqualTo(gate);
+      assertThat(Detect.COMMANDS).contains(gate);
     }
   }
 }

@@ -98,7 +98,7 @@ class RoundTest {
 
     PendingApproval parked = approvals.pending().getFirst();
     assertThat(parked.agentId()).contains("watchman");
-    assertThat(parked.action()).contains("systemctl restart nginx.service");
+    assertThat(parked.action()).contains("systemctl restart -- nginx.service");
     assertThat(parked.requestJson()).isPresent();
 
     assertThat(notes()).isNotEmpty();
@@ -107,7 +107,7 @@ class RoundTest {
     // The page shows it, with the very command line that will run.
     mvc.perform(get("/").with(httpBasic("ops", "lan-only")))
         .andExpect(status().isOk())
-        .andExpect(content().string(containsString("systemctl restart nginx.service")));
+        .andExpect(content().string(containsString("systemctl restart -- nginx.service")));
 
     // And a human answers it.
     mvc.perform(

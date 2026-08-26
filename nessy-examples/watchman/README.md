@@ -198,6 +198,7 @@ Two more worth doing over a month:
 | `nessy.delivery.dropped` | **should be zero.** Anything else means an answer arrived for a phase that was not waiting for it. |
 | `nessy.state.stale_retries` | **should be near zero.** A rising count means rounds are being re-driven while genuinely waiting on a human. |
 | `nessy.effects.refired` | one per reboot per parked scope. More than that is a re-fire storm. |
+| the scheduler's own logs | a full backlog is the failure that shows up here and nowhere else. `tell` throws when the per-scope backlog (`nessy.backlog-capacity`, 256) is full, and it throws out of `Rounds.doRounds()` into Spring's scheduler — which logs it and schedules the next tick as if nothing happened. So the symptom is not a crash: it is rounds that keep firing and keep doing nothing, with an exception in the log every half hour. If `invoke_agent` spans stop appearing while the cron keeps ticking, read the log before anything else. |
 
 And the notes directory, which is the transcript a human actually reads.
 

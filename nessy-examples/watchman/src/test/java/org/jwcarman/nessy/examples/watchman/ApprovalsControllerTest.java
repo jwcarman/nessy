@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spring.boot.PendingApproval;
@@ -74,6 +75,14 @@ class ApprovalsControllerTest {
 
   @Autowired private MockMvc mvc;
 
+  @Autowired private StubbedRepository rows;
+
+  /** Every test starts from the same one waiting approval, whatever the previous one did to it. */
+  @BeforeEach
+  void oneApprovalIsWaiting() {
+    rows.showing(List.of(parked()));
+  }
+
   @Nested
   class The_door {
 
@@ -107,7 +116,7 @@ class ApprovalsControllerTest {
     void shows_the_action_the_agent_and_how_long_it_has_waited() throws Exception {
       mvc.perform(get("/").with(httpBasic("ops", "lan-only")))
           .andExpect(status().isOk())
-          .andExpect(content().string(containsString("systemctl restart nginx.service")))
+          .andExpect(content().string(containsString("systemctl restart -- nginx.service")))
           .andExpect(content().string(containsString("watchman")))
           .andExpect(content().string(containsString("2d")));
     }
@@ -121,13 +130,10 @@ class ApprovalsControllerTest {
 
     @Test
     void says_so_plainly_when_nothing_is_waiting() throws Exception {
-      StubbedRows.pending = List.of();
-      try {
-        mvc.perform(get("/").with(httpBasic("ops", "lan-only")))
-            .andExpect(content().string(containsString("Nothing is waiting")));
-      } finally {
-        StubbedRows.pending = List.of(parked());
-      }
+      rows.showing(List.of());
+
+      mvc.perform(get("/").with(httpBasic("ops", "lan-only")))
+          .andExpect(content().string(containsString("Nothing is waiting")));
     }
   }
 
@@ -179,8 +185,9 @@ class ApprovalsControllerTest {
         Optional.of("watchman"),
         Optional.of("watchman"),
         Optional.of("c2"),
-        Optional.of("systemctl restart nginx.service"),
-        Optional.of("{\"action\":\"systemctl restart nginx.service\",\"unit\":\"nginx.service\"}"),
+        Optional.of("systemctl restart -- nginx.service"),
+        Optional.of(
+            "{\"action\":\"systemctl restart -- nginx.service\",\"unit\":\"nginx.service\"}"),
         Optional.of(Instant.now().minus(Duration.ofDays(2))),
         Optional.empty(),
         Optional.empty(),
@@ -203,16 +210,31 @@ class ApprovalsControllerTest {
         Optional.of(Instant.now().minus(Duration.ofDays(3))));
   }
 
-  /** The rows the page reads, stated outright. */
+  /**
+   * The rows the page reads, stated outright.
+   *
+   * <p>Its pending list is INSTANCE state with a per-test reset, not a static field. A static
+   * fixture mutated by one test and restored in a {@code finally} is a shared global: it leaks
+   * between the nested classes, it makes the order they run in matter, and the restore is one
+   * thrown assertion away from never happening. The bean is a singleton, so the test holds the same
+   * instance the controller does and simply says what it should return.
+   */
   static class StubbedRepository extends PendingApprovalsRepository {
+
+    private List<PendingApproval> pending = List.of(parked());
 
     StubbedRepository() {
       super(new JdbcTemplate());
     }
 
+    /** What the next {@code GET /} should find waiting. */
+    void showing(List<PendingApproval> rows) {
+      this.pending = List.copyOf(rows);
+    }
+
     @Override
     public List<PendingApproval> pending() {
-      return StubbedRows.pending;
+      return pending;
     }
 
     @Override
@@ -225,8 +247,6 @@ class ApprovalsControllerTest {
   @TestConfiguration(proxyBeanMethods = false)
   static class StubbedRows {
 
-    static List<PendingApproval> pending = List.of(parked());
-
     @Bean
     DataSource dataSource() {
       return WatchmanPostgres.dataSource();
@@ -234,7 +254,7 @@ class ApprovalsControllerTest {
 
     @Bean
     @Primary
-    PendingApprovalsRepository stubbedApprovals() {
+    StubbedRepository stubbedApprovals() {
       return new StubbedRepository();
     }
 

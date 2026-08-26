@@ -29,9 +29,15 @@ public final class RestartContainer {
 
   private RestartContainer() {}
 
-  /** The literal command this grant renders and runs. */
+  /**
+   * The literal command this grant renders and runs.
+   *
+   * <p>{@code --} for the same reason {@link RestartUnit} has it: the container name comes from the
+   * model, and an end-of-options marker is what stops a name beginning with a dash from being read
+   * as a flag.
+   */
   public static List<String> argv(Container container) {
-    return List.of("docker", "restart", container.name());
+    return List.of("docker", "restart", "--", container.name());
   }
 
   /** The tool: what runs once a human has said yes. */

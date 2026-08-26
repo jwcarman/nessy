@@ -18,6 +18,8 @@ package org.jwcarman.nessy.examples.watchman;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -39,6 +41,13 @@ import org.jwcarman.nessy.api.tool.approval.Approvers;
  * the process it was asked in, which is exactly what the soak is measuring.
  */
 final class Remediation {
+
+  /**
+   * Characters an argument may contain and still be rendered bare. Deliberately conservative:
+   * anything outside this set — whitespace, quotes, semicolons, ampersands, globs — gets quoted, so
+   * the page can never make a multi-word or shell-active argument look like several plain ones.
+   */
+  private static final Pattern SAFE = Pattern.compile("[A-Za-z0-9._/:@=+-]+");
 
   private Remediation() {}
 
@@ -84,9 +93,29 @@ final class Remediation {
     return ToolGrant.grant(tool, action, Approvers.defer());
   }
 
-  /** The literal command line, exactly as it will be executed. */
+  /**
+   * The literal command line, exactly as it will be executed — with each argument quoted if it
+   * needs quoting to be read back as ONE argument.
+   *
+   * <p>This is a rendering for a human, not a shell string, and nothing here is ever passed to a
+   * shell. But the human is deciding whether to allow a command, and a naive {@code join(" ")}
+   * makes that decision on false information: {@code restart_unit("web api")} rendered as {@code
+   * systemctl restart web api}, which reads as two units and executes as one whose name contains a
+   * space. Quoting closes the gap between what the page says and what the argv means.
+   *
+   * <p>The quoting is POSIX single-quote form, {@code '} escaped as {@code '\''}, so the rendered
+   * line can also be pasted into a shell and do the same thing — useful when someone wants to run
+   * it by hand rather than clicking approve.
+   */
   static String commandLine(List<String> argv) {
-    return String.join(" ", argv);
+    return argv.stream().map(Remediation::quoted).collect(Collectors.joining(" "));
+  }
+
+  private static String quoted(String argument) {
+    if (!argument.isEmpty() && SAFE.matcher(argument).matches()) {
+      return argument;
+    }
+    return "'" + argument.replace("'", "'\\''") + "'";
   }
 
   private static String outcome(CommandRunner runner, List<String> argv) {
