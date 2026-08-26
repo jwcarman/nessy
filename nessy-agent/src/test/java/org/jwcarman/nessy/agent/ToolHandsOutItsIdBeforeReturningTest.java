@@ -224,7 +224,7 @@ class ToolHandsOutItsIdBeforeReturningTest {
         new Versioned<>(
             new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(CALL))),
-                Map.of(CALL.id(), new ToolCallState.Pending()),
+                Map.of(CALL.id(), new ToolCallPhase.SeekingApproval()),
                 ModelResponseId.of("r1")),
             0));
 

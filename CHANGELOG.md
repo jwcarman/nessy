@@ -936,16 +936,17 @@ sequence of renames and interim shapes that produced it.
   nobody can be told about a question the scope has not yet recorded.
 - **A call's lifecycle is in the phase, not a side index.** `AwaitingTools`
   replaces its `pending` set and `gathered` list with one `calls` map,
-  callId to `CallStatus` — `Pending`, `AwaitingApproval(ComputationId
-  approval, ApprovalRequest request)`, `Running`, `AwaitingResult
-  (ComputationId)`, `Finished(ToolResultBlock)` — so the persisted
+  toolCallId to `ToolCallPhase` — `SeekingApproval`, `AwaitingApproval
+  (ComputationId approval, ApprovalRequest request)`, `RunningTool`,
+  `AwaitingResult(ComputationId)`, `Completed(ToolResultBlock)`,
+  `Denied(ToolResultBlock)`, `Failed(ToolResultBlock)` — so the persisted
   `awaiting-tools` phase's own wire format changes: a call waiting on a
-  parked computation now names that computation's id in its own status, in
+  parked computation now names that computation's id in its own phase, in
   the scope's own state document, rather than in a separate substrate kind.
   The frozen `ApprovalRequest` itself lives in `AwaitingApproval` too — that
-  is how `ApprovalDesk.request(agentId, callId)` finds the same document a
-  human or an approver saw, with no separate read door on Continuum.
-  `DispatchIndex`, `CallAddress.indexKey()`, the gate's index-read
+  is how `ApprovalDesk.request(agentId, toolCallId)` finds the same document
+  a human or an approver saw, with no separate read door on Continuum.
+  `DispatchIndex`, `ToolCallAddress.indexKey()`, the gate's index-read
   absorption, and `DeliveryWorker.isCurrentDispatch` retire outright —
   nothing outside the phase remembers "this call is already in flight"
   anymore. Three events join the
@@ -985,14 +986,14 @@ sequence of renames and interim shapes that produced it.
   denial is a known gap, not yet closed.
 - **The desk gains doors, and a principal.** `harness.approvals()` now
   answers `approve`/`deny` two ways — by the computation's own opaque id,
-  for whoever was handed one, and by `(agentId, callId)`, for whoever has
+  for whoever was handed one, and by `(agentId, toolCallId)`, for whoever has
   only the question, resolved through the scope's own phase (`AwaitingApproval`
   names the id; a caller who answers before the park has folded is refused
   with a loud "not awaiting approval" rather than losing the answer). Both
   doors take a `principal` and a `note`/`reason`, folded into the answer's
   `reference` — the desk is the one door with no subsystem behind it, so it
   refuses to let a yes in anonymously. `withdraw(id, reason)` folds a
-  parked ask as a denial; `request(agentId, callId)` returns the same
+  parked ask as a denial; `request(agentId, toolCallId)` returns the same
   frozen `ApprovalRequest` document the approver was handed. `HarnessConfig
   .approvalNotifier` retires outright — telling people is the approver's
   own job now, not a harness-level, one-recipient callback; see

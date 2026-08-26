@@ -32,7 +32,7 @@ class TransitionTest {
     assertThat(t.next()).isEqualTo(new AgentPhase.AwaitingModel());
     assertThat(t.commit()).containsExactly(Message.user("hi"));
     assertThat(t.effects()).containsExactly(new Effect.CallModel());
-    assertThat(t.isIgnored()).isFalse();
+    assertThat(t.isDropped()).isFalse();
   }
 
   @Test
@@ -59,34 +59,34 @@ class TransitionTest {
   }
 
   @Test
-  void anIgnoredTransitionSaysSo() {
-    assertThat(AgentTransition.ignore().isIgnored()).isTrue();
+  void aDroppedTransitionSaysSo() {
+    assertThat(AgentTransition.dropped().isDropped()).isTrue();
   }
 
   @Test
-  void anIgnoredTransitionHasNoNextPhase() {
-    var ignored = AgentTransition.ignore();
-    assertThatThrownBy(ignored::next).isInstanceOf(IllegalStateException.class);
+  void aDroppedTransitionHasNoNextPhase() {
+    var dropped = AgentTransition.dropped();
+    assertThatThrownBy(dropped::next).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
-  void anIgnoredTransitionEqualsNothingButItself() {
-    assertThat(AgentTransition.ignore()).isEqualTo(AgentTransition.ignore());
-    assertThat(AgentTransition.to(new AgentPhase.Idle())).isNotEqualTo(AgentTransition.ignore());
-    assertThat(AgentTransition.ignore()).isNotEqualTo(AgentTransition.to(new AgentPhase.Idle()));
+  void aDroppedTransitionEqualsNothingButItself() {
+    assertThat(AgentTransition.dropped()).isEqualTo(AgentTransition.dropped());
+    assertThat(AgentTransition.to(new AgentPhase.Idle())).isNotEqualTo(AgentTransition.dropped());
+    assertThat(AgentTransition.dropped()).isNotEqualTo(AgentTransition.to(new AgentPhase.Idle()));
   }
 
   @Test
-  void anIgnoredTransitionRefusesToCommit() {
-    var ignored = AgentTransition.ignore();
+  void aDroppedTransitionRefusesToCommit() {
+    var dropped = AgentTransition.dropped();
     var message = Message.user("x");
-    assertThatThrownBy(() -> ignored.commit(message)).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> dropped.commit(message)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
-  void anIgnoredTransitionRefusesToEmit() {
-    var ignored = AgentTransition.ignore();
+  void aDroppedTransitionRefusesToEmit() {
+    var dropped = AgentTransition.dropped();
     var effects = List.<Effect>of(new Effect.CallModel());
-    assertThatThrownBy(() -> ignored.emit(effects)).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> dropped.emit(effects)).isInstanceOf(IllegalStateException.class);
   }
 }

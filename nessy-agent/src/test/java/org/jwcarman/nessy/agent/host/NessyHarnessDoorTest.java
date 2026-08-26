@@ -452,7 +452,7 @@ class NessyHarnessDoorTest {
 
     /**
      * Fix round 1 I1c: {@code .type(String)} defaults to {@code "agent"} — observed through a
-     * scripted turn's own {@code CallAddress}: a required-approval tool call parks an approval
+     * scripted turn's own {@code ToolCallAddress}: a required-approval tool call parks an approval
      * computation addressed by the harness's agent type.
      */
     @Test

@@ -120,7 +120,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       return;
     }
     if (isStale(state)) {
-      List<Effect> outstanding = state.value().outstandingEffects();
+      List<Effect> outstanding = state.value().outstanding();
       facts().reFired(binding.id(), outstanding);
       outstanding.forEach(effect -> dispatch(effect, state.value())); // §6.1 — the re-fire arm
     }
@@ -135,7 +135,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * <b>rethrows</b> (tool-context-defer spec §3). What the rethrow buys is the caller that must
    * know: {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()}
    * promise that an id they hand back is an id the scope names, and only a throw can keep that
-   * promise honest. An IGNORED event is not a failure: this returns normally, as it always has.
+   * promise honest. A DROPPED event is not a failure: this returns normally, as it always has.
    *
    * <p><b>Only the commit is guarded.</b> {@link #commit} covers handle → remember → save; the
    * transition's effects are dispatched afterwards, by {@link #follow}, OUTSIDE the catch. That
@@ -182,7 +182,7 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   private Optional<AgentTransition> applyOnce(Versioned<AgentPhase> state, AgentEvent event) {
     AgentTransition t = state.value().handle(event); // decide before committing
-    if (t.isIgnored()) {
+    if (t.isDropped()) {
       return Optional.empty();
     }
     remember(state.value(), event, t); // remember before commit (remembrance spec §1 law 1)

@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
-import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.agent.ToolCallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -24,8 +24,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * (approval-lifecycle spec §4). The sink is handed per dispatch, lives one dispatch, and is never
  * invoked on the dispatching stack (§4). {@code responseId} is the committed {@code
  * ModelResponseId} that produced {@code call} (durable-deliveries spec §2), read from the fold's
- * {@code AwaitingTools} state at the dispatch site — it is how {@link CallAddress}'s derivation and
- * a real {@code ToolInvocationId} become possible.
+ * {@code AwaitingTools} state at the dispatch site — it is how {@link ToolCallAddress}'s derivation
+ * and a real {@code ToolInvocationId} become possible.
  */
 public interface ToolCallExecutor {
 

@@ -257,7 +257,7 @@ class StaleRetryCounterTest {
       AgentPhase phase =
           new AgentPhase.AwaitingTools(
               turn,
-              Map.of("c1", new ToolCallState.AwaitingResult(computation)),
+              Map.of("c1", new ToolCallPhase.AwaitingResult(computation)),
               ModelResponseId.of("r1"));
       store.save(new Versioned<>(phase, store.load().version()));
     }

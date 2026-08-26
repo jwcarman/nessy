@@ -29,7 +29,7 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.ToolCallState;
+import org.jwcarman.nessy.agent.ToolCallPhase;
 import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -176,7 +176,9 @@ class EarlyAnswerTest {
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(call, null)));
     AgentPhase phase =
         new AgentPhase.AwaitingTools(
-            turn, Map.of("c1", new ToolCallState.Pending()), ModelResponseId.of("response-1"));
+            turn,
+            Map.of("c1", new ToolCallPhase.SeekingApproval()),
+            ModelResponseId.of("response-1"));
     state.save(new Versioned<>(phase, state.load().version()));
 
     var harness =

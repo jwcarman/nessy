@@ -79,7 +79,7 @@ public final class ComputationToolContext implements ToolContext {
   @Override
   public ComputationId invocation() {
     return ComputationId.of(
-        new CallAddress(
+        new ToolCallAddress(
                 routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id())
             .digest());
   }

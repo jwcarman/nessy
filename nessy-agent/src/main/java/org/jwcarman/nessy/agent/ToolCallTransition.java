@@ -20,7 +20,7 @@ import java.util.Objects;
 
 /**
  * What one {@link ToolCallEvent} decides for one call (deferral-by-callback spec §6): either the
- * call moves — becoming a new {@link ToolCallState} and possibly asking for an effect — or the
+ * call moves — becoming a new {@link ToolCallPhase} and possibly asking for an effect — or the
  * event was not for it and is dropped.
  *
  * <p>A call's own decision, and nothing more: whether the TURN is now finished is the phase's
@@ -29,7 +29,7 @@ import java.util.Objects;
 public sealed interface ToolCallTransition {
 
   /** The call moved. */
-  record Advanced(ToolCallState next, List<Effect> effects) implements ToolCallTransition {
+  record Advanced(ToolCallPhase next, List<Effect> effects) implements ToolCallTransition {
     public Advanced {
       Objects.requireNonNull(next, "next must not be null");
       effects = List.copyOf(effects);
@@ -46,7 +46,7 @@ public sealed interface ToolCallTransition {
    */
   record Dropped() implements ToolCallTransition {}
 
-  static ToolCallTransition to(ToolCallState next, Effect... effects) {
+  static ToolCallTransition to(ToolCallPhase next, Effect... effects) {
     return new Advanced(next, List.of(effects));
   }
 

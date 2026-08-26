@@ -38,13 +38,15 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = ToolCallState.Pending.class, name = "pending"),
-  @JsonSubTypes.Type(value = ToolCallState.AwaitingApproval.class, name = "awaiting-approval"),
-  @JsonSubTypes.Type(value = ToolCallState.Running.class, name = "running"),
-  @JsonSubTypes.Type(value = ToolCallState.AwaitingResult.class, name = "awaiting-result"),
-  @JsonSubTypes.Type(value = ToolCallState.Finished.class, name = "finished")
+  @JsonSubTypes.Type(value = ToolCallPhase.SeekingApproval.class, name = "seeking-approval"),
+  @JsonSubTypes.Type(value = ToolCallPhase.AwaitingApproval.class, name = "awaiting-approval"),
+  @JsonSubTypes.Type(value = ToolCallPhase.RunningTool.class, name = "running-tool"),
+  @JsonSubTypes.Type(value = ToolCallPhase.AwaitingResult.class, name = "awaiting-result"),
+  @JsonSubTypes.Type(value = ToolCallPhase.Completed.class, name = "completed"),
+  @JsonSubTypes.Type(value = ToolCallPhase.Denied.class, name = "denied"),
+  @JsonSubTypes.Type(value = ToolCallPhase.Failed.class, name = "failed")
 })
-public sealed interface ToolCallState {
+public sealed interface ToolCallPhase {
 
   /**
    * This call's outcome, if it has one — the single answer to "is this call done?", stated once
@@ -54,15 +56,14 @@ public sealed interface ToolCallState {
    * measured 2026-08-26: these states are records, and Jackson's record support builds properties
    * from record COMPONENTS, so a no-arg method that is not one is already invisible — removing the
    * annotation changes no byte of the wire. What is NOT invisible is a derived method named like a
-   * bean getter: a {@code getResultBlock()} would emit a phantom {@code resultBlock} on every
-   * state. The annotation is what makes that safe whatever the method is called.
+   * bean getter: a {@code getResult()} would emit a phantom {@code result} on every state. The
+   * annotation is what makes that safe whatever the method is called.
    *
-   * <p>Named for the type it returns rather than {@code result()} (spec §6) because {@link
-   * Finished}'s own record component is {@code result}, and a record accessor cannot be widened to
-   * {@code Optional<ToolResultBlock>}. Keeping the component preserves the persisted field name.
+   * <p>Named {@code result()} (spec §6): each terminal's own record component is {@code block}, not
+   * {@code result}, so the interface method and a record's own accessor no longer collide.
    */
   @JsonIgnore
-  Optional<ToolResultBlock> resultBlock();
+  Optional<ToolResultBlock> result();
 
   /**
    * The effects recovery must re-fire for a call in this state (spec §6.1) — the re-fire rule,
@@ -116,30 +117,32 @@ public sealed interface ToolCallState {
   private static ToolCallTransition answered(AgentEvent.ApprovalAnswered event) {
     ToolCall call = event.call();
     return switch (event.answer()) {
-      case Approval.Approved _ -> ToolCallTransition.to(new Running(), new Effect.RunTool(call));
+      case Approval.Approved _ ->
+          ToolCallTransition.to(new RunningTool(), new Effect.RunTool(call));
       case Approval.Denied(var reason, var _) ->
-          ToolCallTransition.to(new Finished(new ToolResultBlock(call.id(), reason, true)));
+          ToolCallTransition.to(new Denied(new ToolResultBlock(call.id(), reason, true)));
     };
   }
 
   /** An admitted result, from either of the two states that may take one. */
   private static ToolCallTransition finished(AgentEvent.ToolFinished event) {
     ToolCall call = event.call();
-    ToolResultBlock block =
-        switch (event.outcome()) {
-          case ToolOutcome.Returned(var result) ->
-              new ToolResultBlock(call.id(), result.content(), result.isError());
-          case ToolOutcome.Failed(var error) ->
-              new ToolResultBlock(call.id(), error.message(), true);
-        };
-    return ToolCallTransition.to(new Finished(block));
+    return switch (event.outcome()) {
+      case ToolOutcome.Returned(var result) when !result.isError() ->
+          ToolCallTransition.to(
+              new Completed(new ToolResultBlock(call.id(), result.content(), false)));
+      case ToolOutcome.Returned(var result) ->
+          ToolCallTransition.to(new Failed(new ToolResultBlock(call.id(), result.content(), true)));
+      case ToolOutcome.Failed(var error) ->
+          ToolCallTransition.to(new Failed(new ToolResultBlock(call.id(), error.message(), true)));
+    };
   }
 
   /** Approval sought; no answer recorded. Re-fire re-seeks. */
-  record Pending() implements ToolCallState {
+  record SeekingApproval() implements ToolCallPhase {
 
     @Override
-    public Optional<ToolResultBlock> resultBlock() {
+    public Optional<ToolResultBlock> result() {
       return Optional.empty();
     }
 
@@ -165,14 +168,14 @@ public sealed interface ToolCallState {
 
   /** The approver deferred; Continuum holds the ask. Never re-fired. */
   record AwaitingApproval(ComputationId approval, ApprovalRequest request)
-      implements ToolCallState {
+      implements ToolCallPhase {
     public AwaitingApproval {
       Objects.requireNonNull(approval, "approval must not be null");
       Objects.requireNonNull(request, "request must not be null");
     }
 
     @Override
-    public Optional<ToolResultBlock> resultBlock() {
+    public Optional<ToolResultBlock> result() {
       return Optional.empty();
     }
 
@@ -191,10 +194,10 @@ public sealed interface ToolCallState {
   }
 
   /** Approved; the tool is executing. Re-fire re-runs. */
-  record Running() implements ToolCallState {
+  record RunningTool() implements ToolCallPhase {
 
     @Override
-    public Optional<ToolResultBlock> resultBlock() {
+    public Optional<ToolResultBlock> result() {
       return Optional.empty();
     }
 
@@ -209,8 +212,8 @@ public sealed interface ToolCallState {
     }
 
     /**
-     * Only an in-process result: a {@code Running} call names no computation, so a delivered id is
-     * by definition one the scope knows nothing of. There is no timing gap to rescue — the door
+     * Only an in-process result: a {@code RunningTool} call names no computation, so a delivered id
+     * is by definition one the scope knows nothing of. There is no timing gap to rescue — the door
      * ({@code ToolContext#defer}, tool-context-defer spec §2) folds {@code ToolDeferred} and
      * commits BEFORE it hands the id back, so nothing outside can hold an id this scope does not
      * already name. On the crash path the re-fired {@code RunTool} defers again, minting a SECOND
@@ -224,13 +227,13 @@ public sealed interface ToolCallState {
   }
 
   /** The tool deferred; Continuum holds the result. Never re-fired. */
-  record AwaitingResult(ComputationId tool) implements ToolCallState {
+  record AwaitingResult(ComputationId tool) implements ToolCallPhase {
     public AwaitingResult {
       Objects.requireNonNull(tool, "tool must not be null");
     }
 
     @Override
-    public Optional<ToolResultBlock> resultBlock() {
+    public Optional<ToolResultBlock> result() {
       return Optional.empty();
     }
 
@@ -249,17 +252,54 @@ public sealed interface ToolCallState {
   }
 
   /**
-   * An outcome exists — success, denial or failure. Absorbing: every event for this call is
-   * dropped, which is every default on this interface, so this record overrides none of them.
+   * The tool ran and returned successfully. Absorbing: every event for this call is dropped, which
+   * is every default on this interface, so this record overrides none of them.
    */
-  record Finished(ToolResultBlock result) implements ToolCallState {
-    public Finished {
-      Objects.requireNonNull(result, "result must not be null");
+  record Completed(ToolResultBlock block) implements ToolCallPhase {
+    public Completed {
+      Objects.requireNonNull(block, "block must not be null");
     }
 
     @Override
-    public Optional<ToolResultBlock> resultBlock() {
-      return Optional.of(result);
+    public Optional<ToolResultBlock> result() {
+      return Optional.of(block);
+    }
+
+    @Override
+    public List<Effect> outstanding(ToolCall call) {
+      return List.of(); // done
+    }
+  }
+
+  /**
+   * The approver denied this call. Absorbing, like {@link Completed}; {@code block} carries the
+   * denial's reason as an error result, exactly as {@code Finished} once did.
+   */
+  record Denied(ToolResultBlock block) implements ToolCallPhase {
+    public Denied {
+      Objects.requireNonNull(block, "block must not be null");
+    }
+
+    @Override
+    public Optional<ToolResultBlock> result() {
+      return Optional.of(block);
+    }
+
+    @Override
+    public List<Effect> outstanding(ToolCall call) {
+      return List.of(); // done
+    }
+  }
+
+  /** The tool ran and failed, or returned an error result. Absorbing, like {@link Completed}. */
+  record Failed(ToolResultBlock block) implements ToolCallPhase {
+    public Failed {
+      Objects.requireNonNull(block, "block must not be null");
+    }
+
+    @Override
+    public Optional<ToolResultBlock> result() {
+      return Optional.of(block);
     }
 
     @Override

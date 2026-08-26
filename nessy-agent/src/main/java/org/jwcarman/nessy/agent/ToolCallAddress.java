@@ -28,8 +28,8 @@ import java.util.Objects;
  * is the submit-once discipline's foundation and lets external systems dedup on them.
  *
  * <p>The derivation digests (computation-identity spec §2): SHA-256 over a length-prefixed UTF-8
- * encoding of {@code (agentType, agentId, responseId, callId)}, rendered lowercase hex — opaque and
- * one-way, carrying no extractable structure. The length prefix on every field closes the
+ * encoding of {@code (agentType, agentId, responseId, toolCallId)}, rendered lowercase hex — opaque
+ * and one-way, carrying no extractable structure. The length prefix on every field closes the
  * concatenation-ambiguity hole a plain delimiter leaves open (e.g. {@code agentType="a:b"}
  * colliding with {@code agentType="a", agentId="b:..."}).
  *
@@ -40,19 +40,20 @@ import java.util.Objects;
  * @param agentType the recipe's name
  * @param agentId the scope
  * @param responseId the committed model response that produced this call (durable-deliveries spec
- *     §2) — closes the provider-uniqueness hole a bare {@code callId} leaves open, since provider
- *     call ids are not contractually unique over an agent's lifetime
- * @param callId the provider-assigned tool call id
+ *     §2) — closes the provider-uniqueness hole a bare {@code toolCallId} leaves open, since
+ *     provider call ids are not contractually unique over an agent's lifetime
+ * @param toolCallId the provider-assigned tool call id
  */
-public record CallAddress(String agentType, String agentId, String responseId, String callId) {
+public record ToolCallAddress(
+    String agentType, String agentId, String responseId, String toolCallId) {
 
   private static final String DIGEST_ALGORITHM = "SHA-256";
 
-  public CallAddress {
+  public ToolCallAddress {
     requireText(agentType, "agentType");
     requireText(agentId, "agentId");
     requireText(responseId, "responseId");
-    requireText(callId, "callId");
+    requireText(toolCallId, "toolCallId");
   }
 
   /**
@@ -65,7 +66,7 @@ public record CallAddress(String agentType, String agentId, String responseId, S
     updateLengthPrefixed(digest, agentType);
     updateLengthPrefixed(digest, agentId);
     updateLengthPrefixed(digest, responseId);
-    updateLengthPrefixed(digest, callId);
+    updateLengthPrefixed(digest, toolCallId);
     return HexFormat.of().formatHex(digest.digest());
   }
 

@@ -25,11 +25,11 @@ import org.jwcarman.nessy.spi.Remembrance;
 /**
  * The tool-delivery fold moment, shared (remembrance spec §2): every non-ignored {@code
  * ToolFinished} remembers its own {@link Remembrance.ToolExchange}, keyed by the call's {@link
- * CallAddress#digest()} — deterministic from {@code (agentType, agentId, responseId, callId)}, so a
- * redelivery re-remembers the same key and converges (SPI law 2). When this is the call that
- * completes the whole batch (the phase's {@link AgentTransition} also commits the deferred
- * assistant turn alongside the tool-results message), the {@link Remembrance.AssistantMessage} is
- * remembered too, exactly once, keyed by the same response id.
+ * ToolCallAddress#digest()} — deterministic from {@code (agentType, agentId, responseId,
+ * toolCallId)}, so a redelivery re-remembers the same key and converges (SPI law 2). When this is
+ * the call that completes the whole batch (the phase's {@link AgentTransition} also commits the
+ * deferred assistant turn alongside the tool-results message), the {@link
+ * Remembrance.AssistantMessage} is remembered too, exactly once, keyed by the same response id.
  *
  * <p>Both {@link DefaultAgent} (the immediate, non-durable fold — most tool calls) and {@link
  * DeliveryWorker} (the durable, Continuum-delivery-driven fold — deferred computations and approval
@@ -80,8 +80,8 @@ final class ToolFoldRemembrance {
           "a non-ignored ToolFinished transition folded from a phase other than AwaitingTools: "
               + priorPhase);
     }
-    CallAddress address =
-        new CallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
+    ToolCallAddress address =
+        new ToolCallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
     // address.digest() — deterministic from the call's own coordinates — is the permanent key
     // here, not a Continuum-minted id: this method folds through THREE different call sites
     // (DefaultAgent's own immediate, non-durable fold; DeliveryWorker's durable completion and

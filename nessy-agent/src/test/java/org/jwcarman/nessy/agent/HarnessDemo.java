@@ -85,7 +85,7 @@ class HarnessDemo {
 
           @Override
           public void ignored(AgentId id, AgentEvent event) {
-            System.out.println("  [narrate] IGNORED stale " + event.getClass().getSimpleName());
+            System.out.println("  [narrate] DROPPED stale " + event.getClass().getSimpleName());
           }
 
           @Override

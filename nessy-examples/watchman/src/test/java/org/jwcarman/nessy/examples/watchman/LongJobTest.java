@@ -124,9 +124,9 @@ class LongJobTest {
   /**
    * The orphan path (final review, finding #3). A deferred computation is answered once, by whoever
    * holds its id — and the watcher thread is the only thing that holds it. If it dies with an
-   * exception the call waits FOREVER: {@code Phase.AwaitingTools#outstandingEffects} contributes no
-   * effect for {@code AwaitingResult}, so nothing re-fires and no staleness sweep re-asks. On a box
-   * doing rounds every half hour that means the rounds simply stop.
+   * exception the call waits FOREVER: {@code Phase.AwaitingTools#outstanding} contributes no effect
+   * for {@code AwaitingResult}, so nothing re-fires and no staleness sweep re-asks. On a box doing
+   * rounds every half hour that means the rounds simply stop.
    */
   @Nested
   class When_the_watcher_throws {

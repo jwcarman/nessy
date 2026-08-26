@@ -26,14 +26,14 @@ package org.jwcarman.nessy.agent;
  * ToolContext}'s last public forcer is gone — it now carries only the opaque execution {@link
  * org.jwcarman.nessy.api.tool.ComputationId} — so this type no longer needs {@code nessy-api}.
  */
-public record ToolInvocationId(String responseId, String callId) {
+public record ToolInvocationId(String responseId, String toolCallId) {
 
   public ToolInvocationId {
     if (responseId == null || responseId.isBlank()) {
       throw new IllegalArgumentException("responseId must not be blank");
     }
-    if (callId == null || callId.isBlank()) {
-      throw new IllegalArgumentException("callId must not be blank");
+    if (toolCallId == null || toolCallId.isBlank()) {
+      throw new IllegalArgumentException("toolCallId must not be blank");
     }
   }
 }

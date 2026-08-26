@@ -52,19 +52,19 @@ public final class ScriptedToolExecutor implements ToolCallExecutor {
     this.pump = pump;
   }
 
-  /** Scripts what {@code runTool} answers for {@code callId}. */
-  public void answer(String callId, ToolOutcome outcome) {
-    outcomes.put(callId, outcome);
+  /** Scripts what {@code runTool} answers for {@code toolCallId}. */
+  public void answer(String toolCallId, ToolOutcome outcome) {
+    outcomes.put(toolCallId, outcome);
   }
 
-  /** Scripts {@code seekApproval} to deny {@code callId} rather than approve it. */
-  public void deny(String callId, String reason) {
-    denials.put(callId, reason);
+  /** Scripts {@code seekApproval} to deny {@code toolCallId} rather than approve it. */
+  public void deny(String toolCallId, String reason) {
+    denials.put(toolCallId, reason);
   }
 
-  /** Scripts {@code seekApproval} to park {@code callId} under {@code approval}. */
-  public void defer(String callId, ComputationId approval) {
-    deferrals.put(callId, approval);
+  /** Scripts {@code seekApproval} to park {@code toolCallId} under {@code approval}. */
+  public void defer(String toolCallId, ComputationId approval) {
+    deferrals.put(toolCallId, approval);
   }
 
   @Override

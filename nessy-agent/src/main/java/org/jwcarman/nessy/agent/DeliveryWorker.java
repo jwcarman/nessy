@@ -463,7 +463,7 @@ final class DeliveryWorker<O> implements ComputationPump {
       Routing routing, AgentEvent event, ComputationId delivered, AgentType type, AgentId id) {
     Versioned<AgentPhase> state = warnIfNoStoredState(id, readState(id));
     AgentTransition transition = state.value().handle(event);
-    if (transition.isIgnored()) {
+    if (transition.isDropped()) {
       warnDropped(id, routing, delivered, state.value());
       return Optional.empty();
     }
@@ -509,11 +509,11 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /** How the phase describes this call right now, for {@link #warnDropped}'s message. */
-  private static String statusOf(AgentPhase phase, String callId) {
+  private static String statusOf(AgentPhase phase, String toolCallId) {
     if (!(phase instanceof AgentPhase.AwaitingTools awaiting)) {
       return phase.getClass().getSimpleName();
     }
-    ToolCallState status = awaiting.calls().get(callId);
+    ToolCallPhase status = awaiting.calls().get(toolCallId);
     return status == null ? "no such call" : status.getClass().getSimpleName();
   }
 

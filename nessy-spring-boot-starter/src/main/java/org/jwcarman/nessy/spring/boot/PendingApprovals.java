@@ -45,10 +45,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * — <b>it is lost, permanently</b>. Nothing replays it. Earlier versions of this paragraph, of the
  * Spring Boot guide and of the spec all said the row returns "until the staleness re-fire re-asks";
  * that was never true and is corrected here (final review, 2026-08-26). {@code
- * AgentPhase.AwaitingTools#outstandingEffects} deliberately contributes NO effect for a call in
- * {@code AwaitingApproval} — the Continuum holds it, so there is nothing to re-fire — and this
- * class ignores {@code reFired} entirely. There is no replay door either: {@code Harness.subscribe}
- * is package-private by ruling, and no public API re-reads applied facts.
+ * AgentPhase.AwaitingTools#outstanding} deliberately contributes NO effect for a call in {@code
+ * AwaitingApproval} — the Continuum holds it, so there is nothing to re-fire — and this class
+ * ignores {@code reFired} entirely. There is no replay door either: {@code Harness.subscribe} is
+ * package-private by ruling, and no public API re-reads applied facts.
  *
  * <p>Both directions of loss are real, and the second is the nastier:
  *
@@ -159,7 +159,7 @@ public class PendingApprovals implements HarnessObserver {
    * The honest position: <b>nothing in the fact carries a time.</b> {@code AgentEvent}'s two
    * approval variants carry the call, the computation id and the request; {@code AgentTransition}
    * carries the next phase, the messages to commit and the effects to fire; {@code
-   * ToolCallState.AwaitingApproval} carries the computation id and the request. There is no
+   * ToolCallPhase.AwaitingApproval} carries the computation id and the request. There is no
    * timestamp on any of them to prefer over this one, so this is the best available reading and the
    * javadoc says so rather than implying the fact was consulted.
    *
@@ -196,13 +196,13 @@ public class PendingApprovals implements HarnessObserver {
     }
   }
 
-  private void parked(String computationId, ApprovalRequest request, String callId) {
+  private void parked(String computationId, ApprovalRequest request, String toolCallId) {
     jdbc.update(
         PARKED,
         computationId,
         request.agentType(),
         request.agentId(),
-        callId,
+        toolCallId,
         request.action(),
         new String(requests.encode(request), StandardCharsets.UTF_8),
         stamp());

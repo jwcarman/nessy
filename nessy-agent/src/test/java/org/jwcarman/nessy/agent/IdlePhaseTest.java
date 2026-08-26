@@ -46,7 +46,7 @@ class IdlePhaseTest {
   @Test
   void aStrayModelCompletionIsIgnored() {
     var event = new AgentEvent.ModelFinished(new ModelOutcome.Failed("late"));
-    assertThat(new AgentPhase.Idle().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.Idle().handle(event).isDropped()).isTrue();
   }
 
   @Test
@@ -55,7 +55,7 @@ class IdlePhaseTest {
     var event =
         new AgentEvent.ToolFinished(
             call, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
-    assertThat(new AgentPhase.Idle().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.Idle().handle(event).isDropped()).isTrue();
   }
 
   @Test
@@ -68,15 +68,15 @@ class IdlePhaseTest {
     assertThat(
             new AgentPhase.Idle()
                 .handle(new AgentEvent.ApprovalDeferred(call, parked, request))
-                .isIgnored())
+                .isDropped())
         .isTrue();
     assertThat(
             new AgentPhase.Idle()
                 .handle(
                     new AgentEvent.ApprovalAnswered(call, Optional.empty(), Approval.approved()))
-                .isIgnored())
+                .isDropped())
         .isTrue();
-    assertThat(new AgentPhase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isIgnored())
+    assertThat(new AgentPhase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isDropped())
         .isTrue();
   }
 }

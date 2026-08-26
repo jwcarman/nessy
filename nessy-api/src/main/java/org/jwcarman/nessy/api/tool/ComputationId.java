@@ -17,8 +17,8 @@ package org.jwcarman.nessy.api.tool;
 
 /**
  * The durable computation's stable identity (durable spec §7; computation-identity spec §1, §2):
- * opaque and one-way — a digest over the identity tuple {@code CallAddress.approval()}/{@code
- * CallAddress.execution()} (the durable-wiring module) derive it from, carrying no extractable
+ * opaque and one-way — a digest over the identity tuple {@code ToolCallAddress.approval()}/{@code
+ * ToolCallAddress.execution()} (the durable-wiring module) derive it from, carrying no extractable
  * structure. Deterministic ids are the caller's duty: derive them from the work's coordinates,
  * never mint fresh ones per attempt (preamble ruling 4). Nothing anywhere parses a {@code value()}
  * back apart — the system only ever needs address → id, never the reverse, because a continuation

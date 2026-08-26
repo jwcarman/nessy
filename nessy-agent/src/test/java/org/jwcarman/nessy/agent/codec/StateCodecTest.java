@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.ToolCallState;
+import org.jwcarman.nessy.agent.ToolCallPhase;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -89,22 +89,22 @@ class StateCodecTest {
     }
 
     @Test
-    void everyToolCallStateRoundTripsIncludingTheParkedRequest() {
+    void everyToolCallPhaseRoundTripsIncludingTheParkedRequest() {
       var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
-                  new ToolCallState.Pending(),
+                  new ToolCallPhase.SeekingApproval(),
                   "b",
-                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  new ToolCallPhase.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
-                  new ToolCallState.Running(),
+                  new ToolCallPhase.RunningTool(),
                   "d",
-                  new ToolCallState.AwaitingResult(ComputationId.of("tool-1")),
+                  new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallState.Finished(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
       var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -113,7 +113,7 @@ class StateCodecTest {
       assertThat(roundTripped.calls()).isNotEmpty();
       assertThat(roundTripped.calls().get("b"))
           .isInstanceOfSatisfying(
-              ToolCallState.AwaitingApproval.class,
+              ToolCallPhase.AwaitingApproval.class,
               parked -> assertThat(parked.request().action()).isEqualTo("restart prod-1"));
     }
 
@@ -125,7 +125,7 @@ class StateCodecTest {
               turn,
               Map.of(
                   "b",
-                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request())),
+                  new ToolCallPhase.AwaitingApproval(ComputationId.of("approval-1"), request())),
               RESPONSE_ID);
 
       var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -133,7 +133,7 @@ class StateCodecTest {
       assertThat(roundTripped.calls()).isNotEmpty();
       assertThat(roundTripped.calls().get("b"))
           .isInstanceOfSatisfying(
-              ToolCallState.AwaitingApproval.class,
+              ToolCallPhase.AwaitingApproval.class,
               parked -> assertThat(parked.request().facts().get(TICKET)).contains("OPS-42"));
     }
 
@@ -141,46 +141,47 @@ class StateCodecTest {
     void anAwaitingToolsPhaseWithOnePendingCallRoundTrips() {
       var turn = turnOf(CALL_A);
       var phase =
-          new AgentPhase.AwaitingTools(turn, Map.of("a", new ToolCallState.Pending()), RESPONSE_ID);
+          new AgentPhase.AwaitingTools(
+              turn, Map.of("a", new ToolCallPhase.SeekingApproval()), RESPONSE_ID);
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
     @Test
-    void everyStatusCarriesItsOwnTypeDiscriminatorOnTheWire() {
+    void everyToolCallPhaseCarriesItsOwnTypeDiscriminatorOnTheWire() {
       var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
-                  new ToolCallState.Pending(),
+                  new ToolCallPhase.SeekingApproval(),
                   "b",
-                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  new ToolCallPhase.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
-                  new ToolCallState.Running(),
+                  new ToolCallPhase.RunningTool(),
                   "d",
-                  new ToolCallState.AwaitingResult(ComputationId.of("tool-1")),
+                  new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallState.Finished(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
       String json = CODEC.toJson(phase);
 
       assertThat(json)
           .contains("\"type\":\"awaiting-tools\"")
-          .contains("\"type\":\"pending\"")
+          .contains("\"type\":\"seeking-approval\"")
           .contains("\"type\":\"awaiting-approval\"")
-          .contains("\"type\":\"running\"")
+          .contains("\"type\":\"running-tool\"")
           .contains("\"type\":\"awaiting-result\"")
-          .contains("\"type\":\"finished\"")
+          .contains("\"type\":\"completed\"")
           // No derived method may reach the wire (deferral-by-callback spec §8). Nothing else
           // here would notice one: the mapper is pinned FAIL_ON_UNKNOWN_PROPERTIES=false, so a
           // phantom property decodes away silently and every round-trip assertion above stays
-          // green while Finished writes its result block twice. Measured 2026-08-26: a state's
-          // no-arg resultBlock() is invisible to Jackson's record support with or without
-          // @JsonIgnore — but renaming it getResultBlock() emits exactly "resultBlock" on all
-          // five states, and this is the assertion that catches that.
-          .doesNotContain("resultBlock")
+          // green while Completed writes its result block twice. Measured 2026-08-26: a phase's
+          // no-arg result() is invisible to Jackson's record support with or without @JsonIgnore
+          // — but renaming it getResult() emits exactly "result" on all seven phases, and this is
+          // the assertion that catches that.
+          .doesNotContain("\"result\"")
           .doesNotContain("outstanding");
     }
 
@@ -190,7 +191,11 @@ class StateCodecTest {
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
-              Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
+              Map.of(
+                  "b",
+                  new ToolCallPhase.SeekingApproval(),
+                  "a",
+                  new ToolCallPhase.SeekingApproval()),
               RESPONSE_ID);
 
       String calls = CODEC.toJson(phase);
@@ -262,7 +267,7 @@ class StateCodecTest {
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
               + MESSAGE_CODEC.toJson(turn)
-              + ",\"calls\":{\"ghost\":{\"type\":\"pending\"}},"
+              + ",\"calls\":{\"ghost\":{\"type\":\"seeking-approval\"}},"
               + "\"responseId\":{\"value\":\"response-1\"}}";
 
       assertThatThrownBy(() -> CODEC.phase(json))
@@ -271,7 +276,7 @@ class StateCodecTest {
     }
 
     @Test
-    void anAwaitingToolsPayloadWithAnUnknownStatusDiscriminatorIsRejectedNamingIt() {
+    void anAwaitingToolsPayloadWithAnUnknownToolCallPhaseDiscriminatorIsRejectedNamingIt() {
       var turn = turnOf(CALL_A);
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"

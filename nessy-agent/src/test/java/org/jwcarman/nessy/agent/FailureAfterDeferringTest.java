@@ -68,7 +68,7 @@ import org.slf4j.LoggerFactory;
  * A dispatch that fails AFTER {@code defer()} succeeded (tool-context-defer spec §1.2, §3, and the
  * 2026-08-25 fix ruling). By then the phase says {@code AwaitingResult(id)}, and the reducer admits
  * a {@code ToolFinished} against that status only when it carries the very id the phase names — so
- * an id-less failure would be IGNORED and the call would hang until the orphan computation expired.
+ * an id-less failure would be DROPPED and the call would hang until the orphan computation expired.
  * The failure therefore rides the deferral's id, the reducer folds {@code Finished} at once, and
  * the orphan's eventual answer meets a call that is already finished and is dropped with the WARN
  * under the existing mismatch rule.
@@ -212,7 +212,7 @@ class FailureAfterDeferringTest {
         new Versioned<>(
             new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(CALL))),
-                Map.of(CALL.id(), new ToolCallState.Pending()),
+                Map.of(CALL.id(), new ToolCallPhase.SeekingApproval()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();

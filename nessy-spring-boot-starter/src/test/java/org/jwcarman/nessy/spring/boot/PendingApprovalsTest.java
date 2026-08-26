@@ -101,7 +101,7 @@ class PendingApprovalsTest {
                 assertThat(row.computationId()).isEqualTo(PARKED.value());
                 assertThat(row.agentType()).contains(TYPE);
                 assertThat(row.agentId()).contains(SCOPE);
-                assertThat(row.callId()).contains("c1");
+                assertThat(row.toolCallId()).contains("c1");
                 assertThat(row.action()).contains("restart prod-eu");
                 assertThat(row.parkedAt()).isPresent();
                 assertThat(row.answer()).isEmpty();

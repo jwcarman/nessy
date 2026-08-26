@@ -69,7 +69,7 @@ class ObservationsTest {
   /** One fold, published the way {@code DefaultAgent} and {@code DeliveryWorker} publish it. */
   private void fold(AgentEvent event) {
     AgentTransition transition = phase.handle(event);
-    if (transition.isIgnored()) {
+    if (transition.isDropped()) {
       observations.ignored(SCOPE, event);
       return;
     }

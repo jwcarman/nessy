@@ -85,29 +85,29 @@ public final class ApprovalDesk {
   }
 
   /**
-   * Approves the call {@code callId} the scope {@code id} is awaiting approval of.
+   * Approves the call {@code toolCallId} the scope {@code id} is awaiting approval of.
    *
    * @param id the scope
-   * @param callId the tool call id
+   * @param toolCallId the tool call id
    * @param principal who is answering — never blank
    * @param note free text folded into the reference, or empty
    * @throws IllegalStateException if that call is not awaiting approval
    */
-  public void approve(AgentId id, String callId, String principal, String note) {
-    approve(awaiting(id, callId).approval(), principal, note);
+  public void approve(AgentId id, String toolCallId, String principal, String note) {
+    approve(awaiting(id, toolCallId).approval(), principal, note);
   }
 
   /**
-   * Denies the call {@code callId} the scope {@code id} is awaiting approval of.
+   * Denies the call {@code toolCallId} the scope {@code id} is awaiting approval of.
    *
    * @param id the scope
-   * @param callId the tool call id
+   * @param toolCallId the tool call id
    * @param principal who is answering — never blank
    * @param reason why
    * @throws IllegalStateException if that call is not awaiting approval
    */
-  public void deny(AgentId id, String callId, String principal, String reason) {
-    deny(awaiting(id, callId).approval(), principal, reason);
+  public void deny(AgentId id, String toolCallId, String principal, String reason) {
+    deny(awaiting(id, toolCallId).approval(), principal, reason);
   }
 
   /**
@@ -121,28 +121,28 @@ public final class ApprovalDesk {
   }
 
   /**
-   * The parked question for {@code callId} on {@code id} — the document the approver saw.
+   * The parked question for {@code toolCallId} on {@code id} — the document the approver saw.
    *
    * @param id the scope
-   * @param callId the tool call id
+   * @param toolCallId the tool call id
    * @return the frozen request
    * @throws IllegalStateException if that call is not awaiting approval
    */
-  public ApprovalRequest request(AgentId id, String callId) {
-    return awaiting(id, callId).request();
+  public ApprovalRequest request(AgentId id, String toolCallId) {
+    return awaiting(id, toolCallId).request();
   }
 
-  private ToolCallState.AwaitingApproval awaiting(AgentId id, String callId) {
+  private ToolCallPhase.AwaitingApproval awaiting(AgentId id, String toolCallId) {
     Objects.requireNonNull(id, "id must not be null");
-    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(toolCallId, "toolCallId must not be null");
     AgentPhase phase = stores.apply(id.value()).load().value();
     if (phase instanceof AgentPhase.AwaitingTools awaiting
-        && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval parked) {
+        && awaiting.calls().get(toolCallId) instanceof ToolCallPhase.AwaitingApproval parked) {
       return parked;
     }
     throw new IllegalStateException(
         "call "
-            + callId
+            + toolCallId
             + " on "
             + id.value()
             + " is not awaiting approval (phase: "

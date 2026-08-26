@@ -30,7 +30,8 @@ import java.util.Optional;
  *     ApprovalDesk#approve(ComputationId, String, String)} takes
  * @param agentType the recipe the parked call belongs to
  * @param agentId the scope the parked call belongs to
- * @param callId the tool call's id within its turn — the second half of the desk's coordinate door
+ * @param toolCallId the tool call's id within its turn — the second half of the desk's coordinate
+ *     door
  * @param action the {@code ActionContributor}'s rendered line: what will actually happen if this is
  *     approved, frozen at enrichment
  * @param requestJson the whole frozen {@link org.jwcarman.nessy.api.tool.approval.ApprovalRequest}
@@ -49,7 +50,7 @@ public record PendingApproval(
     String computationId,
     Optional<String> agentType,
     Optional<String> agentId,
-    Optional<String> callId,
+    Optional<String> toolCallId,
     Optional<String> action,
     Optional<String> requestJson,
     Optional<Instant> parkedAt,

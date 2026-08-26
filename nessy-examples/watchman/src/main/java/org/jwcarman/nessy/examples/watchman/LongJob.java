@@ -110,11 +110,10 @@ public final class LongJob {
    * <p>A deferred computation is answered exactly once, by whoever holds its id — and this thread
    * is the only thing that holds it. If {@code runner.run} or the completion throws and the
    * exception escapes, the id dies with the thread and <b>the call waits forever</b>: {@code
-   * Phase.AwaitingTools#outstandingEffects} contributes no effect for a call in {@code
-   * AwaitingResult}, exactly as it contributes none for {@code AwaitingApproval}, so nothing
-   * re-fires it and no staleness sweep re-asks. The agent would sit in that turn until someone
-   * noticed, which on a box doing rounds every half hour means until James read the notes and
-   * wondered why they stopped.
+   * Phase.AwaitingTools#outstanding} contributes no effect for a call in {@code AwaitingResult},
+   * exactly as it contributes none for {@code AwaitingApproval}, so nothing re-fires it and no
+   * staleness sweep re-asks. The agent would sit in that turn until someone noticed, which on a box
+   * doing rounds every half hour means until James read the notes and wondered why they stopped.
    *
    * <p>{@code desks.getObject()} after a context close is the realistic way in — a shutdown while a
    * trim is still running — but the argument holds for any {@code RuntimeException}: a computation

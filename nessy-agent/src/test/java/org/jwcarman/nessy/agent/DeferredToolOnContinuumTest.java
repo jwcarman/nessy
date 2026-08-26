@@ -246,27 +246,27 @@ class DeferredToolOnContinuumTest {
   private final ApprovalDesk approvals =
       new ApprovalDesk(approvalClient, id -> store, worker::nudge);
 
-  private ToolCall deferringCall(String callId) {
-    return new ToolCall(callId, "restart", JsonNodeFactory.instance.objectNode());
+  private ToolCall deferringCall(String toolCallId) {
+    return new ToolCall(toolCallId, "restart", JsonNodeFactory.instance.objectNode());
   }
 
-  private ToolCall gatedDeferringCall(String callId) {
-    return new ToolCall(callId, "restart_gated", JsonNodeFactory.instance.objectNode());
+  private ToolCall gatedDeferringCall(String toolCallId) {
+    return new ToolCall(toolCallId, "restart_gated", JsonNodeFactory.instance.objectNode());
   }
 
   /** The computation the phase says this call is awaiting the result of. */
   private ComputationId parkedToolIdFor(ToolCall call) {
-    ToolCallState status = statusOf(call);
-    return ((ToolCallState.AwaitingResult) status).tool();
+    ToolCallPhase status = statusOf(call);
+    return ((ToolCallPhase.AwaitingResult) status).tool();
   }
 
   /** The computation the phase says this call is awaiting approval of. */
   private ComputationId parkedApprovalIdFor(ToolCall call) {
-    ToolCallState status = statusOf(call);
-    return ((ToolCallState.AwaitingApproval) status).approval();
+    ToolCallPhase status = statusOf(call);
+    return ((ToolCallPhase.AwaitingApproval) status).approval();
   }
 
-  private ToolCallState statusOf(ToolCall call) {
+  private ToolCallPhase statusOf(ToolCall call) {
     AgentPhase phase = store.load().value();
     return ((AgentPhase.AwaitingTools) phase).calls().get(call.id());
   }
@@ -291,7 +291,7 @@ class DeferredToolOnContinuumTest {
         new Versioned<>(
             new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Map.of(call.id(), new ToolCallState.Pending()),
+                Map.of(call.id(), new ToolCallPhase.SeekingApproval()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();
@@ -317,7 +317,7 @@ class DeferredToolOnContinuumTest {
     driveOnceWithPending(call);
 
     assertThat(tool.invocations).hasValue(1); // dispatched exactly once
-    assertThat(statusOf(call)).isInstanceOf(ToolCallState.AwaitingResult.class);
+    assertThat(statusOf(call)).isInstanceOf(ToolCallPhase.AwaitingResult.class);
   }
 
   @Test
@@ -527,7 +527,7 @@ class DeferredToolOnContinuumTest {
     pump.pumpUntilQuiet();
 
     // the answer folded, the tool ran, and it deferred: the phase now awaits a tool result
-    assertThat(statusOf(call)).isInstanceOf(ToolCallState.AwaitingResult.class);
+    assertThat(statusOf(call)).isInstanceOf(ToolCallPhase.AwaitingResult.class);
     assertThat(foldedResults()).isEmpty();
 
     ComputationId execution = parkedToolIdFor(call);
@@ -583,7 +583,7 @@ class DeferredToolOnContinuumTest {
       // §2) — the only handle back to the Continuum-minted id, read exactly as a genuinely
       // separate out-of-band responder would have to.
       var status = ((AgentPhase.AwaitingTools) scopeState.load().value()).calls().get("c1");
-      var computation = ((ToolCallState.AwaitingResult) status).tool();
+      var computation = ((ToolCallPhase.AwaitingResult) status).tool();
 
       // "every instance is garbage; any node may answer": complete purely through the harness's
       // own public door, exactly as a genuinely out-of-band responder would.

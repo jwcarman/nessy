@@ -169,7 +169,7 @@ class DefaultAgentApplyTest {
     var awaiting =
         new AgentPhase.AwaitingTools(
             turn,
-            Map.of("a", new ToolCallState.Running(), "b", new ToolCallState.Running()),
+            Map.of("a", new ToolCallPhase.RunningTool(), "b", new ToolCallPhase.RunningTool()),
             ModelResponseId.of("response-1"));
     inner.save(new Versioned<>(awaiting, 0L)); // now at v1
     var aFinished =

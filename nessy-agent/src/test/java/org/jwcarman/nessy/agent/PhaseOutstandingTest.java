@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-class PhaseOutstandingEffectsTest {
+class PhaseOutstandingTest {
 
   private static final ToolCall CALL_A =
       new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
@@ -39,12 +39,12 @@ class PhaseOutstandingEffectsTest {
 
   @Test
   void idleHasNothingOutstanding() {
-    assertThat(new AgentPhase.Idle().outstandingEffects()).isEmpty();
+    assertThat(new AgentPhase.Idle().outstanding()).isEmpty();
   }
 
   @Test
   void awaitingModelReDerivesItsBareModelCall() {
-    assertThat(new AgentPhase.AwaitingModel().outstandingEffects())
+    assertThat(new AgentPhase.AwaitingModel().outstanding())
         .containsExactly(new Effect.CallModel());
   }
 
@@ -55,11 +55,11 @@ class PhaseOutstandingEffectsTest {
             TURN,
             Map.of(
                 "a",
-                new ToolCallState.Finished(new ToolResultBlock("a", "42", false)),
+                new ToolCallPhase.Completed(new ToolResultBlock("a", "42", false)),
                 "b",
-                new ToolCallState.Pending()),
+                new ToolCallPhase.SeekingApproval()),
             ModelResponseId.of("response-1"));
-    assertThat(phase.outstandingEffects()).containsExactly(new Effect.SeekApproval(CALL_B));
+    assertThat(phase.outstanding()).containsExactly(new Effect.SeekApproval(CALL_B));
   }
 
   @Test
@@ -67,9 +67,10 @@ class PhaseOutstandingEffectsTest {
     var phase =
         new AgentPhase.AwaitingTools(
             TURN,
-            Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
+            Map.of(
+                "b", new ToolCallPhase.SeekingApproval(), "a", new ToolCallPhase.SeekingApproval()),
             ModelResponseId.of("response-1"));
-    assertThat(phase.outstandingEffects())
+    assertThat(phase.outstanding())
         .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));
   }
 }

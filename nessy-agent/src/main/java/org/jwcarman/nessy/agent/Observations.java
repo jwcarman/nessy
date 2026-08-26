@@ -622,12 +622,14 @@ final class Observations implements HarnessObserver {
     return awaiting.calls().values().stream().noneMatch(Observations::isInFlight);
   }
 
-  private static boolean isInFlight(ToolCallState status) {
+  private static boolean isInFlight(ToolCallPhase status) {
     return switch (status) {
-      case ToolCallState.Pending _, ToolCallState.Running _ -> true;
-      case ToolCallState.AwaitingApproval _,
-          ToolCallState.AwaitingResult _,
-          ToolCallState.Finished _ ->
+      case ToolCallPhase.SeekingApproval _, ToolCallPhase.RunningTool _ -> true;
+      case ToolCallPhase.AwaitingApproval _,
+          ToolCallPhase.AwaitingResult _,
+          ToolCallPhase.Completed _,
+          ToolCallPhase.Denied _,
+          ToolCallPhase.Failed _ ->
           false;
     };
   }
@@ -659,14 +661,14 @@ final class Observations implements HarnessObserver {
               existing != null ? existing : new ConcurrentHashMap<>();
           waits.computeIfAbsent(
               call.id(),
-              callId ->
+              toolCallId ->
                   Observation.createNotStarted(name, registry)
                       .parentObservation(parent)
                       .contextualName(name + " " + call.name())
                       .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
                       .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
                       .lowCardinalityKeyValue(outcomeKeyOf(name), KeyValue.NONE_VALUE)
-                      .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, callId)
+                      .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, toolCallId)
                       .start());
           return waits;
         });

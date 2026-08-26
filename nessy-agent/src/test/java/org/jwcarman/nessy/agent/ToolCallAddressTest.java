@@ -22,24 +22,25 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link CallAddress#digest()} digests, opaquely (computation-identity spec §1, §2): deterministic
- * over the identity tuple, distinct between tuples, and carrying no colon-delimited structure a
- * caller could parse back apart.
+ * {@link ToolCallAddress#digest()} digests, opaquely (computation-identity spec §1, §2):
+ * deterministic over the identity tuple, distinct between tuples, and carrying no colon-delimited
+ * structure a caller could parse back apart.
  */
-class CallAddressTest {
+class ToolCallAddressTest {
 
   private static final Pattern LOWERCASE_HEX = Pattern.compile("[0-9a-f]+");
 
   @Test
   void theSameTupleDerivesTheSameIndexKeyEveryTime() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    assertThat(address.digest()).isEqualTo(new CallAddress("ops", "prod-1", "r7", "c42").digest());
+    var address = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    assertThat(address.digest())
+        .isEqualTo(new ToolCallAddress("ops", "prod-1", "r7", "c42").digest());
   }
 
   @Test
   void distinctTuplesDeriveDistinctIndexKeys() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
-    var other = new CallAddress("ops", "prod-1", "r7", "c43");
+    var address = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    var other = new ToolCallAddress("ops", "prod-1", "r7", "c43");
     assertThat(address.digest()).isNotEqualTo(other.digest());
   }
 
@@ -55,29 +56,29 @@ class CallAddressTest {
    */
   @Test
   void varyingAgentTypeAloneChangesTheIndexKey() {
-    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
-    var variant = new CallAddress("billing", "prod-1", "r7", "c42");
+    var baseline = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new ToolCallAddress("billing", "prod-1", "r7", "c42");
     assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingAgentIdAloneChangesTheIndexKey() {
-    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
-    var variant = new CallAddress("ops", "prod-2", "r7", "c42");
+    var baseline = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new ToolCallAddress("ops", "prod-2", "r7", "c42");
     assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingResponseIdAloneChangesTheIndexKey() {
-    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
-    var variant = new CallAddress("ops", "prod-1", "r8", "c42");
+    var baseline = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new ToolCallAddress("ops", "prod-1", "r8", "c42");
     assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
   @Test
   void varyingCallIdAloneChangesTheIndexKey() {
-    var baseline = new CallAddress("ops", "prod-1", "r7", "c42");
-    var variant = new CallAddress("ops", "prod-1", "r7", "c43");
+    var baseline = new ToolCallAddress("ops", "prod-1", "r7", "c42");
+    var variant = new ToolCallAddress("ops", "prod-1", "r7", "c43");
     assertThat(baseline.digest()).isNotEqualTo(variant.digest());
   }
 
@@ -89,50 +90,50 @@ class CallAddressTest {
    */
   @Test
   void fieldsWithEmbeddedDelimitersDoNotCollide() {
-    var first = new CallAddress("a:b", "c", "r", "x");
-    var second = new CallAddress("a", "b:c", "r", "x");
+    var first = new ToolCallAddress("a:b", "c", "r", "x");
+    var second = new ToolCallAddress("a", "b:c", "r", "x");
     assertThat(first.digest()).isNotEqualTo(second.digest());
   }
 
   @Test
   void theIndexKeyCarriesNoColonDelimitedFormat() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
+    var address = new ToolCallAddress("ops", "prod-1", "r7", "c42");
     assertThat(address.digest()).doesNotContain(":");
   }
 
   @Test
   void theIndexKeyIsLowercaseHex() {
-    var address = new CallAddress("ops", "prod-1", "r7", "c42");
+    var address = new ToolCallAddress("ops", "prod-1", "r7", "c42");
     assertThat(address.digest()).matches(LOWERCASE_HEX);
   }
 
   @Test
   void blankCoordinatesAreRefused() {
-    assertThatThrownBy(() -> new CallAddress(" ", "a", "r", "c"))
+    assertThatThrownBy(() -> new ToolCallAddress(" ", "a", "r", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aBlankAgentIdIsRefused() {
-    assertThatThrownBy(() -> new CallAddress("ops", " ", "r", "c"))
+    assertThatThrownBy(() -> new ToolCallAddress("ops", " ", "r", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aBlankResponseIdIsRefused() {
-    assertThatThrownBy(() -> new CallAddress("ops", "a", " ", "c"))
+    assertThatThrownBy(() -> new ToolCallAddress("ops", "a", " ", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aBlankCallIdIsRefused() {
-    assertThatThrownBy(() -> new CallAddress("ops", "a", "r", " "))
+    assertThatThrownBy(() -> new ToolCallAddress("ops", "a", "r", " "))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aNullCoordinateThrowsANullPointerExceptionLikeEverySiblingType() {
-    assertThatThrownBy(() -> new CallAddress(null, "a", "r", "c"))
+    assertThatThrownBy(() -> new ToolCallAddress(null, "a", "r", "c"))
         .isInstanceOf(NullPointerException.class);
   }
 }

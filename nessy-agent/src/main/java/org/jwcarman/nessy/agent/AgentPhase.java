@@ -49,8 +49,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 public sealed interface AgentPhase {
 
   /**
-   * Backs {@link AgentTransition#ignore()}'s marker; public by interface rules, inert because it is
-   * an ordinary Idle.
+   * Backs {@link AgentTransition#dropped()}'s marker; public by interface rules, inert because it
+   * is an ordinary Idle.
    */
   AgentPhase SENTINEL = new Idle();
 
@@ -60,7 +60,7 @@ public sealed interface AgentPhase {
    * The effects still in flight for this phase, re-derivable on any node — the §6.1 recovery
    * invariant as a method. Every future phase must keep this total.
    */
-  List<Effect> outstandingEffects();
+  List<Effect> outstanding();
 
   record Idle() implements AgentPhase {
     @Override
@@ -69,13 +69,13 @@ public sealed interface AgentPhase {
         case AgentEvent.Observed(var content) ->
             AgentTransition.to(new AwaitingModel(), new Effect.CallModel())
                 .commit(Message.user(content));
-        case AgentEvent.ModelFinished _ -> AgentTransition.ignore();
-        case ToolCallEvent _ -> AgentTransition.ignore();
+        case AgentEvent.ModelFinished _ -> AgentTransition.dropped();
+        case ToolCallEvent _ -> AgentTransition.dropped();
       };
     }
 
     @Override
-    public List<Effect> outstandingEffects() {
+    public List<Effect> outstanding() {
       return List.of();
     }
   }
@@ -93,14 +93,14 @@ public sealed interface AgentPhase {
                 .emit(
                     calls.stream().map(Effect.SeekApproval::new).map(Effect.class::cast).toList());
         case AgentEvent.ModelFinished(_) -> AgentTransition.to(new Idle());
-        case ToolCallEvent _ -> AgentTransition.ignore();
+        case ToolCallEvent _ -> AgentTransition.dropped();
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
     }
 
     @Override
-    public List<Effect> outstandingEffects() {
+    public List<Effect> outstanding() {
       return List.of(new Effect.CallModel());
     }
   }
@@ -112,7 +112,7 @@ public sealed interface AgentPhase {
    *     the wire (durable-deliveries spec §2), never generated here (the reducer stays a pure fold)
    */
   record AwaitingTools(
-      Message assistantTurn, Map<String, ToolCallState> calls, ModelResponseId responseId)
+      Message assistantTurn, Map<String, ToolCallPhase> calls, ModelResponseId responseId)
       implements AgentPhase {
 
     public AwaitingTools {
@@ -131,12 +131,12 @@ public sealed interface AgentPhase {
       }
     }
 
-    /** The opening shape: every requested call {@link ToolCallState.Pending}. */
+    /** The opening shape: every requested call {@link ToolCallPhase.SeekingApproval}. */
     static AwaitingTools opening(
         Message assistantTurn, List<ToolCall> requested, ModelResponseId responseId) {
-      Map<String, ToolCallState> pending = new TreeMap<>();
+      Map<String, ToolCallPhase> pending = new TreeMap<>();
       for (ToolCall call : requested) {
-        pending.put(call.id(), new ToolCallState.Pending());
+        pending.put(call.id(), new ToolCallPhase.SeekingApproval());
       }
       return new AwaitingTools(assistantTurn, pending, responseId);
     }
@@ -146,7 +146,7 @@ public sealed interface AgentPhase {
       return switch (event) {
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
-        case AgentEvent.ModelFinished _ -> AgentTransition.ignore();
+        case AgentEvent.ModelFinished _ -> AgentTransition.dropped();
         case ToolCallEvent e -> route(e);
       };
     }
@@ -157,12 +157,12 @@ public sealed interface AgentPhase {
      * id.
      */
     private AgentTransition route(ToolCallEvent event) {
-      ToolCallState current = calls.get(event.toolCallId());
+      ToolCallPhase current = calls.get(event.toolCallId());
       if (current == null) {
-        return AgentTransition.ignore(); // a call this turn never asked for
+        return AgentTransition.dropped(); // a call this turn never asked for
       }
       return switch (current.handle(event)) {
-        case ToolCallTransition.Dropped _ -> AgentTransition.ignore();
+        case ToolCallTransition.Dropped _ -> AgentTransition.dropped();
         case ToolCallTransition.Advanced(var next, var effects) ->
             advance(event.toolCallId(), next, effects);
       };
@@ -174,17 +174,20 @@ public sealed interface AgentPhase {
      * the model.
      *
      * <p>A call that reaches a result cannot also be asking for an effect — the only
-     * effect-carrying transition today is approved-then-{@code Running}, which has no result — so
-     * the turn-complete branch has nothing to carry forward. It says so out loud rather than
+     * effect-carrying transition today is approved-then-{@code RunningTool}, which has no result —
+     * so the turn-complete branch has nothing to carry forward. It says so out loud rather than
      * dropping {@code effects} on the floor: the deferral callback (spec §4) rides an effect, and
      * losing one silently is the worst failure this phase could have.
      */
-    private AgentTransition advance(String callId, ToolCallState next, List<Effect> effects) {
-      AwaitingTools updated = with(callId, next);
-      if (updated.calls.values().stream().allMatch(status -> status.resultBlock().isPresent())) {
+    private AgentTransition advance(String toolCallId, ToolCallPhase next, List<Effect> effects) {
+      AwaitingTools updated = with(toolCallId, next);
+      if (updated.calls.values().stream().allMatch(callPhase -> callPhase.result().isPresent())) {
         if (!effects.isEmpty()) {
           throw new IllegalStateException(
-              "call " + callId + " finished the turn while still asking for effects: " + effects);
+              "call "
+                  + toolCallId
+                  + " finished the turn while still asking for effects: "
+                  + effects);
         }
         return AgentTransition.to(new AwaitingModel(), new Effect.CallModel())
             .commit(assistantTurn, Message.toolResults(updated.resultsInTurnOrder()));
@@ -192,9 +195,9 @@ public sealed interface AgentPhase {
       return AgentTransition.to(updated).emit(effects);
     }
 
-    private AwaitingTools with(String callId, ToolCallState status) {
-      Map<String, ToolCallState> updated = new TreeMap<>(calls);
-      updated.put(callId, status);
+    private AwaitingTools with(String toolCallId, ToolCallPhase callPhase) {
+      Map<String, ToolCallPhase> updated = new TreeMap<>(calls);
+      updated.put(toolCallId, callPhase);
       return new AwaitingTools(assistantTurn, updated, responseId);
     }
 
@@ -202,25 +205,25 @@ public sealed interface AgentPhase {
     private List<ContentBlock> resultsInTurnOrder() {
       List<ContentBlock> results = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        ToolCallState status = calls.get(call.id());
-        if (status != null) {
-          status.resultBlock().ifPresent(results::add);
+        ToolCallPhase callPhase = calls.get(call.id());
+        if (callPhase != null) {
+          callPhase.result().ifPresent(results::add);
         }
       }
       return List.copyOf(results);
     }
 
     @Override
-    public List<Effect> outstandingEffects() {
+    public List<Effect> outstanding() {
       List<Effect> effects = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        ToolCallState status = calls.get(call.id());
+        ToolCallPhase callPhase = calls.get(call.id());
         // Not a default arm of a switch: a Map.get miss is a programming error, surfaced loudly.
-        if (status == null) {
-          throw new IllegalStateException("no status for call " + call.id());
+        if (callPhase == null) {
+          throw new IllegalStateException("no phase for call " + call.id());
         }
-        // The re-fire rule is the state's own, stated once (ToolCallState#outstanding).
-        effects.addAll(status.outstanding(call));
+        // The re-fire rule is the call phase's own, stated once (ToolCallPhase#outstanding).
+        effects.addAll(callPhase.outstanding(call));
       }
       return List.copyOf(effects);
     }

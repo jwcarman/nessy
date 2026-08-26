@@ -109,7 +109,7 @@ class ComputationToolContextTest {
   @Test
   void invocationIsTheAddressDigestForTheseCoordinates() {
     ComputationId expected =
-        ComputationId.of(new CallAddress("ops", "prod-eu", "r1", "c1").digest());
+        ComputationId.of(new ToolCallAddress("ops", "prod-eu", "r1", "c1").digest());
 
     assertThat(contextOver(event -> {}).invocation()).isEqualTo(expected);
   }

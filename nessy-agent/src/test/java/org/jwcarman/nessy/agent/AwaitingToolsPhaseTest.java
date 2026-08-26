@@ -55,11 +55,11 @@ class AwaitingToolsPhaseTest {
           .action("restart prod-1")
           .freeze();
 
-  private static AgentPhase.AwaitingTools awaiting(Map<String, ToolCallState> calls) {
+  private static AgentPhase.AwaitingTools awaiting(Map<String, ToolCallPhase> calls) {
     return new AgentPhase.AwaitingTools(TURN, calls, RESPONSE_ID);
   }
 
-  private static Map<String, ToolCallState> calls(ToolCallState first, ToolCallState second) {
+  private static Map<String, ToolCallPhase> calls(ToolCallPhase first, ToolCallPhase second) {
     return Map.of("c1", first, "c2", second);
   }
 
@@ -76,19 +76,22 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void pendingApprovedInProcessRunsTheTool() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.empty(), Approval.approved()));
 
     assertThat(t.next())
-        .isEqualTo(awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending())));
+        .isEqualTo(
+            awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).containsExactly(new Effect.RunTool(CALL_A));
     assertThat(t.commit()).isEmpty();
   }
 
   @Test
   void pendingDeniedInProcessFinishesWithAFailedResult() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.empty(), Approval.denied("not today")));
 
@@ -96,14 +99,15 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.Finished(new ToolResultBlock("c1", "not today", true)),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.Denied(new ToolResultBlock("c1", "not today", true)),
+                    new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).isEmpty();
   }
 
   @Test
   void pendingDeferredBecomesAwaitingApproval() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST));
 
@@ -111,18 +115,19 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.AwaitingApproval(PARKED, REQUEST),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                    new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).isEmpty();
   }
 
   @Test
   void pendingWithADeliveredAnswerIsIgnoredAsEarly() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
 
-    assertThat(t.isIgnored()).isTrue();
+    assertThat(t.isDropped()).isTrue();
   }
 
   @Test
@@ -130,12 +135,14 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallState.AwaitingApproval(PARKED, REQUEST), new ToolCallState.Pending()));
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
 
     assertThat(t.next())
-        .isEqualTo(awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending())));
+        .isEqualTo(
+            awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).containsExactly(new Effect.RunTool(CALL_A));
   }
 
@@ -144,7 +151,8 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallState.AwaitingApproval(PARKED, REQUEST), new ToolCallState.Pending()));
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.denied("no")));
 
@@ -152,8 +160,8 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.Finished(new ToolResultBlock("c1", "no", true)),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.Denied(new ToolResultBlock("c1", "no", true)),
+                    new ToolCallPhase.SeekingApproval())));
   }
 
   @Test
@@ -161,16 +169,18 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallState.AwaitingApproval(PARKED, REQUEST), new ToolCallState.Pending()));
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(answered(CALL_A, Optional.of(OTHER), Approval.approved()));
 
-    assertThat(t.isIgnored()).isTrue();
+    assertThat(t.isDropped()).isTrue();
   }
 
   @Test
   void runningFinishedInProcessFinishes() {
-    var phase = awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(returned(CALL_A, Optional.empty(), "42"));
 
@@ -178,31 +188,32 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.Finished(new ToolResultBlock("c1", "42", false)),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                    new ToolCallPhase.SeekingApproval())));
   }
 
   /**
    * A duplicate delivery of an answer already folded (spec §3): {@code Running} means the tool is
    * already going, so a second {@code Approved} must not emit a second {@link Effect.RunTool} — the
-   * assertion is on the effects, not merely on {@code isIgnored()}, so an implementation that
+   * assertion is on the effects, not merely on {@code isDropped()}, so an implementation that
    * re-ran the tool would fail here.
    */
   @Test
   void runningIgnoresAnApprovalAnswerRatherThanRunningTheToolTwice() {
-    var phase = awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
     var inProcess = phase.handle(answered(CALL_A, Optional.empty(), Approval.approved()));
     var delivered = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
 
-    assertThat(inProcess.isIgnored()).isTrue();
+    assertThat(inProcess.isDropped()).isTrue();
     assertThat(inProcess.effects()).isEmpty();
     assertThat(inProcess.commit()).isEmpty();
-    assertThat(delivered.isIgnored()).isTrue();
+    assertThat(delivered.isDropped()).isTrue();
     assertThat(delivered.effects()).isEmpty();
     assertThat(delivered.commit()).isEmpty();
     assertThat(phase.calls())
-        .isEqualTo(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+        .isEqualTo(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
   }
 
   /**
@@ -212,30 +223,36 @@ class AwaitingToolsPhaseTest {
   @Test
   void awaitingResultIgnoresAnApprovalAnswerRatherThanRunningTheToolTwice() {
     var phase =
-        awaiting(calls(new ToolCallState.AwaitingResult(PARKED), new ToolCallState.Pending()));
+        awaiting(
+            calls(new ToolCallPhase.AwaitingResult(PARKED), new ToolCallPhase.SeekingApproval()));
 
     var byItsOwnId = phase.handle(answered(CALL_A, Optional.of(PARKED), Approval.approved()));
     var inProcess = phase.handle(answered(CALL_A, Optional.empty(), Approval.approved()));
 
-    assertThat(byItsOwnId.isIgnored()).isTrue();
+    assertThat(byItsOwnId.isDropped()).isTrue();
     assertThat(byItsOwnId.effects()).isEmpty();
     assertThat(byItsOwnId.commit()).isEmpty();
-    assertThat(inProcess.isIgnored()).isTrue();
+    assertThat(inProcess.isDropped()).isTrue();
     assertThat(inProcess.effects()).isEmpty();
     assertThat(inProcess.commit()).isEmpty();
     assertThat(phase.calls())
-        .isEqualTo(calls(new ToolCallState.AwaitingResult(PARKED), new ToolCallState.Pending()));
+        .isEqualTo(
+            calls(new ToolCallPhase.AwaitingResult(PARKED), new ToolCallPhase.SeekingApproval()));
   }
 
   @Test
   void runningDeferredBecomesAwaitingResult() {
-    var phase = awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED));
 
     assertThat(t.next())
         .isEqualTo(
-            awaiting(calls(new ToolCallState.AwaitingResult(PARKED), new ToolCallState.Pending())));
+            awaiting(
+                calls(
+                    new ToolCallPhase.AwaitingResult(PARKED),
+                    new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).isEmpty();
   }
 
@@ -252,21 +269,23 @@ class AwaitingToolsPhaseTest {
    */
   @Test
   void runningIgnoresAToolFinishedBeforeItsDeferralFolded() {
-    var phase = awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(returned(CALL_A, Optional.of(PARKED), "42"));
 
-    assertThat(t.isIgnored()).isTrue();
+    assertThat(t.isDropped()).isTrue();
     assertThat(t.effects()).isEmpty();
     assertThat(t.commit()).isEmpty();
     assertThat(phase.calls())
-        .isEqualTo(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+        .isEqualTo(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
   }
 
   @Test
   void awaitingResultFinishedByItsIdFinishes() {
     var phase =
-        awaiting(calls(new ToolCallState.AwaitingResult(PARKED), new ToolCallState.Pending()));
+        awaiting(
+            calls(new ToolCallPhase.AwaitingResult(PARKED), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(returned(CALL_A, Optional.of(PARKED), "42"));
 
@@ -274,39 +293,41 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.Finished(new ToolResultBlock("c1", "42", false)),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                    new ToolCallPhase.SeekingApproval())));
   }
 
   @Test
   void awaitingResultFinishedUnderAnotherIdIsIgnoredAsStale() {
     var phase =
-        awaiting(calls(new ToolCallState.AwaitingResult(PARKED), new ToolCallState.Pending()));
+        awaiting(
+            calls(new ToolCallPhase.AwaitingResult(PARKED), new ToolCallPhase.SeekingApproval()));
 
     var t = phase.handle(returned(CALL_A, Optional.of(OTHER), "42"));
 
-    assertThat(t.isIgnored()).isTrue();
+    assertThat(t.isDropped()).isTrue();
   }
 
   @Test
   void finishedIgnoresEverythingForThatCall() {
-    var finished = new ToolCallState.Finished(new ToolResultBlock("c1", "42", false));
-    var phase = awaiting(calls(finished, new ToolCallState.Pending()));
+    var finished = new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false));
+    var phase = awaiting(calls(finished, new ToolCallPhase.SeekingApproval()));
 
-    assertThat(phase.handle(returned(CALL_A, Optional.empty(), "again")).isIgnored()).isTrue();
-    assertThat(phase.handle(answered(CALL_A, Optional.empty(), Approval.approved())).isIgnored())
+    assertThat(phase.handle(returned(CALL_A, Optional.empty(), "again")).isDropped()).isTrue();
+    assertThat(phase.handle(answered(CALL_A, Optional.empty(), Approval.approved())).isDropped())
         .isTrue();
-    assertThat(phase.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED)).isIgnored()).isTrue();
-    assertThat(phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST)).isIgnored())
+    assertThat(phase.handle(new AgentEvent.ToolDeferred(CALL_A, PARKED)).isDropped()).isTrue();
+    assertThat(phase.handle(new AgentEvent.ApprovalDeferred(CALL_A, PARKED, REQUEST)).isDropped())
         .isTrue();
   }
 
   @Test
   void anUnknownCallIsIgnored() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
-    assertThat(phase.handle(returned(STRANGER, Optional.empty(), "42")).isIgnored()).isTrue();
-    assertThat(phase.handle(answered(STRANGER, Optional.empty(), Approval.approved())).isIgnored())
+    assertThat(phase.handle(returned(STRANGER, Optional.empty(), "42")).isDropped()).isTrue();
+    assertThat(phase.handle(answered(STRANGER, Optional.empty(), Approval.approved())).isDropped())
         .isTrue();
   }
 
@@ -315,8 +336,8 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallState.Finished(new ToolResultBlock("c1", "42", false)),
-                new ToolCallState.Running()));
+                new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                new ToolCallPhase.RunningTool()));
 
     var t = phase.handle(returned(CALL_B, Optional.empty(), "ok"));
 
@@ -336,8 +357,8 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallState.Finished(new ToolResultBlock("c1", "42", false)),
-                new ToolCallState.AwaitingApproval(PARKED, REQUEST)));
+                new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST)));
 
     var t = phase.handle(answered(CALL_B, Optional.of(PARKED), Approval.denied("too risky")));
 
@@ -352,7 +373,8 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void aFailedToolRendersInBandAsAnErrorResult() {
-    var phase = awaiting(calls(new ToolCallState.Running(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
     var failed =
         new AgentEvent.ToolFinished(
             CALL_A, Optional.empty(), new ToolOutcome.Failed(new ToolError("timed out")));
@@ -363,36 +385,38 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallState.Finished(new ToolResultBlock("c1", "timed out", true)),
-                    new ToolCallState.Pending())));
+                    new ToolCallPhase.Failed(new ToolResultBlock("c1", "timed out", true)),
+                    new ToolCallPhase.SeekingApproval())));
   }
 
   @Test
-  void outstandingEffectsReseekPendingAndRerunRunningAndLeaveTheParkedOnesAlone() {
+  void outstandingReseekPendingAndRerunRunningAndLeaveTheParkedOnesAlone() {
     assertThat(
-            awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Running()))
-                .outstandingEffects())
+            awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.RunningTool()))
+                .outstanding())
         .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.RunTool(CALL_B));
     assertThat(
             awaiting(
                     calls(
-                        new ToolCallState.AwaitingApproval(PARKED, REQUEST),
-                        new ToolCallState.AwaitingResult(PARKED)))
-                .outstandingEffects())
+                        new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                        new ToolCallPhase.AwaitingResult(PARKED)))
+                .outstanding())
         .isEmpty();
   }
 
   @Test
   void aStrayModelCompletionIsIgnored() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
     var event = new AgentEvent.ModelFinished(new ModelOutcome.Failed("late duplicate"));
 
-    assertThat(phase.handle(event).isIgnored()).isTrue();
+    assertThat(phase.handle(event).isDropped()).isTrue();
   }
 
   @Test
   void anObservationReachingThisPhaseIsAProgrammingError() {
-    var phase = awaiting(calls(new ToolCallState.Pending(), new ToolCallState.Pending()));
+    var phase =
+        awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
     var event = new AgentEvent.Observed(List.of(new TextBlock("hi")));
 
     assertThatThrownBy(() -> phase.handle(event)).isInstanceOf(IllegalStateException.class);
@@ -400,7 +424,7 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void awaitingNothingIsNotAPhase() {
-    Map<String, ToolCallState> empty = Map.of();
+    Map<String, ToolCallPhase> empty = Map.of();
 
     assertThatThrownBy(() -> new AgentPhase.AwaitingTools(TURN, empty, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);
@@ -408,7 +432,7 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void aCallIdAbsentFromTheHeldBackTurnIsRejected() {
-    Map<String, ToolCallState> ghost = Map.of("ghost", new ToolCallState.Pending());
+    Map<String, ToolCallPhase> ghost = Map.of("ghost", new ToolCallPhase.SeekingApproval());
 
     assertThatThrownBy(() -> new AgentPhase.AwaitingTools(TURN, ghost, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);

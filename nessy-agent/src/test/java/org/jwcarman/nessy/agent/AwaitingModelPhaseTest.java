@@ -68,7 +68,11 @@ class AwaitingModelPhaseTest {
         .isEqualTo(
             new AgentPhase.AwaitingTools(
                 Message.assistant(content),
-                Map.of("a", new ToolCallState.Pending(), "b", new ToolCallState.Pending()),
+                Map.of(
+                    "a",
+                    new ToolCallPhase.SeekingApproval(),
+                    "b",
+                    new ToolCallPhase.SeekingApproval()),
                 RESPONSE_ID));
     assertThat(t.effects())
         .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));
@@ -99,7 +103,7 @@ class AwaitingModelPhaseTest {
     var event =
         new AgentEvent.ToolFinished(
             CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
-    assertThat(new AgentPhase.AwaitingModel().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.AwaitingModel().handle(event).isDropped()).isTrue();
   }
 
   @Test
@@ -111,18 +115,18 @@ class AwaitingModelPhaseTest {
     assertThat(
             new AgentPhase.AwaitingModel()
                 .handle(new AgentEvent.ApprovalDeferred(CALL_A, parked, request))
-                .isIgnored())
+                .isDropped())
         .isTrue();
     assertThat(
             new AgentPhase.AwaitingModel()
                 .handle(
                     new AgentEvent.ApprovalAnswered(CALL_A, Optional.empty(), Approval.approved()))
-                .isIgnored())
+                .isDropped())
         .isTrue();
     assertThat(
             new AgentPhase.AwaitingModel()
                 .handle(new AgentEvent.ToolDeferred(CALL_A, parked))
-                .isIgnored())
+                .isDropped())
         .isTrue();
   }
 

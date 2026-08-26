@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.ToolCallState;
+import org.jwcarman.nessy.agent.ToolCallPhase;
 import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -254,36 +254,39 @@ class PumpsAreNeverStarvedTest {
   }
 
   /**
-   * Polls until {@code callId} is {@code AwaitingApproval}. Waiting for the PHASE to be {@code
+   * Polls until {@code toolCallId} is {@code AwaitingApproval}. Waiting for the PHASE to be {@code
    * AwaitingTools} is not enough: the call inside it is {@code Pending} until the {@code
    * SeekApproval} effect folds {@code ApprovalDeferred}, and the desk's by-coordinates door refuses
    * a {@code Pending} call loudly. Under a loaded suite that gap is wide enough to lose, which is
    * exactly how this test failed once on a full reactor build and never in isolation.
    */
-  private static void awaitAwaitingApproval(SubstrateAgentPhaseStore state, String callId)
+  private static void awaitAwaitingApproval(SubstrateAgentPhaseStore state, String toolCallId)
       throws InterruptedException {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
       if (state.load().value() instanceof AgentPhase.AwaitingTools awaiting
-          && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval) {
+          && awaiting.calls().get(toolCallId) instanceof ToolCallPhase.AwaitingApproval) {
         return;
       }
       Thread.sleep(10);
     }
-    throw new IllegalStateException("call " + callId + " never reached AwaitingApproval");
+    throw new IllegalStateException("call " + toolCallId + " never reached AwaitingApproval");
   }
 
-  /** Polls until {@code callId} is {@code AwaitingResult} and returns the computation it names. */
-  private static ComputationId awaitAwaitingResult(SubstrateAgentPhaseStore state, String callId)
-      throws InterruptedException {
+  /**
+   * Polls until {@code toolCallId} is {@code AwaitingResult} and returns the computation it names.
+   */
+  private static ComputationId awaitAwaitingResult(
+      SubstrateAgentPhaseStore state, String toolCallId) throws InterruptedException {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
       if (state.load().value() instanceof AgentPhase.AwaitingTools awaiting
-          && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingResult awaitingResult) {
+          && awaiting.calls().get(toolCallId)
+              instanceof ToolCallPhase.AwaitingResult awaitingResult) {
         return awaitingResult.tool();
       }
       Thread.sleep(10);
     }
-    throw new IllegalStateException("call " + callId + " never reached AwaitingResult");
+    throw new IllegalStateException("call " + toolCallId + " never reached AwaitingResult");
   }
 }

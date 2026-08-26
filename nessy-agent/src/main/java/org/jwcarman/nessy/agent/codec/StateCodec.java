@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import org.jwcarman.nessy.agent.AgentPhase;
-import org.jwcarman.nessy.agent.ToolCallState;
+import org.jwcarman.nessy.agent.ToolCallPhase;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
@@ -71,14 +71,14 @@ public final class StateCodec {
     if (!(phase instanceof AgentPhase.AwaitingTools awaiting)) {
       return phase;
     }
-    Map<String, ToolCallState> attached = new TreeMap<>();
-    awaiting.calls().forEach((callId, status) -> attached.put(callId, attach(status)));
+    Map<String, ToolCallPhase> attached = new TreeMap<>();
+    awaiting.calls().forEach((toolCallId, status) -> attached.put(toolCallId, attach(status)));
     return new AgentPhase.AwaitingTools(awaiting.assistantTurn(), attached, awaiting.responseId());
   }
 
-  private ToolCallState attach(ToolCallState status) {
-    return status instanceof ToolCallState.AwaitingApproval(var approval, var request)
-        ? new ToolCallState.AwaitingApproval(approval, request.attach(mapper))
+  private ToolCallPhase attach(ToolCallPhase status) {
+    return status instanceof ToolCallPhase.AwaitingApproval(var approval, var request)
+        ? new ToolCallPhase.AwaitingApproval(approval, request.attach(mapper))
         : status;
   }
 }

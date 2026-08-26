@@ -69,9 +69,9 @@ import org.slf4j.LoggerFactory;
  * replaces the retired release-and-redeliver behaviour (and its {@code EarlyDeliveryException}):
  * {@code ComputationApprovalContext.defer()} folds {@code AwaitingApproval} and commits BEFORE it
  * returns the id, so no approval answer can outrun its own park — anything that arrives against a
- * {@code Pending} call is an orphan or a duplicate, and never gets better. The tool side is no
- * exception: a {@code ToolFinished} against a still-{@code Running} call names a computation the
- * scope knows nothing of, and is dropped the same way.
+ * {@code SeekingApproval} call is an orphan or a duplicate, and never gets better. The tool side is
+ * no exception: a {@code ToolFinished} against a still-{@code RunningTool} call names a computation
+ * the scope knows nothing of, and is dropped the same way.
  *
  * <p>The capturing appender is wired onto {@link DeliveryWorker}'s own class logger, the technique
  * {@code DeliveryWorkerSilentLossWarningTest} uses.
@@ -163,14 +163,14 @@ class DeliveryWorkerMismatchedDeliveryTest {
     classicLogger.setLevel(null);
   }
 
-  private void scopeWith(ToolCallState status) {
+  private void scopeWith(ToolCallPhase status) {
     Message turn = Message.assistant(List.of(new ToolUseBlock(CALL)));
     AgentPhase phase =
         new AgentPhase.AwaitingTools(turn, Map.of("c1", status), ModelResponseId.of("r1"));
     store.save(new Versioned<>(phase, store.load().version()));
   }
 
-  private ToolCallState status() {
+  private ToolCallPhase status() {
     return ((AgentPhase.AwaitingTools) store.load().value()).calls().get("c1");
   }
 
@@ -199,19 +199,20 @@ class DeliveryWorkerMismatchedDeliveryTest {
   }
 
   @Test
-  void an_answer_for_a_still_pending_call_is_dropped_with_a_warning_and_never_redelivered() {
-    scopeWith(new ToolCallState.Pending());
+  void
+      an_answer_for_a_call_still_seeking_approval_is_dropped_with_a_warning_and_never_redelivered() {
+    scopeWith(new ToolCallPhase.SeekingApproval());
     ComputationId orphan = answerAnApproval();
 
     worker.drainApprovals(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(ToolCallState.Pending.class);
+    assertThat(status()).isInstanceOf(ToolCallPhase.SeekingApproval.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage())
         .contains("test-scope")
         .contains("c1")
         .contains(orphan.value())
-        .contains("Pending");
+        .contains("SeekingApproval");
 
     // consumed, not released: nothing comes back after the backoff
     clock.advance(PAST_THE_BACKOFF);
@@ -227,7 +228,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
    */
   @Test
   void a_dropped_delivery_reaches_the_fact_stream_and_the_dropped_counter() {
-    scopeWith(new ToolCallState.Pending());
+    scopeWith(new ToolCallPhase.SeekingApproval());
     ComputationId orphan = answerAnApproval();
 
     worker.drainApprovals(BatchSize.of(10));
@@ -250,12 +251,12 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   @Test
   void an_answer_naming_a_computation_the_parked_call_does_not_is_dropped_with_a_warning() {
-    scopeWith(new ToolCallState.AwaitingApproval(ComputationId.of("parked-elsewhere"), request()));
+    scopeWith(new ToolCallPhase.AwaitingApproval(ComputationId.of("parked-elsewhere"), request()));
     answerAnApproval(); // an orphan: a different computation entirely
 
     worker.drainApprovals(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(ToolCallState.AwaitingApproval.class);
+    assertThat(status()).isInstanceOf(ToolCallPhase.AwaitingApproval.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage()).contains("AwaitingApproval");
 
@@ -266,13 +267,13 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   @Test
   void a_result_naming_a_computation_the_parked_call_does_not_is_dropped_with_a_warning() {
-    scopeWith(new ToolCallState.AwaitingResult(ComputationId.of("parked-elsewhere")));
+    scopeWith(new ToolCallPhase.AwaitingResult(ComputationId.of("parked-elsewhere")));
     var created = toolClient.create(new Routing("test", "test-scope", "r1", CALL));
     toolClient.complete(created.id(), ToolResult.ok("done"));
 
     worker.drainTools(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(ToolCallState.AwaitingResult.class);
+    assertThat(status()).isInstanceOf(ToolCallPhase.AwaitingResult.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage()).contains("AwaitingResult");
 
@@ -283,28 +284,28 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   /**
    * The rule has no exception on the tool side either: a result reaching a call still {@code
-   * Running} — before its own {@code ToolDeferred} has folded — names a computation the scope knows
-   * nothing of, so it is dropped with a WARN like any other mismatch. In practice this window does
-   * not open (§4): the executor mints the computation on the {@code Awaited.Deferred} arm, right
-   * after the tool body returns, and the very next statement on that same thread folds {@code
+   * RunningTool} — before its own {@code ToolDeferred} has folded — names a computation the scope
+   * knows nothing of, so it is dropped with a WARN like any other mismatch. In practice this window
+   * does not open (§4): the executor mints the computation on the {@code Awaited.Deferred} arm,
+   * right after the tool body returns, and the very next statement on that same thread folds {@code
    * ToolDeferred} — with a one-day default deadline, and with the phase the only handle to the id,
    * nothing can complete or expire it inside a single thread hop.
    */
   @Test
   void a_result_for_a_call_still_running_is_dropped_with_a_warning() {
-    scopeWith(new ToolCallState.Running());
+    scopeWith(new ToolCallPhase.RunningTool());
     var created = toolClient.create(new Routing("test", "test-scope", "r1", CALL));
     toolClient.complete(created.id(), ToolResult.ok("done"));
 
     worker.drainTools(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(ToolCallState.Running.class);
+    assertThat(status()).isInstanceOf(ToolCallPhase.RunningTool.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage())
         .contains("test-scope")
         .contains("c1")
         .contains(created.id().value().toString())
-        .contains("Running");
+        .contains("RunningTool");
 
     clock.advance(PAST_THE_BACKOFF);
 
@@ -321,7 +322,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
     Message turn = Message.assistant(List.of(new ToolUseBlock(other)));
     AgentPhase phase =
         new AgentPhase.AwaitingTools(
-            turn, Map.of("c2", new ToolCallState.Running()), ModelResponseId.of("r1"));
+            turn, Map.of("c2", new ToolCallPhase.RunningTool()), ModelResponseId.of("r1"));
     store.save(new Versioned<>(phase, store.load().version()));
     answerAnApproval(); // routed to call "c1", which this phase does not hold
 

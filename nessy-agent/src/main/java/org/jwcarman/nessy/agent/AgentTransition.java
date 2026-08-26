@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.message.Message;
  */
 public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect> effects) {
 
-  private static final AgentTransition IGNORED = new AgentTransition();
+  private static final AgentTransition DROPPED = new AgentTransition();
 
   public AgentTransition {
     Objects.requireNonNull(next, "next must not be null");
@@ -34,7 +34,7 @@ public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect
     effects = List.copyOf(effects);
   }
 
-  /** Private ignored-marker constructor; bypasses the canonical null check via a sentinel. */
+  /** Private dropped-marker constructor; bypasses the canonical null check via a sentinel. */
   private AgentTransition() {
     this(AgentPhase.SENTINEL, List.of(), List.of());
   }
@@ -44,37 +44,37 @@ public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect
   }
 
   /** A stale or duplicate event: fold nothing, commit nothing, fire nothing (spec §2.2). */
-  public static AgentTransition ignore() {
-    return IGNORED;
+  public static AgentTransition dropped() {
+    return DROPPED;
   }
 
   public AgentTransition commit(Message... messages) {
-    requireNotIgnored();
+    requireNotDropped();
     var all = new ArrayList<>(commit);
     all.addAll(List.of(messages));
     return new AgentTransition(next, all, effects);
   }
 
   public AgentTransition emit(List<Effect> more) {
-    requireNotIgnored();
+    requireNotDropped();
     var all = new ArrayList<>(effects);
     all.addAll(more);
     return new AgentTransition(next, commit, all);
   }
 
-  public boolean isIgnored() {
-    return this == IGNORED;
+  public boolean isDropped() {
+    return this == DROPPED;
   }
 
   @Override
   public AgentPhase next() {
-    requireNotIgnored();
+    requireNotDropped();
     return next;
   }
 
-  private void requireNotIgnored() {
-    if (isIgnored()) {
-      throw new IllegalStateException("an ignored transition decides nothing");
+  private void requireNotDropped() {
+    if (isDropped()) {
+      throw new IllegalStateException("a dropped transition decides nothing");
     }
   }
 
@@ -83,7 +83,7 @@ public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect
     if (this == o) {
       return true;
     }
-    if (isIgnored() || !(o instanceof AgentTransition other) || other.isIgnored()) {
+    if (isDropped() || !(o instanceof AgentTransition other) || other.isDropped()) {
       return false;
     }
     return Objects.equals(next, other.next)
@@ -93,13 +93,13 @@ public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect
 
   @Override
   public int hashCode() {
-    return isIgnored() ? System.identityHashCode(this) : Objects.hash(next, commit, effects);
+    return isDropped() ? System.identityHashCode(this) : Objects.hash(next, commit, effects);
   }
 
   @Override
   public String toString() {
-    if (isIgnored()) {
-      return "AgentTransition[ignored]";
+    if (isDropped()) {
+      return "AgentTransition[dropped]";
     }
     return "AgentTransition[next=" + next + ", commit=" + commit + ", effects=" + effects + "]";
   }
