@@ -110,6 +110,23 @@ One extra substrate write per deferral, against a wait measured in hours.
   so rather than leaving a reader to infer it from a missing case in
   `outstandingEffects()`.
 
+## 5a. Decided 2026-08-26
+
+- **The wire format may break freely.** Renaming the persisted status
+  discriminators is fine; James: *"I don't really care about breaking state.
+  We can delete the database and go at it again."* No decode-side aliases.
+- **The adapter's default is drop-and-warn, not silent ignore.** A state that
+  does not override a handler for an event that reaches it logs a WARN and
+  makes no transition. This is only tolerable — and only useful — because
+  `CallEvent` is a sealed sub-hierarchy of `AgentEvent`: a `CallState` can
+  never receive `Observed` or `ModelFinished`, so the structurally-impossible
+  cases never arrive and every unhandled event genuinely is unexpected. It
+  also ends the silence around in-process mismatches, which today vanish
+  without a trace because only the delivery worker logs a drop.
+  *To settle when built:* a dropped delivery would otherwise log twice, once
+  from the state and once from the worker. Emit one line, from the worker,
+  carrying what the state reported.
+
 ## 6. Open — James's call
 
 1. **`HandingOff` is a placeholder name.** The existing statuses are named for
