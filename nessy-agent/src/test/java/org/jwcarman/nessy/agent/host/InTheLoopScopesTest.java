@@ -41,7 +41,10 @@ import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -213,6 +216,71 @@ class InTheLoopScopesTest {
       pump.pumpUntilQuiet();
 
       assertProbeNestsInside("execute", "execute_tool restart");
+    }
+  }
+
+  /**
+   * The soak's actual complaint, as an assertion (amendment §0, §6): the trace list stopped being a
+   * list of rounds because instrumentation was minting roots. After this round the ONLY roots a
+   * turn produces are the {@code invoke_agent} segment and the one {@code nessy.fold} that opens it
+   * — which has no segment to hang off because the segment does not exist until that fold's own
+   * output is published. Everything else, this round's two new spans included, belongs to
+   * something.
+   */
+  @Nested
+  class NoStandaloneRoots {
+
+    @Test
+    void
+        the_only_roots_a_gated_tool_using_turn_produces_are_the_segment_and_the_fold_that_opens_it() {
+      var pump = new PumpedExecutor();
+      var restart = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(restart, null),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0, 0))),
+                  List.of(
+                      new ModelEvent.TextChunk("done"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry)
+                      .grants(
+                          ToolGrant.grant(
+                              new ProbingTool(),
+                              context -> new ApprovalOutcome.Answered(Approval.approved()))));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("restart prod-eu");
+      pump.pumpUntilQuiet();
+
+      List<String> roots =
+          contexts().stream()
+              .filter(context -> context.getParentObservation() == null)
+              .map(Observation.Context::getName)
+              .distinct()
+              .toList();
+      assertThat(roots).isNotEmpty();
+      assertThat(roots).containsExactlyInAnyOrder("gen_ai.invoke_agent.duration", "nessy.fold");
+
+      // And specifically: neither of the two spans this round adds is ever one of them.
+      List<Observation.Context> asks =
+          contexts().stream()
+              .filter(context -> "nessy.approval.seek".equals(context.getName()))
+              .toList();
+      assertThat(asks).isNotEmpty();
+      assertThat(asks).allSatisfy(ask -> assertThat(ask.getParentObservation()).isNotNull());
+      assertThat(probes("execute")).isNotEmpty();
+      assertThat(probes("execute"))
+          .allSatisfy(probe -> assertThat(probe.getParentObservation()).isNotNull());
     }
   }
 
