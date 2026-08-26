@@ -31,6 +31,13 @@ The plumbing creates the computation, folds, commits, and only then runs the
 callback. The id cannot exist before the fold, so both errors become
 unrepresentable and the fold stops being re-entrant.
 
+*It is a **callback**, never a "continuation".* Continuum already owns that
+word — `create` registers a computation's **continuation** as its durable
+return address, and `continuum_continuation` is a table. Using it for this
+would put two "continuations" in one flow pointing opposite directions: the
+one Continuum holds says where the answer comes back to; ours says how the
+world is told where to send it.
+
 ## 2. The call state machine
 
 ### 2.1 States
