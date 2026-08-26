@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import java.util.List;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 
 /**
@@ -44,14 +45,19 @@ public final class CleanJournal {
     return List.of("journalctl", "--vacuum-time=" + days + "d");
   }
 
-  /** The grant: deferred, with the exact command line as its action. */
-  public static ToolGrant grant(CommandRunner runner) {
-    return Remediation.grant(
+  /** The tool: what runs once a human has said yes. */
+  public static Tool<Retention> tool(CommandRunner runner) {
+    return Remediation.tool(
         "clean_journal",
         "Vacuums the systemd journal down to the given number of days of history (7 by default)."
             + " Requires human approval; propose it, do not expect it to run during this round.",
         Retention.class,
         CleanJournal::argv,
         runner);
+  }
+
+  /** The grant: deferred, with the exact command line as its action. */
+  public static ToolGrant grant(CommandRunner runner) {
+    return Remediation.grant(tool(runner), CleanJournal::argv);
   }
 }

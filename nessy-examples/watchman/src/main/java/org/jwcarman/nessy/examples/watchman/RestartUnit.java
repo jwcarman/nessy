@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import java.util.List;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 
 /** {@code restart_unit(name)} (spec §2.1): {@code systemctl restart <name>}, behind a human. */
@@ -33,14 +34,19 @@ public final class RestartUnit {
     return List.of("systemctl", "restart", unit.name());
   }
 
-  /** The grant: deferred, with the exact command line as its action. */
-  public static ToolGrant grant(CommandRunner runner) {
-    return Remediation.grant(
+  /** The tool: what runs once a human has said yes. */
+  public static Tool<Unit> tool(CommandRunner runner) {
+    return Remediation.tool(
         "restart_unit",
         "Restarts one systemd unit. Requires human approval; propose it, do not expect it to run"
             + " during this round.",
         Unit.class,
         RestartUnit::argv,
         runner);
+  }
+
+  /** The grant: deferred, with the exact command line as its action. */
+  public static ToolGrant grant(CommandRunner runner) {
+    return Remediation.grant(tool(runner), RestartUnit::argv);
   }
 }

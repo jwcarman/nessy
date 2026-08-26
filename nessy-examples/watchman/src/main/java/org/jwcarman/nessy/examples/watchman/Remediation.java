@@ -43,8 +43,7 @@ final class Remediation {
   private Remediation() {}
 
   /**
-   * A grant that renders {@code argv(input)} as the action, defers to a human, and runs that very
-   * argv once approved.
+   * The tool half: runs {@code argv(input)} once a human has said yes.
    *
    * @param name the tool's name, as the model sees it
    * @param description what the tool does, written for the model
@@ -53,7 +52,7 @@ final class Remediation {
    * @param runner the host seam
    * @param <I> the tool's input type
    */
-  static <I> ToolGrant grant(
+  static <I> Tool<I> tool(
       String name,
       String description,
       Class<I> inputType,
@@ -64,16 +63,24 @@ final class Remediation {
     Objects.requireNonNull(inputType, "inputType must not be null");
     Objects.requireNonNull(argv, "argv must not be null");
     Objects.requireNonNull(runner, "runner must not be null");
-    Tool<I> tool =
-        Tool.of(
-            inputType,
-            t ->
-                t.name(name)
-                    .description(description)
-                    .requires(CompletionPolicy.DURABLE)
-                    .executes(input -> outcome(runner, argv.apply(input))));
+    return Tool.of(
+        inputType,
+        t ->
+            t.name(name)
+                .description(description)
+                .requires(CompletionPolicy.DURABLE)
+                .executes(input -> outcome(runner, argv.apply(input))));
+  }
+
+  /**
+   * The grant half: the same {@code argv} function, rendered as the action, behind {@link
+   * Approvers#defer()}. One function, two readers — the page and the shell cannot drift.
+   */
+  static <I> ToolGrant grant(Tool<I> tool, Function<I, List<String>> argv) {
+    Objects.requireNonNull(tool, "tool must not be null");
+    Objects.requireNonNull(argv, "argv must not be null");
     ActionContributor<I, String> action =
-        ActionContributor.named(name + "-command", input -> commandLine(argv.apply(input)));
+        ActionContributor.named(tool.name() + "-command", input -> commandLine(argv.apply(input)));
     return ToolGrant.grant(tool, action, Approvers.defer());
   }
 

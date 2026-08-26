@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import java.util.List;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 
 /** {@code restart_container(name)} (spec §2.1): {@code docker restart <name>}, behind a human. */
@@ -33,14 +34,19 @@ public final class RestartContainer {
     return List.of("docker", "restart", container.name());
   }
 
-  /** The grant: deferred, with the exact command line as its action. */
-  public static ToolGrant grant(CommandRunner runner) {
-    return Remediation.grant(
+  /** The tool: what runs once a human has said yes. */
+  public static Tool<Container> tool(CommandRunner runner) {
+    return Remediation.tool(
         "restart_container",
         "Restarts one Docker container. Requires human approval; propose it, do not expect it to"
             + " run during this round.",
         Container.class,
         RestartContainer::argv,
         runner);
+  }
+
+  /** The grant: deferred, with the exact command line as its action. */
+  public static ToolGrant grant(CommandRunner runner) {
+    return Remediation.grant(tool(runner), RestartContainer::argv);
   }
 }

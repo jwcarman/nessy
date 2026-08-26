@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -74,8 +75,11 @@ public class ToolBeans {
    */
   @Bean
   @ConditionalOnMissingBean
-  public BiConsumer<ComputationId, ToolResult> completions(CompletionDesk desk) {
-    return desk::complete;
+  public BiConsumer<ComputationId, ToolResult> completions(ObjectProvider<CompletionDesk> desks) {
+    // The desk is resolved when a job finishes, not when this bean is built. That keeps the tool
+    // list independent of auto-configuration ordering — and lets the wiring tests assemble the
+    // tools without a harness behind them.
+    return (id, result) -> desks.getObject().complete(id, result);
   }
 
   /**
@@ -84,7 +88,7 @@ public class ToolBeans {
    * ToolContext.defer()} is that the harness thread is given back before the work starts.
    */
   @Bean(destroyMethod = "shutdownNow")
-  @ConditionalOnMissingBean(name = "watchers")
+  @ConditionalOnMissingBean
   public ExecutorService watchers() {
     return Executors.newVirtualThreadPerTaskExecutor();
   }
