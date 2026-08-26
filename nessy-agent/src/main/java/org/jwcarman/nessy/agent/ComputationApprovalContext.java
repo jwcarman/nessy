@@ -73,7 +73,8 @@ public final class ComputationApprovalContext implements ApprovalContext {
     Computation created = client.create(new ApprovalRouting(routing, request));
     ComputationId id = ComputationId.of(created.id().value().toString());
     // Folds now, on this thread: nobody can be told about a question the scope has not recorded,
-    // because nobody has the id yet (spec §4, the ordering ruling).
+    // because nobody has the id yet (spec §4, the ordering ruling). deliver rethrows if the fold
+    // does not commit, so this returns an id only for a recorded park.
     sink.deliver(new AgentEvent.ApprovalDeferred(routing.call(), id, request));
     deferred = new ApprovalOutcome.Deferred(id);
     return deferred;

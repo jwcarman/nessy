@@ -20,22 +20,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.ApprovalRouting;
 import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.agent.spi.ApprovalContexts;
-import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ComputationId;
@@ -46,7 +49,6 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
-import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
 import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approver;
@@ -80,7 +82,10 @@ class RegistryToolCallExecutorTest {
     }
   }
 
+  /** Goes through the door: {@code defer()} first, and it keeps the id the door handed back. */
   static final class ParkingTool implements Tool<EchoInput> {
+    ComputationId handedOut;
+
     @Override
     public String name() {
       return "park_me";
@@ -98,7 +103,57 @@ class RegistryToolCallExecutorTest {
 
     @Override
     public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      handedOut = context.defer();
       return Awaited.deferred();
+    }
+  }
+
+  /**
+   * Returns {@code deferred()} having never called {@code defer()} — nowhere for an answer to go.
+   */
+  static final class ForgetfulTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "forgetful";
+    }
+
+    @Override
+    public String description() {
+      return "defers without deferring";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      return Awaited.deferred();
+    }
+  }
+
+  /** Answers in hand AFTER the door already committed the wait — two answers for one call. */
+  static final class TalkativeTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "talkative";
+    }
+
+    @Override
+    public String description() {
+      return "answers after deferring";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      context.defer();
+      return Awaited.ready(ToolResult.ok("too late"));
     }
   }
 
@@ -186,20 +241,38 @@ class RegistryToolCallExecutorTest {
 
   private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("r1");
 
-  private AgentEvent.ToolFinished run(
+  private final ObjectMapper mapper = TestMappers.plainlyPinned();
+  private final ContinuumClient<Approval, ApprovalRouting> approvalClient =
+      TestApprovalClients.client("approval/cli", mapper);
+  private final ContinuumClient<ToolResult, Routing> toolClient =
+      TestToolClients.client("tool/cli", mapper);
+
+  private RegistryToolCallExecutor executorOver(
+      ToolRegistry registry, RecordingTurnObserver turn, PumpedExecutor pump) {
+    return new RegistryToolCallExecutor(
+        registry,
+        AgentType.of("cli"),
+        AgentId.of("cli"),
+        turn,
+        pump,
+        approvalClient,
+        toolClient,
+        mapper);
+  }
+
+  /** The run door: every event it delivered, in order. */
+  private List<AgentEvent> runDelivering(
       ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
-    var executor =
-        new RegistryToolCallExecutor(
-            registry,
-            AgentType.of("cli"),
-            AgentId.of("cli"),
-            turn,
-            pump,
-            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.runTool(call, RESPONSE_ID, delivered::add);
+    executorOver(registry, turn, pump).runTool(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
+    return List.copyOf(delivered);
+  }
+
+  private AgentEvent.ToolFinished run(
+      ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
+    List<AgentEvent> delivered = runDelivering(registry, call, turn);
     assertThat(delivered).hasSize(1);
     return (AgentEvent.ToolFinished) delivered.getFirst();
   }
@@ -207,16 +280,8 @@ class RegistryToolCallExecutorTest {
   /** The ask door: every event it delivered, in order. */
   private List<AgentEvent> seek(ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
-    var executor =
-        new RegistryToolCallExecutor(
-            registry,
-            AgentType.of("cli"),
-            AgentId.of("cli"),
-            turn,
-            pump,
-            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.seekApproval(call, RESPONSE_ID, delivered::add);
+    executorOver(registry, turn, pump).seekApproval(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
     return List.copyOf(delivered);
   }
@@ -245,15 +310,6 @@ class RegistryToolCallExecutorTest {
     assertThat(delivered).hasSize(1);
     var answered = (AgentEvent.ApprovalAnswered) delivered.getFirst();
     assertThat(((Approval.Denied) answered.answer()).reason()).contains("unknown tool");
-  }
-
-  @Test
-  void aParkingToolFailsLoudlyInThisWiring() {
-    var call =
-        new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
-    var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
-    var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message()).contains("deferred execution is unavailable");
   }
 
   @Test
@@ -367,44 +423,49 @@ class RegistryToolCallExecutorTest {
     assertThat(turn.events()).contains(new TurnEvent.ToolCallProgressed(call, "halfway"));
   }
 
+  /**
+   * The executor creates nothing (spec §0): the one {@code ToolDeferred} the sink saw was folded by
+   * the door, on the tool's own thread, and it carries the very id the tool was handed.
+   */
   @Test
-  void aToolThatDefersDeliversToolDeferredCarryingTheComputationsId() {
+  void aToolThatDefersFoldsItsOwnToolDeferredAndTheExecutorDeliversNothingMore() {
     var call =
         new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
-    var parked = ComputationId.of("tool:test:cli:r1:c1");
-    var pump = new PumpedExecutor();
+    var tool = new ParkingTool();
     var turn = new RecordingTurnObserver();
-    var executor =
-        new RegistryToolCallExecutor(
-            ToolRegistry.of(new ParkingTool()),
-            AgentType.of("cli"),
-            AgentId.of("cli"),
-            turn,
-            pump,
-            (parkedCall, address, timeout) -> new ToolExecution.Deferred(parked),
-            TestMappers.plainlyPinned());
-    var delivered = new ArrayList<AgentEvent>();
 
-    executor.runTool(call, RESPONSE_ID, delivered::add);
-    pump.pumpUntilQuiet();
+    var delivered = runDelivering(ToolRegistry.of(tool), call, turn);
 
-    assertThat(delivered).containsExactly(new AgentEvent.ToolDeferred(call, parked));
+    assertThat(tool.handedOut).isNotNull();
+    assertThat(delivered).containsExactly(new AgentEvent.ToolDeferred(call, tool.handedOut));
     assertThat(turn.events()).isEmpty();
   }
 
   @Test
-  void theLoudDefaultSurvivesThePolicySeam() {
+  void aDeferredArmWithoutTheDoorFailsInBand() {
     var call =
-        new ToolCall("c9", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
-    var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
+        new ToolCall("c1", "forgetful", JsonNodeFactory.instance.objectNode().put("value", "x"));
+
+    var finished = run(ToolRegistry.of(new ForgetfulTool()), call, new RecordingTurnObserver());
+
     var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message()).contains("deferred execution is unavailable");
+    assertThat(failed.error().message()).isEqualTo(RegistryToolCallExecutor.DEFERRED_WITHOUT_DEFER);
   }
 
-  private DeferredToolCallPolicy neverParks() {
-    return (parkedCall, address, timeout) -> {
-      throw new AssertionError("no tool in this test defers");
-    };
+  @Test
+  void anAnswerAfterTheDoorCommittedTheWaitFailsInBandBehindTheFoldTheDoorAlreadyMade() {
+    var call =
+        new ToolCall("c1", "talkative", JsonNodeFactory.instance.objectNode().put("value", "x"));
+
+    var delivered =
+        runDelivering(ToolRegistry.of(new TalkativeTool()), call, new RecordingTurnObserver());
+
+    assertThat(delivered).hasSize(2);
+    assertThat(delivered.getFirst()).isInstanceOf(AgentEvent.ToolDeferred.class);
+    var finished = (AgentEvent.ToolFinished) delivered.get(1);
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message())
+        .isEqualTo(RegistryToolCallExecutor.ANSWERED_AFTER_DEFERRING);
   }
 
   @Test
@@ -574,58 +635,15 @@ class RegistryToolCallExecutorTest {
 
   @Test
   void aDeferringApproverDeliversNothingItselfBecauseDeferAlreadyFolded() {
-    var parked = ComputationId.of("approval-1");
-    var folded = new ArrayList<AgentEvent>();
-    var pump = new PumpedExecutor();
-    var turn = new RecordingTurnObserver();
-    ApprovalContexts contexts =
-        (call, responseId, request, sink) ->
-            new ApprovalContext() {
-              @Override
-              public ApprovalRequest request() {
-                return request;
-              }
-
-              @Override
-              public ApprovalOutcome defer() {
-                sink.deliver(new AgentEvent.ApprovalDeferred(call, parked, request));
-                return new ApprovalOutcome.Deferred(parked);
-              }
-            };
     var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), Approvers.defer()));
-    var executor =
-        new RegistryToolCallExecutor(
-            registry,
-            AgentType.of("cli"),
-            AgentId.of("cli"),
-            turn,
-            pump,
-            neverParks(),
-            contexts,
-            TestMappers.plainlyPinned());
     var call =
         new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var turn = new RecordingTurnObserver();
 
-    executor.seekApproval(call, RESPONSE_ID, folded::add);
-    pump.pumpUntilQuiet();
+    var folded = seek(registry, call, turn);
 
     assertThat(folded).hasSize(1);
     assertThat(folded.getFirst()).isInstanceOf(AgentEvent.ApprovalDeferred.class);
     assertThat(turn.events()).isEmpty();
-  }
-
-  @Test
-  void aWiringWithNoContinuumBehindItCannotParkAndSaysSo() {
-    var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), Approvers.defer()));
-    var call =
-        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
-
-    var delivered = seek(registry, call, new RecordingTurnObserver());
-
-    assertThat(delivered).hasSize(1);
-    var answered = (AgentEvent.ApprovalAnswered) delivered.getFirst();
-    assertThat(((Approval.Denied) answered.answer()).reason())
-        .contains("approver failed")
-        .contains(RegistryToolCallExecutor.APPROVAL_UNAVAILABLE);
   }
 }

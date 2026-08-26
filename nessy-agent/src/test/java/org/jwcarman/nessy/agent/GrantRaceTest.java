@@ -150,7 +150,6 @@ class GrantRaceTest {
           notifications.add(((ApprovalOutcome.Deferred) outcome).id());
           return outcome;
         };
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(toolClient);
     var tool = new CountingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, approver));
     var pump = new PumpedExecutor();
@@ -169,13 +168,8 @@ class GrantRaceTest {
             AgentId.of("test-scope"),
             narrator,
             pump,
-            deferredPolicy,
-            (racedCall, responseId, request, sink) ->
-                new ComputationApprovalContext(
-                    approvalClient,
-                    new Routing("test", "test-scope", responseId.value(), racedCall),
-                    request,
-                    sink),
+            approvalClient,
+            toolClient,
             mapper);
     var harness =
         TestAgents.<String>harness(

@@ -72,7 +72,7 @@ public final class ScriptedToolExecutor implements ToolCallExecutor {
     ComputationId parked = deferrals.get(call.id());
     if (parked != null) {
       ApprovalRequest request =
-          ApprovalRequest.draft("scripted", "scripted", call, MAPPER).freeze();
+          ApprovalRequest.draft("scripted", "scripted", call, Map.of(), MAPPER).freeze();
       pump.execute(() -> sink.deliver(new AgentEvent.ApprovalDeferred(call, parked, request)));
       return;
     }

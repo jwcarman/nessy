@@ -37,8 +37,6 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ApprovalCodec;
 import org.jwcarman.nessy.agent.ApprovalRouting;
-import org.jwcarman.nessy.agent.ComputationApprovalContext;
-import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Routing;
@@ -91,9 +89,9 @@ public final class HarnessConfig<O> {
 
   /**
    * The tool kind's default Continuum deadline (continuum-adoption spec §3, §11.2): what a tool
-   * with no declared {@link org.jwcarman.nessy.api.tool.Tool#timeout()} gets stamped with — {@link
-   * ComputationDeferredToolCallPolicy#onDeferred} passes a declared timeout straight through to
-   * {@code create(routing, timeout)} instead, overriding this default. Continuum requires every
+   * with no declared {@link org.jwcarman.nessy.api.tool.Tool#timeout()} gets stamped with — {@code
+   * ComputationToolContext#defer()} passes a declared timeout straight through to {@code
+   * create(routing, timeout)} instead, overriding this default. Continuum requires every
    * computation to carry a deadline (no deadline-less wait survives adoption, spec §3), so a tool
    * that never used to expire now does — a day is generous for an external system to answer while
    * still bounding the leak a truly abandoned computation would otherwise be.
@@ -488,14 +486,8 @@ public final class HarnessConfig<O> {
                     scopeId,
                     scopeTurnObserver,
                     exec,
-                    new ComputationDeferredToolCallPolicy(effectiveToolClient),
-                    (call, responseId, request, sink) ->
-                        new ComputationApprovalContext(
-                            effectiveApprovalClient,
-                            new Routing(
-                                agentType.name(), scopeId.value(), responseId.value(), call),
-                            request,
-                            sink),
+                    effectiveApprovalClient,
+                    effectiveToolClient,
                     pinned),
             effectiveSubstrate,
             pinned,

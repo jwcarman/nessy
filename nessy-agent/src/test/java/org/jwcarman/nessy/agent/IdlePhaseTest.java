@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -61,7 +62,8 @@ class IdlePhaseTest {
   void aStrayApprovalOrDeferralIsIgnored() {
     var call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
     var parked = ComputationId.of("parked-1");
-    var request = ApprovalRequest.draft("ops", "prod-1", call, new ObjectMapper()).freeze();
+    var request =
+        ApprovalRequest.draft("ops", "prod-1", call, Map.of(), new ObjectMapper()).freeze();
 
     assertThat(
             new Phase.Idle()

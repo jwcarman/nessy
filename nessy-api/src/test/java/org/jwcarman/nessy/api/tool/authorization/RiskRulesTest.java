@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -37,6 +38,7 @@ class RiskRulesTest {
             "ops",
             "a1",
             new ToolCall("c1", "x", JsonNodeFactory.instance.objectNode()),
+            Map.of(),
             new ObjectMapper());
     draft.deposit(ApprovalRequest.RISK, RiskAssessments.at(level)); // test helper: see below
     return draft.freeze();
@@ -76,6 +78,7 @@ class RiskRulesTest {
                 "ops",
                 "a1",
                 new ToolCall("c1", "x", JsonNodeFactory.instance.objectNode()),
+                Map.of(),
                 new ObjectMapper())
             .freeze();
 

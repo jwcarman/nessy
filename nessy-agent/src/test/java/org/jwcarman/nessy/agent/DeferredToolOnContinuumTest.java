@@ -96,6 +96,11 @@ class DeferredToolOnContinuumTest {
     private final String name;
     final AtomicInteger invocations = new AtomicInteger();
 
+    /**
+     * The id the door handed back on the most recent execution — the tool's own callback address.
+     */
+    volatile ComputationId handedOut;
+
     DeferringTool(String name) {
       this.name = name;
     }
@@ -118,6 +123,7 @@ class DeferredToolOnContinuumTest {
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
       invocations.incrementAndGet();
+      handedOut = context.defer();
       return Awaited.deferred();
     }
   }
@@ -151,6 +157,7 @@ class DeferredToolOnContinuumTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      context.defer();
       return Awaited.deferred();
     }
   }
@@ -195,8 +202,6 @@ class DeferredToolOnContinuumTest {
   private final RecordingMemory memory = new RecordingMemory();
   private final SubstrateAgentStateStore store =
       new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-  private final ComputationDeferredToolCallPolicy deferredPolicy =
-      new ComputationDeferredToolCallPolicy(toolClient);
   private final RegistryToolCallExecutor executor =
       new RegistryToolCallExecutor(
           ToolRegistry.of(
@@ -206,13 +211,8 @@ class DeferredToolOnContinuumTest {
           AgentId.of("test-scope"),
           turn,
           pump,
-          deferredPolicy,
-          (call, responseId, request, sink) ->
-              new ComputationApprovalContext(
-                  approvalClient,
-                  new Routing("test", "test-scope", responseId.value(), call),
-                  request,
-                  sink),
+          approvalClient,
+          toolClient,
           mapper);
   private final Harness<String> harness =
       TestAgents.<String>harness(
@@ -325,12 +325,19 @@ class DeferredToolOnContinuumTest {
     assertThat(tool.invocations).hasValue(1);
   }
 
+  /**
+   * The id comes from the TOOL, not the phase (tool-context-defer spec §0): a real external system
+   * is handed this address inside the tool body and can never read the agent's phase. That the two
+   * agree is asserted here too — the other tests in this file read the phase, and prove it names
+   * the same wait.
+   */
   @Test
   void completingTheComputationFoldsTheResult() {
     var call = deferringCall("c1");
     driveOnceWithPending(call);
-    ComputationId id = parkedToolIdFor(call);
+    ComputationId id = tool.handedOut;
 
+    assertThat(id).isEqualTo(parkedToolIdFor(call));
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
 

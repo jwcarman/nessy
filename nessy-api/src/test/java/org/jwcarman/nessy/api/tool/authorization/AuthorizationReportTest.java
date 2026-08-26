@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
@@ -321,7 +322,7 @@ class AuthorizationReportTest {
       Key<String> seen = new Key<>(String.class, "seen");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
       ApprovalRequest.Draft draft =
-          ApprovalRequest.draft("test-agent", "scope-1", call, new ObjectMapper());
+          ApprovalRequest.draft("test-agent", "scope-1", call, Map.of(), new ObjectMapper());
       Enricher named = Enricher.named("marker", d -> d.deposit(seen, "yes"));
 
       named.enrich(draft);

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -218,6 +220,83 @@ class DefaultAgentApplyTest {
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.applyFailures()).hasSize(1);
     assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    // deliver rethrows after narrating now (tool-context-defer spec §3); the throw ends the model
+    // executor's task and nothing else, exactly as a real thread pool would treat it.
+    assertThat(f.pump.failures()).hasSize(1);
+  }
+
+  /**
+   * {@code deliver} narrates and then RETHROWS (tool-context-defer spec §3). Every executor-side
+   * caller runs inside a task where the narration was already the only trace, so nothing changes
+   * for them; what the rethrow buys is the {@code defer()} doors, which promise that an id they
+   * hand back is an id the scope names.
+   */
+  @Test
+  void aFoldThatCannotCommitIsNarratedOnceAndThenReachesItsCaller() {
+    var store =
+        new SubstrateAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var failures = new ArrayList<AgentEvent>();
+    var agent =
+        TestAgents.<String>wired(
+            new ThrowingThenDelegatingMemory(new RecordingMemory(), 1),
+            store,
+            new NoopBacklog(),
+            text -> List.of(new TextBlock(text)),
+            sink -> {},
+            new NoToolsExecutor(),
+            new FailureRecorder(failures),
+            false,
+            StalenessPolicy.never());
+    var observed = new AgentEvent.Observed(List.of(new TextBlock("hello")));
+
+    assertThatThrownBy(() -> agent.deliver(observed)).isInstanceOf(IllegalStateException.class);
+
+    assertThat(failures).containsExactly(observed);
+    assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
+  }
+
+  private static final class NoopBacklog implements Backlog<String> {
+    @Override
+    public void add(String observation) {}
+
+    @Override
+    public Optional<String> poll() {
+      return Optional.empty();
+    }
+  }
+
+  /** Records only {@code applyFailed}; every other callback is a silent no-op. */
+  private record FailureRecorder(List<AgentEvent> narrated) implements AgentObserver {
+    @Override
+    public void applied(AgentEvent event, Transition transition) {
+      // silent: only applyFailed is recorded
+    }
+
+    @Override
+    public void ignored(AgentEvent event) {
+      // silent: only applyFailed is recorded
+    }
+
+    @Override
+    public void renderFailed(Object observation, RuntimeException error) {
+      // silent: only applyFailed is recorded
+    }
+
+    @Override
+    public void applyFailed(AgentEvent event, RuntimeException error) {
+      narrated.add(event);
+    }
+
+    @Override
+    public void reFired(List<Effect> effects) {
+      // silent: only applyFailed is recorded
+    }
+
+    @Override
+    public void observationRequeued(Object observation) {
+      // silent: only applyFailed is recorded
+    }
   }
 
   @Test

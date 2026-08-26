@@ -15,32 +15,34 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import java.util.Objects;
-
 /**
- * What a tool learns about the invocation it is serving.
- *
- * @param invocation this execution's opaque, stable idempotency key (computation-identity spec §4
- *     addendum): the execution {@link ComputationId} — stable across every redispatch and replay, a
- *     tool wants this for logging, correlation, or deduplicating an external effect under
- *     at-least-once redelivery. Carries no extractable structure (spec §1) — a tool reads it as an
- *     opaque token, never parses it. Replaces the former {@code address}/{@code invocationId} pair:
- *     no current tool or example reads the structured coordinates, only this one stable token.
+ * What a tool learns about the invocation it is serving, plus what it can do with it — the mirror
+ * of {@code ApprovalContext} (tool-context-defer spec §1.1). {@link #defer()} does the plumbing: it
+ * creates the durable computation, records the wait in the scope, waits for that record to commit,
+ * and only then hands back the id. By the time a tool can give the id to anyone, the phase already
+ * names the wait.
  */
-public record ToolContext(ToolCall call, ToolEventListener events, ComputationId invocation) {
+public interface ToolContext {
 
-  public ToolContext {
-    Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(events, "events must not be null");
-    Objects.requireNonNull(invocation, "invocation must not be null");
-  }
+  /** The call being served. */
+  ToolCall call();
 
   /**
-   * Reports progress from inside a long-running tool. {@link ToolEvent.Progress} carries only
-   * {@code message} — no call or provider id travels with it, so a tool reporting progress has
-   * nothing to distrust because there is nothing untrusted to carry (spec §2).
+   * This execution's opaque, stable idempotency key — deterministic from the call's coordinates,
+   * identical across every redispatch and replay. NOT the computation id: a tool deduplicates an
+   * external side effect under this, and hands out the id {@link #defer()} returns as the callback
+   * address.
    */
-  public void progress(String message) {
-    events.on(new ToolEvent.Progress(message));
-  }
+  ComputationId invocation();
+
+  /** Reports progress from inside a long-running tool ({@link ToolEvent.Progress}). */
+  void progress(String message);
+
+  /**
+   * "The answer arrives later": creates this call's durable computation with the tool's declared
+   * timeout as its deadline, folds {@code ToolDeferred}, commits, and returns the computation's id.
+   * Idempotent: a second call returns the same id and creates nothing. Throws if the wait could not
+   * be recorded — nothing was parked, and the tool should let the exception propagate.
+   */
+  ComputationId defer();
 }

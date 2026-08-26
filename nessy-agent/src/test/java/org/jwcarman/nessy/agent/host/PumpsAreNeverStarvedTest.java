@@ -148,6 +148,7 @@ class PumpsAreNeverStarvedTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      context.defer();
       return Awaited.deferred();
     }
   }

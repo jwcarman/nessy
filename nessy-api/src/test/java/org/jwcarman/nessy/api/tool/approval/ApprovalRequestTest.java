@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.Key;
@@ -31,10 +32,14 @@ class ApprovalRequestTest {
   private final ToolCall call =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode().put("target", "eu"));
 
+  record Restart(String target) {}
+
+  private static final Restart INPUT = new Restart("eu");
+
   @Test
   void aDraftFreezesIntoTheQuestionWithItsActionAndFacts() {
     ApprovalRequest request =
-        ApprovalRequest.draft("ops", "prod-eu", call, mapper)
+        ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper)
             .action("restart eu")
             .deposit(NOTE, "approved last week")
             .freeze();
@@ -48,7 +53,7 @@ class ApprovalRequestTest {
 
   @Test
   void anUnsetActionFreezesAsTheEmptyString() {
-    ApprovalRequest request = ApprovalRequest.draft("ops", "prod-eu", call, mapper).freeze();
+    ApprovalRequest request = ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper).freeze();
 
     assertThat(request.action()).isEmpty();
   }
@@ -56,7 +61,7 @@ class ApprovalRequestTest {
   @Test
   void theRequestIsAJsonDocumentThatRoundTripsByteForByte() {
     ApprovalRequest original =
-        ApprovalRequest.draft("ops", "prod-eu", call, mapper)
+        ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper)
             .action("restart eu")
             .deposit(NOTE, "n")
             .freeze();
@@ -72,10 +77,32 @@ class ApprovalRequestTest {
 
   @Test
   void aDraftIsSingleUse() {
-    ApprovalRequest.Draft draft = ApprovalRequest.draft("ops", "prod-eu", call, mapper);
+    ApprovalRequest.Draft draft = ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper);
     draft.freeze();
 
     assertThatThrownBy(draft::freeze).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void theDraftHandsBackTheTypedInput() {
+    ApprovalRequest.Draft draft = ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper);
+
+    ApprovalRequest request = draft.deposit(NOTE, draft.input(Restart.class).target()).freeze();
+
+    assertThat(request.facts().get(NOTE)).contains("eu");
+    // transient: the call's arguments already carry the input, so the document holds no second copy
+    assertThat(new String(ApprovalRequest.codec(mapper).encode(request), StandardCharsets.UTF_8))
+        .doesNotContain("\"input\"");
+  }
+
+  @Test
+  void theDraftRefusesTheWrongInputType() {
+    ApprovalRequest.Draft draft = ApprovalRequest.draft("ops", "prod-eu", call, INPUT, mapper);
+
+    assertThatThrownBy(() -> draft.input(String.class))
+        .isInstanceOf(ClassCastException.class)
+        .hasMessageContaining(Restart.class.getName())
+        .hasMessageContaining(String.class.getName());
   }
 
   @Test

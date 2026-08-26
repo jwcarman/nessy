@@ -149,8 +149,6 @@ class ApprovalOnContinuumTest {
       new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
-  private final ComputationDeferredToolCallPolicy deferredPolicy =
-      new ComputationDeferredToolCallPolicy(toolClient);
   private final RegistryToolCallExecutor executor =
       new RegistryToolCallExecutor(
           ToolRegistry.of(ToolGrant.grant(tool, approver)),
@@ -158,13 +156,8 @@ class ApprovalOnContinuumTest {
           AgentId.of("test-scope"),
           turn,
           pump,
-          deferredPolicy,
-          (call, responseId, request, sink) ->
-              new ComputationApprovalContext(
-                  client,
-                  new Routing("test", "test-scope", responseId.value(), call),
-                  request,
-                  sink),
+          client,
+          toolClient,
           mapper);
   private final Harness<String> harness =
       TestAgents.<String>harness(
@@ -201,7 +194,7 @@ class ApprovalOnContinuumTest {
   }
 
   private ApprovalRequest requestFor(ToolCall call) {
-    return ApprovalRequest.draft("test", "test-scope", call, mapper).freeze();
+    return ApprovalRequest.draft("test", "test-scope", call, Map.of(), mapper).freeze();
   }
 
   /**

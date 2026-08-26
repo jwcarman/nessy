@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -38,6 +39,7 @@ class EventGrammarTest {
               "ops",
               "prod-1",
               new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode()),
+              Map.of(),
               new ObjectMapper())
           .freeze();
 

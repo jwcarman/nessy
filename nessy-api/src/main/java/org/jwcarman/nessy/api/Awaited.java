@@ -19,10 +19,10 @@ package org.jwcarman.nessy.api;
  * The outcome of something that might have to wait.
  *
  * <p>Two arms, no third (durable spec, two-armed ruling): {@link Ready} is the answer in hand;
- * {@link Deferred} says the answer arrives through a durable computation. Deferred carries no
- * identity — the wiring derives the computation's deterministic id from the work's coordinates
- * (submit-once discipline), because a tool can neither reach the backend nor know the scope. A
- * future {@code ToolContext} may grow computation creation for tools that own their references.
+ * {@link Deferred} says the answer arrives through a durable computation. A tool returns {@code
+ * Deferred} only after {@code ToolContext#defer()} has recorded the wait and handed it the id;
+ * returning it without deferring, or returning {@code Ready} after deferring, is an in-band
+ * failure.
  *
  * @param <T> what the wait produces
  */

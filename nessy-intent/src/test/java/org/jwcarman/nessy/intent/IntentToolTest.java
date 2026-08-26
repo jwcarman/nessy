@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolEvent;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -43,7 +44,25 @@ class IntentToolTest {
     var call =
         new ToolCall(
             "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("declaration", "x"));
-    return new ToolContext(call, ToolEventListener.noop(), ComputationId.of("execution-id"));
+    return new TestContext(call, ToolEventListener.noop());
+  }
+
+  /** The plain test double: no computation behind it, so {@code defer()} refuses. */
+  private record TestContext(ToolCall call, ToolEventListener events) implements ToolContext {
+    @Override
+    public ComputationId invocation() {
+      return ComputationId.of("execution-id");
+    }
+
+    @Override
+    public void progress(String message) {
+      events.on(new ToolEvent.Progress(message));
+    }
+
+    @Override
+    public ComputationId defer() {
+      throw new UnsupportedOperationException("this test never defers");
+    }
   }
 
   @Nested

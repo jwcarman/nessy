@@ -33,9 +33,27 @@ class ToolOfTest {
 
   record Widget3D(String label) {}
 
+  /** The plain test double: no computation behind it, so {@code defer()} refuses. */
+  private record TestContext(ToolCall call, ToolEventListener events) implements ToolContext {
+    @Override
+    public ComputationId invocation() {
+      return ComputationId.of("execution-id");
+    }
+
+    @Override
+    public void progress(String message) {
+      events.on(new ToolEvent.Progress(message));
+    }
+
+    @Override
+    public ComputationId defer() {
+      throw new UnsupportedOperationException("this test never defers");
+    }
+  }
+
   private static ToolContext contextFor(ToolEventListener listener) {
     ToolCall call = new ToolCall("c1", "create-account", JsonNodeFactory.instance.objectNode());
-    return new ToolContext(call, listener, ComputationId.of("execution-id"));
+    return new TestContext(call, listener);
   }
 
   private static ToolContext noopContext() {

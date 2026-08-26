@@ -51,7 +51,7 @@ class AwaitingToolsPhaseTest {
   private static final ComputationId PARKED = ComputationId.of("parked-1");
   private static final ComputationId OTHER = ComputationId.of("parked-other");
   private static final ApprovalRequest REQUEST =
-      ApprovalRequest.draft("ops", "prod-1", CALL_A, new ObjectMapper())
+      ApprovalRequest.draft("ops", "prod-1", CALL_A, Map.of(), new ObjectMapper())
           .action("restart prod-1")
           .freeze();
 

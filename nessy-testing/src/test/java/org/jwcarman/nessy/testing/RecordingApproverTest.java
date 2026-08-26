@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
@@ -33,7 +34,7 @@ class RecordingApproverTest {
 
   private static ApprovalRequest requestNamed(String action) {
     ObjectMapper mapper = new ObjectMapper();
-    return ApprovalRequest.draft("ops", "prod-eu", CALL, mapper).action(action).freeze();
+    return ApprovalRequest.draft("ops", "prod-eu", CALL, Map.of(), mapper).action(action).freeze();
   }
 
   @Test

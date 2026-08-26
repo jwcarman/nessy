@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -33,7 +34,7 @@ class EnrichersTest {
   private final ObjectMapper mapper = new ObjectMapper();
 
   private ApprovalRequest.Draft freshDraft() {
-    return ApprovalRequest.draft("test-agent", "scope-1", CALL, mapper);
+    return ApprovalRequest.draft("test-agent", "scope-1", CALL, Map.of(), mapper);
   }
 
   @Test

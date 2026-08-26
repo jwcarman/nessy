@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
@@ -35,7 +36,7 @@ class IntentRulesTest {
           "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
 
   private static ApprovalRequest.Draft freshDraft() {
-    return ApprovalRequest.draft("ops", "agent-a", CALL, MAPPER);
+    return ApprovalRequest.draft("ops", "agent-a", CALL, Map.of(), MAPPER);
   }
 
   @Test

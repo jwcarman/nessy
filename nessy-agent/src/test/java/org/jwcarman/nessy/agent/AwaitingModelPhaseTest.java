@@ -105,7 +105,8 @@ class AwaitingModelPhaseTest {
   @Test
   void aStrayApprovalOrDeferralIsIgnored() {
     var parked = ComputationId.of("parked-1");
-    var request = ApprovalRequest.draft("ops", "prod-1", CALL_A, new ObjectMapper()).freeze();
+    var request =
+        ApprovalRequest.draft("ops", "prod-1", CALL_A, Map.of(), new ObjectMapper()).freeze();
 
     assertThat(
             new Phase.AwaitingModel()

@@ -73,7 +73,7 @@ class ApprovalDeskTest {
   }
 
   private ApprovalRequest request() {
-    return ApprovalRequest.draft("t", SCOPE.value(), CALL, mapper)
+    return ApprovalRequest.draft("t", SCOPE.value(), CALL, Map.of(), mapper)
         .action("restart prod-eu")
         .deposit(TICKET, "OPS-42")
         .freeze();

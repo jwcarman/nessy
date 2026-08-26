@@ -19,21 +19,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.CallAddress;
+import org.jwcarman.nessy.agent.ApprovalRouting;
+import org.jwcarman.nessy.agent.ComputationApprovalContext;
+import org.jwcarman.nessy.agent.ComputationToolContext;
 import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
-import org.jwcarman.nessy.agent.spi.ApprovalContexts;
-import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -66,10 +66,10 @@ import org.slf4j.LoggerFactory;
  * model.
  *
  * <p>{@link #runTool} is past the gate: find, bind, run. It never consults an approver — the answer
- * is already a fact in the phase. What happens when a tool defers is the wiring's {@link
- * DeferredToolCallPolicy}: the default (5-arg constructor) fails loudly in-band — a deferred turn
- * wedges a conversation — while a durable wiring suspends the call into its computation and the
- * executor delivers {@code ToolDeferred} with its id.
+ * is already a fact in the phase. It creates no computation either (tool-context-defer spec §0): a
+ * tool that means to wait says so through {@link ToolContext#defer()}, which creates, folds and
+ * commits before it hands the id back. All this door does afterwards is police {@link Awaited}'s
+ * two arms against what the door recorded (spec §1.2).
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -80,64 +80,43 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final AgentId id;
   private final TurnObserver turn;
   private final Executor executor;
-  private final DeferredToolCallPolicy deferredToolCallPolicy;
-  private final ApprovalContexts approvalContexts;
+  private final ContinuumClient<Approval, ApprovalRouting> approvalClient;
+  private final ContinuumClient<ToolResult, Routing> toolClient;
   private final Codecs codecs;
   private final ObjectMapper mapper;
 
-  private static final String PARKING_UNAVAILABLE =
-      "deferred execution is unavailable in this wiring; the desk arrives with the harness";
+  /** A tool returned {@code Awaited.ready(x)} after its own {@code defer()} recorded the wait. */
+  static final String ANSWERED_AFTER_DEFERRING = "tool answered after deferring";
 
-  static final String APPROVAL_UNAVAILABLE =
-      "approval parking is unavailable in this wiring; the desk arrives with the harness";
+  /** A tool returned {@code Awaited.deferred()} without ever calling {@code context.defer()}. */
+  static final String DEFERRED_WITHOUT_DEFER = "deferring tool never called context.defer()";
 
+  /**
+   * @param registry the grants this executor serves
+   * @param type the recipe's name
+   * @param id the scope
+   * @param turn where a call's narration goes
+   * @param executor where each dispatch runs
+   * @param approvalClient the approval kind's Continuum client — required, never null (spec §1.4)
+   * @param toolClient the tool kind's Continuum client — required, never null (spec §1.4)
+   * @param mapper the harness's pinned mapper
+   */
   public RegistryToolCallExecutor(
       ToolRegistry registry,
       AgentType type,
       AgentId id,
       TurnObserver turn,
       Executor executor,
-      ObjectMapper mapper) {
-    this(registry, type, id, turn, executor, defaultPolicy(turn), mapper);
-  }
-
-  public RegistryToolCallExecutor(
-      ToolRegistry registry,
-      AgentType type,
-      AgentId id,
-      TurnObserver turn,
-      Executor executor,
-      DeferredToolCallPolicy deferredToolCallPolicy,
-      ObjectMapper mapper) {
-    this(
-        registry,
-        type,
-        id,
-        turn,
-        executor,
-        deferredToolCallPolicy,
-        defaultApprovalContexts(),
-        mapper);
-  }
-
-  public RegistryToolCallExecutor(
-      ToolRegistry registry,
-      AgentType type,
-      AgentId id,
-      TurnObserver turn,
-      Executor executor,
-      DeferredToolCallPolicy deferredToolCallPolicy,
-      ApprovalContexts approvalContexts,
+      ContinuumClient<Approval, ApprovalRouting> approvalClient,
+      ContinuumClient<ToolResult, Routing> toolClient,
       ObjectMapper mapper) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
-    this.deferredToolCallPolicy =
-        Objects.requireNonNull(deferredToolCallPolicy, "deferredToolCallPolicy must not be null");
-    this.approvalContexts =
-        Objects.requireNonNull(approvalContexts, "approvalContexts must not be null");
+    this.approvalClient = Objects.requireNonNull(approvalClient, "approvalClient must not be null");
+    this.toolClient = Objects.requireNonNull(toolClient, "toolClient must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codecs = new Codecs(this.mapper);
   }
@@ -158,15 +137,12 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   public void runTool(ToolCall call, ModelResponseId responseId, Sink sink) {
     Objects.requireNonNull(responseId, "responseId must not be null");
     executor.execute(
-        () -> {
-          CallAddress address = address(call, responseId);
-          switch (runPastGate(call, address)) {
-            case ToolExecution.Immediate(ToolOutcome outcome) ->
-                sink.deliver(new AgentEvent.ToolFinished(call, Optional.empty(), outcome));
-            case ToolExecution.Deferred(ComputationId deferredId) ->
-                sink.deliver(new AgentEvent.ToolDeferred(call, deferredId));
-          }
-        });
+        () ->
+            runPastGate(call, responseId, sink)
+                .ifPresent(
+                    outcome ->
+                        sink.deliver(
+                            new AgentEvent.ToolFinished(call, Optional.empty(), outcome))));
   }
 
   /** The ask. Returns the event to deliver; a deferral has already delivered its own. */
@@ -191,7 +167,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           e);
       return answered(call, Approval.denied("authorization failed: " + detailOf(e)));
     }
-    ApprovalContext context = approvalContexts.contextFor(call, responseId, request, sink);
+    ApprovalContext context =
+        new ComputationApprovalContext(approvalClient, routing(call, responseId), request, sink);
     ApprovalOutcome outcome;
     try {
       outcome = grant.approver().approve(context);
@@ -220,22 +197,25 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return new AgentEvent.ApprovalAnswered(call, Optional.empty(), approval);
   }
 
-  private ToolExecution runPastGate(ToolCall call, CallAddress address) {
+  /** Empty means the door already recorded the wait; there is nothing left to deliver. */
+  private Optional<ToolOutcome> runPastGate(ToolCall call, ModelResponseId responseId, Sink sink) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
+      return Optional.of(failed(call, "unknown tool: " + call.name()));
     }
     try {
       ToolGrant grant = found.get();
       Object input = convert(call, grant.tool());
-      return run(grant.tool(), input, call, address);
+      return run(grant.tool(), input, call, responseId, sink);
     } catch (RuntimeException e) {
-      return new ToolExecution.Immediate(failed(call, detailOf(e)));
+      // Including a throw propagated out of context.defer(): nothing was parked, so this call is
+      // answered in-band with the failure and nothing dangles (spec §3).
+      return Optional.of(failed(call, detailOf(e)));
     }
   }
 
-  private CallAddress address(ToolCall call, ModelResponseId responseId) {
-    return new CallAddress(type.name(), id.value(), responseId.value(), call.id());
+  private Routing routing(ToolCall call, ModelResponseId responseId) {
+    return new Routing(type.name(), id.value(), responseId.value(), call);
   }
 
   /**
@@ -250,23 +230,26 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
-  private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
+  private <T> Optional<ToolOutcome> run(
+      Tool<T> tool, Object input, ToolCall call, ModelResponseId responseId, Sink sink) {
     T typed = tool.inputType().cast(input);
-    // address.digest() is deterministic from this call's own coordinates (agentType, agentId,
-    // responseId, callId) — stable across every redrive and replay, exactly the contract
-    // ToolContext#invocation documents. A genuine Continuum-minted id cannot serve here: it is not
-    // known until (and unless) the tool actually defers, since onDeferred only creates a
-    // computation on the Awaited.Deferred arm below — after the tool has already been handed this
-    // very context.
-    ToolContext context =
-        new ToolContext(call, event -> narrate(call, event), ComputationId.of(address.digest()));
-    return switch (tool.execute(typed, context)) {
-      case Awaited.Ready<ToolResult>(ToolResult value) -> {
+    ComputationToolContext context =
+        new ComputationToolContext(
+            toolClient,
+            routing(call, responseId),
+            tool.timeout(),
+            event -> narrate(call, event),
+            sink);
+    Awaited<ToolResult> outcome = tool.execute(typed, context);
+    boolean deferred = context.deferral().isPresent();
+    return switch (outcome) {
+      case Awaited.Ready<ToolResult>(ToolResult value) when !deferred -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
-        yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
+        yield Optional.of(new ToolOutcome.Returned(value));
       }
-      case Awaited.Deferred<ToolResult> _ ->
-          deferredToolCallPolicy.onDeferred(call, address, tool.timeout());
+      case Awaited.Ready<ToolResult> _ -> Optional.of(failed(call, ANSWERED_AFTER_DEFERRING));
+      case Awaited.Deferred<ToolResult> _ when deferred -> Optional.empty();
+      case Awaited.Deferred<ToolResult> _ -> Optional.of(failed(call, DEFERRED_WITHOUT_DEFER));
     };
   }
 
@@ -289,35 +272,5 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private static String detailOf(RuntimeException e) {
     return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-  }
-
-  /** The 5-arg constructor's default: fails loudly in-band rather than suspending silently. */
-  private static DeferredToolCallPolicy defaultPolicy(TurnObserver turn) {
-    return (call, address, timeout) -> {
-      ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
-      turn.on(new TurnEvent.ToolCallCompleted(call, error));
-      return new ToolExecution.Immediate(
-          new ToolOutcome.Failed(new ToolError(PARKING_UNAVAILABLE)));
-    };
-  }
-
-  /**
-   * The 5- and 6-arg constructors' default: parking is a capability of the wiring, not a right of
-   * every deployment, so a wiring with no Continuum behind it cannot park and says so loudly — the
-   * {@code approver failed:} catch above turns the throw into a denial the model reads.
-   */
-  private static ApprovalContexts defaultApprovalContexts() {
-    return (call, responseId, request, sink) ->
-        new ApprovalContext() {
-          @Override
-          public ApprovalRequest request() {
-            return request;
-          }
-
-          @Override
-          public ApprovalOutcome defer() {
-            throw new IllegalStateException(APPROVAL_UNAVAILABLE);
-          }
-        };
   }
 }

@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * Test-only Continuum wiring for the tool kind (continuum-adoption spec §3): every test that builds
- * a {@code ComputationDeferredToolCallPolicy}, {@code CompletionDesk}, or {@code DeliveryWorker}
- * directly — bypassing {@code HarnessConfig#finish()} — needs the same client shape production
- * wiring builds. One fresh, in-memory {@link Continuum} per call, so tests stay isolated from one
- * another. Mirrors {@link TestApprovalClients}.
+ * a {@code RegistryToolCallExecutor}, {@code CompletionDesk}, or {@code DeliveryWorker} directly —
+ * bypassing {@code HarnessConfig#finish()} — needs the same client shape production wiring builds.
+ * One fresh, in-memory {@link Continuum} per call, so tests stay isolated from one another. Mirrors
+ * {@link TestApprovalClients}.
  */
 public final class TestToolClients {
 

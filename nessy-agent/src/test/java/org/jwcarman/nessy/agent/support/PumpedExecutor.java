@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.agent.support;
 
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 
 /**
@@ -45,6 +47,7 @@ import java.util.concurrent.Executor;
 public final class PumpedExecutor implements Executor {
 
   private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
+  private final List<RuntimeException> failures = new CopyOnWriteArrayList<>();
 
   @Override
   public void execute(Runnable task) {
@@ -59,8 +62,29 @@ public final class PumpedExecutor implements Executor {
    */
   public void pumpUntilQuiet() {
     while (!queue.isEmpty()) {
-      queue.poll().run();
+      run(queue.poll());
     }
+  }
+
+  /**
+   * A task's escaping {@link RuntimeException} ends that task and nothing else — exactly what a
+   * real {@link java.util.concurrent.ThreadPoolExecutor} does with one (the worker thread logs it
+   * and takes the next task). Since {@code DefaultAgent#deliver} began rethrowing after narrating
+   * (tool-context-defer spec §3), a fold that cannot commit escapes the executor task it runs in;
+   * without this, an inline pump would surface it in the pumping test instead, which no production
+   * wiring ever does.
+   */
+  private void run(Runnable task) {
+    try {
+      task.run();
+    } catch (RuntimeException e) {
+      failures.add(e);
+    }
+  }
+
+  /** Every exception a pumped task let escape, in order. */
+  public List<RuntimeException> failures() {
+    return List.copyOf(failures);
   }
 
   public boolean isQuiet() {

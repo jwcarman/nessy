@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class ScriptedApproverTest {
 
   private static ApprovalRequest requestNamed(String action) {
     ObjectMapper mapper = new ObjectMapper();
-    return ApprovalRequest.draft("ops", "prod-eu", CALL, mapper).action(action).freeze();
+    return ApprovalRequest.draft("ops", "prod-eu", CALL, Map.of(), mapper).action(action).freeze();
   }
 
   /** Never defers — every test here scripts an answer, so a real deferring door is unneeded. */

@@ -67,7 +67,7 @@ class StateCodecTest {
   private static final Key<String> TICKET = new Key<>(String.class, "test.ticket");
 
   private static ApprovalRequest request() {
-    return ApprovalRequest.draft("ops", "prod-1", CALL_B, PINNED)
+    return ApprovalRequest.draft("ops", "prod-1", CALL_B, Map.of(), PINNED)
         .action("restart prod-1")
         .deposit(TICKET, "OPS-42")
         .freeze();

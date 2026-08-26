@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
@@ -35,7 +36,7 @@ class IntentEnricherTest {
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
-    return ApprovalRequest.draft("ops", "agent-a", call, MAPPER);
+    return ApprovalRequest.draft("ops", "agent-a", call, Map.of(), MAPPER);
   }
 
   private static SubstrateIntentStore<Intent> freshStore() {

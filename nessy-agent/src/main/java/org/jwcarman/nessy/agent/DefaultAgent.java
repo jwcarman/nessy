@@ -122,6 +122,14 @@ public final class DefaultAgent<O> implements Agent<O> {
    * The continuation door: executors are handed this method reference as their Sink at dispatch
    * (§4). Completions that lose the version race re-handle against fresh state until applied or
    * ignored (§3.4).
+   *
+   * <p>A fold that cannot commit narrates {@link AgentObserver#applyFailed} and then
+   * <b>rethrows</b> (tool-context-defer spec §3). Every executor-side caller runs inside an
+   * executor task where the narration was already the only trace and the task ends either way —
+   * nothing observable changes for them. What the rethrow buys is the one caller that must know:
+   * {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()} promise
+   * that an id they hand back is an id the scope names, and only a throw can keep that promise
+   * honest. An IGNORED event is not a failure: this returns normally, as it always has.
    */
   void deliver(AgentEvent event) {
     while (true) {
@@ -131,8 +139,8 @@ public final class DefaultAgent<O> implements Agent<O> {
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
       } catch (RuntimeException e) {
-        observer.applyFailed(event, e); // narrate-and-drop: the shell manufactures no events
-        return;
+        observer.applyFailed(event, e); // narrate — then let the caller see it (spec §3)
+        throw e;
       }
     }
   }

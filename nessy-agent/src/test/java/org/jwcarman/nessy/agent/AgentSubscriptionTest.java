@@ -228,19 +228,7 @@ class AgentSubscriptionTest {
                       pump),
               (id, turnObserver) ->
                   new RegistryToolCallExecutor(
-                      registry,
-                      type,
-                      id,
-                      turnObserver,
-                      pump,
-                      new ComputationDeferredToolCallPolicy(toolClient),
-                      (gatedCall, responseId, request, sink) ->
-                          new ComputationApprovalContext(
-                              approvalClient,
-                              new Routing(type.name(), id.value(), responseId.value(), gatedCall),
-                              request,
-                              sink),
-                      mapper),
+                      registry, type, id, turnObserver, pump, approvalClient, toolClient, mapper),
               substrate,
               mapper,
               approvalClient,

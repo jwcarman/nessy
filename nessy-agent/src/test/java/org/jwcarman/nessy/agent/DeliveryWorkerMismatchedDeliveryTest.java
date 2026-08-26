@@ -166,7 +166,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
   }
 
   private ApprovalRequest request() {
-    return ApprovalRequest.draft("test", "test-scope", CALL, mapper).freeze();
+    return ApprovalRequest.draft("test", "test-scope", CALL, Map.of(), mapper).freeze();
   }
 
   private ComputationId answerAnApproval() {

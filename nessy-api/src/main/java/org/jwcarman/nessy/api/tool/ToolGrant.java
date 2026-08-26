@@ -122,7 +122,7 @@ public final class ToolGrant {
    */
   public ApprovalRequest request(
       String agentType, String agentId, ToolCall call, Object input, ObjectMapper pinned) {
-    ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, pinned);
+    ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, input, pinned);
     stage("action stage: ", () -> draft.action(renderAction.apply(input)));
     int index = 0;
     for (Enricher enricher : enrichers) {

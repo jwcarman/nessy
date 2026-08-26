@@ -68,8 +68,9 @@ public record ApprovalRequest(
   }
 
   /** What the harness starts from. Enrichment fills the rest; {@link Draft#freeze} ends it. */
-  public static Draft draft(String agentType, String agentId, ToolCall call, ObjectMapper pinned) {
-    return new Draft(agentType, agentId, call, pinned);
+  public static Draft draft(
+      String agentType, String agentId, ToolCall call, Object input, ObjectMapper pinned) {
+    return new Draft(agentType, agentId, call, input, pinned);
   }
 
   /** A codec over the pinned mapper; decoding re-attaches it so typed reads work. */
@@ -108,14 +109,17 @@ public record ApprovalRequest(
     private final String agentType;
     private final String agentId;
     private final ToolCall call;
+    private final Object input;
     private final Facts.Deposits deposits;
     private String action = "";
     private boolean frozen;
 
-    private Draft(String agentType, String agentId, ToolCall call, ObjectMapper pinned) {
+    private Draft(
+        String agentType, String agentId, ToolCall call, Object input, ObjectMapper pinned) {
       this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
       this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
       this.call = Objects.requireNonNull(call, "call must not be null");
+      this.input = Objects.requireNonNull(input, "input must not be null");
       this.deposits = Facts.deposits(pinned);
     }
 
@@ -129,6 +133,20 @@ public record ApprovalRequest(
 
     public ToolCall call() {
       return call;
+    }
+
+    /**
+     * The bound tool input, as the record the tool author declared — the same information as {@code
+     * call().arguments()}, typed. Transient: it is not part of the frozen document, because the
+     * call's arguments already are. A mismatch throws {@link ClassCastException} naming both types.
+     */
+    public <T> T input(Class<T> type) {
+      Objects.requireNonNull(type, "type must not be null");
+      if (!type.isInstance(input)) {
+        throw new ClassCastException(
+            "draft input is " + input.getClass().getName() + ", not " + type.getName());
+      }
+      return type.cast(input);
     }
 
     public Draft action(String rendered) {

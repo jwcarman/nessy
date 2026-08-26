@@ -21,6 +21,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,9 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -131,6 +134,8 @@ class AuthorizationFailureWarningTest {
     return appender.list.stream().filter(event -> event.getLevel() == Level.WARN).toList();
   }
 
+  private static final ObjectMapper MAPPER = TestMappers.plainlyPinned();
+
   private List<AgentEvent> seek(ToolRegistry registry) {
     var pump = new PumpedExecutor();
     var executor =
@@ -140,7 +145,9 @@ class AuthorizationFailureWarningTest {
             AgentId.of("cli"),
             new RecordingTurnObserver(),
             pump,
-            TestMappers.plainlyPinned());
+            TestApprovalClients.client("approval/cli", MAPPER),
+            TestToolClients.client("tool/cli", MAPPER),
+            MAPPER);
     var delivered = new ArrayList<AgentEvent>();
     executor.seekApproval(CALL, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
