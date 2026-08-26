@@ -271,14 +271,14 @@ public sealed interface ToolCallPhase {
     }
 
     /**
-     * <b>The handoff failed</b> (spec §9a, the second mandatory cell): the callback threw, so the
-     * effect killed the computation and reported an ordinary in-band failure. It is id-LESS, and
-     * must be — this state recorded no id — and it is admitted here so the call goes terminal
-     * instead of sitting in a handoff that will never be attempted again.
+     * <b>The handoff never got a computation</b>: {@code create} threw, so nothing exists and
+     * nobody was told. The failure is id-less, and must be — this state recorded no id — and it is
+     * admitted here so the call goes terminal instead of sitting in a handoff that will never be
+     * attempted again.
      *
-     * <p>Why a failure and not a re-ask: all we know is that the callback threw, never whether it
-     * reached the world first. Re-asking would assume it did not, and would risk telling the world
-     * twice. Failing hands the decision about what to do next to the model.
+     * <p>A callback that THREW does not arrive here: by then the park has folded and the call has
+     * moved on to {@link AwaitingApproval}, which takes that failure riding the id it recorded
+     * (§9a, the second mandatory cell).
      */
     @Override
     public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
@@ -317,6 +317,27 @@ public sealed interface ToolCallPhase {
     public ToolCallTransition onApprovalAnswered(AgentEvent.ApprovalAnswered event) {
       return event.approval().filter(approval::equals).isPresent()
           ? answered(event)
+          : ToolCallTransition.dropped();
+    }
+
+    /**
+     * <b>The handoff's callback threw after the park committed</b> (spec §9a, the second mandatory
+     * cell, under the 2026-08-26 ordering ruling). The effect folds the park BEFORE it tells
+     * anyone, so by the time a callback can fail, the call is already here — and the failure rides
+     * the id this state recorded, which is the only shape §3 lets it admit.
+     *
+     * <p>{@code DeferApproval}'s own catch is the sole producer: nothing else ever sends a tool
+     * completion to a call awaiting approval, and one carrying an id this state did not record is
+     * dropped like any other mismatch. It folds to {@code Failed} rather than {@code Denied}
+     * because nobody decided anything — the machinery broke, which is what {@code Failed} means.
+     * Relying instead on Continuum's delivery of the failed computation would fold a DENIAL, since
+     * the worker maps a failed approval computation to one; that would tell the model a human said
+     * no, which nobody did.
+     */
+    @Override
+    public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+      return event.tool().filter(approval::equals).isPresent()
+          ? finished(event)
           : ToolCallTransition.dropped();
     }
   }
@@ -387,7 +408,11 @@ public sealed interface ToolCallPhase {
       return ToolCallTransition.to(new AwaitingResult(event.tool()));
     }
 
-    /** The handoff failed — see {@link DeferringApproval#onToolFinished}. */
+    /**
+     * The handoff never got a computation — see {@link DeferringApproval#onToolFinished}. The
+     * id-carrying case belongs to {@link AwaitingResult}, which this call reaches the moment the
+     * park folds.
+     */
     @Override
     public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
       return event.tool().isEmpty() ? finished(event) : ToolCallTransition.dropped();

@@ -57,11 +57,17 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
  * fails the computation it just created, folds a failure completion, and the call lands in the
  * terminal {@code Failed} carrying the exception's detail.
  *
- * <p>Without that, the call would sit in {@code Deferring…} forever: the failure would be dropped
- * for want of a state that admits it, the computation would dangle until its deadline, and every
- * staleness tick would re-fire an ask nobody could answer — with the whole suite green throughout.
- * That is what these two tests exist to prevent, which is why they assert the call is {@code
- * Failed} and, explicitly, that it is not {@code Awaiting…}.
+ * <p>Under the 2026-08-26 ordering ruling the park has ALREADY folded by the time a callback can
+ * throw, so the call is in {@code Awaiting…} and the failure rides the id that state recorded — the
+ * only shape §3 lets it admit. It is folded in band by the effect rather than left to Continuum's
+ * own delivery of the failed computation, and that matters on the approval side: the worker maps a
+ * failed approval computation to a DENIAL, which would tell the model a human said no when nobody
+ * decided anything.
+ *
+ * <p>Without all this the call would sit waiting forever: the failure would be dropped for want of
+ * a state that admits it, the computation would dangle until its deadline, and the whole suite
+ * would stay green throughout. That is what these tests exist to prevent, which is why they assert
+ * the call is {@code Failed} and, explicitly, that it is not {@code Awaiting…}.
  */
 class HandoffCallbackThrowsTest {
 

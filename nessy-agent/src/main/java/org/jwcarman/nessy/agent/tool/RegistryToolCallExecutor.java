@@ -93,9 +93,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>{@link #deferApproval} and {@link #deferToolCall} are the handoff doors, and the only place in
  * this executor that touches Continuum. Each creates the computation, clips the term to its side's
- * ceiling, reads the deadline Continuum actually stamped, and runs the callback. A callback that
- * throws fails the computation and fails the CALL (spec §9a): all we know is that it threw, not
- * whether it reached the world first, so re-asking would risk telling the world twice.
+ * ceiling, reads the deadline Continuum actually stamped, <b>folds the park</b>, and only then runs
+ * the callback — see {@link #handOff} for why that order is the whole point. A callback that throws
+ * fails the computation and fails the CALL (spec §9a): all we know is that it threw, not whether it
+ * reached the world first, so re-asking would risk telling the world twice.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -244,17 +245,16 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     Objects.requireNonNull(responseId, "responseId must not be null");
     executor.execute(
         () ->
-            sink.deliver(
-                handOff(
-                    call,
-                    callback,
-                    () ->
-                        approvalClient.create(
-                            new ApprovalRouting(routing(call, responseId), request),
-                            clipped(term, approvalCeiling)),
-                    approvalClient,
-                    (id, deadline) ->
-                        new AgentEvent.ApprovalDeferred(call, id, request, deadline))));
+            handOff(
+                call,
+                callback,
+                () ->
+                    approvalClient.create(
+                        new ApprovalRouting(routing(call, responseId), request),
+                        clipped(term, approvalCeiling)),
+                approvalClient,
+                (id, deadline) -> new AgentEvent.ApprovalDeferred(call, id, request, deadline),
+                sink));
   }
 
   @Override
@@ -269,13 +269,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     Objects.requireNonNull(responseId, "responseId must not be null");
     executor.execute(
         () ->
-            sink.deliver(
-                handOff(
-                    call,
-                    callback,
-                    () -> toolClient.create(routing(call, responseId), clipped(term, toolCeiling)),
-                    toolClient,
-                    (id, deadline) -> new AgentEvent.ToolCallDeferred(call, id, deadline))));
+            handOff(
+                call,
+                callback,
+                () -> toolClient.create(routing(call, responseId), clipped(term, toolCeiling)),
+                toolClient,
+                (id, deadline) -> new AgentEvent.ToolCallDeferred(call, id, deadline),
+                sink));
   }
 
   /** What a party asked for, or what the harness allows — whichever is shorter (spec §5). */
@@ -284,27 +284,49 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * One handoff, both sides (spec §9a). Create the computation, read the deadline Continuum
-   * actually stamped — never {@code Instant.now()} plus a guess, so what the callback is told is
-   * exactly what will expire — run the callback, then fold the park.
+   * One handoff, both sides (spec §9a, ordering ruled by James 2026-08-26). Three steps, and the
+   * ORDER IS THE POINT:
    *
-   * <p>Everything that can go wrong here fails the CALL rather than re-asking. If {@code create}
-   * threw there is no computation and nothing was told; if the CALLBACK threw we know only that it
-   * threw, not whether it reached the world first, and re-asking would assume it did not — an
-   * assumption we are not entitled to make and one that risks telling the world twice. Failing
-   * hands the decision about what to do next to the model, which is where every other failure in
-   * this executor already puts it.
+   * <ol>
+   *   <li>create the computation, and read the deadline Continuum actually stamped — never {@code
+   *       Instant.now()} plus a guess, so what the callback is told is exactly what will expire;
+   *   <li><b>fold the park and let it commit</b>, so the phase names the id;
+   *   <li>only then run the callback.
+   * </ol>
+   *
+   * <p><b>Why the fold comes first.</b> The callback is the one thing that tells the world where to
+   * answer, and the world is free to answer instantly — an external system that completes the
+   * computation and drains it on this very thread. If the fold came after, that answer would meet a
+   * call still in {@code Deferring…}, which has recorded no id, and would be DROPPED permanently:
+   * the call would then park on a computation that had already been completed and acked, and hang
+   * forever. Folding first makes the answer land by construction rather than by being slow enough.
+   * (The alternative — letting {@code Deferring…} admit any id — trades the hang for a correctness
+   * bug, because a stale orphan from an earlier attempt could finish the call with the wrong
+   * answer. Never that trade.)
+   *
+   * <p>The fold is {@code sink.deliver}, which RETHROWS if it could not commit. That is deliberate:
+   * a park that did not commit must not be followed by a callback, so the throw propagates and the
+   * callback never runs. The computation created a moment earlier is then an orphan that expires at
+   * its term — the cost §9a already accounts for, and cheaper than telling the world about a wait
+   * the scope does not name.
+   *
+   * <p>Everything that can go wrong fails the CALL rather than re-asking. If {@code create} threw
+   * there is no computation and nothing was told, so the failure is id-less. If the CALLBACK threw
+   * we know only that it threw, never whether it reached the world first; re-asking would assume it
+   * did not, which risks telling the world twice. Failing hands the decision about what to do next
+   * to the model, which is where every other failure in this executor already puts it.
    *
    * @param mint creates the computation and returns it
    * @param client the kind's client, used only to tidy up after a thrown callback
-   * @param parked the fact to fold when the callback ran
+   * @param parked the fact that records the park — folded BEFORE the callback runs
    */
-  private AgentEvent handOff(
+  private void handOff(
       ToolCall call,
       ComputationCallback callback,
       Supplier<Computation> mint,
       ContinuumClient<?, ?> client,
-      Parked parked) {
+      Parked parked,
+      Sink sink) {
     ComputationId id;
     Instant deadline;
     try {
@@ -313,8 +335,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       deadline = created.deadline();
     } catch (RuntimeException e) {
       LOG.warn("could not create the computation for call {}; failing the call", call.id(), e);
-      return finishedFailing(call, "deferral failed: " + detailOf(e));
+      sink.deliver(finishedFailing(call, "deferral failed: " + detailOf(e)));
+      return;
     }
+    sink.deliver(parked.of(id, deadline)); // the phase names the id before anyone outside can
     try {
       callback.accept(id, deadline);
     } catch (RuntimeException e) {
@@ -324,9 +348,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           id.value(),
           e);
       failQuietly(client, call, id);
-      return finishedFailing(call, "deferral handoff failed: " + detailOf(e));
+      sink.deliver(finishedFailingRiding(call, id, "deferral handoff failed: " + detailOf(e)));
     }
-    return parked.of(id, deadline);
   }
 
   /** The fact a successful handoff folds — {@code ApprovalDeferred} or {@code ToolCallDeferred}. */
@@ -336,12 +359,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * The failure the call reads in-band when a handoff broke. Rides NO computation id on purpose:
-   * the phase is still {@code Deferring…}, which recorded none, so an id-less completion is the
-   * only shape it admits.
+   * The failure the call reads in-band when there is no computation to name — a {@code create} that
+   * threw, or a call that never got as far as one. Rides NO id on purpose: the phase is still
+   * {@code Deferring…} (or {@code RunningTool}), which recorded none, so an id-less completion is
+   * the only shape it admits.
    */
   private AgentEvent finishedFailing(ToolCall call, String reason) {
     return new AgentEvent.ToolFinished(call, Optional.empty(), failed(call, reason));
+  }
+
+  /**
+   * The failure a THROWN CALLBACK reads in-band. It rides {@code id}, because by then the park has
+   * folded and the phase is {@code Awaiting…}, which admits only the id it recorded (spec §3). The
+   * computation has already been failed, so Continuum's own delivery of that failure arrives later
+   * at a call this event has already made terminal, and is dropped with the WARN §9a accepts.
+   */
+  private AgentEvent finishedFailingRiding(ToolCall call, ComputationId id, String reason) {
+    return new AgentEvent.ToolFinished(call, Optional.of(id), failed(call, reason));
   }
 
   /**
