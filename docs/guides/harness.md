@@ -109,9 +109,17 @@ The builder surface, piece by piece:
   phase counts as dead enough to re-fire; default five minutes.
 - **`.backlogCapacity(int)`** — the per-scope capacity of the shared
   backlog substrate document; default 1024.
-- **`.executor`, `.turnObserver`, `.agentObserver`** — the usual narration
-  and threading seams, each defaulting to a sane no-op or an owned
+- **`.executor`, `.turnObserver`, `.harnessObserver`** — the usual narration
+  and threading seams, each defaulting to a sane no-op (or, for
+  `harnessObserver`, the default narrating adapter) or an owned
   virtual-thread executor that lives as long as the harness does.
+- **`.observationRegistry(ObservationRegistry)`** — the observability seam
+  (agentic-o11y spec §0, §4): where this harness's `invoke_agent`/`chat`/
+  `execute_tool` spans, its two `nessy.*` wait spans, and its three engine
+  counters are recorded; default `ObservationRegistry.NOOP`, which makes the
+  whole roster inert. See [Observability](observability.md#the-roster-otel-genai-spans-and-counters)
+  for the roster and `nessy-examples/observed` for a real collector wired
+  end to end.
 
 ## Two harnesses over one substrate share the Continuum too
 

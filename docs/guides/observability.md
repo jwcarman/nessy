@@ -1,12 +1,14 @@
 # Observability
 
-Three seams, three audiences. `TurnObserver` narrates one turn to whoever is
-watching it happen — a REPL, an SSE emitter. `AgentObserver` narrates the
-shell's own machine-level decisions to whoever operates the host — a metrics
-sink, an incident log. `AuthorizationReport` is neither a stream nor a
-listener; it reads a harness's grants back as a static report, because the
-report *is* the wiring. All three default to silence — a noop observer, an
-empty grant list — so watching costs nothing until something is plugged in.
+Nessy exports two things: the live story of one turn (`TurnObserver`), and
+the numbers a soak needs — spans and counters over the OpenTelemetry GenAI
+semantic conventions, recorded through one Micrometer seam
+(`HarnessConfig.observationRegistry(ObservationRegistry)`). A third seam,
+`AuthorizationReport`, is neither a stream nor a listener; it reads a
+harness's grants back as a static report, because the report *is* the
+wiring. All three default to silence — a noop observer, `ObservationRegistry
+.NOOP`, an empty grant list — so watching costs nothing until something is
+plugged in.
 
 ## `TurnObserver` — the audience stream
 
@@ -42,7 +44,7 @@ never narrated *here* — from the model's turn a park is indistinguishable
 from a slow call by design, and the resumption token it would carry is a
 capability that handing to every listener would turn into a shadow way to
 act on the call. `TurnEvent` narrates the model's turn, never that. The park
-does have a channel: `AgentObserver` sees `ApprovalDeferred`, below.
+does have a channel: `HarnessObserver` sees `ApprovalDeferred`, below.
 
 Three ways to build one:
 
@@ -109,22 +111,134 @@ var harness =
 
 The default is `TurnObserver.noop()`.
 
-## `AgentObserver` — the operator stream
+## The roster — OTel GenAI spans and counters
 
-Where `TurnObserver` narrates the model's turn, `AgentObserver` narrates
+Nessy has one fact stream per harness: both fold sites — `DefaultAgent`'s
+synchronous shell and `DeliveryWorker`'s durable one — publish
+`(agentId, event, transition)` through it, and everything interested
+subscribes. `HarnessConfig.observationRegistry(ObservationRegistry)` is the
+one seam: absent, the harness runs against `ObservationRegistry.NOOP` and
+the roster below is inert. Supplied, a package-private `Observations`
+object subscribes to the stream and turns folds into Micrometer
+`Observation`s named per the OpenTelemetry GenAI semantic conventions
+(pinned here against the **2025 `gen_ai.*` attribute set** — GenAI semconv
+is still *development* status upstream and `gen_ai.system` became
+`gen_ai.provider.name` in that revision; the CHANGELOG names the exact
+attributes this build implements against). `nessy-agent` depends on
+`micrometer-observation` only — exporters, the OTel tracing bridge, and
+OTLP live in the application; see `nessy-examples/observed` for the whole
+wiring and how to point it at a collector.
+
+### Spans
+
+| Observation (contextual name) | `gen_ai.operation.name` | opens | closes | attributes |
+|---|---|---|---|---|
+| `invoke_agent {agentType}` | `invoke_agent` | a segment starts | the segment ends | `gen_ai.agent.name`, `gen_ai.agent.id`, `gen_ai.conversation.id`; `nessy.turn.outcome` = complete / parked / failed |
+| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `nessy.usage.cached_input_tokens`; `error.type` |
+| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred` |
+| `nessy.approval.wait {tool}` | — | `ApprovalDeferred` applied | `ApprovalAnswered` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.approval.answer` |
+| `nessy.tool.wait {tool}` | — | `ToolDeferred` applied | `ToolFinished` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
+
+`gen_ai.agent.id`, `gen_ai.conversation.id`, and `gen_ai.tool.call.id` are
+**high-cardinality** key-values in Micrometer's terms — they ride the span,
+never a meter.
+
+**A span is not a turn.** An `invoke_agent` span runs one *segment* — from
+`Observed` (or a delivery that resumes the scope) applied, to the next
+`Idle` or the next park (a phase with no call left `Running` or `Pending`).
+A turn that waits six hours on a human would otherwise hold an open span
+across a crash, a restart, and a redeploy — an OTel span that survives none
+of those is a lie. The wait spans carry the dwell between segments instead,
+and they are what a dashboard reads for "how long do humans take." In-flight
+spans die with the process; nothing reconstructs one after a restart — they
+are telemetry, and the phase in the store is the truth.
+
+**The idiom `"none"`.** Every outcome-bearing key (`nessy.turn.outcome`,
+`nessy.approval.answer`, `nessy.tool.outcome`, `nessy.tool.deferred`,
+`gen_ai.response.finish_reasons`, `error.type`) is set at **start** to the
+placeholder `"none"` and overwritten once the outcome is known. Micrometer
+requires every observation sharing a name to carry the same set of
+low-cardinality keys — a `chat` that only sometimes carried
+`error.type` would be a meter with unstable tags, which a strict registry
+rejects outright and a real backend corrupts. A reader of these spans must
+treat `"none"` as "not yet known / not applicable," including on a span that
+finished successfully: `error.type=none` on a healthy `chat` is the
+documented shape, not a bug.
+
+**Parent/child.** `chat` and `execute_tool` are children of the scope's open
+`invoke_agent` segment; wait spans are children of the segment that parked
+them. A tracing backend renders segment → chat → execute_tool → wait as one
+trace per segment, and `gen_ai.conversation.id` stitches segments across
+parks.
+
+### Metrics
+
+Micrometer's default handlers derive a timer from every span above, named
+for the span itself (`invoke_agent`, `chat`, `execute_tool`, and the two
+`nessy.*` waits) — **not** the semconv name
+`gen_ai.client.operation.duration`. Micrometer requires one stable
+low-cardinality key set per meter name, and `invoke_agent`, `chat`, and
+`execute_tool` carry deliberately different attribute sets; sharing one
+metric name across them is a meter with unstable tags, and Micrometer's own
+test registry rejects it. Want the exact semconv metric name instead? Map
+the three operation spans onto it in your own `ObservationHandler` — see the
+example module.
+
+`gen_ai.client.token.usage` is application-side for the same reason
+`gen_ai.client.operation.duration` is: an `ObservationRegistry` times
+observations, it cannot record a value histogram. The `chat` span carries
+the vendor's own token counts as key-values
+(`gen_ai.usage.input_tokens`/`output_tokens`); a ten-line
+`ObservationHandler` reads them on `onStop` and records the metric to its
+own `MeterRegistry` — `nessy-agent` never sees a `MeterRegistry` at all.
+`nessy-examples/observed` ships that handler.
+
+Three counters, spelled as zero-duration observations (an `ObservationRegistry`
+has no direct counter API), tagged `gen_ai.agent.name` only:
+
+- `nessy.delivery.dropped` — a genuine delivery (an answered approval, a
+  completed tool result) that arrived against a phase that no longer wanted
+  it.
+- `nessy.state.stale_retries` — one per `StaleStateException`/
+  `ConflictException` retry the two fold sites absorb.
+- `nessy.effects.refired` — one per effect the recovery arm re-dispatched.
+
+### Telemetry never breaks a turn
+
+Every span start/stop and every counter increment is contained at its call
+site: an `ObservationHandler` is arbitrary application code, running inline
+on whichever thread started or stopped the span, and a turn must never fail
+because the thing describing it did. A failed `start()` yields
+`Observation.NOOP`, so the `stop()` and key-value writes that follow are
+harmless no-ops; a throwing handler is logged once at `WARN` and dropped.
+This applies all the way down — an application handler that reads
+`gen_ai.usage.input_tokens` off a `chat` that failed before the model
+reported any usage throws `NullPointerException` inside `onStop`, and the
+turn still completes with its real outcome.
+
+## `HarnessObserver` — the fact stream's own subscriber
+
+Where `TurnObserver` narrates the model's turn, `HarnessObserver` narrates
 what the shell itself decided — exactly the fact applied and the whole
-transition it produced, including the next phase:
+transition it produced, including the next phase. It is the same stream the
+roster above subscribes to; the configured `HarnessObserver` (default: the
+narrating adapter) is simply its first subscriber, and a caller-supplied one
+sits beside `Observations`, seeing every fact this harness produces:
 
 ```java
-public interface AgentObserver {
-  void applied(AgentEvent event, Transition transition);
-  void ignored(AgentEvent event);
-  void renderFailed(Object observation, RuntimeException error);
-  void applyFailed(AgentEvent event, RuntimeException error);
-  void reFired(List<Effect> effects);
-  void observationRequeued(Object observation);
+public interface HarnessObserver {
+  void applied(AgentId id, AgentEvent event, Transition transition);
+  void ignored(AgentId id, AgentEvent event);
+  void renderFailed(AgentId id, Object observation, RuntimeException error);
+  void applyFailed(AgentId id, AgentEvent event, RuntimeException error);
+  void reFired(AgentId id, List<Effect> effects);
+  void observationRequeued(AgentId id, Object observation);
 }
 ```
+
+Every method leads with the `AgentId` the fact is about — one
+`HarnessObserver` instance serves every scope the harness runs, unlike the
+retired per-scope `AgentObserver` a factory used to stamp fresh per id.
 
 - **`applied`** — the normal case: one event folded, the resulting
   transition (commits and effects included) handed over for whoever wants
@@ -141,27 +255,28 @@ public interface AgentObserver {
 - **`observationRequeued`** — an observation lost the idle race and went
   back to the backlog.
 
-`AgentObserver.noop()` is the default everywhere a harness is built without
-one, via `HarnessConfig#agentObserver(AgentObserver)`.
+`HarnessObserver.noop()` is the default everywhere a harness is built
+without one, via `HarnessConfig#harnessObserver(HarnessObserver)`.
 
 None of these events originate from a live wait. `DeliveryWorker` — a small
 scheduled pump pool per harness (`ComputationScheduler`), plus a drain pass
 `nudge()` submits to that same pool right after any completion commits — is
 what turns a pending Continuum delivery back into an `applied` (or
-`ignored`) fact on this same observer; the submitted drain runs
-asynchronously, not on the completing caller's own thread. A grant's dispatch
-and a durable tool's eventual result both surface here exactly like any
-other transition, with no separate "resumed from durable storage" event of
-its own. There is nothing to observe about the worker itself beyond that:
-it narrates through the same seam every other transition does. See
+`ignored`) fact on this same stream; the submitted drain runs asynchronously,
+not on the completing caller's own thread. A grant's dispatch and a durable
+tool's eventual result both surface here exactly like any other transition,
+with no separate "resumed from durable storage" event of its own — and,
+since the fact stream reform, a delivered fold now narrates through the same
+door a synchronous one always has, where before a worker-driven completion
+narrated nothing at all. See
 [Durable Computation](../concepts/durable-computation.md) for the pipeline
 underneath it.
 
 **Observers narrate; they never influence.** Nothing here can change what
 the shell does — no return value feeds back into the transition, and
 nothing about authorization runs through this seam either: a grant's
-approver, its enrichers, and its rendered action are never broadcast to an
-`AgentObserver`, only their outcome shows up, folded into whichever
+approver, its enrichers, and its rendered action are never broadcast to a
+`HarnessObserver`, only their outcome shows up, folded into whichever
 `ToolResult` the applied transition already carries. A listener that could
 affect the flow would create ordering dependence between listeners and a
 shadow decision surface competing with the authorization ladder — every
@@ -169,9 +284,16 @@ seam that is actually allowed to change behavior (memory, the state store,
 the backlog, both executors, the grants themselves) is its own interface,
 not this one.
 
+Every subscriber on the stream — the configured `HarnessObserver` and the
+o11y roster alike — is isolated: a throw is logged and dropped, never
+propagated into the fold. This is stricter than `TurnObserver`'s own
+throw-through contract above, because by the time a fact is published the
+fold has already committed; letting a bad subscriber's exception escape
+would corrupt an outcome that is already true in the store.
+
 ## `AuthorizationReport` — the third leg, and it isn't a stream
 
-`TurnObserver` and `AgentObserver` narrate what already happened. What
+`TurnObserver` and `HarnessObserver` narrate what already happened. What
 *would* happen — which grants render an action, which enrichers run, which
 approver answers — is not a live event at all; it is read back once, statically,
 from the harness's own wiring:
@@ -198,6 +320,7 @@ for the full grammar of what a grant's story can say.
 - [Authorization](../concepts/authorization.md) — the trust gradient
   `ToolCallDecided` and `AuthorizationReport` both describe.
 - [The harness guide](harness.md) — `Nessy.harness(...)`'s full
-  builder surface, `turnObserver` and `agentObserver` alongside it.
+  builder surface, `turnObserver`, `harnessObserver`, and
+  `observationRegistry` alongside it.
 - [Durable Computation](../concepts/durable-computation.md) — the shell,
-  the fold, and the events `AgentObserver` narrates the outcome of.
+  the fold, and the events `HarnessObserver` narrates the outcome of.

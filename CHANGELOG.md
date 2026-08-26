@@ -25,6 +25,51 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **Agentic observability: one fact stream, `HarnessConfig.observationRegistry(ObservationRegistry)`,
+  and a roster of OTel GenAI spans and counters.** `nessy-agent` now folds every
+  event through one harness-level stream — `DefaultAgent`'s synchronous shell
+  and `DeliveryWorker`'s durable one both publish `(agentId, event, transition)`
+  to it — and a package-private `Observations` object subscribes to turn it
+  into Micrometer `Observation`s: `invoke_agent {agentType}` per *segment*
+  (from a resuming delivery to the next idle or park — never spanning a park
+  itself, since an in-process span cannot survive a restart), `chat {model}`
+  per model call (carrying the vendor's own `gen_ai.usage.input_tokens`/
+  `output_tokens`, discarded until now), `execute_tool {tool}` per tool run,
+  and Nessy's own `nessy.approval.wait`/`nessy.tool.wait` dwell spans plus
+  three engine counters (`nessy.delivery.dropped`, `nessy.state.stale_retries`,
+  `nessy.effects.refired`). Pinned against the OpenTelemetry GenAI semantic
+  conventions' **2025 attribute revision** (`gen_ai.provider.name`, renamed
+  from the older `gen_ai.system`) — semconv is still *development* status
+  upstream, so this is the version implemented against, not a promise it
+  won't move again. `HarnessConfig.observationRegistry(ObservationRegistry)`
+  is the one seam, default `ObservationRegistry.NOOP`: absent an
+  application-supplied registry, the whole roster is inert and free.
+  `nessy-agent` depends on `micrometer-observation` alone — exporters, the
+  OTel tracing bridge, and OTLP live in the application; `nessy-examples/observed`
+  is the runnable reference, exporting traces (OTLP/gRPC), metrics
+  (OTLP/HTTP), and logs (the OTel logback appender) to Grafana's
+  `otel-lgtm` image, with no exporter ever throwing through a turn even when
+  no collector is listening. See the [observability guide](docs/guides/observability.md)
+  for the full roster.
+  - **`HarnessObserver` (`org.jwcarman.nessy.agent.spi`), renamed from
+    `AgentObserver` — breaking for any out-of-tree implementation.** Every
+    method gains a leading `AgentId` parameter: it observes the harness's one
+    fact stream now, not a single scope stamped fresh per id by a factory.
+    `HarnessConfig.agentObserver(...)` is renamed `harnessObserver(...)`
+    to match. `Harness.subscribe(HarnessObserver)` is the stream's
+    package-private door beside the existing `subscribe(AgentId, TurnObserver)`;
+    the application-facing door stays `HarnessConfig.harnessObserver(...)`.
+  - **`Model.provider()` (`nessy-spi`) — new method, no default, breaking for
+    any out-of-tree `Model` implementation.** Returns the semconv
+    `gen_ai.provider.name` value the bound handle answers for at its vendor
+    (`anthropic`, `openai`, `x_ai`, `gcp.gemini`, `aws.bedrock`, or a test
+    double's own name) — asked of the `Model` rather than its `ModelProvider`
+    gateway on purpose: the executor that opens `chat` holds a bound `Model`
+    and never sees the gateway, and one gateway class can serve several
+    vendors (the OpenAI-compatible gateway answers `openai` for an OpenAI key
+    and `x_ai` for an xAI one). No default, so a new vendor cannot silently
+    report someone else's name. `ModelProvider.name()` is untouched — it
+    remains the human-readable banner string.
 - **`HarnessConfig.continuum(Continuum)`: the harness accepts its computation
   store.** Omitted, the harness mints a private in-memory Continuum as before;
   supplied, it uses yours — a `continuum-jdbc`-backed one for parked calls that
@@ -860,3 +905,42 @@ sequence of renames and interim shapes that produced it.
   and
   [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/)
   (design of record: `docs/superpowers/specs/2026-08-25-tool-context-defer-design.md`).
+
+### Changed
+
+- **`DeliveryWorker` now publishes every fold to the fact stream, not just
+  `DefaultAgent`'s synchronous shell.** Before the agentic-o11y reform, a
+  worker-driven completion (a desk's approval answer, a durable tool's
+  result) folded silently — nothing narrated it. Both fold sites publish
+  through one door now, so the configured `HarnessObserver` and the
+  observability roster alike see a durable delivery exactly like a
+  synchronous one, with no separate "resumed from durable storage" event
+  of its own.
+- **Metric names are the span's own name, not the semconv name
+  `gen_ai.client.operation.duration`.** Micrometer requires every
+  observation sharing one name to carry the same low-cardinality key set;
+  `invoke_agent`, `chat`, and `execute_tool` carry deliberately different
+  attributes, so sharing the one semconv metric name is a meter with
+  unstable tags — Micrometer's own strict test registry rejects it outright
+  and a real backend corrupts it. Each operation is therefore timed under
+  its own name (also its semconv *span* name); an application that wants
+  the exact semconv metric maps the three onto it in its own
+  `ObservationHandler`.
+- **Every outcome-bearing key value is declared at start as the placeholder
+  `"none"`, overwritten once the outcome is known** —
+  `nessy.turn.outcome`, `nessy.approval.answer`, `nessy.tool.outcome`,
+  `nessy.tool.deferred`, `gen_ai.response.finish_reasons`, and
+  `error.type`. Same rule as above, applied a second time: Micrometer
+  compares an observation's key set against others already recorded under
+  that name, so a `chat` that only sometimes carried `error.type` would
+  itself fail. A reader of these spans must treat `"none"` as "not yet
+  known / not applicable" — including `error.type=none` on a span that
+  finished successfully, which is the documented shape, not a bug.
+- **The semconv `gen_ai.client.token.usage` metric is the application's to
+  record, not `nessy-agent`'s.** An `ObservationRegistry` times
+  observations; it cannot record a value histogram. The `chat` span carries
+  the vendor's own token counts as key-values instead
+  (`gen_ai.usage.input_tokens`/`output_tokens`), and a ten-line
+  `ObservationHandler` — shipped in `nessy-examples/observed` — reads them
+  on `onStop` and records the metric to its own `MeterRegistry`.
+  `nessy-agent` never depends on a `MeterRegistry`.

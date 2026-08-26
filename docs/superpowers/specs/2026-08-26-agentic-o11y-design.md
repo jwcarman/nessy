@@ -41,16 +41,50 @@ High-cardinality values (`gen_ai.agent.id`, `gen_ai.conversation.id`,
 `gen_ai.tool.call.id`) are **high-cardinality key-values** in Micrometer
 terms: on the span, never on a meter.
 
+**Amendment (2026-08-26, execution, Task 1's Deviation 3) — the `"none"`
+placeholder convention.** Every outcome-bearing low-cardinality key
+(`nessy.turn.outcome`, `nessy.approval.answer`, `nessy.tool.outcome`,
+`nessy.tool.deferred`, `gen_ai.response.finish_reasons`, `error.type`) is
+set at **start** to `KeyValue.NONE_VALUE` (`"none"`) and overwritten when
+the outcome is known — a context stores low-cardinality values by key, so
+the later write replaces the placeholder. This is forced by the same rule
+§1.2's amendment below describes: Micrometer compares an observation's key
+set against others already recorded under that name, so a `chat` that only
+sometimes carried `error.type` would itself fail the TCK. A reader of these
+spans must treat `"none"` as "not yet known / not applicable" — including
+`error.type=none` on a span that finished successfully, which is the
+documented shape, not a bug.
+
 ### 1.2 Metrics
 
 From semconv, produced by Micrometer's default observation handlers from
-the spans above (Micrometer names the timer after the observation name;
-the semconv metric names are set explicitly as the observation's
-*low-cardinality* metric name so the exporter emits them as-is):
+the spans above.
 
-- `gen_ai.client.operation.duration` — histogram; tags
-  `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`
-  (chat) / `gen_ai.tool.name` (execute_tool), `error.type`.
+**Amendment (2026-08-26, execution, Task 1's Deviation 2) — `invoke_agent`,
+`chat`, and `execute_tool` are each named for themselves, not
+`gen_ai.client.operation.duration`.** This section originally asked for the
+semconv metric name set explicitly as every duration observation's
+Micrometer name, with the semconv span name carried as the contextual name.
+**Micrometer forbids it**, discovered as a real TCK failure, not by reading:
+a metrics backend requires every observation sharing one name to carry the
+*same set* of low-cardinality keys, and `invoke_agent`, `chat`, and
+`execute_tool` carry deliberately different attribute sets — that is a
+meter with unstable tags, which `TestObservationRegistry`'s strict mode
+rejects outright and a real backend corrupts. (The failure is also silent
+in production terms if it escapes on a bare, non-strict registry: an
+uncaught `InvalidObservationException` on the tool-executor thread stalled
+a whole turn mid-flight before fix round 1's containment closed that hole —
+see §3.1.) So each operation is named for itself (`invoke_agent` / `chat` /
+`execute_tool`), which is also its semconv *span* name; the semconv metric
+`gen_ai.client.operation.duration` is declared as a constant, for the
+record, and never recorded by `nessy-agent` — the same division of labour
+this section already gave the token histogram below. An application that
+wants the exact semconv metric name maps the three operation observations
+onto it in its own `ObservationHandler`.
+
+Unchanged from the original text — still a semconv metric, still
+application-side:
+
 - `gen_ai.client.token.usage` — histogram; tags `gen_ai.token.type` =
   input / output, `gen_ai.provider.name`, `gen_ai.request.model`.
   **Caveat:** an `ObservationRegistry` times observations; it cannot record
@@ -149,6 +183,28 @@ executors because their data exists nowhere else:
    at `ToolFinished`, and only the executor knows when the body returned.
    `nessy.tool.deferred` is set from `context.deferral()`.
 
+**Amendment (2026-08-26, execution, Task 1's Deviation 1) — the executors
+take an `ObservationRegistry` and a `Supplier<Observation>`, never
+`Observations` itself.** `Observations` is package-private in
+`org.jwcarman.nessy.agent` (§0: no new public noun), while
+`ProviderModelCallExecutor` lives in `…agent.model` and
+`RegistryToolCallExecutor` in `…agent.tool` — Java has no subpackage
+visibility, so naming `Observations` in either constructor would force it
+public. Each executor instead takes the plain, public/JDK-typed pair
+`(ObservationRegistry, Supplier<Observation>)`, the second bound to the
+scope's open segment; the segment map itself is a plain
+`ConcurrentMap<AgentId, Observation>`, built by `HarnessConfig` alongside
+the pre-existing `approvalWaiters` map and captured by both executor
+factory lambdas — the same "a plain map, not a new public type" precedent
+`approvalWaiters` already set. Consequence: `Observations.chat(...)` and
+`Observations.executeTool(...)` do not exist; each executor mints its own
+span with its own private semconv constants, so the `gen_ai.*`/`chat`/
+`execute_tool` strings are duplicated across three files (`Observations`,
+`ProviderModelCallExecutor`, `RegistryToolCallExecutor`) — the same
+duplication this spec already accepted for the example module's hard-coded
+semconv strings, and `ObservedTurnTest` pins all of them end to end so a
+drift breaks the build.
+
 Everything else — segments, both waits, the three counters — is the
 package-private `Observations` object subscribed to the stream, holding the
 registry and a per-`AgentId` map of the open segment and open waits.
@@ -156,6 +212,26 @@ registry and a per-`AgentId` map of the open segment and open waits.
 `nessy.state.stale_retries` and `nessy.effects.refired` are engine-health
 moments the two fold sites report to `Observations` directly (they are
 not folds).
+
+**Containment lives here and in `Observations` (fix round 1).** An
+`ObservationHandler` is arbitrary application code running inline on
+whichever thread started or stopped a span — telemetry describes the work,
+it never participates in it. Both executors wrap every `start()`/`stop()`/
+key-value write around their own span in a `quietly(...)`/`started(...)`
+pair: a failed `start()` yields `Observation.NOOP` so the following
+`stop()` is a harmless no-op, and a throwing handler is logged once at
+`WARN` and dropped rather than propagated — proven by
+`InstrumentationNeverBreaksATurnTest`, including the case that named the
+rule: an application handler reading `gen_ai.usage.input_tokens` off a
+`chat` that failed before the model reported any usage throws inside
+`onStop`, and the turn still completes with its real, correct outcome.
+`Observations.count(...)` (the three engine counters) carries the same
+containment for the calls the two fold sites make directly, since those
+calls are not behind `FactFanout`'s own per-subscriber isolation. Every
+other path through `Observations` — `applied`/`ignored`/etc. — is already
+safe by construction: it is reached only through `HarnessObserver`, and
+`FactFanout` isolates each subscriber's throw before it can reach a fold
+site at all.
 
 ### 3.2 Parent–child
 

@@ -74,20 +74,23 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      HarnessObserver harnessObserver,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters) { ... }
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
+      ObservationRegistry observationRegistry,
+      ConcurrentMap<AgentId, Observation> openSegments,
+      ExecutorService ownedExecutor) { ... }
 
   public Agent<O> bind(AgentId id) { ... }
   public ApprovalDesk approvals() { ... }

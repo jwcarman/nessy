@@ -46,5 +46,6 @@
     <module>hello</module>
     <module>approvals</module>
     <module>governed</module>
+    <module>observed</module>
   </modules>
 </project>
