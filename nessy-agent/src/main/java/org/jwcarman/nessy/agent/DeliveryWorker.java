@@ -270,28 +270,36 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int drainApprovals(BatchSize batchSize) {
-    return approvalClient.deliverResults(
-        batchSize,
-        APPROVAL_LEASE,
-        APPROVAL_BACKOFF,
-        delivery -> {
-          Routing routing = delivery.continuation().routing();
-          ComputationId id = ComputationId.of(delivery.computationId().value().toString());
-          Approval answer =
-              switch (delivery.outcome()) {
-                case TypedOutcome.Success<Approval> success -> success.value();
-                case TypedOutcome.Failure<Approval> failure ->
-                    new Approval.Denied(failure.message(), Optional.of("continuum:failure"));
-                case TypedOutcome.Expired<Approval> expired ->
-                    new Approval.Denied(
-                        expired.kind() + ": " + expired.message(),
-                        Optional.of("continuum:expired"));
-              };
-          fold(
-              routing,
-              new AgentEvent.ApprovalAnswered(routing.call(), Optional.of(id), answer),
-              id);
-        });
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_DRAIN,
+            Observations.PUMP_APPROVALS,
+            () ->
+                approvalClient.deliverResults(
+                    batchSize,
+                    APPROVAL_LEASE,
+                    APPROVAL_BACKOFF,
+                    delivery -> {
+                      Routing routing = delivery.continuation().routing();
+                      ComputationId id =
+                          ComputationId.of(delivery.computationId().value().toString());
+                      Approval answer =
+                          switch (delivery.outcome()) {
+                            case TypedOutcome.Success<Approval> success -> success.value();
+                            case TypedOutcome.Failure<Approval> failure ->
+                                new Approval.Denied(
+                                    failure.message(), Optional.of("continuum:failure"));
+                            case TypedOutcome.Expired<Approval> expired ->
+                                new Approval.Denied(
+                                    expired.kind() + ": " + expired.message(),
+                                    Optional.of("continuum:expired"));
+                          };
+                      fold(
+                          routing,
+                          new AgentEvent.ApprovalAnswered(routing.call(), Optional.of(id), answer),
+                          id);
+                    }));
   }
 
   /**
@@ -304,7 +312,13 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int drainTools(BatchSize batchSize) {
-    return toolClient.deliverResults(batchSize, TOOL_LEASE, TOOL_BACKOFF, this::foldOutcome);
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_DRAIN,
+            Observations.PUMP_TOOLS,
+            () ->
+                toolClient.deliverResults(batchSize, TOOL_LEASE, TOOL_BACKOFF, this::foldOutcome));
   }
 
   /**
@@ -332,7 +346,12 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int expireApprovals(BatchSize batchSize) {
-    return approvalClient.failExpiredComputations(batchSize);
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_EXPIRE,
+            Observations.PUMP_APPROVALS,
+            () -> approvalClient.failExpiredComputations(batchSize));
   }
 
   /**
@@ -344,7 +363,12 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int expireTools(BatchSize batchSize) {
-    return toolClient.failExpiredComputations(batchSize);
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_EXPIRE,
+            Observations.PUMP_TOOLS,
+            () -> toolClient.failExpiredComputations(batchSize));
   }
 
   /**
@@ -358,7 +382,12 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int purgeApprovals(BatchSize batchSize, ResultTtl ttl) {
-    return approvalClient.purgeExpiredResults(batchSize, ttl);
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_PURGE,
+            Observations.PUMP_APPROVALS,
+            () -> approvalClient.purgeExpiredResults(batchSize, ttl));
   }
 
   /**
@@ -372,7 +401,12 @@ final class DeliveryWorker<O> implements ComputationPump {
    */
   @Override
   public int purgeTools(BatchSize batchSize, ResultTtl ttl) {
-    return toolClient.purgeExpiredResults(batchSize, ttl);
+    return harness
+        .observations()
+        .pump(
+            Observations.PUMP_PURGE,
+            Observations.PUMP_TOOLS,
+            () -> toolClient.purgeExpiredResults(batchSize, ttl));
   }
 
   /**

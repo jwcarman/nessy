@@ -73,7 +73,21 @@ public final class ComputationScheduler implements AutoCloseable, Executor {
   private static final BatchSize PURGE_BATCH = BatchSize.of(200);
   private static final ResultTtl RESULT_TTL = ResultTtl.ofHours(1);
 
-  private static final Duration DELIVER_DELAY = Duration.ofSeconds(1);
+  /**
+   * 5 seconds, not 1 (2026-08-26 soak measurement — do NOT "optimise" this back down). In-process
+   * work never waits for this poll: {@code DeliveryWorker#nudge()} fires both drains whenever an
+   * approval is answered ({@code ApprovalDesk:156}) or a tool completed ({@code
+   * CompletionDesk:61,77}) through this JVM's own desks. The poll exists only for work {@code
+   * nudge()} cannot see: another process answering against the shared database; the expiry sweeps,
+   * which produce outcomes and do not nudge; backed-off deliveries ({@code Backoff.ofSeconds(5)},
+   * see {@code DeliveryWorker.APPROVAL_BACKOFF}/{@code TOOL_BACKOFF}); crash recovery; and a lease
+   * expiring after a process died (30s). Every one of those is insensitive to a few extra seconds —
+   * expiry runs in minutes to days, backoff is already 5s, and lease recovery has already waited
+   * 30s. At 1s the two deliver pumps alone polled an empty outbox at a measured flat 2.2/second,
+   * 80% of it while no round was running at all.
+   */
+  private static final Duration DELIVER_DELAY = Duration.ofSeconds(5);
+
   private static final Duration APPROVAL_EXPIRE_DELAY = Duration.ofMinutes(1);
   private static final Duration TOOL_EXPIRE_DELAY = Duration.ofSeconds(15);
   private static final Duration PURGE_DELAY = Duration.ofMinutes(10);

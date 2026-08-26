@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.StaleStateException;
@@ -181,6 +182,32 @@ final class Observations implements HarnessObserver {
    * for it, so the Micrometer name and the span name coincide.
    */
   static final String FOLD = "nessy.fold";
+
+  /**
+   * The pump observation (2026-08-26 soak, task-pump-spans): one name for every scheduled pump
+   * pass, with the pass and kind as attributes rather than six invented span names — James's
+   * ruling, option A. Opened CURRENT for the whole body of a pass ({@link #pump}), the same way
+   * {@link #fold} is: an observation merely started and stopped around the work is not the current
+   * one, and instrumentation a user enables nests under nothing. That exact mistake — measured live
+   * in the soak — is why every pump pass was silently starting its own root trace: {@code
+   * ComputationScheduler}'s two deliver pumps ran every second with no observation current at all.
+   */
+  static final String PUMP = "nessy.pump";
+
+  static final String PUMP_PASS = "nessy.pump.pass";
+  static final String PUMP_KIND = "nessy.pump.kind";
+  static final String PUMP_COUNT = "nessy.pump.count";
+
+  /** The three {@link #PUMP_PASS} values. */
+  static final String PUMP_DRAIN = "drain";
+
+  static final String PUMP_EXPIRE = "expire";
+  static final String PUMP_PURGE = "purge";
+
+  /** The two {@link #PUMP_KIND} values. */
+  static final String PUMP_APPROVALS = "approvals";
+
+  static final String PUMP_TOOLS = "tools";
 
   static final String ERROR_TYPE = "error.type";
 
@@ -451,6 +478,51 @@ final class Observations implements HarnessObserver {
   private Observation foldParent(AgentId id) {
     Observation enclosing = registry.getCurrentObservation();
     return enclosing != null ? enclosing : openSegments.get(id);
+  }
+
+  /**
+   * One pump pass, measured and made CURRENT — the task-pump-spans point in full. {@code work} runs
+   * with the {@code nessy.pump} observation's scope OPEN, not merely between a start and a stop, so
+   * any instrumentation a user enables (a wrapped {@code DataSource}, say) nests under it instead
+   * of starting a trace of its own — the exact thing the 2026-08-26 soak found could not happen.
+   *
+   * @param pass one of {@link #PUMP_DRAIN}, {@link #PUMP_EXPIRE}, {@link #PUMP_PURGE}
+   * @param kind one of {@link #PUMP_APPROVALS}, {@link #PUMP_TOOLS}
+   * @param work the pass's own body, returning the count it processed
+   * @return exactly what {@code work} returned
+   * @implSpec Never changes what {@code work} returns or throws. Every instrumentation call around
+   *     it — the start, the scope open, the count attribute, the scope close, the stop — is guarded
+   *     and logged, mirroring {@link #fold}; only {@code work}'s own exception ever escapes.
+   */
+  int pump(String pass, String kind, IntSupplier work) {
+    Observation span = startPump(pass, kind);
+    Observation.Scope scope = opened(span);
+    try {
+      int count = work.getAsInt();
+      quietly(() -> span.lowCardinalityKeyValue(PUMP_COUNT, String.valueOf(count)));
+      return count;
+    } catch (RuntimeException e) {
+      quietly(() -> span.error(e));
+      throw e;
+    } finally {
+      quietly(scope::close);
+      quietly(span::stop);
+    }
+  }
+
+  private Observation startPump(String pass, String kind) {
+    try {
+      return Observation.createNotStarted(PUMP, registry)
+          .contextualName(pass + " " + kind)
+          .lowCardinalityKeyValue(PUMP_PASS, pass)
+          .lowCardinalityKeyValue(PUMP_KIND, kind)
+          // Declared now, overwritten when known: one stable low-cardinality key set per name.
+          .lowCardinalityKeyValue(PUMP_COUNT, KeyValue.NONE_VALUE)
+          .start();
+    } catch (RuntimeException e) {
+      log.warn("an observation handler threw starting a pump span; the pump is unaffected", e);
+      return Observation.NOOP;
+    }
   }
 
   private Observation.Scope opened(Observation span) {

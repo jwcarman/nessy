@@ -17,6 +17,7 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -526,6 +527,96 @@ class ObservationsTest {
    * reader came for. The agent-type dimension is not lost by the move: the segment the event lands
    * on already carries {@code gen_ai.agent.name}.
    */
+  /**
+   * The pump spans (spec: the 2026-08-26 soak, task-pump-spans): a `nessy.pump` observation, open
+   * for the whole body of every pump pass, so instrumentation a user enables — a wrapped {@code
+   * DataSource}, say — has something to nest under instead of starting its own root trace. Test
+   * {@link #a_span_opened_inside_a_pump_pass_descends_from_the_pumps_own_observation()} is the one
+   * that actually distinguishes a correct implementation (scope opened) from the exact prior bug
+   * (span merely started and stopped around the work, scope never opened): with the scope never
+   * opened, {@code registry.getCurrentObservation()} stays {@code null} while the probe below is
+   * created, so the probe's parent would be {@code null} and this test would fail. Every other test
+   * in this class stays green either way, which is why this one is written first.
+   */
+  @Nested
+  class ThePumpSpan {
+
+    private Observation.Context probeContext() {
+      return only("probe");
+    }
+
+    @Test
+    void a_span_opened_inside_a_pump_pass_descends_from_the_pumps_own_observation() {
+      observations.pump(
+          Observations.PUMP_DRAIN,
+          Observations.PUMP_APPROVALS,
+          () -> {
+            Observation probe = Observation.createNotStarted("probe.span", registry);
+            probe.contextualName("probe");
+            probe.start().stop();
+            return 0;
+          });
+
+      Observation.Context probe = probeContext();
+      assertThat(probe.getParentObservation()).isNotNull();
+      assertThat(probe.getParentObservation().getContextView().getName())
+          .isEqualTo(Observations.PUMP);
+    }
+
+    @Test
+    void the_count_attribute_reports_what_the_pass_returned() {
+      observations.pump(Observations.PUMP_DRAIN, Observations.PUMP_APPROVALS, () -> 7);
+
+      assertThat(
+              only("drain approvals").getLowCardinalityKeyValue(Observations.PUMP_COUNT).getValue())
+          .isEqualTo("7");
+    }
+
+    @Test
+    void an_empty_poll_reports_a_zero_count() {
+      observations.pump(Observations.PUMP_EXPIRE, Observations.PUMP_TOOLS, () -> 0);
+
+      assertThat(only("expire tools").getLowCardinalityKeyValue(Observations.PUMP_COUNT).getValue())
+          .isEqualTo("0");
+    }
+
+    @Test
+    void both_attributes_are_set_for_each_of_the_three_verbs() {
+      observations.pump(Observations.PUMP_DRAIN, Observations.PUMP_APPROVALS, () -> 1);
+      observations.pump(Observations.PUMP_EXPIRE, Observations.PUMP_TOOLS, () -> 2);
+      observations.pump(Observations.PUMP_PURGE, Observations.PUMP_APPROVALS, () -> 3);
+
+      assertThat(only("drain approvals").getLowCardinalityKeyValue(Observations.PUMP_PASS))
+          .isNotNull();
+      assertThat(only("drain approvals").getLowCardinalityKeyValue(Observations.PUMP_KIND))
+          .isNotNull();
+      assertThat(only("expire tools").getLowCardinalityKeyValue(Observations.PUMP_PASS))
+          .isNotNull();
+      assertThat(only("expire tools").getLowCardinalityKeyValue(Observations.PUMP_KIND))
+          .isNotNull();
+      assertThat(only("purge approvals").getLowCardinalityKeyValue(Observations.PUMP_PASS))
+          .isNotNull();
+      assertThat(only("purge approvals").getLowCardinalityKeyValue(Observations.PUMP_KIND))
+          .isNotNull();
+    }
+
+    @Test
+    void a_pass_whose_body_throws_still_propagates_with_the_observation_closed() {
+      assertThatThrownBy(
+              () ->
+                  observations.pump(
+                      Observations.PUMP_PURGE,
+                      Observations.PUMP_TOOLS,
+                      () -> {
+                        throw new IllegalStateException("boom");
+                      }))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("boom");
+
+      assertThat(registry).hasObservationWithNameEqualTo(Observations.PUMP).that().hasBeenStopped();
+    }
+  }
+
   @Nested
   class TheCountersDuringAnOpenRound {
 
