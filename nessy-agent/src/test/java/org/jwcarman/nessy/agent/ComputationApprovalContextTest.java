@@ -32,8 +32,8 @@ import org.jwcarman.continuum.api.Backoff;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.Lease;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
@@ -191,34 +191,34 @@ class ComputationApprovalContextTest {
   }
 
   /** Records only {@code applyFailed}; every other callback is a silent no-op. */
-  private record FailureRecorder(List<AgentEvent> narrated) implements AgentObserver {
+  private record FailureRecorder(List<AgentEvent> narrated) implements HarnessObserver {
     @Override
-    public void applied(AgentEvent event, Transition transition) {
+    public void applied(AgentId id, AgentEvent event, Transition transition) {
       // silent: only applyFailed is recorded
     }
 
     @Override
-    public void ignored(AgentEvent event) {
+    public void ignored(AgentId id, AgentEvent event) {
       // silent: only applyFailed is recorded
     }
 
     @Override
-    public void renderFailed(Object observation, RuntimeException error) {
+    public void renderFailed(AgentId id, Object observation, RuntimeException error) {
       // silent: only applyFailed is recorded
     }
 
     @Override
-    public void applyFailed(AgentEvent event, RuntimeException error) {
+    public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
       narrated.add(event);
     }
 
     @Override
-    public void reFired(List<Effect> effects) {
+    public void reFired(AgentId id, List<Effect> effects) {
       // silent: only applyFailed is recorded
     }
 
     @Override
-    public void observationRequeued(Object observation) {
+    public void observationRequeued(AgentId id, Object observation) {
       // silent: only applyFailed is recorded
     }
   }

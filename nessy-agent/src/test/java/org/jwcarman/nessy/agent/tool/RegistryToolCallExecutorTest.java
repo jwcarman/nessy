@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -257,7 +258,9 @@ class RegistryToolCallExecutorTest {
         pump,
         approvalClient,
         toolClient,
-        mapper);
+        mapper,
+        ObservationRegistry.NOOP,
+        () -> null);
   }
 
   /** The run door: every event it delivered, in order. */

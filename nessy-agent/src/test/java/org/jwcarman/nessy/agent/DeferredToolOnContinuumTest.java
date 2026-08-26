@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,8 +39,8 @@ import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -213,7 +214,9 @@ class DeferredToolOnContinuumTest {
           pump,
           approvalClient,
           toolClient,
-          mapper);
+          mapper,
+          ObservationRegistry.NOOP,
+          () -> null);
   private final Harness<String> harness =
       TestAgents.<String>harness(
           memory,
@@ -222,7 +225,7 @@ class DeferredToolOnContinuumTest {
           text -> List.of(),
           sink -> {},
           executor,
-          AgentObserver.noop(),
+          HarnessObserver.noop(),
           false,
           StalenessPolicy.after(Duration.ZERO));
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
@@ -479,7 +482,7 @@ class DeferredToolOnContinuumTest {
             text -> List.of(),
             sink -> {},
             executor,
-            AgentObserver.noop(),
+            HarnessObserver.noop(),
             false,
             StalenessPolicy.never());
     var throwingAgent = throwingHarness.bind(AgentId.of("test-scope"));

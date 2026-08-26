@@ -15,15 +15,22 @@
  */
 package org.jwcarman.nessy.agent.model;
 
+import io.micrometer.common.KeyValue;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
+import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -47,6 +54,14 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * AgentEvent.ModelFinished} to the dispatch-time {@link Sink}. Message construction lives here and
  * nowhere else on the model side.
  *
+ * <p>This is one of the two places a span is opened from inside an executor rather than derived
+ * from the fact stream (agentic-o11y spec §3.1): the {@code chat} observation, because {@link
+ * ModelEvent.TurnEnded}'s {@link Usage} and {@link StopReason} arrive here and nowhere else. It is
+ * parented to the scope's open {@code invoke_agent} segment explicitly — Micrometer's scope does
+ * not follow {@code executor.execute} onto another virtual thread (spec §3.2) — and started/stopped
+ * by hand rather than through {@code observe(Runnable)}, because what it times is a stream this
+ * class iterates and closes.
+ *
  * <p>{@link #callModel(Sink)} is async by {@link ModelCallExecutor}'s contract: the call is
  * submitted to {@code executor} and never runs on the dispatching stack. Any {@code
  * RuntimeException} the model call or stream consumption raises — a context overflow, an HTTP
@@ -63,7 +78,33 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private final Memory memory;
   private final TurnObserver turn;
   private final Executor executor;
+  private final ObservationRegistry observations;
+  private final Supplier<Observation> parentSegment;
 
+  /**
+   * The semconv names this executor's own span carries (agentic-o11y spec §1.1). {@code chat} is
+   * both the span name and the observation's Micrometer name: a meter requires one stable
+   * low-cardinality key set per name, so the three GenAI operations cannot share the semconv metric
+   * name {@code gen_ai.client.operation.duration} — see {@code Observations}' javadoc for the full
+   * reasoning and the §1.2 amendment it records.
+   */
+  private static final String CHAT = "chat";
+
+  private static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+  private static final String GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+  private static final String GEN_AI_REQUEST_MODEL = "gen_ai.request.model";
+  private static final String GEN_AI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons";
+  private static final String GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
+  private static final String GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
+  private static final String NESSY_USAGE_CACHED_INPUT_TOKENS = "nessy.usage.cached_input_tokens";
+  private static final String ERROR_TYPE = "error.type";
+
+  /**
+   * @param observations where the {@code chat} span is recorded — {@code ObservationRegistry.NOOP}
+   *     unless the application supplied one, in which case this costs nothing
+   * @param parentSegment this scope's open {@code invoke_agent} observation, or null when none is
+   *     open — read afresh per call, since a segment ends at every park
+   */
   public ProviderModelCallExecutor(
       Model model,
       String systemPrompt,
@@ -71,7 +112,9 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       ToolRegistry tools,
       Memory memory,
       TurnObserver turn,
-      Executor executor) {
+      Executor executor,
+      ObservationRegistry observations,
+      Supplier<Observation> parentSegment) {
     this.model = Objects.requireNonNull(model, "model must not be null");
     this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     this.settings = Objects.requireNonNull(settings, "settings must not be null");
@@ -79,6 +122,8 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.parentSegment = Objects.requireNonNull(parentSegment, "parentSegment must not be null");
   }
 
   @Override
@@ -108,6 +153,43 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
    * event must fold to identical state, which only holds if the id already rode in on the event.
    */
   private ModelOutcome stream(ModelRequest request) {
+    Observation chat = startChat();
+    try {
+      return streamInto(request, chat);
+    } catch (RuntimeException e) {
+      // The span records the failure and is stopped below; the exception itself keeps going, to be
+      // folded into a ModelOutcome.Failed by call() exactly as it always was.
+      chat.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+      chat.error(e);
+      throw e;
+    } finally {
+      chat.stop();
+    }
+  }
+
+  /**
+   * The {@code chat} span (agentic-o11y spec §1.1). The two outcome-bearing low-cardinality keys
+   * are declared here, as placeholders, and overwritten when the outcome is known: every
+   * observation of one name must carry the same low-cardinality KEYS or the meter behind them has
+   * unstable tags. Parented to the scope's open segment; parentless when the scope has none.
+   */
+  private Observation startChat() {
+    Observation parent = parentSegment.get();
+    Observation chat =
+        Observation.createNotStarted(CHAT, observations)
+            .contextualName(CHAT + " " + model.id())
+            .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, CHAT)
+            .lowCardinalityKeyValue(GEN_AI_PROVIDER_NAME, model.provider())
+            .lowCardinalityKeyValue(GEN_AI_REQUEST_MODEL, model.id())
+            .lowCardinalityKeyValue(GEN_AI_RESPONSE_FINISH_REASONS, KeyValue.NONE_VALUE)
+            .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE);
+    if (parent != null) {
+      chat.parentObservation(parent);
+    }
+    return chat.start();
+  }
+
+  private ModelOutcome streamInto(ModelRequest request, Observation chat) {
     List<ContentBlock> blocks = new ArrayList<>();
     List<ToolCall> calls = new ArrayList<>();
     try (ModelStream stream = model.stream(request)) {
@@ -131,8 +213,19 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             blocks.add(new ToolUseBlock(call, signature));
             calls.add(call);
           }
-          case ModelEvent.TurnEnded _ -> {
-            // usage metrics ride the observability design, not this plan
+          case ModelEvent.TurnEnded(StopReason reason, Usage usage) -> {
+            // The one place the vendor's own accounting exists (agentic-o11y spec §3.1). The token
+            // counts ride the span as key-values: an ObservationRegistry cannot record a value
+            // histogram, so the semconv gen_ai.client.token.usage metric is the application's to
+            // produce from these, in a handler that reads them on stop (spec §1.2).
+            chat.lowCardinalityKeyValue(
+                GEN_AI_RESPONSE_FINISH_REASONS, "[" + reason.name().toLowerCase(Locale.ROOT) + "]");
+            chat.highCardinalityKeyValue(
+                GEN_AI_USAGE_INPUT_TOKENS, Long.toString(usage.inputTokens()));
+            chat.highCardinalityKeyValue(
+                GEN_AI_USAGE_OUTPUT_TOKENS, Long.toString(usage.outputTokens()));
+            chat.highCardinalityKeyValue(
+                NESSY_USAGE_CACHED_INPUT_TOKENS, Long.toString(usage.cachedInputTokens()));
           }
         }
       }

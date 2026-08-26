@@ -33,9 +33,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
-import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -142,29 +141,32 @@ class AgentSubscriptionTest {
         Harness.of(
             type,
             text -> List.of(new TextBlock(text)),
-            perIdTurnObserver -> AgentObserver.noop(),
+            HarnessObserver.noop(),
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
             rawId -> new SubstrateMemory(substrate, rawId, mapper),
             rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
             rawId -> new QueueBacklog(),
-            (memory, turnObserver) ->
+            (scopeId, turnObserver) ->
                 new ProviderModelCallExecutor(
                     model,
                     TestSettings.SYSTEM_PROMPT,
                     TestSettings.settings(),
                     TestSettings.emptyRegistry(),
-                    memory,
+                    new SubstrateMemory(substrate, scopeId.value(), mapper),
                     turnObserver,
-                    pump),
+                    pump,
+                    ObservationRegistry.NOOP,
+                    () -> null),
             (id, turnObserver) -> noTools,
             substrate,
             mapper,
             approvalClient,
             toolClient,
             new ConcurrentHashMap<>(),
-            ObservationRegistry.NOOP);
+            ObservationRegistry.NOOP,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     return harness;
   }
@@ -212,31 +214,43 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              perIdTurnObserver -> AgentObserver.noop(),
+              HarnessObserver.noop(),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
               rawId -> new SubstrateMemory(substrate, rawId, mapper),
               storeFactory,
               rawId -> new QueueBacklog(),
-              (memory, turnObserver) ->
+              (scopeId, turnObserver) ->
                   new ProviderModelCallExecutor(
                       model,
                       TestSettings.SYSTEM_PROMPT,
                       TestSettings.settings(),
                       registry,
-                      memory,
+                      new SubstrateMemory(substrate, scopeId.value(), mapper),
                       turnObserver,
-                      pump),
+                      pump,
+                      ObservationRegistry.NOOP,
+                      () -> null),
               (id, turnObserver) ->
                   new RegistryToolCallExecutor(
-                      registry, type, id, turnObserver, pump, approvalClient, toolClient, mapper),
+                      registry,
+                      type,
+                      id,
+                      turnObserver,
+                      pump,
+                      approvalClient,
+                      toolClient,
+                      mapper,
+                      ObservationRegistry.NOOP,
+                      () -> null),
               substrate,
               mapper,
               approvalClient,
               toolClient,
               new ConcurrentHashMap<>(),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of("scope-a"));
@@ -395,29 +409,32 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              perIdTurnObserver -> AgentObserver.noop(),
+              HarnessObserver.noop(),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
               rawId -> new SubstrateMemory(substrate, rawId, mapper),
               rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
               rawId -> new QueueBacklog(),
-              (memory, turnObserver) ->
+              (boundScope, turnObserver) ->
                   new ProviderModelCallExecutor(
                       model,
                       TestSettings.SYSTEM_PROMPT,
                       TestSettings.settings(),
                       TestSettings.emptyRegistry(),
-                      memory,
+                      new SubstrateMemory(substrate, boundScope.value(), mapper),
                       turnObserver,
-                      pump),
+                      pump,
+                      ObservationRegistry.NOOP,
+                      () -> null),
               (id, turnObserver) -> noTools,
               substrate,
               mapper,
               approvalClient,
               toolClient,
               new ConcurrentHashMap<>(),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of(scopeId));
@@ -472,29 +489,32 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              TurnNarrationAdapter::new,
+              null,
               throwingGlobal,
               false,
               StalenessPolicy.never(),
               rawId -> new SubstrateMemory(substrate, rawId, mapper),
               rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
               rawId -> new QueueBacklog(),
-              (memory, turnObserver) ->
+              (boundScope, turnObserver) ->
                   new ProviderModelCallExecutor(
                       model,
                       TestSettings.SYSTEM_PROMPT,
                       TestSettings.settings(),
                       TestSettings.emptyRegistry(),
-                      memory,
+                      new SubstrateMemory(substrate, boundScope.value(), mapper),
                       turnObserver,
-                      pump),
+                      pump,
+                      ObservationRegistry.NOOP,
+                      () -> null),
               (id, turnObserver) -> noTools,
               substrate,
               mapper,
               approvalClient,
               toolClient,
               new ConcurrentHashMap<>(),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of(scopeId));

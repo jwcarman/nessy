@@ -118,5 +118,10 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     public Set<Capability> capabilities() {
       return Set.of();
     }
+
+    @Override
+    public String provider() {
+      return "test";
+    }
   }
 }

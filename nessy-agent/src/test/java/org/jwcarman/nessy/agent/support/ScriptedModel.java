@@ -63,6 +63,11 @@ public final class ScriptedModel implements Model {
     return "scripted";
   }
 
+  @Override
+  public String provider() {
+    return "scripted";
+  }
+
   public List<ModelRequest> requests() {
     return List.copyOf(requests);
   }

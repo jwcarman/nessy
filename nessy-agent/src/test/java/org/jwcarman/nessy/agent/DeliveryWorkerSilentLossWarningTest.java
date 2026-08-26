@@ -37,8 +37,8 @@ import org.jwcarman.continuum.api.ComputationId;
 import org.jwcarman.continuum.api.ContinuationId;
 import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -139,7 +139,7 @@ class DeliveryWorkerSilentLossWarningTest {
             RENDERER,
             MODEL,
             TOOLS,
-            AgentObserver.noop(),
+            HarnessObserver.noop(),
             false,
             StalenessPolicy.after(Duration.ZERO));
     HarnessTeardown.track(harness);

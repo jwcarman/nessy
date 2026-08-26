@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
@@ -45,7 +45,6 @@ public final class DefaultAgent<O> implements Agent<O> {
   private final Binding<O> binding;
   private final ModelCallExecutor model;
   private final ToolCallExecutor tools;
-  private final AgentObserver observer;
 
   DefaultAgent(Harness<O> harness, Binding<O> binding) {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
@@ -54,8 +53,15 @@ public final class DefaultAgent<O> implements Agent<O> {
         Objects.requireNonNull(harness.modelExecutor(binding), "modelExecutor must not be null");
     this.tools =
         Objects.requireNonNull(harness.toolExecutor(binding), "toolExecutor must not be null");
-    this.observer =
-        Objects.requireNonNull(harness.observerFor(binding.id()), "agentObserver must not be null");
+  }
+
+  /**
+   * Every fold this shell commits goes out on the harness's one fact stream (agentic-o11y spec §3),
+   * stamped with this scope's id — the same door {@link DeliveryWorker} publishes its durable folds
+   * through, so a subscriber sees one account of the scope rather than two half-accounts.
+   */
+  private FactFanout facts() {
+    return harness.facts();
   }
 
   @Override
@@ -113,7 +119,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
     if (isStale(state)) {
       List<Effect> outstanding = state.phase().outstandingEffects();
-      observer.reFired(outstanding);
+      facts().reFired(binding.id(), outstanding);
       outstanding.forEach(effect -> dispatch(effect, state.phase())); // §6.1 — the re-fire arm
     }
   }
@@ -123,7 +129,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * (§4). Completions that lose the version race re-handle against fresh state until applied or
    * ignored (§3.4).
    *
-   * <p>A fold that cannot commit narrates {@link AgentObserver#applyFailed} and then
+   * <p>A fold that cannot commit narrates {@link HarnessObserver#applyFailed} and then
    * <b>rethrows</b> (tool-context-defer spec §3). What the rethrow buys is the caller that must
    * know: {@code ComputationApprovalContext#defer()} and {@code ComputationToolContext#defer()}
    * promise that an id they hand back is an id the scope names, and only a throw can keep that
@@ -153,8 +159,9 @@ public final class DefaultAgent<O> implements Agent<O> {
         return applyOnce(binding.store().load(), event);
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
+        harness.observations().staleRetry(harness.type());
       } catch (RuntimeException e) {
-        observer.applyFailed(event, e); // narrate — then let the caller see it (spec §3)
+        facts().applyFailed(binding.id(), event, e); // narrate — then let the caller see it (§3)
         throw e;
       }
     }
@@ -163,12 +170,12 @@ public final class DefaultAgent<O> implements Agent<O> {
   private Optional<Transition> applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
-      observer.ignored(event);
+      facts().ignored(binding.id(), event);
       return Optional.empty();
     }
     remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
-    observer.applied(event, t);
+    facts().applied(binding.id(), event, t);
     // The fold IS the park (approval-lifecycle spec §1.3): by the time this commits, the phase
     // names the ask, so whoever is waiting on this turn can be told about it.
     if (event instanceof AgentEvent.ApprovalDeferred(var _, var approval, var request)) {
@@ -251,7 +258,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     try {
       content = harness.renderer().render(observation);
     } catch (RuntimeException e) {
-      observer.renderFailed(observation, e); // discard; stay idle; keep draining
+      facts().renderFailed(binding.id(), observation, e); // discard; stay idle; keep draining
       return;
     }
     if (content.isEmpty()) {
@@ -261,8 +268,9 @@ public final class DefaultAgent<O> implements Agent<O> {
     try {
       committed = applyOnce(state, new AgentEvent.Observed(content));
     } catch (StaleStateException _) {
+      harness.observations().staleRetry(harness.type());
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
-      observer.observationRequeued(observation);
+      facts().observationRequeued(binding.id(), observation);
       return;
     } catch (RuntimeException e) {
       // A genuine failure inside the COMMIT (e.g. a throwing Memory#remember — Memory's own law 1,

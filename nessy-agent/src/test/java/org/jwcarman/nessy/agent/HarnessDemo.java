@@ -26,8 +26,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
@@ -71,10 +71,10 @@ class HarnessDemo {
             return Optional.ofNullable(queue.poll());
           }
         };
-    AgentObserver narrator =
-        new AgentObserver() {
+    HarnessObserver narrator =
+        new HarnessObserver() {
           @Override
-          public void applied(AgentEvent event, Transition t) {
+          public void applied(AgentId id, AgentEvent event, Transition t) {
             System.out.printf(
                 "  [narrate] %-14s -> %-14s commits=%d effects=%s%n",
                 event.getClass().getSimpleName(),
@@ -84,27 +84,27 @@ class HarnessDemo {
           }
 
           @Override
-          public void ignored(AgentEvent event) {
+          public void ignored(AgentId id, AgentEvent event) {
             System.out.println("  [narrate] IGNORED stale " + event.getClass().getSimpleName());
           }
 
           @Override
-          public void renderFailed(Object o, RuntimeException e) {
+          public void renderFailed(AgentId id, Object o, RuntimeException e) {
             // deliberately silent: the demo narrator ignores render failures
           }
 
           @Override
-          public void applyFailed(AgentEvent e, RuntimeException x) {
+          public void applyFailed(AgentId id, AgentEvent e, RuntimeException x) {
             // deliberately silent: the demo narrator ignores apply failures
           }
 
           @Override
-          public void reFired(List<Effect> effects) {
+          public void reFired(AgentId id, List<Effect> effects) {
             // deliberately silent: the demo narrator ignores re-fires
           }
 
           @Override
-          public void observationRequeued(Object observation) {
+          public void observationRequeued(AgentId id, Object observation) {
             // deliberately silent: the demo narrator ignores requeues
           }
         };
@@ -119,7 +119,7 @@ class HarnessDemo {
         Harness.<String>of(
             demoType,
             text -> List.of(new TextBlock(text)),
-            perIdTurnObserver -> narrator,
+            narrator,
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
@@ -133,7 +133,8 @@ class HarnessDemo {
             approvalClient,
             toolClient,
             new ConcurrentHashMap<>(),
-            ObservationRegistry.NOOP);
+            ObservationRegistry.NOOP,
+            new ConcurrentHashMap<>());
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 
     // ---- script the world ----

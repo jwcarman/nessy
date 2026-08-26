@@ -104,6 +104,11 @@ class AgentAskTest {
             public String id() {
               return "exploding";
             }
+
+            @Override
+            public String provider() {
+              return "test";
+            }
           };
       var harness =
           Nessy.harness(
@@ -245,6 +250,11 @@ class AgentAskTest {
             @Override
             public String id() {
               return "exploding";
+            }
+
+            @Override
+            public String provider() {
+              return "test";
             }
           };
       var harness =

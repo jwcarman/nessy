@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.host;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -47,9 +48,8 @@ import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
-import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -108,9 +108,9 @@ public final class HarnessConfig<O> {
   private Substrate substrate;
   private Continuum continuum;
   private TurnObserver turnObserver = TurnObserver.noop();
-  // null until the caller sets one — finish() defaults it to a TurnNarrationAdapter over
-  // turnObserver, so AssistantSaid/TurnEnded narrate the way the CLI door always has.
-  private AgentObserver agentObserver;
+  // null until the caller sets one — the finished Harness then subscribes its own default narrator
+  // to the fact stream instead, so AssistantSaid/TurnEnded narrate the way the CLI door always has.
+  private HarnessObserver harnessObserver;
   private Executor executor;
   private int backlogCapacity = 1024;
   private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
@@ -248,14 +248,23 @@ public final class HarnessConfig<O> {
   }
 
   /**
-   * The shell-failure narration seam: {@code applyFailed}, {@code renderFailed}, {@code reFired},
-   * and {@code observationRequeued} land here. Defaults to a {@link TurnNarrationAdapter} over the
-   * turn observer, so {@code AssistantSaid}/{@code TurnEnded} narrate — the posture the CLI door
-   * has always had; supplying your own observer here replaces that wiring entirely, so an override
-   * that still wants those events narrated must wrap {@link TurnObserver} itself.
+   * The fact-stream seam (agentic-o11y spec §3): the observer subscribed to the one stream both
+   * fold sites publish through, so {@code applied}, {@code ignored}, {@code applyFailed}, {@code
+   * renderFailed}, {@code reFired} and {@code observationRequeued} land here for EVERY scope this
+   * harness runs — a durable delivery's fold included, which narrated nothing at all before the
+   * stream existed.
+   *
+   * <p>Defaults to the narrating observer ({@code TurnNarrationAdapter}), so {@code AssistantSaid}/
+   * {@code TurnEnded} narrate — the posture the CLI door has always had; supplying your own
+   * observer here replaces that wiring entirely, so an override that still wants those events
+   * narrated must wrap {@link TurnObserver} itself. One observer serves every scope now rather than
+   * being stamped per id, which is why its methods lead with the {@link
+   * org.jwcarman.nessy.agent.AgentId} the fact is about. A throw is logged and dropped, never
+   * propagated into the fold.
    */
-  public HarnessConfig<O> agentObserver(AgentObserver agentObserver) {
-    this.agentObserver = Objects.requireNonNull(agentObserver, "agentObserver must not be null");
+  public HarnessConfig<O> harnessObserver(HarnessObserver harnessObserver) {
+    this.harnessObserver =
+        Objects.requireNonNull(harnessObserver, "harnessObserver must not be null");
     return this;
   }
 
@@ -460,16 +469,6 @@ public final class HarnessConfig<O> {
                 cfg.resultCodec(effectiveSubstrate.codecs().create(ToolResult.class))
                     .continuationCodec(Routing.codec(pinned))
                     .deadline(DEFAULT_TOOL_DEADLINE));
-    // The default narrator targets the id-scoped TurnObserver Harness.observerFor(id) hands it
-    // (fanout.observerFor(id)) — the ONE path AssistantSaid/TurnEnded now narrate through (front-
-    // ends spec §1, Task 3's fix for Task 2's fanout gap): before this, TurnNarrationAdapter
-    // targeted the raw configured turnObserver directly, bypassing the fanout entirely, so a
-    // subscribe()d per-id observer never saw AssistantSaid/TurnEnded at all. A caller-supplied
-    // agentObserver, by contrast, still replaces the wiring wholesale and stays id-free — the
-    // factory below simply ignores the per-id TurnObserver it is handed and returns the same fixed
-    // instance every time, exactly as before this change.
-    Function<TurnObserver, AgentObserver> effectiveAgentObserverFactory =
-        agentObserver != null ? perIdTurnObserver -> agentObserver : TurnNarrationAdapter::new;
     // Fix round 1 M1: snapshot these three fields into locals so the two executor factory
     // lambdas below close over values captured at this atomic-construction moment, not over
     // `this` fields a later mutation (there is none in practice — the config never escapes — but
@@ -482,27 +481,37 @@ public final class HarnessConfig<O> {
     // registered for that id (Harness#parked).
     ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters =
         new ConcurrentHashMap<>();
+    // The open invoke_agent span per scope (agentic-o11y spec §3.2) — like approvalWaiters above, a
+    // plain map rather than a new public type. The harness's package-private Observations writes it
+    // as segments open and close; the two executor factories below read it to parent their own chat
+    // and execute_tool spans, because Micrometer's scope does not follow executor.execute onto
+    // another virtual thread. It is created HERE, not inside the harness, for the one reason
+    // approvalWaiters is: the executor factories are lambdas this method closes over, and they need
+    // the same instance the harness will use.
+    ConcurrentMap<AgentId, Observation> openSegments = new ConcurrentHashMap<>();
 
     Harness<O> harness =
         Harness.of(
             agentType,
             effectiveRenderer,
-            effectiveAgentObserverFactory,
+            harnessObserver,
             effectiveTurnObserver,
             true,
             stalenessPolicy,
             effectiveMemoryFactory,
             effectiveStoreFactory,
             effectiveBacklogFactory,
-            (scopeMemory, scopeTurnObserver) ->
+            (scopeId, scopeTurnObserver) ->
                 new ProviderModelCallExecutor(
                     effectiveModel,
                     effectiveSystemPrompt,
                     effectiveSettings,
                     registry,
-                    scopeMemory,
+                    effectiveMemoryFactory.apply(scopeId.value()),
                     scopeTurnObserver,
-                    exec),
+                    exec,
+                    observationRegistry,
+                    () -> openSegments.get(scopeId)),
             (scopeId, scopeTurnObserver) ->
                 new RegistryToolCallExecutor(
                     registry,
@@ -512,13 +521,16 @@ public final class HarnessConfig<O> {
                     exec,
                     effectiveApprovalClient,
                     effectiveToolClient,
-                    pinned),
+                    pinned,
+                    observationRegistry,
+                    () -> openSegments.get(scopeId)),
             effectiveSubstrate,
             pinned,
             effectiveApprovalClient,
             effectiveToolClient,
             approvalWaiters,
             observationRegistry,
+            openSegments,
             ownedExecutor);
 
     return harness;

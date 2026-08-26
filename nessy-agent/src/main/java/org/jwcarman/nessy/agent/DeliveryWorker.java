@@ -49,6 +49,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Both consumers fold; neither runs a tool (approval-lifecycle spec §5).
  *
+ * <p>Every fold here is published on the harness's one fact stream (agentic-o11y spec §3) — an
+ * applied one with its transition, a dropped one as {@code ignored} — through the same door {@link
+ * DefaultAgent} uses. Before that stream existed a delivered fold narrated nothing at all, so the
+ * configured {@code HarnessObserver} saw only the synchronous half of a scope's life; it now sees
+ * both.
+ *
  * <p>Pumping moved off a per-harness daemon heartbeat onto one shared {@link ComputationScheduler}
  * (continuum-adoption spec §7): this worker implements {@link ComputationPump}, and {@link
  * ComputationScheduler#register} schedules its six pumps — deliver, expire, purge, once each for
@@ -385,6 +391,9 @@ final class DeliveryWorker<O> implements ComputationPump {
       Transition transition = state.phase().handle(event);
       if (transition.isIgnored()) {
         warnDropped(id, routing, delivered, state.phase());
+        // The drop is a fact about the scope too (agentic-o11y spec §3): it goes out on the same
+        // stream an applied fold does, so a subscriber sees the delivery that changed nothing.
+        harness.facts().ignored(id, event);
         return; // dropped — acknowledged, never redelivered
       }
       if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
@@ -402,8 +411,12 @@ final class DeliveryWorker<O> implements ComputationPump {
       try {
         states.write(id.value(), transition.next(), state.version());
       } catch (ConflictException _) {
+        harness.observations().staleRetry(type);
         continue; // lost the race — re-read and re-handle
       }
+      // Published only once the write succeeded: the stream carries the fold's OUTPUT, and until
+      // the CAS lands nothing has happened to the scope (agentic-o11y spec §3).
+      harness.facts().applied(id, event, transition);
       dispatchEffects(type, id, transition.next(), transition.effects());
       return;
     }

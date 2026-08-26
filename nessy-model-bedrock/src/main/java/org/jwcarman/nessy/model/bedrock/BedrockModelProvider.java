@@ -66,6 +66,12 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
  */
 public final class BedrockModelProvider implements ModelProvider, AutoCloseable {
 
+  /**
+   * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
+   * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
+   */
+  static final String PROVIDER = "aws.bedrock";
+
   private static final Set<Capability> CAPABILITIES = Set.of(Capability.PARALLEL_TOOL_CALLS);
 
   private final BedrockClient client;
@@ -141,6 +147,11 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
     @Override
     public String id() {
       return id;
+    }
+
+    @Override
+    public String provider() {
+      return PROVIDER;
     }
   }
 }

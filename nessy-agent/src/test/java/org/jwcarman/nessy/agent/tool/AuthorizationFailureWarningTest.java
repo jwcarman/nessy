@@ -23,6 +23,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -147,7 +148,9 @@ class AuthorizationFailureWarningTest {
             pump,
             TestApprovalClients.client("approval/cli", MAPPER),
             TestToolClients.client("tool/cli", MAPPER),
-            MAPPER);
+            MAPPER,
+            ObservationRegistry.NOOP,
+            () -> null);
     var delivered = new ArrayList<AgentEvent>();
     executor.seekApproval(CALL, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();

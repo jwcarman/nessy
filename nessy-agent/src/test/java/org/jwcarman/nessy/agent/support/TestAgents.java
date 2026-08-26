@@ -24,8 +24,8 @@ import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -52,7 +52,7 @@ public final class TestAgents {
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
       ToolCallExecutor tools,
-      AgentObserver observer,
+      HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
     return wired(
@@ -70,7 +70,7 @@ public final class TestAgents {
 
   /**
    * As {@link #wired(Memory, AgentStateStore, Backlog, ObservationRenderer, ModelCallExecutor,
-   * ToolCallExecutor, AgentObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
+   * ToolCallExecutor, HarnessObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
    * than defaulting it to {@code "test"} — for a fixture whose deliveries/computations carry a
    * DIFFERENT agent type elsewhere (a {@code RegistryToolCallExecutor} constructed with its own
    * {@link AgentType}, say), where the harness-first type-filtered sweep (spec §5) would otherwise
@@ -84,7 +84,7 @@ public final class TestAgents {
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
       ToolCallExecutor tools,
-      AgentObserver observer,
+      HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
     Harness<O> harness =
@@ -125,7 +125,7 @@ public final class TestAgents {
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
       ToolCallExecutor tools,
-      AgentObserver observer,
+      HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
     return harness(
@@ -143,9 +143,9 @@ public final class TestAgents {
 
   /**
    * As {@link #harness(Memory, AgentStateStore, Backlog, ObservationRenderer, ModelCallExecutor,
-   * ToolCallExecutor, AgentObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
+   * ToolCallExecutor, HarnessObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
    * than defaulting it to {@code "test"} — see {@link #wired(AgentType, Memory, AgentStateStore,
-   * Backlog, ObservationRenderer, ModelCallExecutor, ToolCallExecutor, AgentObserver, boolean,
+   * Backlog, ObservationRenderer, ModelCallExecutor, ToolCallExecutor, HarnessObserver, boolean,
    * StalenessPolicy)} for why a fixture ever needs this.
    */
   public static <O> Harness<O> harness(
@@ -156,7 +156,7 @@ public final class TestAgents {
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
       ToolCallExecutor tools,
-      AgentObserver observer,
+      HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
@@ -167,7 +167,7 @@ public final class TestAgents {
         Harness.of(
             type,
             renderer,
-            perIdTurnObserver -> observer,
+            observer,
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
@@ -181,7 +181,8 @@ public final class TestAgents {
             approvalClient,
             toolClient,
             new ConcurrentHashMap<>(),
-            ObservationRegistry.NOOP);
+            ObservationRegistry.NOOP,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     return harness;
   }

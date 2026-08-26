@@ -45,7 +45,7 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -151,15 +151,15 @@ class NessyHarnessDoorTest {
   }
 
   /**
-   * A caller-supplied {@code agentObserver} replaces the default {@link
+   * A caller-supplied {@code harnessObserver} replaces the default {@link
    * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} wiring wholesale (Nessy.java's own
    * setter promise): {@code AssistantSaid}/{@code TurnEnded} do not narrate on the turn observer
    * unless the supplied observer narrates them itself. {@code events} still isn't empty — the model
    * and tool executors narrate deltas and tool events directly, independent of {@code
-   * agentObserver} — so the {@code noneMatch} below can't pass vacuously (S5841).
+   * harnessObserver} — so the {@code noneMatch} below can't pass vacuously (S5841).
    */
   @Test
-  void aSuppliedAgentObserverReplacesTheDefaultNarrationWiringWholesale() {
+  void aSuppliedHarnessObserverReplacesTheDefaultNarrationWiringWholesale() {
     var pump = new PumpedExecutor();
     var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
@@ -172,7 +172,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .turnObserver(observer)
-                    .agentObserver(AgentObserver.noop()));
+                    .harnessObserver(HarnessObserver.noop()));
     HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).tell("hello");

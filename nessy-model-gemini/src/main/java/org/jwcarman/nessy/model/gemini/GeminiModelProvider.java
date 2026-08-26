@@ -45,6 +45,12 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  */
 public final class GeminiModelProvider implements ModelProvider {
 
+  /**
+   * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
+   * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
+   */
+  static final String PROVIDER = "gcp.gemini";
+
   private static final Set<Capability> CAPABILITIES = Set.of(Capability.PARALLEL_TOOL_CALLS);
 
   private final GeminiClient client;
@@ -116,6 +122,11 @@ public final class GeminiModelProvider implements ModelProvider {
     @Override
     public String id() {
       return id;
+    }
+
+    @Override
+    public String provider() {
+      return PROVIDER;
     }
   }
 }

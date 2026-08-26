@@ -34,6 +34,13 @@ public final class XaiModelProviderBootstrap implements ModelProviderBootstrap {
   static final String BASE_URL = "https://api.x.ai/v1";
 
   /**
+   * The OpenTelemetry GenAI semantic conventions' pinned value for xAI. The gateway class is shared
+   * with OpenAI, so the vendor identity has to be stamped here, where the key that named the vendor
+   * was read (agentic-o11y spec §1.1).
+   */
+  static final String PROVIDER = "x_ai";
+
+  /**
    * xAI ships no small/cheap alias; {@code grok-4.6} is the vendor's own current general-purpose
    * recommendation (docs.x.ai, 2026-08-15).
    */
@@ -61,6 +68,7 @@ public final class XaiModelProviderBootstrap implements ModelProviderBootstrap {
     if (apiKey == null) {
       return Optional.empty();
     }
-    return Optional.of(OpenAiModelProvider.create(c -> c.apiKey(apiKey).baseUrl(BASE_URL)));
+    return Optional.of(
+        OpenAiModelProvider.create(c -> c.apiKey(apiKey).baseUrl(BASE_URL).provider(PROVIDER)));
   }
 }

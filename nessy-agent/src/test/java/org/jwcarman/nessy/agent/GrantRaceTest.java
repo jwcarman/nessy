@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -31,8 +32,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -170,7 +171,9 @@ class GrantRaceTest {
             pump,
             approvalClient,
             toolClient,
-            mapper);
+            mapper,
+            ObservationRegistry.NOOP,
+            () -> null);
     var harness =
         TestAgents.<String>harness(
             memory,
@@ -184,9 +187,11 @@ class GrantRaceTest {
                 registry,
                 memory,
                 narrator,
-                pump),
+                pump,
+                ObservationRegistry.NOOP,
+                () -> null),
             executor,
-            AgentObserver.noop(),
+            HarnessObserver.noop(),
             false,
             StalenessPolicy.never());
     var agent = harness.bind(AgentId.of("test-scope"));

@@ -95,6 +95,11 @@ class ConsoleTest {
             public String id() {
               return "exploding";
             }
+
+            @Override
+            public String provider() {
+              return "test";
+            }
           };
       var captured = new ByteArrayOutputStream();
       try (var console =

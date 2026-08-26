@@ -23,6 +23,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -35,8 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -182,7 +183,9 @@ class FailureAfterDeferringTest {
             pump,
             approvalClient,
             toolClient,
-            mapper);
+            mapper,
+            ObservationRegistry.NOOP,
+            () -> null);
     Harness<String> harness =
         TestAgents.<String>harness(
             memory,
@@ -191,7 +194,7 @@ class FailureAfterDeferringTest {
             text -> List.of(),
             sink -> {},
             executor,
-            AgentObserver.noop(),
+            HarnessObserver.noop(),
             false,
             StalenessPolicy.after(Duration.ZERO));
     Agent<String> agent = harness.bind(AgentId.of("test-scope"));

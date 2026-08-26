@@ -87,6 +87,11 @@ final class ScriptedCriticModel implements Model {
     return "scripted-critic";
   }
 
+  @Override
+  public String provider() {
+    return "test";
+  }
+
   int callCount() {
     return requests.size();
   }

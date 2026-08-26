@@ -38,8 +38,8 @@ import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -123,7 +123,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
           text -> List.of(),
           sink -> {},
           new NoToolsExecutor(),
-          AgentObserver.noop(),
+          HarnessObserver.noop(),
           false,
           StalenessPolicy.never());
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));

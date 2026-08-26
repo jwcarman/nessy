@@ -75,7 +75,7 @@ final class AgentFixture {
         Harness.of(
             fixtureType,
             text -> List.of(new TextBlock(text)),
-            perIdTurnObserver -> observer,
+            observer,
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
@@ -89,7 +89,8 @@ final class AgentFixture {
             approvalClient,
             toolClient,
             new ConcurrentHashMap<>(),
-            ObservationRegistry.NOOP);
+            ObservationRegistry.NOOP,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }

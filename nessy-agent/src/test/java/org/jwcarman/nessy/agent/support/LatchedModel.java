@@ -82,6 +82,11 @@ public final class LatchedModel implements Model {
     return "latched";
   }
 
+  @Override
+  public String provider() {
+    return "scripted";
+  }
+
   public List<ModelRequest> requests() {
     return List.copyOf(requests);
   }

@@ -18,42 +18,43 @@ package org.jwcarman.nessy.agent.support;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Transition;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
 /** Collects every {@code reFired} call in order; every other callback is a silent no-op. */
-public final class RecordingAgentObserver implements AgentObserver {
+public final class RecordingHarnessObserver implements HarnessObserver {
 
   private final List<List<Effect>> reFiredCalls = new ArrayList<>();
 
   @Override
-  public void applied(AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, Transition transition) {
     // silent no-op: only reFired is recorded
   }
 
   @Override
-  public void ignored(AgentEvent event) {
+  public void ignored(AgentId id, AgentEvent event) {
     // silent no-op: only reFired is recorded
   }
 
   @Override
-  public void renderFailed(Object observation, RuntimeException error) {
+  public void renderFailed(AgentId id, Object observation, RuntimeException error) {
     // silent no-op: only reFired is recorded
   }
 
   @Override
-  public void applyFailed(AgentEvent event, RuntimeException error) {
+  public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
     // silent no-op: only reFired is recorded
   }
 
   @Override
-  public void reFired(List<Effect> effects) {
+  public void reFired(AgentId id, List<Effect> effects) {
     reFiredCalls.add(List.copyOf(effects));
   }
 
   @Override
-  public void observationRequeued(Object observation) {
+  public void observationRequeued(AgentId id, Object observation) {
     // silent no-op: only reFired is recorded
   }
 

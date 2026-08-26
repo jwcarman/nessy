@@ -32,14 +32,15 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestCodecs;
@@ -91,7 +92,7 @@ class HarnessTest {
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
   private static final ToolCallExecutor TOOLS = new NoToolsExecutor();
-  private static final AgentObserver OBSERVER = AgentObserver.noop();
+  private static final HarnessObserver OBSERVER = HarnessObserver.noop();
   private static final StalenessPolicy STALENESS_POLICY = StalenessPolicy.never();
   private static final AgentType TYPE = AgentType.of("test");
 
@@ -104,12 +105,12 @@ class HarnessTest {
   private static Harness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
-      AgentObserver observer,
+      HarnessObserver observer,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
     return harness(
         type,
@@ -132,27 +133,22 @@ class HarnessTest {
   private static Harness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
-      AgentObserver observer,
+      HarnessObserver observer,
       TurnObserver turnObserver,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
-    // Preserves harnessRequiresAnObserver()'s null-through behavior: a literal null observer
-    // stays a literal null factory (Harness.of's own requireNonNull rejects it), rather than
-    // silently becoming a non-null factory that always hands back null.
-    Function<TurnObserver, AgentObserver> agentObserverFactory =
-        observer == null ? null : perIdTurnObserver -> observer;
     return Harness.of(
         type,
         renderer,
-        agentObserverFactory,
+        observer,
         turnObserver,
         false,
         stalenessPolicy,
@@ -166,7 +162,8 @@ class HarnessTest {
         approvalClient,
         toolClient,
         new ConcurrentHashMap<>(),
-        ObservationRegistry.NOOP);
+        ObservationRegistry.NOOP,
+        new ConcurrentHashMap<>());
   }
 
   /**
@@ -181,14 +178,14 @@ class HarnessTest {
     return Harness.of(
         TYPE,
         RENDERER,
-        perIdTurnObserver -> OBSERVER,
+        OBSERVER,
         TurnObserver.noop(),
         false,
         STALENESS_POLICY,
         id -> MEMORY,
         id -> STORE,
         id -> BACKLOG,
-        (memory, turnObserver) -> MODEL,
+        (id, turnObserver) -> MODEL,
         (id, turnObserver) -> TOOLS,
         lifeSupportSubstrate,
         mapper,
@@ -196,6 +193,7 @@ class HarnessTest {
         TestToolClients.client(Kinds.tool(TYPE), mapper),
         new ConcurrentHashMap<>(),
         ObservationRegistry.NOOP,
+        new ConcurrentHashMap<>(),
         ownedExecutor);
   }
 
@@ -271,7 +269,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -288,26 +286,31 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
-    void harnessRequiresAnObserver() {
-      assertThatThrownBy(
-              () ->
-                  harness(
-                      TYPE,
-                      RENDERER,
-                      null,
-                      STALENESS_POLICY,
-                      id -> MEMORY,
-                      id -> STORE,
-                      id -> BACKLOG,
-                      (mem, obs) -> MODEL,
-                      (id, obs) -> TOOLS))
-          .isInstanceOf(NullPointerException.class);
+    void a_null_agent_observer_asks_for_the_default_narrator() {
+      // The reform (agentic-o11y spec §3) turned this parameter from a required per-scope factory
+      // into an optional subscriber: null no longer throws, it means "subscribe the narrating
+      // observer this harness builds for itself". The old guard asserted the requireNonNull that
+      // the parameter's disappearance retired.
+      Harness<String> harness =
+          harness(
+              TYPE,
+              RENDERER,
+              null,
+              STALENESS_POLICY,
+              id -> MEMORY,
+              id -> STORE,
+              id -> BACKLOG,
+              (id, obs) -> MODEL,
+              (id, obs) -> TOOLS);
+      HarnessTeardown.track(harness);
+
+      assertThat(harness.type()).isEqualTo(TYPE);
     }
 
     @Test
@@ -323,7 +326,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -340,7 +343,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -357,7 +360,7 @@ class HarnessTest {
                       null,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -374,7 +377,7 @@ class HarnessTest {
                       id -> MEMORY,
                       null,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -391,7 +394,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       null,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
@@ -425,7 +428,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      (mem, obs) -> MODEL,
+                      (id, obs) -> MODEL,
                       null))
           .isInstanceOf(NullPointerException.class);
     }
@@ -460,7 +463,7 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              (mem, obs) -> MODEL,
+              (id, obs) -> MODEL,
               (id, obs) -> null);
       Binding<String> binding = harness.binding(AgentId.of("a"));
 
@@ -486,7 +489,7 @@ class HarnessTest {
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
-              (mem, obs) -> MODEL,
+              (id, obs) -> MODEL,
               (id, obs) -> TOOLS);
 
       var bindingA = harness.binding(AgentId.of("scope-a"));
@@ -520,7 +523,7 @@ class HarnessTest {
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
-              (mem, obs) -> MODEL,
+              (id, obs) -> MODEL,
               (id, obs) -> TOOLS);
 
       var id = AgentId.of("shared-scope");
@@ -586,7 +589,7 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              (mem, obs) -> MODEL,
+              (id, obs) -> MODEL,
               (id, obs) -> {
                 receivedByFactory.add(registry);
                 ToolCallExecutor fresh = new NoToolsExecutor();
@@ -624,7 +627,7 @@ class HarnessTest {
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
-              (mem, obs) -> MODEL,
+              (id, obs) -> MODEL,
               (id, obs) -> TOOLS);
 
       Agent<String> agent = harness.bind(AgentId.of("scope-a"));

@@ -40,6 +40,12 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  */
 public final class AnthropicModelProvider implements ModelProvider {
 
+  /**
+   * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
+   * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
+   */
+  static final String PROVIDER = "anthropic";
+
   private static final Set<Capability> CAPABILITIES =
       Set.of(
           Capability.THINKING,
@@ -155,6 +161,11 @@ public final class AnthropicModelProvider implements ModelProvider {
     @Override
     public String id() {
       return id;
+    }
+
+    @Override
+    public String provider() {
+      return PROVIDER;
     }
 
     private ThinkingConfig thinkingConfigFor(ModelRequest request) {

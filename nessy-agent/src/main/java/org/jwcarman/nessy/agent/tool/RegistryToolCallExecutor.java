@@ -16,9 +16,13 @@
 package org.jwcarman.nessy.agent.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.common.KeyValue;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.function.Supplier;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -66,6 +70,15 @@ import org.slf4j.LoggerFactory;
  * ApprovalContext#defer()} — there is nothing left to deliver, and nothing is narrated to the
  * model.
  *
+ * <p>The {@code execute_tool} span (agentic-o11y spec §1.1, §3.1) is opened here rather than
+ * derived from the fact stream, because for a DEFERRING tool the execution ends when the body
+ * returns, not when {@code ToolFinished} folds — and only this door knows when that was. It covers
+ * conversion and {@code tool.execute} together, carries {@code nessy.tool.deferred} from {@code
+ * context.deferral()}, and is parented explicitly to the scope's open segment, since Micrometer's
+ * scope does not follow {@code executor.execute} onto another virtual thread (spec §3.2). The dwell
+ * that follows a deferral is a different span entirely: {@code nessy.tool.wait}, opened by the
+ * fold.
+ *
  * <p>{@link #runTool} is past the gate: find, bind, run. It never consults an approver — the answer
  * is already a fact in the phase. It creates no computation either (tool-context-defer spec §0): a
  * tool that means to wait says so through {@link ToolContext#defer()}, which creates, folds and
@@ -85,6 +98,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final ContinuumClient<ToolResult, Routing> toolClient;
   private final Codecs codecs;
   private final ObjectMapper mapper;
+  private final ObservationRegistry observations;
+  private final Supplier<Observation> parentSegment;
+
+  /**
+   * The semconv names this executor's own span carries (agentic-o11y spec §1.1). {@code
+   * execute_tool} is both the span name and the observation's Micrometer name — see {@code
+   * Observations}' javadoc for why the three GenAI operations cannot share the semconv metric name.
+   */
+  private static final String EXECUTE_TOOL = "execute_tool";
+
+  private static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+  private static final String GEN_AI_TOOL_NAME = "gen_ai.tool.name";
+  private static final String GEN_AI_TOOL_CALL_ID = "gen_ai.tool.call.id";
+  private static final String GEN_AI_TOOL_TYPE = "gen_ai.tool.type";
+  private static final String FUNCTION = "function";
+  private static final String NESSY_TOOL_DEFERRED = "nessy.tool.deferred";
+  private static final String ERROR_TYPE = "error.type";
 
   /** A tool returned {@code Awaited.ready(x)} after its own {@code defer()} recorded the wait. */
   static final String ANSWERED_AFTER_DEFERRING = "tool answered after deferring";
@@ -101,6 +131,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
    * @param approvalClient the approval kind's Continuum client — required, never null (spec §1.4)
    * @param toolClient the tool kind's Continuum client — required, never null (spec §1.4)
    * @param mapper the harness's pinned mapper
+   * @param observations where the {@code execute_tool} span is recorded — {@code
+   *     ObservationRegistry.NOOP} unless the application supplied one
+   * @param parentSegment this scope's open {@code invoke_agent} observation, or null when none is
+   *     open
    */
   public RegistryToolCallExecutor(
       ToolRegistry registry,
@@ -110,7 +144,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Executor executor,
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      ObservationRegistry observations,
+      Supplier<Observation> parentSegment) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");
@@ -120,6 +156,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.toolClient = Objects.requireNonNull(toolClient, "toolClient must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codecs = new Codecs(this.mapper);
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.parentSegment = Objects.requireNonNull(parentSegment, "parentSegment must not be null");
   }
 
   @Override
@@ -249,16 +287,49 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
             grant.tool().timeout(),
             event -> narrate(call, event),
             sink);
+    Observation execution = startExecuteTool(call);
     try {
       Object input = convert(call, grant.tool());
-      return run(grant.tool(), input, call, context);
+      Optional<Answer> answer = run(grant.tool(), input, call, context);
+      // The execution ended when the body returned, deferral or not — that is exactly what this
+      // span measures, and the flag says which of the two happened (spec §1.1).
+      execution.lowCardinalityKeyValue(
+          NESSY_TOOL_DEFERRED, Boolean.toString(context.deferral().isPresent()));
+      return answer;
     } catch (RuntimeException e) {
       // Two shapes land here. A throw propagated OUT of defer() means nothing was parked, and
       // context.deferral() is empty — the call is answered in-band and nothing dangles (spec §3).
       // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
       // rides that id or the call hangs until the orphan expires.
+      execution.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+      execution.error(e);
       return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
+    } finally {
+      execution.stop();
     }
+  }
+
+  /**
+   * The {@code execute_tool} span (agentic-o11y spec §1.1), started rather than {@code observe}d
+   * because a deferring tool's body returns on this thread while the answer arrives on another one
+   * entirely. Parented to the scope's open segment; parentless when the scope has none.
+   */
+  private Observation startExecuteTool(ToolCall call) {
+    Observation parent = parentSegment.get();
+    Observation execution =
+        Observation.createNotStarted(EXECUTE_TOOL, observations)
+            .contextualName(EXECUTE_TOOL + " " + call.name())
+            .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, EXECUTE_TOOL)
+            .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
+            .lowCardinalityKeyValue(GEN_AI_TOOL_TYPE, FUNCTION)
+            // Declared now, overwritten when known: one stable low-cardinality key set per name.
+            .lowCardinalityKeyValue(NESSY_TOOL_DEFERRED, KeyValue.NONE_VALUE)
+            .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
+            .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, call.id());
+    if (parent != null) {
+      execution.parentObservation(parent);
+    }
+    return execution.start();
   }
 
   private Routing routing(ToolCall call, ModelResponseId responseId) {

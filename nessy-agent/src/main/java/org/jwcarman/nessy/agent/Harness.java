@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -24,8 +25,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jwcarman.continuum.ContinuumClient;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -42,12 +44,13 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * AgentType}, id-free, immortal. Every id-free collaborator (the renderer, the model-call and
  * tool-call guts, the drain policy, the staleness policy) lives here exactly once, built by {@link
  * org.jwcarman.nessy.agent.host.Nessy}'s builders and never reconstructed per delivery — {@code
- * Nessy} is the harness's only compiler; there is no other door to this class. The one exception is
- * the shell-failure {@link AgentObserver}: a caller-supplied one stays id-free, but the DEFAULT
- * narrating one is stamped fresh, per id, by {@link #observerFor(AgentId)} — see that method's
- * javadoc for why (front-ends spec §1, Task 3). {@link #bind(AgentId)} stamps a fresh, id-specific
- * {@link DefaultAgent} every time; binding is cheap because the factories it calls hand back views
- * over shared substrate, never build new machinery.
+ * Nessy} is the harness's only compiler; there is no other door to this class. The {@link
+ * HarnessObserver} is no longer among the per-scope collaborators at all (agentic-o11y spec §3):
+ * this harness owns one fact stream ({@link #facts()}) that both fold sites publish through, and
+ * the configured observer — or, absent one, the default narrator — is simply its first subscriber.
+ * {@link #bind(AgentId)} stamps a fresh, id-specific {@link DefaultAgent} every time; binding is
+ * cheap because the factories it calls hand back views over shared substrate, never build new
+ * machinery.
  *
  * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker}
  * and the {@link ApprovalDesk}/{@link CompletionDesk} are constructed by this class's own
@@ -66,17 +69,18 @@ public final class Harness<O> {
 
   private final AgentType type;
   private final ObservationRenderer<O> renderer;
-  private final Function<TurnObserver, AgentObserver> agentObserverFactory;
   private final boolean drainOnIdle;
   private final StalenessPolicy stalenessPolicy;
   private final Function<String, Memory> memoryFactory;
   private final Function<String, AgentStateStore> storeFactory;
   private final Function<String, Backlog<O>> backlogFactory;
-  private final BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory;
+  private final BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory;
   private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
   private final TurnFanout fanout;
+  private final FactFanout facts;
   private final ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters;
   private final ObservationRegistry observationRegistry;
+  private final Observations observations;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -92,14 +96,14 @@ public final class Harness<O> {
   private Harness(
       AgentType type,
       ObservationRenderer<O> renderer,
-      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      HarnessObserver harnessObserver,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
@@ -107,18 +111,33 @@ public final class Harness<O> {
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
       ObservationRegistry observationRegistry,
+      ConcurrentMap<AgentId, Observation> openSegments,
       ComputationScheduler scheduler,
       ExecutorService ownedExecutor) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
-    this.agentObserverFactory =
-        Objects.requireNonNull(agentObserverFactory, "agentObserverFactory must not be null");
     this.fanout =
         new TurnFanout(Objects.requireNonNull(turnObserver, "turnObserver must not be null"));
+    this.facts = new FactFanout();
+    // The configured observer, or — when the caller supplied none — the default narrator, which
+    // resolves each fact's TurnObserver from the id it is handed (agentic-o11y spec §3). Either
+    // way it is the stream's FIRST subscriber, so it narrates ahead of the observability bridge.
+    this.facts.subscribe(
+        harnessObserver != null ? harnessObserver : new TurnNarrationAdapter(fanout::observerFor));
     this.approvalWaiters =
         Objects.requireNonNull(approvalWaiters, "approvalWaiters must not be null");
     this.observationRegistry =
         Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
+    // The observability bridge is a subscriber like any other (agentic-o11y spec §3.1): segments,
+    // both waits and the three counters are all functions of what the fold published. The two
+    // spans it cannot derive — chat and execute_tool — are opened by the executors, which reach
+    // this same object through observations().
+    this.observations =
+        new Observations(
+            this.observationRegistry,
+            type,
+            Objects.requireNonNull(openSegments, "openSegments must not be null"));
+    this.facts.subscribe(this.observations);
     this.drainOnIdle = drainOnIdle;
     this.stalenessPolicy =
         Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
@@ -152,29 +171,41 @@ public final class Harness<O> {
    * and tool kinds' own Continuum clients, continuum-adoption spec §3) are the life-support this
    * constructor owns (harness-first spec §4): the worker and desks it wires used to be a builder's
    * job.
+   *
+   * <p>{@code harnessObserver} is the fact stream's first subscriber (agentic-o11y spec §3), and it
+   * is NULLABLE by design — the same convention {@code ownedExecutor} uses below: null means "this
+   * harness subscribes the default narrating observer it builds over its own turn fanout", which is
+   * what {@code HarnessConfig} passes whenever the application named none. There is no factory any
+   * more; one observer serves every scope, told which one by the {@link AgentId} each call carries.
+   *
+   * <p>{@code openSegments} is where the observability bridge publishes the open {@code
+   * invoke_agent} observation per scope, and where the model- and tool-call executors read it to
+   * parent their own spans (spec §3.2) — a plain map handed in from outside for the same reason
+   * {@code approvalWaiters} is: it belongs to both sides, and neither is a new public type.
    */
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      HarnessObserver harnessObserver,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
-      ObservationRegistry observationRegistry) {
+      ObservationRegistry observationRegistry,
+      ConcurrentMap<AgentId, Observation> openSegments) {
     return of(
         type,
         renderer,
-        agentObserverFactory,
+        harnessObserver,
         turnObserver,
         drainOnIdle,
         stalenessPolicy,
@@ -189,6 +220,7 @@ public final class Harness<O> {
         toolClient,
         approvalWaiters,
         observationRegistry,
+        openSegments,
         null);
   }
 
@@ -201,14 +233,14 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      Function<TurnObserver, AgentObserver> agentObserverFactory,
+      HarnessObserver harnessObserver,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
@@ -216,6 +248,7 @@ public final class Harness<O> {
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
       ObservationRegistry observationRegistry,
+      ConcurrentMap<AgentId, Observation> openSegments,
       ExecutorService ownedExecutor) {
     // Constructed here, not shared across separate Harness.of(...) calls (continuum-adoption spec
     // §7 leaves that wider sharing to a future task): one small pool per harness, replacing the
@@ -225,7 +258,7 @@ public final class Harness<O> {
         new Harness<>(
             type,
             renderer,
-            agentObserverFactory,
+            harnessObserver,
             turnObserver,
             drainOnIdle,
             stalenessPolicy,
@@ -240,6 +273,7 @@ public final class Harness<O> {
             toolClient,
             approvalWaiters,
             observationRegistry,
+            openSegments,
             scheduler,
             ownedExecutor);
     // Registered here, after the constructor returns, not inside it: a scheduled pump reads
@@ -308,20 +342,36 @@ public final class Harness<O> {
   }
 
   /**
-   * The {@code id}-scoped {@link AgentObserver} {@link DefaultAgent} narrates the fold through
-   * (front-ends spec §1, Task 3's fix for Task 2's fanout gap): the default wiring's narrator
-   * ({@link org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter}) targets {@link
-   * #observerFor(AgentId)}'s own per-id {@link TurnFanout#observerFor(AgentId)} rather than the
-   * harness's raw configured {@code TurnObserver} directly — the ONE path {@code AssistantSaid}/
-   * {@code TurnEnded} narration now takes, so a {@code subscribe}d observer for this id and the
-   * harness's global observer each see them exactly once, never twice. A caller-supplied {@code
-   * agentObserver} override, by contrast, ignores the per-id {@code TurnObserver} handed to it here
-   * and returns the same fixed instance for every id — {@code HarnessConfig#agentObserver}'s
-   * "replaces the wiring wholesale" promise, preserved.
+   * The harness's one fact stream (agentic-o11y spec §3), which both fold sites publish through:
+   * {@link DefaultAgent}'s synchronous shell and {@link DeliveryWorker}'s durable one. It replaces
+   * the per-scope {@code HarnessObserver} a factory used to stamp for each id — an observer is a
+   * harness-level subscriber now, told which scope each fact belongs to by the leading {@link
+   * AgentId} its methods carry.
    */
-  AgentObserver observerFor(AgentId id) {
-    Objects.requireNonNull(id, "id must not be null");
-    return agentObserverFactory.apply(fanout.observerFor(id));
+  FactFanout facts() {
+    return facts;
+  }
+
+  /**
+   * The observability bridge this harness built over {@code HarnessConfig#observationRegistry} —
+   * the two spans that cannot be derived from the stream, {@code chat} and {@code execute_tool},
+   * are opened against it by the model- and tool-call executors (agentic-o11y spec §3.1).
+   */
+  Observations observations() {
+    return observations;
+  }
+
+  /**
+   * Subscribes {@code observer} to the fact stream (agentic-o11y spec §3) — the {@link
+   * HarnessObserver} overload beside {@link #subscribe(AgentId, TurnObserver)}. Package-private for
+   * the same reason that one is: {@code HarnessConfig#harnessObserver} is application code's door,
+   * and the public roster stops at {@link #type()}, {@link #bind(AgentId)}, {@link #approvals()},
+   * {@link #completions()}, and {@link #shutdown()}.
+   *
+   * <p>Subscribers are isolated: a throw is logged and dropped, never propagated into the fold.
+   */
+  Subscription subscribe(HarnessObserver observer) {
+    return facts.subscribe(observer);
   }
 
   /**
@@ -392,7 +442,7 @@ public final class Harness<O> {
    * demotion).
    */
   ModelCallExecutor modelExecutor(Binding<O> binding) {
-    return modelExecutorFactory.apply(binding.memory(), fanout.observerFor(binding.id()));
+    return modelExecutorFor(binding.id());
   }
 
   /**
@@ -406,14 +456,16 @@ public final class Harness<O> {
   /**
    * The id-keyed seam {@link DeliveryWorker} dispatches model calls through (harness-first spec §4,
    * the Binding demotion): equivalent to {@code modelExecutor(binding(id))}, without exposing
-   * {@link Binding} across the package line — the model executor factory only ever needed the
-   * scope's {@link Memory}, so this reads straight off {@code memoryFactory} rather than stamping a
-   * whole {@link Binding} just to reach one field of it. Package-private by design (fix round F2):
-   * the worker's own seam, not a door — the public roster stops at {@link #type()}, {@link
-   * #bind(AgentId)}, {@link #approvals()}, {@link #completions()}, and {@link #shutdown()}.
+   * {@link Binding} across the package line. The factory is keyed by {@link AgentId} rather than
+   * {@link Memory} (agentic-o11y spec §3.2): its {@code chat} span must be parented to the open
+   * segment of a NAMED scope, and the scope's {@code Memory} is a view the factory resolves for
+   * itself from the very same memory factory this class would have called. Package-private by
+   * design (fix round F2): the worker's own seam, not a door — the public roster stops at {@link
+   * #type()}, {@link #bind(AgentId)}, {@link #approvals()}, {@link #completions()}, and {@link
+   * #shutdown()}.
    */
   ModelCallExecutor modelExecutorFor(AgentId id) {
-    return modelExecutorFactory.apply(memoryFor(id), fanout.observerFor(id));
+    return modelExecutorFactory.apply(id, fanout.observerFor(id));
   }
 
   /**

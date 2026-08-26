@@ -85,6 +85,11 @@ final class RecordingTextModel implements Model {
     return "recording-text";
   }
 
+  @Override
+  public String provider() {
+    return "test";
+  }
+
   int callCount() {
     return requests.size();
   }

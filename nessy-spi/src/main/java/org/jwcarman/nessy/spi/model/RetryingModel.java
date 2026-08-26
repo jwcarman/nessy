@@ -77,4 +77,10 @@ public final class RetryingModel implements Model {
   public String id() {
     return delegate.id();
   }
+
+  /** The vendor is the delegate's; retrying changes how a call is made, never who serves it. */
+  @Override
+  public String provider() {
+    return delegate.provider();
+  }
 }

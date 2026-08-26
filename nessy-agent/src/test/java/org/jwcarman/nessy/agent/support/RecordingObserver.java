@@ -18,12 +18,13 @@ package org.jwcarman.nessy.agent.support;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Transition;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
 /** Writes down everything the shell says. */
-public final class RecordingObserver implements AgentObserver {
+public final class RecordingObserver implements HarnessObserver {
 
   public record Applied(AgentEvent event, Transition transition) {}
 
@@ -35,32 +36,32 @@ public final class RecordingObserver implements AgentObserver {
   private final List<Object> requeued = new ArrayList<>();
 
   @Override
-  public void applied(AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, Transition transition) {
     applied.add(new Applied(event, transition));
   }
 
   @Override
-  public void ignored(AgentEvent event) {
+  public void ignored(AgentId id, AgentEvent event) {
     ignored.add(event);
   }
 
   @Override
-  public void renderFailed(Object observation, RuntimeException error) {
+  public void renderFailed(AgentId id, Object observation, RuntimeException error) {
     renderFailures.add(observation);
   }
 
   @Override
-  public void applyFailed(AgentEvent event, RuntimeException error) {
+  public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
     applyFailures.add(event);
   }
 
   @Override
-  public void reFired(List<Effect> effects) {
+  public void reFired(AgentId id, List<Effect> effects) {
     reFires.add(effects);
   }
 
   @Override
-  public void observationRequeued(Object observation) {
+  public void observationRequeued(AgentId id, Object observation) {
     requeued.add(observation);
   }
 

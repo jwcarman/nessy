@@ -17,6 +17,7 @@ package org.jwcarman.nessy.model.openai;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import java.util.Objects;
 
 /**
  * What {@link OpenAiModelProvider#create(OpenAiProviderCustomizer)} hands a customizer: a CONFIG,
@@ -31,6 +32,7 @@ public final class OpenAiProviderConfig {
   private String organization;
   private OpenAIClient client;
   private boolean useEnv;
+  private String provider = OpenAiModelProvider.PROVIDER;
 
   OpenAiProviderConfig() {}
 
@@ -88,16 +90,29 @@ public final class OpenAiProviderConfig {
   }
 
   /**
+   * The semconv {@code gen_ai.provider.name} every {@link org.jwcarman.nessy.spi.model.Model} the
+   * finished gateway mints will report (agentic-o11y spec §1.1) — package-private, because it is
+   * for this module's own bootstraps and not for application code. This class is shared by every
+   * OpenAI-compatible vendor, so {@code XaiModelProviderBootstrap} sets {@code x_ai} here where the
+   * OpenAI bootstrap leaves the {@code openai} default alone; a turn against api.x.ai must not be
+   * reported as an OpenAI one.
+   */
+  OpenAiProviderConfig provider(String provider) {
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    return this;
+  }
+
+  /**
    * Turns this config into the {@link OpenAiModelProvider} it describes — the factory's own step,
    * never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
    * OpenAiModelProvider#create(OpenAiProviderCustomizer)}, once {@code customize} has returned.
    */
   OpenAiModelProvider build() {
     if (client != null) {
-      return new OpenAiModelProvider(client);
+      return new OpenAiModelProvider(client, provider);
     }
     if (useEnv) {
-      return new OpenAiModelProvider(buildFromEnv());
+      return new OpenAiModelProvider(buildFromEnv(), provider);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -111,7 +126,7 @@ public final class OpenAiProviderConfig {
     if (organization != null) {
       clientBuilder.organization(organization);
     }
-    return new OpenAiModelProvider(clientBuilder.build());
+    return new OpenAiModelProvider(clientBuilder.build(), provider);
   }
 
   /**

@@ -101,6 +101,15 @@ public final class ScriptedModel implements Model {
     return "scripted";
   }
 
+  /**
+   * Not a real vendor, and deliberately not pretending to be one: a test asserting on {@code
+   * gen_ai.provider.name} should see that this turn came from the script, not from Anthropic.
+   */
+  @Override
+  public String provider() {
+    return "scripted";
+  }
+
   /** A snapshot of every request this provider was handed, oldest first. */
   public synchronized List<ModelRequest> requests() {
     return List.copyOf(requests);

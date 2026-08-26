@@ -68,6 +68,11 @@ class RetryingModelTest {
     public String id() {
       return "flaky";
     }
+
+    @Override
+    public String provider() {
+      return "test";
+    }
   }
 
   static final class RecordingSleeper implements Sleeper {

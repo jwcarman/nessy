@@ -42,4 +42,21 @@ public interface Model {
 
   /** This model's id at its vendor — {@code "claude-opus-5"} — for banners and logs. */
   String id();
+
+  /**
+   * The semconv {@code gen_ai.provider.name} value of the vendor this model is bound at: {@code
+   * anthropic}, {@code openai}, {@code x_ai}, {@code gcp.gemini}, {@code aws.bedrock}.
+   *
+   * <p>Telemetry, not a banner — unlike {@link ModelProvider#name()}, which is a human-readable
+   * label with a class-name default. This is one of the OpenTelemetry GenAI semantic conventions'
+   * pinned values, and it is asked of the MODEL rather than the gateway on purpose: the executor
+   * that opens the {@code chat} span holds a bound {@code Model} and never sees a {@link
+   * ModelProvider}, and one gateway class can serve several vendors — the OpenAI-compatible gateway
+   * answers {@code openai} for an OpenAI key and {@code x_ai} for an xAI one, which only the bound
+   * handle can know.
+   *
+   * <p>No default: every implementation answers, so a new vendor cannot quietly report someone
+   * else's name.
+   */
+  String provider();
 }

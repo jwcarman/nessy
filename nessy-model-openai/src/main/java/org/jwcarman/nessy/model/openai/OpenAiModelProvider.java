@@ -40,6 +40,20 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 public final class OpenAiModelProvider implements ModelProvider {
 
   /**
+   * The OpenTelemetry GenAI semantic conventions' pinned value for OpenAI itself — the default this
+   * gateway reports as every bound {@link Model}'s {@link Model#provider()}.
+   *
+   * <p>Unlike the other vendor gateways, this one is SHARED: {@code XaiModelProviderBootstrap}
+   * builds this very class against {@code https://api.x.ai/v1}, and semconv has a separate {@code
+   * x_ai} value for that. So the provider name is a field given at construction by whichever
+   * bootstrap built the gateway, not a constant — an xAI turn must not be reported as an OpenAI one
+   * (agentic-o11y spec §1.1). Any OpenAI-compatible endpoint reached through {@link
+   * OpenAiProviderConfig#baseUrl(String)} without a bootstrap of its own still answers {@code
+   * openai}, which is the honest default: nothing else is known about it.
+   */
+  static final String PROVIDER = "openai";
+
+  /**
    * {@link Capability#THINKING} and {@link Capability#PROMPT_CACHING} are deliberately absent.
    *
    * <p>Thinking: Chat Completions has no assistant content type for opaque or extended-reasoning
@@ -94,9 +108,15 @@ public final class OpenAiModelProvider implements ModelProvider {
               || e instanceof OpenAIRetryableException;
 
   private final OpenAIClient client;
+  private final String provider;
 
   OpenAiModelProvider(OpenAIClient client) {
+    this(client, PROVIDER);
+  }
+
+  OpenAiModelProvider(OpenAIClient client, String provider) {
     this.client = client;
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
   }
 
   /**
@@ -162,6 +182,11 @@ public final class OpenAiModelProvider implements ModelProvider {
     @Override
     public String id() {
       return id;
+    }
+
+    @Override
+    public String provider() {
+      return provider;
     }
   }
 }

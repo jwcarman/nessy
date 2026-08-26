@@ -17,12 +17,14 @@ package org.jwcarman.nessy.agent.narrate;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.Transition;
-import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -36,34 +38,45 @@ import org.slf4j.LoggerFactory;
  * taken from ModelFinished(Failed) when that is what ended it. TurnEnded carries only the failure
  * reason; null means completed (distillation, 2026-08-20).
  *
+ * <p>One instance serves the whole harness (agentic-o11y spec §3): this is a subscriber on the
+ * harness's fact stream, not a per-scope object stamped by a factory, so it resolves the {@link
+ * TurnObserver} to narrate onto from the {@link AgentId} it is handed on every call — the harness's
+ * per-id turn fanout. That preserves exactly the routing the per-id factory used to give it: a
+ * scope's own {@code subscribe}d observers and the harness's global one each see {@code
+ * AssistantSaid}/{@code TurnEnded} exactly once.
+ *
  * <p>"Observers never influence" (§8) extends to their own failures: {@link #applied} guards every
  * {@link TurnObserver#on} call individually, so a throwing {@code TurnObserver} loses only the one
  * event it choked on — the shell's own commit already landed before {@code applied} ever runs, and
  * a narration exception must not stop the remaining commits from narrating or the turn from being
  * declared over. A throwing observer is logged and dropped, never rethrown.
  */
-public final class TurnNarrationAdapter implements AgentObserver {
+public final class TurnNarrationAdapter implements HarnessObserver {
 
   private static final Logger log = LoggerFactory.getLogger(TurnNarrationAdapter.class);
 
-  private final TurnObserver turn;
+  private final Function<AgentId, TurnObserver> turnObservers;
 
-  public TurnNarrationAdapter(TurnObserver turn) {
-    this.turn = Objects.requireNonNull(turn, "turn must not be null");
+  /**
+   * @param turnObservers resolves the {@link TurnObserver} a given scope's narration belongs on —
+   *     the harness's own per-id turn fanout
+   */
+  public TurnNarrationAdapter(Function<AgentId, TurnObserver> turnObservers) {
+    this.turnObservers = Objects.requireNonNull(turnObservers, "turnObservers must not be null");
   }
 
   @Override
-  public void applied(AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, Transition transition) {
     for (Message committed : transition.commit()) {
       if (committed.role() == Role.ASSISTANT) {
-        narrate(new TurnEvent.AssistantSaid(committed));
+        narrate(id, new TurnEvent.AssistantSaid(committed));
       }
     }
     if (transition.next() instanceof Phase.Idle) {
       if (event instanceof AgentEvent.ModelFinished(ModelOutcome.Failed(String reason))) {
-        narrate(new TurnEvent.TurnEnded(reason));
+        narrate(id, new TurnEvent.TurnEnded(reason));
       } else {
-        narrate(new TurnEvent.TurnEnded(null));
+        narrate(id, new TurnEvent.TurnEnded(null));
       }
     }
   }
@@ -73,36 +86,40 @@ public final class TurnNarrationAdapter implements AgentObserver {
    * propagated, so one bad narration can never abort the apply path that is already committed by
    * the time this runs.
    */
-  private void narrate(TurnEvent event) {
+  private void narrate(AgentId id, TurnEvent event) {
     try {
-      turn.on(event);
+      turnObservers.apply(id).on(event);
     } catch (RuntimeException e) {
       log.warn("turn observer threw narrating {}; event dropped", event, e);
     }
   }
 
   @Override
-  public void ignored(AgentEvent event) {
-    log.debug("event ignored as stale: {}", event);
+  public void ignored(AgentId id, AgentEvent event) {
+    log.debug("event ignored as stale for agent {}: {}", id.value(), event);
   }
 
   @Override
-  public void renderFailed(Object observation, RuntimeException error) {
-    log.warn("observation could not be rendered and was discarded: {}", observation, error);
+  public void renderFailed(AgentId id, Object observation, RuntimeException error) {
+    log.warn(
+        "observation for agent {} could not be rendered and was discarded: {}",
+        id.value(),
+        observation,
+        error);
   }
 
   @Override
-  public void applyFailed(AgentEvent event, RuntimeException error) {
-    log.warn("applying {} failed; event dropped", event, error);
+  public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
+    log.warn("applying {} for agent {} failed; event dropped", event, id.value(), error);
   }
 
   @Override
-  public void reFired(List<Effect> effects) {
-    log.debug("effects re-fired: {}", effects);
+  public void reFired(AgentId id, List<Effect> effects) {
+    log.debug("effects re-fired for agent {}: {}", id.value(), effects);
   }
 
   @Override
-  public void observationRequeued(Object observation) {
-    log.debug("observation requeued: {}", observation);
+  public void observationRequeued(AgentId id, Object observation) {
+    log.debug("observation requeued for agent {}: {}", id.value(), observation);
   }
 }

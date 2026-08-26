@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -59,7 +60,9 @@ class ProviderModelCallExecutorTest {
             TestSettings.emptyRegistry(),
             memory,
             turn,
-            pump);
+            pump,
+            ObservationRegistry.NOOP,
+            () -> null);
     var delivered = new ArrayList<AgentEvent>();
     executor.callModel(delivered::add);
     pump.pumpUntilQuiet();
@@ -168,7 +171,9 @@ class ProviderModelCallExecutorTest {
             TestSettings.emptyRegistry(),
             memory,
             turn,
-            pump);
+            pump,
+            ObservationRegistry.NOOP,
+            () -> null);
     executor.callModel(event -> {});
     pump.pumpUntilQuiet();
     assertThat(model.requests()).hasSize(1);
@@ -196,6 +201,11 @@ class ProviderModelCallExecutorTest {
           public String id() {
             return "exploding";
           }
+
+          @Override
+          public String provider() {
+            return "test";
+          }
         };
     var executor =
         new ProviderModelCallExecutor(
@@ -205,7 +215,9 @@ class ProviderModelCallExecutorTest {
             TestSettings.emptyRegistry(),
             new VerbatimMemory(),
             turn,
-            pump);
+            pump,
+            ObservationRegistry.NOOP,
+            () -> null);
     var delivered = new ArrayList<AgentEvent>();
     executor.callModel(delivered::add);
     pump.pumpUntilQuiet();
