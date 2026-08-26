@@ -205,16 +205,37 @@ has no direct counter API), tagged `gen_ai.agent.name` only:
 
 ### Telemetry never breaks a turn
 
-Every span start/stop and every counter increment is contained at its call
-site: an `ObservationHandler` is arbitrary application code, running inline
-on whichever thread started or stopped the span, and a turn must never fail
-because the thing describing it did. A failed `start()` yields
-`Observation.NOOP`, so the `stop()` and key-value writes that follow are
-harmless no-ops; a throwing handler is logged once at `WARN` and dropped.
+An `ObservationHandler` is arbitrary application code, running inline on
+whichever thread started or stopped the span, and a turn must never fail
+because the thing describing it did. So every `start()`, `stop()` and
+`error()` call is contained — the `chat` and `execute_tool` spans at their
+own call sites inside the two executors, the three engine counters inside
+`Observations`, and the segment and wait spans by the fact stream's own
+per-subscriber isolation, since those are opened and closed from a
+`HarnessObserver` callback. A failed `start()` yields `Observation.NOOP`, so
+the `stop()` that follows is a harmless no-op; a throwing handler is logged
+once at `WARN` and dropped. Key-value writes are not wrapped, and need not
+be: they only mutate the observation's context and invoke no handler.
 This applies all the way down — an application handler that reads
 `gen_ai.usage.input_tokens` off a `chat` that failed before the model
 reported any usage throws `NullPointerException` inside `onStop`, and the
 turn still completes with its real outcome.
+
+### Known bound: a wait parked by one harness and answered by another
+
+Two harnesses sharing a type, a substrate and a Continuum are a supported
+shape (see the harness guide), and either may deliver what the other parked.
+The wait span, though, is an open `Observation` living in the parking
+harness's heap alone — so an answer folded by the *other* harness closes
+nothing: the first harness's `nessy.approval.wait` stays open until its
+process ends, and the second records a close for a wait it never opened,
+which is a no-op.
+
+Nothing is corrupted and no fold is affected; the dwell simply goes
+unrecorded, exactly as an in-flight span already dies with a restart. Fixing
+it would mean reconstructing spans from durable state, which is the thing
+the segment rule above exists to refuse. If you need the dwell of every parked call in a multi-harness
+deployment, read it from the approval desk's own records, not from the spans.
 
 ## `HarnessObserver` — the fact stream's own subscriber
 
@@ -255,8 +276,17 @@ retired per-scope `AgentObserver` a factory used to stamp fresh per id.
 - **`observationRequeued`** — an observation lost the idle race and went
   back to the backlog.
 
-`HarnessObserver.noop()` is the default everywhere a harness is built
-without one, via `HarnessConfig#harnessObserver(HarnessObserver)`.
+The default, when a harness is built without
+`HarnessConfig#harnessObserver(HarnessObserver)`, is the narrating adapter —
+the one that turns an applied fold into the `AssistantSaid`/`TurnEnded` turn
+events the CLI door has always shown. `HarnessObserver.noop()` is what you
+pass to replace that wiring with silence.
+
+Publishes for one agent id are **not** guaranteed to arrive in commit order:
+each fold site publishes after its CAS, not under it, so two concurrent folds
+on one scope can reach an observer either way round. An observer holding
+per-scope state must tolerate a close before its open. Every fact you are
+handed did commit; only the order is unguaranteed.
 
 None of these events originate from a live wait. `DeliveryWorker` — a small
 scheduled pump pool per harness (`ComputationScheduler`), plus a drain pass

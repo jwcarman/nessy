@@ -25,15 +25,19 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.micrometer.tracing.handler.DefaultTracingObservationHandler;
 import io.micrometer.tracing.otel.bridge.OtelCurrentTraceContext;
 import io.micrometer.tracing.otel.bridge.OtelTracer;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.logs.SdkLoggerProvider;
 import io.opentelemetry.sdk.logs.export.BatchLogRecordProcessor;
+import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.AgentId;
@@ -62,6 +66,16 @@ public final class Observed {
   private static final String SYSTEM_PROMPT = "You are a helpful assistant with a calculator tool.";
   private static final String QUESTION = "What is 2+2? Use the calculator tool.";
   private static final String SERVICE_NAME = "nessy-example-observed";
+
+  /**
+   * The resource attribute every OTLP backend groups by. It is a property of the SDK's {@code
+   * Resource}, NOT of the tracer's instrumentation-scope name — passing {@link #SERVICE_NAME} to
+   * {@code getTracer(...)} names the scope alone, and leaves every exported span, log and metric
+   * labelled {@code unknown_service:java}, which is exactly what the README's "search by service
+   * name" instructions would then fail to find.
+   */
+  private static final AttributeKey<String> SERVICE_NAME_KEY =
+      AttributeKey.stringKey("service.name");
 
   /**
    * OTLP/gRPC's own default ({@code OtlpGrpcSpanExporter}'s builder default): port 4317. {@code
@@ -135,37 +149,66 @@ public final class Observed {
    * {@link #observationRegistry}), and (b) metrics over OTLP/HTTP — different wire protocols
    * because that is what each artifact's own exporter speaks by default (agentic-o11y spec §4).
    */
-  private record Telemetry(
+  record Telemetry(
       SdkTracerProvider tracerProvider,
       SdkLoggerProvider loggerProvider,
       OtlpMeterRegistry meterRegistry) {}
 
-  private static Telemetry telemetry() {
-    var spanExporter = OtlpGrpcSpanExporter.builder().setEndpoint(tracesEndpoint()).build();
+  /**
+   * What every exported signal is labelled with. Merged onto {@link Resource#getDefault()} so the
+   * SDK's own telemetry-sdk attributes survive alongside this one.
+   */
+  static Resource serviceResource() {
+    return Resource.getDefault()
+        .merge(Resource.create(Attributes.of(SERVICE_NAME_KEY, SERVICE_NAME)));
+  }
+
+  /** The metrics exporter's config, with the same {@code service.name} the other two carry. */
+  static OtlpConfig meterConfig() {
+    return new OtlpConfig() {
+      @Override
+      public String get(String key) {
+        return null; // everything overridden below rides OtlpConfig's own defaults
+      }
+
+      @Override
+      public String url() {
+        return metricsUrl();
+      }
+
+      @Override
+      public Map<String, String> resourceAttributes() {
+        // The meter registry builds its own resource rather than sharing the SDK's, so the name
+        // has to be set here too or the metrics arrive under a different service than the spans.
+        return Map.of(SERVICE_NAME_KEY.getKey(), SERVICE_NAME);
+      }
+    };
+  }
+
+  static Telemetry telemetry() {
+    Resource resource = serviceResource();
+    String traces = tracesEndpoint();
+    log.info(
+        "exporting traces and logs to {} (OTLP/gRPC) and metrics to {} (OTLP/HTTP) as service.name={}",
+        traces,
+        metricsUrl(),
+        SERVICE_NAME);
+
+    var spanExporter = OtlpGrpcSpanExporter.builder().setEndpoint(traces).build();
     SdkTracerProvider tracerProvider =
         SdkTracerProvider.builder()
+            .setResource(resource)
             .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
             .build();
 
-    var logExporter = OtlpGrpcLogRecordExporter.builder().setEndpoint(tracesEndpoint()).build();
+    var logExporter = OtlpGrpcLogRecordExporter.builder().setEndpoint(traces).build();
     SdkLoggerProvider loggerProvider =
         SdkLoggerProvider.builder()
+            .setResource(resource)
             .addLogRecordProcessor(BatchLogRecordProcessor.builder(logExporter).build())
             .build();
 
-    OtlpConfig meterConfig =
-        new OtlpConfig() {
-          @Override
-          public String get(String key) {
-            return null; // everything but url() rides OtlpConfig's own defaults
-          }
-
-          @Override
-          public String url() {
-            return metricsUrl();
-          }
-        };
-    OtlpMeterRegistry meterRegistry = new OtlpMeterRegistry(meterConfig, Clock.SYSTEM);
+    OtlpMeterRegistry meterRegistry = new OtlpMeterRegistry(meterConfig(), Clock.SYSTEM);
 
     return new Telemetry(tracerProvider, loggerProvider, meterRegistry);
   }
@@ -200,12 +243,24 @@ public final class Observed {
     return registry;
   }
 
+  /**
+   * Where spans and logs go. {@code OTEL_EXPORTER_OTLP_ENDPOINT} names an OTLP/HTTP base, whose
+   * conventional port is 4318; the collector's gRPC listener is one port over, on 4317. So a base
+   * that explicitly names {@code :4318} is swapped — the caller clearly meant "this collector" and
+   * not "this port for everything".
+   *
+   * <p>A base naming any OTHER port, or none at all, is used verbatim (fix round 2): silently
+   * rewriting a port the caller did not name would be a guess, and a base with no port is already
+   * whatever its scheme's default is. {@link #telemetry()} logs the endpoints it settled on either
+   * way, so a misdirected export is visible in the first line of output rather than only as missing
+   * data in Tempo.
+   */
   private static String tracesEndpoint() {
     String base = System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT");
-    // The collector's gRPC trace listener sits on 4317, one port over from the HTTP metrics
-    // listener the env var's own default (4318) names — swap it rather than dropping the caller's
-    // host/scheme.
-    return base != null ? base.replace(":4318", ":4317") : DEFAULT_TRACES_ENDPOINT;
+    if (base == null) {
+      return DEFAULT_TRACES_ENDPOINT;
+    }
+    return base.contains(":4318") ? base.replace(":4318", ":4317") : base;
   }
 
   private static String metricsUrl() {

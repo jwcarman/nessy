@@ -15,37 +15,52 @@
  */
 package org.jwcarman.nessy.agent.support;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
-/** Collects every {@code reFired} call in order; every other callback is a silent no-op. */
+/**
+ * The one recording subscriber the fact-stream fixtures share: collects the applied folds, the
+ * ignored ones, and every {@code reFired} call, each in arrival order.
+ *
+ * <p>Thread-safe by construction — a fold published from a delivery worker's own thread lands here
+ * while the test thread reads — so the lists are {@link CopyOnWriteArrayList}s and the accessors
+ * hand back snapshots.
+ */
 public final class RecordingHarnessObserver implements HarnessObserver {
 
-  private final List<List<Effect>> reFiredCalls = new ArrayList<>();
+  /** One applied fold, flattened to what a test asserts on. */
+  public record Applied(AgentId id, AgentEvent event, Transition transition) {}
+
+  /** One ignored fold: the scope it was meant for, and the event that changed nothing. */
+  public record Ignored(AgentId id, AgentEvent event) {}
+
+  private final List<Applied> applied = new CopyOnWriteArrayList<>();
+  private final List<Ignored> ignored = new CopyOnWriteArrayList<>();
+  private final List<List<Effect>> reFiredCalls = new CopyOnWriteArrayList<>();
 
   @Override
   public void applied(AgentId id, AgentEvent event, Transition transition) {
-    // silent no-op: only reFired is recorded
+    applied.add(new Applied(id, event, transition));
   }
 
   @Override
   public void ignored(AgentId id, AgentEvent event) {
-    // silent no-op: only reFired is recorded
+    ignored.add(new Ignored(id, event));
   }
 
   @Override
   public void renderFailed(AgentId id, Object observation, RuntimeException error) {
-    // silent no-op: only reFired is recorded
+    // not recorded: no fixture asserts on render failures through the stream
   }
 
   @Override
   public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
-    // silent no-op: only reFired is recorded
+    // not recorded: no fixture asserts on apply failures through the stream
   }
 
   @Override
@@ -55,7 +70,15 @@ public final class RecordingHarnessObserver implements HarnessObserver {
 
   @Override
   public void observationRequeued(AgentId id, Object observation) {
-    // silent no-op: only reFired is recorded
+    // not recorded: no fixture asserts on requeues through the stream
+  }
+
+  public List<Applied> applied() {
+    return List.copyOf(applied);
+  }
+
+  public List<Ignored> ignored() {
+    return List.copyOf(ignored);
   }
 
   public List<List<Effect>> reFiredCalls() {

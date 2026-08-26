@@ -42,10 +42,10 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RecordingHarnessObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -119,7 +119,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
   private final TestObservationRegistry registry = TestObservationRegistry.create();
-  private final RecordingDrops drops = new RecordingDrops();
+  private final RecordingHarnessObserver drops = new RecordingHarnessObserver();
   private final Harness<String> harness =
       TestAgents.<String>harness(
           AgentType.of("test"),
@@ -184,42 +184,6 @@ class DeliveryWorkerMismatchedDeliveryTest {
     return ComputationId.of(created.id().value().toString());
   }
 
-  /** Collects the ignored folds the stream publishes; every other callback is a no-op. */
-  private static final class RecordingDrops implements HarnessObserver {
-
-    private final List<AgentEvent> ignored = new ArrayList<>();
-
-    @Override
-    public void applied(AgentId id, AgentEvent event, Transition transition) {
-      // not recorded: this fixture watches the ignored arm
-    }
-
-    @Override
-    public void ignored(AgentId id, AgentEvent event) {
-      ignored.add(event);
-    }
-
-    @Override
-    public void renderFailed(AgentId id, Object observation, RuntimeException error) {
-      // not recorded: this fixture watches the ignored arm
-    }
-
-    @Override
-    public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
-      // not recorded: this fixture watches the ignored arm
-    }
-
-    @Override
-    public void reFired(AgentId id, List<Effect> effects) {
-      // not recorded: this fixture watches the ignored arm
-    }
-
-    @Override
-    public void observationRequeued(AgentId id, Object observation) {
-      // not recorded: this fixture watches the ignored arm
-    }
-  }
-
   private long droppedDeliveriesCounted() {
     List<Observation.Context> captured = new ArrayList<>();
     assertThat(registry).hasHandledContextsThatSatisfy(captured::addAll);
@@ -266,13 +230,18 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
     worker.drainApprovals(BatchSize.of(10));
 
-    assertThat(drops.ignored)
+    assertThat(drops.ignored())
         .singleElement()
-        .isInstanceOfSatisfying(
-            AgentEvent.ApprovalAnswered.class,
-            answered -> {
-              assertThat(answered.call().id()).isEqualTo("c1");
-              assertThat(answered.approval()).contains(orphan);
+        .satisfies(
+            dropped -> {
+              assertThat(dropped.id()).isEqualTo(AgentId.of("test-scope"));
+              assertThat(dropped.event())
+                  .isInstanceOfSatisfying(
+                      AgentEvent.ApprovalAnswered.class,
+                      answered -> {
+                        assertThat(answered.call().id()).isEqualTo("c1");
+                        assertThat(answered.approval()).contains(orphan);
+                      });
             });
     assertThat(droppedDeliveriesCounted()).isEqualTo(1);
   }

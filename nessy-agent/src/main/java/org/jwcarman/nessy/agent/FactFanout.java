@@ -39,6 +39,13 @@ import org.slf4j.LoggerFactory;
  * a {@code close()} racing an in-flight publish is safe without synchronization — closing mutates a
  * fresh backing array while the iterator already in hand keeps the one it started with.
  *
+ * <p><b>No cross-publish ordering guarantee per agent id.</b> Each fold site publishes AFTER its
+ * CAS lands, not under it, so two folds racing on ONE scope can reach subscribers in either order —
+ * the second writer to commit is not necessarily the second to publish. A subscriber holding
+ * per-scope state must therefore tolerate a close arriving before its open (and the reverse), and
+ * must not treat the sequence it sees as the order the store committed. What IS guaranteed is that
+ * every published fact was committed: the stream carries the fold's output, never its input.
+ *
  * <p><b>Every subscriber is isolated</b> (spec §3): a throw is logged and dropped, never propagated
  * into the fold. This is stricter than {@code TurnFanout}'s posture, which lets the harness's one
  * configured global {@code TurnObserver} throw through by long-standing contract. Nothing of the

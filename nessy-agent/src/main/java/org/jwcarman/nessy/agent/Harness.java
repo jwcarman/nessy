@@ -79,7 +79,6 @@ public final class Harness<O> {
   private final TurnFanout fanout;
   private final FactFanout facts;
   private final ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters;
-  private final ObservationRegistry observationRegistry;
   private final Observations observations;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
@@ -126,15 +125,14 @@ public final class Harness<O> {
         harnessObserver != null ? harnessObserver : new TurnNarrationAdapter(fanout::observerFor));
     this.approvalWaiters =
         Objects.requireNonNull(approvalWaiters, "approvalWaiters must not be null");
-    this.observationRegistry =
-        Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
+    Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
     // The observability bridge is a subscriber like any other (agentic-o11y spec §3.1): segments,
     // both waits and the three counters are all functions of what the fold published. The two
     // spans it cannot derive — chat and execute_tool — are opened by the executors, which reach
     // this same object through observations().
     this.observations =
         new Observations(
-            this.observationRegistry,
+            observationRegistry,
             type,
             Objects.requireNonNull(openSegments, "openSegments must not be null"));
     this.facts.subscribe(this.observations);

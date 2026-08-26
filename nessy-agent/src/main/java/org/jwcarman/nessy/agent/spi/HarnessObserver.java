@@ -40,6 +40,13 @@ import org.jwcarman.nessy.agent.Transition;
  * narrating inside an in-flight effect, before any fact exists, and remain {@code TurnObserver}'s.
  *
  * <p>Subscribers are isolated: a throw is logged and dropped, never propagated into the fold.
+ *
+ * <p><b>Publishes for one scope are not guaranteed to arrive in commit order.</b> Each fold site
+ * publishes after its CAS, not under it, so two concurrent folds on a single {@link AgentId} can
+ * reach an observer in either order. An implementation holding per-scope state must tolerate a
+ * close before its open — treat every transition as idempotent and every unmatched close as a
+ * no-op. Every fact you are handed did commit; the order in which you are handed them is not the
+ * order the store recorded them.
  */
 public interface HarnessObserver {
 

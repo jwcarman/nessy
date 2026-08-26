@@ -98,7 +98,12 @@ application-side:
 
 Ours, counters, tagged `gen_ai.agent.name` only:
 
-- `nessy.delivery.dropped` — every `warnDropped`.
+- `nessy.delivery.dropped` — every `warnDropped`. Narrowed in
+  implementation, deliberately: only an ignored event that arrived as a
+  DELIVERY (one carrying a Continuum id) is counted. An in-band stale or
+  duplicate fold is an ordinary race the shell absorbs by design, and
+  counting it would drown the orphans and duplicates this counter exists to
+  surface.
 - `nessy.state.stale_retries` — every `StaleStateException` /
   `ConflictException` retry in `DefaultAgent.deliver` and
   `DeliveryWorker.fold`.
@@ -161,6 +166,12 @@ DeliveryWorker.fold  ─┘                │
   logged, never propagated into the fold.
 - The parked "delivered folds narrate nothing" item closes as a
   category: there is one door, not a second call to remember.
+- **No cross-publish ordering guarantee per agent id.** Each fold site
+  publishes AFTER its CAS lands, not under it, so two concurrent folds on
+  one scope can reach subscribers in either order; a subscriber holding
+  per-scope state (this bridge included) must tolerate a close arriving
+  before its open. Every fact published did commit — only the order is
+  unguaranteed.
 - **`TurnEvent` stays outside the stream, deliberately.** Deltas, thinking
   chunks and tool progress are an executor narrating *inside* an
   in-flight effect, before any fact exists. They remain the per-entry
@@ -216,18 +227,24 @@ not folds).
 **Containment lives here and in `Observations` (fix round 1).** An
 `ObservationHandler` is arbitrary application code running inline on
 whichever thread started or stopped a span — telemetry describes the work,
-it never participates in it. Both executors wrap every `start()`/`stop()`/
-key-value write around their own span in a `quietly(...)`/`started(...)`
-pair: a failed `start()` yields `Observation.NOOP` so the following
-`stop()` is a harmless no-op, and a throwing handler is logged once at
-`WARN` and dropped rather than propagated — proven by
+it never participates in it. Both executors wrap every `start()`, `stop()` and
+`error()` call on their own span in a `quietly(...)`/`started(...)` pair:
+a failed `start()` yields `Observation.NOOP` so the following `stop()` is a
+harmless no-op, and a throwing handler is logged once at `WARN` and dropped
+rather than propagated. Key-value writes are deliberately NOT wrapped —
+they only mutate the context and invoke no handler, so there is nothing
+there to throw. Proven by
 `InstrumentationNeverBreaksATurnTest`, including the case that named the
 rule: an application handler reading `gen_ai.usage.input_tokens` off a
 `chat` that failed before the model reported any usage throws inside
 `onStop`, and the turn still completes with its real, correct outcome.
 `Observations.count(...)` (the three engine counters) carries the same
 containment for the calls the two fold sites make directly, since those
-calls are not behind `FactFanout`'s own per-subscriber isolation. Every
+calls are not behind `FactFanout`'s own per-subscriber isolation. The
+segment and wait spans need no guard of their own: every one of them is
+opened and closed from a `HarnessObserver` callback, and `FactFanout`
+already isolates each subscriber — so their containment is at the fanout,
+not at the call site. Every
 other path through `Observations` — `applied`/`ignored`/etc. — is already
 safe by construction: it is reached only through `HarnessObserver`, and
 `FactFanout` isolates each subscriber's throw before it can reach a fold
@@ -317,22 +334,6 @@ the worker narrates `HarnessObserver`).
 ## 8a. Next, not now — settled in conversation 2026-08-26
 
 - **Tool progress folds.** James: "the only other thing that could be
-  folded would be tool progress updates." It is a fact about the world,
-  unlike a text delta. Shape: `ToolProgressed(call, message)` as an
-  `AgentEvent` whose transition is applied-but-unchanged — published on
-  the stream, NOT saved when the phase is identical (a chatty tool must
-  not pay a CAS write per message). Follow-on, not this branch.
-- **`TurnEvent` becomes deltas plus a projection of the stream.** With
-  progress on the stream, every `TurnEvent` except the model's deltas is
-  derivable from a fold: `AssistantSaid` = `ModelFinished` applied,
-  `ToolCallRequested` = its calls, `ToolCallDecided` = `ApprovalAnswered`,
-  `ToolCallCompleted` = `ToolFinished`, `TurnEnded` = the transition into
-  `Idle`/parked. One event model. Follow-on; this branch builds the stream
-  it would project from.
-
-## 8a. Next, not now — settled in conversation 2026-08-26
-
-- **Tool progress folds.** James: "the only other thing that could be
   folded would be tool progress updates … it hits the stream, it just
   doesn't change much; others could do stuff with it." `ToolProgressed(call,
   message)` as an `AgentEvent` whose transition is applied-but-unchanged —
@@ -348,7 +349,11 @@ the worker narrates `HarnessObserver`).
   two executors and the worker. James's insulation ruling: `AgentEvent` is
   the reducer's grammar and changes with the machinery; `TurnEvent`
   (nessy-api) is named for readers and stayed stable across both of this
-  week's reforms — applications bind to it, never to a `Phase`.
+  week's reforms — applications bind to it, never to a `Phase`. The mapping
+  the projection would replace: `AssistantSaid` = `ModelFinished` applied,
+  `ToolCallRequested` = its calls, `ToolCallDecided` = `ApprovalAnswered`,
+  `ToolCallCompleted` = `ToolFinished`, `TurnEnded` = the transition into
+  `Idle`/parked.
   `HarnessObserver` (renamed from `AgentObserver` — James: the events carry
   the agent id, so the observer observes the harness) stays spi, for
   engine health and this bridge. Subscriptions are owned by the harness —

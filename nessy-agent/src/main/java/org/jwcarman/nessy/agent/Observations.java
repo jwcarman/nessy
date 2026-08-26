@@ -53,15 +53,16 @@ import org.slf4j.LoggerFactory;
  * and the phase in the store is the truth.
  *
  * <p><b>Why counters are Observations too.</b> An {@link ObservationRegistry} is the only seam this
- * harness has, by ruling — no {@link io.micrometer.core.instrument.MeterRegistry} reaches {@code
- * nessy-agent}, ever. A registry cannot increment a counter directly, so the three engine counters
- * are recorded as zero-duration observations, started and stopped in place: Micrometer's default
- * meter handler times every observation, so each one contributes a count (and a negligible
- * duration) to a timer of that name, which is the count a dashboard reads. The same limit is why
- * the semconv {@code gen_ai.client.token.usage} histogram is NOT recorded here (spec §1.2): a
- * registry times observations but cannot record an arbitrary value histogram, so the token counts
- * ride the {@code chat} observation as key-values and the application's own {@code
- * ObservationHandler} reads them on stop and records them to its {@code MeterRegistry}.
+ * harness has, by ruling — no {@code MeterRegistry} reaches {@code nessy-agent}, ever (which is
+ * also why that type is named here in plain code font: it is not on this module's classpath). A
+ * registry cannot increment a counter directly, so the three engine counters are recorded as
+ * zero-duration observations, started and stopped in place: Micrometer's default meter handler
+ * times every observation, so each one contributes a count (and a negligible duration) to a timer
+ * of that name, which is the count a dashboard reads. The same limit is why the semconv {@code
+ * gen_ai.client.token.usage} histogram is NOT recorded here (spec §1.2): a registry times
+ * observations but cannot record an arbitrary value histogram, so the token counts ride the {@code
+ * chat} observation as key-values and the application's own {@code ObservationHandler} reads them
+ * on stop and records them to its {@code MeterRegistry}.
  *
  * <p><b>Why one meter name cannot serve three operations</b> (amending spec §1.2). The spec asked
  * for {@code gen_ai.client.operation.duration} as every duration observation's Micrometer NAME,
@@ -81,6 +82,23 @@ import org.slf4j.LoggerFactory;
  * <p>Segments and waits are {@link Observation#start()}ed and {@link Observation#stop()}ed
  * explicitly, never through {@code observe(Runnable)}: both span threads by construction — a wait
  * opens on whichever thread folded the park and closes on a delivery worker's thread hours later.
+ *
+ * <p><b>This is a keyed state machine over a stream with no ordering guarantee</b> (spec §3, fix
+ * round 2). Each fold site publishes AFTER its CAS, not under it, so two concurrent folds on one
+ * scope can arrive here in either order — a close can precede the open it belongs to. Every
+ * transition below is therefore written to tolerate that: closing a wait this object does not hold
+ * is a no-op, opening a segment when one is already open is a no-op, and closing one that is
+ * already closed is a no-op. The one shape that cannot be detected is an open arriving after its
+ * own close; it leaves a span open until the scope's next close, and is accepted (see below).
+ *
+ * <p><b>Known bound: a wait parked by one harness and answered by another leaks its span.</b> Two
+ * harnesses sharing a type, a substrate and a Continuum are a supported shape, and either may
+ * deliver what the other parked. The wait's open {@link Observation} lives in the parking harness's
+ * heap alone, so an answer folded by the OTHER harness closes nothing: the first harness's span
+ * stays open until its process ends, and the second records a close for a wait it never opened (a
+ * no-op). Nothing is corrupted and no fold is affected — the dwell simply goes unrecorded, the same
+ * way an in-flight span already dies with a restart (spec §2). Accepted rather than fixed: making
+ * it work would mean reconstructing spans from durable state, which spec §2 rules out.
  */
 final class Observations implements HarnessObserver {
 
@@ -241,9 +259,13 @@ final class Observations implements HarnessObserver {
   }
 
   /**
-   * The scope's open {@code invoke_agent} span, or {@link Observation#NOOP} when none is open — the
-   * parent the two executor-minted spans hang off (spec §3.2). Never null: a {@code chat} that
-   * somehow runs outside any segment is parentless, not broken.
+   * The scope's open {@code invoke_agent} span, or {@link Observation#NOOP} when none is open —
+   * this class's own reader, used to parent the wait spans it opens. Never null.
+   *
+   * <p>The two executor-minted spans do NOT come through here: {@code chat} and {@code
+   * execute_tool} are parented from a {@code Supplier<Observation>} over the shared {@link
+   * #openSegments} map, handed to each executor at construction, because neither executor can name
+   * this package-private class across the package line (spec §3.1, §3.2).
    */
   Observation openSegment(AgentId id) {
     Observation segment = openSegments.get(id);
@@ -326,19 +348,29 @@ final class Observations implements HarnessObserver {
    */
   private void openWait(AgentId id, String name, ToolCall call) {
     Observation parent = openSegment(id);
-    openWaits
-        .computeIfAbsent(id, scope -> new ConcurrentHashMap<>())
-        .computeIfAbsent(
-            call.id(),
-            callId ->
-                Observation.createNotStarted(name, registry)
-                    .parentObservation(parent)
-                    .contextualName(name + " " + call.name())
-                    .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
-                    .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
-                    .lowCardinalityKeyValue(outcomeKeyOf(name), KeyValue.NONE_VALUE)
-                    .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, callId)
-                    .start());
+    // The insert happens INSIDE compute on the scope's own key (fix round 2), not on a map fetched
+    // first and written second: acquiring the inner map and then inserting into it can lose the
+    // whole wait to a concurrent closeWait that detaches an emptied map in between. Both sides now
+    // serialise on the same outer key, so a wait is either in the map the closer sees or in one
+    // that is still attached.
+    openWaits.compute(
+        id,
+        (scope, existing) -> {
+          ConcurrentMap<String, Observation> waits =
+              existing != null ? existing : new ConcurrentHashMap<>();
+          waits.computeIfAbsent(
+              call.id(),
+              callId ->
+                  Observation.createNotStarted(name, registry)
+                      .parentObservation(parent)
+                      .contextualName(name + " " + call.name())
+                      .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, type.name())
+                      .lowCardinalityKeyValue(GEN_AI_TOOL_NAME, call.name())
+                      .lowCardinalityKeyValue(outcomeKeyOf(name), KeyValue.NONE_VALUE)
+                      .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, callId)
+                      .start());
+          return waits;
+        });
   }
 
   /**

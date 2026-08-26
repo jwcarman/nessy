@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.time.Clock;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +35,7 @@ import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
+import org.jwcarman.nessy.agent.support.RecordingHarnessObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -68,42 +68,6 @@ class FactStreamTest {
     @Override
     public Optional<String> poll() {
       return Optional.ofNullable(queue.poll());
-    }
-  }
-
-  /** Records the id and event of every applied fold it is handed. */
-  private static final class Recorder implements HarnessObserver {
-
-    private final List<String> applied = new ArrayList<>();
-
-    @Override
-    public void applied(AgentId id, AgentEvent event, Transition transition) {
-      applied.add(id.value() + ":" + event.getClass().getSimpleName());
-    }
-
-    @Override
-    public void ignored(AgentId id, AgentEvent event) {
-      // not recorded: this fixture watches applied folds only
-    }
-
-    @Override
-    public void renderFailed(AgentId id, Object observation, RuntimeException error) {
-      // not recorded: this fixture watches applied folds only
-    }
-
-    @Override
-    public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
-      // not recorded: this fixture watches applied folds only
-    }
-
-    @Override
-    public void reFired(AgentId id, List<Effect> effects) {
-      // not recorded: this fixture watches applied folds only
-    }
-
-    @Override
-    public void observationRequeued(AgentId id, Object observation) {
-      // not recorded: this fixture watches applied folds only
     }
   }
 
@@ -166,26 +130,32 @@ class FactStreamTest {
     @Test
     void a_subscriber_is_told_which_scope_each_fact_belongs_to() {
       Harness<String> harness = harness();
-      var recorder = new Recorder();
+      var recorder = new RecordingHarnessObserver();
 
       try (Subscription subscription = harness.subscribe(recorder)) {
         harness.bind(SCOPE).tell("restart prod-eu");
 
         assertThat(subscription).isNotNull();
-        assertThat(recorder.applied).containsExactly("prod-eu:Observed");
+        assertThat(recorder.applied())
+            .singleElement()
+            .satisfies(
+                fact -> {
+                  assertThat(fact.id()).isEqualTo(SCOPE);
+                  assertThat(fact.event()).isInstanceOf(AgentEvent.Observed.class);
+                });
       }
     }
 
     @Test
     void closing_a_subscription_takes_the_subscriber_off_the_stream() {
       Harness<String> harness = harness();
-      var recorder = new Recorder();
+      var recorder = new RecordingHarnessObserver();
       Subscription subscription = harness.subscribe(recorder);
       subscription.close();
 
       harness.bind(SCOPE).tell("restart prod-eu");
 
-      assertThat(recorder.applied).isEmpty();
+      assertThat(recorder.applied()).isEmpty();
     }
 
     /** The configured observer is the stream's first subscriber; a second one joins beside it. */
@@ -194,7 +164,7 @@ class FactStreamTest {
       Harness<String> harness = harness();
 
       assertThat(harness.facts().subscriberCount()).isEqualTo(2); // configured + Observations
-      try (Subscription subscription = harness.subscribe(new Recorder())) {
+      try (Subscription subscription = harness.subscribe(new RecordingHarnessObserver())) {
         assertThat(subscription).isNotNull();
         assertThat(harness.facts().subscriberCount()).isEqualTo(3);
       }
@@ -224,7 +194,7 @@ class FactStreamTest {
     @Test
     void a_throwing_subscriber_does_not_starve_the_ones_beside_it() {
       Harness<String> harness = harness();
-      var recorder = new Recorder();
+      var recorder = new RecordingHarnessObserver();
 
       try (Subscription saboteur = harness.subscribe(new Saboteur());
           Subscription watching = harness.subscribe(recorder)) {
@@ -232,7 +202,13 @@ class FactStreamTest {
         assertThat(watching).isNotNull();
         harness.bind(SCOPE).tell("restart prod-eu");
 
-        assertThat(recorder.applied).containsExactly("prod-eu:Observed");
+        assertThat(recorder.applied())
+            .singleElement()
+            .satisfies(
+                fact -> {
+                  assertThat(fact.id()).isEqualTo(SCOPE);
+                  assertThat(fact.event()).isInstanceOf(AgentEvent.Observed.class);
+                });
       }
     }
   }

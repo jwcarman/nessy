@@ -337,6 +337,59 @@ class ObservationsTest {
           .hasBeenStopped();
     }
 
+    /**
+     * The stream has no cross-publish ordering guarantee per scope (spec §3), so this keyed state
+     * machine must tolerate a close it has no open for: two concurrent folds on one scope can
+     * arrive either way round, and an unmatched close must be a no-op rather than an NPE or a stray
+     * span.
+     */
+    @Test
+    void closing_a_wait_this_bridge_never_opened_is_a_no_op() {
+      observed();
+      modelAsksFor(RESTART);
+
+      fold(new AgentEvent.ApprovalAnswered(RESTART, Optional.empty(), Approval.approved()));
+
+      assertThat(named("nessy.approval.wait restart")).isEmpty();
+    }
+
+    /**
+     * A segment reopened by the delivery that resumed a parked scope is closed again by that
+     * segment's own ending, leaving nothing open: the close removes it from the shared map the
+     * executors read, so a later {@code chat} finds no stale parent to hang off. Two segments, both
+     * ended — a span never straddles the park between them (spec §2).
+     */
+    @Test
+    void a_segment_reopened_by_a_delivery_leaves_nothing_open_once_it_ends() {
+      observed();
+      modelAsksFor(RESTART);
+      fold(
+          new AgentEvent.ApprovalDeferred(
+              RESTART, ComputationId.of("approval-1"), requestFor(RESTART)));
+      // Parked: the first segment closed. The delivered denial reopens one, finishes the call, and
+      // sends the turn back to the model; the model's own answer is what ends this segment.
+      fold(
+          new AgentEvent.ApprovalAnswered(
+              RESTART, Optional.of(ComputationId.of("approval-1")), Approval.denied("no")));
+      fold(
+          new AgentEvent.ModelFinished(
+              new ModelOutcome.Responded(
+                  List.of(new TextBlock("denied, then")),
+                  List.of(),
+                  ModelResponseId.of("response-2"))));
+
+      assertThat(named("invoke_agent ops")).hasSize(2);
+      assertThat(named("invoke_agent ops"))
+          .allSatisfy(
+              segment ->
+                  assertThat(
+                          segment
+                              .getLowCardinalityKeyValue(Observations.NESSY_TURN_OUTCOME)
+                              .getValue())
+                      .isNotEqualTo(KeyValue.NONE_VALUE));
+      assertThat(observations.openSegment(SCOPE)).isSameAs(Observation.NOOP);
+    }
+
     /** A call that ran in-band never parked, so there is no dwell to record. */
     @Test
     void an_in_band_result_opens_no_wait_at_all() {
