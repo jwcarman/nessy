@@ -120,6 +120,18 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private static final String GEN_AI_TOOL_TYPE = "gen_ai.tool.type";
   private static final String FUNCTION = "function";
   private static final String NESSY_TOOL_DEFERRED = "nessy.tool.deferred";
+
+  /**
+   * What the tool's BODY did (in-the-loop amendment §2), beside the boolean above. The boolean
+   * answers "is a wait coming"; this answers "what happened", and the two diverge on the failure
+   * paths — a tool that throws AFTER a successful {@code defer()} is {@code deferred=true} and
+   * {@code outcome=failed} at once. Deliberately the same three words {@code nessy.tool.wait}
+   * closes with, so one filter reads the execution and the dwell it opened.
+   */
+  private static final String NESSY_TOOL_OUTCOME = "nessy.tool.outcome";
+
+  private static final String RETURNED = "returned";
+  private static final String FAILED = "failed";
   private static final String ERROR_TYPE = "error.type";
 
   /**
@@ -328,6 +340,22 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     };
   }
 
+  /**
+   * What the body did, as the span records it. An EMPTY answer is the one shape that means the door
+   * recorded a wait and there is nothing left to deliver — that is a deferral. Otherwise the sealed
+   * {@link ToolOutcome} grammar decides, with no default arm, so a new variant fails this build.
+   */
+  private static String toolOutcomeOf(Optional<Answer> answer) {
+    return answer
+        .map(
+            found ->
+                switch (found.outcome()) {
+                  case ToolOutcome.Returned _ -> RETURNED;
+                  case ToolOutcome.Failed _ -> FAILED;
+                })
+        .orElse(DEFERRED);
+  }
+
   /** The ask's span, parented like every other this executor mints. */
   private Observation startSeek(ToolCall call) {
     return started(() -> newSeek(call));
@@ -395,6 +423,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       // span measures, and the flag says which of the two happened (spec §1.1).
       execution.lowCardinalityKeyValue(
           NESSY_TOOL_DEFERRED, Boolean.toString(context.deferral().isPresent()));
+      execution.lowCardinalityKeyValue(NESSY_TOOL_OUTCOME, toolOutcomeOf(answer));
       return answer;
     } catch (RuntimeException e) {
       // Two shapes land here. A throw propagated OUT of defer() means nothing was parked, and
@@ -402,6 +431,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
       // rides that id or the call hangs until the orphan expires.
       execution.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+      execution.lowCardinalityKeyValue(NESSY_TOOL_OUTCOME, FAILED);
       quietly(() -> execution.error(e));
       return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
     } finally {
@@ -488,6 +518,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
             .lowCardinalityKeyValue(GEN_AI_TOOL_TYPE, FUNCTION)
             // Declared now, overwritten when known: one stable low-cardinality key set per name.
             .lowCardinalityKeyValue(NESSY_TOOL_DEFERRED, KeyValue.NONE_VALUE)
+            .lowCardinalityKeyValue(NESSY_TOOL_OUTCOME, KeyValue.NONE_VALUE)
             .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
             .highCardinalityKeyValue(GEN_AI_TOOL_CALL_ID, call.id());
     if (parent != null) {
