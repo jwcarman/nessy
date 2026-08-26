@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -56,6 +57,17 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  * harness. It never talks to a client and never sees a key.
  */
 public final class AnthropicRequests {
+
+  /**
+   * Anthropic's documented per-breakpoint lookback: a breakpoint searches at most twenty content
+   * blocks backwards — counting itself as the first — for an existing cache entry, and finds
+   * nothing beyond that. It is why one marker on the newest block is not enough for a transcript
+   * that can grow by more than twenty blocks in a single turn (a round with several parallel tool
+   * calls does exactly that), and it fixes where the second marker goes: exactly one window behind
+   * the first, so the two windows abut and their union covers the last thirty-nine blocks with no
+   * gap between them.
+   */
+  private static final int LOOKBACK_BLOCKS = 20;
 
   private AnthropicRequests() {}
 
@@ -87,11 +99,7 @@ public final class AnthropicRequests {
           List.of(systemBlock(request.systemPrompt(), cachingRequested)));
     }
 
-    builder.messages(
-        request.context().messages().stream()
-            .map(AnthropicRequests::toMessageParam)
-            .flatMap(Optional::stream)
-            .toList());
+    addMessages(builder, request.context().messages(), cachingRequested);
 
     addTools(builder, request.tools(), cachingRequested);
 
@@ -109,6 +117,89 @@ public final class AnthropicRequests {
       block.cacheControl(ephemeral());
     }
     return block.build();
+  }
+
+  /**
+   * One message reduced to what will actually be sent: the content blocks that survived {@link
+   * #toContentBlockParam} and the domain blocks they came from, side by side and index-aligned. The
+   * pair is what lets the conversation breakpoints be chosen over the FINAL block positions — the
+   * only positions the API will ever see — and then applied by rebuilding just the one or two
+   * blocks that carry a marker.
+   */
+  private record DraftedMessage(
+      MessageParam.Role role, List<ContentBlock> source, List<ContentBlockParam> blocks) {}
+
+  /**
+   * The conversation, with the prompt-cache breakpoints on it (soak finding F1, 2026-08-26).
+   *
+   * <p>Marking the system prompt and the last tool definition caches a prefix that never grows; the
+   * transcript, which is the only part of a long-running agent's request that DOES grow, was marked
+   * nowhere, so a watchman round wrote a small entry it could never read back and every round paid
+   * full price for the whole history. The fix is the pattern Anthropic documents for a growing
+   * conversation: a MOVING breakpoint on the newest block, so each request writes an entry the next
+   * request reads, plus an ANCHOR one lookback window behind it for the turns that append more
+   * blocks than a single window covers.
+   *
+   * <p>Two here, plus system and tools, is exactly the four breakpoints a request may carry; a
+   * fifth is a 400. Neither marker can land on a thinking block — the API has no {@code
+   * cache_control} there, and the SDK's builder does not offer one — so both fall back to the
+   * nearest eligible block at or before the position they wanted.
+   */
+  private static void addMessages(
+      MessageCreateParams.Builder builder, List<Message> messages, boolean cachingRequested) {
+    List<DraftedMessage> drafts =
+        messages.stream().map(AnthropicRequests::draft).flatMap(Optional::stream).toList();
+    Set<Integer> marked = cachingRequested ? conversationBreakpoints(drafts) : Set.of();
+
+    List<MessageParam> params = new ArrayList<>(drafts.size());
+    int offset = 0;
+    for (DraftedMessage draft : drafts) {
+      List<ContentBlockParam> blocks = new ArrayList<>(draft.blocks());
+      for (int i = 0; i < blocks.size(); i++) {
+        if (marked.contains(offset + i)) {
+          blocks.set(i, toContentBlockParam(draft.source().get(i), true).orElse(blocks.get(i)));
+        }
+      }
+      offset += blocks.size();
+      params.add(MessageParam.builder().role(draft.role()).contentOfBlockParams(blocks).build());
+    }
+    builder.messages(params);
+  }
+
+  /**
+   * The flattened positions the two conversation breakpoints go on, newest last. Empty when the
+   * conversation has no block that may carry one at all.
+   */
+  private static Set<Integer> conversationBreakpoints(List<DraftedMessage> drafts) {
+    List<ContentBlock> flattened =
+        drafts.stream().map(DraftedMessage::source).flatMap(List::stream).toList();
+    int moving = lastEligibleAtOrBefore(flattened, flattened.size() - 1);
+    if (moving < 0) {
+      return Set.of();
+    }
+    int anchor = lastEligibleAtOrBefore(flattened, moving - LOOKBACK_BLOCKS);
+    return anchor < 0 ? Set.of(moving) : Set.of(anchor, moving);
+  }
+
+  private static int lastEligibleAtOrBefore(List<ContentBlock> blocks, int from) {
+    for (int i = Math.min(from, blocks.size() - 1); i >= 0; i--) {
+      if (mayCarryCacheControl(blocks.get(i))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Which block kinds may carry a breakpoint. Text, images, tool calls and tool results all may;
+   * thinking and redacted thinking may not — the API defines no {@code cache_control} on either,
+   * which is visible in the SDK as the absence of the builder method the others have.
+   */
+  private static boolean mayCarryCacheControl(ContentBlock block) {
+    return switch (block) {
+      case TextBlock _, ImageBlock _, ToolUseBlock _, ToolResultBlock _ -> true;
+      case ThinkingBlock _, RedactedThinkingBlock _ -> false;
+    };
   }
 
   private static void addTools(
@@ -132,8 +223,8 @@ public final class AnthropicRequests {
   }
 
   /**
-   * Maps one {@link Message} to its param form, or nothing at all if every one of its content
-   * blocks was itself dropped (see {@link #toContentBlockParam}).
+   * Maps one {@link Message} to a {@link DraftedMessage}, or nothing at all if every one of its
+   * content blocks was itself dropped (see {@link #toContentBlockParam}).
    *
    * <p>A message with no representable content is elided outright rather than sent as a param with
    * an empty block list: Anthropic rejects an empty {@code content} array, and — more to the point
@@ -142,16 +233,22 @@ public final class AnthropicRequests {
    * was cut off before it was signed settles as an assistant message containing only that one
    * block, which {@link #toContentBlockParam} drops, leaving nothing behind.
    */
-  private static Optional<MessageParam> toMessageParam(Message message) {
+  private static Optional<DraftedMessage> draft(Message message) {
     var role = message.role() == Role.USER ? MessageParam.Role.USER : MessageParam.Role.ASSISTANT;
+    var source = new ArrayList<ContentBlock>();
     var blocks = new ArrayList<ContentBlockParam>();
     for (ContentBlock block : message.content()) {
-      toContentBlockParam(block).ifPresent(blocks::add);
+      toContentBlockParam(block, false)
+          .ifPresent(
+              param -> {
+                source.add(block);
+                blocks.add(param);
+              });
     }
     if (blocks.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.of(MessageParam.builder().role(role).contentOfBlockParams(blocks).build());
+    return Optional.of(new DraftedMessage(role, List.copyOf(source), List.copyOf(blocks)));
   }
 
   /**
@@ -162,13 +259,23 @@ public final class AnthropicRequests {
    * thinking on replay. A blank {@link TextBlock} is dropped for the same reason {@code
    * systemBlock} never sends one: Anthropic rejects empty text blocks. Every other block
    * round-trips.
+   *
+   * <p>{@code cached} marks this block as a prompt-cache breakpoint. It reaches each builder as an
+   * {@link Optional} rather than through a branch, so the absent case is spelled once; the two
+   * thinking kinds ignore it because the API defines no {@code cache_control} on either, which is
+   * why {@link #mayCarryCacheControl} never chooses one.
    */
-  private static Optional<ContentBlockParam> toContentBlockParam(ContentBlock block) {
+  private static Optional<ContentBlockParam> toContentBlockParam(
+      ContentBlock block, boolean cached) {
+    Optional<CacheControlEphemeral> cacheControl =
+        cached ? Optional.of(ephemeral()) : Optional.empty();
     return switch (block) {
       case TextBlock(String text) ->
           text.isEmpty()
               ? Optional.empty()
-              : Optional.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build()));
+              : Optional.of(
+                  ContentBlockParam.ofText(
+                      TextBlockParam.builder().text(text).cacheControl(cacheControl).build()));
       case ImageBlock(String mediaType, String base64Data) ->
           Optional.of(
               ContentBlockParam.ofImage(
@@ -178,6 +285,7 @@ public final class AnthropicRequests {
                               .mediaType(Base64ImageSource.MediaType.of(mediaType))
                               .data(base64Data)
                               .build())
+                      .cacheControl(cacheControl)
                       .build()));
       case ThinkingBlock(String text, String signature) ->
           signature.isEmpty()
@@ -196,6 +304,7 @@ public final class AnthropicRequests {
                       .id(call.id())
                       .name(call.name())
                       .input(toInput(call.arguments()))
+                      .cacheControl(cacheControl)
                       .build()));
       case ToolResultBlock(String toolUseId, String content, boolean isError) ->
           Optional.of(
@@ -204,6 +313,7 @@ public final class AnthropicRequests {
                       .toolUseId(toolUseId)
                       .content(content)
                       .isError(isError)
+                      .cacheControl(cacheControl)
                       .build()));
     };
   }

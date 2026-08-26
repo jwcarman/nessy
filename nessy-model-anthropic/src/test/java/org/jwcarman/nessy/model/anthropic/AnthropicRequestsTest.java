@@ -19,11 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.anthropic.models.messages.Base64ImageSource;
+import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
@@ -492,6 +495,125 @@ class AnthropicRequestsTest {
           AnthropicRequests.toParams(request, "claude-sonnet", new ThinkingConfig(true, 1024));
 
       assertThat(params.thinking()).isPresent();
+    }
+  }
+
+  /**
+   * The soak's finding (2026-08-26): marking the system prompt and the last tool caches a prefix
+   * that never grows, while the part that does grow — the transcript — was never marked at all, so
+   * a long-running agent read nothing back on any round. These pin the conversation breakpoints
+   * that fix it, against the rules Anthropic publishes: at most FOUR {@code cache_control}
+   * breakpoints per request, and a lookback window of twenty content blocks per breakpoint.
+   */
+  @Nested
+  class ConversationCaching {
+
+    private static final int LOOKBACK = 20;
+
+    private static List<Message> conversation(int messages) {
+      return IntStream.range(0, messages)
+          .mapToObj(
+              i ->
+                  i % 2 == 0
+                      ? Message.user("message number " + i)
+                      : Message.assistant(List.of(new TextBlock("message number " + i))))
+          .toList();
+    }
+
+    private static List<ContentBlockParam> blocksOf(MessageCreateParams params) {
+      return params.messages().stream()
+          .flatMap(message -> message.content().asBlockParams().stream())
+          .toList();
+    }
+
+    private static List<Integer> markedIn(List<ContentBlockParam> blocks) {
+      return IntStream.range(0, blocks.size())
+          .filter(i -> blocks.get(i).cacheControl().isPresent())
+          .boxed()
+          .toList();
+    }
+
+    private static ModelRequest cachedRequest(List<Message> messages, List<ToolSpec> tools) {
+      return new ModelRequest(
+          Context.of(messages), "sys", 1024, tools, Set.of(Capability.PROMPT_CACHING), null);
+    }
+
+    @Test
+    void no_message_block_is_marked_when_prompt_caching_is_not_requested() {
+      var params =
+          AnthropicRequests.toParams(request(conversation(30)), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).isNotEmpty();
+      assertThat(markedIn(blocks)).isEmpty();
+    }
+
+    @Test
+    void a_short_conversation_is_marked_only_on_its_final_block() {
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(conversation(4), List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(markedIn(blocks)).containsExactly(blocks.size() - 1);
+    }
+
+    @Test
+    void a_long_conversation_is_also_marked_one_lookback_window_behind_the_final_block() {
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(conversation(30), List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      int last = blocks.size() - 1;
+      assertThat(markedIn(blocks)).containsExactly(last - LOOKBACK, last);
+    }
+
+    @Test
+    void a_thinking_block_never_carries_a_breakpoint_so_the_marker_falls_back_to_the_text() {
+      var messages =
+          List.of(
+              Message.user("hello"),
+              Message.assistant(
+                  List.of(new TextBlock("answer"), new ThinkingBlock("hmm", "signed"))));
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(messages, List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).hasSize(3);
+      assertThat(markedIn(blocks)).containsExactly(1);
+    }
+
+    /**
+     * The hard ceiling: system (1) + last tool (1) + the two conversation breakpoints is exactly
+     * four, which is all the API allows. A fifth is a 400 on every round.
+     */
+    @Test
+    void the_whole_request_never_carries_more_than_four_breakpoints() {
+      ObjectNode schema = MAPPER.createObjectNode();
+      schema.put("type", "object");
+      schema.putObject("properties");
+      var tools =
+          List.of(
+              new ToolSpec("read_file", "reads", schema),
+              new ToolSpec("write_file", "writes", schema));
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(conversation(60), tools), "claude-sonnet", THINKING_DISABLED);
+
+      long system =
+          params.system().orElseThrow().asTextBlockParams().stream()
+              .filter(block -> block.cacheControl().isPresent())
+              .count();
+      long toolMarkers =
+          params.tools().orElseThrow().stream()
+              .filter(tool -> tool.asTool().cacheControl().isPresent())
+              .count();
+
+      assertThat(system + toolMarkers + markedIn(blocksOf(params)).size()).isEqualTo(4L);
     }
   }
 }
