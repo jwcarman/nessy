@@ -254,17 +254,13 @@ public sealed interface Phase {
     public List<Effect> outstandingEffects() {
       List<Effect> effects = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        switch (calls.get(call.id())) {
-          case CallStatus.Pending _ -> effects.add(new Effect.SeekApproval(call));
-          case CallStatus.Running _ -> effects.add(new Effect.RunTool(call));
-          case CallStatus.AwaitingApproval _,
-              CallStatus.AwaitingResult _,
-              CallStatus.Finished _ -> {
-            // Continuum holds the first two; the last is done
-          }
-          // Not a default arm: a Map.get miss is a programming error, surfaced loudly.
-          case null -> throw new IllegalStateException("no status for call " + call.id());
+        CallStatus status = calls.get(call.id());
+        // Not a default arm of a switch: a Map.get miss is a programming error, surfaced loudly.
+        if (status == null) {
+          throw new IllegalStateException("no status for call " + call.id());
         }
+        // The re-fire rule is the state's own, stated once (CallStatus#outstanding).
+        effects.addAll(status.outstanding(call));
       }
       return List.copyOf(effects);
     }
