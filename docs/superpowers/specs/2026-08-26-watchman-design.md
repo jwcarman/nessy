@@ -192,11 +192,32 @@ Grafana after a day.
 From the o11y roster, on the LGTM dashboards: `nessy.approval.wait`
 dwell (days, real), `nessy.tool.wait` for `long_job`, `invoke_agent`
 segments per round, `chat` tokens per round, `nessy.delivery.dropped`
-(should be zero), `nessy.state.stale_retries` (should be near zero),
+(should be zero), `nessy.state.stale_retries` (see the amendment below),
 `nessy.effects.refired` (usually zero — a parked scope re-fires nothing,
 because the phase names the computation it awaits; only a call caught
 `Pending` or `Running` by a crash produces one). Plus the notes
 directory as the transcript a human reads.
+
+**Amendment (2026-08-26, the SOAK — finding F3).** This section said
+`nessy.state.stale_retries` "should be near zero", and the README added
+that a rising count meant rounds were being re-driven while genuinely
+waiting on a human. Both were wrong, and the first real round said so: a
+healthy round that ran three tools in parallel plus six `create_memory`
+writes produced FIVE retries. Concurrent folds on one scope contend on
+the CAS and the losers re-read and re-handle — the retries are the cost
+of parallelism, not a fault. Read per round, against that round's own
+parallelism: **a round with N calls in flight normally produces retries
+on the order of N.** What is pathological is a count that climbs while no
+`invoke_agent` span is open (a scope re-driven while parked — the thing
+the old text described), or a per-round count that grows without the
+rounds getting more parallel, which means contention from outside the
+round. The absolute number means nothing on its own. The README carries
+the full rule of thumb.
+
+Also amended by the same soak: the three counters are span EVENTS on the
+round's `invoke_agent` span rather than observations of their own — see
+the o11y spec §1.2 Amendment 3 — so on the dashboards they are read by
+opening a round, not by listing traces.
 
 What failure looks like: a round that never ends, an approval that
 approves and nothing happens, a dropped counter ticking,

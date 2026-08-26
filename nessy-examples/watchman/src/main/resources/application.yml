@@ -18,8 +18,9 @@ nessy:
   # A prompt this long belongs in a file, not a properties value.
   system-prompt-file: classpath:system-prompt.md
   # The re-fire policy. Deliberately long: a round that is genuinely waiting on a human should not
-  # be re-driven every five minutes for three days. See nessy.state.stale_retries on the dashboard —
-  # near zero is the healthy reading.
+  # be re-driven every five minutes for three days. The counter that would show that going wrong is
+  # nessy.state.stale_retries CLIMBING WHILE NO ROUND IS OPEN; a healthy round with several calls in
+  # flight produces retries in proportion to that parallelism and is not a symptom (README, F3).
   staleness: 30m
   backlog-capacity: 256
   # The soak's cache case. Every round resends the same system prompt and the same tool schemas,

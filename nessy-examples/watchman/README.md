@@ -292,8 +292,42 @@ Two more worth doing over a month:
 | `invoke_agent` spans | one per round. The shape of a healthy round is minutes; a round that never ends is the first failure mode. |
 | `chat` tokens | `gen_ai.client.token.usage` per round, split input/output. What the soak costs per day. |
 | `nessy.delivery.dropped` | **should be zero.** Anything else means an answer arrived for a phase that was not waiting for it. |
-| `nessy.state.stale_retries` | **should be near zero.** A rising count means rounds are being re-driven while genuinely waiting on a human. |
+| `nessy.state.stale_retries` | **normal, and proportional to parallelism** — see below. Read it per round against how many calls that round ran at once, never as an absolute. |
 | `nessy.effects.refired` | **usually zero.** A parked scope re-fires nothing; only a call caught `Pending` or `Running` by a crash does. A steady climb means rounds are being re-driven mid-flight. |
+
+All three are **span events on the round's own `invoke_agent` span**, not
+standalone traces — open the round in Tempo and read its events. (A count
+recorded while no round was running is the exception: that one is its own
+tiny trace, because there was no round to hang it on.)
+
+### Reading `nessy.state.stale_retries`
+
+This runbook used to say the count "should be near zero", and that a rising
+count meant rounds were being re-driven while waiting on a human. **That is
+wrong**, and the first real round proved it: a perfectly healthy round that ran
+three tools in parallel and wrote six `create_memory` entries produced **five**
+stale retries.
+
+They are not a symptom. Every fold reads the scope, does its work, then
+CAS-writes; concurrent folds on the same scope contend, the losers re-read and
+re-handle, and the phase converges. That is the design working — the retries
+are the *cost* of parallelism, not evidence of a fault.
+
+The rule of thumb:
+
+- **A round with N calls in flight normally produces retries, roughly on the
+  order of N.** Zero retries on a round that ran one tool is unremarkable; five
+  on a round that ran three tools plus a handful of memory writes is exactly
+  right. Compare a round's retries against *that round's* parallelism.
+- **What is pathological is retries with nothing to explain them.** Two shapes
+  to watch for: a count that climbs while no `invoke_agent` span is open (a
+  scope being re-driven while it is parked, which is what the old text
+  described and what would be genuinely wrong), and a per-round count that
+  grows week over week *without* the rounds getting more parallel — that is
+  contention from somewhere other than this round's own tool calls, e.g. a
+  second process writing the same scope.
+- **The absolute number is meaningless on its own.** A busy soak day is
+  supposed to have more of them than a quiet one.
 | the scheduler's own logs | a full backlog is the failure that shows up here and nowhere else. `tell` throws when the per-scope backlog (`nessy.backlog-capacity`, 256) is full, and it throws out of `Rounds.doRounds()` into Spring's scheduler — which logs it and schedules the next tick as if nothing happened. So the symptom is not a crash: it is rounds that keep firing and keep doing nothing, with an exception in the log every half hour. If `invoke_agent` spans stop appearing while the cron keeps ticking, read the log before anything else. |
 
 And the notes directory, which is the transcript a human actually reads.
