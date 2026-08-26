@@ -24,6 +24,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
@@ -66,6 +67,67 @@ public sealed interface CallStatus {
   @JsonIgnore
   List<Effect> outstanding(ToolCall call);
 
+  /**
+   * What this state makes of one fact about its own call (deferral-by-callback spec §6) — the one
+   * exhaustive switch over {@link ToolCallEvent}, so adding an event breaks exactly one place, and
+   * that place is where "what is the default for this?" is the right question.
+   */
+  default ToolCallTransition handle(ToolCallEvent event) {
+    return switch (event) {
+      case AgentEvent.ApprovalDeferred e -> onApprovalDeferred(e);
+      case AgentEvent.ApprovalAnswered e -> onApprovalAnswered(e);
+      case AgentEvent.ToolDeferred e -> onToolDeferred(e);
+      case AgentEvent.ToolFinished e -> onToolFinished(e);
+    };
+  }
+
+  /**
+   * The default for every event a state does not name: DROP. Safe as a blanket default only because
+   * {@link ToolCallEvent} is a sub-hierarchy — a state can never be handed an observation or a
+   * model completion, so everything reaching here genuinely is unexpected for this state.
+   */
+  default ToolCallTransition onApprovalDeferred(AgentEvent.ApprovalDeferred event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
+  default ToolCallTransition onApprovalAnswered(AgentEvent.ApprovalAnswered event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
+  default ToolCallTransition onToolDeferred(AgentEvent.ToolDeferred event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** See {@link #onApprovalDeferred}: dropped unless this state names it. */
+  default ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+    return ToolCallTransition.dropped();
+  }
+
+  /** An admitted answer, from either of the two states that may take one. */
+  private static ToolCallTransition answered(AgentEvent.ApprovalAnswered event) {
+    ToolCall call = event.call();
+    return switch (event.answer()) {
+      case Approval.Approved _ -> ToolCallTransition.to(new Running(), new Effect.RunTool(call));
+      case Approval.Denied(var reason, var _) ->
+          ToolCallTransition.to(new Finished(new ToolResultBlock(call.id(), reason, true)));
+    };
+  }
+
+  /** An admitted result, from either of the two states that may take one. */
+  private static ToolCallTransition finished(AgentEvent.ToolFinished event) {
+    ToolCall call = event.call();
+    ToolResultBlock block =
+        switch (event.outcome()) {
+          case ToolOutcome.Returned(var result) ->
+              new ToolResultBlock(call.id(), result.content(), result.isError());
+          case ToolOutcome.Failed(var error) ->
+              new ToolResultBlock(call.id(), error.message(), true);
+        };
+    return ToolCallTransition.to(new Finished(block));
+  }
+
   /** Approval sought; no answer recorded. Re-fire re-seeks. */
   record Pending() implements CallStatus {
 
@@ -77,6 +139,20 @@ public sealed interface CallStatus {
     @Override
     public List<Effect> outstanding(ToolCall call) {
       return List.of(new Effect.SeekApproval(call));
+    }
+
+    @Override
+    public ToolCallTransition onApprovalDeferred(AgentEvent.ApprovalDeferred event) {
+      return ToolCallTransition.to(new AwaitingApproval(event.approval(), event.request()));
+    }
+
+    /**
+     * Only an in-process answer: nothing has been parked, so a delivered id is one this call never
+     * recorded — an orphan or a duplicate, and no amount of backoff makes it fold (spec §4).
+     */
+    @Override
+    public ToolCallTransition onApprovalAnswered(AgentEvent.ApprovalAnswered event) {
+      return event.approval().isEmpty() ? answered(event) : ToolCallTransition.dropped();
     }
   }
 
@@ -96,6 +172,14 @@ public sealed interface CallStatus {
     public List<Effect> outstanding(ToolCall call) {
       return List.of(); // Continuum holds the ask
     }
+
+    /** This call admits the id it recorded and nothing else (spec §3). */
+    @Override
+    public ToolCallTransition onApprovalAnswered(AgentEvent.ApprovalAnswered event) {
+      return event.approval().filter(approval::equals).isPresent()
+          ? answered(event)
+          : ToolCallTransition.dropped();
+    }
   }
 
   /** Approved; the tool is executing. Re-fire re-runs. */
@@ -109,6 +193,25 @@ public sealed interface CallStatus {
     @Override
     public List<Effect> outstanding(ToolCall call) {
       return List.of(new Effect.RunTool(call));
+    }
+
+    @Override
+    public ToolCallTransition onToolDeferred(AgentEvent.ToolDeferred event) {
+      return ToolCallTransition.to(new AwaitingResult(event.tool()));
+    }
+
+    /**
+     * Only an in-process result: a {@code Running} call names no computation, so a delivered id is
+     * by definition one the scope knows nothing of. There is no timing gap to rescue — the door
+     * ({@code ToolContext#defer}, tool-context-defer spec §2) folds {@code ToolDeferred} and
+     * commits BEFORE it hands the id back, so nothing outside can hold an id this scope does not
+     * already name. On the crash path the re-fired {@code RunTool} defers again, minting a SECOND
+     * computation; the orphan's expiry then meets {@code AwaitingResult(id2)} — a mismatch,
+     * correctly dropped there.
+     */
+    @Override
+    public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+      return event.tool().isEmpty() ? finished(event) : ToolCallTransition.dropped();
     }
   }
 
@@ -127,9 +230,20 @@ public sealed interface CallStatus {
     public List<Effect> outstanding(ToolCall call) {
       return List.of(); // Continuum holds the result
     }
+
+    /** This call admits the id it recorded and nothing else (spec §3). */
+    @Override
+    public ToolCallTransition onToolFinished(AgentEvent.ToolFinished event) {
+      return event.tool().filter(tool::equals).isPresent()
+          ? finished(event)
+          : ToolCallTransition.dropped();
+    }
   }
 
-  /** An outcome exists — success, denial or failure. */
+  /**
+   * An outcome exists — success, denial or failure. Absorbing: every event for this call is
+   * dropped, which is every default on this interface, so this record overrides none of them.
+   */
   record Finished(ToolResultBlock result) implements CallStatus {
     public Finished {
       Objects.requireNonNull(result, "result must not be null");

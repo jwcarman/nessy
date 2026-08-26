@@ -23,17 +23,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.approval.Approval;
 
 /**
  * State that carries its own data. Outstanding calls exist only inside {@code AwaitingTools}; "idle
@@ -148,85 +144,42 @@ public sealed interface Phase {
     @Override
     public Transition handle(AgentEvent event) {
       return switch (event) {
-        case AgentEvent.ApprovalAnswered(var call, var approval, var answer) ->
-            onApprovalAnswered(call, approval, answer);
-        case AgentEvent.ApprovalDeferred(var call, var approval, var request) ->
-            status(call).filter(CallStatus.Pending.class::isInstance).isPresent()
-                ? Transition.to(with(call.id(), new CallStatus.AwaitingApproval(approval, request)))
-                : Transition.ignore();
-        case AgentEvent.ToolDeferred(var call, var tool) ->
-            status(call).filter(CallStatus.Running.class::isInstance).isPresent()
-                ? Transition.to(with(call.id(), new CallStatus.AwaitingResult(tool)))
-                : Transition.ignore();
-        case AgentEvent.ToolFinished(var call, var tool, var outcome) ->
-            onToolFinished(call, tool, outcome);
-        case AgentEvent.ModelFinished _ -> Transition.ignore();
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
+        case AgentEvent.ModelFinished _ -> Transition.ignore();
+        case ToolCallEvent e -> route(e);
       };
     }
 
-    private Transition onApprovalAnswered(
-        ToolCall call, Optional<ComputationId> approval, Approval answer) {
-      Optional<CallStatus> current = status(call);
-      if (current.isEmpty()) {
-        return Transition.ignore();
+    /**
+     * The phase's whole part in a call's life (deferral-by-callback spec §6.1): find whose fact
+     * this is, let that call decide, put the answer back — naming no state, no call event and no
+     * id.
+     */
+    private Transition route(ToolCallEvent event) {
+      CallStatus current = calls.get(event.toolCallId());
+      if (current == null) {
+        return Transition.ignore(); // a call this turn never asked for
       }
-      boolean admitted =
-          switch (current.get()) {
-            case CallStatus.Pending _ -> approval.isEmpty(); // in-process answer
-            case CallStatus.AwaitingApproval(var id, var _) ->
-                approval.filter(id::equals).isPresent();
-            case CallStatus.Running _, CallStatus.AwaitingResult _, CallStatus.Finished _ -> false;
-          };
-      if (!admitted) {
-        // Permanent, every one of them: an orphan, a duplicate, or a §6 re-ask's loser. defer()
-        // folds AwaitingApproval before it hands back the id, so nothing legitimate lands here.
-        return Transition.ignore();
-      }
-      return switch (answer) {
-        case Approval.Approved _ ->
-            Transition.to(with(call.id(), new CallStatus.Running()), new Effect.RunTool(call));
-        case Approval.Denied(var reason, var _) ->
-            finish(call, new ToolResultBlock(call.id(), reason, true));
+      return switch (current.handle(event)) {
+        case ToolCallTransition.Dropped _ -> Transition.ignore();
+        case ToolCallTransition.Advanced(var next, var effects) ->
+            advance(event.toolCallId(), next, effects);
       };
     }
 
-    private Transition onToolFinished(
-        ToolCall call, Optional<ComputationId> tool, ToolOutcome outcome) {
-      Optional<CallStatus> current = status(call);
-      if (current.isEmpty()) {
-        return Transition.ignore();
-      }
-      boolean admitted =
-          switch (current.get()) {
-            // Only an in-process result: a Running call names no computation, so a delivered id is
-            // by definition one the scope knows nothing of. There is no timing gap to rescue — the
-            // door (ToolContext#defer, tool-context-defer spec §2) folds ToolDeferred and commits
-            // BEFORE it hands the id back, so nothing outside can hold an id this scope does not
-            // already name. A ToolFinished carrying an id against a Running call therefore names a
-            // computation that was never recorded here, and is ignored. On the crash path the
-            // re-fired RunTool defers again, minting a SECOND computation; the orphan's expiry then
-            // meets AwaitingResult(id2) — a mismatch, correctly dropped there.
-            case CallStatus.Running _ -> tool.isEmpty();
-            case CallStatus.AwaitingResult(var id) -> tool.filter(id::equals).isPresent();
-            case CallStatus.Pending _, CallStatus.AwaitingApproval _, CallStatus.Finished _ ->
-                false;
-          };
-      if (!admitted) {
-        return Transition.ignore();
-      }
-      return finish(call, resultBlock(call, outcome));
-    }
-
-    /** Marks {@code call} finished; when every call is, commits the turn and calls the model. */
-    private Transition finish(ToolCall call, ToolResultBlock result) {
-      AwaitingTools next = with(call.id(), new CallStatus.Finished(result));
-      if (next.calls.values().stream().allMatch(CallStatus.Finished.class::isInstance)) {
+    /**
+     * The turn-level decision, which no individual call can make: once every call has a result,
+     * commit the assistant turn and the results in this phase's own insertion order and go back to
+     * the model.
+     */
+    private Transition advance(String callId, CallStatus next, List<Effect> effects) {
+      AwaitingTools updated = with(callId, next);
+      if (updated.calls.values().stream().allMatch(status -> status.resultBlock().isPresent())) {
         return Transition.to(new AwaitingModel(), new Effect.CallModel())
-            .commit(assistantTurn, Message.toolResults(next.resultsInTurnOrder()));
+            .commit(assistantTurn, Message.toolResults(updated.resultsInTurnOrder()));
       }
-      return Transition.to(next);
+      return Transition.to(updated).emit(effects);
     }
 
     private AwaitingTools with(String callId, CallStatus status) {
@@ -235,16 +188,13 @@ public sealed interface Phase {
       return new AwaitingTools(assistantTurn, updated, responseId);
     }
 
-    private Optional<CallStatus> status(ToolCall call) {
-      return Optional.ofNullable(calls.get(call.id()));
-    }
-
     /** Results in the order the assistant turn asked, which is the order the model expects. */
     private List<ContentBlock> resultsInTurnOrder() {
       List<ContentBlock> results = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        if (calls.get(call.id()) instanceof CallStatus.Finished(var result)) {
-          results.add(result);
+        CallStatus status = calls.get(call.id());
+        if (status != null) {
+          status.resultBlock().ifPresent(results::add);
         }
       }
       return List.copyOf(results);
@@ -282,14 +232,6 @@ public sealed interface Phase {
           .map(ToolUseBlock.class::cast)
           .map(b -> b.call().id())
           .collect(Collectors.toUnmodifiableSet());
-    }
-
-    private static ToolResultBlock resultBlock(ToolCall call, ToolOutcome outcome) {
-      return switch (outcome) {
-        case ToolOutcome.Returned(var result) ->
-            new ToolResultBlock(call.id(), result.content(), result.isError());
-        case ToolOutcome.Failed(var error) -> new ToolResultBlock(call.id(), error.message(), true);
-      };
     }
   }
 }
