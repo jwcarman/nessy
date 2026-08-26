@@ -81,6 +81,55 @@ sequence of renames and interim shapes that produced it.
   [README](nessy-examples/watchman/README.md) for the full runbook,
   including how to crash it on purpose.
 
+- **Observability moved into the loop: work-scoped spans, `nessy.fold` and
+  `nessy.approval.seek`.** A twenty-minute live soak against a real model, a
+  real Postgres and a real collector produced a trace list of 199 JDBC *root*
+  spans and two HTTP spans, with the agent's own rounds pushed out of it —
+  and none of those JDBC spans nested under the `search_memory`/`create_memory`
+  observations they had been imported to explain. The cause was the design:
+  the observability bridge was a *subscriber on the fact stream*, and a
+  subscriber reacts to a fold that already happened, so it can never be the
+  current observation and nothing can ever nest beneath it. Corrected:
+  **spans wrap work; the fact stream watches facts.**
+  - `chat`, `execute_tool`, `search_memory` and `create_memory` now open a
+    Micrometer **scope** for the duration of the work they measure, so
+    whatever the work records — a statement, an HTTP call inside a tool, a
+    provider SDK's own instrumentation — nests inside them.
+  - **New `nessy.fold`**, at both fold sites, around load / handle / remember /
+    CAS save. Its duration *is* the store write plus the reduce plus the
+    remembrance, which is the question the JDBC library was imported for. A
+    lost CAS closes the losing span with `error.type` and the retry opens a
+    second one, so contention is legible in the trace and not only in
+    `nessy.state.stale_retries`.
+  - **New `nessy.approval.seek`**, around the frozen request's construction,
+    the action contributor, every enricher and the approver call — an
+    approver that calls Slack or a policy service used to be a gap inside
+    `invoke_agent` with nothing in it. Carries `nessy.approval.outcome` =
+    approved / denied / deferred, mapped from the sealed
+    `ApprovalOutcome`/`Approval` grammar with no default arm, plus
+    `error.type` when an enricher or the approver throws (which the executor
+    already turns into a fail-closed denial; now the span says so).
+  - `execute_tool` gains **`nessy.tool.outcome`** = returned / failed /
+    deferred, beside the `nessy.tool.deferred` boolean it already carried. The
+    boolean answers "is a wait coming"; the outcome answers "what did the body
+    do", and the two diverge when a tool throws after deferring.
+  - The **lifetime** spans — `invoke_agent` and both waits — are unchanged.
+    They outlive the thread and possibly the process, so they cannot hold a
+    scope and stay hand-parented and stamped by the fold.
+  - **`net.ttddyy.observation:datasource-micrometer-spring-boot` is removed**
+    from `nessy-examples/watchman` and the root POM. Not a condemnation of the
+    library — with scopes open it would nest correctly — but the fold and
+    memory spans answer the question at a hundredth of the volume, and
+    per-statement SQL is an application's choice to make deliberately.
+  - **`schema_url` is now declared** on the instrumentation scope, application
+    side: `https://opentelemetry.io/schemas/1.44.0`, the semantic-conventions
+    revision this roster was audited against, so a Collector's schema
+    processor can translate the attributes forward if semconv renames one. It
+    is set on the OpenTelemetry `Tracer` and nowhere else — Micrometer's
+    observation API has no notion of one — so both example modules supply
+    their own tracer, and `nessy-agent`, which never sees an OpenTelemetry
+    type, has nothing to stamp.
+
 - **Agentic observability: one fact stream, `HarnessConfig.observationRegistry(ObservationRegistry)`,
   and a roster of OTel GenAI spans and counters.** `nessy-agent` now folds every
   event through one harness-level stream — `DefaultAgent`'s synchronous shell

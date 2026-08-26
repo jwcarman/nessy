@@ -211,6 +211,16 @@ note it will attach under the fold.
    fold, so a JDBC statement would nest under the fold either way; the
    memory scope only adds a level).
 
+   **Answered in execution, 2026-08-26: both get a scope, because the
+   question's premise is half wrong.** `remember` does run inside a fold;
+   `recall` does not. A recall is made by `ProviderModelCallExecutor`, on the
+   model executor's own virtual thread, BEFORE the `chat` span opens and
+   outside any fold — so without a scope of its own, every statement a recall
+   makes is a root span, which is exactly the flood §0 describes. Since one
+   of the two genuinely needs a scope, both get one; the cost is a level of
+   nesting on the `remember` side and the reading stays uniform. Pinned by
+   `InTheLoopScopesTest.TheMemorySpans`.
+
 ## 8. Rejected
 
 - **Moving the waits in-loop.** They outlive the thread and the process; a
@@ -220,3 +230,39 @@ note it will attach under the fold.
   not nest.
 - **Recording counters through a `MeterRegistry`** to avoid the span-event
   shape. That would be a second seam, and James ruled one.
+
+## 9. Execution notes (2026-08-26)
+
+- **The first `nessy.fold` of a segment is a root span, and that is
+  deliberate.** The fold span covers load / handle / remember / CAS save and
+  nothing else; publishing the fold's OUTPUT on the fact stream, and
+  dispatching the transition's effects, both happen after the span closes.
+  They have to: the stream is where the `invoke_agent` segment opens, and a
+  segment created inside a fold's scope would become the CHILD of a fold that
+  stops immediately — inverting §2's rule that the segment is the parent of
+  everything. The consequence is that the one fold whose output *creates* the
+  segment has nothing to hang off. Every later fold in the round is a child of
+  the segment, so a round is still one trace, and
+  `InTheLoopScopesTest.NoStandaloneRoots` pins the complete root set at
+  exactly `{invoke_agent, nessy.fold}`.
+
+- **Parenting rule, generalised:** an ENCLOSING observation wins over the
+  hand-looked-up segment. The nearest open scope is the truer parent — a
+  `defer()` inside an approver folds while `nessy.approval.seek` is current,
+  and a `remember` folds while `nessy.fold` is. The segment stays the fallback
+  for the dispatches Micrometer's scope cannot follow (spec §3.2).
+
+- **`schema_url` (§5's "attribute names" clause, extended).** The
+  instrumentation scope's schema URL is set on the OpenTelemetry `Tracer` —
+  `openTelemetry.tracerBuilder(name).setSchemaUrl(url).build()` — and nowhere
+  else. Micrometer's `Observation`/`ObservationRegistry` API has no notion of
+  one (it has no notion of OpenTelemetry at all, which is what the one-seam
+  ruling buys), and `micrometer-tracing-bridge-otel` wraps whatever `Tracer`
+  it is handed, so every span inherits that tracer's scope. It is therefore
+  application-side by necessity and by rights: `nessy-agent` never sees an
+  OpenTelemetry type. Declared as
+  `https://opentelemetry.io/schemas/1.44.0` — the semantic-conventions
+  revision §8b of the parent spec audited this roster against — in
+  `nessy-examples/watchman`'s `Telemetry` (which takes over Spring Boot's
+  `@ConditionalOnMissingBean` `otelTracer` bean, since Boot builds its tracer
+  with no schema URL) and in `nessy-examples/observed`'s own SDK wiring.

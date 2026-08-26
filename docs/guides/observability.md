@@ -118,9 +118,14 @@ synchronous shell and `DeliveryWorker`'s durable one — publish
 `(agentId, event, transition)` through it, and everything interested
 subscribes. `HarnessConfig.observationRegistry(ObservationRegistry)` is the
 one seam: absent, the harness runs against `ObservationRegistry.NOOP` and
-the roster below is inert. Supplied, a package-private `Observations`
-object subscribes to the stream and turns folds into Micrometer
-`Observation`s named per the OpenTelemetry GenAI semantic conventions
+the roster below is inert. Supplied, two things happen: a package-private
+`Observations` object subscribes to the stream and stamps the spans that are
+*functions of a fold* — the segment and the two waits — while the work-scoped
+spans are opened **around the work**, in the loop, by the executors, the fold
+sites and the memory decorator. That division is the whole point: a span
+measures work while the work happens; the stream watches facts that already
+did. All of them are Micrometer `Observation`s named per the OpenTelemetry
+GenAI semantic conventions
 (pinned here against the **2025 `gen_ai.*` attribute set** — GenAI semconv
 is still *development* status upstream and `gen_ai.system` became
 `gen_ai.provider.name` in that revision; the CHANGELOG names the exact
@@ -135,9 +140,11 @@ wiring and how to point it at a collector.
 |---|---|---|---|---|
 | `invoke_agent {agentType}` | `invoke_agent` | a segment starts | the segment ends | `gen_ai.agent.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.id`, `gen_ai.conversation.id`; `nessy.turn.outcome` = complete / parked / failed |
 | `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.stream`=true, `gen_ai.request.max_tokens`, `gen_ai.response.finish_reasons`, `gen_ai.response.time_to_first_chunk`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`; `error.type` |
-| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred` |
+| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred`; `nessy.tool.outcome` = returned / failed / deferred |
 | `search_memory` | `search_memory` | `Memory.recall` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`; `error.type` |
 | `create_memory` | `create_memory` | `Memory.remember` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`=1; `error.type` |
+| `nessy.approval.seek {tool}` | — | the ask begins | the approver answers or defers | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `nessy.approval.outcome` = approved / denied / deferred; `error.type` |
+| `nessy.fold` | — | a fold attempt begins | it commits, drops, or loses its CAS | `gen_ai.agent.name`, `gen_ai.agent.id`; `error.type` |
 | `nessy.approval.wait {tool}` | — | `ApprovalDeferred` applied | `ApprovalAnswered` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.approval.answer` |
 | `nessy.tool.wait {tool}` | — | `ToolDeferred` applied | `ToolFinished` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
 
@@ -156,8 +163,9 @@ spans die with the process; nothing reconstructs one after a restart — they
 are telemetry, and the phase in the store is the truth.
 
 **The idiom `"none"`.** Every outcome-bearing key (`nessy.turn.outcome`,
-`nessy.approval.answer`, `nessy.tool.outcome`, `nessy.tool.deferred`,
-`gen_ai.response.finish_reasons`, `error.type`) is set at **start** to the
+`nessy.approval.answer`, `nessy.approval.outcome`, `nessy.tool.outcome`,
+`nessy.tool.deferred`, `gen_ai.response.finish_reasons`, `error.type`) is
+set at **start** to the
 placeholder `"none"` and overwritten once the outcome is known. Micrometer
 requires every observation sharing a name to carry the same set of
 low-cardinality keys — a `chat` that only sometimes carried
@@ -167,11 +175,43 @@ treat `"none"` as "not yet known / not applicable," including on a span that
 finished successfully: `error.type=none` on a healthy `chat` is the
 documented shape, not a bug.
 
-**Parent/child.** `chat` and `execute_tool` are children of the scope's open
-`invoke_agent` segment; wait spans are children of the segment that parked
-them. A tracing backend renders segment → chat → execute_tool → wait as one
-trace per segment, and `gen_ai.conversation.id` stitches segments across
-parks.
+**Two kinds of span, and only one can hold a scope.**
+
+*Work-scoped* spans cover work that begins and ends on one thread: `chat`,
+`execute_tool`, `nessy.approval.seek`, `nessy.fold`, `search_memory` and
+`create_memory`. Each opens a Micrometer **scope** and is *current* for its
+duration, so anything the work itself records — a JDBC statement under a
+fold, an HTTP call inside an approver, a provider SDK's own instrumentation
+— nests inside it. That property is the whole reason `nessy.fold` replaces a
+JDBC instrumentation library rather than needing one: the fold span's
+duration *is* the store write plus the reduce plus the remembrance, and a
+statement-level library added on top now attaches beneath it instead of
+producing a flood of roots.
+
+*Lifetime* spans cover something that outlives a thread, a stack, and
+possibly the process: the `invoke_agent` segment and the two waits. A wait
+may last three days and be answered in a different JVM, so no scope can span
+it. These are **hand-parented** off the scope's open segment, looked up by
+`AgentId`, and stamped by the fold.
+
+**Parent/child.** The segment is the parent of everything. `chat`,
+`execute_tool` and the memory spans hang off it (or, if some other span is
+already current, off that); wait spans are children of the segment that
+parked them; `nessy.approval.seek` is a child of the `execute_tool`-side ask
+that opened it. A tracing backend renders one trace per segment, and
+`gen_ai.conversation.id` stitches segments across parks.
+
+One honest exception: the **first** `nessy.fold` of a segment is a root span
+of its own. The segment does not exist until that fold's output reaches the
+fact stream, so there is nothing yet for it to hang off — and publishing the
+fact *inside* the fold's scope would invert the rule above, making the
+segment a child of a fold that stops immediately. Every later fold in the
+round is a child of the segment.
+
+**A retried fold is two spans.** A lost CAS propagates out of the attempt, so
+the losing fold closes with `error.type` and the retry opens a fresh
+`nessy.fold`. Contention is legible in the trace and not only in
+`nessy.state.stale_retries`.
 
 ### Metrics
 
@@ -186,6 +226,8 @@ the span name rides as the `contextualName` instead:
 | `gen_ai.invoke_agent.duration` | `invoke_agent {agentType}` |
 | `gen_ai.execute_tool.duration` | `execute_tool {tool}` |
 | `search_memory` / `create_memory` | same (semconv defines no memory duration metric) |
+| `nessy.approval.seek` | `nessy.approval.seek {tool}` |
+| `nessy.fold` | same |
 | `nessy.approval.wait` / `nessy.tool.wait` | `nessy.approval.wait {tool}` / `nessy.tool.wait {tool}` |
 
 **Match on the meter name, not the span name.** An `ObservationHandler`
@@ -203,6 +245,30 @@ the vendor's own token counts as key-values
 `ObservationHandler` reads them on `onStop` and records the metric to its
 own `MeterRegistry` — `nessy-agent` never sees a `MeterRegistry` at all.
 `nessy-examples/observed` ships that handler.
+
+### `schema_url`
+
+GenAI semconv is *development* status and its attributes move —
+`gen_ai.system` became `gen_ai.provider.name` inside a year. A Collector's
+schema processor can translate an old name forward, but only if the spans
+say which revision they were written against. That is the instrumentation
+scope's `schema_url`, and it is set on the OpenTelemetry `Tracer`:
+
+```java
+openTelemetry.tracerBuilder("org.jwcarman.nessy")
+    .setSchemaUrl("https://opentelemetry.io/schemas/1.44.0")
+    .build();
+```
+
+That is the only place it can be set. Micrometer's `Observation` and
+`ObservationRegistry` have no notion of a schema URL — they have no notion of
+OpenTelemetry at all, which is what the one-seam ruling buys — and
+`micrometer-tracing-bridge-otel` wraps whatever `Tracer` it is handed, so
+every span inherits that tracer's scope. `nessy-agent` therefore cannot
+stamp it, and does not try: this belongs to the application, next to the
+exporters. Both example modules set it; under Spring Boot it means declaring
+your own `io.opentelemetry.api.trace.Tracer` bean, since Boot's own is
+`@ConditionalOnMissingBean` and carries no schema URL.
 
 Three counters. Each is recorded as a **span event on the scope's open
 `invoke_agent` segment** — the round it happened during — because an
@@ -230,13 +296,16 @@ already uses.
 ### Telemetry never breaks a turn
 
 An `ObservationHandler` is arbitrary application code, running inline on
-whichever thread started or stopped the span, and a turn must never fail
-because the thing describing it did. So every `start()`, `stop()` and
-`error()` call is contained — the `chat` and `execute_tool` spans at their
-own call sites inside the two executors, the three engine counters inside
-`Observations`, and the segment and wait spans by the fact stream's own
-per-subscriber isolation, since those are opened and closed from a
-`HarnessObserver` callback. A failed `start()` yields `Observation.NOOP`, so
+whichever thread started, scoped, or stopped the span, and a turn must never
+fail because the thing describing it did. So every `start()`, `stop()`,
+`error()`, scope open and scope close is contained — the work-scoped spans
+at their own call sites, the three engine counters inside `Observations`,
+and the segment and wait spans by the fact stream's own per-subscriber
+isolation, since those are opened and closed from a `HarnessObserver`
+callback. `nessy.fold` matters most here: a throw out of its instrumentation
+would abort a fold, lose a tool's result, and give up on the very CAS
+contention the retry loop exists to converge past. A failed `start()` yields
+`Observation.NOOP`, so
 the `stop()` that follows is a harmless no-op; a throwing handler is logged
 once at `WARN` and dropped. Key-value writes are not wrapped, and need not
 be: they only mutate the observation's context and invoke no handler.
