@@ -172,10 +172,20 @@ public sealed interface Phase {
      * The turn-level decision, which no individual call can make: once every call has a result,
      * commit the assistant turn and the results in this phase's own insertion order and go back to
      * the model.
+     *
+     * <p>A call that reaches a result cannot also be asking for an effect — the only
+     * effect-carrying transition today is approved-then-{@code Running}, which has no result — so
+     * the turn-complete branch has nothing to carry forward. It says so out loud rather than
+     * dropping {@code effects} on the floor: the deferral callback (spec §4) rides an effect, and
+     * losing one silently is the worst failure this phase could have.
      */
     private Transition advance(String callId, ToolCallState next, List<Effect> effects) {
       AwaitingTools updated = with(callId, next);
       if (updated.calls.values().stream().allMatch(status -> status.resultBlock().isPresent())) {
+        if (!effects.isEmpty()) {
+          throw new IllegalStateException(
+              "call " + callId + " finished the turn while still asking for effects: " + effects);
+        }
         return Transition.to(new AwaitingModel(), new Effect.CallModel())
             .commit(assistantTurn, Message.toolResults(updated.resultsInTurnOrder()));
       }

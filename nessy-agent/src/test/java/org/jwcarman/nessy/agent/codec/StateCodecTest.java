@@ -172,7 +172,16 @@ class StateCodecTest {
           .contains("\"type\":\"awaiting-approval\"")
           .contains("\"type\":\"running\"")
           .contains("\"type\":\"awaiting-result\"")
-          .contains("\"type\":\"finished\"");
+          .contains("\"type\":\"finished\"")
+          // No derived method may reach the wire (deferral-by-callback spec §8). Nothing else
+          // here would notice one: the mapper is pinned FAIL_ON_UNKNOWN_PROPERTIES=false, so a
+          // phantom property decodes away silently and every round-trip assertion above stays
+          // green while Finished writes its result block twice. Measured 2026-08-26: a state's
+          // no-arg resultBlock() is invisible to Jackson's record support with or without
+          // @JsonIgnore — but renaming it getResultBlock() emits exactly "resultBlock" on all
+          // five states, and this is the assertion that catches that.
+          .doesNotContain("resultBlock")
+          .doesNotContain("outstanding");
     }
 
     @Test

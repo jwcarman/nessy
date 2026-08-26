@@ -50,8 +50,12 @@ public sealed interface ToolCallState {
    * This call's outcome, if it has one — the single answer to "is this call done?", stated once
    * here instead of once per {@code instanceof} at every site that asked.
    *
-   * <p>{@link JsonIgnore} because it is derived: without it Jackson would invent a {@code
-   * resultBlock} property on every state (deferral-by-callback spec §8).
+   * <p>{@link JsonIgnore} because it is derived (deferral-by-callback spec §8). Belt and braces,
+   * measured 2026-08-26: these states are records, and Jackson's record support builds properties
+   * from record COMPONENTS, so a no-arg method that is not one is already invisible — removing the
+   * annotation changes no byte of the wire. What is NOT invisible is a derived method named like a
+   * bean getter: a {@code getResultBlock()} would emit a phantom {@code resultBlock} on every
+   * state. The annotation is what makes that safe whatever the method is called.
    *
    * <p>Named for the type it returns rather than {@code result()} (spec §6) because {@link
    * Finished}'s own record component is {@code result}, and a record accessor cannot be widened to
