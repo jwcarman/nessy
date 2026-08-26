@@ -267,9 +267,14 @@ Continuum holds the computation.
 
 Two more worth doing over a month:
 
-- **Reboot the box.** On restart the recovery arm re-fires each parked scope
-  exactly once — watch `nessy.effects.refired` show one per parked scope, not a
-  storm.
+- **Reboot the box.** A scope parked on an approval re-fires *nothing* — the
+  phase names the computation it is waiting on, so there is no effect to
+  re-issue, and `nessy.effects.refired` will not tick for it. What you are
+  proving is that the park survived: the row is still on the page, the
+  `nessy.approval.wait` span is still open, and answering it after the restart
+  still resumes the round. A re-fire counts only for a scope caught
+  mid-flight — `Pending` or `Running` — which a reboot between rounds will
+  usually not produce at all.
 - **Stop the LGTM container for an hour.** Nothing should break. Exporter
   failures are dropped, never thrown; the application keeps logging to the
   console and doing rounds.
@@ -288,14 +293,15 @@ Two more worth doing over a month:
 | `chat` tokens | `gen_ai.client.token.usage` per round, split input/output. What the soak costs per day. |
 | `nessy.delivery.dropped` | **should be zero.** Anything else means an answer arrived for a phase that was not waiting for it. |
 | `nessy.state.stale_retries` | **should be near zero.** A rising count means rounds are being re-driven while genuinely waiting on a human. |
-| `nessy.effects.refired` | one per reboot per parked scope. More than that is a re-fire storm. |
+| `nessy.effects.refired` | **usually zero.** A parked scope re-fires nothing; only a call caught `Pending` or `Running` by a crash does. A steady climb means rounds are being re-driven mid-flight. |
 | the scheduler's own logs | a full backlog is the failure that shows up here and nowhere else. `tell` throws when the per-scope backlog (`nessy.backlog-capacity`, 256) is full, and it throws out of `Rounds.doRounds()` into Spring's scheduler — which logs it and schedules the next tick as if nothing happened. So the symptom is not a crash: it is rounds that keep firing and keep doing nothing, with an exception in the log every half hour. If `invoke_agent` spans stop appearing while the cron keeps ticking, read the log before anything else. |
 
 And the notes directory, which is the transcript a human actually reads.
 
 **What failure looks like:** a round that never ends; an approval that approves
-and nothing happens; `nessy.delivery.dropped` ticking; a re-fire storm after a
-reboot; a note that contradicts what the tools returned. The last one is the
+and nothing happens; `nessy.delivery.dropped` ticking; `nessy.effects.refired`
+climbing while nothing has crashed; a note that contradicts what the tools
+returned. The last one is the
 only failure the dashboards cannot show you, which is why the notes are on disk
 in plain markdown.
 

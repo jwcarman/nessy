@@ -193,12 +193,15 @@ From the o11y roster, on the LGTM dashboards: `nessy.approval.wait`
 dwell (days, real), `nessy.tool.wait` for `long_job`, `invoke_agent`
 segments per round, `chat` tokens per round, `nessy.delivery.dropped`
 (should be zero), `nessy.state.stale_retries` (should be near zero),
-`nessy.effects.refired` (one per reboot per parked scope). Plus the notes
+`nessy.effects.refired` (usually zero — a parked scope re-fires nothing,
+because the phase names the computation it awaits; only a call caught
+`Pending` or `Running` by a crash produces one). Plus the notes
 directory as the transcript a human reads.
 
 What failure looks like: a round that never ends, an approval that
-approves and nothing happens, a dropped counter ticking, a re-fire storm
-after a reboot, a note that contradicts the tools' output.
+approves and nothing happens, a dropped counter ticking,
+`nessy.effects.refired` climbing while nothing has crashed, a note that
+contradicts the tools' output.
 
 ## 4. Tests
 
