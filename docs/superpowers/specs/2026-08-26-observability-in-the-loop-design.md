@@ -72,6 +72,25 @@ open a Micrometer scope, are current for their duration, and nest naturally:
 | **`nessy.fold`** *(new)* | `DefaultAgent.commit` and `DeliveryWorker.fold` — load, handle, remember, CAS save |
 | `search_memory` / `create_memory` | `ObservingMemory` (already in the loop; gains a scope) |
 
+**Each of the two decision spans records what was decided**, so a trace answers
+*what happened* and not merely *how long it took*:
+
+- `nessy.approval.seek` carries `nessy.approval.outcome` — one of `approved`,
+  `denied`, `deferred` — mapped from the sealed `ApprovalOutcome`/`Approval`
+  grammar with no default arm, so a new variant fails the build here. It also
+  carries `gen_ai.tool.name` and `gen_ai.tool.call.id`, and `error.type` when
+  the approver or an enricher throws (which the executor already turns into a
+  denial; the span says so rather than reporting a bare success).
+- `execute_tool` gains `nessy.tool.outcome` — `returned`, `failed`, or
+  `deferred` — beside the `nessy.tool.deferred` boolean it already carries.
+  The boolean answers "is a wait coming"; the outcome answers "what did the
+  body do", and the two differ on the failure paths added when a tool throws
+  after deferring.
+
+The values are the same vocabulary the wait spans already use
+(`nessy.approval.answer`, `nessy.tool.outcome`), so one Grafana filter spans
+the decision and the wait it opened.
+
 **Lifetime spans** cover something that outlives a thread, a stack, and
 possibly the process. These cannot hold a scope and must be hand-parented,
 exactly as they are today:
@@ -154,6 +173,12 @@ note it will attach under the fold.
 - `nessy.approval.seek` wraps enricher and approver execution: an approver
   that sleeps shows that duration on the seek span, and an observation the
   approver records nests inside it.
+- All three seek outcomes are pinned — an allowing approver yields
+  `approved`, a denying one `denied`, one that calls `context.defer()`
+  `deferred` — and a throwing approver yields `denied` with `error.type`
+  set, matching the fail-closed behaviour the executor already has.
+- `execute_tool` carries `returned` for a normal tool, `failed` for one that
+  throws, and `deferred` for one that called `ToolContext.defer()`.
 - A CAS conflict produces two `nessy.fold` spans in one round.
 - The waits are unchanged and their existing tests stand.
 - Containment: a handler that throws on start or stop of each new span leaves
