@@ -19,6 +19,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.EnumSet;
+import java.util.Set;
+import org.jwcarman.nessy.spi.model.Capability;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.util.StreamUtils;
@@ -39,6 +42,12 @@ import org.springframework.util.StreamUtils;
  *     the system prompt — for prompts long enough that a properties file is the wrong home
  * @param staleness how long a quiet phase may sit before the recovery arm re-fires it
  * @param backlogCapacity the per-scope backlog depth
+ * @param capabilities what the harness ASKS its provider to use — {@code
+ *     nessy.capabilities=prompt-caching,thinking}; empty by default. A request, not an assertion: a
+ *     provider that cannot do one says so, and nothing fails. {@code PROMPT_CACHING} is the one a
+ *     long-running agent wants, since a system prompt and a tool schema resent every few minutes
+ *     are exactly what a provider cache is for; the {@code gen_ai.usage.cache_read.input_tokens}
+ *     and {@code cache_write} attributes on the chat span are how you tell whether it worked.
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(
@@ -46,7 +55,8 @@ public record NessyProperties(
     String systemPrompt,
     Resource systemPromptFile,
     Duration staleness,
-    Integer backlogCapacity) {
+    Integer backlogCapacity,
+    Set<Capability> capabilities) {
 
   /**
    * Defaults applied here rather than in the auto-configuration, so that reading this record tells
@@ -57,6 +67,12 @@ public record NessyProperties(
     type = type == null || type.isBlank() ? "agent" : type;
     staleness = staleness == null ? Duration.ofMinutes(5) : staleness;
     backlogCapacity = backlogCapacity == null ? 1024 : backlogCapacity;
+    // An EnumSet copy rather than Set.copyOf: it is the natural set for an enum, and it makes the
+    // component immutable, which a record component reached from many threads had better be.
+    capabilities =
+        capabilities == null || capabilities.isEmpty()
+            ? Set.of()
+            : Set.copyOf(EnumSet.copyOf(capabilities));
   }
 
   /**

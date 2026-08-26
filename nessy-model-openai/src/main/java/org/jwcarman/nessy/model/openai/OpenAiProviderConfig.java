@@ -84,6 +84,10 @@ public final class OpenAiProviderConfig {
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}/{@code organization}.
    */
+  /**
+   * <b>Ownership stays with the caller.</b> {@link OpenAiModelProvider#close()} closes only a
+   * client it built itself; a client supplied here is never closed by the provider.
+   */
   public OpenAiProviderConfig client(OpenAIClient client) {
     this.client = client;
     return this;
@@ -109,10 +113,10 @@ public final class OpenAiProviderConfig {
    */
   OpenAiModelProvider build() {
     if (client != null) {
-      return new OpenAiModelProvider(client, provider);
+      return new OpenAiModelProvider(client, provider, false);
     }
     if (useEnv) {
-      return new OpenAiModelProvider(buildFromEnv(), provider);
+      return new OpenAiModelProvider(buildFromEnv(), provider, true);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -126,7 +130,7 @@ public final class OpenAiProviderConfig {
     if (organization != null) {
       clientBuilder.organization(organization);
     }
-    return new OpenAiModelProvider(clientBuilder.build(), provider);
+    return new OpenAiModelProvider(clientBuilder.build(), provider, true);
   }
 
   /**

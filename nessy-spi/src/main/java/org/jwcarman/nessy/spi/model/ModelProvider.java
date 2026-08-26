@@ -23,8 +23,17 @@ package org.jwcarman.nessy.spi.model;
  * #model(String)} returns a cheap, immutable handle bound to one model id, sharing this gateway's
  * client. Two calls with different ids yield two independent handles from the same gateway — one
  * gateway per app, many models drawn from it.
+ *
+ * <p><b>A gateway is {@link AutoCloseable}</b> (ruled 2026-08-26), because the SDK client it holds
+ * owns a connection pool and the threads that service it, and every vendor SDK this repository
+ * wraps has a {@code close()}: an application that builds a gateway and walks away leaves those
+ * threads running until the JVM exits — which is invisible in a CLI and expensive in a long-running
+ * process that builds more than one. {@link #close()} defaults to a no-op, so a gateway with
+ * nothing to release says nothing and no out-of-tree implementation breaks; it narrows {@link
+ * AutoCloseable#close()} to throw no checked exception, so a try-with-resources over a gateway
+ * needs no catch. Closing a gateway invalidates every {@link Model} handle drawn from it.
  */
-public interface ModelProvider {
+public interface ModelProvider extends AutoCloseable {
 
   /**
    * Binds a model id to this gateway's shared client.
@@ -47,5 +56,19 @@ public interface ModelProvider {
    */
   default String name() {
     return getClass().getSimpleName();
+  }
+
+  /**
+   * Releases whatever this gateway holds — the SDK client, its connection pool, its threads.
+   * Idempotent by contract: closing twice is a no-op, not an error.
+   *
+   * <p>The default releases nothing, which is right for a gateway over a stateless client and for
+   * every test double. A gateway that owns a client SHOULD override this and close it — unless the
+   * client was handed in by the application, which then owns it (see {@code BedrockModelProvider}
+   * for the asymmetry that rule produces).
+   */
+  @Override
+  default void close() {
+    // Nothing held; nothing to release.
   }
 }

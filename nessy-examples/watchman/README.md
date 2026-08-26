@@ -217,6 +217,7 @@ in plain markdown.
 | `nessy.system-prompt-file` | `classpath:system-prompt.md` | what a round is |
 | `nessy.staleness` | `30m` | how long a quiet phase may sit before the recovery arm re-fires it |
 | `nessy.backlog-capacity` | `256` | per-scope backlog depth |
+| `nessy.capabilities` | `prompt-caching` | what the harness ASKS the provider to use. A round resends the same system prompt and tool schemas every thirty minutes, forever — the cache case. A provider that cannot do it says so and nothing fails; `gen_ai.usage.cache_read.input_tokens` on the chat span is how you tell whether it did. |
 | `watchman.cron` | `0 */30 * * * *` | when rounds happen |
 | `watchman.scheduling.enabled` | `true` | set `false` and rounds only happen when something calls them — how the tests keep cron out of their assertions |
 | `watchman.notes-dir` | `./notes` | where the daily notes live |

@@ -16,7 +16,9 @@
 package org.jwcarman.nessy.spi.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class ModelProviderTest {
@@ -28,6 +30,35 @@ class ModelProviderTest {
 
     assertThat(first.name()).isEqualTo("FirstBareModelProvider");
     assertThat(second.name()).isEqualTo("SecondBareModelProvider");
+  }
+
+  /**
+   * The default close releases nothing and throws nothing — so a gateway with no client to release,
+   * and every test double, needs no {@code close()} of its own, and a try-with-resources over one
+   * needs no catch (the default narrows {@link AutoCloseable#close()} to throw no checked
+   * exception, which is the whole reason it is redeclared).
+   */
+  @Test
+  void a_gateway_that_holds_nothing_closes_silently_and_repeatedly() {
+    ModelProvider bare = new FirstBareModelProvider();
+
+    assertThatCode(
+            () -> {
+              bare.close();
+              bare.close();
+            })
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void a_gateway_can_be_used_in_a_try_with_resources_without_a_catch() {
+    var closed = new AtomicBoolean();
+
+    try (ModelProvider gateway = new ClosingModelProvider(closed)) {
+      assertThat(gateway.name()).isEqualTo("ClosingModelProvider");
+    }
+
+    assertThat(closed).isTrue();
   }
 
   /**
@@ -47,4 +78,19 @@ class ModelProviderTest {
   private static final class FirstBareModelProvider extends BareModelProvider {}
 
   private static final class SecondBareModelProvider extends BareModelProvider {}
+
+  /** A gateway that DOES hold something — the shape every real vendor gateway now takes. */
+  private static final class ClosingModelProvider extends BareModelProvider {
+
+    private final AtomicBoolean closed;
+
+    private ClosingModelProvider(AtomicBoolean closed) {
+      this.closed = closed;
+    }
+
+    @Override
+    public void close() {
+      closed.set(true);
+    }
+  }
 }

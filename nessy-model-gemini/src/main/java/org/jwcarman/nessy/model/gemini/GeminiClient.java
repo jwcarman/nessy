@@ -36,4 +36,14 @@ interface GeminiClient {
   /** Starts one streaming {@code generateContent} call. */
   GeminiStream generateContentStream(
       String model, List<Content> contents, GenerateContentConfig config);
+
+  /**
+   * Releases whatever this client owns — the real implementation ({@link
+   * GeminiProviderConfig#wrap}) closes the wrapped SDK {@code Client} when it built it, and the
+   * default releases nothing, which is right for the hand-rolled fakes this seam exists for.
+   * Mirrors {@code BedrockClient}'s own door.
+   */
+  default void close() {
+    // Nothing held; nothing to release.
+  }
 }

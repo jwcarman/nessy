@@ -43,6 +43,17 @@ sequence of renames and interim shapes that produced it.
     the other one JDBC-backed in silence — a durable substrate over a volatile
     computation store drops every delivery, and the reverse hangs every parked
     call. That combination now throws, naming the both-or-neither rule.
+  - **`nessy.capabilities`** — a `Set<Capability>` fed to
+    `ModelSettings.capabilities`, empty by default, so an application can ask
+    for `PROMPT_CACHING` (or `THINKING`) from a properties file:
+    `nessy.capabilities=prompt-caching`. A request, not an assertion — a
+    provider that cannot do one says so and nothing fails.
+  - The gateway `ModelDiscovery` builds is registered as a bean with
+    `destroyMethod = "close"`, so the container releases its SDK client on
+    context close. It is conditional on a missing `Model` bean, not a missing
+    selection: an application declaring its own `Model` owns whatever built it,
+    and discovery must not reach for credentials it deliberately did not
+    supply.
   - **The projection is PostgreSQL only, and its DDL says so.**
     `pending-approvals-postgresql.sql` (renamed from `pending_approvals.sql`,
     matching `nessy-substrate-jdbc`'s `nessy-postgresql.sql`) — the statements
@@ -97,6 +108,28 @@ sequence of renames and interim shapes that produced it.
     and `x_ai` for an xAI one). No default, so a new vendor cannot silently
     report someone else's name. `ModelProvider.name()` is untouched — it
     remains the human-readable banner string.
+- **`ModelProvider extends AutoCloseable` — new default method, breaking for
+  nothing.** A gateway owns an SDK client, its connection pool, and the threads
+  that service it, and every vendor SDK this repository wraps has a `close()`:
+  an application that builds a gateway and walks away leaks all three until the
+  JVM exits. `close()` defaults to a no-op, so a gateway holding nothing (and
+  every test double) needs none of its own, and it narrows
+  `AutoCloseable#close()` to throw no checked exception, so a try-with-resources
+  over a gateway needs no catch.
+  - Each vendor gateway now closes the client it BUILT — and never one handed
+    in through its config's `client(...)` door, which the application still
+    owns. `BedrockModelProvider` set that convention and keeps it; Anthropic,
+    OpenAI, and Gemini now follow it. `BedrockModelProvider` drops its separate
+    `implements AutoCloseable`, which the SPI now carries.
+  - **`ModelDiscovery.Selection` gains the gateway as a component and becomes
+    `AutoCloseable`** — breaking for anyone constructing one by hand:
+    `Selection(ModelProvider, Model, String)`. Discovery *builds* the gateway,
+    so it is the only party that can hand back a handle on it; closing the
+    selection closes it, and `try (var selection = ModelDiscovery.select())` is
+    what a long-running process should write. `ModelDiscovery.fromEnv()` keeps
+    its shape — a bare `Model`, nothing to close — and therefore keeps its
+    gateway for the life of the process, which is right for a CLI and for a
+    process that builds exactly one.
 - **`HarnessConfig.continuum(Continuum)`: the harness accepts its computation
   store.** Omitted, the harness mints a private in-memory Continuum as before;
   supplied, it uses yours — a `continuum-jdbc`-backed one for parked calls that

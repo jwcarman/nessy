@@ -40,6 +40,8 @@ import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
+import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -107,6 +109,58 @@ class NessyAutoConfigurationTest {
                 assertThat(context.getBean(Harness.class).type().name()).isEqualTo("watchman");
                 assertThat(context.getBean(NessyProperties.class).backlogCapacity()).isEqualTo(7);
               });
+    }
+
+    /**
+     * {@code nessy.capabilities} reaches {@code ModelSettings.capabilities} — a REQUEST to the
+     * provider, which is why the assertion is on the request the model actually received rather
+     * than on the property. Relaxed binding turns {@code prompt-caching} into {@code
+     * PROMPT_CACHING}, which is the shape a YAML file wants to write.
+     */
+    @Test
+    void requested_capabilities_reach_the_model_request() {
+      ScriptedModel model = ScriptedModel.script(s -> s.text("nothing to do").endTurn());
+      new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withPropertyValues(
+              "nessy.system-prompt=you are a test harness", "nessy.capabilities=prompt-caching")
+          .withBean(Model.class, () -> model)
+          .withUserConfiguration(TellerConfiguration.class)
+          .run(
+              context -> {
+                assertThat(context.getBean(NessyProperties.class).capabilities())
+                    .containsExactly(Capability.PROMPT_CACHING);
+                context.getBean(Teller.class).tell("hello");
+                await()
+                    .atMost(Duration.ofSeconds(10))
+                    .untilAsserted(
+                        () ->
+                            assertThat(model.requests())
+                                .isNotEmpty()
+                                .allSatisfy(
+                                    request ->
+                                        assertThat(request.requested())
+                                            .containsExactly(Capability.PROMPT_CACHING)));
+              });
+    }
+
+    @Test
+    void no_capabilities_are_requested_by_default() {
+      runner.run(
+          context -> assertThat(context.getBean(NessyProperties.class).capabilities()).isEmpty());
+    }
+
+    /**
+     * The gateway discovery built is a bean with a destroy method, so the container closes its SDK
+     * client on shutdown — but ONLY when discovery ran at all. An application declaring its own
+     * {@code Model} owns whatever built it, and discovery reaching for credentials it deliberately
+     * did not supply would fail the context outright.
+     */
+    @Test
+    void a_user_supplied_model_means_discovery_never_runs() {
+      runner.run(
+          context ->
+              assertThat(context).hasNotFailed().doesNotHaveBean(ModelDiscovery.Selection.class));
     }
 
     @Test

@@ -48,14 +48,15 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
  * claimed — the same discipline {@code GeminiModelProvider} documents for its own unadvertised
  * capabilities.
  *
- * <p>Also {@link AutoCloseable}: the real {@link BedrockClient} built by {@link
- * BedrockProviderConfig#wrap} owns a {@code BedrockRuntimeAsyncClient}, whose default Netty
- * transport holds an event-loop group and connection pool that outlive a single {@code stream(...)}
- * call on any handle this gateway has minted. {@link ModelProvider} itself declares no {@code
- * close()} — most sibling providers wrap a client with no such teardown need — so this is additive:
- * callers that construct a {@code BedrockModelProvider} directly (rather than through a DI
- * container that already manages its lifecycle) should close it when done, the same as they would
- * the underlying SDK client itself.
+ * <p>{@link ModelProvider} is {@link AutoCloseable} now (ruled 2026-08-26) and this class no longer
+ * declares it separately — but it was the first gateway to need it, and the reason is unchanged:
+ * the real {@link BedrockClient} built by {@link BedrockProviderConfig#wrap} owns a {@code
+ * BedrockRuntimeAsyncClient}, whose default Netty transport holds an event-loop group and
+ * connection pool that outlive a single {@code stream(...)} call on any handle this gateway has
+ * minted. {@link ModelProvider} itself declares no {@code close()} — most sibling providers wrap a
+ * client with no such teardown need — so this is additive: callers that construct a {@code
+ * BedrockModelProvider} directly (rather than through a DI container that already manages its
+ * lifecycle) should close it when done, the same as they would the underlying SDK client itself.
  *
  * <p><b>Close ownership is not symmetric across {@link BedrockProviderConfig}'s two client
  * paths.</b> {@link #close()} closes the {@code BedrockRuntimeAsyncClient} only when this provider
@@ -64,7 +65,7 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
  * here — see that method's javadoc. The two paths are not independent alternatives for who does the
  * closing, only for who does the building.
  */
-public final class BedrockModelProvider implements ModelProvider, AutoCloseable {
+public final class BedrockModelProvider implements ModelProvider {
 
   /**
    * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every

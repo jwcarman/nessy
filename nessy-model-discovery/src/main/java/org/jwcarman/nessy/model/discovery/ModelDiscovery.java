@@ -123,7 +123,8 @@ public final class ModelDiscovery {
     var override = env.get(NESSY_MODEL_ENV_VAR);
     var modelId =
         override != null && !override.isBlank() ? override : chosen.bootstrap().defaultModelId();
-    return new Selection(chosen.provider().model(modelId), chosen.bootstrap().name());
+    return new Selection(
+        chosen.provider(), chosen.provider().model(modelId), chosen.bootstrap().name());
   }
 
   /** Materialises the registrations and rejects a duplicated name. */
@@ -209,14 +210,34 @@ public final class ModelDiscovery {
 
   /**
    * What {@link #select()} chose: the bound {@code model} — its id reachable as {@code
-   * model().id()} — and the winning provider's registered {@link ModelProviderBootstrap#name()}, so
-   * a banner or a log line can show what was picked without re-deriving it via {@code instanceof}.
+   * model().id()} — the {@code provider} gateway it came from, and the winning provider's
+   * registered {@link ModelProviderBootstrap#name()}, so a banner or a log line can show what was
+   * picked without re-deriving it via {@code instanceof}.
+   *
+   * <p><b>Closeable, and the reason the gateway is a component at all</b> (ruled 2026-08-26).
+   * Discovery BUILDS a gateway — an SDK client, its connection pool, its threads — and the bound
+   * model handle it hands back has no way to release any of it. So the selection carries the
+   * gateway and closes it, and an application that means to shut down cleanly writes {@code try
+   * (var selection = ModelDiscovery.select())}. Closing invalidates {@link #model()}.
+   *
+   * <p>{@link #fromEnv()} keeps its shape — a bare {@link Model}, nothing to close — and therefore
+   * keeps leaking the gateway for the life of the process. That is right for a CLI and for a
+   * process that builds exactly one, which is what that door is for; anything longer-lived should
+   * use {@link #select()}.
    */
-  public record Selection(Model model, String providerName) {
+  public record Selection(ModelProvider provider, Model model, String providerName)
+      implements AutoCloseable {
 
     public Selection {
+      Objects.requireNonNull(provider, "provider must not be null");
       Objects.requireNonNull(model, "model must not be null");
       Objects.requireNonNull(providerName, "providerName must not be null");
+    }
+
+    /** Closes the gateway this selection came from; idempotent, as every gateway's close is. */
+    @Override
+    public void close() {
+      provider.close();
     }
   }
 }

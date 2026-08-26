@@ -152,16 +152,33 @@ line that constructs it.
 ### Picking a model too — `select()`
 
 `fromEnv()` returns only the bound `Model`. `select()` returns a
-`Selection` — the model handle and the winning provider's registered name
-(`"anthropic"`/`"openai"`/`"xai"`/`"gemini"`, the same vocabulary
-`NESSY_PROVIDER` accepts) — so an application that wants to show or log what
-was picked doesn't re-derive it via `instanceof`:
+`Selection` — the gateway, the model handle, and the winning provider's
+registered name (`"anthropic"`/`"openai"`/`"xai"`/`"gemini"`, the same
+vocabulary `NESSY_PROVIDER` accepts) — so an application that wants to show
+or log what was picked doesn't re-derive it via `instanceof`:
 
 ```java
-ModelDiscovery.Selection selection = ModelDiscovery.select();
-Model model = selection.model();
-String vendor = selection.providerName();
+try (ModelDiscovery.Selection selection = ModelDiscovery.select()) {
+    Model model = selection.model();
+    String vendor = selection.providerName();
+    // ... run the harness ...
+}
 ```
+
+**A `Selection` is `AutoCloseable`, and a long-running process should use
+it that way.** A `ModelProvider` is `AutoCloseable` too: it owns an SDK
+client, a connection pool, and the threads that service it, and every vendor
+SDK here has a `close()`. Discovery *builds* that gateway, so the selection
+carries it and closing the selection closes it. `close()` defaults to a
+no-op, so a gateway holding nothing — or a test double — needs none of its
+own, and a gateway handed a client through its config's `client(...)` door
+never closes it: it did not open it.
+
+`fromEnv()` hands back a bare `Model` with nothing to close, and therefore
+keeps its gateway for the life of the process. That is right for a CLI and
+for a process that builds exactly one; anything longer-lived wants
+`select()`. In Spring Boot, `nessy-spring-boot-starter` registers the
+selection as a bean with `destroyMethod = "close"`, so the container does it.
 
 The model comes from `NESSY_MODEL` when that variable is set and non-blank —
 it wins outright, whichever provider was chosen. That is the one way to name

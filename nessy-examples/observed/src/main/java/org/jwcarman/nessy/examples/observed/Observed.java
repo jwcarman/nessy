@@ -46,6 +46,7 @@ import org.jwcarman.nessy.agent.TurnOutcome;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
+import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.testing.ScriptedModel;
@@ -108,8 +109,23 @@ public final class Observed {
    */
   static String run(Iterable<String> args) {
     boolean scripted = contains(args, "--scripted");
-    Model model = scripted ? scriptedModel() : ModelDiscovery.select().model();
-    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
+    if (scripted) {
+      return run(scriptedModel());
+    }
+    // try-with-resources over the SELECTION, not the model: discovery builds a vendor gateway —
+    // an SDK client, its connection pool, its threads — and closing the selection is the only
+    // handle an application has on any of it (ModelProvider is AutoCloseable, ruled 2026-08-26).
+    // An example whose whole subject is what a long-running process should do had better do it.
+    try (ModelDiscovery.Selection selection = ModelDiscovery.select()) {
+      return run(selection.model());
+    }
+  }
+
+  private static String run(Model model) {
+    // PROMPT_CACHING requested, not assumed: a provider that cannot do it says so, and the two
+    // cache-token attributes on the chat span (gen_ai.usage.cache_read/cache_write.input_tokens)
+    // are how you find out whether it did.
+    ModelSettings settings = new ModelSettings(1024, Set.of(Capability.PROMPT_CACHING), null);
     Tool<Calculate> calculator =
         Tool.of(
             Calculate.class,

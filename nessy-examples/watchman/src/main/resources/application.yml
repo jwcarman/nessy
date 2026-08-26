@@ -22,6 +22,13 @@ nessy:
   # near zero is the healthy reading.
   staleness: 30m
   backlog-capacity: 256
+  # The soak's cache case. Every round resends the same system prompt and the same tool schemas,
+  # every thirty minutes, forever — which is exactly what a provider-side prompt cache is for. This
+  # asks; a provider that cannot do it says so and nothing fails. Whether it worked shows up as
+  # gen_ai.usage.cache_read.input_tokens on the chat span, against cache_write on the round that
+  # populated it.
+  capabilities:
+    - prompt-caching
 
 watchman:
   # Every half hour, on the half hour.

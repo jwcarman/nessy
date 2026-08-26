@@ -95,6 +95,17 @@ public final class GeminiModelProvider implements ModelProvider {
   }
 
   /**
+   * Closes the SDK {@code Client} this gateway BUILT, through the {@link GeminiClient} seam. A
+   * client handed in through {@link GeminiProviderConfig#client(com.google.genai.Client)} is never
+   * closed here: it was never opened here — the same ownership rule {@code BedrockModelProvider}
+   * keeps.
+   */
+  @Override
+  public void close() {
+    client.close();
+  }
+
+  /**
    * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
    * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
    * disturbing the gateway.

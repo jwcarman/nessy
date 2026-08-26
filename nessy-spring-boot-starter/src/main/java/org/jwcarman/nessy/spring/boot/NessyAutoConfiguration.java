@@ -38,6 +38,8 @@ import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
@@ -96,8 +98,27 @@ public class NessyAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  public Model nessyModel() {
-    return ModelDiscovery.fromEnv();
+  public Model nessyModel(ModelDiscovery.Selection selection) {
+    return selection.model();
+  }
+
+  /**
+   * The gateway behind {@link #nessyModel}, as a bean with a destroy method — because a {@link
+   * ModelProvider} owns an SDK client, its connection pool and its threads, and a container that
+   * builds one and never closes it leaks all three for the life of the process (ruled 2026-08-26).
+   * {@code destroyMethod = "close"} is what a starter is for: {@link ModelDiscovery.Selection} is
+   * {@code AutoCloseable} and delegates to the gateway, so Spring closes it on context close the
+   * same way it already calls {@code harness.shutdown()}.
+   *
+   * <p>Conditional on a missing {@link Model} rather than a missing {@code Selection}: an
+   * application declaring its own {@code Model} bean owns whatever built it, and discovery must not
+   * run at all — running it would reach for credentials the application deliberately did not
+   * supply.
+   */
+  @Bean(destroyMethod = "close")
+  @ConditionalOnMissingBean(Model.class)
+  public ModelDiscovery.Selection nessyModelSelection() {
+    return ModelDiscovery.select();
   }
 
   /**
@@ -144,6 +165,7 @@ public class NessyAutoConfiguration {
               .backlogCapacity(properties.backlogCapacity())
               .objectMapper(mapper)
               .turnObserver(turnObserver)
+              .settings(settings(properties))
               .observationRegistry(
                   observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP));
           // One call per listener, because harnessObserver(...) is additive: every HarnessObserver
@@ -154,6 +176,18 @@ public class NessyAutoConfiguration {
           substrates.ifAvailable(config::substrate);
           continuums.ifAvailable(config::continuum);
         });
+  }
+
+  /**
+   * {@code ModelSettings} from the properties: {@link ModelSettings#defaults()}'s token budget with
+   * whatever {@code nessy.capabilities} asked for laid over it. Called unconditionally rather than
+   * only when the set is non-empty, so there is one path to read rather than two — an empty set is
+   * what {@code defaults()} carries anyway.
+   */
+  static ModelSettings settings(NessyProperties properties) {
+    ModelSettings defaults = ModelSettings.defaults();
+    return new ModelSettings(
+        defaults.maxTokens(), properties.capabilities(), defaults.contextWindow());
   }
 
   /**

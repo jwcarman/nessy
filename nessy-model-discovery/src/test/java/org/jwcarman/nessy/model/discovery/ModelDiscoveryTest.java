@@ -16,13 +16,17 @@
 package org.jwcarman.nessy.model.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 
 /**
@@ -264,17 +268,66 @@ class ModelDiscoveryTest {
   class Selection_record {
 
     @Test
+    void rejects_a_null_provider() {
+      var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
+      var model = provider.model("m");
+
+      assertThatThrownBy(() -> new ModelDiscovery.Selection(null, model, "alpha"))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     void rejects_a_null_model() {
-      assertThatThrownBy(() -> new ModelDiscovery.Selection(null, "alpha"))
+      var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
+
+      assertThatThrownBy(() -> new ModelDiscovery.Selection(provider, null, "alpha"))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void rejects_a_null_provider_name() {
+      var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
+      var model = provider.model("m");
+
+      assertThatThrownBy(() -> new ModelDiscovery.Selection(provider, model, null))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    /**
+     * A selection closes the gateway discovery built for it — the whole reason the gateway is a
+     * component of this record (ruled 2026-08-26). Without it, an application that discovers a
+     * provider has no handle on the SDK client's connection pool at all.
+     */
+    @Test
+    void closing_a_selection_closes_the_gateway_it_came_from() {
+      var closed = new AtomicBoolean();
+      var provider =
+          new ModelProvider() {
+
+            @Override
+            public Model model(String id) {
+              throw new UnsupportedOperationException("not needed here");
+            }
+
+            @Override
+            public void close() {
+              closed.set(true);
+            }
+          };
       var model = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow().model("m");
 
-      assertThatThrownBy(() -> new ModelDiscovery.Selection(model, null))
-          .isInstanceOf(NullPointerException.class);
+      new ModelDiscovery.Selection(provider, model, "alpha").close();
+
+      assertThat(closed).isTrue();
+    }
+
+    /** The default is a no-op, so a gateway holding nothing needs no close of its own. */
+    @Test
+    void a_gateway_that_holds_nothing_closes_silently() {
+      var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
+      var selection = new ModelDiscovery.Selection(provider, provider.model("m"), "alpha");
+
+      assertThatCode(selection::close).doesNotThrowAnyException();
     }
   }
 

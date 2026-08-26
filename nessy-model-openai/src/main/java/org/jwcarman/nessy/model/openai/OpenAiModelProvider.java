@@ -110,13 +110,21 @@ public final class OpenAiModelProvider implements ModelProvider {
   private final OpenAIClient client;
   private final String provider;
 
+  /**
+   * Whether {@link #close()} may close {@link #client} — false for a client handed in through
+   * {@link OpenAiProviderConfig#client(OpenAIClient)}, which the application still owns. Same
+   * convention {@code BedrockModelProvider} already keeps.
+   */
+  private final boolean ownsClient;
+
   OpenAiModelProvider(OpenAIClient client) {
-    this(client, PROVIDER);
+    this(client, PROVIDER, true);
   }
 
-  OpenAiModelProvider(OpenAIClient client, String provider) {
+  OpenAiModelProvider(OpenAIClient client, String provider, boolean ownsClient) {
     this.client = client;
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.ownsClient = ownsClient;
   }
 
   /**
@@ -148,6 +156,18 @@ public final class OpenAiModelProvider implements ModelProvider {
       throw new IllegalArgumentException("id must not be blank");
     }
     return new OpenAiModel(id);
+  }
+
+  /**
+   * Closes the {@link OpenAIClient} this gateway BUILT — its OkHttp connection pool and dispatcher
+   * threads. A client handed in through {@link OpenAiProviderConfig#client(OpenAIClient)} is never
+   * closed here: it was never opened here. Idempotent, as the SDK's own {@code close()} is.
+   */
+  @Override
+  public void close() {
+    if (ownsClient) {
+      client.close();
+    }
   }
 
   @Override

@@ -88,6 +88,10 @@ public final class AnthropicProviderConfig {
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}.
    */
+  /**
+   * <b>Ownership stays with the caller.</b> {@link AnthropicModelProvider#close()} closes only a
+   * client it built itself; a client supplied here is never closed by the provider.
+   */
   public AnthropicProviderConfig client(AnthropicClient client) {
     this.client = client;
     return this;
@@ -101,10 +105,10 @@ public final class AnthropicProviderConfig {
    */
   AnthropicModelProvider build() {
     if (client != null) {
-      return new AnthropicModelProvider(client, thinkingBudget);
+      return new AnthropicModelProvider(client, thinkingBudget, false);
     }
     if (useEnv) {
-      return new AnthropicModelProvider(buildFromEnv(), thinkingBudget);
+      return new AnthropicModelProvider(buildFromEnv(), thinkingBudget, true);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -115,7 +119,7 @@ public final class AnthropicProviderConfig {
     if (baseUrl != null) {
       clientBuilder.baseUrl(baseUrl);
     }
-    return new AnthropicModelProvider(clientBuilder.build(), thinkingBudget);
+    return new AnthropicModelProvider(clientBuilder.build(), thinkingBudget, true);
   }
 
   /**

@@ -93,9 +93,18 @@ public final class AnthropicModelProvider implements ModelProvider {
   private final AnthropicClient client;
   private final int thinkingBudget;
 
-  AnthropicModelProvider(AnthropicClient client, int thinkingBudget) {
+  /**
+   * Whether {@link #close()} may close {@link #client} — false for a client handed in through
+   * {@link AnthropicProviderConfig#client(AnthropicClient)}, which the application still owns. Same
+   * convention {@code BedrockModelProvider} already keeps, and the same one a caller-supplied
+   * {@code DataSource} keeps everywhere else in this repository.
+   */
+  private final boolean ownsClient;
+
+  AnthropicModelProvider(AnthropicClient client, int thinkingBudget, boolean ownsClient) {
     this.client = client;
     this.thinkingBudget = thinkingBudget;
+    this.ownsClient = ownsClient;
   }
 
   /**
@@ -132,6 +141,21 @@ public final class AnthropicModelProvider implements ModelProvider {
   @Override
   public String name() {
     return "Anthropic";
+  }
+
+  /**
+   * Closes the {@link AnthropicClient} this gateway BUILT — its OkHttp connection pool and the
+   * dispatcher threads behind it, which otherwise live until the JVM exits. The SDK's own {@code
+   * close()} is idempotent, so this gateway's is too.
+   *
+   * <p>A client handed in through {@link AnthropicProviderConfig#client(AnthropicClient)} is never
+   * closed here: it was never opened here.
+   */
+  @Override
+  public void close() {
+    if (ownsClient) {
+      client.close();
+    }
   }
 
   /**

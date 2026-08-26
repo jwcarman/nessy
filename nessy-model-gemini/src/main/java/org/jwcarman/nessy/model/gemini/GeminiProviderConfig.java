@@ -16,7 +16,10 @@
 package org.jwcarman.nessy.model.gemini;
 
 import com.google.genai.Client;
+import com.google.genai.types.Content;
+import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.HttpOptions;
+import java.util.List;
 
 /**
  * What {@link GeminiModelProvider#create(GeminiProviderCustomizer)} hands a customizer: a CONFIG,
@@ -71,6 +74,10 @@ public final class GeminiProviderConfig {
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}.
    */
+  /**
+   * <b>Ownership stays with the caller.</b> {@link GeminiModelProvider#close()} closes only a
+   * client it built itself; a client supplied here is never closed by the provider.
+   */
   public GeminiProviderConfig client(Client client) {
     this.client = client;
     return this;
@@ -87,17 +94,17 @@ public final class GeminiProviderConfig {
 
   private GeminiClient resolveClient() {
     if (client != null) {
-      return wrap(client);
+      return wrap(client, false);
     }
     if (useEnv) {
-      return wrap(buildFromEnv());
+      return wrap(buildFromEnv(), true);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
           "an API key is required: call apiKey(...) or fromEnv(), or provide a preconfigured"
               + " client via client(...)");
     }
-    return wrap(buildClient(apiKey));
+    return wrap(buildClient(apiKey), true);
   }
 
   private Client buildFromEnv() {
@@ -131,10 +138,33 @@ public final class GeminiProviderConfig {
     return new IllegalStateException(message);
   }
 
-  private static GeminiClient wrap(Client sdkClient) {
-    return (model, contents, config) -> {
-      var responseStream = sdkClient.models.generateContentStream(model, contents, config);
-      return new GeminiStream(responseStream, responseStream::close);
+  /**
+   * <b>Close ownership.</b> {@code ownsClient} decides what {@link GeminiClient#close()} does: true
+   * when this config built the SDK {@code Client} (the {@code apiKey}/{@code fromEnv()} paths), so
+   * closing the gateway releases it; false when the application handed one in through {@link
+   * #client(Client)} and still owns it. A gateway must never close what it did not open — the same
+   * convention {@code BedrockProviderConfig#wrap} keeps, and the same one a caller-supplied {@code
+   * DataSource} keeps everywhere else here.
+   *
+   * <p>An anonymous class rather than the lambda this used to be, because the seam now has two
+   * methods and only one of them varies.
+   */
+  private static GeminiClient wrap(Client sdkClient, boolean ownsClient) {
+    return new GeminiClient() {
+
+      @Override
+      public GeminiStream generateContentStream(
+          String model, List<Content> contents, GenerateContentConfig config) {
+        var responseStream = sdkClient.models.generateContentStream(model, contents, config);
+        return new GeminiStream(responseStream, responseStream::close);
+      }
+
+      @Override
+      public void close() {
+        if (ownsClient) {
+          sdkClient.close();
+        }
+      }
     };
   }
 }
