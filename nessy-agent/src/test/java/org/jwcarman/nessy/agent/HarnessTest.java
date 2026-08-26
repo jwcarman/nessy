@@ -310,6 +310,10 @@ class HarnessTest {
               (id, obs) -> TOOLS);
       HarnessTeardown.track(harness);
 
+      // Two subscribers, not one: the default narrator the null asked for, and the observability
+      // bridge every harness subscribes for itself. A null that quietly subscribed NOTHING would
+      // still satisfy an assertion on type() alone.
+      assertThat(harness.facts().subscriberCount()).isEqualTo(2);
       assertThat(harness.type()).isEqualTo(TYPE);
     }
 

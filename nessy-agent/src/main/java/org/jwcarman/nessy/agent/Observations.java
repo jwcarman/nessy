@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentMap;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The observability bridge (agentic-o11y spec §1, §3.1): a subscriber on the harness's fact stream
@@ -81,6 +83,8 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
  * opens on whichever thread folded the park and closes on a delivery worker's thread hours later.
  */
 final class Observations implements HarnessObserver {
+
+  private static final Logger log = LoggerFactory.getLogger(Observations.class);
 
   /**
    * The semconv duration histogram — named here for the record, and deliberately NOT used as any
@@ -220,6 +224,10 @@ final class Observations implements HarnessObserver {
    * {@code nessy.state.stale_retries}: one per {@code StaleStateException}/{@code
    * ConflictException} retry, reported directly by the two fold sites — a lost CAS race is an
    * engine-health moment, not a fold, so it never reaches the fact stream.
+   *
+   * @implSpec Never throws — see {@link #count}. The two fold sites call this from inside their
+   *     retry loops, where an escaping exception would abort the very convergence the loop exists
+   *     for.
    */
   void staleRetry(AgentType agentType) {
     count(STALE_RETRIES, agentType);
@@ -353,10 +361,10 @@ final class Observations implements HarnessObserver {
       wait.stop();
     }
     // Only an unclosed wait may keep the scope's entry alive: an emptied map is removed so a
-    // long-lived harness does not accumulate one entry per scope it has ever seen.
-    if (waits.isEmpty()) {
-      openWaits.remove(id, waits);
-    }
+    // long-lived harness does not accumulate one entry per scope it has ever seen. Emptiness is
+    // tested INSIDE computeIfPresent (fix round 1) so a concurrent openWait cannot slip a fresh
+    // wait into the map between the test and the removal and have it silently dropped.
+    openWaits.computeIfPresent(id, (scope, current) -> current.isEmpty() ? null : current);
   }
 
   private static String answerOf(Approval answer) {
@@ -386,11 +394,24 @@ final class Observations implements HarnessObserver {
     };
   }
 
-  /** A counter, spelled as a zero-duration observation — see the class javadoc. */
+  /**
+   * A counter, spelled as a zero-duration observation — see the class javadoc.
+   *
+   * <p>Contained (fix round 1): a throwing {@code ObservationHandler} is logged and dropped, never
+   * propagated. The segment and wait spans above need no such guard of their own — every one of
+   * them is reached through {@link HarnessObserver}, and {@link FactFanout} already isolates each
+   * subscriber — but the three counters are called STRAIGHT from the two fold sites, which are not
+   * behind that isolation. This is what lets {@link #dropped}, {@link #staleRetry} and {@link
+   * #refired} promise their callers that they never throw.
+   */
   private void count(String name, AgentType agentType) {
-    Observation.createNotStarted(name, registry)
-        .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
-        .start()
-        .stop();
+    try {
+      Observation.createNotStarted(name, registry)
+          .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
+          .start()
+          .stop();
+    } catch (RuntimeException e) {
+      log.warn("an observation handler threw recording the {} counter; ignored", name, e);
+    }
   }
 }

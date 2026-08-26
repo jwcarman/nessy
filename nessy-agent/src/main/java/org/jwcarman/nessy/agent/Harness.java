@@ -333,15 +333,6 @@ public final class Harness<O> {
   }
 
   /**
-   * The one observability seam (agentic-o11y spec §0), as this harness received it from {@code
-   * HarnessConfig#observationRegistry}: {@link ObservationRegistry#NOOP} unless an application
-   * supplied one, in which case nothing here costs anything.
-   */
-  ObservationRegistry observationRegistry() {
-    return observationRegistry;
-  }
-
-  /**
    * The harness's one fact stream (agentic-o11y spec §3), which both fold sites publish through:
    * {@link DefaultAgent}'s synchronous shell and {@link DeliveryWorker}'s durable one. It replaces
    * the per-scope {@code HarnessObserver} a factory used to stamp for each id — an observer is a

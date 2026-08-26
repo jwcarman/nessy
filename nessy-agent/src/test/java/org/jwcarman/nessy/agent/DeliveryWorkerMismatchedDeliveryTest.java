@@ -23,9 +23,12 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.tck.TestObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -115,17 +118,21 @@ class DeliveryWorkerMismatchedDeliveryTest {
               cfg.resultCodec(TestToolClients.toolResultCodec(mapper))
                   .continuationCodec(Routing.codec(mapper))
                   .deadline(Duration.ofHours(1)));
+  private final TestObservationRegistry registry = TestObservationRegistry.create();
+  private final RecordingDrops drops = new RecordingDrops();
   private final Harness<String> harness =
       TestAgents.<String>harness(
+          AgentType.of("test"),
           new VerbatimMemory(),
           store,
           new NoopBacklog(),
           text -> List.of(),
           sink -> {},
           new NoToolsExecutor(),
-          HarnessObserver.noop(),
+          drops,
           false,
-          StalenessPolicy.never());
+          StalenessPolicy.never(),
+          registry);
   private final Agent<String> agent = harness.bind(AgentId.of("test-scope"));
   private final DeliveryWorker<String> worker =
       new DeliveryWorker<>(
@@ -177,6 +184,50 @@ class DeliveryWorkerMismatchedDeliveryTest {
     return ComputationId.of(created.id().value().toString());
   }
 
+  /** Collects the ignored folds the stream publishes; every other callback is a no-op. */
+  private static final class RecordingDrops implements HarnessObserver {
+
+    private final List<AgentEvent> ignored = new ArrayList<>();
+
+    @Override
+    public void applied(AgentId id, AgentEvent event, Transition transition) {
+      // not recorded: this fixture watches the ignored arm
+    }
+
+    @Override
+    public void ignored(AgentId id, AgentEvent event) {
+      ignored.add(event);
+    }
+
+    @Override
+    public void renderFailed(AgentId id, Object observation, RuntimeException error) {
+      // not recorded: this fixture watches the ignored arm
+    }
+
+    @Override
+    public void applyFailed(AgentId id, AgentEvent event, RuntimeException error) {
+      // not recorded: this fixture watches the ignored arm
+    }
+
+    @Override
+    public void reFired(AgentId id, List<Effect> effects) {
+      // not recorded: this fixture watches the ignored arm
+    }
+
+    @Override
+    public void observationRequeued(AgentId id, Object observation) {
+      // not recorded: this fixture watches the ignored arm
+    }
+  }
+
+  private long droppedDeliveriesCounted() {
+    List<Observation.Context> captured = new ArrayList<>();
+    assertThat(registry).hasHandledContextsThatSatisfy(captured::addAll);
+    return captured.stream()
+        .filter(context -> Observations.DELIVERY_DROPPED.equals(context.getName()))
+        .count();
+  }
+
   private List<ILoggingEvent> warnings() {
     return appender.list.stream().filter(event -> event.getLevel() == Level.WARN).toList();
   }
@@ -200,6 +251,30 @@ class DeliveryWorkerMismatchedDeliveryTest {
     clock.advance(PAST_THE_BACKOFF);
 
     assertThat(worker.drainApprovals(BatchSize.of(10))).isZero();
+  }
+
+  /**
+   * A drop is a fact about the scope, not merely a log line (agentic-o11y spec §3): the worker
+   * publishes it on the harness's one fact stream, so a subscriber sees the delivery that changed
+   * nothing, and {@code nessy.delivery.dropped} counts it. Before the stream existed, a delivered
+   * fold — applied or dropped — narrated nothing at all.
+   */
+  @Test
+  void a_dropped_delivery_reaches_the_fact_stream_and_the_dropped_counter() {
+    scopeWith(new CallStatus.Pending());
+    ComputationId orphan = answerAnApproval();
+
+    worker.drainApprovals(BatchSize.of(10));
+
+    assertThat(drops.ignored)
+        .singleElement()
+        .isInstanceOfSatisfying(
+            AgentEvent.ApprovalAnswered.class,
+            answered -> {
+              assertThat(answered.call().id()).isEqualTo("c1");
+              assertThat(answered.approval()).contains(orphan);
+            });
+    assertThat(droppedDeliveriesCounted()).isEqualTo(1);
   }
 
   @Test

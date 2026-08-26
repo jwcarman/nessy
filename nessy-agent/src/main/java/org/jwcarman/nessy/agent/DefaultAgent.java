@@ -159,7 +159,7 @@ public final class DefaultAgent<O> implements Agent<O> {
         return applyOnce(binding.store().load(), event);
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
-        harness.observations().staleRetry(harness.type());
+        countStaleRetry();
       } catch (RuntimeException e) {
         facts().applyFailed(binding.id(), event, e); // narrate — then let the caller see it (§3)
         throw e;
@@ -268,7 +268,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     try {
       committed = applyOnce(state, new AgentEvent.Observed(content));
     } catch (StaleStateException _) {
-      harness.observations().staleRetry(harness.type());
+      countStaleRetry();
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
       facts().observationRequeued(binding.id(), observation);
       return;
@@ -287,6 +287,16 @@ public final class DefaultAgent<O> implements Agent<O> {
     // for a failure out HERE would be wrong twice over — it is already committed, so a redrive
     // would double-apply it, and the nested frame has already narrated the real failure.
     committed.ifPresent(this::follow);
+  }
+
+  /**
+   * One stale-retry counted. Safe to call from inside the retry loop with no guard of its own (fix
+   * round 1): {@link Observations#staleRetry} contains whatever a broken {@code ObservationHandler}
+   * throws and never propagates, which is the property this loop needs — an escaping exception here
+   * would abort the very convergence the loop exists for.
+   */
+  private void countStaleRetry() {
+    harness.observations().staleRetry(harness.type());
   }
 
   private boolean isStale(State state) {

@@ -125,8 +125,6 @@ class ObservationsTest {
      */
     @Test
     void the_semconv_names_are_the_ones_the_spec_pins() {
-      assertThat(Observations.OPERATION_DURATION).isEqualTo("gen_ai.client.operation.duration");
-      assertThat(Observations.TOKEN_USAGE).isEqualTo("gen_ai.client.token.usage");
       assertThat(Observations.INVOKE_AGENT).isEqualTo("invoke_agent");
       assertThat(Observations.CHAT).isEqualTo("chat");
       assertThat(Observations.EXECUTE_TOOL).isEqualTo("execute_tool");

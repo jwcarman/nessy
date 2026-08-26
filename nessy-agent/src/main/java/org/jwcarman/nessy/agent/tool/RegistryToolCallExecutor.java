@@ -302,10 +302,41 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       // A throw AFTER a successful defer() leaves the phase at AwaitingResult(id), so the failure
       // rides that id or the call hangs until the orphan expires.
       execution.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
-      execution.error(e);
+      quietly(() -> execution.error(e));
       return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
     } finally {
-      execution.stop();
+      quietly(execution::stop);
+    }
+  }
+
+  /**
+   * Runs one instrumentation call, containing anything it throws (fix round 1). A turn must never
+   * fail because the thing describing it did: an {@code ObservationHandler} lives in the
+   * application, is arbitrary code, and reads key-values that a given span may legitimately not
+   * carry — an application handler reading {@code gen_ai.usage.input_tokens} off a {@code chat}
+   * that failed before the model reported any usage is the case that named this rule. Telemetry is
+   * a description of the work, never a participant in it.
+   */
+  private static void quietly(Runnable instrumentation) {
+    try {
+      instrumentation.run();
+    } catch (RuntimeException e) {
+      LOG.warn("an observation handler threw around execute_tool; the tool call is unaffected", e);
+    }
+  }
+
+  /**
+   * Starts one observation, containing anything it throws (fix round 1) — see {@link #quietly}. A
+   * failed start yields {@link Observation#NOOP}, so the {@code stop()} and the key-value writes
+   * that follow are harmless no-ops rather than a second failure on the same broken handler.
+   */
+  private static Observation started(Supplier<Observation> start) {
+    try {
+      return start.get();
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "an observation handler threw starting execute_tool; the tool call is unaffected", e);
+      return Observation.NOOP;
     }
   }
 
@@ -315,6 +346,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
    * entirely. Parented to the scope's open segment; parentless when the scope has none.
    */
   private Observation startExecuteTool(ToolCall call) {
+    return started(() -> newExecuteTool(call));
+  }
+
+  private Observation newExecuteTool(ToolCall call) {
     Observation parent = parentSegment.get();
     Observation execution =
         Observation.createNotStarted(EXECUTE_TOOL, observations)

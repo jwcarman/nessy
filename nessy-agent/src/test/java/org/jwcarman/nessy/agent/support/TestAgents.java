@@ -159,6 +159,37 @@ public final class TestAgents {
       HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
+    return harness(
+        type,
+        memory,
+        store,
+        backlog,
+        renderer,
+        model,
+        tools,
+        observer,
+        drainOnIdle,
+        stalenessPolicy,
+        ObservationRegistry.NOOP);
+  }
+
+  /**
+   * As above, but with an {@link ObservationRegistry} of the caller's choosing — a {@code
+   * TestObservationRegistry} for the fixtures that assert on what the harness recorded, rather than
+   * the {@link ObservationRegistry#NOOP} every other fixture wants.
+   */
+  public static <O> Harness<O> harness(
+      AgentType type,
+      Memory memory,
+      AgentStateStore store,
+      Backlog<O> backlog,
+      ObservationRenderer<O> renderer,
+      ModelCallExecutor model,
+      ToolCallExecutor tools,
+      HarnessObserver observer,
+      boolean drainOnIdle,
+      StalenessPolicy stalenessPolicy,
+      ObservationRegistry observationRegistry) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
@@ -181,7 +212,7 @@ public final class TestAgents {
             approvalClient,
             toolClient,
             new ConcurrentHashMap<>(),
-            ObservationRegistry.NOOP,
+            observationRegistry,
             new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     return harness;

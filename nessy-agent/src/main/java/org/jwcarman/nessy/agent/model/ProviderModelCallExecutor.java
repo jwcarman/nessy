@@ -46,6 +46,8 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The bridge from the agent machine to core's {@link Model} SPI: recall from {@link Memory}, stream
@@ -70,6 +72,8 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * {@code ModelFinished} rather than escaping onto the executor thread.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ProviderModelCallExecutor.class);
 
   private final Model model;
   private final String systemPrompt;
@@ -160,10 +164,40 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       // The span records the failure and is stopped below; the exception itself keeps going, to be
       // folded into a ModelOutcome.Failed by call() exactly as it always was.
       chat.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
-      chat.error(e);
+      quietly(() -> chat.error(e));
       throw e;
     } finally {
-      chat.stop();
+      quietly(chat::stop);
+    }
+  }
+
+  /**
+   * Runs one instrumentation call, containing anything it throws (fix round 1). A turn must never
+   * fail because the thing describing it did: an {@code ObservationHandler} lives in the
+   * application, is arbitrary code, and reads key-values that a given span may legitimately not
+   * carry — an application handler reading {@code gen_ai.usage.input_tokens} off a {@code chat}
+   * that failed before the model reported any usage is the case that named this rule. Telemetry is
+   * a description of the work, never a participant in it.
+   */
+  private static void quietly(Runnable instrumentation) {
+    try {
+      instrumentation.run();
+    } catch (RuntimeException e) {
+      LOG.warn("an observation handler threw around chat; the model call is unaffected", e);
+    }
+  }
+
+  /**
+   * Starts one observation, containing anything it throws (fix round 1) — see {@link #quietly}. A
+   * failed start yields {@link Observation#NOOP}, so the {@code stop()} and the key-value writes
+   * that follow are harmless no-ops rather than a second failure on the same broken handler.
+   */
+  private static Observation started(Supplier<Observation> start) {
+    try {
+      return start.get();
+    } catch (RuntimeException e) {
+      LOG.warn("an observation handler threw starting chat; the model call is unaffected", e);
+      return Observation.NOOP;
     }
   }
 
@@ -174,6 +208,10 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
    * unstable tags. Parented to the scope's open segment; parentless when the scope has none.
    */
   private Observation startChat() {
+    return started(this::newChat);
+  }
+
+  private Observation newChat() {
     Observation parent = parentSegment.get();
     Observation chat =
         Observation.createNotStarted(CHAT, observations)

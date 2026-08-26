@@ -411,7 +411,7 @@ final class DeliveryWorker<O> implements ComputationPump {
       try {
         states.write(id.value(), transition.next(), state.version());
       } catch (ConflictException _) {
-        harness.observations().staleRetry(type);
+        countStaleRetry(type);
         continue; // lost the race — re-read and re-handle
       }
       // Published only once the write succeeded: the stream carries the fold's OUTPUT, and until
@@ -420,6 +420,16 @@ final class DeliveryWorker<O> implements ComputationPump {
       dispatchEffects(type, id, transition.next(), transition.effects());
       return;
     }
+  }
+
+  /**
+   * One stale-retry counted, with no guard of its own for the reason {@code DefaultAgent} states on
+   * its own arm of this loop (fix round 1): {@link Observations#staleRetry} never throws. A CAS
+   * miss is an ordinary condition this loop converges past, and an escaping exception would turn it
+   * into a failed delivery that Continuum then redelivers forever.
+   */
+  private void countStaleRetry(AgentType type) {
+    harness.observations().staleRetry(type);
   }
 
   /**
