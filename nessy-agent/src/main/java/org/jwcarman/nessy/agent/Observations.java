@@ -52,13 +52,20 @@ import org.slf4j.LoggerFactory;
  * spans die with the process; nothing reconstructs one after a restart, because they are telemetry
  * and the phase in the store is the truth.
  *
- * <p><b>Why counters are Observations too.</b> An {@link ObservationRegistry} is the only seam this
- * harness has, by ruling — no {@code MeterRegistry} reaches {@code nessy-agent}, ever (which is
- * also why that type is named here in plain code font: it is not on this module's classpath). A
- * registry cannot increment a counter directly, so the three engine counters are recorded as
- * zero-duration observations, started and stopped in place: Micrometer's default meter handler
- * times every observation, so each one contributes a count (and a negligible duration) to a timer
- * of that name, which is the count a dashboard reads. The same limit is why the semconv {@code
+ * <p><b>Why counters are span events</b> (spec §1.2, third amendment — the 2026-08-26 soak, finding
+ * F2). An {@link ObservationRegistry} is the only seam this harness has, by ruling — no {@code
+ * MeterRegistry} reaches {@code nessy-agent}, ever (which is also why that type is named here in
+ * plain code font: it is not on this module's classpath). A registry cannot increment a counter
+ * directly, so the three engine counters were originally recorded as zero-duration observations,
+ * started and stopped in place. Run against a real collector that turns out to be wrong: a
+ * standalone observation is a standalone TRACE, so one healthy round that retried five contended
+ * CAS writes produced one round trace and five counter traces, and the trace list stopped being a
+ * list of rounds. A counter is a thing that happened DURING a round, so each one is now an {@link
+ * Observation.Event} on that scope's open segment — where a reader finds it while looking at the
+ * round it belongs to, on a span that already carries {@code gen_ai.agent.name}. Only a scope with
+ * no segment open falls back to the old zero-duration shape (see {@link #count}). The consequence,
+ * accepted: an event contributes to no timer, so while a round is open these three are readable as
+ * span events rather than as meters. The same registry limit is why the semconv {@code
  * gen_ai.client.token.usage} histogram is NOT recorded here (spec §1.2): a registry times
  * observations but cannot record an arbitrary value histogram, so the token counts ride the {@code
  * chat} observation as key-values and the application's own {@code ObservationHandler} reads them
@@ -163,7 +170,11 @@ final class Observations implements HarnessObserver {
 
   static final String TOOL_WAIT = "nessy.tool.wait";
 
-  /** Ours, counters (spec §1.2), tagged {@link #GEN_AI_AGENT_NAME} only. */
+  /**
+   * Ours, counters (spec §1.2). These are the names of the span EVENTS the three counters record on
+   * the open segment, and — for a scope with no segment open — of the fallback observations, which
+   * are tagged {@link #GEN_AI_AGENT_NAME} only.
+   */
   static final String DELIVERY_DROPPED = "nessy.delivery.dropped";
 
   static final String STALE_RETRIES = "nessy.state.stale_retries";
@@ -263,7 +274,7 @@ final class Observations implements HarnessObserver {
   @Override
   public void ignored(AgentId id, AgentEvent event) {
     if (wasDelivered(event)) {
-      dropped(type);
+      dropped(id, type);
     }
   }
 
@@ -280,7 +291,7 @@ final class Observations implements HarnessObserver {
 
   @Override
   public void reFired(AgentId id, List<Effect> effects) {
-    refired(type, effects.size());
+    refired(id, type, effects.size());
   }
 
   @Override
@@ -289,11 +300,11 @@ final class Observations implements HarnessObserver {
   }
 
   /**
-   * {@code nessy.delivery.dropped} (spec §1.2), as a zero-duration observation — see the class
-   * javadoc for why a counter is spelled this way.
+   * {@code nessy.delivery.dropped} (spec §1.2), as a span event on the scope's open segment — see
+   * the class javadoc for why a counter is spelled this way.
    */
-  void dropped(AgentType agentType) {
-    count(DELIVERY_DROPPED, agentType);
+  void dropped(AgentId id, AgentType agentType) {
+    count(id, DELIVERY_DROPPED, agentType);
   }
 
   /**
@@ -305,14 +316,14 @@ final class Observations implements HarnessObserver {
    *     retry loops, where an escaping exception would abort the very convergence the loop exists
    *     for.
    */
-  void staleRetry(AgentType agentType) {
-    count(STALE_RETRIES, agentType);
+  void staleRetry(AgentId id, AgentType agentType) {
+    count(id, STALE_RETRIES, agentType);
   }
 
   /** {@code nessy.effects.refired}: one per effect the recovery arm re-dispatched (spec §6.1). */
-  void refired(AgentType agentType, int effects) {
+  void refired(AgentId id, AgentType agentType, int effects) {
     for (int i = 0; i < effects; i++) {
-      count(EFFECTS_REFIRED, agentType);
+      count(id, EFFECTS_REFIRED, agentType);
     }
   }
 
@@ -487,21 +498,34 @@ final class Observations implements HarnessObserver {
   }
 
   /**
-   * A counter, spelled as a zero-duration observation — see the class javadoc.
+   * A counter, spelled as a span EVENT on the scope's open segment — see the class javadoc.
+   *
+   * <p>The fallback, when the scope has NO segment open, is the old shape: a zero-duration
+   * observation carrying the agent type. It is kept rather than dropped because that case is
+   * exactly the one worth its own trace — something was counted while no round was running, an
+   * orphan delivery or a refire into a scope that is idle — and because an {@link
+   * ObservationRegistry} has no other way to register a count at all. It is rare, so it does not
+   * reproduce the noise that named this fix.
    *
    * <p>Contained (fix round 1): a throwing {@code ObservationHandler} is logged and dropped, never
-   * propagated. The segment and wait spans above need no such guard of their own — every one of
-   * them is reached through {@link HarnessObserver}, and {@link FactFanout} already isolates each
-   * subscriber — but the three counters are called STRAIGHT from the two fold sites, which are not
-   * behind that isolation. This is what lets {@link #dropped}, {@link #staleRetry} and {@link
-   * #refired} promise their callers that they never throw.
+   * propagated — an {@code onEvent} that throws exactly as much as a {@code start} that throws. The
+   * segment and wait spans above need no such guard of their own — every one of them is reached
+   * through {@link HarnessObserver}, and {@link FactFanout} already isolates each subscriber — but
+   * the three counters are called STRAIGHT from the two fold sites, which are not behind that
+   * isolation. This is what lets {@link #dropped}, {@link #staleRetry} and {@link #refired} promise
+   * their callers that they never throw.
    */
-  private void count(String name, AgentType agentType) {
+  private void count(AgentId id, String name, AgentType agentType) {
     try {
-      Observation.createNotStarted(name, registry)
-          .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
-          .start()
-          .stop();
+      Observation segment = openSegments.get(id);
+      if (segment == null) {
+        Observation.createNotStarted(name, registry)
+            .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
+            .start()
+            .stop();
+      } else {
+        segment.event(Observation.Event.of(name));
+      }
     } catch (RuntimeException e) {
       log.warn("an observation handler threw recording the {} counter; ignored", name, e);
     }

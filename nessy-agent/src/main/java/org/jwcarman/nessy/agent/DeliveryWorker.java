@@ -411,7 +411,7 @@ final class DeliveryWorker<O> implements ComputationPump {
       try {
         states.write(id.value(), transition.next(), state.version());
       } catch (ConflictException _) {
-        countStaleRetry(type);
+        countStaleRetry(id, type);
         continue; // lost the race — re-read and re-handle
       }
       // Published only once the write succeeded: the stream carries the fold's OUTPUT, and until
@@ -428,8 +428,8 @@ final class DeliveryWorker<O> implements ComputationPump {
    * miss is an ordinary condition this loop converges past, and an escaping exception would turn it
    * into a failed delivery that Continuum then redelivers forever.
    */
-  private void countStaleRetry(AgentType type) {
-    harness.observations().staleRetry(type);
+  private void countStaleRetry(AgentId id, AgentType type) {
+    harness.observations().staleRetry(id, type);
   }
 
   /**

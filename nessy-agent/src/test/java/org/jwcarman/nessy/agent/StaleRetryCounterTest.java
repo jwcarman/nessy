@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,7 +32,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
@@ -84,6 +87,12 @@ class StaleRetryCounterTest {
   private final InMemorySubstrate substrate = new InMemorySubstrate();
   private final SubstrateAgentStateStore store =
       new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
+  private final AtomicLong staleRetryEvents = new AtomicLong();
+
+  @BeforeEach
+  void countEvents() {
+    registry.observationConfig().observationHandler(eventCounter());
+  }
 
   @AfterEach
   void tearDown() {
@@ -136,12 +145,38 @@ class StaleRetryCounterTest {
     }
   }
 
+  /**
+   * Every stale retry this run recorded, in BOTH shapes the counter can take (soak finding F2,
+   * 2026-08-26): a span event on the round's own segment when one is open — which is the usual
+   * case, and the whole point of the fix — and a standalone zero-duration observation when the
+   * scope has no segment to hang it on. The assertions below are unchanged; only where the count
+   * lives moved.
+   */
   private long staleRetriesRecorded() {
     List<Observation.Context> captured = new ArrayList<>();
     assertThat(registry).hasHandledContextsThatSatisfy(captured::addAll);
-    return captured.stream()
-        .filter(context -> Observations.STALE_RETRIES.equals(context.getName()))
-        .count();
+    long asObservations =
+        captured.stream()
+            .filter(context -> Observations.STALE_RETRIES.equals(context.getName()))
+            .count();
+    return asObservations + staleRetryEvents.get();
+  }
+
+  /** Counts {@code onEvent}, which neither the context nor the TCK's assertions expose. */
+  private ObservationHandler<Observation.Context> eventCounter() {
+    return new ObservationHandler<>() {
+      @Override
+      public boolean supportsContext(Observation.Context context) {
+        return true;
+      }
+
+      @Override
+      public void onEvent(Observation.Event event, Observation.Context context) {
+        if (Observations.STALE_RETRIES.equals(event.getName())) {
+          staleRetryEvents.incrementAndGet();
+        }
+      }
+    };
   }
 
   @Nested

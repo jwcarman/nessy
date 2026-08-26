@@ -139,7 +139,50 @@ application-side:
   `MeterRegistry`). The example module ships that handler; `nessy-agent`
   never sees a `MeterRegistry`.
 
-Ours, counters, tagged `gen_ai.agent.name` only:
+**Amendment 3 (2026-08-26, the SOAK — finding F2). The three engine
+counters are span EVENTS on the open segment, not observations of their
+own.** This section originally spelled each counter as a zero-duration
+observation, started and stopped in place, on the reasoning that an
+`ObservationRegistry` is the only seam this harness has (the one-seam
+ruling) and a registry cannot increment a counter — so timing a
+zero-length observation was the only way to make a count exist at all.
+
+That reasoning was sound and the shape was still wrong, and only running
+it against a real Grafana LGTM stack showed why: **a standalone
+observation is a standalone TRACE.** A counter observation has no parent,
+so the tracing bridge gives it its own trace id, and Tempo lists it beside
+the rounds. One healthy watchman round — three tools in parallel, six
+`create_memory` writes, five contended CAS retries — produced ONE round
+trace and FIVE counter traces. The trace list stopped being a list of
+rounds, which is the only thing a person opens it to read.
+
+A counter is not a thing that happened; it is a thing that happened DURING
+a round. So each of the three is now an `Observation.Event` recorded on
+that scope's open `invoke_agent` segment — the span a reader is already
+looking at when they ask why a round was slow — and `Observations` already
+holds that segment per `AgentId`, so nothing new is tracked to do it. The
+`gen_ai.agent.name` dimension is not lost: the segment carries it.
+
+Fallback, when the scope has NO segment open: the old zero-duration
+observation, unchanged. Kept rather than dropped for two reasons. It is
+the only shape that registers a count at all through this seam, and
+dropping it would silently lose engine-health data. And that case — a
+delivery dropped, or effects refired, into a scope with no round running —
+is precisely the one that DOES deserve its own trace, because there is no
+round to attach it to. It is rare, so it does not reproduce the noise.
+
+Accepted consequence, stated plainly: **an event contributes to no timer.**
+While a round is open the three counters read as span events, not as
+meters. A dashboard that counted `nessy.state.stale_retries` as a timer
+count now reads it off the round's span instead (in Tempo: events on the
+`invoke_agent` span). An application that wants them back as meters can
+register an `ObservationHandler` whose `onEvent` records to its own
+`MeterRegistry` — the same division of labour this section already gives
+`gen_ai.client.token.usage`.
+
+Ours, counters, tagged `gen_ai.agent.name` only (see Amendment 3 above:
+these are now the EVENT names on the open segment, and the fallback
+observation names when no segment is open):
 
 - `nessy.delivery.dropped` — every `warnDropped`. Narrowed in
   implementation, deliberately: only an ignored event that arrived as a
@@ -340,7 +383,9 @@ something.
     `nessy.tool.deferred=true` and `nessy.tool.wait` stopped at delivery;
   - a failed model call yields `chat` with `error.type`;
   - `nessy.delivery.dropped` increments on a dropped delivery;
-    `nessy.state.stale_retries` on a forced conflict.
+    `nessy.state.stale_retries` on a forced conflict — as an event on the
+    open segment where there is one, and as the fallback observation where
+    there is not (Amendment 3 in §1.2).
 - With the registry left at NOOP: the existing suite is unchanged (no new
   test; the whole reactor is the proof).
 - No test asserts on exporter output; the bridge is the application's.

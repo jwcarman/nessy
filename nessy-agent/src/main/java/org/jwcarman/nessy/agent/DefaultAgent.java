@@ -296,7 +296,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * would abort the very convergence the loop exists for.
    */
   private void countStaleRetry() {
-    harness.observations().staleRetry(harness.type());
+    harness.observations().staleRetry(binding.id(), harness.type());
   }
 
   private boolean isStale(State state) {

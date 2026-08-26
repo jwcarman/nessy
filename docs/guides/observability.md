@@ -204,8 +204,15 @@ the vendor's own token counts as key-values
 own `MeterRegistry` — `nessy-agent` never sees a `MeterRegistry` at all.
 `nessy-examples/observed` ships that handler.
 
-Three counters, spelled as zero-duration observations (an `ObservationRegistry`
-has no direct counter API), tagged `gen_ai.agent.name` only:
+Three counters. Each is recorded as a **span event on the scope's open
+`invoke_agent` segment** — the round it happened during — because an
+`ObservationRegistry` has no direct counter API and the obvious alternative,
+a zero-duration observation, is a parentless observation and therefore its
+own *trace*: one busy round used to fill the trace list with five of them.
+Find them in Tempo as events on the round's span, which already carries
+`gen_ai.agent.name`. A scope with **no** segment open falls back to the
+zero-duration observation, tagged `gen_ai.agent.name` — rare, and the one
+case that genuinely has no round to hang on:
 
 - `nessy.delivery.dropped` — a genuine delivery (an answered approval, a
   completed tool result) that arrived against a phase that no longer wanted
@@ -213,6 +220,12 @@ has no direct counter API), tagged `gen_ai.agent.name` only:
 - `nessy.state.stale_retries` — one per `StaleStateException`/
   `ConflictException` retry the two fold sites absorb.
 - `nessy.effects.refired` — one per effect the recovery arm re-dispatched.
+
+A span event contributes to no timer, so while a round is open these three
+are readable as events rather than as meters. To have them as meters too,
+register an `ObservationHandler` whose `onEvent` records to your own
+`MeterRegistry` — the same division of labour `gen_ai.client.token.usage`
+already uses.
 
 ### Telemetry never breaks a turn
 

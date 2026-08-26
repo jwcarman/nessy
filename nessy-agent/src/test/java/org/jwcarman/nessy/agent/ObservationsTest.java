@@ -16,11 +16,13 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -436,6 +438,33 @@ class ObservationsTest {
     }
   }
 
+  /**
+   * The soak's finding F2 (2026-08-26): a counter recorded as its own zero-duration observation
+   * renders in Tempo as a standalone ROOT SPAN, and one healthy round produced five of them against
+   * a single real round trace. A counter is a thing that happened DURING a round, so it is now an
+   * EVENT on the round's own segment span — and only a scope with no segment open falls back to the
+   * old shape, because that is the one case where there is no round to hang it on and dropping it
+   * would lose engine-health data outright.
+   */
+  private record CapturedEvent(String observation, String event) {}
+
+  private final List<CapturedEvent> events = new ArrayList<>();
+
+  /** Captures {@code onEvent}, which neither the context nor the TCK's assertions expose. */
+  private ObservationHandler<Observation.Context> eventCaptor() {
+    return new ObservationHandler<>() {
+      @Override
+      public boolean supportsContext(Observation.Context context) {
+        return true;
+      }
+
+      @Override
+      public void onEvent(Observation.Event event, Observation.Context context) {
+        events.add(new CapturedEvent(context.getName(), event.getName()));
+      }
+    };
+  }
+
   @Nested
   class TheCounters {
 
@@ -466,8 +495,8 @@ class ObservationsTest {
 
     @Test
     void a_stale_retry_is_counted() {
-      observations.staleRetry(TYPE);
-      observations.staleRetry(TYPE);
+      observations.staleRetry(SCOPE, TYPE);
+      observations.staleRetry(SCOPE, TYPE);
 
       assertThat(countOf(Observations.STALE_RETRIES)).isEqualTo(2);
     }
@@ -480,14 +509,95 @@ class ObservationsTest {
     }
 
     @Test
-    void a_counter_carries_the_agent_type() {
-      observations.staleRetry(TYPE);
+    void a_counter_with_no_round_open_carries_the_agent_type() {
+      observations.staleRetry(SCOPE, TYPE);
 
       assertThat(registry)
           .hasObservationWithNameEqualTo(Observations.STALE_RETRIES)
           .that()
           .hasLowCardinalityKeyValue(Observations.GEN_AI_AGENT_NAME, "ops")
           .hasBeenStopped();
+    }
+  }
+
+  /**
+   * F2 proper: while a round is running, none of the three counters may mint an observation of its
+   * own — the trace list is a list of ROUNDS, and five root spans per round buries the one trace a
+   * reader came for. The agent-type dimension is not lost by the move: the segment the event lands
+   * on already carries {@code gen_ai.agent.name}.
+   */
+  @Nested
+  class TheCountersDuringAnOpenRound {
+
+    @Test
+    void a_stale_retry_is_an_event_on_the_round_and_not_an_observation_of_its_own() {
+      registry.observationConfig().observationHandler(eventCaptor());
+      observed();
+
+      observations.staleRetry(SCOPE, TYPE);
+
+      assertThat(countOf(Observations.STALE_RETRIES)).isZero();
+      assertThat(events)
+          .containsExactly(
+              new CapturedEvent(Observations.INVOKE_AGENT_DURATION, Observations.STALE_RETRIES));
+    }
+
+    @Test
+    void a_dropped_delivery_is_an_event_on_the_round_and_not_an_observation_of_its_own() {
+      registry.observationConfig().observationHandler(eventCaptor());
+      observed();
+      modelAsksFor(RESTART);
+
+      // A second delivery for a call the phase no longer has running: ignored, and a real drop.
+      fold(
+          new AgentEvent.ToolFinished(
+              DRAIN,
+              Optional.of(ComputationId.of("tool-9")),
+              new ToolOutcome.Returned(ToolResult.ok("late"))));
+
+      assertThat(countOf(Observations.DELIVERY_DROPPED)).isZero();
+      assertThat(events)
+          .containsExactly(
+              new CapturedEvent(Observations.INVOKE_AGENT_DURATION, Observations.DELIVERY_DROPPED));
+    }
+
+    @Test
+    void every_re_fired_effect_is_an_event_on_the_round() {
+      registry.observationConfig().observationHandler(eventCaptor());
+      observed();
+
+      observations.reFired(SCOPE, List.of(new Effect.CallModel(), new Effect.RunTool(RESTART)));
+
+      assertThat(countOf(Observations.EFFECTS_REFIRED)).isZero();
+      assertThat(events)
+          .containsExactly(
+              new CapturedEvent(Observations.INVOKE_AGENT_DURATION, Observations.EFFECTS_REFIRED),
+              new CapturedEvent(Observations.INVOKE_AGENT_DURATION, Observations.EFFECTS_REFIRED));
+    }
+
+    /**
+     * Containment, unchanged by the move (spec §3.1): a handler that throws on the event is logged
+     * and dropped, never propagated into the fold that recorded it.
+     */
+    @Test
+    void a_handler_that_throws_on_the_event_never_reaches_the_caller() {
+      registry
+          .observationConfig()
+          .observationHandler(
+              new ObservationHandler<Observation.Context>() {
+                @Override
+                public boolean supportsContext(Observation.Context context) {
+                  return true;
+                }
+
+                @Override
+                public void onEvent(Observation.Event event, Observation.Context context) {
+                  throw new IllegalStateException("handler is broken");
+                }
+              });
+      observed();
+
+      assertThatCode(() -> observations.staleRetry(SCOPE, TYPE)).doesNotThrowAnyException();
     }
   }
 }
