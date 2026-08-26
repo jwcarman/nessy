@@ -27,9 +27,9 @@ import org.jwcarman.nessy.spi.Remembrance;
  * ToolFinished} remembers its own {@link Remembrance.ToolExchange}, keyed by the call's {@link
  * CallAddress#digest()} — deterministic from {@code (agentType, agentId, responseId, callId)}, so a
  * redelivery re-remembers the same key and converges (SPI law 2). When this is the call that
- * completes the whole batch (the phase's {@link Transition} also commits the deferred assistant
- * turn alongside the tool-results message), the {@link Remembrance.AssistantMessage} is remembered
- * too, exactly once, keyed by the same response id.
+ * completes the whole batch (the phase's {@link AgentTransition} also commits the deferred
+ * assistant turn alongside the tool-results message), the {@link Remembrance.AssistantMessage} is
+ * remembered too, exactly once, keyed by the same response id.
  *
  * <p>Both {@link DefaultAgent} (the immediate, non-durable fold — most tool calls) and {@link
  * DeliveryWorker} (the durable, Continuum-delivery-driven fold — deferred computations and approval
@@ -48,10 +48,10 @@ final class ToolFoldRemembrance {
       Memory memory,
       AgentType type,
       AgentId id,
-      Phase priorPhase,
+      AgentPhase priorPhase,
       ToolCall call,
       String reason,
-      Transition transition) {
+      AgentTransition transition) {
     remember(
         memory,
         type,
@@ -64,17 +64,18 @@ final class ToolFoldRemembrance {
 
   /**
    * @param priorPhase the phase the (non-ignored) transition folded FROM — always {@link
-   *     Phase.AwaitingTools}, the only phase a real {@code ToolFinished} transition can come from
+   *     AgentPhase.AwaitingTools}, the only phase a real {@code ToolFinished} transition can come
+   *     from
    */
   static void remember(
       Memory memory,
       AgentType type,
       AgentId id,
-      Phase priorPhase,
+      AgentPhase priorPhase,
       ToolCall call,
       ToolOutcome outcome,
-      Transition transition) {
-    if (!(priorPhase instanceof Phase.AwaitingTools awaiting)) {
+      AgentTransition transition) {
+    if (!(priorPhase instanceof AgentPhase.AwaitingTools awaiting)) {
       throw new IllegalStateException(
           "a non-ignored ToolFinished transition folded from a phase other than AwaitingTools: "
               + priorPhase);

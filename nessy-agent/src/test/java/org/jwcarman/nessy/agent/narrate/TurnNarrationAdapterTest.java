@@ -21,11 +21,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -40,7 +40,7 @@ class TurnNarrationAdapterTest {
   @Test
   void anAssistantCommitBecomesAssistantSaid() {
     var said = Message.assistant(List.of(new TextBlock("hi")));
-    var t = Transition.to(new Phase.Idle()).commit(said);
+    var t = AgentTransition.to(new AgentPhase.Idle()).commit(said);
     adapter.applied(
         SCOPE,
         new AgentEvent.ModelFinished(
@@ -53,7 +53,7 @@ class TurnNarrationAdapterTest {
 
   @Test
   void reachingIdleEndsTheTurnCompleted() {
-    var t = Transition.to(new Phase.Idle());
+    var t = AgentTransition.to(new AgentPhase.Idle());
     adapter.applied(
         SCOPE,
         new AgentEvent.ModelFinished(
@@ -64,7 +64,7 @@ class TurnNarrationAdapterTest {
 
   @Test
   void aModelFailureEndsTheTurnFailedWithItsReason() {
-    var t = Transition.to(new Phase.Idle());
+    var t = AgentTransition.to(new AgentPhase.Idle());
     adapter.applied(SCOPE, new AgentEvent.ModelFinished(new ModelOutcome.Failed("overloaded")), t);
     assertThat(turn.events()).contains(new TurnEvent.TurnEnded("overloaded"));
   }
@@ -72,7 +72,7 @@ class TurnNarrationAdapterTest {
   @Test
   void aUserCommitIsNotNarratedAsAssistantSaid() {
     var t =
-        Transition.to(new Phase.AwaitingModel(), new Effect.CallModel())
+        AgentTransition.to(new AgentPhase.AwaitingModel(), new Effect.CallModel())
             .commit(Message.user("hello"));
     adapter.applied(SCOPE, new AgentEvent.Observed(List.of(new TextBlock("hello"))), t);
     assertThat(turn.events()).isEmpty();

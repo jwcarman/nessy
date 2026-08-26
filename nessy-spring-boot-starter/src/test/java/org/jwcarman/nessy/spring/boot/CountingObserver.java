@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
 /**
@@ -37,7 +37,7 @@ final class CountingObserver implements HarnessObserver {
   }
 
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     applied.incrementAndGet();
   }
 

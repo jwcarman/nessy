@@ -40,7 +40,7 @@ import java.util.concurrent.Executor;
  * inside this class; there is no way to prove nobody will enqueue later without a completion signal
  * from outside it. <b>Do not assume a single {@code pumpUntilQuiet()} call caught everything a
  * background nudge submitted.</b> Poll a definitive downstream signal instead — the scope reaching
- * {@code Phase.Idle}, say — calling {@code pumpUntilQuiet()} again on each iteration, the way
+ * {@code AgentPhase.Idle}, say — calling {@code pumpUntilQuiet()} again on each iteration, the way
  * {@code GrantRaceTest}, {@code AgentSubscriptionTest}, and the {@code host}-package approval demos
  * do.
  */

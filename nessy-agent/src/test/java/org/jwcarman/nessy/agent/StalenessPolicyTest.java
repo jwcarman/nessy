@@ -34,7 +34,7 @@ class StalenessPolicyTest {
     var clock = new TestClock(T0);
     var policy = StalenessPolicy.after(THRESHOLD, clock);
     clock.advance(THRESHOLD.minusSeconds(1));
-    assertThat(policy.isStale(new Phase.AwaitingModel(), T0)).isFalse();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), T0)).isFalse();
   }
 
   @Test
@@ -43,7 +43,7 @@ class StalenessPolicyTest {
     var clock = new TestClock(T0);
     var policy = StalenessPolicy.after(THRESHOLD, clock);
     clock.advance(THRESHOLD);
-    assertThat(policy.isStale(new Phase.AwaitingModel(), T0)).isTrue();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), T0)).isTrue();
   }
 
   @Test
@@ -51,25 +51,25 @@ class StalenessPolicyTest {
     var clock = new TestClock(T0);
     var policy = StalenessPolicy.after(THRESHOLD, clock);
     clock.advance(THRESHOLD.plusMinutes(1));
-    assertThat(policy.isStale(new Phase.AwaitingModel(), T0)).isTrue();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), T0)).isTrue();
   }
 
   @Test
   void neverIsNeverStaleNoMatterHowMuchTimeHasPassed() {
     var policy = StalenessPolicy.never();
-    assertThat(policy.isStale(new Phase.AwaitingModel(), Instant.EPOCH)).isFalse();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), Instant.EPOCH)).isFalse();
   }
 
   @Test
   void thePhaseGivenToTheJudgmentIsThePhaseTheCallerPassed() {
     var clock = new TestClock(T0);
-    var seen = new Phase[1];
+    var seen = new AgentPhase[1];
     StalenessPolicy recording =
         (phase, lastSaved) -> {
           seen[0] = phase;
           return false;
         };
-    var phase = new Phase.AwaitingModel();
+    var phase = new AgentPhase.AwaitingModel();
     recording.isStale(phase, clock.instant());
     assertThat(seen[0]).isSameAs(phase);
   }
@@ -77,7 +77,8 @@ class StalenessPolicyTest {
   @Test
   void afterWithoutAnExplicitClockUsesSystemUtc() {
     var policy = StalenessPolicy.after(Duration.ofMillis(1));
-    assertThat(policy.isStale(new Phase.AwaitingModel(), Instant.now().minusSeconds(1))).isTrue();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), Instant.now().minusSeconds(1)))
+        .isTrue();
   }
 
   @Test
@@ -93,6 +94,6 @@ class StalenessPolicyTest {
   void aZeroThresholdIsLegalAndMakesEveryPhaseImmediatelyStale() {
     var clock = new TestClock(T0);
     var policy = StalenessPolicy.after(Duration.ZERO, clock);
-    assertThat(policy.isStale(new Phase.AwaitingModel(), T0)).isTrue();
+    assertThat(policy.isStale(new AgentPhase.AwaitingModel(), T0)).isTrue();
   }
 }

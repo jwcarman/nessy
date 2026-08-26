@@ -18,8 +18,8 @@ package org.jwcarman.nessy.agent.spi;
 import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Transition;
 
 /**
  * Machine-level narration: exactly what the shell decided, including the next phase. Observers
@@ -51,7 +51,7 @@ import org.jwcarman.nessy.agent.Transition;
 public interface HarnessObserver {
 
   /** One event applied: the fact and the whole transition — next phase, commits, effects. */
-  void applied(AgentId id, AgentEvent event, Transition transition);
+  void applied(AgentId id, AgentEvent event, AgentTransition transition);
 
   /** A stale or duplicate completion, discarded before anything was written (§3.4). */
   void ignored(AgentId id, AgentEvent event);
@@ -75,7 +75,7 @@ public interface HarnessObserver {
   static HarnessObserver noop() {
     return new HarnessObserver() {
       @Override
-      public void applied(AgentId id, AgentEvent event, Transition transition) {
+      public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
         // deliberately silent: the noop observer narrates nothing
       }
 

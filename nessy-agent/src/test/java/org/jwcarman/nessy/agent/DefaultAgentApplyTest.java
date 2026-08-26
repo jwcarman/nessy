@@ -29,7 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
@@ -48,6 +48,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 class DefaultAgentApplyTest {
 
@@ -74,7 +75,7 @@ class DefaultAgentApplyTest {
             List.of(new TextBlock("hello back")), List.of(), ModelResponseId.of("response-1")));
     f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
     assertThat(f.memory.remembered())
         .containsExactly(
             Message.user(List.of(new TextBlock("hello"))),
@@ -109,7 +110,7 @@ class DefaultAgentApplyTest {
     f.tools.answer("b", new ToolOutcome.Returned(ToolResult.ok("restarted")));
     f.agent.tell("do both");
     f.pump.pumpUntilQuiet();
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
     assertThat(f.tools.executed()).containsExactly(CALL_A, CALL_B);
     assertThat(f.memory.remembered())
         .containsExactly(
@@ -149,7 +150,7 @@ class DefaultAgentApplyTest {
     f.model.enqueue(new ModelOutcome.Failed("overloaded"));
     f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
     assertThat(f.memory.remembered())
         .containsExactly(Message.user(List.of(new TextBlock("hello"))));
     assertThat(f.observer.applied()).hasSize(2);
@@ -160,22 +161,23 @@ class DefaultAgentApplyTest {
     // Seed a store mid-fan-out: AwaitingTools{a,b}, and let a competitor apply a's result
     // out-of-band just before b's save — computed with the pure machine, no threads needed.
     var inner =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var turn =
         Message.assistant(
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
     var awaiting =
-        new Phase.AwaitingTools(
+        new AgentPhase.AwaitingTools(
             turn,
             Map.of("a", new ToolCallState.Running(), "b", new ToolCallState.Running()),
             ModelResponseId.of("response-1"));
-    inner.save(new State(awaiting, 0L)); // now at v1
+    inner.save(new Versioned<>(awaiting, 0L)); // now at v1
     var aFinished =
         new AgentEvent.ToolFinished(
             CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("42")));
     var aTransition = awaiting.handle(aFinished);
-    var f = new AgentFixture(new RaceOnceStore(inner, new State(aTransition.next(), 1L)), false);
+    var f =
+        new AgentFixture(new RaceOnceStore(inner, new Versioned<>(aTransition.next(), 1L)), false);
     // The competitor's own fold, off-thread from this test's real agent, also remembers its
     // ToolExchange BEFORE its own commit (remembrance spec §1 law 1) — the same
     // ToolFoldRemembrance mapping the real agent below uses, so the two converge on shared keys
@@ -205,7 +207,7 @@ class DefaultAgentApplyTest {
                     new ToolResultBlock("a", "42", false), new ToolResultBlock("b", "ok", false))),
             Message.assistant(List.of(new TextBlock("done"))));
     assertThat(f.model.callCount()).isEqualTo(1);
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
   }
 
   @Test
@@ -222,7 +224,7 @@ class DefaultAgentApplyTest {
     f.agent.tell("go");
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.applyFailures()).hasSize(1);
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.AwaitingModel());
     // deliver rethrows after narrating now (tool-context-defer spec §3); the throw ends the model
     // executor's task and nothing else, exactly as a real thread pool would treat it.
     assertThat(f.pump.failures()).hasSize(1);
@@ -237,7 +239,7 @@ class DefaultAgentApplyTest {
   @Test
   void aFoldThatCannotCommitIsNarratedOnceAndThenReachesItsCaller() {
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var failures = new ArrayList<AgentEvent>();
     var agent =
@@ -256,7 +258,7 @@ class DefaultAgentApplyTest {
     assertThatThrownBy(() -> agent.deliver(observed)).isInstanceOf(IllegalStateException.class);
 
     assertThat(failures).containsExactly(observed);
-    assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(store.load().value()).isEqualTo(new AgentPhase.Idle());
   }
 
   /**
@@ -270,7 +272,7 @@ class DefaultAgentApplyTest {
   @Test
   void aNestedFoldFailureUnderAnInlineExecutorIsNarratedOnceByTheFrameThatFailed() {
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var failures = new ArrayList<AgentEvent>();
     var queue = new ArrayDeque<String>();
@@ -307,7 +309,7 @@ class DefaultAgentApplyTest {
     assertThat(failures).hasSize(1);
     assertThat(failures.getFirst()).isInstanceOf(AgentEvent.ModelFinished.class);
     // the observation itself committed cleanly — only the nested model fold failed
-    assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    assertThat(store.load().value()).isEqualTo(new AgentPhase.AwaitingModel());
     // and it stays committed: this runs through drainOne, whose requeue arms guard the COMMIT
     // only. Moving follow() back inside that try would put the observation back on the backlog
     // after it had already been applied, and the next drain would double-apply it.
@@ -343,7 +345,7 @@ class DefaultAgentApplyTest {
   /** Records only {@code applyFailed}; every other callback is a silent no-op. */
   private record FailureRecorder(List<AgentEvent> narrated) implements HarnessObserver {
     @Override
-    public void applied(AgentId id, AgentEvent event, Transition transition) {
+    public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
       // silent: only applyFailed is recorded
     }
 
@@ -376,7 +378,7 @@ class DefaultAgentApplyTest {
   @Test
   void theStateIsSavedBeforeAnyEffectIsDispatched() {
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var versionsAtCall = new ArrayList<Long>();
     var queue = new ArrayDeque<String>();

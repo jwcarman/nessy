@@ -31,8 +31,8 @@ import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.RecordingHarnessObserver;
@@ -75,7 +75,7 @@ class FactStreamTest {
   private static final class Saboteur implements HarnessObserver {
 
     @Override
-    public void applied(AgentId id, AgentEvent event, Transition transition) {
+    public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
       throw new IllegalStateException("this subscriber is broken");
     }
 
@@ -109,8 +109,8 @@ class FactStreamTest {
   private static Harness<String> harness() {
     ModelCallExecutor silentModel = sink -> {};
     ToolCallExecutor noTools = new NoToolsExecutor();
-    AgentStateStore store =
-        new SubstrateAgentStateStore(
+    AgentPhaseStore store =
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), SCOPE.value(), Clock.systemUTC(), TestMappers.plainlyPinned());
     return TestAgents.harness(
         new VerbatimMemory(),

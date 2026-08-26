@@ -21,36 +21,39 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.State;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code state} recipe (substrate spec §6.1): one document per scope, keyed by {@code agentId}.
  * The document version IS the scope version — no separate version field rides in the payload — so
- * {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
+ * {@link #save(Versioned)} is a direct CAS write and a lost race surfaces as {@link
  * Substrate.Document}'s version disagreeing with what the caller believed it held.
  *
- * <p>The stored shape is a {@link Codec}{@code <}{@link Phase}{@code >} (spec §3, §7): the {@link
- * #SubstrateAgentStateStore(Substrate, String, Clock, ObjectMapper)} constructor defaults it to the
- * {@link StateCodec} binding; {@link #SubstrateAgentStateStore(Substrate, String, Clock, Codec)}
- * accepts a caller-supplied codec directly — a transform chained on with {@link
+ * <p>The stored shape is a {@link Codec}{@code <}{@link AgentPhase}{@code >} (spec §3, §7): the
+ * {@link #SubstrateAgentPhaseStore(Substrate, String, Clock, ObjectMapper)} constructor defaults it
+ * to the {@link StateCodec} binding; {@link #SubstrateAgentPhaseStore(Substrate, String, Clock,
+ * Codec)} accepts a caller-supplied codec directly — a transform chained on with {@link
  * Codec#andThen(Codec)} (encryption, compression) or a test probe.
  */
-public final class SubstrateAgentStateStore implements AgentStateStore {
+public final class SubstrateAgentPhaseStore implements AgentPhaseStore {
 
   private static final String KIND = "state";
+
+  /** The never-saved default: a scope that has never saved loads {@code Idle} at version 0. */
+  private static final Versioned<AgentPhase> INITIAL = new Versioned<>(new AgentPhase.Idle(), 0L);
 
   private final Substrate store;
   private final String agentId;
   private final Instant birth;
-  private final DocumentStore<Phase> documents;
+  private final DocumentStore<AgentPhase> documents;
 
   /** Defaults the stored shape to the {@link StateCodec} binding over {@code mapper}. */
-  public SubstrateAgentStateStore(
+  public SubstrateAgentPhaseStore(
       Substrate store, String agentId, Clock clock, ObjectMapper mapper) {
     this(
         store,
@@ -60,8 +63,8 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
             new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"))));
   }
 
-  public SubstrateAgentStateStore(
-      Substrate store, String agentId, Clock clock, Codec<Phase> codec) {
+  public SubstrateAgentPhaseStore(
+      Substrate store, String agentId, Clock clock, Codec<AgentPhase> codec) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.birth = Objects.requireNonNull(clock, "clock must not be null").instant();
@@ -69,25 +72,22 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
   }
 
   @Override
-  public State load() {
-    return documents
-        .read(agentId)
-        .map(versioned -> new State(versioned.value(), versioned.version()))
-        .orElseGet(State::initial);
+  public Versioned<AgentPhase> load() {
+    return documents.read(agentId).orElse(INITIAL);
   }
 
   @Override
-  public void save(State state) {
-    Objects.requireNonNull(state, "state must not be null");
+  public void save(Versioned<AgentPhase> phase) {
+    Objects.requireNonNull(phase, "phase must not be null");
     try {
-      documents.write(agentId, state.phase(), state.version());
+      documents.write(agentId, phase.value(), phase.version());
     } catch (ConflictException _) {
       // Non-decoding version() read (typed-stores fix round 1, Q6): the conflict is already known
       // — this is only naming the actual version for StaleStateException's message — so a foreign-
-      // shaped winner (a different Phase-incompatible payload at this key) must surface as the
+      // shaped winner (a different AgentPhase-incompatible payload at this key) must surface as the
       // conflict it is, not as an unrelated decode failure masking it.
       long actual = documents.version(agentId).orElse(0L);
-      throw new StaleStateException(state.version(), actual);
+      throw new StaleStateException(phase.version(), actual);
     }
   }
 
@@ -100,7 +100,7 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
    * Adapts {@link StateCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam —
    * internal, not a new public type (spec §3, §7).
    */
-  private static final class StateCodecAdapter implements Codec<Phase> {
+  private static final class StateCodecAdapter implements Codec<AgentPhase> {
 
     private final StateCodec codec;
 
@@ -109,12 +109,12 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
     }
 
     @Override
-    public byte[] encode(Phase phase) {
+    public byte[] encode(AgentPhase phase) {
       return codec.toJson(phase).getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
-    public Phase decode(byte[] bytes) {
+    public AgentPhase decode(byte[] bytes) {
       return codec.phase(new String(bytes, StandardCharsets.UTF_8));
     }
   }

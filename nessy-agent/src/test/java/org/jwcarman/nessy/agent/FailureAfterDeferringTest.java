@@ -38,7 +38,7 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
@@ -61,6 +61,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -132,8 +133,8 @@ class FailureAfterDeferringTest {
 
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final InMemorySubstrate substrate = new InMemorySubstrate();
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final VerbatimMemory memory = new VerbatimMemory();
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
@@ -208,8 +209,8 @@ class FailureAfterDeferringTest {
             approvalClient,
             toolClient);
     store.save(
-        new State(
-            new Phase.AwaitingTools(
+        new Versioned<>(
+            new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(CALL))),
                 Map.of(CALL.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),
@@ -237,7 +238,7 @@ class FailureAfterDeferringTest {
     // contract the spec names (§1.2)
     assertThat(result.content()).isEqualTo("tool answered after deferring");
     // the call is finished, so the whole turn committed and the scope moved on
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
   }
 
   @Test
@@ -250,7 +251,7 @@ class FailureAfterDeferringTest {
     ToolResultBlock result = theOneFoldedResult();
     assertThat(result.isError()).isTrue();
     assertThat(result.content()).isEqualTo("the ticket system rejected it");
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
   }
 
   /**

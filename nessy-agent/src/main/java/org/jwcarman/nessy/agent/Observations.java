@@ -278,7 +278,7 @@ final class Observations implements HarnessObserver {
    * only once the wait that caused it is already open and recorded as its child.
    */
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     openSegmentIfAbsent(id);
     switch (event) {
       case AgentEvent.ApprovalDeferred(ToolCall call, var _, var _) ->
@@ -506,14 +506,14 @@ final class Observations implements HarnessObserver {
   }
 
   /**
-   * The two ways a segment ends (spec §2): the scope went {@link Phase.Idle}, or it parked — a
+   * The two ways a segment ends (spec §2): the scope went {@link AgentPhase.Idle}, or it parked — a
    * phase where nothing is left {@code Running} or {@code Pending}, so no further work happens
    * until something outside answers. A turn that failed is still a turn that ended; {@code
    * ModelFinished(Failed)} folds to {@code Idle} and is what tells the two apart.
    */
-  private void closeSegmentIfEnded(AgentId id, AgentEvent event, Transition transition) {
-    Phase next = transition.next();
-    if (next instanceof Phase.Idle) {
+  private void closeSegmentIfEnded(AgentId id, AgentEvent event, AgentTransition transition) {
+    AgentPhase next = transition.next();
+    if (next instanceof AgentPhase.Idle) {
       closeSegment(id, isFailure(event) ? FAILED : COMPLETE);
     } else if (isParked(next)) {
       closeSegment(id, PARKED);
@@ -525,15 +525,15 @@ final class Observations implements HarnessObserver {
   }
 
   /**
-   * A parked phase: {@link Phase.AwaitingTools} with every call either waiting on something outside
-   * the process ({@code AwaitingApproval}/{@code AwaitingResult}) or already {@code Finished}.
-   * While ANY call is still {@code Running} or {@code Pending} the segment has work in flight and
-   * stays open, which is why a park is detected here rather than at the {@code *Deferred} event
-   * itself: a call can park while a sibling is still running, and the segment ends only when the
-   * last sibling finishes.
+   * A parked phase: {@link AgentPhase.AwaitingTools} with every call either waiting on something
+   * outside the process ({@code AwaitingApproval}/{@code AwaitingResult}) or already {@code
+   * Finished}. While ANY call is still {@code Running} or {@code Pending} the segment has work in
+   * flight and stays open, which is why a park is detected here rather than at the {@code
+   * *Deferred} event itself: a call can park while a sibling is still running, and the segment ends
+   * only when the last sibling finishes.
    */
-  private static boolean isParked(Phase next) {
-    if (!(next instanceof Phase.AwaitingTools awaiting)) {
+  private static boolean isParked(AgentPhase next) {
+    if (!(next instanceof AgentPhase.AwaitingTools awaiting)) {
       return false;
     }
     return awaiting.calls().values().stream().noneMatch(Observations::isInFlight);

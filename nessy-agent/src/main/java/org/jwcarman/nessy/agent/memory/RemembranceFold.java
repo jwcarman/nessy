@@ -41,8 +41,8 @@ import org.jwcarman.nessy.spi.Remembrance;
  * assistant message itself is remembered only once every sibling has, alongside the LAST one to
  * finish): an exchange that arrives with no pending assistant message to answer is held in {@link
  * #orphanExchanges} until one claims it. Only one assistant turn is ever outstanding at a time —
- * the reducer never advances past {@code AwaitingTools} until every pending call is answered (Phase
- * spec §2.2) — so nothing here needs to track more than one turn's worth of orphans.
+ * the reducer never advances past {@code AwaitingTools} until every pending call is answered
+ * (AgentPhase spec §2.2) — so nothing here needs to track more than one turn's worth of orphans.
  */
 final class RemembranceFold {
 

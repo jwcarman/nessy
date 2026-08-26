@@ -19,14 +19,14 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
 /** Writes down everything the shell says. */
 public final class RecordingObserver implements HarnessObserver {
 
-  public record Applied(AgentEvent event, Transition transition) {}
+  public record Applied(AgentEvent event, AgentTransition transition) {}
 
   private final List<Applied> applied = new ArrayList<>();
   private final List<AgentEvent> ignored = new ArrayList<>();
@@ -36,7 +36,7 @@ public final class RecordingObserver implements HarnessObserver {
   private final List<Object> requeued = new ArrayList<>();
 
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     applied.add(new Applied(event, transition));
   }
 

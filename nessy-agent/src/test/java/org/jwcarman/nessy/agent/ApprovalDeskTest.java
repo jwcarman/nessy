@@ -30,8 +30,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.ContinuumClient;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.TypedOutcome;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -44,6 +44,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.authorization.Key;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.jwcarman.nessy.testing.ScriptedApprover;
 
 /**
@@ -64,8 +65,8 @@ class ApprovalDeskTest {
   private int nudges;
   private final ApprovalDesk desk = new ApprovalDesk(client, this::storeFor, () -> nudges++);
 
-  private AgentStateStore storeFor(String id) {
-    return new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), mapper);
+  private AgentPhaseStore storeFor(String id) {
+    return new SubstrateAgentPhaseStore(substrate, id, Clock.systemUTC(), mapper);
   }
 
   private static Routing routing() {
@@ -87,13 +88,13 @@ class ApprovalDeskTest {
   /** Puts the scope in {@code AwaitingApproval(id)} for {@code c1}, the way the fold would. */
   private void scopeAwaits(ComputationId id) {
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL, null)));
-    Phase phase =
-        new Phase.AwaitingTools(
+    AgentPhase phase =
+        new AgentPhase.AwaitingTools(
             turn,
             Map.of("c1", new ToolCallState.AwaitingApproval(id, request())),
             ModelResponseId.of("response-1"));
-    AgentStateStore store = storeFor(SCOPE.value());
-    store.save(new State(phase, store.load().version()));
+    AgentPhaseStore store = storeFor(SCOPE.value());
+    store.save(new Versioned<>(phase, store.load().version()));
   }
 
   @Test
@@ -231,33 +232,33 @@ class ApprovalDeskTest {
 
   /**
    * Real fold, not a stand-in: threads {@link AgentEvent.ApprovalDeferred} through {@link
-   * Phase#handle} exactly as {@code DeliveryWorker.fold} would, minus effect dispatch (deferring
-   * has none) — so the request the store ends up holding is the one that actually passed through
-   * the reducer, not a second, separately-constructed-but-equal instance.
+   * AgentPhase#handle} exactly as {@code DeliveryWorker.fold} would, minus effect dispatch
+   * (deferring has none) — so the request the store ends up holding is the one that actually passed
+   * through the reducer, not a second, separately-constructed-but-equal instance.
    */
-  private static void fold(AgentStateStore store, AgentEvent event) {
-    State current = store.load();
-    Transition transition = current.phase().handle(event);
-    store.save(new State(transition.next(), current.version()));
+  private static void fold(AgentPhaseStore store, AgentEvent event) {
+    Versioned<AgentPhase> current = store.load();
+    AgentTransition transition = current.value().handle(event);
+    store.save(new Versioned<>(transition.next(), current.version()));
   }
 
   /**
    * Seeds the scope with {@code c1} freshly {@link ToolCallState.Pending} — {@code defer()}'s
-   * precondition ({@link Phase.AwaitingTools#handle} only admits {@code ApprovalDeferred} from
+   * precondition ({@link AgentPhase.AwaitingTools#handle} only admits {@code ApprovalDeferred} from
    * {@code Pending}).
    */
-  private static void seedPending(AgentStateStore store) {
+  private static void seedPending(AgentPhaseStore store) {
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL, null)));
-    Phase phase =
-        Phase.AwaitingTools.opening(turn, List.of(CALL), ModelResponseId.of("response-1"));
-    store.save(new State(phase, store.load().version()));
+    AgentPhase phase =
+        AgentPhase.AwaitingTools.opening(turn, List.of(CALL), ModelResponseId.of("response-1"));
+    store.save(new Versioned<>(phase, store.load().version()));
   }
 
   @Test
   void theByCoordinatesDoorShowsExactlyWhatTheApproverSaw() {
     ApprovalRequest question = request();
     ScriptedApprover approver = ScriptedApprover.deferring();
-    AgentStateStore store = storeFor(SCOPE.value());
+    AgentPhaseStore store = storeFor(SCOPE.value());
     seedPending(store);
     ComputationApprovalContext context =
         new ComputationApprovalContext(client, routing(), question, event -> fold(store, event));

@@ -16,24 +16,25 @@
 package org.jwcarman.nessy.agent.store;
 
 import java.time.Instant;
-import org.jwcarman.nessy.agent.State;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * Owns a scope's control state. Pre-scoped: no id parameter anywhere (spec §3.5). Every
  * implementation enforces the version CAS — it is the system's only lock (spec §3.2), the in-memory
  * store included.
  */
-public interface AgentStateStore {
+public interface AgentPhaseStore {
 
-  /** Never null; a scope that has never saved loads {@link State#initial()}. */
-  State load();
+  /** Never null; a scope that has never saved loads {@code Idle} at version {@code 0}. */
+  Versioned<AgentPhase> load();
 
   /**
-   * Persists {@code state.phase()} at {@code state.version() + 1} if and only if the stored version
-   * still equals {@code state.version()}; otherwise throws {@link StaleStateException}. The caller
-   * passes the state it loaded — it never computes the next version (spec §3.4).
+   * Persists {@code phase.value()} at {@code phase.version() + 1} if and only if the stored version
+   * still equals {@code phase.version()}; otherwise throws {@link StaleStateException}. The caller
+   * passes the version it loaded — it never computes the next version (spec §3.4).
    */
-  void save(State state);
+  void save(Versioned<AgentPhase> phase);
 
   /**
    * The instant of the most recent successful {@link #save}; a scope that has never saved reports

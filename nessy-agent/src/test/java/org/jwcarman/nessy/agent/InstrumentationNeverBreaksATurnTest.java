@@ -44,7 +44,7 @@ import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.Sink;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -74,6 +74,7 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -265,10 +266,10 @@ class InstrumentationNeverBreaksATurnTest {
    */
   private static final class SecondWriter implements Memory {
 
-    private final SubstrateAgentStateStore store;
+    private final SubstrateAgentPhaseStore store;
     private final AtomicInteger remaining;
 
-    private SecondWriter(SubstrateAgentStateStore store, int count) {
+    private SecondWriter(SubstrateAgentPhaseStore store, int count) {
       this.store = store;
       this.remaining = new AtomicInteger(count);
     }
@@ -276,8 +277,8 @@ class InstrumentationNeverBreaksATurnTest {
     @Override
     public void remember(Remembrance remembrance) {
       if (remaining.getAndDecrement() > 0) {
-        State current = store.load();
-        store.save(new State(current.phase(), current.version()));
+        Versioned<AgentPhase> current = store.load();
+        store.save(new Versioned<>(current.value(), current.version()));
       }
     }
 
@@ -444,9 +445,9 @@ class InstrumentationNeverBreaksATurnTest {
           .observationConfig()
           .observationHandler(new ThrowsOnStart("nessy.state.stale_retries"));
       var substrate = new InMemorySubstrate();
-      var store = new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
+      var store = new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
       var contender =
-          new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
+          new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
       Harness<String> harness =
           TestAgents.harness(
               AgentType.of("test"),
@@ -464,7 +465,7 @@ class InstrumentationNeverBreaksATurnTest {
       harness.bind(SCOPE).tell("restart prod-eu");
 
       // Converged: the losing write was retried and the observation is folded, not lost.
-      assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+      assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
       assertThat(warnings(captured)).hasSize(1);
     }
   }

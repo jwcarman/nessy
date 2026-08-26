@@ -48,8 +48,8 @@ class AwaitingModelPhaseTest {
     var content = List.<ContentBlock>of(new TextBlock("done"));
     var event =
         new AgentEvent.ModelFinished(new ModelOutcome.Responded(content, List.of(), RESPONSE_ID));
-    var t = new Phase.AwaitingModel().handle(event);
-    assertThat(t.next()).isEqualTo(new Phase.Idle());
+    var t = new AgentPhase.AwaitingModel().handle(event);
+    assertThat(t.next()).isEqualTo(new AgentPhase.Idle());
     assertThat(t.commit()).containsExactly(Message.assistant(content));
     assertThat(t.effects()).isEmpty();
   }
@@ -61,12 +61,12 @@ class AwaitingModelPhaseTest {
     var event =
         new AgentEvent.ModelFinished(
             new ModelOutcome.Responded(content, List.of(CALL_A, CALL_B), RESPONSE_ID));
-    var t = new Phase.AwaitingModel().handle(event);
+    var t = new AgentPhase.AwaitingModel().handle(event);
     // the held-back unit: NOTHING committed until every result is in (spec §2.5)
     assertThat(t.commit()).isEmpty();
     assertThat(t.next())
         .isEqualTo(
-            new Phase.AwaitingTools(
+            new AgentPhase.AwaitingTools(
                 Message.assistant(content),
                 Map.of("a", new ToolCallState.Pending(), "b", new ToolCallState.Pending()),
                 RESPONSE_ID));
@@ -80,16 +80,16 @@ class AwaitingModelPhaseTest {
     var event =
         new AgentEvent.ModelFinished(
             new ModelOutcome.Responded(content, List.of(CALL_A), RESPONSE_ID));
-    var t = new Phase.AwaitingModel().handle(event);
-    var held = ((Phase.AwaitingTools) t.next()).assistantTurn();
+    var t = new AgentPhase.AwaitingModel().handle(event);
+    var held = ((AgentPhase.AwaitingTools) t.next()).assistantTurn();
     assertThat(held.content()).containsExactly(new ToolUseBlock(CALL_A, "gemini-thought-sig"));
   }
 
   @Test
   void aModelFailureGoesIdleAndCommitsNothing() {
     var event = new AgentEvent.ModelFinished(new ModelOutcome.Failed("overloaded"));
-    var t = new Phase.AwaitingModel().handle(event);
-    assertThat(t.next()).isEqualTo(new Phase.Idle());
+    var t = new AgentPhase.AwaitingModel().handle(event);
+    assertThat(t.next()).isEqualTo(new AgentPhase.Idle());
     assertThat(t.commit()).isEmpty();
     assertThat(t.effects()).isEmpty();
   }
@@ -99,7 +99,7 @@ class AwaitingModelPhaseTest {
     var event =
         new AgentEvent.ToolFinished(
             CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
-    assertThat(new Phase.AwaitingModel().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.AwaitingModel().handle(event).isIgnored()).isTrue();
   }
 
   @Test
@@ -109,18 +109,18 @@ class AwaitingModelPhaseTest {
         ApprovalRequest.draft("ops", "prod-1", CALL_A, Map.of(), new ObjectMapper()).freeze();
 
     assertThat(
-            new Phase.AwaitingModel()
+            new AgentPhase.AwaitingModel()
                 .handle(new AgentEvent.ApprovalDeferred(CALL_A, parked, request))
                 .isIgnored())
         .isTrue();
     assertThat(
-            new Phase.AwaitingModel()
+            new AgentPhase.AwaitingModel()
                 .handle(
                     new AgentEvent.ApprovalAnswered(CALL_A, Optional.empty(), Approval.approved()))
                 .isIgnored())
         .isTrue();
     assertThat(
-            new Phase.AwaitingModel()
+            new AgentPhase.AwaitingModel()
                 .handle(new AgentEvent.ToolDeferred(CALL_A, parked))
                 .isIgnored())
         .isTrue();
@@ -128,7 +128,7 @@ class AwaitingModelPhaseTest {
 
   @Test
   void anObservationReachingThisPhaseIsAProgrammingError() {
-    var phase = new Phase.AwaitingModel();
+    var phase = new AgentPhase.AwaitingModel();
     var event = new AgentEvent.Observed(List.of(new TextBlock("hi")));
     assertThatThrownBy(() -> phase.handle(event)).isInstanceOf(IllegalStateException.class);
   }
@@ -137,9 +137,9 @@ class AwaitingModelPhaseTest {
   class Purity {
 
     /**
-     * The purity law (durable-deliveries spec §2): {@code Phase.handle} never mints its own id, so
-     * a CAS-retry re-handling the same committed {@code ModelFinished} event against fresh state
-     * folds to identical state — the carried {@code responseId} included — every time.
+     * The purity law (durable-deliveries spec §2): {@code AgentPhase.handle} never mints its own
+     * id, so a CAS-retry re-handling the same committed {@code ModelFinished} event against fresh
+     * state folds to identical state — the carried {@code responseId} included — every time.
      */
     @Test
     void reHandlingTheSameModelFinishedEventTwiceYieldsIdenticalStateIncludingTheResponseId() {
@@ -150,12 +150,12 @@ class AwaitingModelPhaseTest {
           new AgentEvent.ModelFinished(
               new ModelOutcome.Responded(content, List.of(CALL_A, CALL_B), RESPONSE_ID));
 
-      var first = new Phase.AwaitingModel().handle(event).next();
-      var second = new Phase.AwaitingModel().handle(event).next();
+      var first = new AgentPhase.AwaitingModel().handle(event).next();
+      var second = new AgentPhase.AwaitingModel().handle(event).next();
 
       assertThat(first).isEqualTo(second);
-      assertThat(((Phase.AwaitingTools) first).responseId())
-          .isEqualTo(((Phase.AwaitingTools) second).responseId())
+      assertThat(((AgentPhase.AwaitingTools) first).responseId())
+          .isEqualTo(((AgentPhase.AwaitingTools) second).responseId())
           .isEqualTo(RESPONSE_ID);
     }
   }

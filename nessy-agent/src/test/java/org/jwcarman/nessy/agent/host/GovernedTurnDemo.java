@@ -23,9 +23,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -166,7 +166,7 @@ class GovernedTurnDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
@@ -201,8 +201,8 @@ class GovernedTurnDemo {
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
 
       System.out.println(
-          "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+          "phase after park: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
 
       assertThat(requests).isNotEmpty();
       assertThat(requests).hasSize(1);
@@ -223,7 +223,7 @@ class GovernedTurnDemo {
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
       // assuming a single pumpUntilQuiet() call already caught it.
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+      while (!(prodEuState.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
@@ -232,8 +232,8 @@ class GovernedTurnDemo {
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
       // call past the gate directly from the grant's own continuation — no re-derivation, no
       // second ask. The tool runs exactly once and the turn completes.
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(requests).hasSize(1);
     } finally {
       harness.shutdown();
@@ -245,7 +245,7 @@ class GovernedTurnDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
@@ -277,8 +277,8 @@ class GovernedTurnDemo {
       harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(requests).isEmpty();
 
       List<Message> transcript =

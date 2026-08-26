@@ -24,10 +24,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.ToolCallState;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -190,9 +190,9 @@ class PumpsAreNeverStarvedTest {
     var harnessC =
         harness("starve-c", modelC, substrate, ToolGrant.grant(toolC, ACTION, Approvers.allow()));
     try {
-      var stateA = new SubstrateAgentStateStore(substrate, "svc-a", Clock.systemUTC(), mapper);
-      var stateB = new SubstrateAgentStateStore(substrate, "svc-b", Clock.systemUTC(), mapper);
-      var stateC = new SubstrateAgentStateStore(substrate, "svc-c", Clock.systemUTC(), mapper);
+      var stateA = new SubstrateAgentPhaseStore(substrate, "svc-a", Clock.systemUTC(), mapper);
+      var stateB = new SubstrateAgentPhaseStore(substrate, "svc-b", Clock.systemUTC(), mapper);
+      var stateC = new SubstrateAgentPhaseStore(substrate, "svc-c", Clock.systemUTC(), mapper);
 
       harnessA.bind(AgentId.of("svc-a")).tell("please block a");
       harnessB.bind(AgentId.of("svc-b")).tell("please block b");
@@ -212,7 +212,7 @@ class PumpsAreNeverStarvedTest {
       // tool. If the shared ComputationScheduler pool were starved by the two blocked folds, this
       // would never fold — svc-c's phase would sit at AwaitingResult(execution) forever.
       harnessC.completions().complete(execution, ToolResult.ok("unrelated done"));
-      awaitPhase(stateC, Phase.Idle.class);
+      awaitPhase(stateC, AgentPhase.Idle.class);
 
       // The blocked tools genuinely had not finished yet when svc-c completed.
       assertThat(toolA.hasStarted()).isTrue();
@@ -220,8 +220,8 @@ class PumpsAreNeverStarvedTest {
 
       toolA.release();
       toolB.release();
-      awaitPhase(stateA, Phase.Idle.class);
-      awaitPhase(stateB, Phase.Idle.class);
+      awaitPhase(stateA, AgentPhase.Idle.class);
+      awaitPhase(stateB, AgentPhase.Idle.class);
     } finally {
       toolA.release();
       toolB.release();
@@ -243,13 +243,14 @@ class PumpsAreNeverStarvedTest {
                 .substrate(substrate));
   }
 
-  private static void awaitPhase(SubstrateAgentStateStore state, Class<? extends Phase> expected)
+  private static void awaitPhase(
+      SubstrateAgentPhaseStore state, Class<? extends AgentPhase> expected)
       throws InterruptedException {
     long deadline = System.currentTimeMillis() + 5000;
-    while (!expected.isInstance(state.load().phase()) && System.currentTimeMillis() < deadline) {
+    while (!expected.isInstance(state.load().value()) && System.currentTimeMillis() < deadline) {
       Thread.sleep(10);
     }
-    assertThat(state.load().phase()).isInstanceOf(expected);
+    assertThat(state.load().value()).isInstanceOf(expected);
   }
 
   /**
@@ -259,11 +260,11 @@ class PumpsAreNeverStarvedTest {
    * a {@code Pending} call loudly. Under a loaded suite that gap is wide enough to lose, which is
    * exactly how this test failed once on a full reactor build and never in isolation.
    */
-  private static void awaitAwaitingApproval(SubstrateAgentStateStore state, String callId)
+  private static void awaitAwaitingApproval(SubstrateAgentPhaseStore state, String callId)
       throws InterruptedException {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
-      if (state.load().phase() instanceof Phase.AwaitingTools awaiting
+      if (state.load().value() instanceof AgentPhase.AwaitingTools awaiting
           && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval) {
         return;
       }
@@ -273,11 +274,11 @@ class PumpsAreNeverStarvedTest {
   }
 
   /** Polls until {@code callId} is {@code AwaitingResult} and returns the computation it names. */
-  private static ComputationId awaitAwaitingResult(SubstrateAgentStateStore state, String callId)
+  private static ComputationId awaitAwaitingResult(SubstrateAgentPhaseStore state, String callId)
       throws InterruptedException {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
-      if (state.load().phase() instanceof Phase.AwaitingTools awaiting
+      if (state.load().value() instanceof AgentPhase.AwaitingTools awaiting
           && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingResult awaitingResult) {
         return awaitingResult.tool();
       }

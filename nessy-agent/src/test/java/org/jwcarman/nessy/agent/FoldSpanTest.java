@@ -43,7 +43,7 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -63,6 +63,7 @@ import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * {@code nessy.fold} (in-the-loop amendment §2, §3): load, handle, remember, CAS save — the span
@@ -189,9 +190,9 @@ class FoldSpanTest {
     public void remember(Remembrance remembrance) {
       if (countdown.decrementAndGet() == 0) {
         var contender =
-            new SubstrateAgentStateStore(underlying, SCOPE.value(), Clock.systemUTC(), mapper);
-        State current = contender.load();
-        contender.save(new State(current.phase(), current.version()));
+            new SubstrateAgentPhaseStore(underlying, SCOPE.value(), Clock.systemUTC(), mapper);
+        Versioned<AgentPhase> current = contender.load();
+        contender.save(new Versioned<>(current.value(), current.version()));
       }
     }
 
@@ -225,7 +226,7 @@ class FoldSpanTest {
         TestAgents.harness(
             TYPE,
             memory,
-            new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper),
+            new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper),
             new QueueBacklog(),
             text -> List.of(new TextBlock(text)),
             sink -> sink.deliver(new AgentEvent.ModelFinished(answered())),
@@ -302,21 +303,21 @@ class FoldSpanTest {
                     .continuationCodec(Routing.codec(mapper))
                     .deadline(Duration.ofHours(1)));
 
-    private void parkOn(SubstrateAgentStateStore store, ComputationId computation) {
+    private void parkOn(SubstrateAgentPhaseStore store, ComputationId computation) {
       Message turn = Message.assistant(List.of(new ToolUseBlock(RESTART)));
-      Phase phase =
-          new Phase.AwaitingTools(
+      AgentPhase phase =
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of("c1", new ToolCallState.AwaitingResult(computation)),
               ModelResponseId.of("r1"));
-      store.save(new State(phase, store.load().version()));
+      store.save(new Versioned<>(phase, store.load().version()));
     }
 
     /** The worker's own arm of the retry: a lost CAS is a second span there too. */
     @Test
     void a_cas_conflict_in_the_worker_produces_a_second_fold_span() {
       var store =
-          new SubstrateAgentStateStore(underlying, SCOPE.value(), Clock.systemUTC(), mapper);
+          new SubstrateAgentPhaseStore(underlying, SCOPE.value(), Clock.systemUTC(), mapper);
       Harness<String> harness =
           TestAgents.harness(
               TYPE,
@@ -348,7 +349,7 @@ class FoldSpanTest {
       worker.drainTools(BatchSize.of(10));
 
       assertThat(named(Observations.FOLD)).hasSize(2);
-      assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+      assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
     }
   }
 

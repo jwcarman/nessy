@@ -22,9 +22,9 @@ import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -90,7 +90,7 @@ class HarnessApprovalDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var call =
         new ToolCall(
@@ -117,8 +117,8 @@ class HarnessApprovalDemo {
       pump.pumpUntilQuiet();
 
       System.out.println(
-          "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+          "phase after park: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
       // The phase is the map (approval-lifecycle spec §1.6): the desk resolves the parked
       // question, and the document it shows is the one the approver was handed.
       assertThat(harness.approvals().request(AgentId.of("prod-eu"), "c1").action())
@@ -131,7 +131,7 @@ class HarnessApprovalDemo {
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
       // assuming a single pumpUntilQuiet() call already caught it.
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+      while (!(prodEuState.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
@@ -140,8 +140,8 @@ class HarnessApprovalDemo {
       // The answer arc (approval-lifecycle spec §5): the delivery worker only folds the answer, and
       // THAT fold emits RunTool — the lease pays for a message, never for the work. The tool runs
       // exactly once and the turn completes.
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
     } finally {
       harness.shutdown();
     }
@@ -152,7 +152,7 @@ class HarnessApprovalDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var call =
         new ToolCall(
@@ -178,7 +178,7 @@ class HarnessApprovalDemo {
       harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pump.pumpUntilQuiet();
 
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      assertThat(prodEuState.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
       System.out.println("== the desk says no; the denial arrives in-band ==");
       harness
           .approvals()
@@ -186,14 +186,14 @@ class HarnessApprovalDemo {
       // deny() only submits the drain now (continuum-adoption spec §7) — see the sibling test's
       // note on approve().
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+      while (!(prodEuState.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
       }
 
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
       List<Message> transcript =
           new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
               .recall()

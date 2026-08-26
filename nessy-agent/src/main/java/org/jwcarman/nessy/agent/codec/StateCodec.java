@@ -20,19 +20,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
- * Internal storage machinery: renders {@link Phase} to and from the JSON the byte-payload substrate
- * persists as the {@code state} document's payload (spec §7). Not API vocabulary — the scope
- * version lives in the substrate's own document version (see the {@code state} recipe), not in this
- * payload.
+ * Internal storage machinery: renders {@link AgentPhase} to and from the JSON the byte-payload
+ * substrate persists as the {@code state} document's payload (spec §7). Not API vocabulary — the
+ * scope version lives in the substrate's own document version (see the {@code state} recipe), not
+ * in this payload.
  *
- * <p>{@link Phase} carries its own Jackson annotations (spec §7); this codec is the mapper-binding
- * boundary. {@code AwaitingTools} round-trips through its canonical constructor, so its
- * calls-non-empty and calls-subset-of-the-turn invariants are re-checked on every read — a
+ * <p>{@link AgentPhase} carries its own Jackson annotations (spec §7); this codec is the
+ * mapper-binding boundary. {@code AwaitingTools} round-trips through its canonical constructor, so
+ * its calls-non-empty and calls-subset-of-the-turn invariants are re-checked on every read — a
  * violation surfaces as a Jackson failure this codec translates into an {@link
  * IllegalArgumentException} naming the offense, same as a malformed payload or an unrecognized
  * discriminator.
@@ -50,15 +50,15 @@ public final class StateCodec {
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
-  public String toJson(Phase phase) {
+  public String toJson(AgentPhase phase) {
     Objects.requireNonNull(phase, "phase must not be null");
     return codecs.write(phase);
   }
 
-  public Phase phase(String json) {
+  public AgentPhase phase(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, "phase");
-    return attach(codecs.bind(root, Phase.class, "phase"));
+    return attach(codecs.bind(root, AgentPhase.class, "phase"));
   }
 
   /**
@@ -67,13 +67,13 @@ public final class StateCodec {
    * unattached facts bag and would throw on the first typed read — which is exactly what the desk
    * does when it shows a human the parked question.
    */
-  private Phase attach(Phase phase) {
-    if (!(phase instanceof Phase.AwaitingTools awaiting)) {
+  private AgentPhase attach(AgentPhase phase) {
+    if (!(phase instanceof AgentPhase.AwaitingTools awaiting)) {
       return phase;
     }
     Map<String, ToolCallState> attached = new TreeMap<>();
     awaiting.calls().forEach((callId, status) -> attached.put(callId, attach(status)));
-    return new Phase.AwaitingTools(awaiting.assistantTurn(), attached, awaiting.responseId());
+    return new AgentPhase.AwaitingTools(awaiting.assistantTurn(), attached, awaiting.responseId());
   }
 
   private ToolCallState attach(ToolCallState status) {

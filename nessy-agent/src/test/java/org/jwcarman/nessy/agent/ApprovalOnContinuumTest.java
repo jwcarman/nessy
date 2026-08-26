@@ -38,7 +38,7 @@ import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
@@ -64,6 +64,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The approval kind on Continuum (approval-lifecycle spec §1.3, §2, §5): a deferral parks one
@@ -146,8 +147,8 @@ class ApprovalOnContinuumTest {
   private final PumpedExecutor pump = new PumpedExecutor();
   private final RecordingTurnObserver turn = new RecordingTurnObserver();
   private final VerbatimMemory memory = new VerbatimMemory();
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
   private final RegistryToolCallExecutor executor =
@@ -205,8 +206,8 @@ class ApprovalOnContinuumTest {
    */
   private void driveOnceWithPending(ToolCall call) {
     store.save(
-        new State(
-            new Phase.AwaitingTools(
+        new Versioned<>(
+            new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
                 Map.of(call.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),
@@ -222,8 +223,8 @@ class ApprovalOnContinuumTest {
 
   /** The computation the phase says this call is awaiting approval of. */
   private ComputationId parkedIdFor(ToolCall call) {
-    Phase phase = store.load().phase();
-    ToolCallState status = ((Phase.AwaitingTools) phase).calls().get(call.id());
+    AgentPhase phase = store.load().value();
+    ToolCallState status = ((AgentPhase.AwaitingTools) phase).calls().get(call.id());
     return ((ToolCallState.AwaitingApproval) status).approval();
   }
 

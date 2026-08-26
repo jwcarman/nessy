@@ -52,8 +52,8 @@ import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -424,8 +424,8 @@ public final class HarnessConfig<O> {
         memoryFactory != null
             ? memoryFactory
             : id -> new SubstrateMemory(effectiveSubstrate, id, pinned);
-    Function<String, AgentStateStore> effectiveStoreFactory =
-        id -> new SubstrateAgentStateStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
+    Function<String, AgentPhaseStore> effectiveStoreFactory =
+        id -> new SubstrateAgentPhaseStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
     Function<String, Backlog<O>> effectiveBacklogFactory =
         id ->
             new SubstrateBacklog<>(effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);

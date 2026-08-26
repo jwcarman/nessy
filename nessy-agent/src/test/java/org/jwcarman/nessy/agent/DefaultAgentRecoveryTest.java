@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 class DefaultAgentRecoveryTest {
 
@@ -53,18 +54,18 @@ class DefaultAgentRecoveryTest {
   private static final ToolCall CALL_A =
       new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
 
-  private static AgentFixture stalled(Phase phase, TestClock clock) {
+  private static AgentFixture stalled(AgentPhase phase, TestClock clock) {
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(clock), "agent", clock, TestMappers.plainlyPinned());
-    store.save(new State(phase, 0L));
+    store.save(new Versioned<>(phase, 0L));
     return new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
   }
 
   @Test
   void aFreshTurnIsLeftAlone() {
     var clock = new TestClock(T0);
-    var f = stalled(new Phase.AwaitingModel(), clock);
+    var f = stalled(new AgentPhase.AwaitingModel(), clock);
     clock.advance(Duration.ofSeconds(30));
     f.agent.drive();
     assertThat(f.model.callCount()).isZero();
@@ -73,7 +74,7 @@ class DefaultAgentRecoveryTest {
   @Test
   void aStaleModelCallIsReFired() {
     var clock = new TestClock(T0);
-    var f = stalled(new Phase.AwaitingModel(), clock);
+    var f = stalled(new AgentPhase.AwaitingModel(), clock);
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("recovered")), List.of(), ModelResponseId.of("response-1")));
@@ -81,7 +82,7 @@ class DefaultAgentRecoveryTest {
     f.agent.drive();
     f.pump.pumpUntilQuiet();
     assertThat(f.model.callCount()).isEqualTo(1);
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
   }
 
   @Test
@@ -89,7 +90,7 @@ class DefaultAgentRecoveryTest {
     // Pins the inclusive boundary (>=): advancing by exactly the threshold must still count as
     // stale, not merely one tick past it.
     var clock = new TestClock(T0);
-    var f = stalled(new Phase.AwaitingModel(), clock);
+    var f = stalled(new AgentPhase.AwaitingModel(), clock);
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("recovered")), List.of(), ModelResponseId.of("response-1")));
@@ -105,7 +106,7 @@ class DefaultAgentRecoveryTest {
     var turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a")));
     var f =
         stalled(
-            new Phase.AwaitingTools(
+            new AgentPhase.AwaitingTools(
                 turn, Map.of("a", new ToolCallState.Pending()), ModelResponseId.of("response-1")),
             clock);
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
@@ -116,14 +117,14 @@ class DefaultAgentRecoveryTest {
     f.agent.drive();
     f.pump.pumpUntilQuiet();
     assertThat(f.tools.executed()).containsExactly(CALL_A);
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());
   }
 
   @Test
   void aStaleIdleScopeJustDrains() {
     var clock = new TestClock(T0);
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(clock), "agent", clock, TestMappers.plainlyPinned());
     var f = new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
     f.model.enqueue(
@@ -140,7 +141,7 @@ class DefaultAgentRecoveryTest {
   @Test
   void aReFireIsNarrated() {
     var clock = new TestClock(T0);
-    var f = stalled(new Phase.AwaitingModel(), clock);
+    var f = stalled(new AgentPhase.AwaitingModel(), clock);
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));

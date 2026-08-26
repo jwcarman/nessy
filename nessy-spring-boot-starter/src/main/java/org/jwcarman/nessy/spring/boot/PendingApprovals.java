@@ -24,8 +24,8 @@ import java.util.Objects;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
@@ -45,10 +45,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * — <b>it is lost, permanently</b>. Nothing replays it. Earlier versions of this paragraph, of the
  * Spring Boot guide and of the spec all said the row returns "until the staleness re-fire re-asks";
  * that was never true and is corrected here (final review, 2026-08-26). {@code
- * Phase.AwaitingTools#outstandingEffects} deliberately contributes NO effect for a call in {@code
- * AwaitingApproval} — the Continuum holds it, so there is nothing to re-fire — and this class
- * ignores {@code reFired} entirely. There is no replay door either: {@code Harness.subscribe} is
- * package-private by ruling, and no public API re-reads applied facts.
+ * AgentPhase.AwaitingTools#outstandingEffects} deliberately contributes NO effect for a call in
+ * {@code AwaitingApproval} — the Continuum holds it, so there is nothing to re-fire — and this
+ * class ignores {@code reFired} entirely. There is no replay door either: {@code Harness.subscribe}
+ * is package-private by ruling, and no public API re-reads applied facts.
  *
  * <p>Both directions of loss are real, and the second is the nastier:
  *
@@ -157,7 +157,7 @@ public class PendingApprovals implements HarnessObserver {
    * <p>This was worth being explicit about because the page presents {@code parked_at} as a dwell
    * time, and a dwell measured from the wrong clock is a number that quietly means something else.
    * The honest position: <b>nothing in the fact carries a time.</b> {@code AgentEvent}'s two
-   * approval variants carry the call, the computation id and the request; {@code Transition}
+   * approval variants carry the call, the computation id and the request; {@code AgentTransition}
    * carries the next phase, the messages to commit and the effects to fire; {@code
    * ToolCallState.AwaitingApproval} carries the computation id and the request. There is no
    * timestamp on any of them to prefer over this one, so this is the best available reading and the
@@ -183,7 +183,7 @@ public class PendingApprovals implements HarnessObserver {
    * variant to {@code AgentEvent} makes this file fail to compile and someone decide.
    */
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     switch (event) {
       case AgentEvent.ApprovalDeferred(var call, var approval, var request) ->
           parked(approval.value(), request, call.id());

@@ -55,8 +55,8 @@ class AwaitingToolsPhaseTest {
           .action("restart prod-1")
           .freeze();
 
-  private static Phase.AwaitingTools awaiting(Map<String, ToolCallState> calls) {
-    return new Phase.AwaitingTools(TURN, calls, RESPONSE_ID);
+  private static AgentPhase.AwaitingTools awaiting(Map<String, ToolCallState> calls) {
+    return new AgentPhase.AwaitingTools(TURN, calls, RESPONSE_ID);
   }
 
   private static Map<String, ToolCallState> calls(ToolCallState first, ToolCallState second) {
@@ -320,7 +320,7 @@ class AwaitingToolsPhaseTest {
 
     var t = phase.handle(returned(CALL_B, Optional.empty(), "ok"));
 
-    assertThat(t.next()).isEqualTo(new Phase.AwaitingModel());
+    assertThat(t.next()).isEqualTo(new AgentPhase.AwaitingModel());
     assertThat(t.commit())
         .containsExactly(
             TURN,
@@ -402,7 +402,7 @@ class AwaitingToolsPhaseTest {
   void awaitingNothingIsNotAPhase() {
     Map<String, ToolCallState> empty = Map.of();
 
-    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, empty, RESPONSE_ID))
+    assertThatThrownBy(() -> new AgentPhase.AwaitingTools(TURN, empty, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -410,7 +410,7 @@ class AwaitingToolsPhaseTest {
   void aCallIdAbsentFromTheHeldBackTurnIsRejected() {
     Map<String, ToolCallState> ghost = Map.of("ghost", new ToolCallState.Pending());
 
-    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, ghost, RESPONSE_ID))
+    assertThatThrownBy(() -> new AgentPhase.AwaitingTools(TURN, ghost, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

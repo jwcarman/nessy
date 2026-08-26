@@ -42,10 +42,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
@@ -221,7 +221,7 @@ class NessyHarnessDoorTest {
    * the scope's saved phase and its dispatched effects fell out of step, and nothing but the
    * staleness recovery arm, minutes later, would have re-fired them. A throwing {@code
    * onAssistantSaid} must not stop the model-call effect from dispatching, so the scope still
-   * settles on {@link Phase.Idle} in the same pump.
+   * settles on {@link AgentPhase.Idle} in the same pump.
    */
   @Test
   void aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion() {
@@ -250,9 +250,9 @@ class NessyHarnessDoorTest {
     pump.pumpUntilQuiet();
 
     var scopeOneState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "scope-1", Clock.systemUTC(), TestMappers.plainlyPinned());
-    assertThat(scopeOneState.load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(scopeOneState.load().value()).isEqualTo(new AgentPhase.Idle());
   }
 
   @Test
@@ -349,10 +349,10 @@ class NessyHarnessDoorTest {
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
     var stateOne =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrateOne, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     var stateTwo =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrateTwo, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     long versionAfterHarnessOnesTurn = stateOne.load().version();
     long versionAfterHarnessTwosTurn = stateTwo.load().version();
@@ -839,9 +839,9 @@ class NessyHarnessDoorTest {
           .anyMatch(m -> m.content().contains(new TextBlock("reply to pending")));
 
       var state =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               substrate, scopeId, Clock.systemUTC(), TestMappers.plainlyPinned());
-      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(state.load().value()).isEqualTo(new AgentPhase.Idle());
     }
 
     /**

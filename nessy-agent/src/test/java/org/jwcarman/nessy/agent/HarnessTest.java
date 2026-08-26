@@ -38,8 +38,8 @@ import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
@@ -54,6 +54,7 @@ import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 class HarnessTest {
 
@@ -83,8 +84,8 @@ class HarnessTest {
         }
       };
 
-  private static final AgentStateStore STORE =
-      new SubstrateAgentStateStore(
+  private static final AgentPhaseStore STORE =
+      new SubstrateAgentPhaseStore(
           new InMemorySubstrate(),
           "harness-fixture",
           Clock.systemUTC(),
@@ -108,7 +109,7 @@ class HarnessTest {
       List<HarnessObserver> observers,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
-      Function<String, AgentStateStore> storeFactory,
+      Function<String, AgentPhaseStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
       BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
@@ -137,7 +138,7 @@ class HarnessTest {
       TurnObserver turnObserver,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
-      Function<String, AgentStateStore> storeFactory,
+      Function<String, AgentPhaseStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
       BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
@@ -495,7 +496,7 @@ class HarnessTest {
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
-                  new SubstrateAgentStateStore(
+                  new SubstrateAgentPhaseStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (id, obs) -> MODEL,
@@ -507,14 +508,14 @@ class HarnessTest {
       bindingA.memory().remember(new Remembrance.UserMessage("key-a", Message.user(List.of())));
       bindingA
           .store()
-          .save(new State(new Phase.AwaitingModel(), bindingA.store().load().version()));
+          .save(new Versioned<>(new AgentPhase.AwaitingModel(), bindingA.store().load().version()));
       bindingA.backlog().add("only for a");
 
       assertThat(bindingA.id()).isNotEqualTo(bindingB.id());
       assertThat(bindingA.memory().recall().messages()).isNotEmpty();
       assertThat(bindingB.memory().recall().messages()).isEmpty();
-      assertThat(bindingA.store().load().phase()).isEqualTo(new Phase.AwaitingModel());
-      assertThat(bindingB.store().load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(bindingA.store().load().value()).isEqualTo(new AgentPhase.AwaitingModel());
+      assertThat(bindingB.store().load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(bindingB.backlog().poll()).isEmpty();
     }
 
@@ -529,7 +530,7 @@ class HarnessTest {
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
-                  new SubstrateAgentStateStore(
+                  new SubstrateAgentPhaseStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (id, obs) -> MODEL,
@@ -633,7 +634,7 @@ class HarnessTest {
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
-                  new SubstrateAgentStateStore(
+                  new SubstrateAgentPhaseStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
               id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               (id, obs) -> MODEL,

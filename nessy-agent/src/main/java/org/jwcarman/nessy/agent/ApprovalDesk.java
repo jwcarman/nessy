@@ -19,7 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jwcarman.continuum.ContinuumClient;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
@@ -44,7 +44,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 public final class ApprovalDesk {
 
   private final ContinuumClient<Approval, ApprovalRouting> client;
-  private final Function<String, AgentStateStore> stores;
+  private final Function<String, AgentPhaseStore> stores;
   private final Runnable nudge;
 
   /**
@@ -55,7 +55,7 @@ public final class ApprovalDesk {
    */
   public ApprovalDesk(
       ContinuumClient<Approval, ApprovalRouting> client,
-      Function<String, AgentStateStore> stores,
+      Function<String, AgentPhaseStore> stores,
       Runnable nudge) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.stores = Objects.requireNonNull(stores, "stores must not be null");
@@ -135,8 +135,8 @@ public final class ApprovalDesk {
   private ToolCallState.AwaitingApproval awaiting(AgentId id, String callId) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
-    Phase phase = stores.apply(id.value()).load().phase();
-    if (phase instanceof Phase.AwaitingTools awaiting
+    AgentPhase phase = stores.apply(id.value()).load().value();
+    if (phase instanceof AgentPhase.AwaitingTools awaiting
         && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval parked) {
       return parked;
     }

@@ -37,7 +37,7 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
@@ -61,6 +61,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -102,8 +103,8 @@ class ToolHandsOutItsIdBeforeReturningTest {
 
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final InMemorySubstrate substrate = new InMemorySubstrate();
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final VerbatimMemory memory = new VerbatimMemory();
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
@@ -220,8 +221,8 @@ class ToolHandsOutItsIdBeforeReturningTest {
   @Test
   void anAnswerThatArrivesBeforeTheToolReturnsStillReachesTheTurn() {
     store.save(
-        new State(
-            new Phase.AwaitingTools(
+        new Versioned<>(
+            new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(CALL))),
                 Map.of(CALL.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),

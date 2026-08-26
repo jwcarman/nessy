@@ -17,27 +17,28 @@ package org.jwcarman.nessy.agent.support;
 
 import java.time.Instant;
 import java.util.Objects;
-import org.jwcarman.nessy.agent.State;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * Simulates one lost race: the first save is preceded by a competitor's save (supplied by the
  * test), so the delegate throws a genuine StaleStateException; every later save goes straight
  * through. The competitor's state is computed by the test with the pure phase machine.
  */
-public final class RaceOnceStore implements AgentStateStore {
+public final class RaceOnceStore implements AgentPhaseStore {
 
-  private final AgentStateStore delegate;
-  private final State competitor;
+  private final AgentPhaseStore delegate;
+  private final Versioned<AgentPhase> competitor;
   private boolean raced;
 
-  public RaceOnceStore(AgentStateStore delegate, State competitor) {
+  public RaceOnceStore(AgentPhaseStore delegate, Versioned<AgentPhase> competitor) {
     this.delegate = Objects.requireNonNull(delegate);
     this.competitor = Objects.requireNonNull(competitor);
   }
 
   @Override
-  public State load() {
+  public Versioned<AgentPhase> load() {
     return delegate.load();
   }
 
@@ -47,7 +48,7 @@ public final class RaceOnceStore implements AgentStateStore {
   }
 
   @Override
-  public void save(State state) {
+  public void save(Versioned<AgentPhase> state) {
     if (!raced) {
       raced = true;
       delegate.save(competitor); // someone else won first

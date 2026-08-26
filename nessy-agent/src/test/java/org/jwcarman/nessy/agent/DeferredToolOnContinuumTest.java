@@ -41,7 +41,7 @@ import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
@@ -72,6 +72,7 @@ import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The tool kind on Continuum (continuum-adoption spec §3, §7; approval-lifecycle spec §2): a
@@ -201,8 +202,8 @@ class DeferredToolOnContinuumTest {
   private final PumpedExecutor pump = new PumpedExecutor();
   private final RecordingTurnObserver turn = new RecordingTurnObserver();
   private final RecordingMemory memory = new RecordingMemory();
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final RegistryToolCallExecutor executor =
       new RegistryToolCallExecutor(
           ToolRegistry.of(
@@ -266,8 +267,8 @@ class DeferredToolOnContinuumTest {
   }
 
   private ToolCallState statusOf(ToolCall call) {
-    Phase phase = store.load().phase();
-    return ((Phase.AwaitingTools) phase).calls().get(call.id());
+    AgentPhase phase = store.load().value();
+    return ((AgentPhase.AwaitingTools) phase).calls().get(call.id());
   }
 
   private Routing routingFor(ToolCall call) {
@@ -287,8 +288,8 @@ class DeferredToolOnContinuumTest {
    */
   private void driveOnceWithPending(ToolCall call) {
     store.save(
-        new State(
-            new Phase.AwaitingTools(
+        new Versioned<>(
+            new AgentPhase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
                 Map.of(call.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),
@@ -419,7 +420,7 @@ class DeferredToolOnContinuumTest {
     completions.complete(id, ToolResult.ok("done"));
     drainTools();
 
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
   }
 
   /**
@@ -452,7 +453,7 @@ class DeferredToolOnContinuumTest {
     racedWorker.drainTools(BatchSize.of(10));
 
     assertThat(foldedResults()).singleElement().satisfies(r -> assertThat(r.isError()).isFalse());
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
   }
 
   /**
@@ -505,7 +506,7 @@ class DeferredToolOnContinuumTest {
     clock.advance(Duration.ofSeconds(6)); // past the tool kind's own backoff (5s)
     throwingWorker.drainTools(BatchSize.of(10)); // memory has healed — the redrive folds cleanly
 
-    assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
     List<Remembrance.ToolExchange> exchangesForTheCall =
         recording.facts().stream()
             .filter(Remembrance.ToolExchange.class::isInstance)
@@ -542,10 +543,11 @@ class DeferredToolOnContinuumTest {
    * #harness} field. Nothing else in the suite drives a durable tool completion all the way through
    * {@link Harness#completions()} and asserts the TURN resumed (cases 3 and 7 above only assert a
    * {@link ToolResultBlock} reached memory, never that the follow-up model call happened and the
-   * phase returned to {@link Phase.Idle}); nothing else executes {@code HarnessConfig#finish()}'s
-   * tool-kind wiring either, so this is also the one test that would notice if production's result
-   * codec ({@code substrate.codecs().create(ToolResult.class)}) ever disagreed with the hand-rolled
-   * {@link TestToolClients#toolResultCodec} every other test in this file uses.
+   * phase returned to {@link AgentPhase.Idle}); nothing else executes {@code
+   * HarnessConfig#finish()}'s tool-kind wiring either, so this is also the one test that would
+   * notice if production's result codec ({@code substrate.codecs().create(ToolResult.class)}) ever
+   * disagreed with the hand-rolled {@link TestToolClients#toolResultCodec} every other test in this
+   * file uses.
    */
   @Test
   void aDeferredToolOnARealHarnessParksAndResumesThroughTheHarnessOwnCompletionsDoor()
@@ -571,16 +573,16 @@ class DeferredToolOnContinuumTest {
                     .executor(pump));
     try {
       var scopeState =
-          new SubstrateAgentStateStore(e2eSubstrate, "scope-1", Clock.systemUTC(), e2eMapper);
+          new SubstrateAgentPhaseStore(e2eSubstrate, "scope-1", Clock.systemUTC(), e2eMapper);
       e2eHarness.bind(AgentId.of("scope-1")).tell("please run the central op");
       pump.pumpUntilQuiet();
 
-      assertThat(scopeState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      var responseId = ((Phase.AwaitingTools) scopeState.load().phase()).responseId();
+      assertThat(scopeState.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
+      var responseId = ((AgentPhase.AwaitingTools) scopeState.load().value()).responseId();
       // The phase names the computation a deferred call is waiting on (approval-lifecycle spec
       // §2) — the only handle back to the Continuum-minted id, read exactly as a genuinely
       // separate out-of-band responder would have to.
-      var status = ((Phase.AwaitingTools) scopeState.load().phase()).calls().get("c1");
+      var status = ((AgentPhase.AwaitingTools) scopeState.load().value()).calls().get("c1");
       var computation = ((ToolCallState.AwaitingResult) status).tool();
 
       // "every instance is garbage; any node may answer": complete purely through the harness's
@@ -591,7 +593,7 @@ class DeferredToolOnContinuumTest {
       // model call onto `pump` from that same background thread — so this awaits the turn's own
       // resumption (Idle) rather than assuming a single pumpUntilQuiet() call already caught it.
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(scopeState.load().phase() instanceof Phase.Idle)
+      while (!(scopeState.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
@@ -600,7 +602,7 @@ class DeferredToolOnContinuumTest {
       // the property DurableParkDemo pinned and cases 3/7 above do not: the turn actually RESUMED,
       // not merely that a ToolResultBlock landed in memory — the follow-up model call ran and the
       // scope reached Idle.
-      assertThat(scopeState.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(scopeState.load().value()).isEqualTo(new AgentPhase.Idle());
       var transcript = new SubstrateMemory(e2eSubstrate, "scope-1", e2eMapper).recall().messages();
       assertThat(transcript)
           .anySatisfy(

@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The shell: load–handle–save–dispatch with a retry (§3.4). No concurrency machinery — the store's
@@ -81,7 +82,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * turn's own {@link TurnOutcome}, close. Zero new event types — the resolution reads {@link
    * TurnEvent.AssistantSaid}/{@link TurnEvent.TurnEnded} exactly as {@link #subscribe} always
    * delivered them, since the fold retains no failure residue to read back any other way (a failed
-   * turn folds to {@link Phase.Idle} committing nothing).
+   * turn folds to {@link AgentPhase.Idle} committing nothing).
    *
    * <p>Parking is the one outcome {@link TurnEvent} can never carry (its own javadoc: "Parking is
    * never narrated at all"), so it is detected off the fold itself: the {@code ApprovalDeferred}
@@ -113,15 +114,15 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   @Override
   public void drive() {
-    State state = binding.store().load();
-    if (state.phase() instanceof Phase.Idle) {
+    Versioned<AgentPhase> state = binding.store().load();
+    if (state.value() instanceof AgentPhase.Idle) {
       drain();
       return;
     }
     if (isStale(state)) {
-      List<Effect> outstanding = state.phase().outstandingEffects();
+      List<Effect> outstanding = state.value().outstandingEffects();
       facts().reFired(binding.id(), outstanding);
-      outstanding.forEach(effect -> dispatch(effect, state.phase())); // §6.1 — the re-fire arm
+      outstanding.forEach(effect -> dispatch(effect, state.value())); // §6.1 — the re-fire arm
     }
   }
 
@@ -154,7 +155,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * The guarded region: decide, remember, commit. Empty when the event was ignored — nothing was
    * written, so there is nothing to follow.
    */
-  private Optional<Transition> commit(AgentEvent event) {
+  private Optional<AgentTransition> commit(AgentEvent event) {
     while (true) {
       try {
         return publish(event, folded(() -> applyOnce(binding.store().load(), event)));
@@ -175,17 +176,17 @@ public final class DefaultAgent<O> implements Agent<O> {
    * A lost CAS escapes as it always did, which is what makes a retry a SECOND span rather than one
    * long one.
    */
-  private Optional<Transition> folded(Supplier<Optional<Transition>> attempt) {
+  private Optional<AgentTransition> folded(Supplier<Optional<AgentTransition>> attempt) {
     return harness.observations().fold(binding.id(), harness.type(), attempt);
   }
 
-  private Optional<Transition> applyOnce(State state, AgentEvent event) {
-    Transition t = state.phase().handle(event); // decide before committing
+  private Optional<AgentTransition> applyOnce(Versioned<AgentPhase> state, AgentEvent event) {
+    AgentTransition t = state.value().handle(event); // decide before committing
     if (t.isIgnored()) {
       return Optional.empty();
     }
-    remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
-    binding.store().save(new State(t.next(), state.version()));
+    remember(state.value(), event, t); // remember before commit (remembrance spec §1 law 1)
+    binding.store().save(new Versioned<>(t.next(), state.version()));
     return Optional.of(t);
   }
 
@@ -196,7 +197,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * the child of a fold that stops immediately — inverting the rule that the segment is the parent
    * of everything (in-the-loop amendment §2).
    */
-  private Optional<Transition> publish(AgentEvent event, Optional<Transition> committed) {
+  private Optional<AgentTransition> publish(AgentEvent event, Optional<AgentTransition> committed) {
     if (committed.isEmpty()) {
       facts().ignored(binding.id(), event);
       return committed;
@@ -215,9 +216,9 @@ public final class DefaultAgent<O> implements Agent<O> {
    * #deliver}. With an inline executor these effects re-enter {@code deliver} on this very thread,
    * so anything that fails in there is already narrated by its own frame.
    */
-  private void follow(Transition t) {
+  private void follow(AgentTransition t) {
     t.effects().forEach(effect -> dispatch(effect, t.next()));
-    if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
+    if (t.next() instanceof AgentPhase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the drain-on-idle wiring's own drive executor
     }
   }
@@ -236,7 +237,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * ToolFoldRemembrance}, the same mapping {@link DeliveryWorker} uses for the durable arm of the
    * very same fold moment.
    */
-  private void remember(Phase priorPhase, AgentEvent event, Transition t) {
+  private void remember(AgentPhase priorPhase, AgentEvent event, AgentTransition t) {
     Memory memory = binding.memory();
     switch (event) {
       case AgentEvent.Observed _ ->
@@ -247,7 +248,7 @@ public final class DefaultAgent<O> implements Agent<O> {
               new Remembrance.AssistantMessage(responseId.value(), t.commit().getFirst()));
       case AgentEvent.ModelFinished _ -> {
         // a deferred assistant turn (tool calls pending — the message rides AwaitingTools until
-        // every call answers) or a Failed outcome (Phase.AwaitingModel#handle discards it):
+        // every call answers) or a Failed outcome (AgentPhase.AwaitingModel#handle discards it):
         // nothing committed, nothing to remember yet.
       }
       case AgentEvent.ToolFinished(var call, var _, var outcome) ->
@@ -266,8 +267,8 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   private void drain() {
     while (true) {
-      State state = binding.store().load();
-      if (!(state.phase() instanceof Phase.Idle)) {
+      Versioned<AgentPhase> state = binding.store().load();
+      if (!(state.value() instanceof AgentPhase.Idle)) {
         return;
       }
       Optional<O> next = binding.backlog().poll();
@@ -279,7 +280,7 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   /** One backlog observation's whole drain attempt: render, apply, or discard (§3.7, §3.3). */
-  private void drainOne(State state, O observation) {
+  private void drainOne(Versioned<AgentPhase> state, O observation) {
     List<ContentBlock> content;
     try {
       content = harness.renderer().render(observation);
@@ -291,7 +292,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       return; // an empty render is a decline — skip, keep draining (§3.7)
     }
     AgentEvent observed = new AgentEvent.Observed(content);
-    Optional<Transition> committed;
+    Optional<AgentTransition> committed;
     try {
       committed = publish(observed, folded(() -> applyOnce(state, observed)));
     } catch (StaleStateException _) {
@@ -326,17 +327,17 @@ public final class DefaultAgent<O> implements Agent<O> {
     harness.observations().staleRetry(binding.id(), harness.type());
   }
 
-  private boolean isStale(State state) {
-    return harness.stalenessPolicy().isStale(state.phase(), binding.store().lastSaved());
+  private boolean isStale(Versioned<AgentPhase> state) {
+    return harness.stalenessPolicy().isStale(state.value(), binding.store().lastSaved());
   }
 
   /**
    * {@code phase} is the committed state a call effect is dispatched alongside — always {@link
-   * Phase.AwaitingTools}, the only phase that ever carries one (§2.2) — and is where the call's
-   * {@link ModelResponseId} is read from (durable-deliveries spec §2): minted once, in the
+   * AgentPhase.AwaitingTools}, the only phase that ever carries one (§2.2) — and is where the
+   * call's {@link ModelResponseId} is read from (durable-deliveries spec §2): minted once, in the
    * model-call executor, never re-derived here.
    */
-  private void dispatch(Effect effect, Phase phase) {
+  private void dispatch(Effect effect, AgentPhase phase) {
     switch (effect) {
       case Effect.CallModel _ -> model.callModel(this::deliver);
       case Effect.SeekApproval(var call) ->
@@ -345,8 +346,8 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
   }
 
-  private static ModelResponseId responseIdOf(Phase phase) {
-    if (phase instanceof Phase.AwaitingTools awaiting) {
+  private static ModelResponseId responseIdOf(AgentPhase phase) {
+    if (phase instanceof AgentPhase.AwaitingTools awaiting) {
       return awaiting.responseId();
     }
     throw new IllegalStateException("a call effect was dispatched outside AwaitingTools: " + phase);

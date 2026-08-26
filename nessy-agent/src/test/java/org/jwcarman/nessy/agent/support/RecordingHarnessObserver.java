@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 
 /**
@@ -34,7 +34,7 @@ import org.jwcarman.nessy.agent.spi.HarnessObserver;
 public final class RecordingHarnessObserver implements HarnessObserver {
 
   /** One applied fold, flattened to what a test asserts on. */
-  public record Applied(AgentId id, AgentEvent event, Transition transition) {}
+  public record Applied(AgentId id, AgentEvent event, AgentTransition transition) {}
 
   /** One ignored fold: the scope it was meant for, and the event that changed nothing. */
   public record Ignored(AgentId id, AgentEvent event) {}
@@ -44,7 +44,7 @@ public final class RecordingHarnessObserver implements HarnessObserver {
   private final List<List<Effect>> reFiredCalls = new CopyOnWriteArrayList<>();
 
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     applied.add(new Applied(id, event, transition));
   }
 

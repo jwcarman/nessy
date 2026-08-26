@@ -34,7 +34,7 @@ import org.jwcarman.continuum.api.Lease;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestAgents;
@@ -46,6 +46,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * {@code defer()} does the plumbing (approval-lifecycle spec §1.3): one computation, carrying the
@@ -153,9 +154,9 @@ class ComputationApprovalContextTest {
 
   private static final String SAVE_REFUSED = "the substrate is down";
 
-  private static State seeded() {
-    return new State(
-        new Phase.AwaitingTools(
+  private static Versioned<AgentPhase> seeded() {
+    return new Versioned<>(
+        new AgentPhase.AwaitingTools(
             Message.assistant(List.of(new ToolUseBlock(CALL))),
             Map.of(CALL.id(), new ToolCallState.Pending()),
             ModelResponseId.of("r1")),
@@ -163,14 +164,14 @@ class ComputationApprovalContextTest {
   }
 
   /** Loads a scope whose call is Pending and refuses every save — no fold can ever commit. */
-  private record UnsavableStore() implements AgentStateStore {
+  private record UnsavableStore() implements AgentPhaseStore {
     @Override
-    public State load() {
+    public Versioned<AgentPhase> load() {
       return seeded();
     }
 
     @Override
-    public void save(State state) {
+    public void save(Versioned<AgentPhase> state) {
       throw new IllegalStateException(SAVE_REFUSED);
     }
 
@@ -193,7 +194,7 @@ class ComputationApprovalContextTest {
   /** Records only {@code applyFailed}; every other callback is a silent no-op. */
   private record FailureRecorder(List<AgentEvent> narrated) implements HarnessObserver {
     @Override
-    public void applied(AgentId id, AgentEvent event, Transition transition) {
+    public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
       // silent: only applyFailed is recorded
     }
 

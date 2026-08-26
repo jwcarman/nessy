@@ -63,11 +63,11 @@ class ObservationsTest {
       new Observations(registry, TYPE, PROVIDER, MODEL_ID, new ConcurrentHashMap<>());
 
   /** The scope's phase, advanced by {@link #fold} exactly as a real fold site advances it. */
-  private Phase phase = new Phase.Idle();
+  private AgentPhase phase = new AgentPhase.Idle();
 
   /** One fold, published the way {@code DefaultAgent} and {@code DeliveryWorker} publish it. */
   private void fold(AgentEvent event) {
-    Transition transition = phase.handle(event);
+    AgentTransition transition = phase.handle(event);
     if (transition.isIgnored()) {
       observations.ignored(SCOPE, event);
       return;

@@ -35,8 +35,8 @@ import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.jdbc.JdbcContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -119,7 +119,7 @@ class DurableResumeTest {
     DataSource dataSource = dataSource();
     applyShippedSchemas(dataSource);
     var state =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new JdbcSubstrate(dataSource), SCOPE, Clock.systemUTC(), TestMappers.plainlyPinned());
     var call =
         new ToolCall(
@@ -141,7 +141,7 @@ class DurableResumeTest {
                     .executor(pumpA));
     harnessA.bind(AgentId.of(SCOPE)).tell("please restart " + SCOPE);
     pumpA.pumpUntilQuiet();
-    assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+    assertThat(state.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
     assertThat(harnessA.approvals().request(AgentId.of(SCOPE), "c1").action()).contains("restart");
     harnessA.shutdown();
 
@@ -166,13 +166,13 @@ class DurableResumeTest {
       harnessB.approvals().approve(AgentId.of(SCOPE), "c1", "ops-desk", "");
 
       long deadline = System.currentTimeMillis() + 10_000;
-      while (!(state.load().phase() instanceof Phase.Idle)
+      while (!(state.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pumpB.pumpUntilQuiet();
         Thread.sleep(20);
       }
 
-      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(state.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(modelB.requests()).hasSize(1);
     } finally {
       harnessB.shutdown();

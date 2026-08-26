@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.Transition;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -66,7 +66,7 @@ class PendingApprovalsTest {
   private static final String SCOPE = "prod-eu";
   private static final String TYPE = "ops";
   private static final ComputationId PARKED = ComputationId.of("computation-1");
-  private static final Transition NOWHERE = Transition.to(new Phase.Idle());
+  private static final AgentTransition NOWHERE = AgentTransition.to(new AgentPhase.Idle());
 
   private final ObjectMapper pinned = Codecs.copyAndPin(new ObjectMapper());
   private JdbcTemplate jdbc;

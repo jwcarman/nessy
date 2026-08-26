@@ -17,7 +17,7 @@ package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
 import org.jwcarman.nessy.spi.Memory;
 
 /**
@@ -31,7 +31,7 @@ import org.jwcarman.nessy.spi.Memory;
  * toolExecutorFor}, {@code memoryFor}) give the delivery worker what it needs without exposing this
  * type across the package line.
  */
-record Binding<O>(AgentId id, Memory memory, AgentStateStore store, Backlog<O> backlog) {
+record Binding<O>(AgentId id, Memory memory, AgentPhaseStore store, Backlog<O> backlog) {
 
   Binding {
     Objects.requireNonNull(id, "id must not be null");

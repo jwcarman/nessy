@@ -25,9 +25,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.ToolCallState;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -128,7 +128,7 @@ class SlowApprovedToolRunsOnceTest {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var state =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "svc", Clock.systemUTC(), TestMappers.plainlyPinned());
     var call = new ToolCall("c1", "slow_op", JsonNodeFactory.instance.objectNode());
     var tool = new GatedTool();
@@ -151,7 +151,7 @@ class SlowApprovedToolRunsOnceTest {
     try {
       harness.bind(AgentId.of("svc")).tell("please do the slow op");
       pump.pumpUntilQuiet();
-      assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      assertThat(state.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
 
       // approve() only submits the drain (continuum-adoption spec §7): the fold, its commit of
       // ToolCallState.Running, and its RunTool dispatch onto `pump` all happen on the harness's own
@@ -171,7 +171,7 @@ class SlowApprovedToolRunsOnceTest {
 
       // (b) The fold already committed ToolCallState.Running for c1 as part of THAT same state
       // write, strictly before the tool has been given any chance to run — Running is part of
-      // the Transition the fold produces, and dispatchEffects (which merely calls
+      // the AgentTransition the fold produces, and dispatchEffects (which merely calls
       // executor.execute(...) here) only runs after the CAS write already succeeded.
       assertThat(callStatus(state, "c1")).isInstanceOf(ToolCallState.Running.class);
       assertThat(tool.invocations()).isEqualTo(0); // not yet run — only dispatched
@@ -192,12 +192,12 @@ class SlowApprovedToolRunsOnceTest {
       assertThat(pumping.isAlive()).isFalse();
 
       deadline = System.currentTimeMillis() + 5000;
-      while (!(state.load().phase() instanceof Phase.Idle)
+      while (!(state.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
       }
-      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(state.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(tool.invocations()).isEqualTo(1); // still exactly once after the turn completed
     } finally {
       tool.release(); // in case an assertion above failed before the release, so nothing hangs
@@ -205,9 +205,9 @@ class SlowApprovedToolRunsOnceTest {
     }
   }
 
-  private static ToolCallState callStatus(SubstrateAgentStateStore state, String callId) {
-    Phase phase = state.load().phase();
-    if (phase instanceof Phase.AwaitingTools awaiting) {
+  private static ToolCallState callStatus(SubstrateAgentPhaseStore state, String callId) {
+    AgentPhase phase = state.load().value();
+    if (phase instanceof AgentPhase.AwaitingTools awaiting) {
       return awaiting.calls().get(callId);
     }
     throw new IllegalStateException("expected AwaitingTools, was " + phase);

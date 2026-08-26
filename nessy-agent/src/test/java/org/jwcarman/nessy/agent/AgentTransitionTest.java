@@ -27,8 +27,9 @@ class TransitionTest {
   @Test
   void aTransitionCarriesItsThreeDecisions() {
     var t =
-        Transition.to(new Phase.AwaitingModel(), new Effect.CallModel()).commit(Message.user("hi"));
-    assertThat(t.next()).isEqualTo(new Phase.AwaitingModel());
+        AgentTransition.to(new AgentPhase.AwaitingModel(), new Effect.CallModel())
+            .commit(Message.user("hi"));
+    assertThat(t.next()).isEqualTo(new AgentPhase.AwaitingModel());
     assertThat(t.commit()).containsExactly(Message.user("hi"));
     assertThat(t.effects()).containsExactly(new Effect.CallModel());
     assertThat(t.isIgnored()).isFalse();
@@ -36,7 +37,7 @@ class TransitionTest {
 
   @Test
   void aBareTransitionCommitsNothingAndFiresNothing() {
-    var t = Transition.to(new Phase.Idle());
+    var t = AgentTransition.to(new AgentPhase.Idle());
     assertThat(t.commit()).isEmpty();
     assertThat(t.effects()).isEmpty();
   }
@@ -44,14 +45,14 @@ class TransitionTest {
   @Test
   void emitAppendsEffectsInOrder() {
     var a = new Effect.CallModel();
-    var t = Transition.to(new Phase.AwaitingModel()).emit(List.of(a));
+    var t = AgentTransition.to(new AgentPhase.AwaitingModel()).emit(List.of(a));
     assertThat(t.effects()).containsExactly(a);
   }
 
   @Test
   void commitAppendsMessagesInOrder() {
     var t =
-        Transition.to(new Phase.Idle())
+        AgentTransition.to(new AgentPhase.Idle())
             .commit(Message.user("first"))
             .commit(Message.user("second"));
     assertThat(t.commit()).containsExactly(Message.user("first"), Message.user("second"));
@@ -59,32 +60,32 @@ class TransitionTest {
 
   @Test
   void anIgnoredTransitionSaysSo() {
-    assertThat(Transition.ignore().isIgnored()).isTrue();
+    assertThat(AgentTransition.ignore().isIgnored()).isTrue();
   }
 
   @Test
   void anIgnoredTransitionHasNoNextPhase() {
-    var ignored = Transition.ignore();
+    var ignored = AgentTransition.ignore();
     assertThatThrownBy(ignored::next).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void anIgnoredTransitionEqualsNothingButItself() {
-    assertThat(Transition.ignore()).isEqualTo(Transition.ignore());
-    assertThat(Transition.to(new Phase.Idle())).isNotEqualTo(Transition.ignore());
-    assertThat(Transition.ignore()).isNotEqualTo(Transition.to(new Phase.Idle()));
+    assertThat(AgentTransition.ignore()).isEqualTo(AgentTransition.ignore());
+    assertThat(AgentTransition.to(new AgentPhase.Idle())).isNotEqualTo(AgentTransition.ignore());
+    assertThat(AgentTransition.ignore()).isNotEqualTo(AgentTransition.to(new AgentPhase.Idle()));
   }
 
   @Test
   void anIgnoredTransitionRefusesToCommit() {
-    var ignored = Transition.ignore();
+    var ignored = AgentTransition.ignore();
     var message = Message.user("x");
     assertThatThrownBy(() -> ignored.commit(message)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void anIgnoredTransitionRefusesToEmit() {
-    var ignored = Transition.ignore();
+    var ignored = AgentTransition.ignore();
     var effects = List.<Effect>of(new Effect.CallModel());
     assertThatThrownBy(() -> ignored.emit(effects)).isInstanceOf(IllegalStateException.class);
   }

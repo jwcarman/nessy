@@ -42,8 +42,8 @@ import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.TestAgents;
@@ -127,8 +127,8 @@ class DeliveryWorkerSilentLossWarningTest {
     AgentType type = AgentType.of("test");
     // never written to: DeliveryWorker's own readState finds no "state" document for "test-scope"
     var substrate = new InMemorySubstrate();
-    AgentStateStore harnessStore =
-        new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+    AgentPhaseStore harnessStore =
+        new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
 
     Harness<String> harness =
         TestAgents.<String>harness(

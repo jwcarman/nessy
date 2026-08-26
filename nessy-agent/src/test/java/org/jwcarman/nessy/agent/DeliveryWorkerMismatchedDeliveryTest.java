@@ -42,7 +42,7 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingHarnessObserver;
@@ -58,6 +58,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -98,8 +99,8 @@ class DeliveryWorkerMismatchedDeliveryTest {
   private final TestClock clock = new TestClock(Instant.parse("2026-08-25T00:00:00Z"));
   private final Continuum continuum =
       new DefaultContinuum(new InMemoryContinuumRepository(), clock);
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
   private final ContinuumClient<Approval, ApprovalRouting> approvalClient =
       continuum.client(
           "approval/test",
@@ -164,12 +165,13 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   private void scopeWith(ToolCallState status) {
     Message turn = Message.assistant(List.of(new ToolUseBlock(CALL)));
-    Phase phase = new Phase.AwaitingTools(turn, Map.of("c1", status), ModelResponseId.of("r1"));
-    store.save(new State(phase, store.load().version()));
+    AgentPhase phase =
+        new AgentPhase.AwaitingTools(turn, Map.of("c1", status), ModelResponseId.of("r1"));
+    store.save(new Versioned<>(phase, store.load().version()));
   }
 
   private ToolCallState status() {
-    return ((Phase.AwaitingTools) store.load().phase()).calls().get("c1");
+    return ((AgentPhase.AwaitingTools) store.load().value()).calls().get("c1");
   }
 
   private ApprovalRequest request() {
@@ -317,10 +319,10 @@ class DeliveryWorkerMismatchedDeliveryTest {
   void a_delivery_for_a_call_the_phase_has_no_status_for_says_no_such_call() {
     ToolCall other = new ToolCall("c2", "other", JsonNodeFactory.instance.objectNode());
     Message turn = Message.assistant(List.of(new ToolUseBlock(other)));
-    Phase phase =
-        new Phase.AwaitingTools(
+    AgentPhase phase =
+        new AgentPhase.AwaitingTools(
             turn, Map.of("c2", new ToolCallState.Running()), ModelResponseId.of("r1"));
-    store.save(new State(phase, store.load().version()));
+    store.save(new Versioned<>(phase, store.load().version()));
     answerAnApproval(); // routed to call "c1", which this phase does not hold
 
     worker.drainApprovals(BatchSize.of(10));
@@ -335,7 +337,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
    */
   @Test
   void a_delivery_reaching_a_scope_that_is_no_longer_awaiting_tools_names_the_phase() {
-    store.save(new State(new Phase.Idle(), store.load().version()));
+    store.save(new Versioned<>(new AgentPhase.Idle(), store.load().version()));
     answerAnApproval();
 
     worker.drainApprovals(BatchSize.of(10));

@@ -20,10 +20,10 @@ import java.util.Objects;
 import java.util.function.Function;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.AgentTransition;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.ModelOutcome;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
@@ -66,13 +66,13 @@ public final class TurnNarrationAdapter implements HarnessObserver {
   }
 
   @Override
-  public void applied(AgentId id, AgentEvent event, Transition transition) {
+  public void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     for (Message committed : transition.commit()) {
       if (committed.role() == Role.ASSISTANT) {
         narrate(id, new TurnEvent.AssistantSaid(committed));
       }
     }
-    if (transition.next() instanceof Phase.Idle) {
+    if (transition.next() instanceof AgentPhase.Idle) {
       if (event instanceof AgentEvent.ModelFinished(ModelOutcome.Failed(String reason))) {
         narrate(id, new TurnEvent.TurnEnded(reason));
       } else {

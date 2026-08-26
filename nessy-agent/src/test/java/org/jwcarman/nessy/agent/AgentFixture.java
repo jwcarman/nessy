@@ -23,8 +23,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
@@ -59,10 +59,10 @@ final class AgentFixture {
           return Optional.ofNullable(backlogQueue.poll());
         }
       };
-  final AgentStateStore store;
+  final AgentPhaseStore store;
   final DefaultAgent<String> agent;
 
-  AgentFixture(AgentStateStore store, boolean drainOnIdle, StalenessPolicy stalenessPolicy) {
+  AgentFixture(AgentPhaseStore store, boolean drainOnIdle, StalenessPolicy stalenessPolicy) {
     this.store = store;
     // this fixture's own harness owns its own life-support (spec §4) over a private, throwaway
     // substrate — decoupled from whatever substrate the caller-supplied `store` above lives on.
@@ -97,13 +97,13 @@ final class AgentFixture {
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }
 
-  AgentFixture(AgentStateStore store, boolean drainOnIdle) {
+  AgentFixture(AgentPhaseStore store, boolean drainOnIdle) {
     this(store, drainOnIdle, StalenessPolicy.never());
   }
 
   AgentFixture() {
     this(
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(),
             "fixture-scope",
             Clock.systemUTC(),

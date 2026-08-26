@@ -26,8 +26,8 @@ import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.AgentPhase;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -96,7 +96,7 @@ class SharedContinuumTest {
     Continuum shared =
         new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system());
     var state =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, SCOPE, Clock.systemUTC(), TestMappers.plainlyPinned());
     var call =
         new ToolCall(
@@ -118,7 +118,7 @@ class SharedContinuumTest {
                     .executor(pumpA));
     harnessA.bind(AgentId.of(SCOPE)).tell("please restart " + SCOPE);
     pumpA.pumpUntilQuiet();
-    assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+    assertThat(state.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
     harnessA.shutdown();
 
     // Harness B: fresh objects over the same two stores. Its model only ever sees the resumed turn.
@@ -141,13 +141,13 @@ class SharedContinuumTest {
       harnessB.approvals().approve(AgentId.of(SCOPE), "c1", "ops-desk", "");
 
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(state.load().phase() instanceof Phase.Idle)
+      while (!(state.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pumpB.pumpUntilQuiet();
         Thread.sleep(20);
       }
 
-      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(state.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(modelB.requests()).hasSize(1);
     } finally {
       harnessB.shutdown();

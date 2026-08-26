@@ -32,7 +32,7 @@ import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.turn.Subscription;
@@ -73,7 +73,7 @@ public final class Harness<O> {
   private final boolean drainOnIdle;
   private final StalenessPolicy stalenessPolicy;
   private final Function<String, Memory> memoryFactory;
-  private final Function<String, AgentStateStore> storeFactory;
+  private final Function<String, AgentPhaseStore> storeFactory;
   private final Function<String, Backlog<O>> backlogFactory;
   private final BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory;
   private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
@@ -103,7 +103,7 @@ public final class Harness<O> {
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
-      Function<String, AgentStateStore> storeFactory,
+      Function<String, AgentPhaseStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
       BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
@@ -206,7 +206,7 @@ public final class Harness<O> {
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
-      Function<String, AgentStateStore> storeFactory,
+      Function<String, AgentPhaseStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
       BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
@@ -257,7 +257,7 @@ public final class Harness<O> {
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
-      Function<String, AgentStateStore> storeFactory,
+      Function<String, AgentPhaseStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
       BiFunction<AgentId, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,

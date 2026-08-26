@@ -39,19 +39,19 @@ class PhaseOutstandingEffectsTest {
 
   @Test
   void idleHasNothingOutstanding() {
-    assertThat(new Phase.Idle().outstandingEffects()).isEmpty();
+    assertThat(new AgentPhase.Idle().outstandingEffects()).isEmpty();
   }
 
   @Test
   void awaitingModelReDerivesItsBareModelCall() {
-    assertThat(new Phase.AwaitingModel().outstandingEffects())
+    assertThat(new AgentPhase.AwaitingModel().outstandingEffects())
         .containsExactly(new Effect.CallModel());
   }
 
   @Test
   void awaitingToolsReDerivesOnlyTheUnsettledCallsWithFullArguments() {
     var phase =
-        new Phase.AwaitingTools(
+        new AgentPhase.AwaitingTools(
             TURN,
             Map.of(
                 "a",
@@ -65,7 +65,7 @@ class PhaseOutstandingEffectsTest {
   @Test
   void awaitingToolsReDerivesInTheAssistantTurnsOwnOrder() {
     var phase =
-        new Phase.AwaitingTools(
+        new AgentPhase.AwaitingTools(
             TURN,
             Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
             ModelResponseId.of("response-1"));

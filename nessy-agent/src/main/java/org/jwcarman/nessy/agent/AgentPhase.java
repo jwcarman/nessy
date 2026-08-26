@@ -42,19 +42,19 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = Phase.Idle.class, name = "idle"),
-  @JsonSubTypes.Type(value = Phase.AwaitingModel.class, name = "awaiting-model"),
-  @JsonSubTypes.Type(value = Phase.AwaitingTools.class, name = "awaiting-tools")
+  @JsonSubTypes.Type(value = AgentPhase.Idle.class, name = "idle"),
+  @JsonSubTypes.Type(value = AgentPhase.AwaitingModel.class, name = "awaiting-model"),
+  @JsonSubTypes.Type(value = AgentPhase.AwaitingTools.class, name = "awaiting-tools")
 })
-public sealed interface Phase {
+public sealed interface AgentPhase {
 
   /**
-   * Backs {@link Transition#ignore()}'s marker; public by interface rules, inert because it is an
-   * ordinary Idle.
+   * Backs {@link AgentTransition#ignore()}'s marker; public by interface rules, inert because it is
+   * an ordinary Idle.
    */
-  Phase SENTINEL = new Idle();
+  AgentPhase SENTINEL = new Idle();
 
-  Transition handle(AgentEvent event);
+  AgentTransition handle(AgentEvent event);
 
   /**
    * The effects still in flight for this phase, re-derivable on any node — the §6.1 recovery
@@ -62,15 +62,15 @@ public sealed interface Phase {
    */
   List<Effect> outstandingEffects();
 
-  record Idle() implements Phase {
+  record Idle() implements AgentPhase {
     @Override
-    public Transition handle(AgentEvent event) {
+    public AgentTransition handle(AgentEvent event) {
       return switch (event) {
         case AgentEvent.Observed(var content) ->
-            Transition.to(new AwaitingModel(), new Effect.CallModel())
+            AgentTransition.to(new AwaitingModel(), new Effect.CallModel())
                 .commit(Message.user(content));
-        case AgentEvent.ModelFinished _ -> Transition.ignore();
-        case ToolCallEvent _ -> Transition.ignore();
+        case AgentEvent.ModelFinished _ -> AgentTransition.ignore();
+        case ToolCallEvent _ -> AgentTransition.ignore();
       };
     }
 
@@ -80,20 +80,20 @@ public sealed interface Phase {
     }
   }
 
-  record AwaitingModel() implements Phase {
+  record AwaitingModel() implements AgentPhase {
     @Override
-    public Transition handle(AgentEvent event) {
+    public AgentTransition handle(AgentEvent event) {
       return switch (event) {
         case AgentEvent.ModelFinished(ModelOutcome.Responded(var content, var calls, var _))
             when calls.isEmpty() ->
-            Transition.to(new Idle()).commit(Message.assistant(content));
+            AgentTransition.to(new Idle()).commit(Message.assistant(content));
         case AgentEvent.ModelFinished(
                 ModelOutcome.Responded(var content, var calls, var responseId)) ->
-            Transition.to(AwaitingTools.opening(Message.assistant(content), calls, responseId))
+            AgentTransition.to(AwaitingTools.opening(Message.assistant(content), calls, responseId))
                 .emit(
                     calls.stream().map(Effect.SeekApproval::new).map(Effect.class::cast).toList());
-        case AgentEvent.ModelFinished(_) -> Transition.to(new Idle());
-        case ToolCallEvent _ -> Transition.ignore();
+        case AgentEvent.ModelFinished(_) -> AgentTransition.to(new Idle());
+        case ToolCallEvent _ -> AgentTransition.ignore();
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
@@ -113,7 +113,7 @@ public sealed interface Phase {
    */
   record AwaitingTools(
       Message assistantTurn, Map<String, ToolCallState> calls, ModelResponseId responseId)
-      implements Phase {
+      implements AgentPhase {
 
     public AwaitingTools {
       Objects.requireNonNull(assistantTurn, "assistantTurn must not be null");
@@ -142,11 +142,11 @@ public sealed interface Phase {
     }
 
     @Override
-    public Transition handle(AgentEvent event) {
+    public AgentTransition handle(AgentEvent event) {
       return switch (event) {
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
-        case AgentEvent.ModelFinished _ -> Transition.ignore();
+        case AgentEvent.ModelFinished _ -> AgentTransition.ignore();
         case ToolCallEvent e -> route(e);
       };
     }
@@ -156,13 +156,13 @@ public sealed interface Phase {
      * this is, let that call decide, put the answer back — naming no state, no call event and no
      * id.
      */
-    private Transition route(ToolCallEvent event) {
+    private AgentTransition route(ToolCallEvent event) {
       ToolCallState current = calls.get(event.toolCallId());
       if (current == null) {
-        return Transition.ignore(); // a call this turn never asked for
+        return AgentTransition.ignore(); // a call this turn never asked for
       }
       return switch (current.handle(event)) {
-        case ToolCallTransition.Dropped _ -> Transition.ignore();
+        case ToolCallTransition.Dropped _ -> AgentTransition.ignore();
         case ToolCallTransition.Advanced(var next, var effects) ->
             advance(event.toolCallId(), next, effects);
       };
@@ -179,17 +179,17 @@ public sealed interface Phase {
      * dropping {@code effects} on the floor: the deferral callback (spec §4) rides an effect, and
      * losing one silently is the worst failure this phase could have.
      */
-    private Transition advance(String callId, ToolCallState next, List<Effect> effects) {
+    private AgentTransition advance(String callId, ToolCallState next, List<Effect> effects) {
       AwaitingTools updated = with(callId, next);
       if (updated.calls.values().stream().allMatch(status -> status.resultBlock().isPresent())) {
         if (!effects.isEmpty()) {
           throw new IllegalStateException(
               "call " + callId + " finished the turn while still asking for effects: " + effects);
         }
-        return Transition.to(new AwaitingModel(), new Effect.CallModel())
+        return AgentTransition.to(new AwaitingModel(), new Effect.CallModel())
             .commit(assistantTurn, Message.toolResults(updated.resultsInTurnOrder()));
       }
-      return Transition.to(updated).emit(effects);
+      return AgentTransition.to(updated).emit(effects);
     }
 
     private AwaitingTools with(String callId, ToolCallState status) {

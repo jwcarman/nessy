@@ -75,7 +75,7 @@ final class FactFanout {
     return subscribers.size();
   }
 
-  void applied(AgentId id, AgentEvent event, Transition transition) {
+  void applied(AgentId id, AgentEvent event, AgentTransition transition) {
     publish(id, "applied", observer -> observer.applied(id, event, transition));
   }
 

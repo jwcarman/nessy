@@ -37,8 +37,8 @@ class IdlePhaseTest {
   @Test
   void anObservationCommitsTheUserMessageAndCallsTheModel() {
     var content = List.<ContentBlock>of(new TextBlock("hi"));
-    var t = new Phase.Idle().handle(new AgentEvent.Observed(content));
-    assertThat(t.next()).isEqualTo(new Phase.AwaitingModel());
+    var t = new AgentPhase.Idle().handle(new AgentEvent.Observed(content));
+    assertThat(t.next()).isEqualTo(new AgentPhase.AwaitingModel());
     assertThat(t.commit()).containsExactly(Message.user(content));
     assertThat(t.effects()).containsExactly(new Effect.CallModel());
   }
@@ -46,7 +46,7 @@ class IdlePhaseTest {
   @Test
   void aStrayModelCompletionIsIgnored() {
     var event = new AgentEvent.ModelFinished(new ModelOutcome.Failed("late"));
-    assertThat(new Phase.Idle().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.Idle().handle(event).isIgnored()).isTrue();
   }
 
   @Test
@@ -55,7 +55,7 @@ class IdlePhaseTest {
     var event =
         new AgentEvent.ToolFinished(
             call, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("x")));
-    assertThat(new Phase.Idle().handle(event).isIgnored()).isTrue();
+    assertThat(new AgentPhase.Idle().handle(event).isIgnored()).isTrue();
   }
 
   @Test
@@ -66,17 +66,17 @@ class IdlePhaseTest {
         ApprovalRequest.draft("ops", "prod-1", call, Map.of(), new ObjectMapper()).freeze();
 
     assertThat(
-            new Phase.Idle()
+            new AgentPhase.Idle()
                 .handle(new AgentEvent.ApprovalDeferred(call, parked, request))
                 .isIgnored())
         .isTrue();
     assertThat(
-            new Phase.Idle()
+            new AgentPhase.Idle()
                 .handle(
                     new AgentEvent.ApprovalAnswered(call, Optional.empty(), Approval.approved()))
                 .isIgnored())
         .isTrue();
-    assertThat(new Phase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isIgnored())
+    assertThat(new AgentPhase.Idle().handle(new AgentEvent.ToolDeferred(call, parked)).isIgnored())
         .isTrue();
   }
 }

@@ -24,42 +24,42 @@ import org.jwcarman.nessy.api.message.Message;
  * What one event decides: what to become, what to commit to history, what to fire. Returned as a
  * value so that I/O is structurally impossible inside a phase (spec §2.5).
  */
-public record Transition(Phase next, List<Message> commit, List<Effect> effects) {
+public record AgentTransition(AgentPhase next, List<Message> commit, List<Effect> effects) {
 
-  private static final Transition IGNORED = new Transition();
+  private static final AgentTransition IGNORED = new AgentTransition();
 
-  public Transition {
+  public AgentTransition {
     Objects.requireNonNull(next, "next must not be null");
     commit = List.copyOf(commit);
     effects = List.copyOf(effects);
   }
 
   /** Private ignored-marker constructor; bypasses the canonical null check via a sentinel. */
-  private Transition() {
-    this(Phase.SENTINEL, List.of(), List.of());
+  private AgentTransition() {
+    this(AgentPhase.SENTINEL, List.of(), List.of());
   }
 
-  public static Transition to(Phase next, Effect... effects) {
-    return new Transition(next, List.of(), List.of(effects));
+  public static AgentTransition to(AgentPhase next, Effect... effects) {
+    return new AgentTransition(next, List.of(), List.of(effects));
   }
 
   /** A stale or duplicate event: fold nothing, commit nothing, fire nothing (spec §2.2). */
-  public static Transition ignore() {
+  public static AgentTransition ignore() {
     return IGNORED;
   }
 
-  public Transition commit(Message... messages) {
+  public AgentTransition commit(Message... messages) {
     requireNotIgnored();
     var all = new ArrayList<>(commit);
     all.addAll(List.of(messages));
-    return new Transition(next, all, effects);
+    return new AgentTransition(next, all, effects);
   }
 
-  public Transition emit(List<Effect> more) {
+  public AgentTransition emit(List<Effect> more) {
     requireNotIgnored();
     var all = new ArrayList<>(effects);
     all.addAll(more);
-    return new Transition(next, commit, all);
+    return new AgentTransition(next, commit, all);
   }
 
   public boolean isIgnored() {
@@ -67,7 +67,7 @@ public record Transition(Phase next, List<Message> commit, List<Effect> effects)
   }
 
   @Override
-  public Phase next() {
+  public AgentPhase next() {
     requireNotIgnored();
     return next;
   }
@@ -83,7 +83,7 @@ public record Transition(Phase next, List<Message> commit, List<Effect> effects)
     if (this == o) {
       return true;
     }
-    if (isIgnored() || !(o instanceof Transition other) || other.isIgnored()) {
+    if (isIgnored() || !(o instanceof AgentTransition other) || other.isIgnored()) {
       return false;
     }
     return Objects.equals(next, other.next)
@@ -99,8 +99,8 @@ public record Transition(Phase next, List<Message> commit, List<Effect> effects)
   @Override
   public String toString() {
     if (isIgnored()) {
-      return "Transition[ignored]";
+      return "AgentTransition[ignored]";
     }
-    return "Transition[next=" + next + ", commit=" + commit + ", effects=" + effects + "]";
+    return "AgentTransition[next=" + next + ", commit=" + commit + ", effects=" + effects + "]";
   }
 }

@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
  * What one {@link Agent#ask} settles on (front-ends spec §1): a turn's outcome, as a value, read
  * off the same {@link org.jwcarman.nessy.api.turn.TurnEvent} grammar {@link
  * Agent#subscribe(org.jwcarman.nessy.api.turn.TurnObserver)} already delivers — because the fold
- * retains no failure residue (a failed model turn folds back to {@link Phase.Idle} committing
+ * retains no failure residue (a failed model turn folds back to {@link AgentPhase.Idle} committing
  * nothing), the events are the only honest source. Zero new event types: {@code Replied} and {@code
  * Failed} resolve from {@code AssistantSaid}/{@code TurnEnded}; {@code Parked} resolves from the
  * {@code ApprovalDeferred} fold — the park is a fact (see {@link Harness#awaitApproval(AgentId)}),

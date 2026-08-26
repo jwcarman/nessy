@@ -26,12 +26,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.ToolCallState;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -53,6 +52,7 @@ import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * Spec §10, proof 3: an approver free to answer the id it was just handed BEFORE {@code defer()}
@@ -111,7 +111,7 @@ class EarlyAnswerTest {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var state =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "svc", Clock.systemUTC(), TestMappers.plainlyPinned());
     var call = new ToolCall("c1", "noop", JsonNodeFactory.instance.objectNode());
     var provider =
@@ -154,13 +154,13 @@ class EarlyAnswerTest {
       // catch it. It stays under the backoff so that even the older release-and-retry regression —
       // which healed only after 5s — could not squeak through either.
       long deadline = System.currentTimeMillis() + 2000;
-      while (!(state.load().phase() instanceof Phase.Idle)
+      while (!(state.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
       }
 
-      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(state.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(earlyAnswers.get()).isEqualTo(1);
     } finally {
       harness.shutdown();
@@ -171,13 +171,13 @@ class EarlyAnswerTest {
   void theByCoordinatesDoorAgainstAPendingCallThrows() {
     var substrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    var state = new SubstrateAgentStateStore(substrate, "svc", Clock.systemUTC(), mapper);
+    var state = new SubstrateAgentPhaseStore(substrate, "svc", Clock.systemUTC(), mapper);
     var call = new ToolCall("c1", "noop", JsonNodeFactory.instance.objectNode());
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(call, null)));
-    Phase phase =
-        new Phase.AwaitingTools(
+    AgentPhase phase =
+        new AgentPhase.AwaitingTools(
             turn, Map.of("c1", new ToolCallState.Pending()), ModelResponseId.of("response-1"));
-    state.save(new State(phase, state.load().version()));
+    state.save(new Versioned<>(phase, state.load().version()));
 
     var harness =
         Nessy.harness(

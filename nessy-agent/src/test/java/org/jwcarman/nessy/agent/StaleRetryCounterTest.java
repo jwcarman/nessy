@@ -44,7 +44,7 @@ import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -64,6 +64,7 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * {@code nessy.state.stale_retries} (agentic-o11y spec §1.2): every lost CAS race, at both fold
@@ -85,8 +86,8 @@ class StaleRetryCounterTest {
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final TestObservationRegistry registry = TestObservationRegistry.create();
   private final InMemorySubstrate substrate = new InMemorySubstrate();
-  private final SubstrateAgentStateStore store =
-      new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
+  private final SubstrateAgentPhaseStore store =
+      new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
   private final AtomicLong staleRetryEvents = new AtomicLong();
 
   @BeforeEach
@@ -133,9 +134,9 @@ class StaleRetryCounterTest {
     public void remember(Remembrance remembrance) {
       if (countdown.decrementAndGet() == 0) {
         var contender =
-            new SubstrateAgentStateStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
-        State current = contender.load();
-        contender.save(new State(current.phase(), current.version()));
+            new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
+        Versioned<AgentPhase> current = contender.load();
+        contender.save(new Versioned<>(current.value(), current.version()));
       }
     }
 
@@ -213,7 +214,7 @@ class StaleRetryCounterTest {
       harness.bind(SCOPE).tell("restart prod-eu");
 
       assertThat(staleRetriesRecorded()).isEqualTo(1);
-      assertThat(store.load().phase()).isInstanceOf(Phase.Idle.class);
+      assertThat(store.load().value()).isInstanceOf(AgentPhase.Idle.class);
     }
 
     /**
@@ -228,7 +229,7 @@ class StaleRetryCounterTest {
       harness.bind(SCOPE).tell("restart prod-eu");
 
       assertThat(staleRetriesRecorded()).isEqualTo(1);
-      assertThat(store.load().phase()).isInstanceOf(Phase.Idle.class);
+      assertThat(store.load().value()).isInstanceOf(AgentPhase.Idle.class);
     }
   }
 
@@ -253,12 +254,12 @@ class StaleRetryCounterTest {
     /** A scope parked on one deferred tool call, awaiting exactly the computation below. */
     private void parkOn(ComputationId computation) {
       Message turn = Message.assistant(List.of(new ToolUseBlock(RESTART)));
-      Phase phase =
-          new Phase.AwaitingTools(
+      AgentPhase phase =
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of("c1", new ToolCallState.AwaitingResult(computation)),
               ModelResponseId.of("r1"));
-      store.save(new State(phase, store.load().version()));
+      store.save(new Versioned<>(phase, store.load().version()));
     }
 
     /**
@@ -300,7 +301,7 @@ class StaleRetryCounterTest {
 
       assertThat(staleRetriesRecorded()).isEqualTo(1);
       // Converged: the call is finished and the turn moved on to the model.
-      assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+      assertThat(store.load().value()).isInstanceOf(AgentPhase.AwaitingModel.class);
     }
   }
 }

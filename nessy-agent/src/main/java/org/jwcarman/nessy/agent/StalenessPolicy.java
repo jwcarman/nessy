@@ -30,7 +30,7 @@ import java.util.Objects;
 public interface StalenessPolicy {
 
   /** §6.1's judgment, named: is this quiet phase dead enough to re-fire? */
-  boolean isStale(Phase phase, Instant lastSaved);
+  boolean isStale(AgentPhase phase, Instant lastSaved);
 
   /**
    * A policy that re-fires once a phase has sat quiet for at least {@code threshold}, by the system

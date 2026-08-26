@@ -30,7 +30,7 @@ import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -48,7 +48,7 @@ public final class TestAgents {
 
   public static <O> DefaultAgent<O> wired(
       Memory memory,
-      AgentStateStore store,
+      AgentPhaseStore store,
       Backlog<O> backlog,
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
@@ -70,7 +70,7 @@ public final class TestAgents {
   }
 
   /**
-   * As {@link #wired(Memory, AgentStateStore, Backlog, ObservationRenderer, ModelCallExecutor,
+   * As {@link #wired(Memory, AgentPhaseStore, Backlog, ObservationRenderer, ModelCallExecutor,
    * ToolCallExecutor, HarnessObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
    * than defaulting it to {@code "test"} — for a fixture whose deliveries/computations carry a
    * DIFFERENT agent type elsewhere (a {@code RegistryToolCallExecutor} constructed with its own
@@ -80,7 +80,7 @@ public final class TestAgents {
   public static <O> DefaultAgent<O> wired(
       AgentType type,
       Memory memory,
-      AgentStateStore store,
+      AgentPhaseStore store,
       Backlog<O> backlog,
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
@@ -121,7 +121,7 @@ public final class TestAgents {
    */
   public static <O> Harness<O> harness(
       Memory memory,
-      AgentStateStore store,
+      AgentPhaseStore store,
       Backlog<O> backlog,
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
@@ -143,16 +143,16 @@ public final class TestAgents {
   }
 
   /**
-   * As {@link #harness(Memory, AgentStateStore, Backlog, ObservationRenderer, ModelCallExecutor,
+   * As {@link #harness(Memory, AgentPhaseStore, Backlog, ObservationRenderer, ModelCallExecutor,
    * ToolCallExecutor, HarnessObserver, boolean, StalenessPolicy)}, but naming {@code type} rather
-   * than defaulting it to {@code "test"} — see {@link #wired(AgentType, Memory, AgentStateStore,
+   * than defaulting it to {@code "test"} — see {@link #wired(AgentType, Memory, AgentPhaseStore,
    * Backlog, ObservationRenderer, ModelCallExecutor, ToolCallExecutor, HarnessObserver, boolean,
    * StalenessPolicy)} for why a fixture ever needs this.
    */
   public static <O> Harness<O> harness(
       AgentType type,
       Memory memory,
-      AgentStateStore store,
+      AgentPhaseStore store,
       Backlog<O> backlog,
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,
@@ -182,7 +182,7 @@ public final class TestAgents {
   public static <O> Harness<O> harness(
       AgentType type,
       Memory memory,
-      AgentStateStore store,
+      AgentPhaseStore store,
       Backlog<O> backlog,
       ObservationRenderer<O> renderer,
       ModelCallExecutor model,

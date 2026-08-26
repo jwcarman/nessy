@@ -25,8 +25,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -78,13 +78,13 @@ class StateCodecTest {
 
     @Test
     void idlePhaseRoundTrips() {
-      var phase = new Phase.Idle();
+      var phase = new AgentPhase.Idle();
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
     @Test
     void awaitingModelPhaseRoundTrips() {
-      var phase = new Phase.AwaitingModel();
+      var phase = new AgentPhase.AwaitingModel();
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
@@ -92,7 +92,7 @@ class StateCodecTest {
     void everyToolCallStateRoundTripsIncludingTheParkedRequest() {
       var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
-          new Phase.AwaitingTools(
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
@@ -107,7 +107,7 @@ class StateCodecTest {
                   new ToolCallState.Finished(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
-      var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
+      var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
 
       assertThat(roundTripped).isEqualTo(phase);
       assertThat(roundTripped.calls()).isNotEmpty();
@@ -121,14 +121,14 @@ class StateCodecTest {
     void a_parked_requests_facts_still_read_back_typed_after_decoding() {
       var turn = turnOf(CALL_B);
       var phase =
-          new Phase.AwaitingTools(
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "b",
                   new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request())),
               RESPONSE_ID);
 
-      var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
+      var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
 
       assertThat(roundTripped.calls()).isNotEmpty();
       assertThat(roundTripped.calls().get("b"))
@@ -141,7 +141,7 @@ class StateCodecTest {
     void anAwaitingToolsPhaseWithOnePendingCallRoundTrips() {
       var turn = turnOf(CALL_A);
       var phase =
-          new Phase.AwaitingTools(turn, Map.of("a", new ToolCallState.Pending()), RESPONSE_ID);
+          new AgentPhase.AwaitingTools(turn, Map.of("a", new ToolCallState.Pending()), RESPONSE_ID);
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
@@ -149,7 +149,7 @@ class StateCodecTest {
     void everyStatusCarriesItsOwnTypeDiscriminatorOnTheWire() {
       var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
-          new Phase.AwaitingTools(
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of(
                   "a",
@@ -188,7 +188,7 @@ class StateCodecTest {
     void callsSerializeInSortedIdOrder() {
       var turn = turnOf(CALL_B, CALL_A);
       var phase =
-          new Phase.AwaitingTools(
+          new AgentPhase.AwaitingTools(
               turn,
               Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
               RESPONSE_ID);
@@ -205,8 +205,9 @@ class StateCodecTest {
 
     @Test
     void everyPhaseCarriesATypeDiscriminator() {
-      assertThat(CODEC.toJson(new Phase.Idle())).contains("\"type\":\"idle\"");
-      assertThat(CODEC.toJson(new Phase.AwaitingModel())).contains("\"type\":\"awaiting-model\"");
+      assertThat(CODEC.toJson(new AgentPhase.Idle())).contains("\"type\":\"idle\"");
+      assertThat(CODEC.toJson(new AgentPhase.AwaitingModel()))
+          .contains("\"type\":\"awaiting-model\"");
     }
   }
 
@@ -219,7 +220,7 @@ class StateCodecTest {
           """
           {"type":"idle","fromTheFuture":true}
           """;
-      assertThat(CODEC.phase(json)).isEqualTo(new Phase.Idle());
+      assertThat(CODEC.phase(json)).isEqualTo(new AgentPhase.Idle());
     }
 
     @Test

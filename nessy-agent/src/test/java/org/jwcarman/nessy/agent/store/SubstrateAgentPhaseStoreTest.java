@@ -24,16 +24,16 @@ import java.time.Instant;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.State;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.support.MarkerBytesCodec;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
-class SubstrateAgentStateStoreTest {
+class SubstrateAgentPhaseStoreTest {
 
   @Nested
   class RoundTripping {
@@ -41,28 +41,28 @@ class SubstrateAgentStateStoreTest {
     @Test
     void aFreshScopeLoadsTheInitialState() {
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(), "agent-a", fixedClock(), TestMappers.plainlyPinned());
-      assertThat(store.load()).isEqualTo(State.initial());
+      assertThat(store.load()).isEqualTo(new Versioned<>(new AgentPhase.Idle(), 0L));
     }
 
     @Test
     void aSavedPhaseRoundTripsThroughTheKernel() {
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(), "agent-a", fixedClock(), TestMappers.plainlyPinned());
-      store.save(new State(new Phase.AwaitingModel(), store.load().version()));
-      assertThat(store.load()).isEqualTo(new State(new Phase.AwaitingModel(), 1L));
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), store.load().version()));
+      assertThat(store.load()).isEqualTo(new Versioned<>(new AgentPhase.AwaitingModel(), 1L));
     }
 
     @Test
     void repeatedSavesAdvanceTheVersionByExactlyOne() {
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(), "agent-a", fixedClock(), TestMappers.plainlyPinned());
-      store.save(new State(new Phase.AwaitingModel(), 0L));
-      store.save(new State(new Phase.Idle(), 1L));
-      assertThat(store.load()).isEqualTo(new State(new Phase.Idle(), 2L));
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), 0L));
+      store.save(new Versioned<>(new AgentPhase.Idle(), 1L));
+      assertThat(store.load()).isEqualTo(new Versioned<>(new AgentPhase.Idle(), 2L));
     }
   }
 
@@ -72,10 +72,10 @@ class SubstrateAgentStateStoreTest {
     @Test
     void aSaveAgainstAStaleVersionThrowsStaleStateException() {
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(), "agent-a", fixedClock(), TestMappers.plainlyPinned());
-      store.save(new State(new Phase.AwaitingModel(), 0L)); // stored version is now 1
-      var stale = new State(new Phase.Idle(), 0L);
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), 0L)); // stored version is now 1
+      Versioned<AgentPhase> stale = new Versioned<>(new AgentPhase.Idle(), 0L);
 
       assertThatThrownBy(() -> store.save(stale)).isInstanceOf(StaleStateException.class);
     }
@@ -83,10 +83,10 @@ class SubstrateAgentStateStoreTest {
     @Test
     void aStaleSaveCarriesBothTheExpectedAndTheActualVersion() {
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(), "agent-a", fixedClock(), TestMappers.plainlyPinned());
-      store.save(new State(new Phase.AwaitingModel(), 0L)); // stored version is now 1
-      var stale = new State(new Phase.Idle(), 0L);
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), 0L)); // stored version is now 1
+      Versioned<AgentPhase> stale = new Versioned<>(new AgentPhase.Idle(), 0L);
 
       var thrown = catchThrowableOfType(StaleStateException.class, () -> store.save(stale));
 
@@ -102,7 +102,7 @@ class SubstrateAgentStateStoreTest {
     void aNeverSavedScopeReportsTheInstantTheStoreWasConstructed() {
       var birth = Instant.parse("2026-08-21T09:00:00Z");
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(),
               "agent-a",
               new TestClock(birth),
@@ -114,12 +114,12 @@ class SubstrateAgentStateStoreTest {
     void aSaveReportsTheKernelsUpdatedAt() {
       var savedAt = Instant.parse("2026-08-21T09:05:00Z");
       var store =
-          new SubstrateAgentStateStore(
+          new SubstrateAgentPhaseStore(
               new InMemorySubstrate(new TestClock(savedAt)),
               "agent-a",
               fixedClock(),
               TestMappers.plainlyPinned());
-      store.save(new State(new Phase.AwaitingModel(), 0L));
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), 0L));
       assertThat(store.lastSaved()).isEqualTo(savedAt);
     }
   }
@@ -131,26 +131,26 @@ class SubstrateAgentStateStoreTest {
     void isHonoredByBothWritesAndReads() {
       Substrate substrate = new InMemorySubstrate();
       StateCodec stateCodec = new StateCodec(TestMappers.plainlyPinned());
-      Codec<Phase> plain =
+      Codec<AgentPhase> plain =
           new Codec<>() {
             @Override
-            public byte[] encode(Phase phase) {
+            public byte[] encode(AgentPhase phase) {
               return stateCodec.toJson(phase).getBytes(StandardCharsets.UTF_8);
             }
 
             @Override
-            public Phase decode(byte[] bytes) {
+            public AgentPhase decode(byte[] bytes) {
               return stateCodec.phase(new String(bytes, StandardCharsets.UTF_8));
             }
           };
-      Codec<Phase> codec = plain.andThen(new MarkerBytesCodec());
-      var store = new SubstrateAgentStateStore(substrate, "agent-a", fixedClock(), codec);
+      Codec<AgentPhase> codec = plain.andThen(new MarkerBytesCodec());
+      var store = new SubstrateAgentPhaseStore(substrate, "agent-a", fixedClock(), codec);
 
-      store.save(new State(new Phase.AwaitingModel(), 0L));
+      store.save(new Versioned<>(new AgentPhase.AwaitingModel(), 0L));
 
       byte[] rawPayload = substrate.read("state", "agent-a").orElseThrow().payload();
       assertThat(MarkerBytesCodec.isMarked(rawPayload)).isTrue();
-      assertThat(store.load()).isEqualTo(new State(new Phase.AwaitingModel(), 1L));
+      assertThat(store.load()).isEqualTo(new Versioned<>(new AgentPhase.AwaitingModel(), 1L));
     }
   }
 

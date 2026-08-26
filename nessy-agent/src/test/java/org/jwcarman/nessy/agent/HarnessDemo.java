@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
@@ -54,7 +54,7 @@ class HarnessDemo {
     var pump = new PumpedExecutor();
     var memory = new RecordingMemory();
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "demo-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     var model = new ScriptedModelExecutor(pump, memory);
     var tools = new ScriptedToolExecutor(pump);
@@ -74,7 +74,7 @@ class HarnessDemo {
     HarnessObserver narrator =
         new HarnessObserver() {
           @Override
-          public void applied(AgentId id, AgentEvent event, Transition t) {
+          public void applied(AgentId id, AgentEvent event, AgentTransition t) {
             System.out.printf(
                 "  [narrate] %-14s -> %-14s commits=%d effects=%s%n",
                 event.getClass().getSimpleName(),
@@ -170,7 +170,7 @@ class HarnessDemo {
             lookup, Optional.empty(), new ToolOutcome.Returned(ToolResult.ok("dupe"))));
 
     System.out.println(
-        "\nfinal phase: " + store.load().phase() + "  version: " + store.load().version());
+        "\nfinal phase: " + store.load().value() + "  version: " + store.load().version());
     System.out.println("\nmemory (what the model would recall):");
     memory
         .remembered()
@@ -183,7 +183,7 @@ class HarnessDemo {
                         + m.content().stream().map(b -> b.getClass().getSimpleName()).toList()));
 
     // ---- the turn actually finished, and the model's recollections were captured ----
-    assertThat(store.load().phase()).isInstanceOf(Phase.Idle.class);
+    assertThat(store.load().value()).isInstanceOf(AgentPhase.Idle.class);
     assertThat(memory.remembered()).isNotEmpty();
   }
 }

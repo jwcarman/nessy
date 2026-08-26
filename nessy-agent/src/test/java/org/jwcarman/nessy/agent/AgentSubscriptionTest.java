@@ -36,8 +36,8 @@ import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.AgentPhaseStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -148,7 +148,7 @@ class AgentSubscriptionTest {
             false,
             StalenessPolicy.never(),
             rawId -> new SubstrateMemory(substrate, rawId, mapper),
-            rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+            rawId -> new SubstrateAgentPhaseStore(substrate, rawId, Clock.systemUTC(), mapper),
             rawId -> new QueueBacklog(),
             (scopeId, turnObserver) ->
                 new ProviderModelCallExecutor(
@@ -209,8 +209,8 @@ class AgentSubscriptionTest {
               List.of(
                   List.of(new ModelEvent.ToolUseEmitted(call, null)),
                   List.of(new ModelEvent.TextChunk("done"))));
-      java.util.function.Function<String, AgentStateStore> storeFactory =
-          rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper);
+      java.util.function.Function<String, AgentPhaseStore> storeFactory =
+          rawId -> new SubstrateAgentPhaseStore(substrate, rawId, Clock.systemUTC(), mapper);
 
       Harness<String> harness =
           Harness.of(
@@ -275,7 +275,7 @@ class AgentSubscriptionTest {
         // own resumption (Idle) instead, the definitive final signal.
         var scopeAState = storeFactory.apply("scope-a");
         long deadline = System.currentTimeMillis() + 5000;
-        while (!(scopeAState.load().phase() instanceof Phase.Idle)
+        while (!(scopeAState.load().value() instanceof AgentPhase.Idle)
             && System.currentTimeMillis() < deadline) {
           pump.pumpUntilQuiet();
           Thread.sleep(20);
@@ -391,11 +391,12 @@ class AgentSubscriptionTest {
   class SubscriberThrowIsolation {
 
     /**
-     * Fix round 1, MINOR-4: asserts the scope itself lands on {@link Phase.Idle} — the same shape
-     * {@code NessyHarnessDoorTest.aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion}
-     * checks for the harness's global observer — so "never poisons the fold" is proven regardless
-     * of where in subscribe order the throwing observer sits, not just proven for the OTHER
-     * subscriber's event count.
+     * Fix round 1, MINOR-4: asserts the scope itself lands on {@link AgentPhase.Idle} — the same
+     * shape {@code
+     * NessyHarnessDoorTest.aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion} checks
+     * for the harness's global observer — so "never poisons the fold" is proven regardless of where
+     * in subscribe order the throwing observer sits, not just proven for the OTHER subscriber's
+     * event count.
      */
     @Test
     void a_throwing_subscriber_is_isolated_and_never_poisons_the_fold_for_other_subscribers() {
@@ -420,7 +421,7 @@ class AgentSubscriptionTest {
               false,
               StalenessPolicy.never(),
               rawId -> new SubstrateMemory(substrate, rawId, mapper),
-              rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+              rawId -> new SubstrateAgentPhaseStore(substrate, rawId, Clock.systemUTC(), mapper),
               rawId -> new QueueBacklog(),
               (boundScope, turnObserver) ->
                   new ProviderModelCallExecutor(
@@ -457,8 +458,8 @@ class AgentSubscriptionTest {
       }
 
       assertThat(wellBehaved.events()).isNotEmpty();
-      var scopeState = new SubstrateAgentStateStore(substrate, scopeId, Clock.systemUTC(), mapper);
-      assertThat(scopeState.load().phase()).isEqualTo(new Phase.Idle());
+      var scopeState = new SubstrateAgentPhaseStore(substrate, scopeId, Clock.systemUTC(), mapper);
+      assertThat(scopeState.load().value()).isEqualTo(new AgentPhase.Idle());
     }
   }
 
@@ -502,7 +503,7 @@ class AgentSubscriptionTest {
               false,
               StalenessPolicy.never(),
               rawId -> new SubstrateMemory(substrate, rawId, mapper),
-              rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+              rawId -> new SubstrateAgentPhaseStore(substrate, rawId, Clock.systemUTC(), mapper),
               rawId -> new QueueBacklog(),
               (boundScope, turnObserver) ->
                   new ProviderModelCallExecutor(

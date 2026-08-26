@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,6 +83,10 @@ final class DeliveryWorker<O> implements ComputationPump {
   private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
   private static final String STATE_KIND = "state";
 
+  /** The never-saved default: a scope that has never saved loads {@code Idle} at version 0. */
+  private static final Versioned<AgentPhase> INITIAL_STATE =
+      new Versioned<>(new AgentPhase.Idle(), 0L);
+
   /**
    * The approval kind's lease (approval-lifecycle spec §5): short, because this consumer only folds
    * — the answer is one {@code Substrate} write, never a tool run, so nothing slow is in flight for
@@ -119,7 +124,7 @@ final class DeliveryWorker<O> implements ComputationPump {
   private final Executor nudgeExecutor;
 
   /** The {@code state} kind, typed over {@link StateCodec} — the scope's phase. */
-  private final DocumentStore<Phase> states;
+  private final DocumentStore<AgentPhase> states;
 
   /**
    * The approval kind's Continuum client (continuum-adoption spec §3, §7) — {@code null} for a
@@ -174,15 +179,15 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /** Adapts {@link StateCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam. */
-  private static Codec<Phase> stateCodec(StateCodec codec) {
+  private static Codec<AgentPhase> stateCodec(StateCodec codec) {
     return new Codec<>() {
       @Override
-      public byte[] encode(Phase value) {
+      public byte[] encode(AgentPhase value) {
         return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
       }
 
       @Override
-      public Phase decode(byte[] bytes) {
+      public AgentPhase decode(byte[] bytes) {
         return codec.phase(new String(bytes, StandardCharsets.UTF_8));
       }
     };
@@ -387,7 +392,7 @@ final class DeliveryWorker<O> implements ComputationPump {
     AgentType type = AgentType.of(routing.agentType());
     AgentId id = AgentId.of(routing.agentId());
     while (true) {
-      Optional<Transition> committed;
+      Optional<AgentTransition> committed;
       try {
         committed =
             harness
@@ -420,17 +425,17 @@ final class DeliveryWorker<O> implements ComputationPump {
    * ConflictException} propagates, so the caller's retry opens a second span rather than stretching
    * this one.
    */
-  private Optional<Transition> foldOnce(
+  private Optional<AgentTransition> foldOnce(
       Routing routing, AgentEvent event, ComputationId delivered, AgentType type, AgentId id) {
-    State state = warnIfNoStoredState(id, readState(id));
-    Transition transition = state.phase().handle(event);
+    Versioned<AgentPhase> state = warnIfNoStoredState(id, readState(id));
+    AgentTransition transition = state.value().handle(event);
     if (transition.isIgnored()) {
-      warnDropped(id, routing, delivered, state.phase());
+      warnDropped(id, routing, delivered, state.value());
       return Optional.empty();
     }
     if (event instanceof AgentEvent.ToolFinished(var call, var _, var outcome)) {
       ToolFoldRemembrance.remember(
-          harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+          harness.memoryFor(id), type, id, state.value(), call, outcome, transition);
     }
     // A denial finishes the call with an error result the model reads, so it is remembered the
     // same way a failed tool is — and it may be the call that commits the whole turn.
@@ -438,7 +443,7 @@ final class DeliveryWorker<O> implements ComputationPump {
         instanceof
         AgentEvent.ApprovalAnswered(var call, var _, Approval.Denied(var reason, var _))) {
       ToolFoldRemembrance.rememberDenial(
-          harness.memoryFor(id), type, id, state.phase(), call, reason, transition);
+          harness.memoryFor(id), type, id, state.value(), call, reason, transition);
     }
     states.write(id.value(), transition.next(), state.version());
     return Optional.of(transition);
@@ -460,7 +465,7 @@ final class DeliveryWorker<O> implements ComputationPump {
    * a duplicate when someone reads the log afterwards.
    */
   private static void warnDropped(
-      AgentId id, Routing routing, ComputationId delivered, Phase phase) {
+      AgentId id, Routing routing, ComputationId delivered, AgentPhase phase) {
     log.warn(
         "dropping a delivery this scope is not awaiting: agent={} call={} computation={} status={}",
         id.value(),
@@ -470,8 +475,8 @@ final class DeliveryWorker<O> implements ComputationPump {
   }
 
   /** How the phase describes this call right now, for {@link #warnDropped}'s message. */
-  private static String statusOf(Phase phase, String callId) {
-    if (!(phase instanceof Phase.AwaitingTools awaiting)) {
+  private static String statusOf(AgentPhase phase, String callId) {
+    if (!(phase instanceof AgentPhase.AwaitingTools awaiting)) {
       return phase.getClass().getSimpleName();
     }
     ToolCallState status = awaiting.calls().get(callId);
@@ -486,18 +491,19 @@ final class DeliveryWorker<O> implements ComputationPump {
    * durable in the first place. {@link #warnIfNoStoredState} is where that distinction gets logged;
    * this method just reports what it found.
    */
-  private Optional<State> readState(AgentId id) {
-    return states.read(id.value()).map(v -> new State(v.value(), v.version()));
+  private Optional<Versioned<AgentPhase>> readState(AgentId id) {
+    return states.read(id.value());
   }
 
   /**
    * Guard 2 (continuum-adoption spec §11.1): a delivery folding against a scope with no stored
    * state is, absent any other explanation, the moment a tool result is silently dropped — {@link
-   * Phase.Idle#handle(AgentEvent)} ignores it, indistinguishable from an ordinary
-   * duplicate-delivery ignore unless this logs it first. Falls back to {@link State#initial()}
+   * AgentPhase.Idle#handle(AgentEvent)} ignores it, indistinguishable from an ordinary
+   * duplicate-delivery ignore unless this logs it first. Falls back to {@code Idle} at version 0
    * either way, so the fold proceeds exactly as it always has.
    */
-  private State warnIfNoStoredState(AgentId id, Optional<State> stored) {
+  private Versioned<AgentPhase> warnIfNoStoredState(
+      AgentId id, Optional<Versioned<AgentPhase>> stored) {
     if (stored.isEmpty()) {
       log.warn(
           "a delivery folded against scope {} with no stored state — either its first-ever"
@@ -505,15 +511,15 @@ final class DeliveryWorker<O> implements ComputationPump {
               + " delivery was meant to complete",
           id.value());
     }
-    return stored.orElseGet(State::initial);
+    return stored.orElse(INITIAL_STATE);
   }
 
   /**
    * {@code phase} is the transition's committed {@code next()} — a call effect here reads its
-   * {@code ModelResponseId} from {@link org.jwcarman.nessy.agent.Phase.AwaitingTools}, the only
-   * phase that ever carries one.
+   * {@code ModelResponseId} from {@link org.jwcarman.nessy.agent.AgentPhase.AwaitingTools}, the
+   * only phase that ever carries one.
    */
-  private void dispatchEffects(AgentType type, AgentId id, Phase phase, List<Effect> effects) {
+  private void dispatchEffects(AgentType type, AgentId id, AgentPhase phase, List<Effect> effects) {
     for (Effect effect : effects) {
       switch (effect) {
         case Effect.CallModel _ ->
@@ -530,8 +536,8 @@ final class DeliveryWorker<O> implements ComputationPump {
     }
   }
 
-  private static ModelResponseId responseIdOf(Phase phase) {
-    if (phase instanceof Phase.AwaitingTools awaiting) {
+  private static ModelResponseId responseIdOf(AgentPhase phase) {
+    if (phase instanceof AgentPhase.AwaitingTools awaiting) {
       return awaiting.responseId();
     }
     throw new IllegalStateException("a call effect was dispatched outside AwaitingTools: " + phase);

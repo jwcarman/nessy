@@ -34,7 +34,7 @@ import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
@@ -140,7 +140,7 @@ class GrantRaceTest {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
     var memory = new SubstrateMemory(substrate, "test-scope", mapper);
-    var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
+    var store = new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
     var testType = AgentType.of("test");
     var approvalClient = TestApprovalClients.client(Kinds.approval(testType), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(testType), mapper);
@@ -243,7 +243,7 @@ class GrantRaceTest {
       // caught work a background thread had not enqueued yet.
       int expected = i + 1;
       long deadline = System.currentTimeMillis() + 10_000;
-      while (!(store.load().phase() instanceof Phase.Idle)
+      while (!(store.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
@@ -251,7 +251,7 @@ class GrantRaceTest {
 
       assertThat(tool.invocations).hasValue(expected); // exactly one more, never two more
       assertThat(substrate.keys("outbox", 10)).isEmpty();
-      assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(store.load().value()).isEqualTo(new AgentPhase.Idle());
     }
     nudgeExecutor.shutdown();
     assertThat(nudgeExecutor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();

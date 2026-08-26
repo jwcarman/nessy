@@ -26,7 +26,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.NoToolsExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
@@ -38,6 +38,7 @@ import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 class DefaultAgentDrainTest {
 
@@ -92,7 +93,7 @@ class DefaultAgentDrainTest {
     // per drain iteration, the race is caught by the save CAS (StaleStateException), never by
     // handing a non-idle phase an Observed event.
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var addedBack = new ArrayList<String>();
     Backlog<String> racingBacklog =
@@ -108,7 +109,7 @@ class DefaultAgentDrainTest {
           public Optional<String> poll() {
             if (!raced) {
               raced = true;
-              store.save(new State(new Phase.AwaitingModel(), store.load().version()));
+              store.save(new Versioned<>(new AgentPhase.AwaitingModel(), store.load().version()));
             }
             return Optional.of("hello");
           }
@@ -126,7 +127,7 @@ class DefaultAgentDrainTest {
             StalenessPolicy.never());
     agent.drive();
     assertThat(addedBack).containsExactly("hello");
-    assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    assertThat(store.load().value()).isEqualTo(new AgentPhase.AwaitingModel());
   }
 
   @Test
@@ -163,14 +164,14 @@ class DefaultAgentDrainTest {
     // Competitor moves the scope off Idle just before our save; benign duplicate in memory is
     // the accepted §5.2 class — the assertion is the re-add, not memory purity.
     var inner =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var competitorState = new State(new Phase.AwaitingModel(), 0L);
+    Versioned<AgentPhase> competitorState = new Versioned<>(new AgentPhase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).containsExactly("hello");
-    assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    assertThat(f.store.load().value()).isEqualTo(new AgentPhase.AwaitingModel());
   }
 
   @Test
@@ -182,7 +183,7 @@ class DefaultAgentDrainTest {
     // heals, the next drive() (not another tell() — that would enqueue a SECOND "hello"
     // alongside the one already re-queued) drains the preserved observation exactly once.
     var store =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backlogQueue = new ArrayDeque<String>();
     Backlog<String> backlog =
@@ -225,7 +226,7 @@ class DefaultAgentDrainTest {
   void drainOnIdleWiringDrainsTheNextObservationWhenTheTurnEnds() {
     var f =
         new AgentFixture(
-            new SubstrateAgentStateStore(
+            new SubstrateAgentPhaseStore(
                 new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
             true);
     f.model.enqueue(
@@ -245,7 +246,7 @@ class DefaultAgentDrainTest {
   void interactiveWiringLeavesTheBacklogForTheNextDrive() {
     var f =
         new AgentFixture(
-            new SubstrateAgentStateStore(
+            new SubstrateAgentPhaseStore(
                 new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
             false);
     f.model.enqueue(
@@ -266,9 +267,9 @@ class DefaultAgentDrainTest {
   @Test
   void aRequeueIsNarrated() {
     var inner =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var competitorState = new State(new Phase.AwaitingModel(), 0L);
+    Versioned<AgentPhase> competitorState = new Versioned<>(new AgentPhase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.tell("hello");
     f.pump.pumpUntilQuiet();

@@ -26,9 +26,9 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -203,7 +203,7 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
@@ -259,7 +259,7 @@ class TypedIntentDemo {
       assertThat(intentStore.latest()).contains(new Restart("prod-eu", "stuck deploy"));
 
       System.out.println("== the desk approves the retried restart ==");
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      assertThat(prodEuState.load().value()).isInstanceOf(AgentPhase.AwaitingTools.class);
       assertThat(requests).hasSize(1);
       Ask ask = requests.getFirst();
       assertThat(ask.request().facts().get(IntentEnricher.declared(OpsIntent.class)))
@@ -271,7 +271,7 @@ class TypedIntentDemo {
       // `pump` from that background thread — so this awaits the turn's own resumption rather than
       // assuming a single pumpUntilQuiet() call already caught it.
       long deadline = System.currentTimeMillis() + 5000;
-      while (!(prodEuState.load().phase() instanceof Phase.Idle)
+      while (!(prodEuState.load().value() instanceof AgentPhase.Idle)
           && System.currentTimeMillis() < deadline) {
         pump.pumpUntilQuiet();
         Thread.sleep(20);
@@ -280,8 +280,8 @@ class TypedIntentDemo {
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
       // call past the gate directly from the grant's own continuation — no re-derivation, no
       // second ask. The tool runs exactly once and the turn completes.
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
       assertThat(requests).hasSize(1);
     } finally {
       harness.shutdown();
@@ -293,7 +293,7 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
@@ -342,8 +342,8 @@ class TypedIntentDemo {
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
 
       List<Message> transcript =
           new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
@@ -363,7 +363,7 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new SubstrateAgentStateStore(
+        new SubstrateAgentPhaseStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var requests = new CopyOnWriteArrayList<Ask>();
     var intentStore =
@@ -406,8 +406,8 @@ class TypedIntentDemo {
       System.out.println("intent recorded: " + intentStore.latest());
       assertThat(intentStore.latest()).isEmpty();
 
-      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().value().getClass().getSimpleName());
+      assertThat(prodEuState.load().value()).isEqualTo(new AgentPhase.Idle());
 
       List<Message> transcript =
           new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
