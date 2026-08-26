@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.watchman;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.micrometer.observation.autoconfigure.ObservationRegistryCustomizer;
@@ -26,7 +27,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * The two things the application must contribute to its own observability (spec §2.3).
+ * The three things the application must contribute to its own observability (spec §2.3).
  *
  * <p>Almost everything is Boot's, once {@code spring-boot-starter-opentelemetry} is on the
  * classpath: the actuator owns the {@code ObservationRegistry}, Micrometer's OTel bridge turns
@@ -46,9 +47,52 @@ import org.springframework.context.annotation.Configuration;
  * declaring the appender is necessary and not sufficient. Until {@link
  * OpenTelemetryAppender#install} is called the appender silently drops every event, which is a
  * quiet way for "a trace id clicks through to the log lines" to be false.
+ *
+ * <p><b>Three.</b> The instrumentation scope's {@code schema_url}, so the Collector's schema
+ * processor can translate our attributes if semconv renames one — and it does: {@code
+ * gen_ai.system} became {@code gen_ai.provider.name} inside a year, and the whole GenAI convention
+ * set is still Development status. See {@link #otelTracer} for why an application is the only place
+ * this can be set.
  */
 @Configuration(proxyBeanMethods = false)
 public class Telemetry {
+
+  /**
+   * The semantic-conventions revision this harness's {@code gen_ai.*} attributes were written and
+   * audited against — the o11y spec's §8b audit references semantic-conventions v1.44.0. A schema
+   * URL is always {@code https://opentelemetry.io/schemas/<version>}.
+   */
+  static final String SEMCONV_SCHEMA_URL = "https://opentelemetry.io/schemas/1.44.0";
+
+  /**
+   * The instrumentation scope's name: the library whose spans these are, not the service. {@code
+   * service.name} is a Resource attribute and is set from {@code spring.application.name}.
+   */
+  private static final String INSTRUMENTATION_SCOPE = "org.jwcarman.nessy";
+
+  /**
+   * The OpenTelemetry {@link Tracer} Micrometer's bridge turns every harness observation into a
+   * span through — supplied here rather than left to Boot, purely so it can carry a schema URL.
+   *
+   * <p>This is the ONLY place the schema URL can be set. Micrometer's {@code Observation} /{@code
+   * ObservationRegistry} API has no notion of one — it has no notion of OpenTelemetry at all, which
+   * is the point of the one-seam ruling — and {@code micrometer-tracing-bridge-otel} wraps whatever
+   * {@code Tracer} it is handed, so every span inherits that tracer's instrumentation scope, schema
+   * URL included. Boot's own {@code OpenTelemetryTracingAutoConfiguration} builds it as {@code
+   * openTelemetry.getTracer("org.springframework.boot", SpringBootVersion.getVersion())}, with no
+   * schema URL, under {@code @ConditionalOnMissingBean} — so declaring this bean replaces it.
+   *
+   * <p>That it lives application-side rather than in {@code nessy-agent} is not a compromise:
+   * {@code nessy-agent} depends on {@code micrometer-observation} alone and never sees an
+   * OpenTelemetry type, so it has nothing to stamp.
+   */
+  @Bean
+  public Tracer otelTracer(OpenTelemetry openTelemetry) {
+    return openTelemetry
+        .tracerBuilder(INSTRUMENTATION_SCOPE)
+        .setSchemaUrl(SEMCONV_SCHEMA_URL)
+        .build();
+  }
 
   /** Adds the token-usage handler to whichever {@code ObservationRegistry} Boot built. */
   @Bean

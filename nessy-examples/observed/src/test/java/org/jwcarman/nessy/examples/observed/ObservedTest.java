@@ -20,7 +20,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.micrometer.common.KeyValue;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.Observation;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.trace.ReadWriteSpan;
+import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.SpanProcessor;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +49,67 @@ class ObservedTest {
     String line = Observed.run(List.of("--scripted"));
 
     assertThat(line).isEqualTo("The answer is 4. (COMPLETE)");
+  }
+
+  /**
+   * {@code schema_url} on the instrumentation scope (in-the-loop amendment §2). GenAI semconv is
+   * still Development status — {@code gen_ai.system} became {@code gen_ai.provider.name} inside a
+   * year — so a Collector's schema processor needs to know which revision these attributes were
+   * written against before it can translate them forward.
+   *
+   * <p>It is set on the OpenTelemetry {@code Tracer} and nowhere else, which is why it lives in an
+   * example rather than in {@code nessy-agent}: Micrometer's {@code ObservationRegistry} API has no
+   * notion of a schema URL, {@code OtelTracer} wraps whatever tracer it is handed, and the harness
+   * never sees an OpenTelemetry type at all.
+   */
+  @Nested
+  class TheInstrumentationScope {
+
+    @Test
+    void every_span_this_example_exports_declares_the_semconv_schema_url() {
+      List<ReadableSpan> ended = new ArrayList<>();
+      SdkTracerProvider provider =
+          SdkTracerProvider.builder().addSpanProcessor(new Capturing(ended)).build();
+      OpenTelemetry openTelemetry = OpenTelemetrySdk.builder().setTracerProvider(provider).build();
+
+      Observed.tracer(openTelemetry).spanBuilder("probe").startSpan().end();
+
+      assertThat(ended)
+          .singleElement()
+          .satisfies(
+              span ->
+                  assertThat(span.getInstrumentationScopeInfo().getSchemaUrl())
+                      .isEqualTo("https://opentelemetry.io/schemas/1.44.0"));
+    }
+  }
+
+  /** A hand-written processor, because there is no mocking library here (design of record). */
+  private record Capturing(List<ReadableSpan> ended) implements SpanProcessor {
+
+    @Override
+    public void onStart(Context parentContext, ReadWriteSpan span) {
+      // nothing to record until the span ends
+    }
+
+    @Override
+    public boolean isStartRequired() {
+      return false;
+    }
+
+    @Override
+    public void onEnd(ReadableSpan span) {
+      ended.add(span);
+    }
+
+    @Override
+    public boolean isEndRequired() {
+      return true;
+    }
+
+    @Override
+    public CompletableResultCode shutdown() {
+      return CompletableResultCode.ofSuccess();
+    }
   }
 
   @Nested

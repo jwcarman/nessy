@@ -25,8 +25,10 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.micrometer.tracing.handler.DefaultTracingObservationHandler;
 import io.micrometer.tracing.otel.bridge.OtelCurrentTraceContext;
 import io.micrometer.tracing.otel.bridge.OtelTracer;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.otlp.logs.OtlpGrpcLogRecordExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
@@ -91,6 +93,13 @@ public final class Observed {
    * http://localhost:4318/v1/metrics}, OTLP/HTTP protobuf.
    */
   private static final String DEFAULT_METRICS_URL = "http://localhost:4318/v1/metrics";
+
+  /**
+   * The semantic-conventions revision this harness's {@code gen_ai.*} attributes were written and
+   * audited against — the o11y spec's §8b audit references semantic-conventions v1.44.0. A schema
+   * URL is always {@code https://opentelemetry.io/schemas/<version>}.
+   */
+  static final String SEMCONV_SCHEMA_URL = "https://opentelemetry.io/schemas/1.44.0";
 
   private Observed() {}
 
@@ -246,7 +255,7 @@ public final class Observed {
             .build();
     OpenTelemetryAppender.install(openTelemetry);
 
-    var otelTracer = openTelemetry.getTracer(SERVICE_NAME);
+    var otelTracer = tracer(openTelemetry);
     var currentTraceContext = new OtelCurrentTraceContext();
     var tracer = new OtelTracer(otelTracer, currentTraceContext, event -> {});
 
@@ -257,6 +266,24 @@ public final class Observed {
         .observationHandler(new DefaultMeterObservationHandler(telemetry.meterRegistry()))
         .observationHandler(new TokenUsageHandler(telemetry.meterRegistry()));
     return registry;
+  }
+
+  /**
+   * The tracer Micrometer's bridge turns every harness observation into a span through, carrying
+   * the instrumentation scope's {@code schema_url} — so a Collector's schema processor can
+   * translate our attributes forward if semconv renames one, which it does: {@code gen_ai.system}
+   * became {@code gen_ai.provider.name} inside a year, and every GenAI convention is still
+   * Development status.
+   *
+   * <p>This is the only place it CAN be set. Micrometer's {@code Observation}/{@code
+   * ObservationRegistry} API has no notion of a schema URL — it has no notion of OpenTelemetry at
+   * all, which is the point of the one-seam ruling — and {@code OtelTracer} wraps whatever {@code
+   * Tracer} it is handed, so every span inherits that tracer's scope. {@code nessy-agent} depends
+   * on {@code micrometer-observation} alone and never sees an OpenTelemetry type, so it has nothing
+   * to stamp: application-side is not a compromise here, it is the only correct home.
+   */
+  static Tracer tracer(OpenTelemetry openTelemetry) {
+    return openTelemetry.tracerBuilder(SERVICE_NAME).setSchemaUrl(SEMCONV_SCHEMA_URL).build();
   }
 
   /**
