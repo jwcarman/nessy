@@ -55,6 +55,10 @@ class StateCodecTest {
       new ToolCall("d", "drain", JsonNodeFactory.instance.objectNode());
   private static final ToolCall CALL_E =
       new ToolCall("e", "audit", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_F =
+      new ToolCall("f", "revoke", JsonNodeFactory.instance.objectNode());
+  private static final ToolCall CALL_G =
+      new ToolCall("g", "purge", JsonNodeFactory.instance.objectNode());
 
   private static Message turnOf(ToolCall... calls) {
     List<ContentBlock> blocks = new ArrayList<>();
@@ -90,7 +94,7 @@ class StateCodecTest {
 
     @Test
     void everyToolCallPhaseRoundTripsIncludingTheParkedRequest() {
-      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
@@ -104,7 +108,11 @@ class StateCodecTest {
                   "d",
                   new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false)),
+                  "f",
+                  new ToolCallPhase.Denied(new ToolResultBlock("f", "too risky", true)),
+                  "g",
+                  new ToolCallPhase.Failed(new ToolResultBlock("g", "timed out", true))),
               RESPONSE_ID);
 
       var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -148,7 +156,7 @@ class StateCodecTest {
 
     @Test
     void everyToolCallPhaseCarriesItsOwnTypeDiscriminatorOnTheWire() {
-      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
+      var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E, CALL_F, CALL_G);
       var phase =
           new AgentPhase.AwaitingTools(
               turn,
@@ -162,7 +170,11 @@ class StateCodecTest {
                   "d",
                   new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false)),
+                  "f",
+                  new ToolCallPhase.Denied(new ToolResultBlock("f", "too risky", true)),
+                  "g",
+                  new ToolCallPhase.Failed(new ToolResultBlock("g", "timed out", true))),
               RESPONSE_ID);
 
       String json = CODEC.toJson(phase);
@@ -174,6 +186,8 @@ class StateCodecTest {
           .contains("\"type\":\"running-tool\"")
           .contains("\"type\":\"awaiting-result\"")
           .contains("\"type\":\"completed\"")
+          .contains("\"type\":\"denied\"")
+          .contains("\"type\":\"failed\"")
           // No derived method may reach the wire (deferral-by-callback spec §8). Nothing else
           // here would notice one: the mapper is pinned FAIL_ON_UNKNOWN_PROPERTIES=false, so a
           // phantom property decodes away silently and every round-trip assertion above stays

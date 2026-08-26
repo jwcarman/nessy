@@ -89,7 +89,7 @@ class AwaitingToolsPhaseTest {
   }
 
   @Test
-  void pendingDeniedInProcessFinishesWithAFailedResult() {
+  void seekingApprovalDeniedInProcessResultsInDenied() {
     var phase =
         awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.SeekingApproval()));
 
@@ -178,7 +178,7 @@ class AwaitingToolsPhaseTest {
   }
 
   @Test
-  void runningFinishedInProcessFinishes() {
+  void runningToolFinishedInProcessResultsInCompleted() {
     var phase =
         awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
 
@@ -309,9 +309,9 @@ class AwaitingToolsPhaseTest {
   }
 
   @Test
-  void finishedIgnoresEverythingForThatCall() {
-    var finished = new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false));
-    var phase = awaiting(calls(finished, new ToolCallPhase.SeekingApproval()));
+  void completedIgnoresEverythingForThatCall() {
+    var completed = new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false));
+    var phase = awaiting(calls(completed, new ToolCallPhase.SeekingApproval()));
 
     assertThat(phase.handle(returned(CALL_A, Optional.empty(), "again")).isDropped()).isTrue();
     assertThat(phase.handle(answered(CALL_A, Optional.empty(), Approval.approved())).isDropped())
@@ -389,8 +389,37 @@ class AwaitingToolsPhaseTest {
                     new ToolCallPhase.SeekingApproval())));
   }
 
+  /**
+   * A tool that returns normally but hands back an error result ({@code
+   * ToolOutcome.Returned(ToolResult.error(...))}, as distinct from {@code ToolOutcome.Failed}) is a
+   * NEW classification decision the terminal split introduced: before the split the {@code isError}
+   * boolean just flowed into one {@code Finished} block, but now it decides which of two types the
+   * call lands in. Asserting only the block's content, as {@link
+   * #aFailedToolRendersInBandAsAnErrorResult} does for the other {@code Failed} path, would not
+   * catch a misclassification into {@code Completed} — {@code result()} and {@code isInFlight}
+   * treat the two identically, so the wrong type would be invisible without pinning the concrete
+   * class here.
+   */
   @Test
-  void outstandingReseekPendingAndRerunRunningAndLeaveTheParkedOnesAlone() {
+  void aToolThatReturnsAnErrorResultIsFailedNotCompleted() {
+    var phase =
+        awaiting(calls(new ToolCallPhase.RunningTool(), new ToolCallPhase.SeekingApproval()));
+    var erroredReturn =
+        new AgentEvent.ToolFinished(
+            CALL_A, Optional.empty(), new ToolOutcome.Returned(ToolResult.error("bad input")));
+
+    var t = phase.handle(erroredReturn);
+
+    assertThat(t.next())
+        .isEqualTo(
+            awaiting(
+                calls(
+                    new ToolCallPhase.Failed(new ToolResultBlock("c1", "bad input", true)),
+                    new ToolCallPhase.SeekingApproval())));
+  }
+
+  @Test
+  void outstandingReseeksApprovalAndRerunsTheToolAndLeavesTheParkedOnesAlone() {
     assertThat(
             awaiting(calls(new ToolCallPhase.SeekingApproval(), new ToolCallPhase.RunningTool()))
                 .outstanding())
