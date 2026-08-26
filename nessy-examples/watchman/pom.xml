@@ -236,21 +236,6 @@
       <artifactId>logback-classic</artifactId>
       <scope>compile</scope>
     </dependency>
-    <!-- SQL spans (soak finding F5, 2026-08-26). Spring Boot instruments no JDBC out of the box —
-         measured by listing the built application's 132 jars, none of which is a JDBC
-         instrumentation — so search_memory and create_memory had no children at all and "is recall
-         slow, or is the transcript huge?" could not be answered from the trace. This wraps the
-         DataSource and records each query as a Micrometer Observation, which lands under whichever
-         memory observation is open.
-
-         Declared HERE and nowhere else, deliberately: it is an APPLICATION's choice to have its
-         DataSource wrapped, never nessy-agent's and never the starter's. Version pinned in the
-         root pom's dependencyManagement with every other version. -->
-    <dependency>
-      <groupId>net.ttddyy.observation</groupId>
-      <artifactId>datasource-micrometer-spring-boot</artifactId>
-    </dependency>
-
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>

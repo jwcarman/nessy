@@ -290,16 +290,40 @@ Two more worth doing over a month:
 | `nessy.approval.wait` | the headline. Real dwell, in days, on approvals a real person really did leave sitting. No test can produce this number. |
 | `nessy.tool.wait` | `long_job`'s own wait — the deferred-tool path, measured rather than asserted. |
 | `invoke_agent` spans | one per round. The shape of a healthy round is minutes; a round that never ends is the first failure mode. |
-| `jdbc.query` / `jdbc.connection` | **the SQL underneath the memory spans.** `search_memory` and `create_memory` are otherwise leaves, and a slow one is ambiguous: is recall slow, or is the transcript huge? Open a memory span and read its children — connection acquisition and query time are separate, and the statement rides the span. Spring Boot does *not* instrument JDBC on its own (the built app has 132 jars and not one of them is a JDBC instrumentation); this comes from `net.ttddyy.observation:datasource-micrometer-spring-boot`, declared in this module's POM and nowhere else. It is an application's choice to have its `DataSource` wrapped — never the starter's, and never `nessy-agent`'s. |
+| `nessy.fold` | **where store latency lives.** One span per fold attempt, and its duration *is* the state write plus the reduce plus the remembrance — so a slow CAS reads as a slow fold, in the round it happened, under the segment. A retried fold is a *second* `nessy.fold` span rather than one long one, so contention is visible in the trace and not only in the counter below. |
+| `nessy.approval.seek` | the ask itself, with `nessy.approval.outcome` = approved / denied / deferred. Whatever the approver does — a Slack post, a policy call — happens inside this span, so an approver that got slow is legible instead of being a gap. |
 | `chat` tokens | `gen_ai.client.token.usage` per round, split input/output. What the soak costs per day. |
 | `nessy.delivery.dropped` | **should be zero.** Anything else means an answer arrived for a phase that was not waiting for it. |
 | `nessy.state.stale_retries` | **normal, and proportional to parallelism** — see below. Read it per round against how many calls that round ran at once, never as an absolute. |
 | `nessy.effects.refired` | **usually zero.** A parked scope re-fires nothing; only a call caught `Pending` or `Running` by a crash does. A steady climb means rounds are being re-driven mid-flight. |
 
-All three are **span events on the round's own `invoke_agent` span**, not
+The last three are **span events on the round's own `invoke_agent` span**, not
 standalone traces — open the round in Tempo and read its events. (A count
 recorded while no round was running is the exception: that one is its own
 tiny trace, because there was no round to hang it on.)
+
+### Per-statement SQL, if you want it
+
+This application ships **no** JDBC instrumentation, deliberately. It briefly
+did — `net.ttddyy.observation:datasource-micrometer-spring-boot`, added in
+the soak-fix round — and a twenty-minute live run produced 390 `query`, 199
+`connection` and 199 `result-set` spans against a handful of rounds. 198 of
+those `connection` spans were **roots**, none carried a `db.*` attribute, and
+none nested under the memory observations they had been added to explain. The
+trace list stopped being a list of rounds.
+
+The cause was not the library. Nothing held a Micrometer *scope* around the
+work, so there was nothing for a query span to attach to. That is fixed:
+`nessy.fold`, `search_memory`, `create_memory`, `chat`, `execute_tool` and
+`nessy.approval.seek` are each current for the duration of the work they
+measure. So the library is not condemned — it is simply not needed, because
+the fold span answers the question at a hundredth of the volume.
+
+If you *do* want statement-level detail, add a JDBC instrumentation to this
+module's POM yourself. It will now attach **under the fold** (and under the
+memory spans), because the fold holds a scope — a tree rather than a flood.
+Per-statement SQL is an application's choice to make deliberately, never a
+default the framework ships.
 
 ### Reading the cache numbers
 
