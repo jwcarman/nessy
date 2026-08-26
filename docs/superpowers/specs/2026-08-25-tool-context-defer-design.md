@@ -285,6 +285,15 @@ callback address.
 - `ApprovalContexts` (agent.spi) — nothing replaces it.
 - `ToolExecution.Deferred(ComputationId)`; `ToolExecution` becomes
   `Immediate | AlreadyRecorded`.
+
+  **Amendment (task-1-report, implementation).** `ToolExecution` does not
+  survive even as that narrowed two-arm type — it retires entirely.
+  `RegistryToolCallExecutor.run` (the private helper behind `runTool`)
+  returns `Optional<ToolOutcome>` directly: empty means "the door already
+  recorded the wait, deliver nothing"; present is what `runTool` wraps in
+  `ToolFinished` and delivers. A skeleton type whose two arms were
+  "deliver" and "don't" bought nothing once one `Optional` said the same
+  thing.
 - `RegistryToolCallExecutor`'s five-arg constructor, `defaultPolicy`,
   `defaultApprovalContexts`, `PARKING_UNAVAILABLE` — the no-Continuum
   shape; nothing replaces it.

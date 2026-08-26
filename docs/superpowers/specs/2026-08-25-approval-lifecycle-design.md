@@ -497,6 +497,19 @@ approver:
   dropped. Giving `ToolContext` a `defer()`-style door remains the symmetric
   next step (§15), not a correctness fix.
 
+  **Amendment, 2026-08-25 (`2026-08-25-tool-context-defer-design.md`).** The
+  symmetric step above was taken: `ToolContext` gained its own `defer()`,
+  and the executor stopped minting the tool computation itself. The
+  "window does not exist in practice" argument above is superseded, not
+  merely reinforced — it no longer needs to hold, because there is no
+  window to reason about. `ToolContext.defer()` folds `ToolDeferred` and
+  waits for the commit before returning the id, exactly as
+  `ApprovalContext.defer()` already did; "the window does not exist in
+  practice" becomes "the window does not exist," by construction, for both
+  kinds. That spec also closes §3's own late-discovered hole — `defer()`
+  could return an id for a park that was never recorded — by having
+  `Sink#deliver` rethrow after narrating instead of swallowing.
+
 **Everything else is permanent, and is dropped.** With both windows closed, a
 delivery whose scope is not in the status that awaits it can never improve:
 it is an orphan, a duplicate, or a §6 re-ask's loser. `DeliveryWorker` logs it
@@ -728,6 +741,13 @@ records the vocabulary collapse as a breaking change.
     controller; James to confirm). `Enricher.enrich(Draft)` takes one
     argument; an enricher that wants the arguments reads `draft.call()`.
 
+    **Closed by `2026-08-25-tool-context-defer-design.md` §1.3.** The draft
+    now carries the bound input after all — `ApprovalRequest.draft(...)`
+    takes it as a fifth argument, and `Draft#input(Class<T>)` hands it back
+    typed, transient, never serialized into the frozen document. `Enricher
+    .enrich(Draft)` stays one argument; an enricher reads the input off the
+    draft it already holds rather than off a second parameter.
+
 ## 14. Rejected
 
 - **A distinct `AwaitingApprovals` phase the scope marches through.** Holds
@@ -756,11 +776,14 @@ records the vocabulary collapse as a breaking change.
 
 ## 15. Deliberately not done
 
-- No change to how a tool *defers* (`Awaited.Deferred`) or completes
+- ~~No change to how a tool *defers* (`Awaited.Deferred`) or completes
   (`CompletionDesk`); only to how the scope remembers that it did. Giving
   `ToolContext` a `defer()` door of its own — the real computation id in the
   tool's hands, replacing the digest key — is the symmetric next step and is
-  noted, not taken.
+  noted, not taken.~~ **Done, `2026-08-25-tool-context-defer-design.md`.**
+  `ToolContext` gained `defer()`; the executor no longer mints the tool
+  computation, and `invocation()` stays only the deterministic idempotency
+  key it always was. See that spec's §0 and §1.1.
 - No change to what the model sees.
 - No metrics, spans or decision ledger — this spec gives them a place to
   attach; the o11y and journal generations attach them.

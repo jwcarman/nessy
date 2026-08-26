@@ -65,9 +65,57 @@ public sealed interface Awaited<T> {
 
 `Ready` carries the answer, in hand right now. `Deferred` says the answer
 arrives through a durable computation — a callback, an approval, a job.
-The marker carries no identity: the wiring derives the computation's
-deterministic id from the work's coordinates itself, because a tool can
-neither reach the backend nor know the scope it's running in.
+The marker carries no identity: the id lives nowhere but the computation
+`context.defer()` created, and returning `deferred()` without having
+called `defer()` first is an in-band failure — see below.
+
+## Deferring — the door
+
+A tool that cannot answer right away calls `context.defer()`. It is the
+mirror of `ApprovalContext.defer()`: it creates this call's durable
+computation, folds `ToolDeferred` into the scope, waits for that fold to
+commit, and only then hands back the id. By the time a tool can give the
+id to anyone else — a queue, a webhook, a ticket system — the phase
+already names the wait.
+
+```java
+public interface ToolContext {
+  ToolCall call();
+  ComputationId invocation();
+  void progress(String message);
+  ComputationId defer();
+}
+```
+
+`invocation()` is not the id `defer()` returns. It's a stable idempotency
+key, deterministic from the call's coordinates, for deduplicating an
+external side effect across redispatch; `defer()` mints the real,
+Continuum-backed callback address.
+
+```java
+@Override
+public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+  handedOut = context.defer();
+  completions.complete(handedOut, ToolResult.ok("answered at once"));
+  worker.drainTools(BatchSize.of(10));
+  return Awaited.deferred();
+}
+```
+
+(from `ToolHandsOutItsIdBeforeReturningTest` — it proves the ordering: an
+external system that answers on the same thread, before the tool even
+returns, still reaches the turn. Nothing is dropped, because `defer()`'s
+fold already committed before it handed the id back.)
+
+`Awaited.deferred()` is legal only after this call's own `defer()`. An
+executor that never saw `defer()` called fails the call in-band with
+`"deferring tool never called context.defer()"`; returning
+`Awaited.ready(...)` after `defer()` already folded is likewise an in-band
+failure, `"tool answered after deferring"`. `defer()` is idempotent — a
+second call in the same execution returns the same id and creates nothing
+new — and it throws if the fold cannot commit, in which case nothing was
+parked and the tool should let the exception propagate; the executor
+answers the call in-band with the failure.
 
 ## `timeout` — the deadline a deferred answer has to beat
 
@@ -148,10 +196,12 @@ public enum CompletionPolicy {
 Declaration order is capability order — `IMMEDIATE ⊂ AWAITABLE ⊂ DURABLE` —
 so `ToolRegistry.limited(base, policy)` filters out every grant whose tool
 asks for more than a wiring can honor, before the model ever sees the tool
-list. A wiring that cannot suspend never advertises a durable tool; the
-in-band failure from `RegistryToolCallExecutor`'s default
-`DeferredToolCallPolicy` is the backstop for a tool that under-declares its
-own requirement, not the primary defense.
+list. A wiring that cannot suspend never advertises a durable tool; every
+harness wires a Continuum, so `context.defer()` itself never fails for
+lack of a store. The in-band failures policing `Awaited`'s two arms
+against what `defer()` actually recorded — [above](#deferring-the-door) —
+are the backstop for a tool that under-declares its own requirement, not
+the primary defense.
 
 ## `ToolEvent` — progress mid-execution
 

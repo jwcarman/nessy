@@ -86,7 +86,11 @@ The builder surface, piece by piece:
   to two harnesses lets either deliver what the other parked. Its
   durability must match `.substrate(...)`'s — both in memory or both
   durable — and the harness warns when it can tell they differ (a durable
-  substrate with no Continuum supplied). See
+  substrate with no Continuum supplied). There is no factory or policy
+  seam between the two: `.finish()` opens one approval client and one tool
+  client off this Continuum and hands the executor both, required, never
+  null — a tool's own `context.defer()` (see [Tools](../concepts/tools.md#deferring-the-door))
+  is always backed by a real store. See
   [Durable Computation](../concepts/durable-computation.md) for the rule
   and what mismatching them does.
 - **`.memoryFactory(Function<String, Memory>)`** — overrides the default
@@ -380,6 +384,11 @@ substrate share the Continuum too" above).
     a slow tool cannot be reclaimed and run twice the way it once could.
     See [Durable Computation](../concepts/durable-computation.md) for the
     delivery pipeline this replaces.
+
+A durable tool defers the same way: `context.defer()` is the tool kind's
+own door, creating and folding its computation before it ever hands back
+an id, exactly as `ApprovalContext.defer()` does above. See
+[Deferring — the door](../concepts/tools.md#deferring-the-door).
 
 ## The governed turn: intent, risk, and threshold together
 

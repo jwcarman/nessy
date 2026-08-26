@@ -112,11 +112,16 @@ Enrichment builds the request through a short-lived mutable draft, which
 `ToolGrant#request` drives:
 
 ```java
-ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, pinned);
+ApprovalRequest.Draft draft = ApprovalRequest.draft(agentType, agentId, call, input, pinned);
 draft.action(renderAction.apply(input));            // once
 for (Enricher e : enrichers) e.enrich(draft);        // each deposits typed facts
 ApprovalRequest request = draft.freeze();            // immutable from here on
 ```
+
+An enricher may read that same bound input back off the draft —
+`draft.input(RestartInput.class)` — rather than re-parsing `call().arguments()`.
+It's transient: it never rides the frozen document, because the raw
+arguments are already that evidence.
 
 Nothing outside enrichment ever sees a `Draft`, and a `Draft` freezes once.
 A `RuntimeException` escaping the action render or any enricher is caught

@@ -828,3 +828,31 @@ sequence of renames and interim shapes that produced it.
   [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/)
   and [the harness guide](https://jwcarman.github.io/nessy/guides/harness/)
   (design of record: `docs/superpowers/specs/2026-08-25-approval-lifecycle-design.md`).
+- **The tool hands out its own id: `ToolContext.defer()` (breaking).**
+  `ToolContext` was a record; it is now an interface, the mirror of
+  `ApprovalContext` — `call()`, `invocation()`, `progress(message)`, and
+  the new `defer()`, which creates this call's durable computation, folds
+  `ToolDeferred`, waits for that fold to commit, and only then returns the
+  id. `Awaited.deferred()` is legal only after this call's own `defer()`:
+  returning it without deferring fails in-band with `"deferring tool never
+  called context.defer()"`, and returning `Awaited.ready(...)` after
+  deferring fails in-band with `"tool answered after deferring"`. The
+  executor never creates a computation itself anymore — `ToolExecution`,
+  `DeferredToolCallPolicy`/`ComputationDeferredToolCallPolicy`, and
+  `ApprovalContexts` all retire outright, along with
+  `RegistryToolCallExecutor`'s five-arg, no-Continuum test constructor and
+  its `PARKING_UNAVAILABLE` failure — the executor's two `ContinuumClient`s
+  are required, never null, and there is no factory or policy seam that
+  hands it a narrower view. `Sink#deliver` (`DefaultAgent.deliver`) now
+  narrates `AgentObserver.applyFailed` and **rethrows** on a fold that
+  cannot commit, closing a hole where `defer()` could hand back an id for a
+  park that was never actually recorded; every other caller already ran
+  inside an executor task where the narration was the only trace, so
+  nothing observable changes for them. `ApprovalRequest.draft(...)` gains a
+  fifth argument, the bound tool input, which an enricher reads back typed
+  through the new `Draft#input(Class<T>)` — transient, never serialized
+  into the frozen document, since `call().arguments()` is already that
+  evidence. See [Tools](https://jwcarman.github.io/nessy/concepts/tools/#deferring-the-door)
+  and
+  [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/)
+  (design of record: `docs/superpowers/specs/2026-08-25-tool-context-defer-design.md`).

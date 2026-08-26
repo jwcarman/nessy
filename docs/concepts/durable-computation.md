@@ -242,11 +242,18 @@ finishes the turn.
 The pipeline promises ownership transfer, never a live thread and never
 exactly-once external work.
 
-- **A tool's external work starts before its computation is created.** A
-  deferring tool can only reveal that it's deferring by returning
-  `Awaited.deferred()` after its own external call has already started, so
-  a crash between that start and the `create` call landing loses the
-  return address entirely — there is nothing yet to redrive.
+- **A crash between `defer()` committing and the external work starting
+  loses the side effect, not the return address.** `context.defer()`
+  creates the computation, folds `ToolDeferred`, and commits — by
+  construction, before it ever hands the id back (see [Tools](tools.md)).
+  So the failure this pipeline cannot close is the mirror of what it used
+  to be: a crash right after `defer()` returns, before the tool has
+  actually posted to the queue or called the webhook, leaves
+  `AwaitingResult(id)` on disk with nothing on the other end ever going to
+  complete it. The call waits out its timeout and fails in-band, rather
+  than losing the callback address the way the pre-reform ordering could.
+  The window is a few statements on one thread, not an external round
+  trip.
 - **Retryable redispatch is not implemented.** An overdue tool computation
   is expired, once, and folded as a failure. If your tool's external side
   effect is safe to redrive, that has to be handled outside this pipeline
