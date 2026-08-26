@@ -318,7 +318,7 @@ the worker narrates `HarnessObserver`).
    folds publish, `HarnessObserver` subscribes via `Harness.subscribe`. The
    default narrating observer will log delivered folds it did not log
    before — intended.
-3. **Ruled 2026-08-26 during execution (for James's sign-off — public
+3. **Ruled 2026-08-26 during execution (signed off by James 2026-08-26 — public
    SPI):** the harness holds a `Model`, not a `ModelProvider`. `Model`
    gains `String provider()` returning the semconv value (`anthropic`,
    `openai`, `x_ai`, `gcp.gemini`, `aws.bedrock`), set by the provider
