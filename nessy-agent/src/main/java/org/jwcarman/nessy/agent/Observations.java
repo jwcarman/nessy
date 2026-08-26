@@ -474,6 +474,15 @@ final class Observations implements HarnessObserver {
    * inside an approver folds while {@code nessy.approval.seek} is current, and the nearest open
    * scope is the truer parent — otherwise the scope's open segment, and otherwise nothing at all
    * (see {@link #fold}'s note on the first fold of a segment).
+   *
+   * <p><b>Ruling (2026-08-26, task-pump-spans): enclosing-wins now also covers a pump-delivered
+   * fold.</b> Before {@link #pump} existed, a scheduled drain pass had nothing current, so a
+   * delivered fold that reached a scope with an already-open {@code invoke_agent} segment (an
+   * in-process answer racing the round that is still running) fell through to that segment. Now
+   * that {@link #pump} keeps {@code nessy.pump} current for the whole pass, the same fold parents
+   * to {@code nessy.pump} instead — the fold genuinely ran inside the pump pass, so this is not a
+   * bug in the pass, it is James's deliberate call to accept the trace this produces. The
+   * ENCLOSING-inside-an-approver rationale above no longer covers every case this method decides.
    */
   private Observation foldParent(AgentId id) {
     Observation enclosing = registry.getCurrentObservation();
@@ -525,20 +534,22 @@ final class Observations implements HarnessObserver {
     }
   }
 
+  /** Shared by {@link #fold} and {@link #pump}: the message names no verb, since both use it. */
   private Observation.Scope opened(Observation span) {
     try {
       return span.openScope();
     } catch (RuntimeException e) {
-      log.warn("an observation handler threw opening a fold scope; the fold is unaffected", e);
+      log.warn("an observation handler threw opening a scope; the observed work is unaffected", e);
       return Observation.Scope.NOOP;
     }
   }
 
+  /** Shared by {@link #fold} and {@link #pump}: the message names no verb, since both use it. */
   private static void quietly(Runnable instrumentation) {
     try {
       instrumentation.run();
     } catch (RuntimeException e) {
-      log.warn("an observation handler threw around a fold span; the fold is unaffected", e);
+      log.warn("an observation handler threw around a span; the observed work is unaffected", e);
     }
   }
 
