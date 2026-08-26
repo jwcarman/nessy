@@ -173,8 +173,9 @@ public class ToolBeans {
 
   @Bean
   @ConditionalOnExpression(APT_OR_DNF)
-  public ToolGrant applyUpdates(CommandRunner runner, Environment environment) {
-    return ApplyUpdates.grant(runner, packageManager(environment));
+  public ToolGrant applyUpdates(
+      CommandRunner runner, Environment environment, WatchmanProperties properties) {
+    return ApplyUpdates.grant(runner, packageManager(environment), properties.upgradeTimeout());
   }
 
   @Bean

@@ -28,6 +28,7 @@ import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -53,6 +54,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * published, which is the only contract it has, and lets {@code StarterOnPostgresTest} prove the
  * end-to-end path separately.
  */
+@Tag("container")
 @Testcontainers
 class PendingApprovalsTest {
 

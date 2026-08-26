@@ -200,10 +200,35 @@ follow, both accepted rather than fixed:
   only the answer columns while they are empty. `pending()` filters out a
   row that holds an answer but no request yet; the park's own fact
   completes it moments later.
-- **A restart between the fold and the insert loses a row.** The page then
-  shows one approval fewer than the phase actually holds, until the
-  staleness re-fire re-asks and the projection catches up. The ledger is
-  the phase; this table is a queryable shadow of it.
+- **A lost fact is lost. The projection does not heal.** If a fact never
+  reaches this table — a restart between the fold and the insert, a
+  `DataSource` blip, an exception in the observer — nothing replays it.
+  `Phase.AwaitingTools` contributes no outstanding effect for a call in
+  `AwaitingApproval` (the Continuum holds it, so there is nothing to
+  re-fire), the projection ignores `reFired`, and `Harness.subscribe` is
+  package-private by ruling, so there is no replay door. Earlier text
+  here promised that the staleness re-fire would re-ask; that was never
+  true, and this is the correction.
+
+    Both directions of loss are real, and the second is the nastier:
+
+    - **A lost park** leaves no row: the page shows one approval fewer
+      than the phase actually holds, forever. The call is still parked
+      and still answerable by coordinates through `ApprovalDesk`, but the
+      table cannot tell anyone it is there.
+    - **A lost answer** leaves the row in `pending()` forever, showing a
+      human a decision already made. Answering it again is a benign no-op
+      at the desk — the computation is already complete — so the click
+      appears to do nothing and the row does not move. Confusing rather
+      than dangerous: the action is not performed twice.
+
+    **The ledger is the phase.** When this table and the agent disagree,
+    the agent is right, and the recourse is the agent's own transcript —
+    what it did is in its messages — not in this table.
+
+    A self-healing rebuild would need a public replay door on the fact
+    stream: some way to re-read a scope's applied facts and re-fold them.
+    That does not exist today and was deliberately not invented for this.
 
 !!! warning "PostgreSQL only"
     Every statement is written in PostgreSQL's dialect — `ON CONFLICT …

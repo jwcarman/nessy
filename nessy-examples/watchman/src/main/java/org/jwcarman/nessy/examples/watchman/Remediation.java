@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -67,6 +68,24 @@ final class Remediation {
       Class<I> inputType,
       Function<I, List<String>> argv,
       CommandRunner runner) {
+    return tool(name, description, inputType, argv, runner, null);
+  }
+
+  /**
+   * The same, with a deadline of its own.
+   *
+   * <p>{@code null} means "whatever the runner's default is", which is right for the four
+   * remediations that finish in a second. {@code apply_updates} passes {@code
+   * watchman.upgrade-timeout} instead, because the default budget would SIGKILL dpkg
+   * mid-transaction — see {@link CommandRunner#run(List, Duration)}.
+   */
+  static <I> Tool<I> tool(
+      String name,
+      String description,
+      Class<I> inputType,
+      Function<I, List<String>> argv,
+      CommandRunner runner,
+      Duration timeout) {
     Objects.requireNonNull(name, "name must not be null");
     Objects.requireNonNull(description, "description must not be null");
     Objects.requireNonNull(inputType, "inputType must not be null");
@@ -78,7 +97,7 @@ final class Remediation {
             t.name(name)
                 .description(description)
                 .requires(CompletionPolicy.DURABLE)
-                .executes(input -> outcome(runner, argv.apply(input))));
+                .executes(input -> outcome(runner, argv.apply(input), timeout)));
   }
 
   /**
@@ -118,8 +137,8 @@ final class Remediation {
     return "'" + argument.replace("'", "'\\''") + "'";
   }
 
-  private static String outcome(CommandRunner runner, List<String> argv) {
-    CommandRunner.Output output = runner.run(argv);
+  private static String outcome(CommandRunner runner, List<String> argv, Duration timeout) {
+    CommandRunner.Output output = timeout == null ? runner.run(argv) : runner.run(argv, timeout);
     String line = commandLine(argv);
     return output.succeeded()
         ? "ran `" + line + "`" + suffix(output.stdout())

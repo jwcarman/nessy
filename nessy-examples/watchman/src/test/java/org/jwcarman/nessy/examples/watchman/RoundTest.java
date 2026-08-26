@@ -33,6 +33,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.jwcarman.nessy.spring.boot.PendingApproval;
@@ -72,6 +73,7 @@ import org.springframework.test.web.servlet.MockMvc;
       "watchman.detected.systemctl=true"
     })
 @ActiveProfiles("scripted")
+@Tag("container")
 @AutoConfigureMockMvc
 class RoundTest {
 
@@ -87,6 +89,9 @@ class RoundTest {
   @Autowired private PendingApprovalsRepository approvals;
 
   @Autowired private MockMvc mvc;
+
+  /** The pretend host, so the test can ask what was actually executed on it. */
+  @Autowired private FakeRunner host;
 
   @Test
   void a_round_reads_the_disk_proposes_a_restart_and_writes_a_note() throws Exception {
@@ -132,6 +137,23 @@ class RoundTest {
                         assertThat(row.reference()).contains("desk:ops:go ahead");
                       });
             });
+
+    // AND THE COMMAND ACTUALLY RAN (final review's named test gap). Everything above proves the row
+    // moved from pending to answered — which is a claim about a table, not about the box. The
+    // README promises "the tool runs, in a turn belonging to a process that did not exist when the
+    // question was asked", and until now nothing joined the two halves: RoundTest watched the row,
+    // RemediationGrantsTest ran the tool, and an approval that answered and did nothing would have
+    // passed both. This is the join.
+    await()
+        .atMost(Duration.ofSeconds(60))
+        .untilAsserted(
+            () -> {
+              List<List<String>> ran = host.asked();
+              assertThat(ran).isNotEmpty();
+              assertThat(ran)
+                  .as("the approved restart_unit must actually have been executed")
+                  .contains(List.of("systemctl", "restart", "--", "nginx.service"));
+            });
   }
 
   private static List<String> notes() throws IOException {
@@ -161,7 +183,7 @@ class RoundTest {
     }
 
     @Bean
-    CommandRunner commandRunner() {
+    FakeRunner commandRunner() {
       return new FakeRunner()
           .answering(
               "df",

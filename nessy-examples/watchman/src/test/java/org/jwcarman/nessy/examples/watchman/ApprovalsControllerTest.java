@@ -32,6 +32,7 @@ import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spring.boot.PendingApproval;
 import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
@@ -66,6 +67,7 @@ import org.springframework.test.web.servlet.MockMvc;
       "watchman.notes-dir=target/controller-test-notes"
     })
 @ActiveProfiles("scripted")
+@Tag("container")
 @AutoConfigureMockMvc
 class ApprovalsControllerTest {
 

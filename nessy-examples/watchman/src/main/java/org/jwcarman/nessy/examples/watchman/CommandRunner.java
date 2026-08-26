@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -38,6 +39,29 @@ public interface CommandRunner {
    *     every caller is a tool whose answer to "that did not work" is a message for the model
    */
   Output run(List<String> argv);
+
+  /**
+   * The same, with a deadline of this call's own choosing rather than the runner's default.
+   *
+   * <p>Why the seam grew a second method (final review, finding #4): {@code
+   * watchman.command-timeout} defaults to thirty seconds, which is right for {@code df} and
+   * catastrophic for {@code apt-get -y upgrade}. {@link ProcessRunner} enforces a timeout with
+   * {@code destroyForcibly()}, so a thirty-second budget on a package upgrade means <b>SIGKILL to
+   * dpkg mid-transaction</b> — a half-configured package database, on a real server, that a human
+   * then has to repair by hand. The one thing this agent must never do is break the box it was
+   * watching.
+   *
+   * <p>This overload rather than a per-{@code Tool} timeout knob or a second runner bean, because
+   * it is the smallest change that puts the decision where the argv is: {@link ApplyUpdates} knows
+   * it is running an upgrade, and nothing else has to know anything. The default delegates, so
+   * every existing implementation — including the tests' fake — keeps working unchanged.
+   *
+   * @param argv the command and its arguments
+   * @param timeout how long THIS command may take
+   */
+  default Output run(List<String> argv, Duration timeout) {
+    return run(argv);
+  }
 
   /**
    * What one command did.

@@ -16,9 +16,11 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Duration;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -44,6 +46,9 @@ class RemediationGrantsTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final CommandRunner RUNNER = new FakeRunner();
+
+  /** Whatever watchman.upgrade-timeout is set to; these tests only care that it is honoured. */
+  private static final Duration UPGRADE_TIMEOUT = Duration.ofMinutes(15);
 
   /** One backslash, spelled once, so the quote-escaping assertion stays readable. */
   private static final String BACKSLASH = "\\";
@@ -134,17 +139,54 @@ class RemediationGrantsTest {
 
     @Test
     void shows_the_hosts_own_upgrade_command() {
-      assertThat(action(ApplyUpdates.grant(RUNNER, PackageManager.APT), new ApplyUpdates.Updates()))
+      assertThat(
+              action(
+                  ApplyUpdates.grant(RUNNER, PackageManager.APT, UPGRADE_TIMEOUT),
+                  new ApplyUpdates.Updates()))
           .isEqualTo("apt-get -y upgrade");
-      assertThat(action(ApplyUpdates.grant(RUNNER, PackageManager.DNF), new ApplyUpdates.Updates()))
+      assertThat(
+              action(
+                  ApplyUpdates.grant(RUNNER, PackageManager.DNF, UPGRADE_TIMEOUT),
+                  new ApplyUpdates.Updates()))
           .isEqualTo("dnf -y upgrade");
     }
 
     @Test
     void waits_for_a_human() {
       assertThat(
-              outcome(ApplyUpdates.grant(RUNNER, PackageManager.APT), new ApplyUpdates.Updates()))
+              outcome(
+                  ApplyUpdates.grant(RUNNER, PackageManager.APT, UPGRADE_TIMEOUT),
+                  new ApplyUpdates.Updates()))
           .isInstanceOf(ApprovalOutcome.Deferred.class);
+    }
+
+    /**
+     * The one remediation that must NOT get the default deadline (final review, finding #4). {@code
+     * watchman.command-timeout} is thirty seconds and the runner enforces a timeout by destroying
+     * the process, so the default budget on {@code apt-get -y upgrade} is a SIGKILL to dpkg
+     * mid-transaction — a package database a human then repairs by hand, on the server this agent
+     * was supposed to be looking after.
+     */
+    @Test
+    void asks_for_its_own_much_longer_deadline_rather_than_the_default() {
+      FakeRunner runner = new FakeRunner().answering("apt-get", "");
+
+      Tools.content(
+          ApplyUpdates.tool(runner, PackageManager.APT, UPGRADE_TIMEOUT),
+          new ApplyUpdates.Updates());
+
+      assertThat(runner.timeouts()).containsExactly(UPGRADE_TIMEOUT);
+      assertThat(UPGRADE_TIMEOUT).isGreaterThan(Duration.ofMinutes(5));
+    }
+
+    /** Every other remediation is a second's work and takes the runner's default. */
+    @Test
+    void the_quick_remediations_do_not_override_the_default_deadline() {
+      FakeRunner runner = new FakeRunner().answering("systemctl", "");
+
+      Tools.content(RestartUnit.tool(runner), new RestartUnit.Unit("nginx.service"));
+
+      assertThat(runner.timeouts()).isEmpty();
     }
   }
 
@@ -209,6 +251,22 @@ class RemediationGrantsTest {
           action(RestartContainer.grant(RUNNER), new RestartContainer.Container("it's here"));
 
       assertThat(rendered).isEqualTo("docker restart -- 'it'" + BACKSLASH + "''s here'");
+    }
+
+    /**
+     * A model can omit a required field, and then the record holds {@code null}. Nothing renders,
+     * no command runs, and — the part worth pinning — the failure names the stage rather than
+     * surfacing as an anonymous NPE somewhere downstream. {@code ToolGrant} fails closed at the
+     * action stage, which is exactly where a call this malformed should die.
+     */
+    @Test
+    void that_is_missing_entirely_fails_closed_at_the_action_stage() {
+      ToolGrant grant = RestartUnit.grant(RUNNER);
+      RestartUnit.Unit nameless = new RestartUnit.Unit(null);
+
+      assertThatThrownBy(() -> action(grant, nameless))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("action stage");
     }
 
     @Test

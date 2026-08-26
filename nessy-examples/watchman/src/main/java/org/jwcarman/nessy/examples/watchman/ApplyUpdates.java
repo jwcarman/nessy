@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -36,19 +37,28 @@ public final class ApplyUpdates {
     return updates -> upgrade;
   }
 
-  /** The tool: what runs once a human has said yes. */
-  public static Tool<Updates> tool(CommandRunner runner, PackageManager manager) {
+  /**
+   * The tool: what runs once a human has said yes.
+   *
+   * @param timeout how long the upgrade may take — {@code watchman.upgrade-timeout}, fifteen
+   *     minutes by default, NOT the thirty-second {@code watchman.command-timeout} every other
+   *     command gets. The timeout is enforced by destroying the process, so too small a budget here
+   *     means SIGKILL to dpkg mid-transaction and a package database a human has to repair by hand.
+   */
+  public static Tool<Updates> tool(CommandRunner runner, PackageManager manager, Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout must not be null");
     return Remediation.tool(
         "apply_updates",
         "Applies every pending package update. Requires human approval; propose it, do not expect"
             + " it to run during this round.",
         Updates.class,
         argv(manager),
-        runner);
+        runner,
+        timeout);
   }
 
   /** The grant: deferred, with the exact command line as its action. */
-  public static ToolGrant grant(CommandRunner runner, PackageManager manager) {
-    return Remediation.grant(tool(runner, manager), argv(manager));
+  public static ToolGrant grant(CommandRunner runner, PackageManager manager, Duration timeout) {
+    return Remediation.grant(tool(runner, manager, timeout), argv(manager));
   }
 }

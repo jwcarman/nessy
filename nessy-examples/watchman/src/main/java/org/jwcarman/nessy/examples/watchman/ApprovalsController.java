@@ -62,7 +62,10 @@ public class ApprovalsController {
    * @param agent the scope that asked
    * @param action the exact command line that will run if this is approved
    * @param parkedAt when it started waiting
-   * @param dwell how long it has waited, in words — the number the soak is really about
+   * @param dwell how long it has waited, in words — the number the soak is really about, measured
+   *     from when the projection saw the park rather than from the park itself, because no fact in
+   *     Nessy carries a time (see {@code PendingApproval#parkedAt}). Good enough to tell hours from
+   *     days, which is the decision this page supports; not an audit-grade measurement
    * @param request the frozen request as JSON, the evidence behind the decision
    * @param answer {@code approved} or {@code denied}, on the recent page
    * @param note the denial's reason, on the recent page

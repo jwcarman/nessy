@@ -29,6 +29,7 @@ import java.time.Clock;
 import java.time.InstantSource;
 import java.util.List;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
 import org.jwcarman.continuum.DefaultContinuum;
@@ -70,6 +71,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * HarnessConfig#continuum} work was building toward, and the first test in the tree to exercise a
  * durable computation store at all.
  */
+@Tag("container")
 @Testcontainers
 class DurableResumeTest {
 

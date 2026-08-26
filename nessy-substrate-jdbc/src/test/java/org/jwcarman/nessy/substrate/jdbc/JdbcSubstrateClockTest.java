@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -45,6 +46,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * every {@code SubstrateContract} test, because the battery never asserts on a stamped timestamp's
  * value.
  */
+@Tag("container")
 @Testcontainers
 class JdbcSubstrateClockTest {
 

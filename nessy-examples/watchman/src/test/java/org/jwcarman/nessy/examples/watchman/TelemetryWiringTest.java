@@ -27,6 +27,7 @@ import io.opentelemetry.sdk.logs.export.LogRecordExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -74,6 +75,7 @@ import org.springframework.test.context.ActiveProfiles;
       "watchman.notes-dir=target/telemetry-test-notes"
     })
 @ActiveProfiles("scripted")
+@Tag("container")
 class TelemetryWiringTest {
 
   @Autowired private ApplicationContext context;
@@ -82,8 +84,16 @@ class TelemetryWiringTest {
 
   @Autowired private MeterRegistry meters;
 
+  /**
+   * Exactly one, not merely at least one (final review, finding #10). The name said "single" and
+   * the assertion said {@code isNotEmpty}, which would have passed with two competing exporters
+   * wired by two different autoconfigurations — the kind of duplicate that silently doubles export
+   * volume and makes every metric read twice as busy as the box actually is. {@code
+   * context.getBean(type)} would then have thrown on the very next line, so the bug was narrow, but
+   * the assertion should say what the method's name promises.
+   */
   private void hasSingleBeanOf(Class<?> type) {
-    assertThat(context.getBeanNamesForType(type)).isNotEmpty();
+    assertThat(context.getBeanNamesForType(type)).hasSize(1);
     assertThat(context.getBean(type)).isNotNull();
   }
 

@@ -39,6 +39,14 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
     </dependency>
+    <!-- Declared, not inherited. ModelDiscovery imports org.slf4j.Logger directly, and until now it
+         compiled only because nessy-spi happens to bring slf4j transitively — a dependency this
+         module uses in its own source but never asked for. The day nessy-spi stops needing slf4j,
+         this module stops compiling for a reason that has nothing to do with it. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

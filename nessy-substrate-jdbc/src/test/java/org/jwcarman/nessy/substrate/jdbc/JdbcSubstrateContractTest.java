@@ -23,6 +23,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.testing.SubstrateContract;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -35,6 +36,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * resource — never a pasted copy — against a real PostgreSQL so the file a user copies into their
  * own migration tooling is the file that is proven.
  */
+@Tag("container")
 @Testcontainers
 class JdbcSubstrateContractTest extends SubstrateContract {
 

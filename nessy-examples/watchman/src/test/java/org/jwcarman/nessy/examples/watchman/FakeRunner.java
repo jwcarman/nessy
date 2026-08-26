@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,11 +27,15 @@ import java.util.concurrent.CountDownLatch;
  *
  * <p>This is the whole reason {@link CommandRunner} is an interface. Spec §4: "No test shells out
  * to the host."
+ *
+ * <p>Not {@code final}, so a test that needs a host which FAILS rather than answers can override
+ * {@link #run(List)} — see {@code LongJobTest.When_the_watcher_throws}.
  */
-final class FakeRunner implements CommandRunner {
+class FakeRunner implements CommandRunner {
 
   private final Map<String, Output> canned = new LinkedHashMap<>();
   private final List<List<String>> asked = new ArrayList<>();
+  private final List<Duration> timeouts = new ArrayList<>();
   private Output fallback = new Output(127, "", "command not found");
   private CountDownLatch gate;
 
@@ -62,6 +67,11 @@ final class FakeRunner implements CommandRunner {
     gate.countDown();
   }
 
+  /** Every argv this runner was asked for, in order. */
+  List<List<String>> asked() {
+    return List.copyOf(asked);
+  }
+
   /** The single argv this runner was asked for. */
   List<String> onlyAsked() {
     if (asked.size() != 1) {
@@ -82,5 +92,20 @@ final class FakeRunner implements CommandRunner {
       }
     }
     return canned.getOrDefault(argv.getFirst(), fallback);
+  }
+
+  /**
+   * Records the deadline a caller asked for, so a test can assert that {@code apply_updates} really
+   * does get minutes rather than the runner's thirty-second default.
+   */
+  @Override
+  public Output run(List<String> argv, Duration timeout) {
+    timeouts.add(timeout);
+    return run(argv);
+  }
+
+  /** The per-call deadlines this runner was given, in order. Empty means nobody asked for one. */
+  List<Duration> timeouts() {
+    return List.copyOf(timeouts);
   }
 }

@@ -35,8 +35,11 @@ import java.util.Optional;
  *     approved, frozen at enrichment
  * @param requestJson the whole frozen {@link org.jwcarman.nessy.api.tool.approval.ApprovalRequest}
  *     as JSON — the evidence the decision was made on
- * @param parkedAt when the park's fact was applied; empty only in the out-of-order case where the
- *     answer's fact arrived before the park's
+ * @param parkedAt when the projection SAW the park's fact — not when the call parked. Nothing in
+ *     the fact or the transition carries a time, so this is the observer's own clock at the moment
+ *     it wrote the row (see {@code PendingApprovals}'s own note). Usually milliseconds later; after
+ *     a backlog or a re-delivery, longer. Empty only in the out-of-order case where the answer's
+ *     fact arrived before the park's
  * @param answer {@code "approved"} or {@code "denied"}, or empty while it is still waiting
  * @param reference the answer's opaque pointer into whatever system produced it, if it carried one
  * @param note a denial's reason; empty for approvals and for rows still waiting

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.function.Function;
@@ -371,7 +372,9 @@ class ReadOnlyToolsTest {
         FakeRunner upgrading = new FakeRunner();
 
         Tools.content(UpdatesPending.tool(checking, manager), new UpdatesPending.Upgradable());
-        Tools.content(ApplyUpdates.tool(upgrading, manager), new ApplyUpdates.Updates());
+        Tools.content(
+            ApplyUpdates.tool(upgrading, manager, Duration.ofMinutes(15)),
+            new ApplyUpdates.Updates());
 
         assertThat(checking.onlyAsked().getFirst())
             .isEqualTo(manager.name().toLowerCase(Locale.ROOT));

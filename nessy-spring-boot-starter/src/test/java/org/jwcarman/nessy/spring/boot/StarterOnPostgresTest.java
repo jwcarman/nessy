@@ -29,6 +29,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.jdbc.JdbcContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
@@ -64,6 +65,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * harness.md states — two harnesses of one type share both stores or neither — proved rather than
  * asserted.
  */
+@Tag("container")
 @Testcontainers
 @SpringBootTest(
     classes = {StarterOnPostgresTest.TestApplication.class, StarterOnPostgresTest.Recipe.class},

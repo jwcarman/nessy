@@ -51,6 +51,7 @@ import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.jwcarman.nessy.testing.ScriptedModel;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -530,6 +531,90 @@ class NessyAutoConfigurationTest {
                 await()
                     .atMost(Duration.ofSeconds(10))
                     .untilAsserted(() -> assertThat(note.written()).containsExactly("hello"));
+              });
+    }
+  }
+
+  /**
+   * The half-classpath hole (final review, finding #2). Both JDBC adapters are optional
+   * dependencies, so exactly one of them is an easy classpath to end up with — and before this
+   * guard it was the worst possible outcome, reached in silence: {@code DurableStores} needs both
+   * classes and {@code VolatileStores} needs both absent, so NEITHER matched, no store bean
+   * existed, {@code requireMatchedDurability} read the absence as "the application wired both
+   * itself", and the harness fell back to in-memory stores with a live {@code DataSource} in the
+   * context.
+   *
+   * <p>{@code FilteredClassLoader} is what makes this testable at all: it is the only way to ask
+   * "what happens when this jar is missing?" from inside a build where both jars are present.
+   */
+  @Nested
+  class AHalfDurableClasspath {
+
+    private ApplicationContextRunner withoutJdbc(Class<?>... hidden) {
+      return new ApplicationContextRunner()
+          .withClassLoader(new FilteredClassLoader(hidden))
+          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withPropertyValues("nessy.type=ops", "nessy.system-prompt=you restart things")
+          .withUserConfiguration(ScriptedModelConfiguration.class)
+          .withBean(DataSource.class, NessyAutoConfigurationTest::unreachableDataSource);
+    }
+
+    @Test
+    void refuses_to_start_when_only_the_substrate_adapter_is_present() {
+      withoutJdbc(JdbcContinuumRepository.class)
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context)
+                    .getFailure()
+                    .hasStackTraceContaining("Half a durable classpath")
+                    .hasStackTraceContaining("org.jwcarman.continuum:continuum-jdbc");
+              });
+    }
+
+    @Test
+    void refuses_to_start_when_only_the_continuum_adapter_is_present() {
+      withoutJdbc(JdbcSubstrate.class)
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context)
+                    .getFailure()
+                    .hasStackTraceContaining("Half a durable classpath")
+                    .hasStackTraceContaining("org.jwcarman.nessy:nessy-substrate-jdbc");
+              });
+    }
+
+    /**
+     * Neither adapter is the volatile pair, which is honest and must keep working: an application
+     * with a {@code DataSource} for its own tables and no interest in durable agents is not making
+     * a mistake.
+     */
+    @Test
+    void neither_adapter_is_still_the_honest_in_memory_pair() {
+      withoutJdbc(JdbcSubstrate.class, JdbcContinuumRepository.class)
+          .run(
+              context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context.getBean(Substrate.class)).isInstanceOf(InMemorySubstrate.class);
+              });
+    }
+
+    /**
+     * An application that declares both stores itself owes the starter nothing, classpath or not.
+     */
+    @Test
+    void an_application_that_wired_both_stores_itself_is_left_alone() {
+      Substrate mine = new InMemorySubstrate();
+      withoutJdbc(JdbcContinuumRepository.class)
+          .withBean(Substrate.class, () -> mine)
+          .withBean(
+              Continuum.class,
+              () -> new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system()))
+          .run(
+              context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context.getBean(Substrate.class)).isSameAs(mine);
               });
     }
   }

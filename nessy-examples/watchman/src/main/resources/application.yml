@@ -38,6 +38,10 @@ watchman:
   notes-dir: ${WATCHMAN_NOTES_DIR:./notes}
   note-history: 3
   command-timeout: 30s
+  # Package upgrades get minutes, not seconds. The timeout is enforced by destroying the process, so
+  # thirty seconds on `apt-get -y upgrade` is a SIGKILL to dpkg mid-transaction — a half-configured
+  # package database on a real server. A kernel upgrade over a slow link genuinely takes minutes.
+  upgrade-timeout: 15m
   # No defaults, on purpose (see WatchmanProperties): the application refuses to start without
   # them rather than shipping a password.
   user: ${WATCHMAN_USER:}

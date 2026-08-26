@@ -54,6 +54,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.util.ClassUtils;
 
 /**
  * A Nessy harness, assembled from Spring beans (watchman spec §1).
@@ -85,6 +86,14 @@ public class NessyAutoConfiguration {
   static final String NESSY_SUBSTRATE = "nessySubstrate";
 
   static final String NESSY_CONTINUUM = "nessyContinuum";
+
+  /**
+   * The two optional JDBC adapters, by name. Strings rather than class literals because {@link
+   * #requireCompleteJdbcClasspath} has to be able to ask about a class that is NOT there.
+   */
+  static final String JDBC_SUBSTRATE = "org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate";
+
+  static final String JDBC_CONTINUUM = "org.jwcarman.continuum.jdbc.JdbcContinuumRepository";
 
   /**
    * The gateway discovery builds, as a bean with a destroy method — because a {@link ModelProvider}
@@ -162,10 +171,18 @@ public class NessyAutoConfiguration {
       ObjectProvider<TurnObserver> turnObservers,
       ObjectProvider<ObservationRegistry> observationRegistries,
       ObjectProvider<ObjectMapper> objectMappers) {
+    boolean dataSourcePresent = dataSources.getIfAvailable() != null;
+    Substrate substrate = substrates.getIfAvailable();
+    Continuum continuum = continuums.getIfAvailable();
     requireMatchedDurability(
-        dataSources.getIfAvailable() != null,
+        dataSourcePresent,
         beanFactory.containsBeanDefinition(NESSY_SUBSTRATE),
         beanFactory.containsBeanDefinition(NESSY_CONTINUUM));
+    requireCompleteJdbcClasspath(
+        dataSourcePresent,
+        ClassUtils.isPresent(JDBC_SUBSTRATE, beanFactory.getBeanClassLoader()),
+        ClassUtils.isPresent(JDBC_CONTINUUM, beanFactory.getBeanClassLoader()),
+        substrate == null && continuum == null);
     String systemPrompt = properties.resolveSystemPrompt();
     List<ToolGrant> grants =
         grants(tools.orderedStream().toList(), declaredGrants.orderedStream().toList());
@@ -191,8 +208,12 @@ public class NessyAutoConfiguration {
           // them — is subscribed to the fact stream alongside the harness's own narrator, which
           // nothing here replaces.
           factObservers.forEach(config::harnessObserver);
-          substrates.ifAvailable(config::substrate);
-          continuums.ifAvailable(config::continuum);
+          if (substrate != null) {
+            config.substrate(substrate);
+          }
+          if (continuum != null) {
+            config.continuum(continuum);
+          }
         });
   }
 
@@ -228,6 +249,68 @@ public class NessyAutoConfiguration {
    * @throws IllegalStateException when a {@code DataSource} is present and exactly one of the two
    *     stores was supplied by the application
    */
+  /**
+   * The half-classpath hole, closed (final review, finding #2). Both JDBC adapters are {@code
+   * optional} dependencies of this starter, so an application can easily end up with exactly one of
+   * them — a copied dependency block, a transitive exclusion, a Spring Boot uber-jar assembled by
+   * hand. The result was silent and bad:
+   *
+   * <ul>
+   *   <li>{@code DurableStores} needs BOTH classes, so it does not match.
+   *   <li>{@code VolatileStores} needs BOTH absent, so it does not match either.
+   *   <li>No {@code Substrate} or {@code Continuum} bean exists at all, so {@link
+   *       #requireMatchedDurability} sees {@code (true, false, false)} and reads it as "the
+   *       application wired both itself" — which passes.
+   *   <li>The harness falls back to its own private in-memory pair, with a live {@code DataSource}
+   *       sitting right there, and nothing is logged.
+   * </ul>
+   *
+   * <p>An agent that believes it is durable and is not loses every parked approval on restart —
+   * exactly the failure the soak exists to prove cannot happen. So this refuses to start instead,
+   * naming the artifact to add.
+   *
+   * <p>Only when the application supplied NEITHER store: an application that declares both beans
+   * itself owes this starter nothing, whatever its classpath looks like.
+   *
+   * @param dataSourcePresent whether a {@code DataSource} bean exists — without one, in-memory is
+   *     the honest answer and there is nothing to complain about
+   * @param substrateOnClasspath whether {@code nessy-substrate-jdbc} is present
+   * @param continuumOnClasspath whether {@code continuum-jdbc} is present
+   * @param noStoreBeans whether neither a {@code Substrate} nor a {@code Continuum} bean exists
+   * @throws IllegalStateException when a {@code DataSource} is present, exactly one JDBC adapter is
+   *     on the classpath, and no store bean was supplied
+   */
+  static void requireCompleteJdbcClasspath(
+      boolean dataSourcePresent,
+      boolean substrateOnClasspath,
+      boolean continuumOnClasspath,
+      boolean noStoreBeans) {
+    if (!dataSourcePresent || !noStoreBeans || substrateOnClasspath == continuumOnClasspath) {
+      return;
+    }
+    String missing =
+        substrateOnClasspath
+            ? "org.jwcarman.continuum:continuum-jdbc"
+            : "org.jwcarman.nessy:nessy-substrate-jdbc";
+    String present =
+        substrateOnClasspath
+            ? "org.jwcarman.nessy:nessy-substrate-jdbc"
+            : "org.jwcarman.continuum:continuum-jdbc";
+    throw new IllegalStateException(
+        "Half a durable classpath: "
+            + present
+            + " is present, "
+            + missing
+            + " is NOT, and a DataSource is. The starter wires the durable stores as a pair or not"
+            + " at all, so with one adapter missing it wires NEITHER — and the harness would fall"
+            + " back to in-memory stores while looking durable, losing every parked approval on"
+            + " restart. Add "
+            + missing
+            + " to use the DataSource, remove "
+            + present
+            + " to be honestly in-memory, or declare both Substrate and Continuum beans yourself.");
+  }
+
   static void requireMatchedDurability(
       boolean dataSourcePresent, boolean substrateIsOurs, boolean continuumIsOurs) {
     if (dataSourcePresent && substrateIsOurs != continuumIsOurs) {

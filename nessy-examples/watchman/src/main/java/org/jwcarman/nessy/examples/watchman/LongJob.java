@@ -24,6 +24,8 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@code long_job} — the one tool here that exists to exercise {@code ToolContext.defer()} for real
@@ -59,6 +61,8 @@ public final class LongJob {
 
   /** No input: there is one long job, and it is a trim of every filesystem. */
   public record Job() {}
+
+  private static final Logger LOG = LoggerFactory.getLogger(LongJob.class);
 
   private static final List<String> ARGV = List.of("fstrim", "-av");
 
@@ -100,10 +104,50 @@ public final class LongJob {
     watchers.execute(() -> watch(id, runner, completions));
   }
 
+  /**
+   * The watcher, and the reason it catches everything (final review, finding #3).
+   *
+   * <p>A deferred computation is answered exactly once, by whoever holds its id — and this thread
+   * is the only thing that holds it. If {@code runner.run} or the completion throws and the
+   * exception escapes, the id dies with the thread and <b>the call waits forever</b>: {@code
+   * Phase.AwaitingTools#outstandingEffects} contributes no effect for a call in {@code
+   * AwaitingResult}, exactly as it contributes none for {@code AwaitingApproval}, so nothing
+   * re-fires it and no staleness sweep re-asks. The agent would sit in that turn until someone
+   * noticed, which on a box doing rounds every half hour means until James read the notes and
+   * wondered why they stopped.
+   *
+   * <p>{@code desks.getObject()} after a context close is the realistic way in — a shutdown while a
+   * trim is still running — but the argument holds for any {@code RuntimeException}: a computation
+   * that cannot be completed successfully must still be completed.
+   *
+   * <p>So the catch is deliberately broad, and the second try/catch is not paranoia either: if
+   * reporting the failure ALSO throws, there is genuinely nothing left to do but log it, and
+   * swallowing that one keeps the watcher from dying with an exception nobody sees.
+   */
   private static void watch(
       ComputationId id, CommandRunner runner, BiConsumer<ComputationId, ToolResult> completions) {
-    CommandRunner.Output output = runner.run(ARGV);
-    completions.accept(id, result(output));
+    try {
+      CommandRunner.Output output = runner.run(ARGV);
+      completions.accept(id, result(output));
+    } catch (RuntimeException e) {
+      LOG.warn("long_job watcher failed for computation {}; completing it as an error", id, e);
+      failQuietly(id, completions, e);
+    }
+  }
+
+  private static void failQuietly(
+      ComputationId id, BiConsumer<ComputationId, ToolResult> completions, RuntimeException cause) {
+    try {
+      completions.accept(
+          id,
+          ToolResult.error(
+              "the background job could not be run or reported: "
+                  + (cause.getMessage() == null ? cause.toString() : cause.getMessage())));
+    } catch (RuntimeException e) {
+      // Nothing left to try: the completion door itself is broken (a closed context, most likely),
+      // so this computation is genuinely orphaned and the log is the only place left to say so.
+      LOG.error("long_job could not report the failure of computation {} either", id, e);
+    }
   }
 
   static ToolResult result(CommandRunner.Output output) {

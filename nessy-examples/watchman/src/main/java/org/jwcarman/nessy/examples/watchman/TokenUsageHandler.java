@@ -48,6 +48,15 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
   private static final String ERROR_TYPE = "error.type";
   private static final String NONE = "none";
 
+  /**
+   * Custom {@code gen_ai.token.type} values, permitted by the registry's own "otherwise, a custom
+   * value MAY be used" — see {@link #recordIfPresent} for why neither {@code input} nor {@code
+   * output} applies and why reusing {@code input} would have been the wrong answer.
+   */
+  private static final String CACHE_READ = "cache_read";
+
+  private static final String CACHE_WRITE = "cache_write";
+
   private final MeterRegistry meterRegistry;
 
   public TokenUsageHandler(MeterRegistry meterRegistry) {
@@ -74,6 +83,42 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
     String model = valueOf(context.getLowCardinalityKeyValue("gen_ai.request.model"));
     record(provider, model, "input", input.getValue());
     record(provider, model, "output", output.getValue());
+    recordIfPresent(context, provider, model, CACHE_READ, "gen_ai.usage.cache_read.input_tokens");
+    recordIfPresent(context, provider, model, CACHE_WRITE, "gen_ai.usage.cache_write.input_tokens");
+  }
+
+  /**
+   * The cache halves of the input count, when the provider reported them (final review, finding
+   * #6).
+   *
+   * <p>{@code application.yml} asks for {@code prompt-caching} on purpose: a round resends the same
+   * system prompt and the same tool schemas every thirty minutes, forever, which is the
+   * prompt-cache case exactly. Without this, "did the cache actually work?" was answerable only by
+   * opening individual chat spans in Tempo — never on a dashboard, never as a trend, and never over
+   * the weeks the soak runs for.
+   *
+   * <p><b>These two series are a SUBSET of {@code input}, not additions to it.</b> The GenAI
+   * conventions are explicit — for both {@code gen_ai.usage.cache_read.input_tokens} and {@code
+   * gen_ai.usage.cache_write.input_tokens}, "the value SHOULD be included in {@code
+   * gen_ai.usage.input_tokens}". So a panel that sums {@code gen_ai.client.token.usage} across all
+   * values of {@code gen_ai.token.type} DOUBLE-COUNTS the cached tokens. Sum {@code input} and
+   * {@code output} for spend; read {@code cache_read} against {@code input} for the hit rate.
+   *
+   * <p><b>{@code cache_read} and {@code cache_write} are custom values for {@code
+   * gen_ai.token.type}</b>, and deliberately so. The registry's well-known list is exactly {@code
+   * input} and {@code output} — checked against {@code gen-ai-metrics.md} at {@code main} rather
+   * than assumed — and it says plainly: "If one of them applies, then the respective value MUST be
+   * used; otherwise, a custom value MAY be used." Neither applies to a cache count, so these are
+   * the permitted custom case rather than an invention working around the spec. Recording them as
+   * extra {@code input} series instead would have been the actually non-conformant choice, because
+   * it would double the input number.
+   */
+  private void recordIfPresent(
+      Observation.Context context, String provider, String model, String tokenType, String key) {
+    KeyValue tokens = context.getHighCardinalityKeyValue(key);
+    if (tokens != null) {
+      record(provider, model, tokenType, tokens.getValue());
+    }
   }
 
   private void record(String provider, String model, String tokenType, String value) {

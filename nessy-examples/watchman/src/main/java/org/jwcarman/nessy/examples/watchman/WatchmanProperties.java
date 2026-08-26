@@ -34,10 +34,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param notesDir the directory the daily notes are written to and read back from
  * @param noteHistory how many previous notes {@code previous_notes} hands the model by default
  * @param commandTimeout how long any one host command may take before it is destroyed
+ * @param upgradeTimeout how long a package upgrade may take before it is destroyed. Separate from
+ *     {@code commandTimeout} and much longer for a blunt reason: the timeout is enforced with
+ *     {@code destroyForcibly()}, and thirty seconds of budget on {@code apt-get -y upgrade} is a
+ *     SIGKILL to dpkg mid-transaction — a half-configured package database on a real server. A
+ *     kernel upgrade over a slow link can genuinely take ten minutes; fifteen is the honest default
  */
 @ConfigurationProperties("watchman")
 public record WatchmanProperties(
-    String user, String password, Path notesDir, Integer noteHistory, Duration commandTimeout) {
+    String user,
+    String password,
+    Path notesDir,
+    Integer noteHistory,
+    Duration commandTimeout,
+    Duration upgradeTimeout) {
 
   /**
    * Defaults for everything that has a sensible one, and a loud failure for the two that do not. A
@@ -49,6 +59,7 @@ public record WatchmanProperties(
     notesDir = notesDir == null ? Path.of("notes") : notesDir;
     noteHistory = noteHistory == null ? 3 : noteHistory;
     commandTimeout = commandTimeout == null ? Duration.ofSeconds(30) : commandTimeout;
+    upgradeTimeout = upgradeTimeout == null ? Duration.ofMinutes(15) : upgradeTimeout;
   }
 
   private static void require(String value, String key) {

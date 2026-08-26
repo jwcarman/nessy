@@ -216,6 +216,81 @@ class ProcessRunnerTest {
     }
   }
 
+  /**
+   * The per-call deadline (final review, finding #4). {@code apply_updates} passes {@code
+   * watchman.upgrade-timeout} because the runner's thirty-second default would destroy dpkg
+   * mid-transaction.
+   */
+  @Nested
+  class A_deadline_of_the_calls_own {
+
+    @Test
+    void beats_the_runners_default_when_it_is_longer() {
+      ProcessRunner runner = new ProcessRunner(Duration.ofMillis(200));
+      List<String> argv = sh("sleep 2; echo finished");
+
+      CommandRunner.Output output =
+          assertTimeoutPreemptively(PATIENCE, () -> runner.run(argv, Duration.ofSeconds(20)));
+
+      // With the constructor's 200ms in force this would have been destroyed at once.
+      assertThat(output.succeeded()).isTrue();
+      assertThat(output.stdout()).contains("finished");
+    }
+
+    @Test
+    void beats_the_runners_default_when_it_is_shorter() {
+      ProcessRunner runner = new ProcessRunner(Duration.ofMinutes(10));
+      List<String> argv = sh("sleep 60");
+
+      CommandRunner.Output output =
+          assertTimeoutPreemptively(PATIENCE, () -> runner.run(argv, Duration.ofSeconds(1)));
+
+      assertThat(output.succeeded()).isFalse();
+      assertThat(output.stderr()).contains("timed out");
+    }
+  }
+
+  /**
+   * A command that asks a question has nobody to ask (final review, finding #4). Without this,
+   * {@code apt-get upgrade} stopping at a conffile prompt would sit there until the timeout
+   * destroyed it — mid-transaction, which is the outcome the longer timeout exists to avoid.
+   */
+  @Nested
+  class The_childs_stdin {
+
+    @Test
+    void is_closed_so_a_prompt_reads_eof_instead_of_blocking() {
+      // `read` returns non-zero at EOF, so this exits promptly with the marker on stdout. If stdin
+      // were left open it would block until the two-second timeout destroyed the process.
+      CommandRunner.Output output =
+          run(Duration.ofSeconds(2), "read line; echo \"eof=$?\"; exit 0");
+
+      assertThat(output.succeeded()).isTrue();
+      assertThat(output.stdout()).contains("eof=1");
+      assertThat(output.stderr()).doesNotContain("timed out");
+    }
+
+    @Test
+    void gives_a_reader_nothing_rather_than_hanging_the_round() {
+      CommandRunner.Output output = run(Duration.ofSeconds(5), "cat; echo done");
+
+      assertThat(output.succeeded()).isTrue();
+      assertThat(output.stdout()).contains("done");
+    }
+  }
+
+  /** The apt path's other half: a frontend that will not stop to ask anything. */
+  @Nested
+  class The_child_environment {
+
+    @Test
+    void tells_debian_tooling_not_to_prompt() {
+      CommandRunner.Output output = run(Duration.ofSeconds(5), "echo \"$DEBIAN_FRONTEND\"");
+
+      assertThat(output.stdout().strip()).isEqualTo("noninteractive");
+    }
+  }
+
   @Nested
   class A_command_that_does_not_exist {
 

@@ -77,13 +77,20 @@ public final class ProcessRunner implements CommandRunner {
 
   @Override
   public Output run(List<String> argv) {
+    return run(argv, timeout);
+  }
+
+  @Override
+  public Output run(List<String> argv, Duration timeout) {
     Objects.requireNonNull(argv, "argv must not be null");
+    Objects.requireNonNull(timeout, "timeout must not be null");
     if (argv.isEmpty()) {
       throw new IllegalArgumentException("argv must not be empty");
     }
     Process process = null;
     try {
-      process = new ProcessBuilder(argv).start();
+      process = start(argv);
+      closeStdin(process);
       Drain stdout = Drain.of(process.getInputStream());
       Drain stderr = Drain.of(process.getErrorStream());
       boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -103,6 +110,37 @@ public final class ProcessRunner implements CommandRunner {
       }
       return new Output(COULD_NOT_RUN, "", "interrupted while running " + argv);
     }
+  }
+
+  /**
+   * The child, with a non-interactive environment.
+   *
+   * <p>{@code DEBIAN_FRONTEND=noninteractive} is set for EVERY command, not only the apt ones. It
+   * is meaningless to anything that does not read it, and the alternative — teaching this class
+   * which argv is an apt argv — is a worse kind of code. What it buys on the apt path is large:
+   * without it, {@code apt-get upgrade} can stop at a conffile prompt or a debconf question and sit
+   * there until the timeout kills it mid-transaction. With it, apt takes the default and keeps
+   * going.
+   *
+   * <p>Not a substitute for {@link #closeStdin}: the frontend setting covers apt's own prompts, and
+   * closing stdin covers everything else that might decide to ask a question.
+   */
+  private static Process start(List<String> argv) throws IOException {
+    ProcessBuilder builder = new ProcessBuilder(argv);
+    builder.environment().put("DEBIAN_FRONTEND", "noninteractive");
+    return builder.start();
+  }
+
+  /**
+   * Closes the child's stdin immediately, so anything that tries to read it gets EOF.
+   *
+   * <p>Nothing this agent runs should ever want input. A command that asks a question with no
+   * terminal to ask it on would otherwise block until the timeout destroyed it — for a read-only
+   * tool that is a wasted round, and for {@code apt-get upgrade} that is a SIGKILL to dpkg
+   * mid-transaction. EOF makes it fail in a second instead, with something in stderr worth reading.
+   */
+  private static void closeStdin(Process process) throws IOException {
+    process.getOutputStream().close();
   }
 
   /**

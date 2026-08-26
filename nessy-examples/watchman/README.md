@@ -41,11 +41,19 @@ answer:
 
 | tool | the line the page shows | present when |
 |---|---|---|
-| `restart_unit(name)` | `systemctl restart <name>` | `which systemctl` |
-| `restart_container(name)` | `docker restart <name>` | `which docker` |
+| `restart_unit(name)` | `systemctl restart -- <name>` | `which systemctl` |
+| `restart_container(name)` | `docker restart -- <name>` | `which docker` |
 | `prune_images` | `docker image prune -af` | `which docker` |
 | `apply_updates` | `apt-get -y upgrade` / `dnf -y upgrade` | `which apt` or `which dnf` |
 | `clean_journal(days)` | `journalctl --vacuum-time=<days>d` | `which journalctl` |
+
+The `--` is not decoration and must not be tidied away: the name comes from
+the model, and without an end-of-options marker a name beginning with a dash
+is read as a flag — `restart_unit("--version")` would look like a restart on
+the page and do something else on the box. Arguments that are not plain words
+are quoted for the same reason, so `restart_unit("web api")` renders
+`systemctl restart -- 'web api'` rather than something that reads as two
+units.
 
 **One tool defers at the tool level.** `long_job` starts `fstrim -av` in the
 background, hands the id from `ToolContext.defer()` to a watcher thread, and
@@ -104,7 +112,7 @@ unzip -p ~/.m2/repository/org/jwcarman/nessy/nessy-spring-boot-starter/*/nessy-s
 ```
 ./mvnw -q -pl nessy-examples/watchman -am package -DskipTests
 
-export ANTHROPIC_API_KEY=...             # or any provider ModelDiscovery finds
+export ANTHROPIC_API_KEY=...             # this module ships nessy-model-anthropic only
 export NESSY_MODEL=...                   # optional: the model id override
 export WATCHMAN_DB_URL=jdbc:postgresql://localhost:5432/watchman
 export WATCHMAN_USER=ops
@@ -115,8 +123,91 @@ java -jar nessy-examples/watchman/target/nessy-example-watchman-*.jar
 ```
 
 `watchman.user` and `watchman.password` are **required and have no defaults**.
-The application refuses to start without them, on purpose: the two buttons on
-its page restart production services, and a LAN is not a trust boundary.
+The application refuses to start without them, on purpose — see Privileges,
+immediately below, for what those two buttons are actually attached to.
+
+---
+
+## Privileges — read this before the first run
+
+**`java -jar` as your own user is not enough.** Five of the tools need
+privilege, and the README used to say nothing about it:
+
+| tool | needs |
+|---|---|
+| `restart_unit` | root, or `systemctl` policy allowing that unit |
+| `clean_journal` | root (`journalctl --vacuum-time` writes to `/var/log/journal`) |
+| `apply_updates` | root |
+| `long_job` | root (`fstrim` opens block devices) |
+| `restart_container` | root, or membership of the `docker` group |
+
+The read-only tools mostly do not: `df`, `uptime_load`, `previous_notes` and
+`write_note` need nothing special, `journalctl -p err` shows only your own
+units without privilege, and `docker ps` needs the `docker` group.
+
+**The recommended shape** is a dedicated unprivileged user with narrowly-scoped
+sudoers entries for exactly those commands and nothing else — so that a
+compromise of the agent buys those five actions, not the machine:
+
+```
+# /etc/sudoers.d/watchman  (visudo -f, never a plain editor)
+Cmnd_Alias WATCHMAN = /usr/bin/systemctl restart *, \
+                      /usr/bin/journalctl --vacuum-time=*, \
+                      /usr/bin/apt-get -y upgrade, \
+                      /usr/sbin/fstrim -av, \
+                      /usr/bin/docker restart *
+watchman ALL=(root) NOPASSWD: WATCHMAN
+```
+
+That requires prefixing the argv with `sudo` — a change to each tool's `argv`
+method, deliberately **not** made here, because a sudoers file that does not
+match the argv exactly is worse than none. Decide the shape for your box first.
+
+**Or accept running as root**, which is what the compose-and-`java -jar` path
+above actually implies. If you do:
+
+> **The basic-auth page becomes a root surface on your LAN.** Anyone who reaches
+> port 8080 and knows one password can restart any unit, prune every image and
+> upgrade every package on the box. That is not "a LAN is not a trust boundary"
+> as a slogan — it is the literal consequence, and it is why
+> `watchman.password` has no default and the application will not start without
+> one. Bind it to an interface you trust, put it behind a reverse proxy with TLS
+> if it leaves the machine, and pick a password you did not read in this file.
+
+**Feature detection is presence-only.** `which docker` succeeding means the
+binary exists, not that this process may use it. A host with docker installed
+and the agent outside the `docker` group registers `restart_container` and then
+fails every call with a permission error — visible in the tool result and in
+the notes, but not before. There is deliberately no permission probe: the only
+honest one is running the command.
+
+---
+
+## What leaves the box
+
+Worth knowing before pointing this at a machine with real users on it.
+
+**To the model provider.** Every tool result the agent reads is sent to
+Anthropic as part of the conversation. `journal_errors` is the sharp one: raw
+`journalctl` lines routinely carry hostnames, usernames, source IP addresses,
+failed-authentication detail, mail addresses, and whatever your services log at
+error level. `containers` sends container names, `disk_usage` sends mount
+points, `previous_notes` sends everything a previous round wrote. Prompt
+caching is enabled, so the system prompt and tool schemas are held by the
+provider for its cache window — but tool results are conversation content and
+go every round regardless.
+
+**To the collector.** The OTLP log appender ships this application's own log
+lines to Loki, and spans carry tool names and agent ids. Tool results are not
+logged wholesale, but anything the application logs at INFO travels.
+
+**To disk.** The notes directory is plain markdown, world-readable unless you
+say otherwise, and contains whatever the model chose to write down about what
+it saw.
+
+Nothing here is anonymised or redacted. If that is not acceptable for your box,
+the honest fix is to drop `journal_errors` from `ToolBeans` — the tool set is
+just beans, and a tool that is not registered cannot send anything.
 
 ### Without an API key
 
@@ -224,12 +315,21 @@ in plain markdown.
 | `watchman.notes-dir` | `./notes` | where the daily notes live |
 | `watchman.note-history` | `3` | how many notes `previous_notes` hands back by default |
 | `watchman.command-timeout` | `30s` | how long any one host command may take before it is destroyed |
+| `watchman.upgrade-timeout` | `15m` | how long `apply_updates` may take. Separate and much longer on purpose: the timeout is enforced by destroying the process, so thirty seconds on `apt-get -y upgrade` is a SIGKILL to dpkg mid-transaction |
 | `watchman.user` / `watchman.password` | **none** | the single account the page accepts; required |
 
-The model is **not** a property. `ModelDiscovery.fromEnv()` picks the provider
-from whichever credentials are in the environment, `NESSY_MODEL` overrides the
-model id, and an application that wants to choose any other way declares its own
-`Model` bean — which is exactly what `--scripted` does.
+The model is **not** a property. The starter calls `ModelDiscovery.select()`,
+which picks a provider from whichever credentials are in the environment and
+hands back a closeable `Selection` — a bean with a destroy method, so the
+container closes the SDK client and its connection pool on shutdown rather than
+leaking them. `NESSY_MODEL` overrides the model id and `NESSY_PROVIDER` breaks a
+tie; an application that wants to choose any other way declares its own `Model`
+bean, and discovery then never runs at all — which is exactly what `--scripted`
+does.
+
+**Only `nessy-model-anthropic` is on this module's classpath.** Discovery can
+only select a provider whose bootstrap it can see, so `OPENAI_API_KEY` alone
+will not start this application. Add the provider's module to the pom to use it.
 
 ---
 

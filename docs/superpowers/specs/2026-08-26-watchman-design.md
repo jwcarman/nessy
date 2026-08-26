@@ -34,7 +34,7 @@ record). It composes; it invents nothing.
 |---|---|---|
 | `Substrate` | `new JdbcSubstrate(dataSource)` | a `DataSource` bean and `nessy-substrate-jdbc` on the classpath; else the in-memory substrate |
 | `Continuum` | `new DefaultContinuum(new JdbcContinuumRepository(dataSource), InstantSource.system())` | same |
-| `Model` | `ModelDiscovery.fromEnv()` (nessy-model-discovery; `NESSY_MODEL` picks the id) | always; a user `Model` bean wins |
+| `Model` | `ModelDiscovery.select()` (nessy-model-discovery; `NESSY_MODEL` picks the id, `NESSY_PROVIDER` breaks a tie) — the closeable `Selection` is itself a bean with `destroyMethod = "close"`, so the container closes the gateway's SDK client on shutdown | always; a user `Model` bean wins, and discovery then never runs |
 | `Harness<String>` | `Nessy.harness(c -> c.type(...).model(...).systemPrompt(...).grants(...).substrate(...).continuum(...).observationRegistry(...).harnessObserver(...))` | always; grants come from every `ToolGrant` bean and every `Tool` bean (a bare `Tool` bean is granted `Approvers.allow()`) |
 | `ApprovalDesk`, `CompletionDesk` | `harness.approvals()` / `harness.completions()` | always |
 | `ObservationRegistry` → seam | Boot's own `ObservationRegistry` bean (from `spring-boot-starter-actuator` + micrometer) | when present; else NOOP |
@@ -46,7 +46,10 @@ Properties, all under `nessy.`: `type`, `system-prompt` (or
 beans, because they are code.
 
 *Amended 2026-08-26 during execution:* there is no `nessy.model.id`. The
-`Model` bean is `ModelDiscovery.fromEnv()`, and that module already owns
+`Model` bean comes from `ModelDiscovery.select()` (the table above said
+`fromEnv()` through several drafts; `select()` is what shipped, because it
+hands back a closeable `Selection` the container can own), and that module
+already owns
 the id override (`NESSY_MODEL`); a property-driven choice is a
 user-supplied `Model` bean, which wins. Widening `nessy-model-discovery`
 for a property it did not need was rejected. And: supplying a `HarnessObserver` used to replace the default
@@ -83,12 +86,24 @@ the same table:
   record in the starter.
 - DDL as a classpath resource the application applies (Flyway/Liquibase
   or by hand), like `nessy-substrate-jdbc`'s.
-- It is a projection: at-least-once, rebuilt from the stream, never the
-  source of truth. Approve/deny go through `ApprovalDesk`; the row
-  updates when the fold's fact arrives. A restart between the fold and
-  the insert loses a row — the page shows one approval fewer than the
-  phase holds until the staleness re-fire re-asks. Documented, accepted:
-  the ledger is the phase.
+- It is a projection: at-least-once, never the source of truth, and
+  **not self-healing**. Approve/deny go through `ApprovalDesk`; the row
+  updates when the fold's fact arrives. *Amended 2026-08-26 (final
+  review):* this bullet used to say a lost row returns "until the
+  staleness re-fire re-asks". **That was never true.**
+  `Phase.AwaitingTools#outstandingEffects` contributes no effect for a
+  call in `AwaitingApproval` — the Continuum holds it — the projection
+  ignores `reFired`, and `Harness.subscribe` is package-private by
+  ruling, so there is no replay door. A fact lost to a restart or a
+  `DataSource` blip is lost permanently, in both directions: a lost
+  **park** leaves no row (the approval is still parked and still
+  answerable by coordinates, but the page cannot show it), and a lost
+  **answer** leaves the row in `pending()` forever, showing a human a
+  decision already made — re-answering is a benign no-op at the desk, so
+  the click appears to do nothing. The ledger is the phase; the
+  operator's recourse is the agent's own transcript. A future
+  self-healing rebuild would need a public replay door on the fact
+  stream; one was deliberately not invented for this.
 
 This is the spec's §7 audit division landing where it said it would: the
 approver subsystem owns the evidence; the core gave it the question, the
@@ -106,11 +121,17 @@ propose what you are not, write the note.
 
 Read-only, `Approvers.allow()`, always run:
 
-- `disk_usage` — `df -h` parsed; percent per mount.
+- `disk_usage` — `df -hP` parsed; percent per mount. (*Amended during
+  execution:* `-P` added. POSIX output keeps one filesystem on one line;
+  without it a long device name wraps and every column shifts, silently
+  corrupting the parse.)
 - `failed_units` — `systemctl --failed` when systemd is present.
 - `journal_errors` — `journalctl -p err --since -30m` when present.
-- `containers` — `docker ps --format json` when docker is present;
-  unhealthy/exited flagged.
+- `containers` — `docker ps -a --format json` when docker is present;
+  unhealthy/exited flagged. (*Amended during execution:* `-a` added. A
+  container that EXITED is exactly what this tool exists to notice, and
+  bare `docker ps` hides precisely those — which the "unhealthy/exited
+  flagged" clause requires.)
 - `updates_pending` — `apt list --upgradable` or `dnf check-update`,
   whichever exists.
 - `uptime_load` — `/proc/loadavg`, `/proc/uptime`.

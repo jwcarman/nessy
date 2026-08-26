@@ -19,13 +19,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.AbstractMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -116,6 +119,67 @@ class LongJobTest {
 
     assertThat(entry.getValue().isError()).isTrue();
     assertThat(entry.getValue().content()).contains("exit 1").contains("not supported");
+  }
+
+  /**
+   * The orphan path (final review, finding #3). A deferred computation is answered once, by whoever
+   * holds its id — and the watcher thread is the only thing that holds it. If it dies with an
+   * exception the call waits FOREVER: {@code Phase.AwaitingTools#outstandingEffects} contributes no
+   * effect for {@code AwaitingResult}, so nothing re-fires and no staleness sweep re-asks. On a box
+   * doing rounds every half hour that means the rounds simply stop.
+   */
+  @Nested
+  class When_the_watcher_throws {
+
+    private final FakeRunner exploding =
+        new FakeRunner() {
+          @Override
+          public Output run(List<String> argv) {
+            throw new IllegalStateException("the host went away");
+          }
+        };
+
+    @Test
+    void the_computation_is_completed_with_an_error_rather_than_orphaned()
+        throws InterruptedException {
+      Tool<LongJob.Job> tool = LongJob.tool(exploding, LongJobTest.this::record, watchers);
+
+      tool.execute(new LongJob.Job(), context);
+      Map.Entry<ComputationId, ToolResult> entry = awaitCompletion();
+
+      assertThat(entry.getKey()).isEqualTo(FakeContext.DEFERRED);
+      assertThat(entry.getValue().isError()).isTrue();
+      assertThat(entry.getValue().content()).contains("the host went away");
+    }
+
+    /**
+     * The realistic way in: the completion door itself fails, because the context closed while a
+     * trim was still running. There is genuinely nothing left to answer with, so the only
+     * requirement is that the watcher does not die screaming into an executor nobody is watching.
+     */
+    @Test
+    void a_completion_door_that_also_fails_is_survived_quietly() throws InterruptedException {
+      // The job itself SUCCEEDS here, so the first completion attempt is the real one — and it is
+      // the desk that is gone. That is the shutdown-mid-trim shape: two attempts, the result and
+      // then the report of the failure to deliver it, and neither escapes the watcher.
+      CountDownLatch attempted = new CountDownLatch(2);
+      Tool<LongJob.Job> tool =
+          LongJob.tool(
+              new FakeRunner().answering("fstrim", "/: 12 GiB"),
+              (id, result) -> {
+                attempted.countDown();
+                throw new IllegalStateException("the desk is closed too");
+              },
+              watchers);
+
+      tool.execute(new LongJob.Job(), context);
+
+      assertThat(attempted.await(30, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  private void record(ComputationId id, ToolResult result) {
+    completed.add(new AbstractMap.SimpleImmutableEntry<>(id, result));
   }
 
   @Test
