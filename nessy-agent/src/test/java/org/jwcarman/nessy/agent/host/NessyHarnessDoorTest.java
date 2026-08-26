@@ -45,10 +45,10 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -151,18 +151,20 @@ class NessyHarnessDoorTest {
   }
 
   /**
-   * A caller-supplied {@code harnessObserver} replaces the default {@link
-   * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} wiring wholesale (Nessy.java's own
-   * setter promise): {@code AssistantSaid}/{@code TurnEnded} do not narrate on the turn observer
-   * unless the supplied observer narrates them itself. {@code events} still isn't empty — the model
-   * and tool executors narrate deltas and tool events directly, independent of {@code
-   * harnessObserver} — so the {@code noneMatch} below can't pass vacuously (S5841).
+   * A caller-supplied {@code harnessObserver} is ADDITIVE (amended 2026-08-26, watchman branch —
+   * James: "I don't want only one observer"): it is subscribed alongside the default {@link
+   * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter}, never instead of it. This test replaces
+   * one that pinned the opposite contract, and is the whole behavioural difference — {@code
+   * AssistantSaid}/{@code TurnEnded} still narrate on the turn observer, and the supplied observer
+   * sees every fact as well. Both halves are asserted, because the failure this guards against is
+   * one of them silently going quiet.
    */
   @Test
-  void aSuppliedHarnessObserverReplacesTheDefaultNarrationWiringWholesale() {
+  void aSuppliedHarnessObserverIsSubscribedAlongsideTheDefaultNarrator() {
     var pump = new PumpedExecutor();
     var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
+    var facts = new RecordingObserver();
 
     var harness =
         Nessy.harness(
@@ -172,7 +174,7 @@ class NessyHarnessDoorTest {
                     .settings(TestSettings.settings())
                     .executor(pump)
                     .turnObserver(observer)
-                    .harnessObserver(HarnessObserver.noop()));
+                    .harnessObserver(facts));
     HarnessTeardown.track(harness);
 
     harness.bind(AgentId.of("scope-1")).tell("hello");
@@ -181,8 +183,35 @@ class NessyHarnessDoorTest {
     List<TurnEvent> events = observer.events();
     assertThat(events)
         .isNotEmpty()
-        .noneMatch(TurnEvent.AssistantSaid.class::isInstance)
-        .noneMatch(TurnEvent.TurnEnded.class::isInstance);
+        .anyMatch(TurnEvent.AssistantSaid.class::isInstance)
+        .anyMatch(TurnEvent.TurnEnded.class::isInstance);
+    assertThat(facts.applied()).isNotEmpty();
+  }
+
+  /** Two observers, both subscribed: additive means additive, not last-one-wins. */
+  @Test
+  void everyHarnessObserverCallAddsAnotherSubscriber() {
+    var pump = new PumpedExecutor();
+    var provider = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var first = new RecordingObserver();
+    var second = new RecordingObserver();
+
+    var harness =
+        Nessy.harness(
+            h ->
+                h.model(provider)
+                    .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .harnessObserver(first)
+                    .harnessObserver(second));
+    HarnessTeardown.track(harness);
+
+    harness.bind(AgentId.of("scope-1")).tell("hello");
+    pump.pumpUntilQuiet();
+
+    assertThat(first.applied()).isNotEmpty();
+    assertThat(second.applied()).isNotEmpty();
   }
 
   /**

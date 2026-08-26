@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -95,7 +96,7 @@ public final class Harness<O> {
   private Harness(
       AgentType type,
       ObservationRenderer<O> renderer,
-      HarnessObserver harnessObserver,
+      List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -118,11 +119,17 @@ public final class Harness<O> {
     this.fanout =
         new TurnFanout(Objects.requireNonNull(turnObserver, "turnObserver must not be null"));
     this.facts = new FactFanout();
-    // The configured observer, or — when the caller supplied none — the default narrator, which
-    // resolves each fact's TurnObserver from the id it is handed (agentic-o11y spec §3). Either
-    // way it is the stream's FIRST subscriber, so it narrates ahead of the observability bridge.
-    this.facts.subscribe(
-        harnessObserver != null ? harnessObserver : new TurnNarrationAdapter(fanout::observerFor));
+    // The default narrator is ALWAYS the stream's first subscriber (agentic-o11y spec §3, amended
+    // 2026-08-26 by the watchman branch): it resolves each fact's TurnObserver from the id it is
+    // handed, and nothing replaces it. Configured observers are ADDITIONAL — HarnessConfig's
+    // harnessObserver(...) appends rather than overwrites, so an application that wants an observer
+    // of its own no longer pays for it with the engine-health narration every scope had for free.
+    // Narrator first, configured observers next, the observability bridge last.
+    this.facts.subscribe(new TurnNarrationAdapter(fanout::observerFor));
+    for (HarnessObserver harnessObserver :
+        Objects.requireNonNull(harnessObservers, "harnessObservers must not be null")) {
+      this.facts.subscribe(harnessObserver);
+    }
     this.approvalWaiters =
         Objects.requireNonNull(approvalWaiters, "approvalWaiters must not be null");
     Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
@@ -170,11 +177,10 @@ public final class Harness<O> {
    * constructor owns (harness-first spec §4): the worker and desks it wires used to be a builder's
    * job.
    *
-   * <p>{@code harnessObserver} is the fact stream's first subscriber (agentic-o11y spec §3), and it
-   * is NULLABLE by design — the same convention {@code ownedExecutor} uses below: null means "this
-   * harness subscribes the default narrating observer it builds over its own turn fanout", which is
-   * what {@code HarnessConfig} passes whenever the application named none. There is no factory any
-   * more; one observer serves every scope, told which one by the {@link AgentId} each call carries.
+   * <p>{@code harnessObservers} are subscribed to the fact stream (agentic-o11y spec §3) AFTER the
+   * default narrating observer this harness always builds over its own turn fanout, and never
+   * instead of it — an empty list is a harness that only narrates. There is no factory; one
+   * observer instance serves every scope, told which one by the {@link AgentId} each call carries.
    *
    * <p>{@code openSegments} is where the observability bridge publishes the open {@code
    * invoke_agent} observation per scope, and where the model- and tool-call executors read it to
@@ -184,7 +190,7 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      HarnessObserver harnessObserver,
+      List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -203,7 +209,7 @@ public final class Harness<O> {
     return of(
         type,
         renderer,
-        harnessObserver,
+        harnessObservers,
         turnObserver,
         drainOnIdle,
         stalenessPolicy,
@@ -231,7 +237,7 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      HarnessObserver harnessObserver,
+      List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -256,7 +262,7 @@ public final class Harness<O> {
         new Harness<>(
             type,
             renderer,
-            harnessObserver,
+            harnessObservers,
             turnObserver,
             drainOnIdle,
             stalenessPolicy,

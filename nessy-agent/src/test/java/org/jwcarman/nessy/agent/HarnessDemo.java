@@ -119,7 +119,7 @@ class HarnessDemo {
         Harness.<String>of(
             demoType,
             text -> List.of(new TextBlock(text)),
-            narrator,
+            List.of(narrator),
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),

@@ -141,7 +141,7 @@ class AgentSubscriptionTest {
         Harness.of(
             type,
             text -> List.of(new TextBlock(text)),
-            HarnessObserver.noop(),
+            List.of(HarnessObserver.noop()),
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
@@ -214,7 +214,7 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              HarnessObserver.noop(),
+              List.of(HarnessObserver.noop()),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
@@ -409,7 +409,7 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              HarnessObserver.noop(),
+              List.of(HarnessObserver.noop()),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
@@ -489,7 +489,7 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              null,
+              List.of(),
               throwingGlobal,
               false,
               StalenessPolicy.never(),

@@ -158,17 +158,22 @@ class FactStreamTest {
       assertThat(recorder.applied()).isEmpty();
     }
 
-    /** The configured observer is the stream's first subscriber; a second one joins beside it. */
+    /**
+     * The default narrator is the stream's first subscriber and is never displaced; the configured
+     * observer joins beside it, and a runtime subscriber beside them both. Three, not two, since
+     * the watchman branch made {@code harnessObserver(...)} additive.
+     */
     @Test
     void the_configured_observer_and_a_subscriber_both_ride_the_one_stream() {
       Harness<String> harness = harness();
 
-      assertThat(harness.facts().subscriberCount()).isEqualTo(2); // configured + Observations
+      // narrator + configured + Observations
+      assertThat(harness.facts().subscriberCount()).isEqualTo(3);
       try (Subscription subscription = harness.subscribe(new RecordingHarnessObserver())) {
         assertThat(subscription).isNotNull();
-        assertThat(harness.facts().subscriberCount()).isEqualTo(3);
+        assertThat(harness.facts().subscriberCount()).isEqualTo(4);
       }
-      assertThat(harness.facts().subscriberCount()).isEqualTo(2);
+      assertThat(harness.facts().subscriberCount()).isEqualTo(3);
     }
   }
 

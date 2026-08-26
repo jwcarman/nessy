@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.support;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -198,7 +199,7 @@ public final class TestAgents {
         Harness.of(
             type,
             renderer,
-            observer,
+            List.of(observer),
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,

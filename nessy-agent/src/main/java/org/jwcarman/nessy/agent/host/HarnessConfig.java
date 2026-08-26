@@ -21,6 +21,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.InstantSource;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -108,9 +109,11 @@ public final class HarnessConfig<O> {
   private Substrate substrate;
   private Continuum continuum;
   private TurnObserver turnObserver = TurnObserver.noop();
-  // null until the caller sets one — the finished Harness then subscribes its own default narrator
-  // to the fact stream instead, so AssistantSaid/TurnEnded narrate the way the CLI door always has.
-  private HarnessObserver harnessObserver;
+  // Additive: every harnessObserver(...) call appends one more subscriber. The finished Harness
+  // always subscribes its own default narrator FIRST, whatever is in here, so AssistantSaid/
+  // TurnEnded narrate the way the CLI door always has — an application's observer is one more
+  // listener, never a replacement.
+  private final List<HarnessObserver> harnessObservers = new ArrayList<>();
   private Executor executor;
   private int backlogCapacity = 1024;
   private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
@@ -254,17 +257,21 @@ public final class HarnessConfig<O> {
    * harness runs — a durable delivery's fold included, which narrated nothing at all before the
    * stream existed.
    *
-   * <p>Defaults to the narrating observer ({@code TurnNarrationAdapter}), so {@code AssistantSaid}/
-   * {@code TurnEnded} narrate — the posture the CLI door has always had; supplying your own
-   * observer here replaces that wiring entirely, so an override that still wants those events
-   * narrated must wrap {@link TurnObserver} itself. One observer serves every scope now rather than
-   * being stamped per id, which is why its methods lead with the {@link
-   * org.jwcarman.nessy.agent.AgentId} the fact is about. A throw is logged and dropped, never
-   * propagated into the fold.
+   * <p><b>ADDITIVE</b> (amended 2026-08-26, watchman branch — James: "I don't want only one
+   * observer"). Each call subscribes one more observer, in call order, and no call displaces
+   * anything: the narrating observer ({@code TurnNarrationAdapter}) is always subscribed first, so
+   * {@code AssistantSaid}/{@code TurnEnded} narrate the way the CLI door always has, whether or not
+   * an application names observers of its own. Call this once per listener — a projection, a
+   * metrics bridge, an audit log — rather than composing them into one by hand.
+   *
+   * <p>One observer instance serves every scope rather than being stamped per id, which is why its
+   * methods lead with the {@link org.jwcarman.nessy.agent.AgentId} the fact is about. Subscribers
+   * are isolated: a throw is logged and dropped, never propagated into the fold and never kept from
+   * the other subscribers.
    */
   public HarnessConfig<O> harnessObserver(HarnessObserver harnessObserver) {
-    this.harnessObserver =
-        Objects.requireNonNull(harnessObserver, "harnessObserver must not be null");
+    this.harnessObservers.add(
+        Objects.requireNonNull(harnessObserver, "harnessObserver must not be null"));
     return this;
   }
 
@@ -494,7 +501,7 @@ public final class HarnessConfig<O> {
         Harness.of(
             agentType,
             effectiveRenderer,
-            harnessObserver,
+            List.copyOf(harnessObservers),
             effectiveTurnObserver,
             true,
             stalenessPolicy,

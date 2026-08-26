@@ -75,7 +75,7 @@ final class AgentFixture {
         Harness.of(
             fixtureType,
             text -> List.of(new TextBlock(text)),
-            observer,
+            List.of(observer),
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,

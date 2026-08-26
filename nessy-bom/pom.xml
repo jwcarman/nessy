@@ -94,6 +94,11 @@
                 <artifactId>nessy-substrate-jdbc</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

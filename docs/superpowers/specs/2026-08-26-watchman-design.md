@@ -34,16 +34,27 @@ record). It composes; it invents nothing.
 |---|---|---|
 | `Substrate` | `new JdbcSubstrate(dataSource)` | a `DataSource` bean and `nessy-substrate-jdbc` on the classpath; else the in-memory substrate |
 | `Continuum` | `new DefaultContinuum(new JdbcContinuumRepository(dataSource), InstantSource.system())` | same |
-| `Model` | `ModelDiscovery` (nessy-model-discovery) | always; `nessy.model.id` picks the id |
+| `Model` | `ModelDiscovery.fromEnv()` (nessy-model-discovery; `NESSY_MODEL` picks the id) | always; a user `Model` bean wins |
 | `Harness<String>` | `Nessy.harness(c -> c.type(...).model(...).systemPrompt(...).grants(...).substrate(...).continuum(...).observationRegistry(...).harnessObserver(...))` | always; grants come from every `ToolGrant` bean and every `Tool` bean (a bare `Tool` bean is granted `Approvers.allow()`) |
 | `ApprovalDesk`, `CompletionDesk` | `harness.approvals()` / `harness.completions()` | always |
 | `ObservationRegistry` → seam | Boot's own `ObservationRegistry` bean (from `spring-boot-starter-actuator` + micrometer) | when present; else NOOP |
 | shutdown | `harness.shutdown()` on context close | always |
 
-Properties, all under `nessy.`: `type`, `model.id`, `system-prompt` (or
+Properties, all under `nessy.`: `type`, `system-prompt` (or
 `system-prompt-file`), `staleness` (duration; the re-fire policy),
 `backlog-capacity`. Nothing else — the recipe's tools and approvers are
 beans, because they are code.
+
+*Amended 2026-08-26 during execution:* there is no `nessy.model.id`. The
+`Model` bean is `ModelDiscovery.fromEnv()`, and that module already owns
+the id override (`NESSY_MODEL`); a property-driven choice is a
+user-supplied `Model` bean, which wins. Widening `nessy-model-discovery`
+for a property it did not need was rejected. And: supplying a `HarnessObserver` used to replace the default
+narrator. James: "I don't want only one observer." So
+`HarnessConfig.harnessObserver(...)` is additive, the default narrator
+is always subscribed (`Harness.subscribe` stays package-private — no runtime door until something needs one);
+the starter subscribes `PendingApprovals` and every user-supplied
+`HarnessObserver` bean. No factory, no starter-side composite.
 
 ### 1.2 What it does not do
 
@@ -61,8 +72,8 @@ ships it, because every Boot application that parks approvals will want
 the same table:
 
 - `PendingApprovals` — a `HarnessObserver` subscribed at harness build
-  (the starter's `harnessObserver` composes it in front of the default
-  narrator). On `ApprovalDeferred` applied: insert
+  through the additive `harnessObserver(...)` door, beside the default
+  narrator and any user-supplied observers. On `ApprovalDeferred` applied: insert
   `(agent_type, agent_id, call_id, computation_id, request_json, action,
   parked_at)`. On `ApprovalAnswered` applied: update with
   `(answer, reference, principal_note, answered_at)`. Row keyed by

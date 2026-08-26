@@ -105,7 +105,7 @@ class HarnessTest {
   private static Harness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
-      HarnessObserver observer,
+      List<HarnessObserver> observers,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
@@ -115,7 +115,7 @@ class HarnessTest {
     return harness(
         type,
         renderer,
-        observer,
+        observers,
         TurnObserver.noop(),
         stalenessPolicy,
         memoryFactory,
@@ -133,7 +133,7 @@ class HarnessTest {
   private static Harness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
-      HarnessObserver observer,
+      List<HarnessObserver> observers,
       TurnObserver turnObserver,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
@@ -148,7 +148,7 @@ class HarnessTest {
     return Harness.of(
         type,
         renderer,
-        observer,
+        observers,
         turnObserver,
         false,
         stalenessPolicy,
@@ -178,7 +178,7 @@ class HarnessTest {
     return Harness.of(
         TYPE,
         RENDERER,
-        OBSERVER,
+        List.of(OBSERVER),
         TurnObserver.noop(),
         false,
         STALENESS_POLICY,
@@ -264,7 +264,7 @@ class HarnessTest {
                   harness(
                       null,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       id -> STORE,
@@ -281,7 +281,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       null,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       id -> STORE,
@@ -292,16 +292,17 @@ class HarnessTest {
     }
 
     @Test
-    void a_null_agent_observer_asks_for_the_default_narrator() {
+    void no_configured_observer_still_leaves_the_default_narrator() {
       // The reform (agentic-o11y spec §3) turned this parameter from a required per-scope factory
-      // into an optional subscriber: null no longer throws, it means "subscribe the narrating
-      // observer this harness builds for itself". The old guard asserted the requireNonNull that
-      // the parameter's disappearance retired.
+      // into a list of subscribers, and the watchman branch made it purely additive: an empty list
+      // is not "no observer", it is "the narrating observer this harness always builds for itself,
+      // and nothing else". The old guard asserted a requireNonNull the parameter's disappearance
+      // retired; what is worth pinning now is that the harness still builds.
       Harness<String> harness =
           harness(
               TYPE,
               RENDERER,
-              null,
+              List.of(),
               STALENESS_POLICY,
               id -> MEMORY,
               id -> STORE,
@@ -324,7 +325,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       null,
                       STALENESS_POLICY,
                       id -> MEMORY,
@@ -342,7 +343,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       null,
                       id -> MEMORY,
                       id -> STORE,
@@ -359,7 +360,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       null,
                       id -> STORE,
@@ -376,7 +377,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       null,
@@ -393,7 +394,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       id -> STORE,
@@ -410,7 +411,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       id -> STORE,
@@ -427,7 +428,7 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
-                      OBSERVER,
+                      List.of(OBSERVER),
                       STALENESS_POLICY,
                       id -> MEMORY,
                       id -> STORE,
@@ -443,7 +444,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> MEMORY,
               id -> STORE,
@@ -462,7 +463,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> MEMORY,
               id -> STORE,
@@ -486,7 +487,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
@@ -520,7 +521,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
@@ -551,7 +552,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> MEMORY,
               id -> STORE,
@@ -588,7 +589,7 @@ class HarnessTest {
           harness(
               TYPE,
               RENDERER,
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> MEMORY,
               id -> STORE,
@@ -624,7 +625,7 @@ class HarnessTest {
           harness(
               TYPE,
               text -> List.of(new TextBlock(text)),
-              OBSERVER,
+              List.of(OBSERVER),
               STALENESS_POLICY,
               id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
