@@ -227,6 +227,16 @@ public final class OpenAiStream implements ModelStream {
       finishSeen = true;
     }
 
+    /**
+     * No cache arithmetic here, unlike {@code AnthropicStream} and {@code BedrockStream}: OpenAI's
+     * {@code prompt_tokens} is ALREADY the whole prompt, and {@code
+     * prompt_tokens_details.cached_tokens} is a subset of it, not a sibling — OpenAI's own
+     * cost-worked example derives the uncached remainder as {@code input_tokens - cached_tokens -
+     * cache_write_tokens}, which only holds if the parts live inside the total. That is exactly the
+     * shape the OpenTelemetry GenAI conventions ask for ("This value SHOULD include all types of
+     * input tokens, including cached tokens"), so passing it through is the correct mapping and
+     * summing here would double-count (2026-08-26 per-vendor token-semantics audit).
+     */
     private void translateUsage(CompletionUsage completionUsage) {
       long cacheReadInputTokens =
           completionUsage

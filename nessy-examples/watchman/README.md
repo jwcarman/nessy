@@ -330,16 +330,21 @@ What to look for on the next run, in order:
    minute or two if you want to watch cross-round reads; otherwise the win is
    entirely within-round, which for a round that runs several tool batches is
    still most of the tokens.
-4. **Watch `input_tokens` *against* the transcript length, not on its own.** The
-   Anthropic adapter passes the provider's own `input_tokens` straight through,
-   and Anthropic reports that number *excluding* what it served from cache. So a
-   round whose `input_tokens` stops growing while the transcript keeps growing is
-   the fix working, not a stalled agent — and the prompt's true size is
-   `input_tokens + cache_read + cache_write`. (Note: `TokenUsageHandler`'s javadoc
-   quotes semconv's "SHOULD be included in `gen_ai.usage.input_tokens`" and warns
-   against summing all four series. That warning is correct for a provider that
-   follows the SHOULD; Anthropic does not, so for this soak the four series do not
-   overlap. Read the numbers, not the guidance, until that is reconciled.)
+4. **`input_tokens` is the WHOLE prompt, cached parts included — so it keeps
+   growing with the transcript.** Anthropic's own `input_tokens` is not that
+   number: it "represents only the tokens that come after the last cache
+   breakpoint in your request - not all the input tokens you sent", with the whole
+   given as `cache_read_input_tokens + cache_creation_input_tokens +
+   input_tokens`. Bedrock's Converse API splits it the same way. Both adapters now
+   do that addition themselves, because the GenAI conventions want the total on
+   `gen_ai.usage.input_tokens` ("This value SHOULD include all types of input
+   tokens, including cached tokens") with the two cache counts as subsets. Before
+   that fix, a *working* cache made the input series fall off a cliff and look
+   like a win. It is a measurement error, and it is gone. Consequently
+   `TokenUsageHandler`'s javadoc warning is now unconditionally true here: **do
+   not sum the four `gen_ai.token.type` series** — `cache_read` and `cache_write`
+   are already inside `input`. Sum `input` and `output` for spend; divide
+   `cache_read` by `input` for the hit rate.
 
 ### Reading `nessy.state.stale_retries`
 

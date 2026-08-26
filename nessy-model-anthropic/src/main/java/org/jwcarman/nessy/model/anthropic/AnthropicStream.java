@@ -139,9 +139,10 @@ public final class AnthropicStream implements ModelStream {
     private void translate(RawMessageStreamEvent event) {
       if (event.isMessageStart()) {
         var usage = event.asMessageStart().message().usage();
-        inputTokens = usage.inputTokens();
-        cacheReadInputTokens = usage.cacheReadInputTokens().orElse(0L);
-        cacheWriteInputTokens = usage.cacheCreationInputTokens().orElse(0L);
+        readUsage(
+            usage.inputTokens(),
+            usage.cacheReadInputTokens().orElse(0L),
+            usage.cacheCreationInputTokens().orElse(0L));
       } else if (event.isContentBlockStart()) {
         translateContentBlockStart(event.asContentBlockStart());
       } else if (event.isContentBlockDelta()) {
@@ -153,6 +154,36 @@ public final class AnthropicStream implements ModelStream {
       }
       // message_stop carries nothing the translation table maps; TurnEnded already went out
       // when message_delta arrived.
+    }
+
+    /**
+     * Turns Anthropic's three-way split of the prompt into the ONE number the OpenTelemetry GenAI
+     * conventions ask for, with the two cache counts as subsets of it rather than siblings.
+     *
+     * <p>The vendor's {@code input_tokens} is not the size of the prompt. Anthropic's
+     * prompt-caching documentation is explicit: the field "represents only the tokens that come
+     * after the last cache breakpoint in your request - not all the input tokens you sent", and it
+     * gives the whole as {@code total_input_tokens = cache_read_input_tokens +
+     * cache_creation_input_tokens + input_tokens}. Semconv wants the whole on {@code
+     * gen_ai.usage.input_tokens} — "This value SHOULD include all types of input tokens, including
+     * cached tokens" — and says of each cache count that "the value SHOULD be included in {@code
+     * gen_ai.usage.input_tokens}".
+     *
+     * <p>So passing the vendor's number through was a measurement error that only appeared once
+     * caching started working: the better the cache hit rate, the further {@code
+     * gen_ai.usage.input_tokens} fell below the real prompt, and the graph showed a sudden drop
+     * that read as a win. Summing here — in the adapter, where the vendor's meaning is known — is
+     * what lets {@code Usage} mean the same thing for every provider.
+     *
+     * @param uncachedInputTokens the vendor's own {@code input_tokens} — the tail after the last
+     *     breakpoint, not the prompt
+     * @param cacheRead the vendor's {@code cache_read_input_tokens}
+     * @param cacheWrite the vendor's {@code cache_creation_input_tokens}
+     */
+    private void readUsage(long uncachedInputTokens, long cacheRead, long cacheWrite) {
+      cacheReadInputTokens = cacheRead;
+      cacheWriteInputTokens = cacheWrite;
+      inputTokens = uncachedInputTokens + cacheRead + cacheWrite;
     }
 
     /**

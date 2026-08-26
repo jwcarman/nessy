@@ -215,6 +215,14 @@ final class GeminiStream implements ModelStream {
       finishSeen = true;
     }
 
+    /**
+     * No cache arithmetic here, unlike {@code AnthropicStream} and {@code BedrockStream}: Gemini's
+     * {@code promptTokenCount} is ALREADY the whole prompt. The API reference says so in as many
+     * words — "When {@code cachedContent} is set, this is still the total effective prompt size
+     * meaning this includes the number of tokens in the cached content" — which makes {@code
+     * cachedContentTokenCount} a subset, exactly the shape the OpenTelemetry GenAI conventions ask
+     * for. Summing here would double-count (2026-08-26 per-vendor token-semantics audit).
+     */
     private void translateUsage(GenerateContentResponseUsageMetadata metadata) {
       usage =
           new Usage(

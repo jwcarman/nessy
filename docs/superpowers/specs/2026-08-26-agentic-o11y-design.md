@@ -438,6 +438,26 @@ Verified item by item against
   `Usage.cacheCreationInputTokens()`, Bedrock's
   `TokenUsage.cacheWriteInputTokens()`). OpenAI and Gemini report reads only
   and honestly report zero writes.
+- **`Usage.inputTokens` is the semconv TOTAL, and the adapters do the
+  arithmetic (2026-08-26).** Semconv on `gen_ai.usage.input_tokens`: "This
+  value SHOULD include all types of input tokens, including cached tokens";
+  on each cache count: "the value SHOULD be included in
+  `gen_ai.usage.input_tokens`". Two of the four vendors mean the opposite by
+  their own input field. Anthropic: "The `input_tokens` field represents only
+  the tokens that come after the last cache breakpoint in your request - not
+  all the input tokens you sent", with `total_input_tokens =
+  cache_read_input_tokens + cache_creation_input_tokens + input_tokens`.
+  Bedrock: "When prompt caching is enabled, the `inputTokens` field
+  represents only the non-cached input tokens", with `total input tokens =
+  inputTokens + cacheReadInputTokens + cacheWriteInputTokens`. OpenAI's
+  `prompt_tokens` and Gemini's `promptTokenCount` ("this is still the total
+  effective prompt size meaning this includes the number of tokens in the
+  cached content") are already totals. So `AnthropicStream` and
+  `BedrockStream` sum before constructing `Usage`; `OpenAiStream` and
+  `GeminiStream` pass through. Passing the raw vendor number through was a
+  measurement error visible only once caching WORKED — the better the hit
+  rate, the further the input series fell below the real prompt, which reads
+  on a dashboard as a cost win rather than as a broken gauge.
 - The metric names — Amendment 2b above.
 - `gen_ai.request.stream` = true on `chat`: Conditionally Required "if and
   only if the request is streaming", and this harness has no non-streaming

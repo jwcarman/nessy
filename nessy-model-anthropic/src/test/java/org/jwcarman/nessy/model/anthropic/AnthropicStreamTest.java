@@ -283,7 +283,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 7, 0)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(17, 5, 7, 0)));
     }
 
     @Test
@@ -302,7 +302,34 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 25)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(35, 5, 0, 25)));
+    }
+
+    /**
+     * Anthropic's own {@code input_tokens} "represents only the tokens that come after the last
+     * cache breakpoint in your request - not all the input tokens you sent", and the docs give the
+     * total as {@code cache_read_input_tokens + cache_creation_input_tokens + input_tokens}. The
+     * OTel GenAI conventions want the opposite of that on {@code gen_ai.usage.input_tokens} — "This
+     * value SHOULD include all types of input tokens, including cached tokens" — with the two cache
+     * counts as subsets. So the adapter, not the caller, does the addition.
+     */
+    @Test
+    void input_tokens_are_reported_as_the_semconv_total_of_all_three_components() {
+      var events =
+          List.of(
+              messageStart(100, 900, 0),
+              textBlockStart(0),
+              textDelta(0, "Hello"),
+              contentBlockStop(0),
+              messageDelta("end_turn", 5),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
     }
 
     @Test

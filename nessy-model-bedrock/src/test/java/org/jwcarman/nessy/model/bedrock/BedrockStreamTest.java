@@ -100,12 +100,18 @@ class BedrockStreamTest {
 
   private static ConverseStreamOutput metadata(
       long inputTokens, long outputTokens, long cacheReadTokens) {
+    return metadata(inputTokens, outputTokens, cacheReadTokens, 0);
+  }
+
+  private static ConverseStreamOutput metadata(
+      long inputTokens, long outputTokens, long cacheReadTokens, long cacheWriteTokens) {
     return ConverseStreamOutput.metadataBuilder()
         .usage(
             TokenUsage.builder()
                 .inputTokens((int) inputTokens)
                 .outputTokens((int) outputTokens)
                 .cacheReadInputTokens((int) cacheReadTokens)
+                .cacheWriteInputTokens((int) cacheWriteTokens)
                 .build())
         .build();
   }
@@ -140,7 +146,28 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4, 0)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(14, 5, 4, 0)));
+    }
+
+    /**
+     * Bedrock's own documentation: "When prompt caching is enabled, the {@code inputTokens} field
+     * represents only the non-cached input tokens (tokens that were not read from or written to the
+     * cache)", with {@code total input tokens = inputTokens + cacheReadInputTokens +
+     * cacheWriteInputTokens}. The OTel GenAI conventions want the total on {@code
+     * gen_ai.usage.input_tokens}, with the cache counts as subsets — so the adapter adds them up,
+     * exactly as the Anthropic one does.
+     */
+    @Test
+    void input_tokens_are_reported_as_the_semconv_total_of_all_three_components() {
+      var chunks =
+          List.of(textDelta(0, "Hello"), messageStop("end_turn"), metadata(100, 5, 900, 0));
+
+      var modelEvents = drain(chunks);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
     }
 
     @Test

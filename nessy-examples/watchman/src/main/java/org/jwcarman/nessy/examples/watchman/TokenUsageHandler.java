@@ -104,6 +104,14 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
    * values of {@code gen_ai.token.type} DOUBLE-COUNTS the cached tokens. Sum {@code input} and
    * {@code output} for spend; read {@code cache_read} against {@code input} for the hit rate.
    *
+   * <p>That is true of every provider the harness speaks to, and it is true because the ADAPTERS
+   * make it true (2026-08-26 token-semantics fix). OpenAI and Gemini report a prompt total already;
+   * Anthropic and Bedrock report only the tail after the last cache breakpoint, so {@code
+   * AnthropicStream} and {@code BedrockStream} add the two cache counts back in before building
+   * {@link org.jwcarman.nessy.api.conversation.Usage}. Until they did, this warning was FALSE for
+   * exactly the two providers that write caches — and worse, a cache that started working made the
+   * {@code input} series drop.
+   *
    * <p><b>{@code cache_read} and {@code cache_write} are custom values for {@code
    * gen_ai.token.type}</b>, and deliberately so. The registry's well-known list is exactly {@code
    * input} and {@code output} — checked against {@code gen-ai-metrics.md} at {@code main} rather

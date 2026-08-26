@@ -209,16 +209,31 @@ final class BedrockStream implements ModelStream {
       finishSeen = true;
     }
 
+    /**
+     * Folds the Converse API's three-way split of the prompt into the ONE number the OpenTelemetry
+     * GenAI conventions ask for on {@code gen_ai.usage.input_tokens}, with the two cache counts as
+     * subsets of it.
+     *
+     * <p>Bedrock's {@code inputTokens} is not the size of the prompt whenever caching is on. The
+     * Bedrock prompt-caching guide: "When prompt caching is enabled, the {@code inputTokens} field
+     * represents only the non-cached input tokens (tokens that were not read from or written to the
+     * cache)", with {@code total input tokens = inputTokens + cacheReadInputTokens +
+     * cacheWriteInputTokens}. Semconv wants the total — "This value SHOULD include all types of
+     * input tokens, including cached tokens" — so the adapter adds them up, the same correction
+     * {@code AnthropicStream.readUsage} carries and for the same reason.
+     */
     @Override
     public void visitMetadata(ConverseStreamMetadataEvent event) {
       TokenUsage tokenUsage = event.usage();
       if (tokenUsage != null) {
+        long cacheRead = orZero(tokenUsage.cacheReadInputTokens());
+        long cacheWrite = orZero(tokenUsage.cacheWriteInputTokens());
         usage =
             new Usage(
-                orZero(tokenUsage.inputTokens()),
+                orZero(tokenUsage.inputTokens()) + cacheRead + cacheWrite,
                 orZero(tokenUsage.outputTokens()),
-                orZero(tokenUsage.cacheReadInputTokens()),
-                orZero(tokenUsage.cacheWriteInputTokens()));
+                cacheRead,
+                cacheWrite);
       }
     }
 

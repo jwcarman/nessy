@@ -27,7 +27,14 @@ import java.util.Objects;
  * both Recommended "When applicable"). Semconv's own note: a cache READ count "SHOULD be included
  * in {@code gen_ai.usage.input_tokens}". A provider that reports neither reports zero for both.
  *
- * @param inputTokens tokens in the prompt
+ * <p><b>{@code inputTokens} is the WHOLE prompt</b> — semconv: "This value SHOULD include all types
+ * of input tokens, including cached tokens" — so the two cache components are subsets of it, never
+ * addends. Vendors disagree about this and it is the ADAPTER's job to reconcile them, not the
+ * caller's: OpenAI's {@code prompt_tokens} and Gemini's {@code promptTokenCount} are already
+ * totals, while Anthropic's {@code input_tokens} and Bedrock's {@code inputTokens} count only what
+ * falls after the last cache breakpoint, so those two adapters add the cache counts back in.
+ *
+ * @param inputTokens tokens in the prompt, cached ones included
  * @param outputTokens tokens in the completion
  * @param cacheReadInputTokens input tokens served from a provider-managed cache
  * @param cacheWriteInputTokens input tokens written to a provider-managed cache
