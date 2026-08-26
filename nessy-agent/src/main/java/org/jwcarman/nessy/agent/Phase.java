@@ -74,11 +74,7 @@ public sealed interface Phase {
             Transition.to(new AwaitingModel(), new Effect.CallModel())
                 .commit(Message.user(content));
         case AgentEvent.ModelFinished _ -> Transition.ignore();
-        case AgentEvent.ToolFinished _ -> Transition.ignore();
-        case AgentEvent.ApprovalDeferred _,
-            AgentEvent.ApprovalAnswered _,
-            AgentEvent.ToolDeferred _ ->
-            Transition.ignore();
+        case ToolCallEvent _ -> Transition.ignore();
       };
     }
 
@@ -101,11 +97,7 @@ public sealed interface Phase {
                 .emit(
                     calls.stream().map(Effect.SeekApproval::new).map(Effect.class::cast).toList());
         case AgentEvent.ModelFinished(_) -> Transition.to(new Idle());
-        case AgentEvent.ToolFinished _ -> Transition.ignore();
-        case AgentEvent.ApprovalDeferred _,
-            AgentEvent.ApprovalAnswered _,
-            AgentEvent.ToolDeferred _ ->
-            Transition.ignore();
+        case ToolCallEvent _ -> Transition.ignore();
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
