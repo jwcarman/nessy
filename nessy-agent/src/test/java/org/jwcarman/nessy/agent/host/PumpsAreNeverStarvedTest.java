@@ -24,9 +24,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -264,7 +264,7 @@ class PumpsAreNeverStarvedTest {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
       if (state.load().phase() instanceof Phase.AwaitingTools awaiting
-          && awaiting.calls().get(callId) instanceof CallStatus.AwaitingApproval) {
+          && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval) {
         return;
       }
       Thread.sleep(10);
@@ -278,7 +278,7 @@ class PumpsAreNeverStarvedTest {
     long deadline = System.currentTimeMillis() + 5000;
     while (System.currentTimeMillis() < deadline) {
       if (state.load().phase() instanceof Phase.AwaitingTools awaiting
-          && awaiting.calls().get(callId) instanceof CallStatus.AwaitingResult awaitingResult) {
+          && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingResult awaitingResult) {
         return awaitingResult.tool();
       }
       Thread.sleep(10);

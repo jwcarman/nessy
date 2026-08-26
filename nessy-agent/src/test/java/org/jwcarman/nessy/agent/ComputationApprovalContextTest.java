@@ -157,7 +157,7 @@ class ComputationApprovalContextTest {
     return new State(
         new Phase.AwaitingTools(
             Message.assistant(List.of(new ToolUseBlock(CALL))),
-            Map.of(CALL.id(), new CallStatus.Pending()),
+            Map.of(CALL.id(), new ToolCallState.Pending()),
             ModelResponseId.of("r1")),
         0);
   }

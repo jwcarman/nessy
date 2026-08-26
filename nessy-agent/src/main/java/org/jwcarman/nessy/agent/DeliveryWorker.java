@@ -474,7 +474,7 @@ final class DeliveryWorker<O> implements ComputationPump {
     if (!(phase instanceof Phase.AwaitingTools awaiting)) {
       return phase.getClass().getSimpleName();
     }
-    CallStatus status = awaiting.calls().get(callId);
+    ToolCallState status = awaiting.calls().get(callId);
     return status == null ? "no such call" : status.getClass().getSimpleName();
   }
 

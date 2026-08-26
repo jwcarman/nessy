@@ -168,7 +168,7 @@ class DefaultAgentApplyTest {
     var awaiting =
         new Phase.AwaitingTools(
             turn,
-            Map.of("a", new CallStatus.Running(), "b", new CallStatus.Running()),
+            Map.of("a", new ToolCallState.Running(), "b", new ToolCallState.Running()),
             ModelResponseId.of("response-1"));
     inner.save(new State(awaiting, 0L)); // now at v1
     var aFinished =

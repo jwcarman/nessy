@@ -106,7 +106,7 @@ class DefaultAgentRecoveryTest {
     var f =
         stalled(
             new Phase.AwaitingTools(
-                turn, Map.of("a", new CallStatus.Pending()), ModelResponseId.of("response-1")),
+                turn, Map.of("a", new ToolCallState.Pending()), ModelResponseId.of("response-1")),
             clock);
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.model.enqueue(

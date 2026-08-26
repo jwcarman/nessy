@@ -25,8 +25,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -154,7 +154,7 @@ class SlowApprovedToolRunsOnceTest {
       assertThat(state.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
 
       // approve() only submits the drain (continuum-adoption spec §7): the fold, its commit of
-      // CallStatus.Running, and its RunTool dispatch onto `pump` all happen on the harness's own
+      // ToolCallState.Running, and its RunTool dispatch onto `pump` all happen on the harness's own
       // background scheduler thread, asynchronous to this one.
       harness.approvals().approve(AgentId.of("svc"), "c1", "ops-desk", "");
 
@@ -169,11 +169,11 @@ class SlowApprovedToolRunsOnceTest {
           .as("RunTool must be dispatched onto the executor, not run inline on the fold thread")
           .isFalse();
 
-      // (b) The fold already committed CallStatus.Running for c1 as part of THAT same state
+      // (b) The fold already committed ToolCallState.Running for c1 as part of THAT same state
       // write, strictly before the tool has been given any chance to run — Running is part of
       // the Transition the fold produces, and dispatchEffects (which merely calls
       // executor.execute(...) here) only runs after the CAS write already succeeded.
-      assertThat(callStatus(state, "c1")).isInstanceOf(CallStatus.Running.class);
+      assertThat(callStatus(state, "c1")).isInstanceOf(ToolCallState.Running.class);
       assertThat(tool.invocations()).isEqualTo(0); // not yet run — only dispatched
 
       // Now actually drain it, on a thread of its own: the tool blocks on its gate once entered,
@@ -185,7 +185,7 @@ class SlowApprovedToolRunsOnceTest {
       // Still exactly one invocation while blocked, and the phase is unchanged — nothing
       // re-dispatched RunTool a second time while the first was in flight.
       assertThat(tool.invocations()).isEqualTo(1);
-      assertThat(callStatus(state, "c1")).isInstanceOf(CallStatus.Running.class);
+      assertThat(callStatus(state, "c1")).isInstanceOf(ToolCallState.Running.class);
 
       tool.release();
       pumping.join(5000);
@@ -205,7 +205,7 @@ class SlowApprovedToolRunsOnceTest {
     }
   }
 
-  private static CallStatus callStatus(SubstrateAgentStateStore state, String callId) {
+  private static ToolCallState callStatus(SubstrateAgentStateStore state, String callId) {
     Phase phase = state.load().phase();
     if (phase instanceof Phase.AwaitingTools awaiting) {
       return awaiting.calls().get(callId);

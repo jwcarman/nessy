@@ -112,7 +112,7 @@ public sealed interface Phase {
    *     the wire (durable-deliveries spec §2), never generated here (the reducer stays a pure fold)
    */
   record AwaitingTools(
-      Message assistantTurn, Map<String, CallStatus> calls, ModelResponseId responseId)
+      Message assistantTurn, Map<String, ToolCallState> calls, ModelResponseId responseId)
       implements Phase {
 
     public AwaitingTools {
@@ -131,12 +131,12 @@ public sealed interface Phase {
       }
     }
 
-    /** The opening shape: every requested call {@link CallStatus.Pending}. */
+    /** The opening shape: every requested call {@link ToolCallState.Pending}. */
     static AwaitingTools opening(
         Message assistantTurn, List<ToolCall> requested, ModelResponseId responseId) {
-      Map<String, CallStatus> pending = new TreeMap<>();
+      Map<String, ToolCallState> pending = new TreeMap<>();
       for (ToolCall call : requested) {
-        pending.put(call.id(), new CallStatus.Pending());
+        pending.put(call.id(), new ToolCallState.Pending());
       }
       return new AwaitingTools(assistantTurn, pending, responseId);
     }
@@ -157,7 +157,7 @@ public sealed interface Phase {
      * id.
      */
     private Transition route(ToolCallEvent event) {
-      CallStatus current = calls.get(event.toolCallId());
+      ToolCallState current = calls.get(event.toolCallId());
       if (current == null) {
         return Transition.ignore(); // a call this turn never asked for
       }
@@ -173,7 +173,7 @@ public sealed interface Phase {
      * commit the assistant turn and the results in this phase's own insertion order and go back to
      * the model.
      */
-    private Transition advance(String callId, CallStatus next, List<Effect> effects) {
+    private Transition advance(String callId, ToolCallState next, List<Effect> effects) {
       AwaitingTools updated = with(callId, next);
       if (updated.calls.values().stream().allMatch(status -> status.resultBlock().isPresent())) {
         return Transition.to(new AwaitingModel(), new Effect.CallModel())
@@ -182,8 +182,8 @@ public sealed interface Phase {
       return Transition.to(updated).emit(effects);
     }
 
-    private AwaitingTools with(String callId, CallStatus status) {
-      Map<String, CallStatus> updated = new TreeMap<>(calls);
+    private AwaitingTools with(String callId, ToolCallState status) {
+      Map<String, ToolCallState> updated = new TreeMap<>(calls);
       updated.put(callId, status);
       return new AwaitingTools(assistantTurn, updated, responseId);
     }
@@ -192,7 +192,7 @@ public sealed interface Phase {
     private List<ContentBlock> resultsInTurnOrder() {
       List<ContentBlock> results = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        CallStatus status = calls.get(call.id());
+        ToolCallState status = calls.get(call.id());
         if (status != null) {
           status.resultBlock().ifPresent(results::add);
         }
@@ -204,12 +204,12 @@ public sealed interface Phase {
     public List<Effect> outstandingEffects() {
       List<Effect> effects = new ArrayList<>();
       for (ToolCall call : requestedCalls()) {
-        CallStatus status = calls.get(call.id());
+        ToolCallState status = calls.get(call.id());
         // Not a default arm of a switch: a Map.get miss is a programming error, surfaced loudly.
         if (status == null) {
           throw new IllegalStateException("no status for call " + call.id());
         }
-        // The re-fire rule is the state's own, stated once (CallStatus#outstanding).
+        // The re-fire rule is the state's own, stated once (ToolCallState#outstanding).
         effects.addAll(status.outstanding(call));
       }
       return List.copyOf(effects);

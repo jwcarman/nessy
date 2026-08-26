@@ -208,7 +208,7 @@ class ApprovalOnContinuumTest {
         new State(
             new Phase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Map.of(call.id(), new CallStatus.Pending()),
+                Map.of(call.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();
@@ -223,8 +223,8 @@ class ApprovalOnContinuumTest {
   /** The computation the phase says this call is awaiting approval of. */
   private ComputationId parkedIdFor(ToolCall call) {
     Phase phase = store.load().phase();
-    CallStatus status = ((Phase.AwaitingTools) phase).calls().get(call.id());
-    return ((CallStatus.AwaitingApproval) status).approval();
+    ToolCallState status = ((Phase.AwaitingTools) phase).calls().get(call.id());
+    return ((ToolCallState.AwaitingApproval) status).approval();
   }
 
   private List<ToolResultBlock> foldedResults() {

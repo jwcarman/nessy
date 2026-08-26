@@ -26,11 +26,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
+import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -176,7 +176,7 @@ class EarlyAnswerTest {
     Message turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(call, null)));
     Phase phase =
         new Phase.AwaitingTools(
-            turn, Map.of("c1", new CallStatus.Pending()), ModelResponseId.of("response-1"));
+            turn, Map.of("c1", new ToolCallState.Pending()), ModelResponseId.of("response-1"));
     state.save(new State(phase, state.load().version()));
 
     var harness =

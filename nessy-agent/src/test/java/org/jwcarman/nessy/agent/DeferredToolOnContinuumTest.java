@@ -255,17 +255,17 @@ class DeferredToolOnContinuumTest {
 
   /** The computation the phase says this call is awaiting the result of. */
   private ComputationId parkedToolIdFor(ToolCall call) {
-    CallStatus status = statusOf(call);
-    return ((CallStatus.AwaitingResult) status).tool();
+    ToolCallState status = statusOf(call);
+    return ((ToolCallState.AwaitingResult) status).tool();
   }
 
   /** The computation the phase says this call is awaiting approval of. */
   private ComputationId parkedApprovalIdFor(ToolCall call) {
-    CallStatus status = statusOf(call);
-    return ((CallStatus.AwaitingApproval) status).approval();
+    ToolCallState status = statusOf(call);
+    return ((ToolCallState.AwaitingApproval) status).approval();
   }
 
-  private CallStatus statusOf(ToolCall call) {
+  private ToolCallState statusOf(ToolCall call) {
     Phase phase = store.load().phase();
     return ((Phase.AwaitingTools) phase).calls().get(call.id());
   }
@@ -290,7 +290,7 @@ class DeferredToolOnContinuumTest {
         new State(
             new Phase.AwaitingTools(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Map.of(call.id(), new CallStatus.Pending()),
+                Map.of(call.id(), new ToolCallState.Pending()),
                 ModelResponseId.of("r1")),
             0));
     agent.drive();
@@ -316,7 +316,7 @@ class DeferredToolOnContinuumTest {
     driveOnceWithPending(call);
 
     assertThat(tool.invocations).hasValue(1); // dispatched exactly once
-    assertThat(statusOf(call)).isInstanceOf(CallStatus.AwaitingResult.class);
+    assertThat(statusOf(call)).isInstanceOf(ToolCallState.AwaitingResult.class);
   }
 
   @Test
@@ -526,7 +526,7 @@ class DeferredToolOnContinuumTest {
     pump.pumpUntilQuiet();
 
     // the answer folded, the tool ran, and it deferred: the phase now awaits a tool result
-    assertThat(statusOf(call)).isInstanceOf(CallStatus.AwaitingResult.class);
+    assertThat(statusOf(call)).isInstanceOf(ToolCallState.AwaitingResult.class);
     assertThat(foldedResults()).isEmpty();
 
     ComputationId execution = parkedToolIdFor(call);
@@ -581,7 +581,7 @@ class DeferredToolOnContinuumTest {
       // §2) — the only handle back to the Continuum-minted id, read exactly as a genuinely
       // separate out-of-band responder would have to.
       var status = ((Phase.AwaitingTools) scopeState.load().phase()).calls().get("c1");
-      var computation = ((CallStatus.AwaitingResult) status).tool();
+      var computation = ((ToolCallState.AwaitingResult) status).tool();
 
       // "every instance is garbage; any node may answer": complete purely through the harness's
       // own public door, exactly as a genuinely out-of-band responder would.

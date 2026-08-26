@@ -25,9 +25,9 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -89,22 +89,22 @@ class StateCodecTest {
     }
 
     @Test
-    void everyCallStatusRoundTripsIncludingTheParkedRequest() {
+    void everyToolCallStateRoundTripsIncludingTheParkedRequest() {
       var turn = turnOf(CALL_A, CALL_B, CALL_C, CALL_D, CALL_E);
       var phase =
           new Phase.AwaitingTools(
               turn,
               Map.of(
                   "a",
-                  new CallStatus.Pending(),
+                  new ToolCallState.Pending(),
                   "b",
-                  new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
-                  new CallStatus.Running(),
+                  new ToolCallState.Running(),
                   "d",
-                  new CallStatus.AwaitingResult(ComputationId.of("tool-1")),
+                  new ToolCallState.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new CallStatus.Finished(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallState.Finished(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
       var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -113,7 +113,7 @@ class StateCodecTest {
       assertThat(roundTripped.calls()).isNotEmpty();
       assertThat(roundTripped.calls().get("b"))
           .isInstanceOfSatisfying(
-              CallStatus.AwaitingApproval.class,
+              ToolCallState.AwaitingApproval.class,
               parked -> assertThat(parked.request().action()).isEqualTo("restart prod-1"));
     }
 
@@ -124,7 +124,8 @@ class StateCodecTest {
           new Phase.AwaitingTools(
               turn,
               Map.of(
-                  "b", new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request())),
+                  "b",
+                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request())),
               RESPONSE_ID);
 
       var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -132,14 +133,15 @@ class StateCodecTest {
       assertThat(roundTripped.calls()).isNotEmpty();
       assertThat(roundTripped.calls().get("b"))
           .isInstanceOfSatisfying(
-              CallStatus.AwaitingApproval.class,
+              ToolCallState.AwaitingApproval.class,
               parked -> assertThat(parked.request().facts().get(TICKET)).contains("OPS-42"));
     }
 
     @Test
     void anAwaitingToolsPhaseWithOnePendingCallRoundTrips() {
       var turn = turnOf(CALL_A);
-      var phase = new Phase.AwaitingTools(turn, Map.of("a", new CallStatus.Pending()), RESPONSE_ID);
+      var phase =
+          new Phase.AwaitingTools(turn, Map.of("a", new ToolCallState.Pending()), RESPONSE_ID);
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
@@ -151,15 +153,15 @@ class StateCodecTest {
               turn,
               Map.of(
                   "a",
-                  new CallStatus.Pending(),
+                  new ToolCallState.Pending(),
                   "b",
-                  new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request()),
+                  new ToolCallState.AwaitingApproval(ComputationId.of("approval-1"), request()),
                   "c",
-                  new CallStatus.Running(),
+                  new ToolCallState.Running(),
                   "d",
-                  new CallStatus.AwaitingResult(ComputationId.of("tool-1")),
+                  new ToolCallState.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new CallStatus.Finished(new ToolResultBlock("e", "audited", false))),
+                  new ToolCallState.Finished(new ToolResultBlock("e", "audited", false))),
               RESPONSE_ID);
 
       String json = CODEC.toJson(phase);
@@ -179,7 +181,7 @@ class StateCodecTest {
       var phase =
           new Phase.AwaitingTools(
               turn,
-              Map.of("b", new CallStatus.Pending(), "a", new CallStatus.Pending()),
+              Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
               RESPONSE_ID);
 
       String calls = CODEC.toJson(phase);

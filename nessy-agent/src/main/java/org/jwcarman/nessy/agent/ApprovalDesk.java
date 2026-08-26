@@ -132,12 +132,12 @@ public final class ApprovalDesk {
     return awaiting(id, callId).request();
   }
 
-  private CallStatus.AwaitingApproval awaiting(AgentId id, String callId) {
+  private ToolCallState.AwaitingApproval awaiting(AgentId id, String callId) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
     Phase phase = stores.apply(id.value()).load().phase();
     if (phase instanceof Phase.AwaitingTools awaiting
-        && awaiting.calls().get(callId) instanceof CallStatus.AwaitingApproval parked) {
+        && awaiting.calls().get(callId) instanceof ToolCallState.AwaitingApproval parked) {
       return parked;
     }
     throw new IllegalStateException(

@@ -159,9 +159,9 @@ public class PendingApprovals implements HarnessObserver {
    * The honest position: <b>nothing in the fact carries a time.</b> {@code AgentEvent}'s two
    * approval variants carry the call, the computation id and the request; {@code Transition}
    * carries the next phase, the messages to commit and the effects to fire; {@code
-   * CallStatus.AwaitingApproval} carries the computation id and the request. There is no timestamp
-   * on any of them to prefer over this one, so this is the best available reading and the javadoc
-   * says so rather than implying the fact was consulted.
+   * ToolCallState.AwaitingApproval} carries the computation id and the request. There is no
+   * timestamp on any of them to prefer over this one, so this is the best available reading and the
+   * javadoc says so rather than implying the fact was consulted.
    *
    * <p>How wrong it can be: as wrong as the gap between the fold committing and this observer
    * running. On a healthy box that is milliseconds. After a backlog, a slow database or a

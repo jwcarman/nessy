@@ -30,18 +30,21 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 /**
  * Where one call's lifecycle stands (approval-lifecycle spec §2). States are named for what they
  * await; the acts that put a call there have their own past-tense names in {@link AgentEvent}. Two
- * statuses wait on Continuum and are one mechanism used twice: the status records the computation's
+ * states wait on Continuum and are one mechanism used twice: the state records the computation's
  * id, the delivery is recognised by it, and the call is never re-fired.
+ *
+ * <p>Not a "status" (deferral-by-callback spec §2.1): a status is a scalar label, and this carries
+ * data AND behaviour — each state decides what its own call makes of a {@link ToolCallEvent}.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = CallStatus.Pending.class, name = "pending"),
-  @JsonSubTypes.Type(value = CallStatus.AwaitingApproval.class, name = "awaiting-approval"),
-  @JsonSubTypes.Type(value = CallStatus.Running.class, name = "running"),
-  @JsonSubTypes.Type(value = CallStatus.AwaitingResult.class, name = "awaiting-result"),
-  @JsonSubTypes.Type(value = CallStatus.Finished.class, name = "finished")
+  @JsonSubTypes.Type(value = ToolCallState.Pending.class, name = "pending"),
+  @JsonSubTypes.Type(value = ToolCallState.AwaitingApproval.class, name = "awaiting-approval"),
+  @JsonSubTypes.Type(value = ToolCallState.Running.class, name = "running"),
+  @JsonSubTypes.Type(value = ToolCallState.AwaitingResult.class, name = "awaiting-result"),
+  @JsonSubTypes.Type(value = ToolCallState.Finished.class, name = "finished")
 })
-public sealed interface CallStatus {
+public sealed interface ToolCallState {
 
   /**
    * This call's outcome, if it has one — the single answer to "is this call done?", stated once
@@ -129,7 +132,7 @@ public sealed interface CallStatus {
   }
 
   /** Approval sought; no answer recorded. Re-fire re-seeks. */
-  record Pending() implements CallStatus {
+  record Pending() implements ToolCallState {
 
     @Override
     public Optional<ToolResultBlock> resultBlock() {
@@ -157,7 +160,8 @@ public sealed interface CallStatus {
   }
 
   /** The approver deferred; Continuum holds the ask. Never re-fired. */
-  record AwaitingApproval(ComputationId approval, ApprovalRequest request) implements CallStatus {
+  record AwaitingApproval(ComputationId approval, ApprovalRequest request)
+      implements ToolCallState {
     public AwaitingApproval {
       Objects.requireNonNull(approval, "approval must not be null");
       Objects.requireNonNull(request, "request must not be null");
@@ -183,7 +187,7 @@ public sealed interface CallStatus {
   }
 
   /** Approved; the tool is executing. Re-fire re-runs. */
-  record Running() implements CallStatus {
+  record Running() implements ToolCallState {
 
     @Override
     public Optional<ToolResultBlock> resultBlock() {
@@ -216,7 +220,7 @@ public sealed interface CallStatus {
   }
 
   /** The tool deferred; Continuum holds the result. Never re-fired. */
-  record AwaitingResult(ComputationId tool) implements CallStatus {
+  record AwaitingResult(ComputationId tool) implements ToolCallState {
     public AwaitingResult {
       Objects.requireNonNull(tool, "tool must not be null");
     }
@@ -244,7 +248,7 @@ public sealed interface CallStatus {
    * An outcome exists — success, denial or failure. Absorbing: every event for this call is
    * dropped, which is every default on this interface, so this record overrides none of them.
    */
-  record Finished(ToolResultBlock result) implements CallStatus {
+  record Finished(ToolResultBlock result) implements ToolCallState {
     public Finished {
       Objects.requireNonNull(result, "result must not be null");
     }

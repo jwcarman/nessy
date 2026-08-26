@@ -90,7 +90,7 @@ class ApprovalDeskTest {
     Phase phase =
         new Phase.AwaitingTools(
             turn,
-            Map.of("c1", new CallStatus.AwaitingApproval(id, request())),
+            Map.of("c1", new ToolCallState.AwaitingApproval(id, request())),
             ModelResponseId.of("response-1"));
     AgentStateStore store = storeFor(SCOPE.value());
     store.save(new State(phase, store.load().version()));
@@ -242,7 +242,7 @@ class ApprovalDeskTest {
   }
 
   /**
-   * Seeds the scope with {@code c1} freshly {@link CallStatus.Pending} — {@code defer()}'s
+   * Seeds the scope with {@code c1} freshly {@link ToolCallState.Pending} — {@code defer()}'s
    * precondition ({@link Phase.AwaitingTools#handle} only admits {@code ApprovalDeferred} from
    * {@code Pending}).
    */

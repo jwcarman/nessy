@@ -162,13 +162,13 @@ class DeliveryWorkerMismatchedDeliveryTest {
     classicLogger.setLevel(null);
   }
 
-  private void scopeWith(CallStatus status) {
+  private void scopeWith(ToolCallState status) {
     Message turn = Message.assistant(List.of(new ToolUseBlock(CALL)));
     Phase phase = new Phase.AwaitingTools(turn, Map.of("c1", status), ModelResponseId.of("r1"));
     store.save(new State(phase, store.load().version()));
   }
 
-  private CallStatus status() {
+  private ToolCallState status() {
     return ((Phase.AwaitingTools) store.load().phase()).calls().get("c1");
   }
 
@@ -198,12 +198,12 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   @Test
   void an_answer_for_a_still_pending_call_is_dropped_with_a_warning_and_never_redelivered() {
-    scopeWith(new CallStatus.Pending());
+    scopeWith(new ToolCallState.Pending());
     ComputationId orphan = answerAnApproval();
 
     worker.drainApprovals(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(CallStatus.Pending.class);
+    assertThat(status()).isInstanceOf(ToolCallState.Pending.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage())
         .contains("test-scope")
@@ -225,7 +225,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
    */
   @Test
   void a_dropped_delivery_reaches_the_fact_stream_and_the_dropped_counter() {
-    scopeWith(new CallStatus.Pending());
+    scopeWith(new ToolCallState.Pending());
     ComputationId orphan = answerAnApproval();
 
     worker.drainApprovals(BatchSize.of(10));
@@ -248,12 +248,12 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   @Test
   void an_answer_naming_a_computation_the_parked_call_does_not_is_dropped_with_a_warning() {
-    scopeWith(new CallStatus.AwaitingApproval(ComputationId.of("parked-elsewhere"), request()));
+    scopeWith(new ToolCallState.AwaitingApproval(ComputationId.of("parked-elsewhere"), request()));
     answerAnApproval(); // an orphan: a different computation entirely
 
     worker.drainApprovals(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(CallStatus.AwaitingApproval.class);
+    assertThat(status()).isInstanceOf(ToolCallState.AwaitingApproval.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage()).contains("AwaitingApproval");
 
@@ -264,13 +264,13 @@ class DeliveryWorkerMismatchedDeliveryTest {
 
   @Test
   void a_result_naming_a_computation_the_parked_call_does_not_is_dropped_with_a_warning() {
-    scopeWith(new CallStatus.AwaitingResult(ComputationId.of("parked-elsewhere")));
+    scopeWith(new ToolCallState.AwaitingResult(ComputationId.of("parked-elsewhere")));
     var created = toolClient.create(new Routing("test", "test-scope", "r1", CALL));
     toolClient.complete(created.id(), ToolResult.ok("done"));
 
     worker.drainTools(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(CallStatus.AwaitingResult.class);
+    assertThat(status()).isInstanceOf(ToolCallState.AwaitingResult.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage()).contains("AwaitingResult");
 
@@ -290,13 +290,13 @@ class DeliveryWorkerMismatchedDeliveryTest {
    */
   @Test
   void a_result_for_a_call_still_running_is_dropped_with_a_warning() {
-    scopeWith(new CallStatus.Running());
+    scopeWith(new ToolCallState.Running());
     var created = toolClient.create(new Routing("test", "test-scope", "r1", CALL));
     toolClient.complete(created.id(), ToolResult.ok("done"));
 
     worker.drainTools(BatchSize.of(10));
 
-    assertThat(status()).isInstanceOf(CallStatus.Running.class);
+    assertThat(status()).isInstanceOf(ToolCallState.Running.class);
     assertThat(warnings()).hasSize(1);
     assertThat(warnings().getFirst().getFormattedMessage())
         .contains("test-scope")
@@ -319,7 +319,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
     Message turn = Message.assistant(List.of(new ToolUseBlock(other)));
     Phase phase =
         new Phase.AwaitingTools(
-            turn, Map.of("c2", new CallStatus.Running()), ModelResponseId.of("r1"));
+            turn, Map.of("c2", new ToolCallState.Running()), ModelResponseId.of("r1"));
     store.save(new State(phase, store.load().version()));
     answerAnApproval(); // routed to call "c1", which this phase does not hold
 

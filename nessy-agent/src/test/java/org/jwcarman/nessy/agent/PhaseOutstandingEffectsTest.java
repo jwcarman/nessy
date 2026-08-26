@@ -55,9 +55,9 @@ class PhaseOutstandingEffectsTest {
             TURN,
             Map.of(
                 "a",
-                new CallStatus.Finished(new ToolResultBlock("a", "42", false)),
+                new ToolCallState.Finished(new ToolResultBlock("a", "42", false)),
                 "b",
-                new CallStatus.Pending()),
+                new ToolCallState.Pending()),
             ModelResponseId.of("response-1"));
     assertThat(phase.outstandingEffects()).containsExactly(new Effect.SeekApproval(CALL_B));
   }
@@ -67,7 +67,7 @@ class PhaseOutstandingEffectsTest {
     var phase =
         new Phase.AwaitingTools(
             TURN,
-            Map.of("b", new CallStatus.Pending(), "a", new CallStatus.Pending()),
+            Map.of("b", new ToolCallState.Pending(), "a", new ToolCallState.Pending()),
             ModelResponseId.of("response-1"));
     assertThat(phase.outstandingEffects())
         .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));

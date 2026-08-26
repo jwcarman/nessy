@@ -68,7 +68,7 @@ class AwaitingModelPhaseTest {
         .isEqualTo(
             new Phase.AwaitingTools(
                 Message.assistant(content),
-                Map.of("a", new CallStatus.Pending(), "b", new CallStatus.Pending()),
+                Map.of("a", new ToolCallState.Pending(), "b", new ToolCallState.Pending()),
                 RESPONSE_ID));
     assertThat(t.effects())
         .containsExactly(new Effect.SeekApproval(CALL_A), new Effect.SeekApproval(CALL_B));

@@ -69,17 +69,17 @@ lookup back into the fold that started it.
 Continuum mints its own opaque computation ids — Nessy no longer derives
 them by digest — and, unlike an earlier design, Nessy keeps no side index
 of "this call is already in flight." Every tool call inside `AwaitingTools`
-carries its own `CallStatus`, and two of its five states name a parked
+carries its own `ToolCallState`, and two of its five states name a parked
 computation directly:
 
 ```java
-sealed interface CallStatus {
-  record Pending() implements CallStatus {}                             // approval sought, no answer yet
+sealed interface ToolCallState {
+  record Pending() implements ToolCallState {}                             // approval sought, no answer yet
   record AwaitingApproval(ComputationId approval,
-                           ApprovalRequest request) implements CallStatus {} // Continuum holds the ask
-  record Running() implements CallStatus {}                             // approved; the tool is executing
-  record AwaitingResult(ComputationId tool) implements CallStatus {}    // Continuum holds the result
-  record Finished(ToolResultBlock result) implements CallStatus {}      // an outcome, success or failure
+                           ApprovalRequest request) implements ToolCallState {} // Continuum holds the ask
+  record Running() implements ToolCallState {}                             // approved; the tool is executing
+  record AwaitingResult(ComputationId tool) implements ToolCallState {}    // Continuum holds the result
+  record Finished(ToolResultBlock result) implements ToolCallState {}      // an outcome, success or failure
 }
 ```
 

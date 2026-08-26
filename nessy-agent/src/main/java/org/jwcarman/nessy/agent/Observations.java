@@ -539,10 +539,12 @@ final class Observations implements HarnessObserver {
     return awaiting.calls().values().stream().noneMatch(Observations::isInFlight);
   }
 
-  private static boolean isInFlight(CallStatus status) {
+  private static boolean isInFlight(ToolCallState status) {
     return switch (status) {
-      case CallStatus.Pending _, CallStatus.Running _ -> true;
-      case CallStatus.AwaitingApproval _, CallStatus.AwaitingResult _, CallStatus.Finished _ ->
+      case ToolCallState.Pending _, ToolCallState.Running _ -> true;
+      case ToolCallState.AwaitingApproval _,
+          ToolCallState.AwaitingResult _,
+          ToolCallState.Finished _ ->
           false;
     };
   }

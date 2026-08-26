@@ -307,7 +307,7 @@ class FoldSpanTest {
       Phase phase =
           new Phase.AwaitingTools(
               turn,
-              Map.of("c1", new CallStatus.AwaitingResult(computation)),
+              Map.of("c1", new ToolCallState.AwaitingResult(computation)),
               ModelResponseId.of("r1"));
       store.save(new State(phase, store.load().version()));
     }

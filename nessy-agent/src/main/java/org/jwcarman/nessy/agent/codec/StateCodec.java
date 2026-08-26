@@ -20,8 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.ToolCallState;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
@@ -71,14 +71,14 @@ public final class StateCodec {
     if (!(phase instanceof Phase.AwaitingTools awaiting)) {
       return phase;
     }
-    Map<String, CallStatus> attached = new TreeMap<>();
+    Map<String, ToolCallState> attached = new TreeMap<>();
     awaiting.calls().forEach((callId, status) -> attached.put(callId, attach(status)));
     return new Phase.AwaitingTools(awaiting.assistantTurn(), attached, awaiting.responseId());
   }
 
-  private CallStatus attach(CallStatus status) {
-    return status instanceof CallStatus.AwaitingApproval(var approval, var request)
-        ? new CallStatus.AwaitingApproval(approval, request.attach(mapper))
+  private ToolCallState attach(ToolCallState status) {
+    return status instanceof ToolCallState.AwaitingApproval(var approval, var request)
+        ? new ToolCallState.AwaitingApproval(approval, request.attach(mapper))
         : status;
   }
 }
