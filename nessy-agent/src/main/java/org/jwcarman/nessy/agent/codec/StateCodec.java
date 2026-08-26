@@ -17,8 +17,12 @@ package org.jwcarman.nessy.agent.codec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
+import org.jwcarman.nessy.agent.CallStatus;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 /**
  * Internal storage machinery: renders {@link Phase} to and from the JSON the byte-payload substrate
@@ -39,9 +43,11 @@ import org.jwcarman.nessy.agent.Phase;
 public final class StateCodec {
 
   private final Codecs codecs;
+  private final ObjectMapper mapper;
 
   public StateCodec(ObjectMapper mapper) {
     this.codecs = new Codecs(mapper);
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   public String toJson(Phase phase) {
@@ -52,6 +58,27 @@ public final class StateCodec {
   public Phase phase(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, "phase");
-    return codecs.bind(root, Phase.class, "phase");
+    return attach(codecs.bind(root, Phase.class, "phase"));
+  }
+
+  /**
+   * Re-attaches the pinned mapper to every parked {@link ApprovalRequest} in a decoded phase.
+   * Jackson cannot hand a mapper to a creator, so a request read back from storage carries an
+   * unattached facts bag and would throw on the first typed read — which is exactly what the desk
+   * does when it shows a human the parked question.
+   */
+  private Phase attach(Phase phase) {
+    if (!(phase instanceof Phase.AwaitingTools awaiting)) {
+      return phase;
+    }
+    Map<String, CallStatus> attached = new TreeMap<>();
+    awaiting.calls().forEach((callId, status) -> attached.put(callId, attach(status)));
+    return new Phase.AwaitingTools(awaiting.assistantTurn(), attached, awaiting.responseId());
+  }
+
+  private CallStatus attach(CallStatus status) {
+    return status instanceof CallStatus.AwaitingApproval(var approval, var request)
+        ? new CallStatus.AwaitingApproval(approval, request.attach(mapper))
+        : status;
   }
 }

@@ -44,12 +44,11 @@ class RecordingApproverTest {
 
     ApprovalOutcome outcome = approver.approve(new AnsweringContext(request));
 
-    assertThat(approver.decisions())
-        .containsExactly(new RecordingApprover.Decision(request, outcome));
+    assertThat(approver.answers()).containsExactly(new RecordingApprover.Answer(request, outcome));
   }
 
   @Test
-  void requests_is_sugar_over_decisions() {
+  void requests_is_sugar_over_answers() {
     ScriptedApprover delegate =
         ScriptedApprover.answering(Approval.approved(), Approval.denied("no"));
     RecordingApprover approver = new RecordingApprover(delegate);

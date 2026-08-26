@@ -54,6 +54,19 @@ public record ApprovalRequest(
     Objects.requireNonNull(facts, "facts must not be null");
   }
 
+  /**
+   * A copy of this request whose {@link Facts} decode with {@code pinned} — the one attach site
+   * every decoding path calls. A request that came off the wire has an unattached bag (Jackson
+   * cannot hand a mapper to a creator), so typed fact reads would throw until this re-binds it.
+   *
+   * @param pinned the pinned mapper
+   * @return this request, its facts attached
+   */
+  public ApprovalRequest attach(ObjectMapper pinned) {
+    Objects.requireNonNull(pinned, "pinned mapper must not be null");
+    return new ApprovalRequest(agentType, agentId, call, action, facts.attach(pinned));
+  }
+
   /** What the harness starts from. Enrichment fills the rest; {@link Draft#freeze} ends it. */
   public static Draft draft(String agentType, String agentId, ToolCall call, ObjectMapper pinned) {
     return new Draft(agentType, agentId, call, pinned);
@@ -75,14 +88,9 @@ public record ApprovalRequest(
       @Override
       public ApprovalRequest decode(byte[] bytes) {
         try {
-          ApprovalRequest decoded =
-              mapper.readValue(new String(bytes, StandardCharsets.UTF_8), ApprovalRequest.class);
-          return new ApprovalRequest(
-              decoded.agentType(),
-              decoded.agentId(),
-              decoded.call(),
-              decoded.action(),
-              decoded.facts().attach(mapper));
+          return mapper
+              .readValue(new String(bytes, StandardCharsets.UTF_8), ApprovalRequest.class)
+              .attach(mapper);
         } catch (JsonProcessingException e) {
           throw new IllegalArgumentException("undecodable approval request", e);
         }

@@ -48,6 +48,8 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The registry tool executor: two doors, neither with a conditional inside (approval-lifecycle spec
@@ -70,6 +72,8 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
  * executor delivers {@code ToolDeferred} with its id.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
+
+  private static final Logger LOG = LoggerFactory.getLogger(RegistryToolCallExecutor.class);
 
   private final ToolRegistry registry;
   private final AgentType type;
@@ -180,6 +184,11 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Object input = convert(call, grant.tool());
       request = grant.request(type.name(), id.value(), call, input, mapper);
     } catch (RuntimeException e) {
+      LOG.warn(
+          "authorization failed building the request for call {} on tool {}; denying",
+          call.id(),
+          call.name(),
+          e);
       return answered(call, Approval.denied("authorization failed: " + detailOf(e)));
     }
     ApprovalContext context = approvalContexts.contextFor(call, responseId, request, sink);
@@ -187,6 +196,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     try {
       outcome = grant.approver().approve(context);
     } catch (RuntimeException e) {
+      LOG.warn(
+          "the approver failed answering call {} on tool {}; denying", call.id(), call.name(), e);
       return answered(call, Approval.denied("approver failed: " + detailOf(e)));
     }
     return switch (outcome) {

@@ -60,15 +60,7 @@ public record ApprovalRouting(Routing routing, ApprovalRequest request) {
         try {
           ApprovalRouting decoded =
               mapper.readValue(new String(bytes, StandardCharsets.UTF_8), ApprovalRouting.class);
-          ApprovalRequest request = decoded.request();
-          return new ApprovalRouting(
-              decoded.routing(),
-              new ApprovalRequest(
-                  request.agentType(),
-                  request.agentId(),
-                  request.call(),
-                  request.action(),
-                  request.facts().attach(mapper)));
+          return new ApprovalRouting(decoded.routing(), decoded.request().attach(mapper));
         } catch (JsonProcessingException e) {
           throw new IllegalArgumentException("undecodable approval routing", e);
         }

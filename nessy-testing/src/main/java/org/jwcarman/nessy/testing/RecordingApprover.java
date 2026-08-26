@@ -30,16 +30,16 @@ import org.jwcarman.nessy.api.tool.approval.Approver;
  */
 public final class RecordingApprover implements Approver {
 
-  /** One decision this approver's delegate made: the question, and how it answered. */
-  public record Decision(ApprovalRequest request, ApprovalOutcome outcome) {
-    public Decision {
+  /** One answer this approver's delegate gave: the question, and how it answered. */
+  public record Answer(ApprovalRequest request, ApprovalOutcome outcome) {
+    public Answer {
       Objects.requireNonNull(request, "request must not be null");
       Objects.requireNonNull(outcome, "outcome must not be null");
     }
   }
 
   private final Approver delegate;
-  private final List<Decision> decisions = new CopyOnWriteArrayList<>();
+  private final List<Answer> answers = new CopyOnWriteArrayList<>();
 
   public RecordingApprover(Approver delegate) {
     this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
@@ -49,17 +49,17 @@ public final class RecordingApprover implements Approver {
   public ApprovalOutcome approve(ApprovalContext context) {
     Objects.requireNonNull(context, "context must not be null");
     ApprovalOutcome outcome = delegate.approve(context);
-    decisions.add(new Decision(context.request(), outcome));
+    answers.add(new Answer(context.request(), outcome));
     return outcome;
   }
 
   /** Every (request, outcome) pair this approver has seen, oldest first. */
-  public List<Decision> decisions() {
-    return List.copyOf(decisions);
+  public List<Answer> answers() {
+    return List.copyOf(answers);
   }
 
-  /** Just the requests, oldest first — sugar over {@link #decisions()}. */
+  /** Just the requests, oldest first — sugar over {@link #answers()}. */
   public List<ApprovalRequest> requests() {
-    return decisions.stream().map(Decision::request).toList();
+    return answers.stream().map(Answer::request).toList();
   }
 }

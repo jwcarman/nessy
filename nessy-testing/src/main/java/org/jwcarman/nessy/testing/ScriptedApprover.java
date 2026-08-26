@@ -15,10 +15,10 @@
  */
 package org.jwcarman.nessy.testing;
 
-import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
@@ -33,6 +33,13 @@ import org.jwcarman.nessy.api.tool.approval.Approver;
  * <p>This is how a grant's authorization decision gets tested without a real desk, a real person,
  * or a real Continuum standing behind it. It also records every request it was handed, oldest
  * first, so a test can assert on what the harness <em>asked</em>.
+ *
+ * <p>Thread-safe. A turn with several tool calls seeks approval for each of them on its own
+ * executor thread, so {@link #approve} runs concurrently: the script is a {@link
+ * ConcurrentLinkedDeque} and the request log a {@link CopyOnWriteArrayList}. Which thread gets
+ * which scripted answer is therefore unspecified for a multi-call turn — the deque hands them out
+ * in order, but the order the threads arrive in is not; a test that needs a particular answer for a
+ * particular call should script one answer, or match on the request.
  */
 public final class ScriptedApprover implements Approver {
 
@@ -46,7 +53,7 @@ public final class ScriptedApprover implements Approver {
   /** Scripts a fixed sequence of answers, given out in order, one per {@link #approve} call. */
   public static ScriptedApprover answering(Approval... answers) {
     Objects.requireNonNull(answers, "answers must not be null");
-    return new ScriptedApprover(new ArrayDeque<>(List.of(answers)));
+    return new ScriptedApprover(new ConcurrentLinkedDeque<>(List.of(answers)));
   }
 
   /** An empty script: every call defers immediately. */

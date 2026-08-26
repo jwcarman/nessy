@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.authorization.Key;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.testing.ScriptedApprover;
@@ -54,6 +55,7 @@ class ApprovalDeskTest {
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
   private static final AgentId SCOPE = AgentId.of("prod-eu");
+  private static final Key<String> TICKET = new Key<>(String.class, "test.ticket");
 
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final ContinuumClient<Approval, ApprovalRouting> client =
@@ -73,6 +75,7 @@ class ApprovalDeskTest {
   private ApprovalRequest request() {
     return ApprovalRequest.draft("t", SCOPE.value(), CALL, mapper)
         .action("restart prod-eu")
+        .deposit(TICKET, "OPS-42")
         .freeze();
   }
 
@@ -170,6 +173,17 @@ class ApprovalDeskTest {
     scopeAwaits(id);
 
     assertThat(desk.request(SCOPE, "c1").action()).isEqualTo("restart prod-eu");
+  }
+
+  @Test
+  void the_by_coordinates_door_shows_the_parked_questions_typed_facts() {
+    ComputationId id = park();
+    scopeAwaits(id);
+
+    ApprovalRequest shown = desk.request(SCOPE, "c1");
+
+    assertThat(shown.facts().names()).isNotEmpty();
+    assertThat(shown.facts().get(TICKET)).contains("OPS-42");
   }
 
   @Test

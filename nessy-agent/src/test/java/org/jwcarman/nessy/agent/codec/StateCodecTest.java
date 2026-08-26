@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.authorization.Key;
 
 class StateCodecTest {
 
@@ -63,8 +64,13 @@ class StateCodecTest {
     return Message.assistant(blocks);
   }
 
+  private static final Key<String> TICKET = new Key<>(String.class, "test.ticket");
+
   private static ApprovalRequest request() {
-    return ApprovalRequest.draft("ops", "prod-1", CALL_B, PINNED).action("restart prod-1").freeze();
+    return ApprovalRequest.draft("ops", "prod-1", CALL_B, PINNED)
+        .action("restart prod-1")
+        .deposit(TICKET, "OPS-42")
+        .freeze();
   }
 
   @Nested
@@ -109,6 +115,25 @@ class StateCodecTest {
           .isInstanceOfSatisfying(
               CallStatus.AwaitingApproval.class,
               parked -> assertThat(parked.request().action()).isEqualTo("restart prod-1"));
+    }
+
+    @Test
+    void a_parked_requests_facts_still_read_back_typed_after_decoding() {
+      var turn = turnOf(CALL_B);
+      var phase =
+          new Phase.AwaitingTools(
+              turn,
+              Map.of(
+                  "b", new CallStatus.AwaitingApproval(ComputationId.of("approval-1"), request())),
+              RESPONSE_ID);
+
+      var roundTripped = (Phase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
+
+      assertThat(roundTripped.calls()).isNotEmpty();
+      assertThat(roundTripped.calls().get("b"))
+          .isInstanceOfSatisfying(
+              CallStatus.AwaitingApproval.class,
+              parked -> assertThat(parked.request().facts().get(TICKET)).contains("OPS-42"));
     }
 
     @Test

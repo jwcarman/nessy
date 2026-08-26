@@ -27,10 +27,10 @@ import org.jwcarman.nessy.api.tool.approval.Approval;
 
 /**
  * A hand-rolled {@link Codec} for {@link Approval} — the approval kind's Continuum result type.
- * {@link Approval} carries no Jackson polymorphism annotations (it lives in {@code nessy-api},
- * which does not depend on Jackson for its own grammar), so this is the discrimination, over a
- * plain {@code {type, reason?, reference?}} object, that {@code ContinuumClient}'s config requires.
- * Public: {@code HarnessConfig} builds the approval kind's client from a different package.
+ * {@link Approval} carries no Jackson polymorphism annotations, so this is the discrimination, over
+ * a plain {@code {type, reason?, reference?}} object, that {@code ContinuumClient}'s config
+ * requires. Public: {@code HarnessConfig} builds the approval kind's client from a different
+ * package.
  */
 public final class ApprovalCodec {
 

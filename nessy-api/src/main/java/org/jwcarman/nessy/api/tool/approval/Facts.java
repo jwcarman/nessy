@@ -39,9 +39,10 @@ import org.jwcarman.nessy.api.tool.authorization.Key;
  * <p>The document is the storage form: a {@code Facts} is a {@code Map<String, JsonNode>} keyed by
  * {@link Key#name()}, serialized as exactly that. Typed reads need a mapper to decode with — the
  * one the harness pinned, since it may carry user modules — which {@link Deposits#freeze} attaches
- * for the live request and {@link ApprovalRequest#codec} re-attaches after decoding. A bag decoded
- * without one still answers {@link #raw(String)} (the desk and the console render JSON) and refuses
- * {@link #get} with a message saying why.
+ * for the live request and {@link ApprovalRequest#attach} re-attaches after decoding — every path
+ * that reads a request back from storage calls it. A bag decoded without one still answers {@link
+ * #raw(String)} (the desk and the console render JSON) and refuses {@link #get} with a message
+ * saying why.
  */
 public final class Facts {
 
