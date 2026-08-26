@@ -253,9 +253,11 @@ deployment, read it from the approval desk's own records, not from the spans.
 Where `TurnObserver` narrates the model's turn, `HarnessObserver` narrates
 what the shell itself decided — exactly the fact applied and the whole
 transition it produced, including the next phase. It is the same stream the
-roster above subscribes to; the configured `HarnessObserver` (default: the
-narrating adapter) is simply its first subscriber, and a caller-supplied one
-sits beside `Observations`, seeing every fact this harness produces:
+roster above subscribes to; the harness's own narrating adapter — the one
+that turns an applied fold into the `AssistantSaid`/`TurnEnded` turn events
+the CLI door has always shown — is always its first subscriber, and every
+caller-supplied one sits beside it and beside `Observations`, seeing every
+fact this harness produces:
 
 ```java
 public interface HarnessObserver {
@@ -287,11 +289,13 @@ retired per-scope `AgentObserver` a factory used to stamp fresh per id.
 - **`observationRequeued`** — an observation lost the idle race and went
   back to the backlog.
 
-The default, when a harness is built without
-`HarnessConfig#harnessObserver(HarnessObserver)`, is the narrating adapter —
-the one that turns an applied fold into the `AssistantSaid`/`TurnEnded` turn
-events the CLI door has always shown. `HarnessObserver.noop()` is what you
-pass to replace that wiring with silence.
+**`HarnessConfig#harnessObserver(HarnessObserver)` is additive** — each call
+subscribes one more observer, in call order, and never replaces the default
+narrator. A harness built with no calls to it at all still narrates: the
+default narrating adapter is not something you opt into, it is something you
+cannot opt out of. `HarnessObserver.noop()` is for a caller-supplied
+observer that genuinely wants to see nothing (a placeholder in a test, say)
+— it does not silence the narrator, because nothing does.
 
 Publishes for one agent id are **not** guaranteed to arrive in commit order:
 each fold site publishes after its CAS, not under it, so two concurrent folds

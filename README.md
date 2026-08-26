@@ -157,6 +157,16 @@ public API only — no key, no network, scripted providers throughout:
 ./mvnw -q -pl nessy-examples/governed -am compile exec:java -Dexec.args=--scripted
 ```
 
+A fourth module, `nessy-examples/watchman`, is the Spring Boot one: a soak
+agent that lives on a real Linux box, does rounds on a timer, proposes
+remediations it is not allowed to run itself, and waits days for a human
+to answer through a page backed by `nessy-spring-boot-starter`'s
+pending-approvals projection. It needs Postgres and a real host (`df`,
+`systemctl`, `docker`), so it is not a `--scripted` one-liner like the
+three above — see [its README](nessy-examples/watchman/README.md) for the
+full runbook, including how to crash it on purpose and watch a parked
+approval survive.
+
 ## Install
 
 Nessy has not yet made a public release to Maven Central: until then, build
@@ -272,6 +282,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | The harness — kept, not closed; `bind`/`tell`, approval desks, durable backends | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
 | Observability — turn narration, shell narration, and the authorization report | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
+| Spring Boot — `nessy-spring-boot-starter` wires a harness, the durable stores, and a pending-approvals page from `nessy.*` properties and beans | [Spring Boot](https://jwcarman.github.io/nessy/guides/spring-boot/) |
 
 A few seams the site doesn't have a dedicated page for yet:
 `ModelSettings.contextWindow()`, a declared-but-unconsumed token-budget

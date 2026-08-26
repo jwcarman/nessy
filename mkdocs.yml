@@ -90,6 +90,7 @@ nav:
       - Providers: guides/providers.md
       - MCP Clients: guides/mcp-clients.md
       - Observability: guides/observability.md
+      - Spring Boot: guides/spring-boot.md
   - Reference:
       - Changelog: https://github.com/jwcarman/nessy/blob/main/CHANGELOG.md
       - Javadoc (source): https://github.com/jwcarman/nessy

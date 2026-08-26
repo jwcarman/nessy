@@ -73,8 +73,10 @@ harness's own constructor.
 public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
+      String provider,
+      String modelId,
       ObservationRenderer<O> renderer,
-      HarnessObserver harnessObserver,
+      List<HarnessObserver> harnessObservers,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -89,8 +91,7 @@ public final class Harness<O> {
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
       ObservationRegistry observationRegistry,
-      ConcurrentMap<AgentId, Observation> openSegments,
-      ExecutorService ownedExecutor) { ... }
+      ConcurrentMap<AgentId, Observation> openSegments) { ... }
 
   public Agent<O> bind(AgentId id) { ... }
   public ApprovalDesk approvals() { ... }
@@ -103,12 +104,24 @@ public final class Harness<O> {
 application API — `Nessy.harness(...)` is the door an application actually
 calls, and it alone turns a filled-in `HarnessConfig` into the `Harness` it
 describes. Nothing about `Harness.of(...)` invites building one by hand: it
-takes sixteen positional arguments on purpose, to stay unpleasant to
-hand-call. There is no `DispatchIndex` parameter — a call's status lives in
-the phase itself (see [Storage](storage.md) and [Durable
-Computation](durable-computation.md)); `approvalWaiters` is the map
-`Agent#ask` registers its per-id waiter in, resolved by the scope's own
-`ApprovalDeferred` fold.
+takes twenty positional arguments on purpose (plus an overload adding a
+twenty-first, an owned `ExecutorService`, for the doors in `Nessy` that
+built their own), to stay unpleasant to hand-call. `provider` and `modelId`
+are what the `invoke_agent` segment reports as `gen_ai.provider.name` and
+`gen_ai.request.model` — read off `Model#provider()` and the model's id, not
+the `Model` itself. `harnessObservers` is a plain list, never empty in
+practice: `HarnessConfig#harnessObserver(...)` is additive, so this is every
+observer an application configured, subscribed in call order AFTER the
+harness's own default narrator, which this signature does not carry at all
+— it is built unconditionally inside the constructor, over the harness's
+own internal per-scope fanout, not handed in. There is no `DispatchIndex`
+parameter — a call's status lives in the phase itself (see
+[Storage](storage.md) and [Durable Computation](durable-computation.md));
+`approvalWaiters` is the map `Agent#ask` registers its per-id waiter in,
+resolved by the scope's own `ApprovalDeferred` fold; `openSegments` is
+where the observability bridge keeps each scope's open `invoke_agent` span
+so the model- and tool-call executors can parent their own spans off it —
+see [Observability](../guides/observability.md#the-roster-otel-genai-spans-and-counters).
 
 The harness is kept, not closed. It is not `AutoCloseable`; `shutdown()` is
 the one undecorated lifecycle method, and it exists for infrastructure —

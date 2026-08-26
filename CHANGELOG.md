@@ -62,6 +62,25 @@ sequence of renames and interim shapes that produced it.
     opening a connection at condition time; an application on another database
     declares its own bean.
 
+- **`nessy-examples/watchman`: a Spring Boot soak agent, running on
+  `nessy-spring-boot-starter` alone.** A generic-Linux ops agent that does
+  rounds on a timer (`@Scheduled`, default every 30 minutes), reads the box
+  with feature-detected read-only tools (`disk_usage`, `failed_units`,
+  `journal_errors`, `containers`, `updates_pending`, `uptime_load`,
+  `previous_notes`), proposes remediations that park for a human
+  (`restart_unit`, `restart_container`, `prune_images`, `apply_updates`,
+  `clean_journal`, each a `ToolGrant` with `Approvers.defer()` and an
+  `ActionContributor` rendering the literal command line the approval page
+  shows), writes a daily note, and exercises a real deferred *tool* call
+  (`long_job`, `fstrim` via `ToolContext.defer()` and `CompletionDesk`) for
+  days at a time. A Thymeleaf + HTMX page over the starter's pending-approvals
+  projection is the whole notification mechanism — no Slack, no email, by
+  design. `docker compose` in the module brings up Postgres and
+  `grafana/otel-lgtm`; the application itself runs on the host, since it
+  needs the host's own `df`, `systemctl`, `docker`, and journal. See its
+  [README](nessy-examples/watchman/README.md) for the full runbook,
+  including how to crash it on purpose.
+
 - **Agentic observability: one fact stream, `HarnessConfig.observationRegistry(ObservationRegistry)`,
   and a roster of OTel GenAI spans and counters.** `nessy-agent` now folds every
   event through one harness-level stream — `DefaultAgent`'s synchronous shell
@@ -1042,3 +1061,21 @@ sequence of renames and interim shapes that produced it.
   - **Confirmed still ours:** semconv has no convention for a
     human-in-the-loop wait or a deferred long-running operation, so
     `nessy.approval.wait` and `nessy.tool.wait` stay `nessy.*`.
+- **`HarnessConfig.harnessObserver(HarnessObserver)` is now additive, not a
+  replacement.** Each call subscribes one more observer to the fact stream,
+  in call order; the harness's own default narrating adapter is always
+  built and always subscribed first, and nothing supplied through this
+  method ever takes its place. Previously, supplying an observer replaced
+  the default narrator wholesale. `nessy-spring-boot-starter` relies on
+  this directly: it calls `harnessObserver(...)` once per `HarnessObserver`
+  bean, including the pending-approvals projection, and every one of them
+  rides alongside narration rather than instead of it.
+- **`Harness.of(...)`'s parameter list changes, breaking for any caller
+  outside `nessy-agent` (there are none in this tree).** Gains `String
+  provider, String modelId` — the two values the `invoke_agent` segment
+  reports as `gen_ai.provider.name`/`gen_ai.request.model` — right after
+  `AgentType`; its observer parameter changes from a single, nullable
+  `HarnessObserver` to a non-null `List<HarnessObserver>` (empty means
+  "narrator only," matching the additive change above). `Nessy.harness(...)`
+  is unaffected — it is the application door, and this is the machine's own
+  composition point underneath it.

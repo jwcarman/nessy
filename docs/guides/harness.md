@@ -37,7 +37,9 @@ infrastructure-only:
 harness.shutdown();
 ```
 
-Reach for it from a Spring destroy callback or a test's `@AfterEach` —
+Reach for it from a Spring destroy callback (`nessy-spring-boot-starter`'s
+own harness bean is `@Bean(destroyMethod = "shutdown")` — see
+[Spring Boot](spring-boot.md)) or a test's `@AfterEach` —
 quiescing the worker while the harness is still reachable is a container's
 job, never application hygiene. Nothing about `shutdown()` invites a
 try-with-resources; deliberately, it doesn't implement `AutoCloseable`, so
@@ -109,10 +111,18 @@ The builder surface, piece by piece:
   phase counts as dead enough to re-fire; default five minutes.
 - **`.backlogCapacity(int)`** — the per-scope capacity of the shared
   backlog substrate document; default 1024.
-- **`.executor`, `.turnObserver`, `.harnessObserver`** — the usual narration
-  and threading seams, each defaulting to a sane no-op (or, for
-  `harnessObserver`, the default narrating adapter) or an owned
+- **`.executor`, `.turnObserver`** — the usual narration and threading
+  seams: `turnObserver` defaults to a no-op, `executor` to an owned
   virtual-thread executor that lives as long as the harness does.
+- **`.harnessObserver(HarnessObserver)`** — additive, not a setter: each
+  call subscribes one more observer to the fact stream, in call order.
+  There is no way to turn narration off — the harness's own narrating
+  adapter (the one that turns an applied fold into the CLI's
+  `AssistantSaid`/`TurnEnded` events) is always built and always
+  subscribed first, and every configured `harnessObserver(...)` sits beside
+  it, never in place of it. Call it once per observer, including once per
+  bean in a Spring context (see [Spring Boot](spring-boot.md)) — a second
+  call does not overwrite the first.
 - **`.observationRegistry(ObservationRegistry)`** — the observability seam
   (agentic-o11y spec §0, §4): where this harness's `invoke_agent`/`chat`/
   `execute_tool` spans, its two `nessy.*` wait spans, and its three engine
@@ -559,6 +569,10 @@ the full declared-intent-plus-risk-threshold gate.
 
 ## Where next
 
+- [Spring Boot](spring-boot.md) — `nessy-spring-boot-starter`, which wires
+  everything this page describes by hand (`Model`, `Harness<String>`, the
+  two desks, the durable stores, the observation registry) from Spring
+  beans and `nessy.*` properties instead.
 - [Durable Computation](../concepts/durable-computation.md) — the
   ownership-transfer pipeline, the two desks, and why a parked call
   survives its own process dying.
