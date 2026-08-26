@@ -47,6 +47,16 @@ import org.slf4j.LoggerFactory;
  * whole context on every recall, purely to describe it; {@code gen_ai.usage.input_tokens} on the
  * {@code chat} span is the real size, measured by the party that charges for it.
  *
+ * <p><b>Both spans open a SCOPE</b> (in-the-loop amendment §2, and the answer to its §7 question 2:
+ * yes, the memory spans are wanted, and the fold's scope is NOT enough). The question assumed both
+ * memory calls happen inside a fold, where {@code nessy.fold} already holds a scope a store
+ * statement could nest under. That is true of {@code remember} and false of {@code recall}: a
+ * recall is made by {@code ProviderModelCallExecutor}, on the model executor's own virtual thread,
+ * BEFORE the {@code chat} span opens and outside any fold — so without a scope here, every
+ * statement a recall makes is a root span, which is exactly the flood the amendment exists to
+ * correct. Since one of the two needs a scope, both get one; the cost is a level of nesting on the
+ * {@code remember} side and the reading is uniform.
+ *
  * <p><b>Containment.</b> A memory operation must never fail because the thing describing it did.
  * Every call that can reach an {@code ObservationHandler} — {@code start()}, {@code stop()}, {@code
  * error()} — is wrapped: a failed start yields {@link Observation#NOOP} so the rest is a harmless
@@ -97,6 +107,7 @@ final class ObservingMemory implements Memory {
   @Override
   public void remember(Remembrance remembrance) {
     Observation observation = started(CREATE_MEMORY);
+    Observation.Scope scope = opened(observation);
     try {
       delegate.remember(remembrance);
       quietly(() -> observation.highCardinalityKeyValue(GEN_AI_MEMORY_RECORD_COUNT, ONE_RECORD));
@@ -104,6 +115,7 @@ final class ObservingMemory implements Memory {
       failed(observation, e);
       throw e;
     } finally {
+      quietly(scope::close);
       quietly(observation::stop);
     }
   }
@@ -111,6 +123,7 @@ final class ObservingMemory implements Memory {
   @Override
   public Context recall() {
     Observation observation = started(SEARCH_MEMORY);
+    Observation.Scope scope = opened(observation);
     try {
       Context context = delegate.recall();
       quietly(
@@ -122,7 +135,21 @@ final class ObservingMemory implements Memory {
       failed(observation, e);
       throw e;
     } finally {
+      quietly(scope::close);
       quietly(observation::stop);
+    }
+  }
+
+  /**
+   * Opens the span's scope, containing anything it throws. A failed open yields {@link
+   * Observation.Scope#NOOP}, so the {@code close()} in the {@code finally} is a harmless no-op.
+   */
+  private static Observation.Scope opened(Observation observation) {
+    try {
+      return observation.openScope();
+    } catch (RuntimeException e) {
+      LOG.warn("an observation handler threw opening a memory scope; the call is unaffected", e);
+      return Observation.Scope.NOOP;
     }
   }
 
@@ -146,7 +173,7 @@ final class ObservingMemory implements Memory {
               .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentName)
               // Declared now, overwritten when known: one stable low-cardinality key set per name.
               .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE);
-      Observation parent = parentSegment.get();
+      Observation parent = parentOf();
       if (parent != null) {
         observation.parentObservation(parent);
       }
@@ -156,6 +183,18 @@ final class ObservingMemory implements Memory {
           "an observation handler threw starting {}; the memory call is unaffected", operation, e);
       return Observation.NOOP;
     }
+  }
+
+  /**
+   * Who this span hangs off. An ENCLOSING observation wins when there is one — a {@code remember}
+   * runs inside {@code nessy.fold}, and the nearest open scope is a truer parent than the segment
+   * (in-the-loop amendment §2). The hand-looked-up segment is the fallback for the case
+   * Micrometer's own scope cannot reach: a {@code recall} runs on the model executor's virtual
+   * thread, where no scope followed the dispatch (spec §3.2).
+   */
+  private Observation parentOf() {
+    Observation enclosing = registry.getCurrentObservation();
+    return enclosing != null ? enclosing : parentSegment.get();
   }
 
   private static void quietly(Runnable instrumentation) {

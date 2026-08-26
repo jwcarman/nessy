@@ -294,6 +294,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
             event -> narrate(call, event),
             sink);
     Observation execution = startExecuteTool(call);
+    // The scope is what lets the tool's OWN work nest (in-the-loop amendment §1, §2): an HTTP call,
+    // a query, a nested agent invocation inside the body attaches beneath this span instead of
+    // becoming a root. Closed in the finally, before the stop.
+    Observation.Scope scope = opened(execution);
     try {
       Object input = convert(call, grant.tool());
       Optional<Answer> answer = run(grant.tool(), input, call, context);
@@ -311,7 +315,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       quietly(() -> execution.error(e));
       return Optional.of(new Answer(failed(call, detailOf(e)), Optional.of(context)));
     } finally {
+      quietly(scope::close);
       quietly(execution::stop);
+    }
+  }
+
+  /**
+   * Opens one observation's scope, containing anything it throws — a {@code ScopeOpened} callback
+   * is an application's handler like any other. A failed open yields {@link
+   * Observation.Scope#NOOP}, so the {@code close()} in the {@code finally} is a harmless no-op
+   * rather than a second failure on the same broken handler.
+   */
+  private static Observation.Scope opened(Observation observation) {
+    try {
+      return observation.openScope();
+    } catch (RuntimeException e) {
+      LOG.warn("an observation handler threw opening a scope; the tool call is unaffected", e);
+      return Observation.Scope.NOOP;
     }
   }
 
@@ -355,8 +375,19 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return started(() -> newExecuteTool(call));
   }
 
+  /**
+   * Who a span this executor mints hangs off. An ENCLOSING observation wins when there is one — the
+   * nearest open scope is a truer parent than a hand-looked-up segment (in-the-loop amendment §2).
+   * The segment is the fallback for the case Micrometer's own scope cannot reach: each dispatch
+   * runs on its own virtual thread, where no scope followed it (agentic-o11y spec §3.2).
+   */
+  private Observation parentOf() {
+    Observation enclosing = observations.getCurrentObservation();
+    return enclosing != null ? enclosing : parentSegment.get();
+  }
+
   private Observation newExecuteTool(ToolCall call) {
-    Observation parent = parentSegment.get();
+    Observation parent = parentOf();
     Observation execution =
         Observation.createNotStarted(EXECUTE_TOOL_DURATION, observations)
             .contextualName(EXECUTE_TOOL + " " + call.name())

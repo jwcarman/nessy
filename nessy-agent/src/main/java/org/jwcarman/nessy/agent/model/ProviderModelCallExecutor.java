@@ -176,6 +176,11 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
    */
   private ModelOutcome stream(ModelRequest request) {
     Observation chat = startChat();
+    // The scope is what makes this span an ANCESTOR rather than a bystander (in-the-loop amendment
+    // §1, §2): a provider SDK's own HTTP instrumentation, or anything else the stream touches on
+    // this thread, nests inside chat instead of starting a trace of its own. Closed in the finally,
+    // before the stop, and guarded like every other call that can reach an application's handler.
+    Observation.Scope scope = opened(chat);
     try {
       return streamInto(request, chat);
     } catch (RuntimeException e) {
@@ -185,7 +190,24 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       quietly(() -> chat.error(e));
       throw e;
     } finally {
+      quietly(scope::close);
       quietly(chat::stop);
+    }
+  }
+
+  /**
+   * Opens one observation's scope, containing anything it throws — a {@code ScopeOpened} callback
+   * is an application's handler like any other. A failed open yields {@link
+   * Observation.Scope#NOOP}, so the {@code close()} in the {@code finally} is a harmless no-op
+   * rather than a second failure on the same broken handler.
+   */
+  private static Observation.Scope opened(Observation observation) {
+    try {
+      return observation.openScope();
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "an observation handler threw opening chat's scope; the model call is unaffected", e);
+      return Observation.Scope.NOOP;
     }
   }
 
@@ -229,8 +251,20 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
     return started(this::newChat);
   }
 
+  /**
+   * Who this span hangs off. An ENCLOSING observation wins when there is one — the nearest open
+   * scope is a truer parent than a hand-looked-up segment (in-the-loop amendment §2). The segment
+   * is the fallback for the case Micrometer's own scope cannot reach: this call runs on its own
+   * virtual thread, where no scope followed the dispatch (agentic-o11y spec §3.2), which is the
+   * usual case here.
+   */
+  private Observation parentOf() {
+    Observation enclosing = observations.getCurrentObservation();
+    return enclosing != null ? enclosing : parentSegment.get();
+  }
+
   private Observation newChat() {
-    Observation parent = parentSegment.get();
+    Observation parent = parentOf();
     Observation chat =
         Observation.createNotStarted(OPERATION_DURATION, observations)
             .contextualName(CHAT + " " + model.id())
