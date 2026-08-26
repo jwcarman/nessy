@@ -42,6 +42,7 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -75,6 +76,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NessyAutoConfiguration {
 
   /**
+   * The two store beans' names — the only handle {@link #requireMatchedDurability} has on whether
+   * the starter or the application supplied each one. Both {@code DurableStores} and {@code
+   * VolatileStores} use these names; only one of the two configurations is ever active.
+   */
+  static final String NESSY_SUBSTRATE = "nessySubstrate";
+
+  static final String NESSY_CONTINUUM = "nessyContinuum";
+
+  /**
    * The harness's one required dependency, from the process environment (spec §1.1). {@code
    * ModelDiscovery} picks the provider from whichever credentials are present and honours {@code
    * NESSY_MODEL} for the model id and {@code NESSY_PROVIDER} for the tie-break.
@@ -103,6 +113,8 @@ public class NessyAutoConfiguration {
   public Harness<String> nessyHarness(
       Model model,
       NessyProperties properties,
+      ConfigurableListableBeanFactory beanFactory,
+      ObjectProvider<DataSource> dataSources,
       ObjectProvider<Substrate> substrates,
       ObjectProvider<Continuum> continuums,
       ObjectProvider<Tool<?>> tools,
@@ -111,6 +123,10 @@ public class NessyAutoConfiguration {
       ObjectProvider<TurnObserver> turnObservers,
       ObjectProvider<ObservationRegistry> observationRegistries,
       ObjectProvider<ObjectMapper> objectMappers) {
+    requireMatchedDurability(
+        dataSources.getIfAvailable() != null,
+        beanFactory.containsBeanDefinition(NESSY_SUBSTRATE),
+        beanFactory.containsBeanDefinition(NESSY_CONTINUUM));
     String systemPrompt = properties.resolveSystemPrompt();
     List<ToolGrant> grants =
         grants(tools.orderedStream().toList(), declaredGrants.orderedStream().toList());
@@ -138,6 +154,43 @@ public class NessyAutoConfiguration {
           substrates.ifAvailable(config::substrate);
           continuums.ifAvailable(config::continuum);
         });
+  }
+
+  /**
+   * The both-or-neither rule, enforced (Task 1 review, finding #4). {@code HarnessConfig#type}
+   * spells out that a durable substrate over a volatile computation store silently drops every
+   * delivery, and the reverse hangs every parked call. The starter wires the durable pair from one
+   * {@code DataSource} precisely so that cannot happen by accident — but an application supplying
+   * ONE of the two beans itself reopens the hole: its {@link Substrate} suppresses ours while our
+   * JDBC {@link Continuum} is still built, and nobody says a word.
+   *
+   * <p>So it is said here, at startup, rather than discovered as a lost approval weeks later. The
+   * two starter beans are named, and a bean DEFINITION missing under one of those names means
+   * {@code @ConditionalOnMissingBean} stepped aside for the application's own. With a {@code
+   * DataSource} present, exactly one of them missing is the mixed pair; both missing is the
+   * application wiring both, which is its own business.
+   *
+   * <p>Without a {@code DataSource} both starter beans are the in-memory pair, so a single
+   * user-supplied bean pairs a volatile store with a volatile one — no mismatch, nothing to say.
+   *
+   * @throws IllegalStateException when a {@code DataSource} is present and exactly one of the two
+   *     stores was supplied by the application
+   */
+  static void requireMatchedDurability(
+      boolean dataSourcePresent, boolean substrateIsOurs, boolean continuumIsOurs) {
+    if (dataSourcePresent && substrateIsOurs != continuumIsOurs) {
+      String supplied = substrateIsOurs ? "Continuum" : "Substrate";
+      String ours = substrateIsOurs ? "Substrate" : "Continuum";
+      throw new IllegalStateException(
+          "Mixed durability: this application declares its own "
+              + supplied
+              + " bean while a DataSource is present, so the starter still builds a JDBC-backed "
+              + ours
+              + ". The two stores must be BOTH durable or BOTH volatile — a durable substrate over"
+              + " a volatile computation store silently drops every delivery, and the reverse hangs"
+              + " every parked call. Declare both beans, or neither and let the DataSource wire the"
+              + " durable pair.");
+    }
   }
 
   /**
@@ -184,6 +237,13 @@ public class NessyAutoConfiguration {
    * {@code @ConditionalOnBean}: a provider is resolved when the bean is built, not when conditions
    * are evaluated, so this cannot depend on auto-configuration ordering. Without one, the same
    * in-memory pair the classpath-free case gets.
+   *
+   * <p>What this arrangement makes impossible is the starter wiring one store durable and the other
+   * volatile. What it cannot prevent — because {@code @ConditionalOnMissingBean} steps aside for
+   * the application — is an application declaring ONE of the two itself and leaving the starter to
+   * build the other from the {@code DataSource}. That mixed pair is caught at startup instead, by
+   * {@link #requireMatchedDurability}, which is the honest guard the "impossible from a starter"
+   * line here used to overstate.
    */
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass({JdbcSubstrate.class, JdbcContinuumRepository.class})

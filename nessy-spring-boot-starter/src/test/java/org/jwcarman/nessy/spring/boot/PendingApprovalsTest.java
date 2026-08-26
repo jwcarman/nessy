@@ -298,9 +298,11 @@ class PendingApprovalsTest {
 
   /** The shipped DDL, verbatim — the file an application copies into its own migrations. */
   static String shippedDdl() {
-    try (InputStream in = PendingApprovals.class.getResourceAsStream("pending_approvals.sql")) {
+    try (InputStream in =
+        PendingApprovals.class.getResourceAsStream("pending-approvals-postgresql.sql")) {
       if (in == null) {
-        throw new IllegalStateException("pending_approvals.sql not found beside PendingApprovals");
+        throw new IllegalStateException(
+            "pending-approvals-postgresql.sql not found beside PendingApprovals");
       }
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException e) {

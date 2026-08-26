@@ -86,7 +86,7 @@ idempotent (`CREATE TABLE IF NOT EXISTS`):
 |---|---|
 | the substrate | `org/jwcarman/nessy/substrate/jdbc/nessy-postgresql.sql` (in `nessy-substrate-jdbc`) |
 | the Continuum | `org/jwcarman/continuum/jdbc/continuum-postgresql.sql` (in `continuum-jdbc`) |
-| the pending-approvals projection | `org/jwcarman/nessy/spring/boot/pending_approvals.sql` (in `nessy-spring-boot-starter`) |
+| the pending-approvals projection | `org/jwcarman/nessy/spring/boot/pending-approvals-postgresql.sql` (in `nessy-spring-boot-starter`) |
 
 Extract and apply them by hand, or point Flyway at them:
 
@@ -96,7 +96,7 @@ unzip -p ~/.m2/repository/org/jwcarman/nessy/nessy-substrate-jdbc/*/nessy-substr
 unzip -p ~/.m2/repository/org/jwcarman/continuum/continuum-jdbc/*/continuum-jdbc-*.jar \
   org/jwcarman/continuum/jdbc/continuum-postgresql.sql | psql "$WATCHMAN_DB_URL"
 unzip -p ~/.m2/repository/org/jwcarman/nessy/nessy-spring-boot-starter/*/nessy-spring-boot-starter-*.jar \
-  org/jwcarman/nessy/spring/boot/pending_approvals.sql | psql "$WATCHMAN_DB_URL"
+  org/jwcarman/nessy/spring/boot/pending-approvals-postgresql.sql | psql "$WATCHMAN_DB_URL"
 ```
 
 ### 3. Run it

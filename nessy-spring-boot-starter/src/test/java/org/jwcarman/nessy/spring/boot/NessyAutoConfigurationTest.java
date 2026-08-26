@@ -18,12 +18,19 @@ package org.jwcarman.nessy.spring.boot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
+import java.time.InstantSource;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.continuum.Continuum;
+import org.jwcarman.continuum.DefaultContinuum;
+import org.jwcarman.continuum.jdbc.JdbcContinuumRepository;
+import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.ApprovalDesk;
 import org.jwcarman.nessy.agent.CompletionDesk;
@@ -113,6 +120,33 @@ class NessyAutoConfigurationTest {
           });
     }
 
+    /**
+     * Two sources for one prompt is a configuration mistake, not a preference to resolve silently
+     * (Task 1 review, finding #6 — this branch was the untested one).
+     */
+    @Test
+    void setting_both_system_prompt_properties_fails_the_context_loudly() {
+      runner
+          .withPropertyValues("nessy.system-prompt-file=classpath:system-prompt.txt")
+          .run(
+              context ->
+                  assertThat(context)
+                      .hasFailed()
+                      .getFailure()
+                      .rootCause()
+                      .hasMessageContaining(
+                          "set either nessy.system-prompt or nessy.system-prompt-file, not both"));
+    }
+
+    @Test
+    void the_system_prompt_can_come_from_a_file() {
+      new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withUserConfiguration(ScriptedModelConfiguration.class)
+          .withPropertyValues("nessy.system-prompt-file=classpath:system-prompt.txt")
+          .run(context -> assertThat(context).hasNotFailed().hasSingleBean(Harness.class));
+    }
+
     @Test
     void a_missing_system_prompt_fails_the_context_loudly() {
       new ApplicationContextRunner()
@@ -155,6 +189,21 @@ class NessyAutoConfigurationTest {
                   .hasSingleBean(PendingApprovalsRepository.class));
     }
 
+    /**
+     * The Continuum has to go durable too, not just the substrate: the two stores are a pair, and a
+     * JDBC substrate over an in-memory computation store drops every delivery silently.
+     */
+    @Test
+    void the_continuum_becomes_a_jdbc_backed_one_alongside_the_substrate() {
+      durable.run(
+          context -> {
+            assertThat(context.getBean(Substrate.class)).isInstanceOf(JdbcSubstrate.class);
+            assertThat(context.getBean(Continuum.class))
+                .extracting("repository")
+                .isInstanceOf(JdbcContinuumRepository.class);
+          });
+    }
+
     @Test
     void the_projection_is_subscribed_to_the_fact_stream_like_any_other_observer() {
       durable.run(
@@ -162,6 +211,84 @@ class NessyAutoConfigurationTest {
               assertThat(context.getBeanProvider(HarnessObserver.class).orderedStream().toList())
                   .isNotEmpty()
                   .hasAtLeastOneElementOfType(PendingApprovals.class));
+    }
+
+    /**
+     * The additive claim, where there is actually something to be additive with: the projection and
+     * an application's own observer are BOTH on the stream, neither displacing the other. No fold
+     * happens here — this is bean wiring, so the unreachable DataSource is never opened.
+     */
+    @Test
+    void every_observer_bean_is_subscribed_together() {
+      durable
+          .withUserConfiguration(CountingObserverConfiguration.class)
+          .run(
+              context ->
+                  assertThat(
+                          context.getBeanProvider(HarnessObserver.class).orderedStream().toList())
+                      .hasAtLeastOneElementOfType(PendingApprovals.class)
+                      .hasAtLeastOneElementOfType(CountingObserver.class));
+    }
+  }
+
+  /**
+   * The both-or-neither rule (Task 1 review, finding #4). The starter cannot wire a mixed pair on
+   * its own, but an application supplying exactly ONE of the two stores while a {@code DataSource}
+   * is present gets the other one JDBC-backed — a durable store over a volatile one, whichever way
+   * round, and both directions lose work in silence. Startup is where that gets said.
+   */
+  @Nested
+  class MixedDurabilityIsRefused {
+
+    private final ApplicationContextRunner durable =
+        runner.withBean(DataSource.class, NessyAutoConfigurationTest::unreachableDataSource);
+
+    @Test
+    void a_user_supplied_substrate_beside_a_data_source_fails_the_context() {
+      durable
+          .withBean(Substrate.class, InMemorySubstrate::new)
+          .run(
+              context ->
+                  assertThat(context)
+                      .hasFailed()
+                      .getFailure()
+                      .rootCause()
+                      .hasMessageContaining("Mixed durability")
+                      .hasMessageContaining("BOTH durable or BOTH volatile"));
+    }
+
+    @Test
+    void a_user_supplied_continuum_beside_a_data_source_fails_the_context() {
+      durable
+          .withBean(
+              Continuum.class,
+              () -> new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system()))
+          .run(
+              context ->
+                  assertThat(context)
+                      .hasFailed()
+                      .getFailure()
+                      .rootCause()
+                      .hasMessageContaining("Mixed durability")
+                      .hasMessageContaining("BOTH durable or BOTH volatile"));
+    }
+
+    @Test
+    void supplying_both_stores_is_the_applications_own_business() {
+      durable
+          .withBean(Substrate.class, InMemorySubstrate::new)
+          .withBean(
+              Continuum.class,
+              () -> new DefaultContinuum(new InMemoryContinuumRepository(), InstantSource.system()))
+          .run(context -> assertThat(context).hasNotFailed().hasSingleBean(Harness.class));
+    }
+
+    /** No DataSource, no mismatch: both starter beans are volatile, so one of the user's pairs. */
+    @Test
+    void one_user_supplied_store_without_a_data_source_is_fine() {
+      runner
+          .withBean(Substrate.class, InMemorySubstrate::new)
+          .run(context -> assertThat(context).hasNotFailed().hasSingleBean(Harness.class));
     }
   }
 
@@ -235,11 +362,49 @@ class NessyAutoConfigurationTest {
     }
   }
 
+  /**
+   * A {@code Tool<X>} bean reaching the harness, proven through a REAL context rather than a direct
+   * call to {@link NessyAutoConfiguration#grants}. Two things could break and neither shows up in
+   * that unit test: Spring resolving {@code ObjectProvider<Tool<?>>} against a bean method declared
+   * as the concrete {@code Tool<Note>} — the shape every application writes — and the grant
+   * actually reaching the registry the executor looks calls up in. So the model is scripted to CALL
+   * the tool, and the tool's own side effect is the proof: an unregistered name never runs.
+   */
+  @Nested
+  class AToolBean {
+
+    @Test
+    void a_tool_bean_is_registered_on_the_harness_and_runs_when_the_model_calls_it() {
+      RecordingNoteTool note = new RecordingNoteTool();
+      new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withPropertyValues("nessy.system-prompt=you are a test harness")
+          .withBean(Model.class, NessyAutoConfigurationTest::callsTheNoteTool)
+          .withUserConfiguration(TellerConfiguration.class)
+          .withBean(NoteToolConfiguration.class, () -> new NoteToolConfiguration(note))
+          .run(
+              context -> {
+                assertThat(context).hasNotFailed();
+                context.getBean(Teller.class).tell("write a note");
+                await()
+                    .atMost(Duration.ofSeconds(10))
+                    .untilAsserted(() -> assertThat(note.written()).containsExactly("hello"));
+              });
+    }
+  }
+
   @Nested
   class TheFactStream {
 
+    /**
+     * Renamed to what it proves (Task 1 review, finding #6): with no {@code DataSource} there is no
+     * projection to be "alongside", so this is the plain claim — a {@code HarnessObserver} bean is
+     * subscribed to the fact stream and sees every fold. That it is subscribed ALONGSIDE the
+     * starter's own is {@link WithADataSource#every_observer_bean_is_subscribed_together}'s job,
+     * where a second subscriber actually exists to share the stream with.
+     */
     @Test
-    void a_user_supplied_observer_is_subscribed_alongside_the_starters_own() {
+    void a_user_supplied_observer_sees_every_fold() {
       runner
           .withUserConfiguration(CountingObserverConfiguration.class)
           .run(
@@ -283,6 +448,54 @@ class NessyAutoConfigurationTest {
     @Bean
     Harness<String> harness(Model model) {
       return Nessy.harness(c -> c.type("hand-wired").model(model).systemPrompt("mine"));
+    }
+  }
+
+  /** One tool bean, declared the way an application declares one: as a concrete {@code Tool<X>}. */
+  @Configuration(proxyBeanMethods = false)
+  static class NoteToolConfiguration {
+
+    private final RecordingNoteTool note;
+
+    NoteToolConfiguration(RecordingNoteTool note) {
+      this.note = note;
+    }
+
+    @Bean
+    Tool<Note> noteTool() {
+      return Tool.of(
+          Note.class, t -> t.name("note").description("writes a note").executes(note::write));
+    }
+  }
+
+  /** Records what the model asked it to write, so the test can prove the tool actually ran. */
+  static final class RecordingNoteTool {
+
+    private final List<String> written = new CopyOnWriteArrayList<>();
+
+    String write(Note note) {
+      written.add(note.text());
+      return "written";
+    }
+
+    List<String> written() {
+      return List.copyOf(written);
+    }
+  }
+
+  /** One tool-calling turn, then one that answers — the shape that exercises the registry. */
+  private static Model callsTheNoteTool() {
+    ObjectNode arguments = JsonNodeFactory.instance.objectNode().put("text", "hello");
+    return ScriptedModel.script(
+        s -> s.toolUse("c1", "note", arguments).endWithToolUse().text("done").endTurn());
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class TellerConfiguration {
+
+    @Bean
+    Teller teller(Harness<String> harness) {
+      return new Teller(harness);
     }
   }
 

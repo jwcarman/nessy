@@ -212,7 +212,7 @@ class StarterOnPostgresTest {
   private static void applySchemas(DataSource dataSource) {
     String substrate = resource(JdbcSubstrate.class, "nessy-postgresql.sql");
     String continuum = resource(JdbcContinuumRepository.class, "continuum-postgresql.sql");
-    String projection = resource(PendingApprovals.class, "pending_approvals.sql");
+    String projection = resource(PendingApprovals.class, "pending-approvals-postgresql.sql");
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
       statement.execute(substrate);

@@ -45,6 +45,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * approval fewer than the phase holds until the staleness re-fire re-asks. Documented and accepted:
  * the ledger is the phase.
  *
+ * <p><b>PostgreSQL only.</b> Every statement here is written in PostgreSQL's dialect — {@code
+ * INSERT … ON CONFLICT … DO UPDATE} for the two idempotent upserts, and a {@code jsonb} column for
+ * the frozen request — and the DDL beside this class is named for it: {@code
+ * pending-approvals-postgresql.sql}, matching {@code nessy-substrate-jdbc}'s own {@code
+ * nessy-postgresql.sql}. The auto-configuration's condition is dialect-blind on purpose: it asks
+ * only whether a {@code DataSource} and {@code JdbcTemplate} exist, because Boot offers no honest
+ * way to ask a {@code DataSource} what dialect it speaks without opening a connection at condition
+ * time. An application on another database declares its own {@link PendingApprovals}-shaped bean —
+ * or none at all — rather than getting a silent syntax error at the first park. A second dialect's
+ * DDL and statements are a straightforward follow-on; today there is one.
+ *
  * <p>Two consequences of the stream's contract shape every statement here:
  *
  * <ul>

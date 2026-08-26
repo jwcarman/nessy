@@ -25,6 +25,32 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **`nessy-spring-boot-starter`: a harness assembled from Spring beans.** Add
+  the jar, declare a system prompt, and a `Harness<String>` bean comes out —
+  with `ApprovalDesk` and `CompletionDesk` beside it, every `Tool<?>` bean
+  granted `Approvers.allow()`, every `ToolGrant` bean taken as declared, every
+  `HarnessObserver` bean subscribed to the fact stream, Boot's own
+  `ObservationRegistry` reaching the observability seam, and
+  `harness.shutdown()` on context close. Every bean steps aside for the
+  application's own. A `DataSource` bean is the whole durability switch: it
+  turns the store pair JDBC-backed and turns on the pending-approvals
+  projection (`PendingApprovals`, `PendingApprovalsRepository`) — the fact
+  stream's first real consumer, since nothing in Nessy can otherwise enumerate
+  what is waiting on a human.
+  - **Mixed durability fails at startup, loudly.** The starter cannot wire one
+    store durable and the other volatile, but an application declaring exactly
+    ONE of `Substrate`/`Continuum` while a `DataSource` is present used to get
+    the other one JDBC-backed in silence — a durable substrate over a volatile
+    computation store drops every delivery, and the reverse hangs every parked
+    call. That combination now throws, naming the both-or-neither rule.
+  - **The projection is PostgreSQL only, and its DDL says so.**
+    `pending-approvals-postgresql.sql` (renamed from `pending_approvals.sql`,
+    matching `nessy-substrate-jdbc`'s `nessy-postgresql.sql`) — the statements
+    use `ON CONFLICT` and `jsonb`. The bean condition stays dialect-blind,
+    because there is no honest way to ask a `DataSource` its dialect without
+    opening a connection at condition time; an application on another database
+    declares its own bean.
+
 - **Agentic observability: one fact stream, `HarnessConfig.observationRegistry(ObservationRegistry)`,
   and a roster of OTel GenAI spans and counters.** `nessy-agent` now folds every
   event through one harness-level stream — `DefaultAgent`'s synchronous shell
