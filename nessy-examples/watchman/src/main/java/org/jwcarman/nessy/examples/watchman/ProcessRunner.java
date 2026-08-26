@@ -24,20 +24,45 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The real {@link CommandRunner}: {@code ProcessBuilder}, a bounded wait, and both streams read
- * whole.
+ * The real {@link CommandRunner}: {@code ProcessBuilder}, both streams drained concurrently, and a
+ * bounded wait that can actually expire.
  *
- * <p>The only class in this module that touches the host, and therefore the only one no test
- * exercises — a test that ran this would be testing the JDK on whatever machine happened to run the
- * build. Everything above it is tested against a fake.
+ * <p>The only class in this module that touches the host, which is why {@link ProcessRunnerTest} is
+ * the only test here that starts processes. Everything above it is tested against a fake.
  *
- * <p>A command that exceeds {@code timeout} is destroyed and reported as a failure with a message
- * naming it. An agent doing rounds every half hour must never be able to wedge itself on a hung
- * {@code docker ps}.
+ * <h2>Why two drain threads, and why the wait comes first</h2>
+ *
+ * <p>The obvious shape — read stdout to EOF, then stderr, then {@code waitFor(timeout)} —
+ * deadlocks, and did. A child that fills its stderr pipe buffer (~64KB) blocks on write, so it
+ * never exits, so it never closes stdout, so the stdout read never returns, so {@code waitFor} is
+ * never reached and the timeout below cannot fire. Nor is the flood necessary: a child that merely
+ * holds stdout open for longer than the timeout has the same effect, because the read blocks before
+ * the clock is ever consulted. Either way the calling thread is stuck forever — and a read-only
+ * tool runs inline on a harness thread, so one stuck command ends the rounds permanently. That is
+ * spec §3's "a round that never ends".
+ *
+ * <p>So: start the child, start a drain on each stream, and then {@code waitFor} the timeout FIRST.
+ * The clock is consulted before anything can block on it, and neither pipe can fill while the other
+ * is being read.
+ *
+ * <p><b>Not {@code redirectErrorStream(true)}</b>, which would also cure the deadlock in one line.
+ * It cures it by destroying the distinction the callers depend on: {@link
+ * CommandRunner.Output#text} falls back to stderr only when stdout is empty, {@code DiskUsage}
+ * reports "df failed: &lt;stderr&gt;", and {@code UpdatesPending} hands the model stdout as a
+ * package list. Merging would put apt's routine stderr chatter into that list as if it were
+ * packages. Two threads is more code and the right answer.
+ *
+ * <p>Virtual threads, because each one is a single blocked read and nothing else.
  */
 public final class ProcessRunner implements CommandRunner {
 
   private static final int COULD_NOT_RUN = -1;
+
+  /**
+   * How long to wait for the drains after the child is gone. They should already be at EOF — the
+   * pipes close when the process dies — so this is a guard against a wedged reader, not a budget.
+   */
+  private static final Duration DRAIN_GRACE = Duration.ofSeconds(5);
 
   private final Duration timeout;
 
@@ -57,13 +82,16 @@ public final class ProcessRunner implements CommandRunner {
     Process process = null;
     try {
       process = new ProcessBuilder(argv).start();
-      String stdout = drain(process.getInputStream());
-      String stderr = drain(process.getErrorStream());
-      if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+      Drain stdout = Drain.of(process.getInputStream());
+      Drain stderr = Drain.of(process.getErrorStream());
+      boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      if (!exited) {
         process.destroyForcibly();
-        return new Output(COULD_NOT_RUN, stdout, "timed out after " + timeout + ": " + argv);
+        // Whatever it managed to say before it was killed is still worth handing back: a command
+        // that printed three lines and then hung has told you where it hung.
+        return new Output(COULD_NOT_RUN, stdout.text(), "timed out after " + timeout + ": " + argv);
       }
-      return new Output(process.exitValue(), stdout, stderr);
+      return new Output(process.exitValue(), stdout.text(), stderr.text());
     } catch (IOException e) {
       return new Output(COULD_NOT_RUN, "", e.getMessage() == null ? e.toString() : e.getMessage());
     } catch (InterruptedException e) {
@@ -75,9 +103,54 @@ public final class ProcessRunner implements CommandRunner {
     }
   }
 
-  private static String drain(InputStream stream) throws IOException {
-    try (stream) {
-      return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+  /** One stream, read whole on its own thread. */
+  private static final class Drain {
+
+    private final Thread thread;
+    private final StringBuilder text = new StringBuilder();
+
+    private Drain(InputStream stream) {
+      this.thread = Thread.ofVirtual().name("watchman-drain").start(() -> read(stream));
+    }
+
+    /**
+     * Chunk by chunk rather than {@code readAllBytes}, so that a pipe torn down mid-read keeps what
+     * it already produced. On the timeout path {@code destroyForcibly} closes this pipe under the
+     * reader, and "whatever it managed to say first" has to survive that — {@code readAllBytes}
+     * would throw and take the lot with it.
+     */
+    private void read(InputStream stream) {
+      byte[] buffer = new byte[8192];
+      try (InputStream in = stream) {
+        int count = in.read(buffer);
+        while (count >= 0) {
+          String chunk = new String(buffer, 0, count, StandardCharsets.UTF_8);
+          synchronized (text) {
+            text.append(chunk);
+          }
+          count = in.read(buffer);
+        }
+      } catch (IOException e) {
+        // Deliberately swallowed. The pipe dying under a destroyForcibly IS the timeout path, not a
+        // fault, and whatever was appended before it closed has already been kept. There is no
+        // caller to rethrow to: this runs on a thread whose only product is the text below.
+      }
+    }
+
+    static Drain of(InputStream stream) {
+      return new Drain(stream);
+    }
+
+    /**
+     * Everything the stream produced, after giving its reader a bounded chance to finish. A reader
+     * that has not finished within {@link #DRAIN_GRACE} is abandoned rather than waited on — the
+     * whole point of this class is that nothing here can block forever.
+     */
+    String text() throws InterruptedException {
+      thread.join(DRAIN_GRACE);
+      synchronized (text) {
+        return text.toString();
+      }
     }
   }
 }

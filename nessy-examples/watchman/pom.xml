@@ -106,6 +106,20 @@
         <artifactId>awaitility</artifactId>
         <version>${awaitility.version}</version>
       </dependency>
+      <!-- OpenTelemetry pinned to the repo's version rather than Boot's, and it has to be: the
+           logback appender (2.31.1-alpha, pinned in the parent) drags in opentelemetry-api-incubator
+           at 1.65.0-alpha, and Boot 4.1.1 manages opentelemetry-api at 1.62.0. That split pair fails
+           at runtime with ClassNotFoundException on io.opentelemetry.api.incubator.common.
+           ExtendedAttributeKey the moment the appender is installed — the exact class of breakage
+           the parent's own logback-core comment warns about. Importing the BOM here puts api and
+           incubator back on the same line, and matches what nessy-examples/observed already runs. -->
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${opentelemetry.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
@@ -181,32 +195,50 @@
       <version>${htmx.version}</version>
     </dependency>
 
-    <!-- Telemetry (watchman spec §2.3). Boot's actuator owns the ObservationRegistry, the
-         MeterRegistry and the Tracer; these three add the OTLP wires, and management.otlp.* /
-         management.tracing.* in application.yml aim them at the LGTM box. -->
+    <!-- Telemetry (watchman spec §2.3). The actuator owns the ObservationRegistry, and the starter
+         hands it to the harness's seam. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- The OTLP wires, and the reason this is ONE starter rather than the three runtime libraries
+         it contains.
+
+         nessy-examples/observed declares micrometer-tracing-bridge-otel, opentelemetry-exporter-otlp
+         and micrometer-registry-otlp directly, and builds the SDK by hand — correct there, because
+         it is a Boot-free main(). Copying that shape into a Boot 4 application produces a build that
+         compiles, starts, exports METRICS, and silently exports no traces and no logs at all: Boot 4
+         moved tracing and OTLP autoconfiguration out of spring-boot-actuator-autoconfigure into
+         separate module jars (spring-boot-micrometer-tracing-opentelemetry, spring-boot-opentelemetry),
+         and those arrive only through this starter. Without it there is no OpenTelemetry bean, no
+         SdkTracerProvider, no span exporter — so management.otlp.tracing.* and
+         management.tracing.sampling.* bind to nothing and Tempo stays empty.
+
+         The starter SUBSUMES all three libraries above (see its own pom: micrometer-registry-otlp,
+         micrometer-tracing-bridge-otel, opentelemetry-exporter-otlp, all runtime), which is why they
+         are no longer declared here. TelemetryWiringTest asserts the beans exist, so this cannot
+         regress silently again. -->
     <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
     </dependency>
-    <dependency>
-      <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-exporter-otlp</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-registry-otlp</artifactId>
-    </dependency>
-    <!-- Logs, correlated to the spans by trace id. The perpetual "-alpha" suffix is the
-         opentelemetry-java-instrumentation project's versioning convention for every
-         instrumentation module, not a sign of abandonment — see nessy-examples/observed's README. -->
+    <!-- Logs, correlated to the spans by trace id. NOT brought by the starter, and not installed by
+         Boot either: the appender has to be handed the OpenTelemetry instance at startup, which is
+         what Telemetry#openTelemetryAppenderInstaller does. The perpetual "-alpha" suffix is the
+         opentelemetry-java-instrumentation project's versioning convention for every instrumentation
+         module, not a sign of abandonment — see nessy-examples/observed's README. -->
     <dependency>
       <groupId>io.opentelemetry.instrumentation</groupId>
       <artifactId>opentelemetry-logback-appender-1.0</artifactId>
       <version>${opentelemetry-logback-appender.version}</version>
+    </dependency>
+    <!-- Compile scope, because Telemetry names OpenTelemetryAppender and its supertype lives here.
+         spring-boot-starter-logging brings logback at RUNTIME only, which is enough to log and not
+         enough to compile against the appender. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>compile</scope>
     </dependency>
 
     <dependency>

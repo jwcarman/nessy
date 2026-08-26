@@ -49,12 +49,29 @@ management:
       exposure:
         include: health,info,metrics,prometheus
   otlp:
+    # Metrics kept the management.otlp.* prefix in Boot 4.1; traces and logs did not (below).
     metrics:
       export:
         url: ${OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
         step: 30s
+  # Boot 4.1 moved OTLP TRACES and LOGS to management.opentelemetry.<signal>.export.otlp.*. The old
+  # management.otlp.tracing.endpoint still appears in the configuration metadata, but the condition
+  # that creates the exporter's connection details reads only the new name — so the old spelling
+  # binds to nothing, no SpanExporter or LogRecordExporter bean is created, and nothing complains.
+  # Verified against the condition-evaluation report, not from memory; TelemetryWiringTest asserts
+  # the exporter beans exist so this cannot rot silently.
+  opentelemetry:
     tracing:
-      endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
+    # Its own override, not a share of the tracing one. Without this an operator who points
+    # OTLP_TRACES_URL at a remote collector silently keeps shipping logs to localhost:4318 and
+    # cannot tell, because a failing exporter drops rather than throws.
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTLP_LOGS_URL:http://localhost:4318/v1/logs}
   tracing:
     sampling:
       # A round every half hour is not a traffic problem. Sample all of it: the interesting round is
