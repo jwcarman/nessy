@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.support;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -179,7 +180,8 @@ public final class TestAgents {
             mapper,
             approvalClient,
             toolClient,
-            new ConcurrentHashMap<>());
+            new ConcurrentHashMap<>(),
+            ObservationRegistry.NOOP);
     HarnessTeardown.track(harness);
     return harness;
   }

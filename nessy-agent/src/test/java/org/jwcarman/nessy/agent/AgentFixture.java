@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -87,7 +88,8 @@ final class AgentFixture {
             mapper,
             approvalClient,
             toolClient,
-            new ConcurrentHashMap<>());
+            new ConcurrentHashMap<>(),
+            ObservationRegistry.NOOP);
     HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }

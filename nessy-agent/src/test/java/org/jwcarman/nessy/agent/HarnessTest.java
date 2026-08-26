@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -164,7 +165,8 @@ class HarnessTest {
         mapper,
         approvalClient,
         toolClient,
-        new ConcurrentHashMap<>());
+        new ConcurrentHashMap<>(),
+        ObservationRegistry.NOOP);
   }
 
   /**
@@ -193,6 +195,7 @@ class HarnessTest {
         TestApprovalClients.client(Kinds.approval(TYPE), mapper),
         TestToolClients.client(Kinds.tool(TYPE), mapper),
         new ConcurrentHashMap<>(),
+        ObservationRegistry.NOOP,
         ownedExecutor);
   }
 

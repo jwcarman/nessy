@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.host;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.InstantSource;
@@ -114,6 +115,7 @@ public final class HarnessConfig<O> {
   private int backlogCapacity = 1024;
   private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
   private ObjectMapper objectMapper = new ObjectMapper();
+  private ObservationRegistry observationRegistry = ObservationRegistry.NOOP;
   // package-private: Nessy.harness(HarnessCustomizer) sets this directly for the String door;
   // required (via renderer(ObservationRenderer)) for the typed door opened by
   // Nessy.harness(Class, HarnessCustomizer).
@@ -319,6 +321,28 @@ public final class HarnessConfig<O> {
   }
 
   /**
+   * The one observability seam (agentic-o11y spec §0, §4): where this harness's spans and counters
+   * are recorded. Default {@link ObservationRegistry#NOOP} — absent an application-supplied
+   * registry, nothing costs anything and the roster is inert.
+   *
+   * <p>What lands here is Micrometer {@link io.micrometer.observation.Observation}s named per the
+   * OpenTelemetry GenAI semantic conventions: {@code invoke_agent} per segment, {@code chat} per
+   * model call (carrying {@code gen_ai.usage.input_tokens}/{@code output_tokens}), {@code
+   * execute_tool} per tool run, and Nessy's own {@code nessy.approval.wait}/{@code nessy.tool.wait}
+   * dwell spans and three engine counters. Exporters, the OTel tracing bridge, OTLP and any {@code
+   * MeterRegistry} live in the application, never in the harness: supply a registry with the
+   * handlers you want. In particular the semconv {@code gen_ai.client.token.usage} metric is the
+   * application's to record — an {@code ObservationRegistry} times observations but cannot record a
+   * value histogram, so the token counts ride the {@code chat} observation as key-values for an
+   * application-side {@code ObservationHandler} to read on stop (spec §1.2).
+   */
+  public HarnessConfig<O> observationRegistry(ObservationRegistry observationRegistry) {
+    this.observationRegistry =
+        Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
+    return this;
+  }
+
+  /**
    * Translates observations to inference content, applied at poll time (§3.7) — the same {@link
    * ObservationRenderer} seam {@link Harness} has always taken. The {@code String} door ({@link
    * Nessy#harness(HarnessCustomizer)}) presets this; the typed door ({@link Nessy#harness(Class,
@@ -494,6 +518,7 @@ public final class HarnessConfig<O> {
             effectiveApprovalClient,
             effectiveToolClient,
             approvalWaiters,
+            observationRegistry,
             ownedExecutor);
 
     return harness;

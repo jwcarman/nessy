@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -75,6 +76,7 @@ public final class Harness<O> {
   private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
   private final TurnFanout fanout;
   private final ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters;
+  private final ObservationRegistry observationRegistry;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -104,6 +106,7 @@ public final class Harness<O> {
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
+      ObservationRegistry observationRegistry,
       ComputationScheduler scheduler,
       ExecutorService ownedExecutor) {
     this.type = Objects.requireNonNull(type, "type must not be null");
@@ -114,6 +117,8 @@ public final class Harness<O> {
         new TurnFanout(Objects.requireNonNull(turnObserver, "turnObserver must not be null"));
     this.approvalWaiters =
         Objects.requireNonNull(approvalWaiters, "approvalWaiters must not be null");
+    this.observationRegistry =
+        Objects.requireNonNull(observationRegistry, "observationRegistry must not be null");
     this.drainOnIdle = drainOnIdle;
     this.stalenessPolicy =
         Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
@@ -164,7 +169,8 @@ public final class Harness<O> {
       ObjectMapper mapper,
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
-      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters) {
+      ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
+      ObservationRegistry observationRegistry) {
     return of(
         type,
         renderer,
@@ -182,6 +188,7 @@ public final class Harness<O> {
         approvalClient,
         toolClient,
         approvalWaiters,
+        observationRegistry,
         null);
   }
 
@@ -208,6 +215,7 @@ public final class Harness<O> {
       ContinuumClient<Approval, ApprovalRouting> approvalClient,
       ContinuumClient<ToolResult, Routing> toolClient,
       ConcurrentMap<AgentId, CompletableFuture<TurnOutcome.Parked>> approvalWaiters,
+      ObservationRegistry observationRegistry,
       ExecutorService ownedExecutor) {
     // Constructed here, not shared across separate Harness.of(...) calls (continuum-adoption spec
     // §7 leaves that wider sharing to a future task): one small pool per harness, replacing the
@@ -231,6 +239,7 @@ public final class Harness<O> {
             approvalClient,
             toolClient,
             approvalWaiters,
+            observationRegistry,
             scheduler,
             ownedExecutor);
     // Registered here, after the constructor returns, not inside it: a scheduled pump reads
@@ -287,6 +296,15 @@ public final class Harness<O> {
 
   ObservationRenderer<O> renderer() {
     return renderer;
+  }
+
+  /**
+   * The one observability seam (agentic-o11y spec §0), as this harness received it from {@code
+   * HarnessConfig#observationRegistry}: {@link ObservationRegistry#NOOP} unless an application
+   * supplied one, in which case nothing here costs anything.
+   */
+  ObservationRegistry observationRegistry() {
+    return observationRegistry;
   }
 
   /**

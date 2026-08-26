@@ -58,6 +58,20 @@
       <groupId>org.jwcarman.continuum</groupId>
       <artifactId>continuum-memory</artifactId>
     </dependency>
+    <!-- The one observability seam (agentic-o11y spec §0): HarnessConfig.observationRegistry takes
+         an ObservationRegistry and the instrumentation lives where the data is. It arrives
+         transitively through nessy-api today, but this module compiles against it directly, so it
+         is declared directly. Exporters, the OTel tracing bridge and OTLP live in the application,
+         never here. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-observation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-observation-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- ApprovalPlayground and CliLiveSmokeTest run against whichever real key the developer has;
          every keyed provider rides the test classpath so any of them works. With two or more keys
          set at once, NESSY_PROVIDER must name one or ModelDiscovery fails fast. -->

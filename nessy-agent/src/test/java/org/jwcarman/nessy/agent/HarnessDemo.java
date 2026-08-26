@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -131,7 +132,8 @@ class HarnessDemo {
             lifeSupportMapper,
             approvalClient,
             toolClient,
-            new ConcurrentHashMap<>());
+            new ConcurrentHashMap<>(),
+            ObservationRegistry.NOOP);
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 
     // ---- script the world ----

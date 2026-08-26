@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -162,7 +163,8 @@ class AgentSubscriptionTest {
             mapper,
             approvalClient,
             toolClient,
-            new ConcurrentHashMap<>());
+            new ConcurrentHashMap<>(),
+            ObservationRegistry.NOOP);
     HarnessTeardown.track(harness);
     return harness;
   }
@@ -233,7 +235,8 @@ class AgentSubscriptionTest {
               mapper,
               approvalClient,
               toolClient,
-              new ConcurrentHashMap<>());
+              new ConcurrentHashMap<>(),
+              ObservationRegistry.NOOP);
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of("scope-a"));
@@ -413,7 +416,8 @@ class AgentSubscriptionTest {
               mapper,
               approvalClient,
               toolClient,
-              new ConcurrentHashMap<>());
+              new ConcurrentHashMap<>(),
+              ObservationRegistry.NOOP);
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of(scopeId));
@@ -489,7 +493,8 @@ class AgentSubscriptionTest {
               mapper,
               approvalClient,
               toolClient,
-              new ConcurrentHashMap<>());
+              new ConcurrentHashMap<>(),
+              ObservationRegistry.NOOP);
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of(scopeId));
