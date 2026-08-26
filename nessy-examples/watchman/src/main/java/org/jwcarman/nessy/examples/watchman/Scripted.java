@@ -46,12 +46,26 @@ public class Scripted {
   public Model scriptedModel() {
     return ScriptedModel.script(
         s ->
-            s.toolUse(
-                    "c1",
+            s
+                // Look at the box.
+                .toolUse("c1", "disk_usage", JsonNodeFactory.instance.objectNode())
+                .endWithToolUse()
+                // Then, in one breath, write the note and propose the thing it cannot do itself.
+                // Both calls are dispatched together on purpose: write_note completes, restart_unit
+                // parks, and the round therefore leaves BOTH a note on disk and a row on the page —
+                // which is the arc the soak is watching.
+                .toolUse(
+                    "c2",
                     "write_note",
                     JsonNodeFactory.instance
                         .objectNode()
-                        .put("text", "rounds done: nothing on fire"))
+                        .put(
+                            "text",
+                            "rounds done: nothing on fire; proposed a restart of nginx.service"))
+                .toolUse(
+                    "c3",
+                    "restart_unit",
+                    JsonNodeFactory.instance.objectNode().put("name", "nginx.service"))
                 .endWithToolUse()
                 .text("Rounds complete.")
                 .endTurn());

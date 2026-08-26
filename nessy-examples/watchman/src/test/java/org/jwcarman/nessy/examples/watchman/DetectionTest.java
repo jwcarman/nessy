@@ -29,7 +29,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * Feature detection, and the thing it is for: an absent command means an absent tool (spec §2.1).
@@ -165,8 +164,12 @@ class DetectionTest {
   /**
    * The pretend host: a runner that never starts a process, and the {@code watchman.*} properties
    * bound as they are in the application.
+   *
+   * <p>Deliberately NOT {@code @Configuration}: the application's own component scan covers this
+   * package, test classes included, and a stereotype here would put a fake {@code CommandRunner}
+   * into every {@code @SpringBootTest} in the module. Registered explicitly by {@code
+   * withUserConfiguration}, a lite configuration is all this needs to be.
    */
-  @Configuration(proxyBeanMethods = false)
   @EnableConfigurationProperties(WatchmanProperties.class)
   static class TestHost {
 
