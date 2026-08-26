@@ -303,12 +303,45 @@ naturally admitted only from `SeekingApproval` / `RunningTool` — so unless
 the call sits there forever while recovery fires uselessly every staleness
 tick. This cell is mandatory and wants the first test.
 
-**Do not fold the completion if the callback throws.** The computation exists
-and the callback failed, so folding `…Deferred` anyway would land in
-`Awaiting…` on something nobody was told about, which then sits until its term
-expires. Staying in `Deferring…` lets the re-ask handle it. "The happy path
-folds at the end" makes folding-anyway the accidental default, so this has to
-be stated.
+**A throwing callback fails the call — it does not re-ask.** If the callback
+throws, the only thing we know is that it threw. We do *not* know whether it
+got as far as telling the world before it blew up. Re-asking would assume it
+did not, which is an assumption we are not entitled to make, and would risk
+telling the world twice. So:
+
+```
+callback throws
+  → fail(id, …) the computation explicitly — the effect still holds the id
+  → fold the failure completion
+  → terminal Failed, carrying the callback's exception as the reason
+```
+
+This matches how every other failure already behaves — the tool throws, the
+call fails; the approver throws, the call is denied — and it hands the decision
+about what to do next to the model, which is where it belongs.
+
+**The crash case is different, and deliberately so.** A crash tells us nothing
+at all, not even that anything failed, and we have no id in hand to clean up
+because `Deferring…` does not hold one. There is also no mechanism for recovery
+to fold a failure: `outstandingEffects()` emits effects, and "fail this call" is
+not one. So a crash re-asks, and that path keeps the at-least-once caveat.
+Stated as epistemics rather than mechanism:
+
+| what happened | what we know | what we do |
+|---|---|---|
+| the callback threw | it failed; its side effects are unknown | fail the call, kill the computation |
+| the process died | nothing | re-ask, accept at-least-once |
+
+**Failing the computation produces a WARN'd drop, and that is accepted.**
+`fail(id, …)` makes the computation terminal, Continuum delivers that failure,
+and by then the state is already `Failed` — so the delivery is ignored and
+dropped with a warning about a cleanup we caused on purpose. The alternatives
+are worse: leaving it to expire produces the same dropped delivery and the same
+warning seven days later, harder to correlate; folding to `Awaiting…` first so
+the failure lands cleanly means a crash in that window parks the call for its
+full term on something nobody was told about. Trading a log line for a
+seven-day hang is a bad trade. *The runbook must say plainly: a WARN'd drop
+immediately following a handoff failure is the cleanup, not a fault.*
 
 The remaining failure points are sound: a crash before the effect runs leaves a
 clean re-ask; a crash after create leaves an orphan that expires at its term
