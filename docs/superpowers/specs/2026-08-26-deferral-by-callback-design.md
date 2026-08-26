@@ -1,7 +1,7 @@
-# Deferral by continuation — and the call state machine
+# Deferral by callback — and the call state machine
 
 *2026-08-26. Replaces `ToolContext.defer()` / `ApprovalContext.defer()` with a
-continuation returned by the deferring party; gives each call's state its own
+callback returned by the deferring party; gives each call's state its own
 transitions; makes expiry a first-class outcome. Amends the approval-lifecycle
 spec (§1.3, §2, §3) and the tool-context-defer spec (which it supersedes).
 Status: designed with James 2026-08-26; open items in §10.*
@@ -28,7 +28,7 @@ return new Deferred(
 ```
 
 The plumbing creates the computation, folds, commits, and only then runs the
-continuation. The id cannot exist before the fold, so both errors become
+callback. The id cannot exist before the fold, so both errors become
 unrepresentable and the fold stops being re-entrant.
 
 ## 2. The call state machine
@@ -68,7 +68,7 @@ the mirror at the cost of every other name.
 | state | meaning |
 |---|---|
 | `SeekingApproval` | the approver is deciding |
-| `DeferringApproval(id)` | the computation exists and is committed; the continuation has not run, so nobody outside knows the id |
+| `DeferringApproval(id)` | the computation exists and is committed; the callback has not run, so nobody outside knows the id |
 | `AwaitingApproval(id, request, deadline)` | a human holds the question |
 | `RunningTool` | the tool body is running |
 | `DeferringResult(id)` | as above, tool side |
@@ -92,10 +92,10 @@ The bracketed pair appears only if that side defers. On both sides:
 | holds | the id | the id, the deadline |
 | exits on | `Notified` (matching id) | the answer (matching id) |
 | re-fire owes | **redo the originating step** | **nothing** |
-| who holds the work | us — the continuation has not run | the world |
+| who holds the work | us — the callback has not run | the world |
 
 `Deferring` is always recoverable and `Awaiting` never is, for the same reason
-on both sides: until the continuation runs nobody outside knows the id, so
+on both sides: until the callback runs nobody outside knows the id, so
 redoing is safe; afterwards, redoing would double-ask the world.
 
 ### 2.3 The ten paths
@@ -138,11 +138,11 @@ public sealed interface ToolCallEvent extends AgentEvent
 
 | event | carries | admitted by |
 |---|---|---|
-| `ApprovalDeferred` | id, frozen request, deadline, **continuation** | `SeekingApproval` |
+| `ApprovalDeferred` | id, frozen request, deadline, **callback** | `SeekingApproval` |
 | `Notified` | id | `DeferringApproval`, `DeferringResult` (matching id) |
 | `ApprovalAnswered` | optional id, `Approval` | `SeekingApproval` (id-less), `AwaitingApproval` (matching id) |
 | `ApprovalExpired` | id | `AwaitingApproval` (matching id) |
-| `ToolDeferred` | id, deadline, **continuation** | `RunningTool` |
+| `ToolDeferred` | id, deadline, **callback** | `RunningTool` |
 | `ToolFinished` | optional id, `ToolOutcome` | `RunningTool` (id-less), `AwaitingResult` (matching id) |
 | `ToolExpired` | id | `AwaitingResult` (matching id) |
 
@@ -159,7 +159,7 @@ and lets `Expired` be a visible terminal rather than a reason string.
 
 `CallModel`, `SeekApproval(call)`, `RunTool(call)` — unchanged — plus:
 
-**`Notify(id, deadline, continuation)`** — runs the continuation after the fold
+**`Notify(id, deadline, callback)`** — runs the callback after the fold
 that recorded the wait has committed. It is the **only effect that cannot be
 re-fired**, because it carries a closure and `outstandingEffects()` rebuilds
 instructions from persisted state. That is precisely why `Deferring…` exists:
@@ -260,7 +260,7 @@ are the wire format. **James, 2026-08-26: the format may break freely — the
 database can be deleted.** No decode-side aliases.
 
 The rule that keeps it safe: **states are data; only events and effects carry
-behaviour.** No state holds a continuation — `Deferring…` holds only the id,
+behaviour.** No state holds a callback — `Deferring…` holds only the id,
 because recovery is re-ask, not resume. `@JsonIgnore` the derived methods
 (`result()`, `outstanding()`) or Jackson will invent properties for them.
 
@@ -279,9 +279,36 @@ proof. Merge alone.
 **B · Vocabulary** — the renames, the terminal split, `ToolCallState → ToolCallState`.
 Mechanical except the split, which A has made cheap.
 
-**C · The continuation** — `Deferring…` states, `Notified`, `Notify`, terms and
+**C · The callback** — `Deferring…` states, `Notified`, `Notify`, terms and
 ceilings, expiry events, `defer()` and `Tool.timeout()` deleted. After A, a new
 state is a new file.
+
+## 9a. Two things that must be deliberate
+
+Walking every failure point of the request → effect → completion sequence
+turns up no invalid state, but two omissions would produce a **stuck** one.
+
+**`Deferring…` must admit a fresh deferral request.** Its recovery is to
+re-fire `SeekApproval` / `RunTool`; the party runs again and returns a new
+`Deferred`, which folds a *second* `…DeferralRequested`. That event is
+naturally admitted only from `SeekingApproval` / `RunningTool` — so unless
+`Deferring…` also admits it and replaces itself, the re-ask can never land and
+the call sits there forever while recovery fires uselessly every staleness
+tick. This cell is mandatory and wants the first test.
+
+**Do not fold the completion if the callback throws.** The computation exists
+and the callback failed, so folding `…Deferred` anyway would land in
+`Awaiting…` on something nobody was told about, which then sits until its term
+expires. Staying in `Deferring…` lets the re-ask handle it. "The happy path
+folds at the end" makes folding-anyway the accidental default, so this has to
+be stated.
+
+The remaining failure points are sound: a crash before the effect runs leaves a
+clean re-ask; a crash after create leaves an orphan that expires at its term
+and drops on arrival; a crash after the callback but before the completion fold
+means the world holds an id we have forgotten, so the re-ask leaves it holding
+two — the at-least-once cost already accepted in §5. Two effects for one call
+are unreachable, and the terminals are absorbing.
 
 ## 10. Open
 
