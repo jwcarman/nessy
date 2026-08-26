@@ -1,0 +1,30 @@
+# The scripted profile, as the TESTS run it (soak finding F4, 2026-08-26).
+#
+# TelemetryWiringTest, RoundTest and ApprovalsControllerTest are @SpringBootTests that boot the real
+# application context, and the real context builds real OTLP exporters. On the soak host — where the
+# LGTM stack is running on localhost:4318 and the point of the exercise is watching real rounds —
+# every `mvn verify` therefore injected spans under service.name=watchman that are indistinguishable
+# from a genuine round. It was confirmed rather than theorised: a `chat scripted` + `execute_tool
+# restart_unit` trace, timestamped mid-build, sitting in Tempo beside the real ones.
+#
+# So the three endpoints are pointed at a closed port on loopback. They stay NON-BLANK, because
+# TelemetryWiringTest's whole job is to prove the Boot 4.1 property KEYS resolve to something — the
+# old management.otlp.tracing.* spelling binds to nothing and creates no exporter, silently, and
+# that test is what would catch the regression. Port 1 refuses the connection immediately rather
+# than hanging (a black-holed address would make every export attempt wait for a timeout), and both
+# exporters drop a failed export rather than throwing, which is itself a property the module claims
+# and this configuration exercises on every build.
+management:
+  otlp:
+    metrics:
+      export:
+        url: http://127.0.0.1:1/v1/metrics
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://127.0.0.1:1/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: http://127.0.0.1:1/v1/logs

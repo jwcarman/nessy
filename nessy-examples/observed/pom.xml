@@ -124,6 +124,25 @@
 
   <build>
     <plugins>
+      <!-- The tests must not publish into a live collector (soak finding F4, 2026-08-26).
+           ObservedTest runs the REAL export paths on purpose — that is its subject — so on the
+           soak host every `mvn verify` was injecting spans under service.name=nessy-example-observed
+           into whatever was listening on localhost:4317/4318, indistinguishable from a real run.
+           Observed reads its endpoints from OTEL_EXPORTER_OTLP_ENDPOINT (there is no system
+           property seam and inventing one would be production code written for a test), so the
+           tests are given a closed port on loopback: exports still run, still fail lazily, still
+           get dropped rather than thrown — which is exactly what this module claims — and nothing
+           leaves the machine. Port 1 refuses immediately; a black-holed address would make every
+           export wait for a timeout instead. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <environmentVariables>
+            <OTEL_EXPORTER_OTLP_ENDPOINT>http://127.0.0.1:1</OTEL_EXPORTER_OTLP_ENDPOINT>
+          </environmentVariables>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>

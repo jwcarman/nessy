@@ -115,24 +115,28 @@ class TelemetryWiringTest {
     hasSingleBeanOf(LogRecordExporter.class);
   }
 
+  /**
+   * And none of the three points at a collector during a build (soak finding F4, 2026-08-26). This
+   * context is the real one, with real exporters, so on the soak host every {@code mvn verify} used
+   * to inject spans under {@code service.name=watchman} that were indistinguishable from a real
+   * round — confirmed in Tempo, not theorised. {@code src/test/resources/application-scripted.yml}
+   * redirects all three to a closed port; this is the assertion that turns losing that file into a
+   * red build rather than a quietly polluted dashboard.
+   */
+  private void isWiredAndNotPointedAtACollector(String property) {
+    String value = context.getEnvironment().getProperty(property);
+    assertThat(value).isNotBlank().doesNotContain(":4318").doesNotContain(":4317");
+  }
+
   @Test
   void the_three_otlp_endpoints_are_configured_independently() {
-    assertThat(context.getEnvironment().getProperty("management.otlp.metrics.export.url"))
-        .isNotBlank();
+    isWiredAndNotPointedAtACollector("management.otlp.metrics.export.url");
     // Boot 4.1's names, which are NOT the management.otlp.* ones metrics still uses. The old
     // spelling binds to nothing and creates no exporter, silently.
-    assertThat(
-            context
-                .getEnvironment()
-                .getProperty("management.opentelemetry.tracing.export.otlp.endpoint"))
-        .isNotBlank();
+    isWiredAndNotPointedAtACollector("management.opentelemetry.tracing.export.otlp.endpoint");
     // The one an operator forgets: without its own override, pointing OTLP_TRACES_URL at a remote
     // box silently keeps shipping logs to localhost.
-    assertThat(
-            context
-                .getEnvironment()
-                .getProperty("management.opentelemetry.logging.export.otlp.endpoint"))
-        .isNotBlank();
+    isWiredAndNotPointedAtACollector("management.opentelemetry.logging.export.otlp.endpoint");
   }
 
   /**

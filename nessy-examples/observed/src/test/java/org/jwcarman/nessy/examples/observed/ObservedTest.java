@@ -82,6 +82,25 @@ class ObservedTest {
     }
   }
 
+  /**
+   * Soak finding F4 (2026-08-26): this test class runs the REAL export paths — that is its subject
+   * — so on a box with a collector listening it was publishing spans under {@code
+   * service.name=nessy-example-observed} on every build, indistinguishable from a real run. The
+   * build points {@code OTEL_EXPORTER_OTLP_ENDPOINT} at a closed port on loopback (see this
+   * module's surefire configuration). This is the assertion that says so out loud, so a lost
+   * surefire block is a red build rather than a quietly polluted Tempo.
+   */
+  @Nested
+  class TheTestsPublishNowhere {
+
+    @Test
+    void the_exporters_are_not_pointed_at_a_collectors_conventional_port() {
+      String url = Observed.meterConfig().url();
+
+      assertThat(url).doesNotContain(":4318").doesNotContain(":4317");
+    }
+  }
+
   @Nested
   class TheTokenUsageHandler {
 
