@@ -308,6 +308,10 @@ class DefaultAgentApplyTest {
     assertThat(failures.getFirst()).isInstanceOf(AgentEvent.ModelFinished.class);
     // the observation itself committed cleanly — only the nested model fold failed
     assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+    // and it stays committed: this runs through drainOne, whose requeue arms guard the COMMIT
+    // only. Moving follow() back inside that try would put the observation back on the backlog
+    // after it had already been applied, and the next drain would double-apply it.
+    assertThat(queue).isEmpty();
   }
 
   /** Remembers everything except an assistant turn, which it refuses — a Memory half down. */
