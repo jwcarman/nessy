@@ -35,17 +35,44 @@ unrepresentable and the fold stops being re-entrant.
 
 ### 2.1 States
 
-`CallStatus` becomes **`CallState`** — a status is a scalar label; this carries
-data *and* behaviour.
+`CallStatus` becomes **`ToolCallState`** — a status is a scalar label; this
+carries data *and* behaviour.
+
+**Naming rules, decided 2026-08-26.** The vocabulary drifted: the noun is
+`ToolCall`, but most things derived from it silently dropped the qualifier
+(`CallStatus`, `callId`, `CallAddress`) while others kept it
+(`ToolCallExecutor`, `ToolResultBlock`). Since a *model call* is also a call, a
+bare `Call` is ambiguous — so every noun is qualified, and three rules follow:
+
+- **Nouns are qualified**: `ToolCall`, `ToolCallState`, `ToolCallEvent`,
+  `toolCallId`, `ToolCallAddress`.
+- **Effects are imperative verb + noun**: `CallModel`, `SeekApproval`,
+  `RunTool`. This is what keeps `CallModel` unambiguous beside `ToolCall` — it
+  is an instruction, not a thing.
+- **Live states are gerund + noun; terminal states are past participles.** So
+  the grammar of a name says whether the call is still moving:
+  `SeekingApproval`, `DeferringApproval`, `AwaitingApproval`, `RunningTool`,
+  `DeferringResult`, `AwaitingResult` — then `Completed`, `Denied`, `Failed`,
+  `Expired`.
+
+A live state is the gerund of the effect in flight (`SeekApproval` →
+`SeekingApproval`, `RunTool` → `RunningTool`); when no effect is in flight and
+the world holds the work, it is `Awaiting{what}`.
+
+*The one exception:* `Notify` is verb-only, because it is side-agnostic — one
+behaviour serving both `DeferringApproval` and `DeferringResult`, which must
+stay distinct because they recover differently. The alternative
+(`HandOffComputation` with `HandingOffApproval`/`HandingOffResult`) preserves
+the mirror at the cost of every other name.
 
 | state | meaning |
 |---|---|
-| `CallingApprover` | the approver is deciding |
+| `SeekingApproval` | the approver is deciding |
 | `DeferringApproval(id)` | the computation exists and is committed; the continuation has not run, so nobody outside knows the id |
 | `AwaitingApproval(id, request, deadline)` | a human holds the question |
-| `CallingTool` | the tool body is running |
-| `DeferringCall(id)` | as above, tool side |
-| `AwaitingCall(id, deadline)` | an external system holds the work |
+| `RunningTool` | the tool body is running |
+| `DeferringResult(id)` | as above, tool side |
+| `AwaitingResult(id, deadline)` | an external system holds the work |
 | `Completed(result)` | the tool answered |
 | `Denied(result)` | somebody said no |
 | `Failed(result)` | the tool or the machinery broke |
@@ -54,8 +81,8 @@ data *and* behaviour.
 ### 2.2 The pattern, twice
 
 ```
-CallingApprover  →  [ DeferringApproval → AwaitingApproval ]  →  Denied | Expired | CallingTool
-CallingTool      →  [ DeferringCall     → AwaitingCall     ]  →  Completed | Failed | Expired
+SeekingApproval  →  [ DeferringApproval → AwaitingApproval ]  →  Denied | Expired | RunningTool
+RunningTool      →  [ DeferringResult   → AwaitingResult   ]  →  Completed | Failed | Expired
 ```
 
 The bracketed pair appears only if that side defers. On both sides:
@@ -99,25 +126,25 @@ runs), argument binding fails (`Failed` before the body runs).
 anything about calls:
 
 ```java
-public sealed interface AgentEvent permits Observed, ModelFinished, CallEvent {}
+public sealed interface AgentEvent permits Observed, ModelFinished, ToolCallEvent {}
 
-public sealed interface CallEvent extends AgentEvent
+public sealed interface ToolCallEvent extends AgentEvent
         permits ApprovalDeferred, ApprovalAnswered, ApprovalExpired,
-                ToolDeferred, ToolFinished, CallExpired, Notified {
+                ToolDeferred, ToolFinished, ToolExpired, Notified {
     ToolCall call();
-    default String callId() { return call().id(); }
+    default String toolCallId() { return call().id(); }
 }
 ```
 
 | event | carries | admitted by |
 |---|---|---|
-| `ApprovalDeferred` | id, frozen request, deadline, **continuation** | `CallingApprover` |
-| `Notified` | id | `DeferringApproval`, `DeferringCall` (matching id) |
-| `ApprovalAnswered` | optional id, `Approval` | `CallingApprover` (id-less), `AwaitingApproval` (matching id) |
+| `ApprovalDeferred` | id, frozen request, deadline, **continuation** | `SeekingApproval` |
+| `Notified` | id | `DeferringApproval`, `DeferringResult` (matching id) |
+| `ApprovalAnswered` | optional id, `Approval` | `SeekingApproval` (id-less), `AwaitingApproval` (matching id) |
 | `ApprovalExpired` | id | `AwaitingApproval` (matching id) |
-| `ToolDeferred` | id, deadline, **continuation** | `CallingTool` |
-| `ToolFinished` | optional id, `ToolOutcome` | `CallingTool` (id-less), `AwaitingCall` (matching id) |
-| `CallExpired` | id | `AwaitingCall` (matching id) |
+| `ToolDeferred` | id, deadline, **continuation** | `RunningTool` |
+| `ToolFinished` | optional id, `ToolOutcome` | `RunningTool` (id-less), `AwaitingResult` (matching id) |
+| `ToolExpired` | id | `AwaitingResult` (matching id) |
 
 **A state accepts only the id it recorded.** The four id-holding states admit
 their own id and nothing else; the two id-less events are legal only from the
@@ -165,29 +192,29 @@ and `HarnessConfig`; all four lose it.
 
 ## 6. The state's own transitions
 
-`CallState` is a sealed **interface with default methods** — not an abstract
+`ToolCallState` is a sealed **interface with default methods** — not an abstract
 class, because the states are records and records cannot extend a class.
 
 ```java
-public sealed interface CallState permits … {
+public sealed interface ToolCallState permits … {
 
     @JsonIgnore Optional<ToolResultBlock> result();
     @JsonIgnore List<Effect> outstanding();
 
-    default CallTransition handle(CallEvent event) {
+    default ToolCallTransition handle(ToolCallEvent event) {
         return switch (event) {                       // the one exhaustive switch
             case ApprovalDeferred e -> onApprovalDeferred(e);
             …
         };
     }
 
-    default CallTransition onApprovalAnswered(ApprovalAnswered e) { return dropped(e); }
+    default ToolCallTransition onApprovalAnswered(ApprovalAnswered e) { return dropped(e); }
     // … one per event; the default DROPS AND WARNS
 }
 ```
 
 **The default is drop-and-warn, not silent ignore.** Tolerable only because
-`CallEvent` is a sub-hierarchy: a `CallState` can never receive `Observed` or
+`ToolCallEvent` is a sub-hierarchy: a `ToolCallState` can never receive `Observed` or
 `ModelFinished`, so the structurally-impossible cases never arrive and every
 unhandled event genuinely is unexpected. It also ends the silence around
 in-process mismatches, which today vanish without a trace.
@@ -206,12 +233,12 @@ Adding an event breaks exactly one place — this dispatch — which is where
 ```java
 case Observed _      -> throw new IllegalStateException("observations absorb only at Idle");
 case ModelFinished _ -> Transition.ignore();
-case CallEvent e     -> route(e);
+case ToolCallEvent e     -> route(e);
 ```
 
-and `route` is: look up `e.callId()`, delegate, replace, then ask *do all calls
+and `route` is: look up `e.toolCallId()`, delegate, replace, then ask *do all calls
 have a result?* — never naming a state, a call event, or an id. `Idle` and
-`AwaitingModel` each collapse four ignore-arms into `case CallEvent _`.
+`AwaitingModel` each collapse four ignore-arms into `case ToolCallEvent _`.
 
 The turn-level decision stays in the phase: when every call has a result, commit
 the assistant turn plus the tool results in the phase's own insertion order and
@@ -244,12 +271,12 @@ recorded as `STATUS_CODE_ERROR` on the fold span today, so healthy contention
 shows as a permanent error rate. It becomes `nessy.fold.outcome=retried`,
 status `OK`; only a genuine throw is an error.
 
-**A · States own their transitions** *(pure refactor)* — `CallEvent`
+**A · States own their transitions** *(pure refactor)* — `ToolCallEvent`
 sub-hierarchy, the interface-with-defaults, `handle`/`result`/`outstanding`
 moved out of `Phase`. Behaviour identical; the existing matrix suite is the
 proof. Merge alone.
 
-**B · Vocabulary** — the renames, the terminal split, `CallStatus → CallState`.
+**B · Vocabulary** — the renames, the terminal split, `ToolCallState → ToolCallState`.
 Mechanical except the split, which A has made cheap.
 
 **C · The continuation** — `Deferring…` states, `Notified`, `Notify`, terms and
