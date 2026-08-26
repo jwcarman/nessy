@@ -47,12 +47,20 @@ import org.slf4j.LoggerFactory;
  * whole context on every recall, purely to describe it; {@code gen_ai.usage.input_tokens} on the
  * {@code chat} span is the real size, measured by the party that charges for it.
  *
- * <p><b>Containment.</b> A memory operation must never fail because the thing describing it did:
- * the delegate call runs OUTSIDE the try that guards the instrumentation, its result is what this
- * method returns, and a throwing {@code ObservationHandler} is logged once at {@code WARN} and
- * dropped — the same rule the two executors keep, for the same reason (spec §3.1). A failing
- * DELEGATE, by contrast, propagates exactly as it always did, with {@code error.type} recorded on
- * the way past.
+ * <p><b>Containment.</b> A memory operation must never fail because the thing describing it did.
+ * Every call that can reach an {@code ObservationHandler} — {@code start()}, {@code stop()}, {@code
+ * error()} — is wrapped: a failed start yields {@link Observation#NOOP} so the rest is a harmless
+ * no-op, and a throwing handler is logged once at {@code WARN} and dropped (spec §3.1).
+ *
+ * <p>The key-value writes are wrapped too, which is where this class differs from the two
+ * executors. Theirs are deliberately unguarded because a write only mutates the context and invokes
+ * no handler; here the write is computed from the delegate's own result ({@code
+ * context.messages().size()}), so guarding it also covers a {@code Context} implementation that
+ * throws from {@code messages()} — and the guard costs nothing on a NOOP registry.
+ *
+ * <p>A failing DELEGATE is a different thing entirely and is NOT contained: it propagates exactly
+ * as it did before this decorator existed, with {@code error.type} recorded on the way past. Only
+ * the description is contained; the work is not.
  */
 final class ObservingMemory implements Memory {
 
@@ -91,7 +99,7 @@ final class ObservingMemory implements Memory {
     Observation observation = started(CREATE_MEMORY);
     try {
       delegate.remember(remembrance);
-      observation.highCardinalityKeyValue(GEN_AI_MEMORY_RECORD_COUNT, ONE_RECORD);
+      quietly(() -> observation.highCardinalityKeyValue(GEN_AI_MEMORY_RECORD_COUNT, ONE_RECORD));
     } catch (RuntimeException e) {
       failed(observation, e);
       throw e;
@@ -105,8 +113,10 @@ final class ObservingMemory implements Memory {
     Observation observation = started(SEARCH_MEMORY);
     try {
       Context context = delegate.recall();
-      observation.highCardinalityKeyValue(
-          GEN_AI_MEMORY_RECORD_COUNT, Integer.toString(context.messages().size()));
+      quietly(
+          () ->
+              observation.highCardinalityKeyValue(
+                  GEN_AI_MEMORY_RECORD_COUNT, Integer.toString(context.messages().size())));
       return context;
     } catch (RuntimeException e) {
       failed(observation, e);
@@ -117,7 +127,7 @@ final class ObservingMemory implements Memory {
   }
 
   private void failed(Observation observation, RuntimeException e) {
-    observation.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
+    quietly(() -> observation.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName()));
     quietly(() -> observation.error(e));
   }
 

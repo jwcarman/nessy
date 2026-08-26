@@ -144,8 +144,9 @@ final class Observations implements HarnessObserver {
    * {@code create_memory} is "create new memory records" ({@code Memory#remember}). Their span name
    * SHOULD be {@code {gen_ai.operation.name}} alone, with no trailing identifier, and semconv
    * defines no duration metric for them — so for these two the observation name IS the span name.
-   * Written by {@code ObservingMemory}, which declares its own copies; {@code ObservedMemoryTest}
-   * pins both ends.
+   * Written by {@code ObservingMemory}, which declares its own copies; {@code
+   * ObservationsTest.TheRoster} pins these constants and {@code ObservedTurnTest.MemoryOperations}
+   * pins what a real turn emits, so a drift between the two breaks the build.
    */
   static final String SEARCH_MEMORY = "search_memory";
 

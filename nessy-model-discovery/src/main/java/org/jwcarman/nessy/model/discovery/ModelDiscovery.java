@@ -28,6 +28,8 @@ import java.util.stream.Stream;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The provider follows the classpath (model-discovery design, 2026-08-25): every {@link
@@ -62,6 +64,8 @@ import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
  * duplicate — fail at discovery, like duplicates.
  */
 public final class ModelDiscovery {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ModelDiscovery.class);
 
   static final String NESSY_PROVIDER_ENV_VAR = "NESSY_PROVIDER";
   static final String NESSY_MODEL_ENV_VAR = "NESSY_MODEL";
@@ -110,21 +114,77 @@ public final class ModelDiscovery {
           "no model provider modules are on the classpath: add one of nessy-model-anthropic,"
               + " nessy-model-openai, or nessy-model-gemini (or construct a provider directly)");
     }
+    // Bootstrapping is not free: every candidate that applies BUILDS a gateway — an SDK client, a
+    // connection pool, threads — and only one of them can win. Everything from here to the return
+    // is about making sure the losers are closed (fix round, 2026-08-26): before this, a two-key
+    // environment leaked a whole gateway on every successful call, and leaked BOTH on the tiebreak
+    // throw, where nothing was ever returned to close.
     var candidates = new ArrayList<Candidate>();
     for (var bootstrap : registered) {
       bootstrap.bootstrap(env).ifPresent(p -> candidates.add(new Candidate(bootstrap, p)));
     }
-    var chosen =
-        switch (candidates.size()) {
-          case 0 -> throw noCredentials(registered);
-          case 1 -> candidates.get(0);
-          default -> tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
-        };
+    if (candidates.isEmpty()) {
+      throw noCredentials(registered);
+    }
+    Candidate chosen;
+    if (candidates.size() == 1) {
+      chosen = candidates.get(0);
+    } else {
+      try {
+        chosen = tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
+      } catch (RuntimeException e) {
+        // Nobody won, so nobody is returned, so nobody else can close these. The ambiguity is the
+        // caller's to fix; the gateways are ours to release before we say so.
+        closeAll(candidates, e);
+        throw e;
+      }
+    }
+    closeAllBut(chosen, candidates);
     var override = env.get(NESSY_MODEL_ENV_VAR);
     var modelId =
         override != null && !override.isBlank() ? override : chosen.bootstrap().defaultModelId();
     return new Selection(
         chosen.provider(), chosen.provider().model(modelId), chosen.bootstrap().name());
+  }
+
+  /**
+   * Closes every candidate this call built except the winner, whose gateway rides out on the {@link
+   * Selection} for its caller to close. A gateway that throws on close is suppressed onto {@code
+   * failure} rather than allowed to mask it — losing a selection because a gateway nobody asked for
+   * misbehaved on the way out would be the wrong trade.
+   */
+  private static void closeAllBut(Candidate chosen, List<Candidate> candidates) {
+    for (var candidate : candidates) {
+      if (candidate != chosen) {
+        closeQuietly(candidate);
+      }
+    }
+  }
+
+  /** Closes every candidate, suppressing each failure onto the exception about to be thrown. */
+  private static void closeAll(List<Candidate> candidates, RuntimeException failure) {
+    for (var candidate : candidates) {
+      try {
+        candidate.provider().close();
+      } catch (RuntimeException e) {
+        failure.addSuppressed(e);
+      }
+    }
+  }
+
+  /**
+   * Closes one losing gateway, logging rather than throwing: this runs on the success path, and a
+   * discarded gateway's teardown failure must not cost the caller the selection it asked for.
+   */
+  private static void closeQuietly(Candidate candidate) {
+    try {
+      candidate.provider().close();
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "the '{}' provider was not chosen and threw while being closed; ignored",
+          candidate.bootstrap().name(),
+          e);
+    }
   }
 
   /** Materialises the registrations and rejects a duplicated name. */

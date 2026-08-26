@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.InstantSource;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
@@ -343,6 +345,91 @@ class NessyAutoConfigurationTest {
       runner
           .withBean(Substrate.class, InMemorySubstrate::new)
           .run(context -> assertThat(context).hasNotFailed().hasSingleBean(Harness.class));
+    }
+  }
+
+  /**
+   * The DEFAULT path — no {@link Model} bean, so the starter's own discovery runs. It had no test
+   * at all until the fix round, and it was BROKEN for one commit: {@code nessyModel} was declared
+   * before {@code nessyModelSelection}, so the selection's {@code @ConditionalOnMissingBean(Model
+   * .class)} matched {@code nessyModel}'s own already-registered definition, backed off, and left
+   * {@code nessyModel} asking for a bean nobody declared. Every application that did not supply its
+   * own model — which is the default, and the soak — failed with "No qualifying bean of type
+   * ModelDiscovery$Selection". These two tests are the ones that would have caught it.
+   */
+  @Nested
+  class TheDefaultPathThroughDiscovery {
+
+    private final ApplicationContextRunner discovering =
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+            .withPropertyValues("nessy.system-prompt=you are a test harness");
+
+    /**
+     * With no credentials, the context must fail with DISCOVERY's own complaint — which proves
+     * discovery ran at all. A wiring failure here ("No qualifying bean of type ...Selection") is
+     * the regression: it means the selection bean backed off and nothing reached the environment.
+     */
+    @Test
+    void without_credentials_the_failure_is_discoverys_own_not_a_wiring_one() {
+      discovering.run(
+          context -> {
+            assertThat(context).hasFailed();
+            assertThat(context)
+                .getFailure()
+                .rootCause()
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no model provider credentials found")
+                .hasMessageContaining(StarterTestBootstrap.PROVIDER_NAME);
+            assertThat(context)
+                .getFailure()
+                .hasMessageNotContaining("No qualifying bean of type")
+                .hasMessageNotContaining("required a bean of type");
+          });
+    }
+
+    /**
+     * With a bootstrap that DOES supply, a whole harness comes out and its model is discovery's.
+     */
+    @Test
+    void with_credentials_the_harness_is_built_from_the_discovered_model() throws Exception {
+      try (AutoCloseable supplying = StarterTestBootstrap.supplying()) {
+        assertThat(supplying).isNotNull();
+        discovering.run(
+            context -> {
+              assertThat(context).hasNotFailed().hasSingleBean(Harness.class);
+              assertThat(context).hasSingleBean(ModelDiscovery.Selection.class);
+              assertThat(context.getBean(ModelDiscovery.Selection.class).providerName())
+                  .isEqualTo(StarterTestBootstrap.PROVIDER_NAME);
+              assertThat(context.getBean(Model.class).id())
+                  .isEqualTo(StarterTestBootstrap.MODEL_ID);
+              assertThat(context.getBean(Model.class))
+                  .isSameAs(context.getBean(ModelDiscovery.Selection.class).model());
+            });
+      }
+    }
+
+    /**
+     * And the container releases the gateway on context close, which is the whole point of
+     * registering the selection with {@code destroyMethod = "close"}.
+     */
+    @Test
+    void closing_the_context_closes_the_discovered_gateway() throws Exception {
+      try (AutoCloseable supplying = StarterTestBootstrap.supplying()) {
+        assertThat(supplying).isNotNull();
+        var gateway = new AtomicReference<ModelProvider>();
+        discovering.run(
+            context -> {
+              gateway.set(context.getBean(ModelDiscovery.Selection.class).provider());
+              assertThat(gateway.get())
+                  .isInstanceOfSatisfying(
+                      StarterTestBootstrap.TestGateway.class,
+                      open -> assertThat(open.isClosed()).isFalse());
+            });
+        // The runner closes the context when run(...) returns.
+        assertThat((StarterTestBootstrap.TestGateway) gateway.get())
+            .satisfies(closed -> assertThat(closed.isClosed()).isTrue());
+      }
     }
   }
 

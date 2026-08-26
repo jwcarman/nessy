@@ -18,6 +18,8 @@ package org.jwcarman.nessy.examples.watchman;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -138,6 +140,79 @@ class ProcessRunnerTest {
 
       assertThat(output.succeeded()).isTrue();
       assertThat(output.stderr().length()).isGreaterThan(100_000);
+    }
+  }
+
+  /**
+   * The chunk-boundary bug (fix round, 2026-08-26). The drain used to decode each byte chunk on its
+   * own — {@code new String(buffer, 0, count, UTF_8)} — so any multi-byte UTF-8 character
+   * straddling a read boundary was split and both halves became U+FFFD. {@code journalctl} is the
+   * realistic victim: long output, full of the UTF-8 quotes and dashes systemd writes, and the
+   * corruption reached the model as fact.
+   *
+   * <p>These drive {@link ProcessRunner.Drain} directly rather than running a command, because
+   * through a real pipe the read boundaries belong to the kernel, not to the test: a command that
+   * merely emits multi-byte text passes against the BROKEN decoder too (verified — it did), which
+   * is worse than no test at all. A stream that hands out one byte per read splits every multi-byte
+   * sequence there is, every time.
+   */
+  @Nested
+  class A_stream_whose_reads_split_characters {
+
+    private static final String MIXED =
+        "systemd said \u201cstarting\u201d \u2014 caf\u00e9 \uD83D\uDD25 done";
+
+    @Test
+    void a_character_split_across_reads_is_decoded_whole() throws Exception {
+      ProcessRunner.Drain drain = ProcessRunner.Drain.of(oneByteAtATime(MIXED));
+
+      assertThat(drain.text()).isEqualTo(MIXED);
+    }
+
+    @Test
+    void nothing_becomes_a_replacement_character() throws Exception {
+      ProcessRunner.Drain drain = ProcessRunner.Drain.of(oneByteAtATime(MIXED));
+
+      assertThat(drain.text()).doesNotContain("\uFFFD");
+    }
+
+    /** The multi-byte characters specifically, counted, so a partial fix cannot pass. */
+    @Test
+    void every_multi_byte_character_survives() throws Exception {
+      ProcessRunner.Drain drain = ProcessRunner.Drain.of(oneByteAtATime(MIXED));
+
+      String text = drain.text();
+      assertThat(text).contains("\u201cstarting\u201d");
+      assertThat(text).contains("\u2014");
+      assertThat(text).contains("caf\u00e9");
+      assertThat(text).contains("\uD83D\uDD25");
+    }
+
+    /**
+     * A stream that returns exactly one byte per {@code read}, which is legal for any {@link
+     * InputStream} and is what a slow pipe does under load. Every multi-byte sequence is therefore
+     * split at every one of its internal boundaries.
+     */
+    private static InputStream oneByteAtATime(String text) {
+      byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+      return new InputStream() {
+
+        private int position;
+
+        @Override
+        public int read() {
+          return position < bytes.length ? bytes[position++] & 0xFF : -1;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) {
+          if (position >= bytes.length) {
+            return -1;
+          }
+          buffer[offset] = bytes[position++];
+          return 1;
+        }
+      };
     }
   }
 

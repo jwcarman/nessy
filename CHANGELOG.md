@@ -995,6 +995,14 @@ sequence of renames and interim shapes that produced it.
   observability roster alike see a durable delivery exactly like a
   synchronous one, with no separate "resumed from durable storage" event
   of its own.
+- **`Harness.of(...)` takes two new required positional parameters — breaking
+  for any direct caller.** Both overloads gain `String provider, String
+  modelId` immediately after `AgentType type`, taken from `Model#provider()`
+  and `Model#id()`. They are what the `invoke_agent` segment reports as
+  `gen_ai.provider.name` and `gen_ai.request.model`; two plain strings rather
+  than the `Model` itself, because describing the model is the only thing a
+  harness ever wanted one for. `Nessy.harness(...)` fills them in, so no
+  application using the supported door notices.
 - **Each operation is timed under its own semconv metric name; the semconv
   *span* name rides as the Micrometer `contextualName`.** The GenAI
   conventions define a separate duration histogram per operation boundary,

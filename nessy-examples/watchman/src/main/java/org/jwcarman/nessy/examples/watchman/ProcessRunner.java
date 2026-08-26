@@ -17,6 +17,8 @@ package org.jwcarman.nessy.examples.watchman;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -103,8 +105,15 @@ public final class ProcessRunner implements CommandRunner {
     }
   }
 
-  /** One stream, read whole on its own thread. */
-  private static final class Drain {
+  /**
+   * One stream, read whole on its own thread.
+   *
+   * <p>Package-private rather than private so {@code ProcessRunnerTest} can drive it with a stream
+   * whose read boundaries it CHOOSES. Through a real pipe the boundaries are the kernel's, not the
+   * test's, so a test that merely runs a command emitting multi-byte text cannot reliably split a
+   * character — it passes against the broken decoder too, which is worse than no test.
+   */
+  static final class Drain {
 
     private final Thread thread;
     private final StringBuilder text = new StringBuilder();
@@ -118,15 +127,25 @@ public final class ProcessRunner implements CommandRunner {
      * it already produced. On the timeout path {@code destroyForcibly} closes this pipe under the
      * reader, and "whatever it managed to say first" has to survive that — {@code readAllBytes}
      * would throw and take the lot with it.
+     *
+     * <p><b>Chars, not bytes</b> (fix round, 2026-08-26). This used to read into a {@code byte[]}
+     * and call {@code new String(buffer, 0, count, UTF_8)} per chunk, which silently corrupts every
+     * multi-byte character that straddles a chunk boundary — the trailing bytes of one chunk and
+     * the leading bytes of the next each decode to U+FFFD. At an 8 KiB buffer that is roughly one
+     * mangled character per 8 KiB of non-ASCII output, and {@code journalctl} is exactly the
+     * realistic victim: its output is long, and it is full of the UTF-8 quotes and dashes systemd
+     * writes. The corruption then reached the model as fact. An {@link InputStreamReader} holds the
+     * partial sequence across reads and decodes it once it is complete, which is the whole reason
+     * it exists; the incremental keep-what-you-got property is unchanged, because this still reads
+     * a chunk at a time rather than the whole stream at once.
      */
     private void read(InputStream stream) {
-      byte[] buffer = new byte[8192];
-      try (InputStream in = stream) {
+      char[] buffer = new char[4096];
+      try (Reader in = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
         int count = in.read(buffer);
         while (count >= 0) {
-          String chunk = new String(buffer, 0, count, StandardCharsets.UTF_8);
           synchronized (text) {
-            text.append(chunk);
+            text.append(buffer, 0, count);
           }
           count = in.read(buffer);
         }

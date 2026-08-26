@@ -236,6 +236,72 @@ class ModelDiscoveryTest {
     }
   }
 
+  /**
+   * Bootstrapping BUILDS a gateway — an SDK client, a connection pool, threads — for every
+   * candidate that applies, and only one of them can win. Discovery built the losers, so discovery
+   * closes them (fix round, 2026-08-26): before this, a two-key environment leaked a whole gateway
+   * on every successful call, and leaked BOTH on the tiebreak throw, where nothing is returned that
+   * a caller could close.
+   */
+  @Nested
+  class The_gateways_nobody_chose {
+
+    @Test
+    void a_losing_candidate_is_closed_before_the_selection_is_returned() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+      var beta = new FakeBootstrap("beta", "BETA_KEY", "beta-default");
+      var env = Map.of("ALPHA_KEY", "k", "BETA_KEY", "k", "NESSY_PROVIDER", "alpha");
+
+      var selection = ModelDiscovery.select(env, List.of(alpha, beta));
+
+      assertThat(selection.providerName()).isEqualTo("alpha");
+      assertThat(beta.lastProvider().isClosed()).isTrue();
+    }
+
+    /** And the winner is emphatically NOT closed — it is the one the caller is about to use. */
+    @Test
+    void the_chosen_candidate_is_left_open_for_its_caller() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+      var beta = new FakeBootstrap("beta", "BETA_KEY", "beta-default");
+      var env = Map.of("ALPHA_KEY", "k", "BETA_KEY", "k", "NESSY_PROVIDER", "alpha");
+
+      var selection = ModelDiscovery.select(env, List.of(alpha, beta));
+
+      assertThat(alpha.lastProvider().isClosed()).isFalse();
+      selection.close();
+      assertThat(alpha.lastProvider().isClosed()).isTrue();
+    }
+
+    /** The one candidate of a one-candidate environment is never closed either. */
+    @Test
+    void an_only_candidate_is_never_closed() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+
+      ModelDiscovery.select(Map.of("ALPHA_KEY", "k"), List.of(alpha));
+
+      assertThat(alpha.lastProvider().isClosed()).isFalse();
+    }
+
+    /**
+     * The leak that had no owner at all: an ambiguous environment throws, so no {@code Selection}
+     * is returned and nothing the caller holds could ever release either gateway.
+     */
+    @Test
+    void a_tiebreak_failure_closes_every_candidate_it_built() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+      var beta = new FakeBootstrap("beta", "BETA_KEY", "beta-default");
+      var env = Map.of("ALPHA_KEY", "k", "BETA_KEY", "k");
+      List<ModelProviderBootstrap> bootstraps = List.of(alpha, beta);
+
+      assertThatThrownBy(() -> ModelDiscovery.select(env, bootstraps))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("multiple model providers can bootstrap");
+
+      assertThat(alpha.lastProvider().isClosed()).isTrue();
+      assertThat(beta.lastProvider().isClosed()).isTrue();
+    }
+  }
+
   @Nested
   class The_model_id {
 

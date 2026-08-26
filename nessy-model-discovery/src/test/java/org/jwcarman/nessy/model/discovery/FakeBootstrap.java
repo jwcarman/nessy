@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -39,6 +40,7 @@ final class FakeBootstrap implements ModelProviderBootstrap {
   private final String defaultModelId;
   private final boolean throwsOnPresentKey;
   private final boolean nullVariables;
+  private FakeProvider lastProvider;
 
   FakeBootstrap(String name, String environmentVariable, String defaultModelId) {
     this(name, environmentVariable, defaultModelId, false, false);
@@ -91,10 +93,21 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     if (throwsOnPresentKey) {
       throw new IllegalArgumentException(name + ": " + environmentVariable + " is malformed");
     }
-    return Optional.of(new FakeProvider(name));
+    FakeProvider provider = new FakeProvider(name, new AtomicBoolean());
+    lastProvider = provider;
+    return Optional.of(provider);
   }
 
-  private record FakeProvider(String providerName) implements ModelProvider {
+  /**
+   * The gateway this bootstrap handed back last, so a test can ask whether discovery closed it.
+   * Bootstrapping BUILDS a gateway, and only one candidate can win — the losers have to be closed
+   * by whoever built them, which is discovery.
+   */
+  FakeProvider lastProvider() {
+    return lastProvider;
+  }
+
+  record FakeProvider(String providerName, AtomicBoolean closed) implements ModelProvider {
 
     @Override
     public Model model(String id) {
@@ -104,6 +117,15 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     @Override
     public String name() {
       return providerName;
+    }
+
+    @Override
+    public void close() {
+      closed.set(true);
+    }
+
+    boolean isClosed() {
+      return closed.get();
     }
   }
 

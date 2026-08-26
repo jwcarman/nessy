@@ -150,13 +150,15 @@ class ObservedTurnTest {
                     .isEqualTo("search_memory");
                 assertThat(search.getLowCardinalityKeyValue("gen_ai.agent.name").getValue())
                     .isEqualTo("agent");
-                assertThat(
-                        Integer.parseInt(
-                            search
-                                .getHighCardinalityKeyValue("gen_ai.memory.record.count")
-                                .getValue()))
-                    .isNotNegative();
               });
+      // EXACTLY one record, not merely "not negative" (which a byte count, or an
+      // always-zero implementation, would also satisfy): one tell, so the recall that
+      // feeds the single model call sees exactly the one user message.
+      assertThat(searches)
+          .singleElement()
+          .extracting(
+              search -> search.getHighCardinalityKeyValue("gen_ai.memory.record.count").getValue())
+          .isEqualTo("1");
 
       List<Observation.Context> creates = named("create_memory");
       assertThat(creates).isNotEmpty();
@@ -170,6 +172,47 @@ class ObservedTurnTest {
                         create.getHighCardinalityKeyValue("gen_ai.memory.record.count").getValue())
                     .isEqualTo("1");
               });
+    }
+
+    /**
+     * The count is MESSAGES, and it grows exactly as the conversation does. A tool-using turn
+     * recalls twice: once with the user's message alone, and once after the assistant's tool_use
+     * and its result have been remembered. Pinning the exact progression is what a byte count, a
+     * constant, or an always-zero implementation cannot fake.
+     */
+    @Test
+    void the_recalled_record_count_grows_with_the_conversation() {
+      var pump = new PumpedExecutor();
+      var restart = call("c1", "restart");
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(restart, null),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(10, 2, 0, 0))),
+                  List.of(
+                      new ModelEvent.TextChunk("done"),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 3, 0, 0)))));
+
+      Harness<String> harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .observationRegistry(registry)
+                      .tools(new EchoTool("restart")));
+      HarnessTeardown.track(harness);
+
+      harness.bind(SCOPE).tell("restart prod-eu");
+      pump.pumpUntilQuiet();
+
+      assertThat(named("search_memory"))
+          .hasSize(2)
+          .extracting(
+              search -> search.getHighCardinalityKeyValue("gen_ai.memory.record.count").getValue())
+          .containsExactly("1", "3");
     }
 
     /** Same containment as every other span: a memory span is a child of the open segment. */

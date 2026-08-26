@@ -73,9 +73,8 @@ public final class GeminiProviderConfig {
   /**
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}.
-   */
-  /**
-   * <b>Ownership stays with the caller.</b> {@link GeminiModelProvider#close()} closes only a
+   *
+   * <p><b>Ownership stays with the caller.</b> {@link GeminiModelProvider#close()} closes only a
    * client it built itself; a client supplied here is never closed by the provider.
    */
   public GeminiProviderConfig client(Client client) {
@@ -94,17 +93,17 @@ public final class GeminiProviderConfig {
 
   private GeminiClient resolveClient() {
     if (client != null) {
-      return wrap(client, false);
+      return wrap(client, NOTHING_TO_CLOSE);
     }
     if (useEnv) {
-      return wrap(buildFromEnv(), true);
+      return wrapOwned(buildFromEnv());
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
           "an API key is required: call apiKey(...) or fromEnv(), or provide a preconfigured"
               + " client via client(...)");
     }
-    return wrap(buildClient(apiKey), true);
+    return wrapOwned(buildClient(apiKey));
   }
 
   private Client buildFromEnv() {
@@ -139,17 +138,34 @@ public final class GeminiProviderConfig {
   }
 
   /**
-   * <b>Close ownership.</b> {@code ownsClient} decides what {@link GeminiClient#close()} does: true
-   * when this config built the SDK {@code Client} (the {@code apiKey}/{@code fromEnv()} paths), so
-   * closing the gateway releases it; false when the application handed one in through {@link
-   * #client(Client)} and still owns it. A gateway must never close what it did not open — the same
-   * convention {@code BedrockProviderConfig#wrap} keeps, and the same one a caller-supplied {@code
-   * DataSource} keeps everywhere else here.
+   * What {@link #wrap} is handed for a client this config did NOT build: a close that releases
+   * nothing, because the application that supplied the client still owns it. A gateway must never
+   * close what it did not open — the same convention {@code BedrockProviderConfig#wrap} keeps, and
+   * the same one a caller-supplied {@code DataSource} keeps everywhere else here.
+   */
+  static final AutoCloseable NOTHING_TO_CLOSE = () -> {};
+
+  /** The {@code apiKey}/{@code fromEnv()} paths: this config built the client, so it closes it. */
+  private static GeminiClient wrapOwned(Client sdkClient) {
+    return wrap(sdkClient, sdkClient);
+  }
+
+  /**
+   * <b>Close ownership, made explicit.</b> {@code onClose} IS the ownership decision: the SDK
+   * client itself when this config built it, {@link #NOTHING_TO_CLOSE} when the application handed
+   * one in through {@link #client(Client)}. Passing the target rather than a boolean is what makes
+   * the decision testable at all — {@code com.google.genai.Client} is a {@code final} class with no
+   * observable closed state (the very reason {@link GeminiClient} exists as a seam), so a test
+   * proves this by handing in a recording {@link AutoCloseable} instead.
    *
    * <p>An anonymous class rather than the lambda this used to be, because the seam now has two
    * methods and only one of them varies.
+   *
+   * <p>A close failure is wrapped rather than declared: {@link GeminiClient#close()} throws no
+   * checked exception, and neither does {@code Client#close()} — only the {@link AutoCloseable}
+   * signature does.
    */
-  private static GeminiClient wrap(Client sdkClient, boolean ownsClient) {
+  static GeminiClient wrap(Client sdkClient, AutoCloseable onClose) {
     return new GeminiClient() {
 
       @Override
@@ -161,8 +177,10 @@ public final class GeminiProviderConfig {
 
       @Override
       public void close() {
-        if (ownsClient) {
-          sdkClient.close();
+        try {
+          onClose.close();
+        } catch (Exception e) {
+          throw new IllegalStateException("closing the Gemini client failed", e);
         }
       }
     };

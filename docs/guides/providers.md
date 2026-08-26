@@ -6,9 +6,10 @@ transport for one vendor. It does not run requests itself; it hands out
 `Model` handles that do:
 
 ```java
-public interface ModelProvider {
+public interface ModelProvider extends AutoCloseable {
   Model model(String id);
   default String name() { ... }
+  default void close() { }   // a gateway with nothing to release says nothing
 }
 
 public interface Model {

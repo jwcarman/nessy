@@ -87,9 +87,8 @@ public final class AnthropicProviderConfig {
   /**
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}.
-   */
-  /**
-   * <b>Ownership stays with the caller.</b> {@link AnthropicModelProvider#close()} closes only a
+   *
+   * <p><b>Ownership stays with the caller.</b> {@link AnthropicModelProvider#close()} closes only a
    * client it built itself; a client supplied here is never closed by the provider.
    */
   public AnthropicProviderConfig client(AnthropicClient client) {

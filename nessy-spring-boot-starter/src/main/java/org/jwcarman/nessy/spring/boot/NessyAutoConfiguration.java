@@ -87,6 +87,40 @@ public class NessyAutoConfiguration {
   static final String NESSY_CONTINUUM = "nessyContinuum";
 
   /**
+   * The gateway discovery builds, as a bean with a destroy method — because a {@link ModelProvider}
+   * owns an SDK client, its connection pool and its threads, and a container that builds one and
+   * never closes it leaks all three for the life of the process (ruled 2026-08-26). {@code
+   * destroyMethod = "close"} is what a starter is for: {@link ModelDiscovery.Selection} is {@code
+   * AutoCloseable} and delegates to the gateway, so Spring closes it on context close the same way
+   * it already calls {@code harness.shutdown()}.
+   *
+   * <p>Conditional on a missing {@link Model} rather than a missing {@code Selection}: an
+   * application declaring its own {@code Model} bean owns whatever built it, and discovery must not
+   * run at all — running it would reach for credentials the application deliberately did not
+   * supply.
+   *
+   * <p><b>Declared BEFORE {@link #nessyModel}, and that ordering is load-bearing</b> (fix round,
+   * 2026-08-26 — it was the other way round for one commit and broke the default path outright).
+   * {@code @ConditionalOnMissingBean} is evaluated against the bean definitions registered SO FAR,
+   * in declaration order within a configuration class. With {@code nessyModel} declared first, its
+   * own definition is already registered by the time this condition runs, so
+   * {@code @ConditionalOnMissingBean(Model.class)} matched it, backed off, and left {@code
+   * nessyModel} asking for a {@code Selection} bean that no longer existed — a context that failed
+   * with "No qualifying bean of type ModelDiscovery$Selection" for every application that did NOT
+   * supply its own model, which is the default.
+   *
+   * <p>Declaring this one first fixes it without weakening the back-off, because an application's
+   * own {@code Model} bean comes from USER configuration, which Spring registers ahead of every
+   * auto-configuration class: by the time this condition is evaluated, a user's model is already
+   * there to be found, and discovery still stands down.
+   */
+  @Bean(destroyMethod = "close")
+  @ConditionalOnMissingBean(Model.class)
+  public ModelDiscovery.Selection nessyModelSelection() {
+    return ModelDiscovery.select();
+  }
+
+  /**
    * The harness's one required dependency, from the process environment (spec §1.1). {@code
    * ModelDiscovery} picks the provider from whichever credentials are present and honours {@code
    * NESSY_MODEL} for the model id and {@code NESSY_PROVIDER} for the tie-break.
@@ -95,30 +129,14 @@ public class NessyAutoConfiguration {
    * environment, and an application that wants the id to come from anywhere else — a property, a
    * database, a feature flag — declares its own {@link Model} bean, which wins outright. That is
    * one less way to say the same thing, not a missing feature.
+   *
+   * <p>Takes the {@link ModelDiscovery.Selection} declared above rather than calling discovery
+   * itself, so that the gateway behind this model has an owner the container can close.
    */
   @Bean
   @ConditionalOnMissingBean
   public Model nessyModel(ModelDiscovery.Selection selection) {
     return selection.model();
-  }
-
-  /**
-   * The gateway behind {@link #nessyModel}, as a bean with a destroy method — because a {@link
-   * ModelProvider} owns an SDK client, its connection pool and its threads, and a container that
-   * builds one and never closes it leaks all three for the life of the process (ruled 2026-08-26).
-   * {@code destroyMethod = "close"} is what a starter is for: {@link ModelDiscovery.Selection} is
-   * {@code AutoCloseable} and delegates to the gateway, so Spring closes it on context close the
-   * same way it already calls {@code harness.shutdown()}.
-   *
-   * <p>Conditional on a missing {@link Model} rather than a missing {@code Selection}: an
-   * application declaring its own {@code Model} bean owns whatever built it, and discovery must not
-   * run at all — running it would reach for credentials the application deliberately did not
-   * supply.
-   */
-  @Bean(destroyMethod = "close")
-  @ConditionalOnMissingBean(Model.class)
-  public ModelDiscovery.Selection nessyModelSelection() {
-    return ModelDiscovery.select();
   }
 
   /**

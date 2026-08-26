@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.watchman;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Tracer;
 import io.opentelemetry.api.OpenTelemetry;
@@ -124,14 +125,45 @@ class TelemetryWiringTest {
         .isNotBlank();
   }
 
+  /**
+   * The REAL assertion (fix round, 2026-08-26 — this used to assert that a {@code Telemetry} bean
+   * existed, which is not the same claim at all: deleting the {@code observationHandler(...)}
+   * registration left it green). {@link TokenUsageHandler} is deliberately NOT a bean — it is
+   * registered on the registry's observation config — so the only honest place to look for it is
+   * the registry's own handler list.
+   */
   @Test
   void the_token_usage_handler_is_on_the_registry_the_harness_was_given() {
     assertThat(observations).isNotNull();
     assertThat(meters).isNotNull();
     assertThat(context.getBeansOfType(TokenUsageHandler.class)).isEmpty();
-    // Registered as a handler rather than as a bean — assert the customizer that does it exists.
-    assertThat(context.getBeanNamesForType(Telemetry.class)).isNotEmpty();
-    assertThat(context.getBean(Telemetry.class)).isNotNull();
+
+    // Micrometer keeps its handler list package-private, so the honest assertion is behavioural:
+    // drive exactly the observation the handler claims to support through the registry the harness
+    // was given, and look for the metric only that handler produces. Deleting the
+    // observationHandler(...) registration in Telemetry turns this red.
+    Observation.createNotStarted("gen_ai.client.operation.duration", observations)
+        .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
+        .lowCardinalityKeyValue("gen_ai.provider.name", "anthropic")
+        .lowCardinalityKeyValue("gen_ai.request.model", "claude-test")
+        .lowCardinalityKeyValue("error.type", "none")
+        .highCardinalityKeyValue("gen_ai.usage.input_tokens", "120")
+        .highCardinalityKeyValue("gen_ai.usage.output_tokens", "34")
+        .start()
+        .stop();
+
+    assertThat(meters.find("gen_ai.client.token.usage").summaries())
+        .isNotEmpty()
+        .anySatisfy(
+            summary -> {
+              assertThat(summary.getId().getTag("gen_ai.token.type")).isEqualTo("input");
+              assertThat(summary.totalAmount()).isEqualTo(120.0d);
+            })
+        .anySatisfy(
+            summary -> {
+              assertThat(summary.getId().getTag("gen_ai.token.type")).isEqualTo("output");
+              assertThat(summary.totalAmount()).isEqualTo(34.0d);
+            });
   }
 
   /** A database, because the page's projection needs one; nothing here touches the host. */

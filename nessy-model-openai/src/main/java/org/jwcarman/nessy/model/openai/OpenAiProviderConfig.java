@@ -83,9 +83,8 @@ public final class OpenAiProviderConfig {
   /**
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}/{@code organization}.
-   */
-  /**
-   * <b>Ownership stays with the caller.</b> {@link OpenAiModelProvider#close()} closes only a
+   *
+   * <p><b>Ownership stays with the caller.</b> {@link OpenAiModelProvider#close()} closes only a
    * client it built itself; a client supplied here is never closed by the provider.
    */
   public OpenAiProviderConfig client(OpenAIClient client) {
