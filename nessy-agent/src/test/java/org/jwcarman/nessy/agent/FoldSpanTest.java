@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -270,8 +271,8 @@ class FoldSpanTest {
       assertThat(named(Observations.FOLD))
           .filteredOn(
               fold ->
-                  "StaleStateException"
-                      .equals(fold.getLowCardinalityKeyValue("error.type").getValue()))
+                  "retried"
+                      .equals(fold.getLowCardinalityKeyValue(Observations.FOLD_OUTCOME).getValue()))
           .hasSize(1);
     }
 
@@ -348,6 +349,68 @@ class FoldSpanTest {
 
       assertThat(named(Observations.FOLD)).hasSize(2);
       assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingModel.class);
+    }
+  }
+
+  /**
+   * A lost CAS race is engine-health noise, not a fold failure: a real Tempo run showed THREE
+   * {@code STATUS_CODE_ERROR} spans in a single healthy round, because a turn with several parallel
+   * tool calls contends on the scope's single state document by design. Only a genuine fold failure
+   * — one that leaves the store, the reducer or the memory in a state the retry loop cannot
+   * converge past on its own — should render as an error.
+   */
+  @Nested
+  class TheFoldOutcome {
+
+    /**
+     * The retried attempt is healthy, contended behaviour — not a failure the trace should flag.
+     */
+    @Test
+    void a_retried_fold_is_recorded_ok_with_a_retried_outcome() {
+      shellOver(underlying, new SecondWriter(2)).bind(SCOPE).tell("restart prod-eu");
+
+      List<Observation.Context> retried =
+          named(Observations.FOLD).stream()
+              .filter(
+                  fold ->
+                      "retried"
+                          .equals(
+                              fold.getLowCardinalityKeyValue(Observations.FOLD_OUTCOME).getValue()))
+              .toList();
+
+      assertThat(retried).isNotEmpty();
+      assertThat(retried).allSatisfy(fold -> assertThat(fold.getError()).isNull());
+    }
+
+    /** A genuine failure inside the fold — not a lost CAS race — still records as an error. */
+    @Test
+    void a_fold_whose_memory_throws_is_recorded_as_an_error() {
+      Memory explosive =
+          new Memory() {
+            @Override
+            public void remember(Remembrance remembrance) {
+              throw new IllegalStateException("boom");
+            }
+
+            @Override
+            public Context recall() {
+              return Context.of(List.of());
+            }
+          };
+      Agent<String> agent = shellOver(underlying, explosive).bind(SCOPE);
+
+      assertThatThrownBy(() -> agent.tell("restart prod-eu"))
+          .isInstanceOf(IllegalStateException.class);
+
+      List<Observation.Context> errored =
+          named(Observations.FOLD).stream().filter(fold -> fold.getError() != null).toList();
+
+      assertThat(errored).isNotEmpty();
+      assertThat(errored)
+          .allSatisfy(
+              fold ->
+                  assertThat(fold.getLowCardinalityKeyValue(Observations.ERROR_TYPE).getValue())
+                      .isEqualTo("IllegalStateException"));
     }
   }
 }

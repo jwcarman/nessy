@@ -24,8 +24,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
+import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,6 +183,27 @@ final class Observations implements HarnessObserver {
   static final String FOLD = "nessy.fold";
 
   static final String ERROR_TYPE = "error.type";
+
+  /**
+   * A lost CAS race is engine-health noise, not a fold failure (soak finding, 2026-08-26): a real
+   * Tempo run showed THREE {@code STATUS_CODE_ERROR} spans in a single healthy round, because a
+   * turn with several parallel tool calls contends on the scope's one state document by design.
+   * This key carries what actually happened to a fold attempt — {@link #FOLD_COMMITTED} or {@link
+   * #FOLD_RETRIED} — so a dashboard can tell contention from failure without reading span status.
+   * Declared at start, like {@link #ERROR_TYPE}, so every {@link #FOLD} observation shares one
+   * stable low-cardinality key set regardless of how the attempt ends.
+   */
+  static final String FOLD_OUTCOME = "nessy.fold.outcome";
+
+  /**
+   * The version disagreement a lost CAS race reports (e.g. {@code "expected version 551 but store
+   * holds 552"}) — genuinely debuggable, so it rides as a high-cardinality attribute on a retried
+   * fold even though the span itself stays OK.
+   */
+  static final String FOLD_CONFLICT = "nessy.fold.conflict";
+
+  static final String FOLD_COMMITTED = "committed";
+  static final String FOLD_RETRIED = "retried";
 
   /**
    * Ours, counters (spec §1.2). These are the names of the span EVENTS the three counters record on
@@ -368,7 +391,15 @@ final class Observations implements HarnessObserver {
     Observation span = startFold(id, agentType);
     Observation.Scope scope = opened(span);
     try {
-      return attempt.get();
+      T result = attempt.get();
+      quietly(() -> span.lowCardinalityKeyValue(FOLD_OUTCOME, FOLD_COMMITTED));
+      return result;
+    } catch (StaleStateException e) {
+      recordRetried(span, e);
+      throw e;
+    } catch (ConflictException e) {
+      recordRetried(span, e);
+      throw e;
     } catch (RuntimeException e) {
       quietly(() -> span.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName()));
       quietly(() -> span.error(e));
@@ -379,6 +410,17 @@ final class Observations implements HarnessObserver {
     }
   }
 
+  /**
+   * A lost CAS race is RETRIED, not failed (soak finding, 2026-08-26): the reducer is working
+   * correctly — another writer advanced the scope first, and the caller's own retry loop re-reads
+   * and re-handles. The span stays OK; only {@link #FOLD_OUTCOME} and the version disagreement
+   * ({@code e.getMessage()}, genuinely debuggable) record what happened.
+   */
+  private void recordRetried(Observation span, RuntimeException e) {
+    quietly(() -> span.lowCardinalityKeyValue(FOLD_OUTCOME, FOLD_RETRIED));
+    quietly(() -> span.highCardinalityKeyValue(FOLD_CONFLICT, e.getMessage()));
+  }
+
   private Observation startFold(AgentId id, AgentType agentType) {
     try {
       Observation span =
@@ -387,6 +429,7 @@ final class Observations implements HarnessObserver {
               .lowCardinalityKeyValue(GEN_AI_AGENT_NAME, agentType.name())
               // Declared now, overwritten when known: one stable low-cardinality key set per name.
               .lowCardinalityKeyValue(ERROR_TYPE, KeyValue.NONE_VALUE)
+              .lowCardinalityKeyValue(FOLD_OUTCOME, KeyValue.NONE_VALUE)
               .highCardinalityKeyValue(GEN_AI_AGENT_ID, id.value());
       Observation parent = foldParent(id);
       if (parent != null) {
