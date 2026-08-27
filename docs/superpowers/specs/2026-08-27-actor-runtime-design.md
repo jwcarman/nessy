@@ -219,10 +219,19 @@ memoised outcome remains the only answer to "it ran and died."
 
 ## 9. Open
 
-1. **The audit trail is a capability regression.** Durable state keeps only the
-   current revision, so a decision at N is overwritten at N+1 — the watchman's
-   `/recent` page cannot be built this way. **Claim-checking decisions into the
-   append-only transcript may answer it**; check before accepting the loss.
+1. ~~**The audit trail is a capability regression.**~~ **ANSWERED 2026-08-27 by
+   observation, not argument.** Durable state does overwrite revisions, but the
+   decision is already claim-checked into the append-only transcript. Observed live
+   after denying a real approval on the ported watchman:
+
+   ```json
+   {"turn":"tool-result","callId":"845087294","tool":"prune_images",
+    "text":"denied by watchman: Denied - prune -af would delete the images this stack runs on"}
+   ```
+
+   Approver identity and reason survive; `/recent` is a transcript query, not a lost
+   capability. **Still missing: a timestamp on the entry** — ordering would have to
+   come from the journal's own sequence. Add one if `/recent` is built.
 2. **Silent stalls have no signal.** Observed live: 22 hours, ~1,100 rounds, zero
    errors, no assistant output at all — invisible because nothing counts
    "rounds that produced nothing." A model call that neither returns nor fails

@@ -119,6 +119,16 @@
       <artifactId>pekko-slf4j_2.13</artifactId>
     </dependency>
 
+    <!-- The BINDING behind pekko-slf4j. Without it SLF4J finds no provider, falls back to its
+         NOP logger, and every line this application and Pekko write goes nowhere — the first
+         soak attempt produced a running process and an empty log file. The original watchman
+         declares logback for the same reason; the starters used here do not drag it in. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+
     <!-- Jackson 2, DECLARED EXPLICITLY. Boot 4 ships Jackson 3 (tools.jackson) in its web
          starter, so com.fasterxml.jackson.databind is no longer transitively present at all.
          StateSerializer and the model client both use Jackson 2 deliberately: it is the reactor's
