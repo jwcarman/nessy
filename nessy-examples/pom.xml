@@ -48,5 +48,7 @@
     <module>governed</module>
     <module>observed</module>
     <module>watchman</module>
+    <!-- THROWAWAY SPIKE: the watchman ported onto the actor design, to compare side by side. -->
+    <module>watchman-pekko</module>
   </modules>
 </project>

@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: watchman-pekko
+  datasource:
+    # ONE set of credentials in yaml. PekkoConfigBridge pushes these into Pekko's own Slick pool,
+    # which is a second pool against the same database -- see PekkoConfigBridge's javadoc.
+    url: ${WATCHMAN_DB_URL:jdbc:postgresql://localhost:5432/watchman?currentSchema=watchman_pekko}
+    username: ${WATCHMAN_DB_USER:watchman}
+    password: ${WATCHMAN_DB_PASSWORD:watchman}
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    # How long Spring waits for WatchmanActorSystem#stop to finish draining before it carries on
+    # regardless. A wedged actor delays Ctrl-C by this much and then the JVM exits anyway.
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+
+watchman:
+  cron: ${WATCHMAN_CRON:0 */30 * * * *}
+  approval-term: 3d
+  ask-timeout: 10s
+  scripted: ${WATCHMAN_SCRIPTED:false}
+  model-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
+  model-id: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
+  user: ${WATCHMAN_USER:watchman}
+  password: ${WATCHMAN_PASSWORD:watchman}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    org.apache.pekko: INFO
+    org.jwcarman.nessy.examples.watchman.pekko: DEBUG

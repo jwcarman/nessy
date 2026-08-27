@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>watchman (pekko) — waiting</title>
+  <script th:src="@{/webjars/htmx.org/2.0.4/dist/htmx.min.js}"></script>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 70rem; }
+    h1 { font-size: 1.2rem; }
+    nav a { margin-right: 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; padding: .5rem; text-align: left; vertical-align: top; }
+    .action { font-weight: 600; }
+    .dwell { white-space: nowrap; }
+    form { display: inline; }
+    input[type=text] { width: 14rem; }
+  </style>
+</head>
+<body hx-boost="true">
+<h1>watchman (pekko) — waiting for a human</h1>
+<nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
+
+<p th:if="${rows.isEmpty()}">Nothing is waiting.</p>
+
+<table th:unless="${rows.isEmpty()}">
+  <thead>
+  <tr><th>what will run</th><th>agent</th><th>asked at</th><th>waiting</th><th>decide</th></tr>
+  </thead>
+  <tbody>
+  <tr th:each="row : ${rows}">
+    <td><div class="action" th:text="${row.action}">the command</div></td>
+    <td th:text="${row.agentId}">agent</td>
+    <td th:text="${row.askedAt}">when</td>
+    <td class="dwell" th:text="${row.dwell}">how long</td>
+    <td>
+      <form method="post" th:action="@{/approve/{a}/{c}(a=${row.agentId},c=${row.callId})}">
+        <input type="text" name="note" placeholder="note (optional)">
+        <button type="submit">approve</button>
+      </form>
+      <form method="post" th:action="@{/deny/{a}/{c}(a=${row.agentId},c=${row.callId})}">
+        <input type="text" name="reason" placeholder="reason">
+        <button type="submit">deny</button>
+      </form>
+    </td>
+  </tr>
+  </tbody>
+</table>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <title>watchman (pekko) — the notes</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 70rem; }
+    h1 { font-size: 1.2rem; }
+    nav a { margin-right: 1rem; }
+    li { margin-bottom: .75rem; }
+    pre { white-space: pre-wrap; background: #f6f6f6; padding: .5rem; }
+  </style>
+</head>
+<body>
+<h1>watchman (pekko) — <span th:text="${phase}">phase</span></h1>
+<nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
+<ol>
+  <li th:each="turn : ${turns}"><pre th:text="${turn}">turn</pre></li>
+</ol>
+</body>
+</html>
