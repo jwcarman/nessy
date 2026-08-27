@@ -71,6 +71,7 @@
     <module>nessy-examples</module>
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
+    <module>nessy-spike-pekko-cluster</module>
   </modules>
 
   <properties>

@@ -52,16 +52,17 @@ class LmStudioSpikeDemo {
 
   private static final Duration PATIENCE = Duration.ofMinutes(5);
 
-  private static SpikeCluster start() {
-    return new SpikeCluster(
+  private static SpikeRuntime start() {
+    return new LocalSpikeRuntime(
         ConfigFactory.load("spike-postgres").resolve(),
         new LmStudioSpikeModel(
-            LmStudioSpikeModel.BASE_URL, LmStudioSpikeModel.MODEL_ID, "lm-studio"));
+            LmStudioSpikeModel.BASE_URL, LmStudioSpikeModel.MODEL_ID, "lm-studio"),
+        SpikeSweep.overPostgres(LocalRestartTest.URL, "watchman", "watchman"));
   }
 
-  private static SpikeTurnState stateOf(SpikeCluster cluster, String agentId) {
-    TestProbe<SpikeTurnState> probe = TestProbe.create(cluster.system());
-    cluster.agent(agentId).tell(new SpikeTurnEntity.Inspect(probe.getRef()));
+  private static SpikeTurnState stateOf(SpikeRuntime runtime, String agentId) {
+    TestProbe<SpikeTurnState> probe = TestProbe.create(runtime.system());
+    runtime.agents().tell(agentId, new AgentActor.Inspect(probe.getRef()));
     return probe.receiveMessage(Duration.ofSeconds(30));
   }
 
@@ -78,8 +79,8 @@ class LmStudioSpikeDemo {
     String agent = "lmstudio-" + UUID.randomUUID();
 
     Optional<String> parkedCall;
-    try (SpikeCluster first = start()) {
-      first.agent(agent).tell(new SpikeTurnEntity.Observe("please tidy up"));
+    try (SpikeRuntime first = start()) {
+      first.agents().tell(agent, new AgentActor.Observe("please tidy up"));
 
       await()
           .atMost(PATIENCE)
@@ -103,10 +104,10 @@ class LmStudioSpikeDemo {
     }
 
     // A genuinely new actor system, which has never seen this turn.
-    try (SpikeCluster second = start()) {
+    try (SpikeRuntime second = start()) {
       narrate("recovered from Postgres by a fresh JVM lifetime", stateOf(second, agent));
 
-      second.agent(agent).tell(new SpikeTurnEntity.AnswerApproval(parkedCall.get(), true, ""));
+      second.agents().tell(agent, new AgentActor.AnswerApproval(parkedCall.get(), true, ""));
 
       await()
           .atMost(PATIENCE)
@@ -128,7 +129,7 @@ class LmStudioSpikeDemo {
       return Optional.empty();
     }
     return working.calls().stream()
-        .filter(call -> call.phase() instanceof SpikeCallPhase.AwaitingApproval)
+        .filter(call -> !call.settled())
         .map(SpikeToolCall::id)
         .findFirst();
   }

@@ -15,21 +15,25 @@
  */
 package org.jwcarman.nessy.spike.pekko;
 
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
+import java.time.Duration;
+import org.apache.pekko.actor.typed.ActorSystem;
 
 /**
- * THROWAWAY SPIKE. Given everything said so far, say the next thing.
- *
- * <p>Takes the {@link Executor} the blocking work must land on, so no implementation can quietly
- * default to {@code ForkJoinPool.commonPool()} — which is the failure this signature exists to make
- * impossible. See {@link SpikeBlockingWork}.
+ * THROWAWAY SPIKE. A place to run agents. Implemented twice — once on a single node with {@link
+ * SpikeRegistry}, once on Cluster Sharding — over the same {@link AgentActor}.
  */
-public interface SpikeModel extends AutoCloseable {
+public interface SpikeRuntime extends AutoCloseable {
 
-  CompletionStage<SpikeModelReply> reply(List<String> transcript, Executor blocking);
+  /** The only door: tell an agent id a command. */
+  SpikeAgents agents();
 
+  /** For tests that need a TestProbe; not part of the runtime's own job. */
+  ActorSystem<?> system();
+
+  /** How long the runtime took to become usable. */
+  Duration startupTime();
+
+  /** A real termination: the actor system is gone before this returns. */
   @Override
   void close();
 }

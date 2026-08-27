@@ -17,27 +17,35 @@ package org.jwcarman.nessy.spike.pekko;
 
 import java.util.Objects;
 
-/** THROWAWAY SPIKE. One tool call the model asked for, and where it stands. */
-public record SpikeToolCall(String id, String tool, String argument, SpikeCallPhase phase)
-    implements SpikeSerializable {
+/**
+ * THROWAWAY SPIKE. One tool call, as the AGENT sees it.
+ *
+ * <p><b>Compare this with round 2.</b> It used to carry a {@code SpikeCallPhase} — a sealed
+ * hierarchy of {@code AwaitingApproval | Running | Finished | Denied}, with its own transition
+ * rules, its own re-fire rules and its own admission matrix. That file is <b>deleted</b>.
+ *
+ * <p>The lifecycle did not go away; it moved into {@link ToolCallActor}, where it is a BEHAVIOUR
+ * rather than a datum. What the agent needs to persist about a call collapsed to: what was asked
+ * for, and the answer if one has arrived. {@code outcome == null} means "still in flight", which is
+ * the only question the agent ever asks.
+ */
+public record SpikeToolCall(String id, String tool, String argument, String outcome) {
 
   public SpikeToolCall {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(tool, "tool must not be null");
     Objects.requireNonNull(argument, "argument must not be null");
-    Objects.requireNonNull(phase, "phase must not be null");
   }
 
-  public SpikeToolCall in(SpikeCallPhase next) {
-    return new SpikeToolCall(id, tool, argument, next);
+  public static SpikeToolCall asked(String id, String tool, String argument) {
+    return new SpikeToolCall(id, tool, argument, null);
   }
 
-  /** How this call reads in the transcript once it is settled. */
-  public String outcome() {
-    return switch (phase) {
-      case SpikeCallPhase.Finished(String result) -> tool + " -> " + result;
-      case SpikeCallPhase.Denied(String reason) -> tool + " -> denied: " + reason;
-      case SpikeCallPhase.AwaitingApproval _, SpikeCallPhase.Running _ -> tool + " -> (unsettled)";
-    };
+  public boolean settled() {
+    return outcome != null;
+  }
+
+  public SpikeToolCall settledWith(String result) {
+    return new SpikeToolCall(id, tool, argument, result);
   }
 }

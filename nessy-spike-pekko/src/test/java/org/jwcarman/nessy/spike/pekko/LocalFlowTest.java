@@ -15,21 +15,17 @@
  */
 package org.jwcarman.nessy.spike.pekko;
 
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
+import com.typesafe.config.ConfigFactory;
+import org.junit.jupiter.api.DisplayName;
 
 /**
- * THROWAWAY SPIKE. Given everything said so far, say the next thing.
- *
- * <p>Takes the {@link Executor} the blocking work must land on, so no implementation can quietly
- * default to {@code ForkJoinPool.commonPool()} — which is the failure this signature exists to make
- * impossible. See {@link SpikeBlockingWork}.
+ * THROWAWAY SPIKE, TIER 1: the shared contract, on a single node with no cluster on the classpath.
  */
-public interface SpikeModel extends AutoCloseable {
-
-  CompletionStage<SpikeModelReply> reply(List<String> transcript, Executor blocking);
+@DisplayName("A Pekko-plumbed turn (single node)")
+class LocalFlowTest extends SpikeFlowContract {
 
   @Override
-  void close();
+  protected SpikeRuntime start(SpikeModel model, SpikeSweep sweep) {
+    return new LocalSpikeRuntime(ConfigFactory.load("spike-inmemory").resolve(), model, sweep);
+  }
 }

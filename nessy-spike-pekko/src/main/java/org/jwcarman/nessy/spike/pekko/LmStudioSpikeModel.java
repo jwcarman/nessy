@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,8 +78,7 @@ public final class LmStudioSpikeModel implements SpikeModel {
       """;
 
   private final ObjectMapper json = new ObjectMapper();
-  private final HttpClient http =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+  private HttpClient http;
   private final String baseUrl;
   private final String modelId;
   private final String apiKey;
@@ -90,7 +90,10 @@ public final class LmStudioSpikeModel implements SpikeModel {
   }
 
   @Override
-  public CompletionStage<SpikeModelReply> reply(List<String> transcript) {
+  public CompletionStage<SpikeModelReply> reply(List<String> transcript, Executor blocking) {
+    // HttpClient does its own I/O, but every callback and body handler runs on OUR executor,
+    // so nothing this class causes ever lands on a Pekko dispatcher.
+    HttpClient client = client(blocking);
     HttpRequest request =
         HttpRequest.newBuilder(URI.create(baseUrl + "/chat/completions"))
             .header("Content-Type", "application/json")
@@ -98,7 +101,7 @@ public final class LmStudioSpikeModel implements SpikeModel {
             .timeout(Duration.ofMinutes(5))
             .POST(HttpRequest.BodyPublishers.ofString(body(transcript)))
             .build();
-    return http.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(this::read);
+    return client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(this::read);
   }
 
   private String body(List<String> transcript) {
@@ -189,8 +192,18 @@ public final class LmStudioSpikeModel implements SpikeModel {
     return arguments;
   }
 
+  private synchronized HttpClient client(Executor blocking) {
+    if (http == null) {
+      http =
+          HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).executor(blocking).build();
+    }
+    return http;
+  }
+
   @Override
-  public void close() {
-    http.close();
+  public synchronized void close() {
+    if (http != null) {
+      http.close();
+    }
   }
 }

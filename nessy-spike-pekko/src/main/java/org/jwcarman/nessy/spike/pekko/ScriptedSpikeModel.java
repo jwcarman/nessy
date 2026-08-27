@@ -19,25 +19,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executor;
 
 /**
  * THROWAWAY SPIKE. A model that spends no tokens and reaches no network.
  *
  * <p>Deterministic on the transcript, so a turn resumed on a different JVM asks the same question
  * and gets the same answer — which is what lets the restart test assert an exact final transcript.
- * Two rounds: the first asks for two tools, the second wraps the turn up.
- *
- * <p>Returns a {@link CompletionStage} rather than a value so the entity is forced to treat a model
- * call the way a real one behaves: slow, off-thread, and completing by message.
  */
 public final class ScriptedSpikeModel implements SpikeModel {
-
-  private final ScheduledExecutorService clock =
-      Executors.newSingleThreadScheduledExecutor(
-          runnable -> Thread.ofPlatform().name("spike-model").daemon().unstarted(runnable));
 
   private final Duration latency;
 
@@ -46,11 +36,25 @@ public final class ScriptedSpikeModel implements SpikeModel {
   }
 
   @Override
-  public CompletionStage<SpikeModelReply> reply(List<String> transcript) {
+  public CompletionStage<SpikeModelReply> reply(List<String> transcript, Executor blocking) {
     SpikeModelReply reply = script(transcript);
-    CompletableFuture<SpikeModelReply> answer = new CompletableFuture<>();
-    clock.schedule(() -> answer.complete(reply), latency.toMillis(), TimeUnit.MILLISECONDS);
-    return answer;
+    // Deliberately BLOCKING, on the executor we were handed: it stands in for a model call, and
+    // running it on a Pekko dispatcher is exactly the mistake this design prevents.
+    return CompletableFuture.supplyAsync(
+        () -> {
+          sleep(latency);
+          return reply;
+        },
+        blocking);
+  }
+
+  private static void sleep(Duration duration) {
+    try {
+      Thread.sleep(duration.toMillis());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted in the scripted model", e);
+    }
   }
 
   private static SpikeModelReply script(List<String> transcript) {
@@ -66,6 +70,6 @@ public final class ScriptedSpikeModel implements SpikeModel {
 
   @Override
   public void close() {
-    clock.shutdownNow();
+    // nothing of its own to release
   }
 }
