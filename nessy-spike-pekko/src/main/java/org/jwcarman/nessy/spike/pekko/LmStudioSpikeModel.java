@@ -41,9 +41,17 @@ import org.slf4j.LoggerFactory;
  *   <li>Its API speaks Nessy's domain — {@code Message}, {@code ToolSpec}, {@code ToolCall}. Using
  *       it would drag the very {@code nessy-agent}/{@code nessy-api} vocabulary back into a spike
  *       whose whole point is to see what shape Pekko wants when nothing is inherited.
- *   <li>This module is pinned to Jackson 2.21.6 because Pekko's Scala module refuses 2.22.0 (see
- *       the POM). Pulling a reactor module in here would put two Jackson lines on one classpath.
+ *   <li>On Pekko 1.x this module was pinned to Jackson 2.21.6, so pulling a reactor module in would
+ *       have put two Jackson 2 lines on one classpath. That reason has EXPIRED under Pekko 2.0 (see
+ *       the POM), but the first reason has not, so the client stays.
  * </ol>
+ *
+ * <p>It has, however, acquired a second job. This class deliberately uses {@code
+ * com.fasterxml.jackson.databind} — Jackson <b>2</b>.22.0, the reactor's own pin — while Pekko
+ * serialises every durable state with {@code tools.jackson.databind}, Jackson <b>3</b>. Both are on
+ * this classpath and both are exercised in the same JVM by the live demo. That coexistence is the
+ * headline finding of the 2.0 round, and this client is what proves it at runtime rather than
+ * merely in a dependency tree.
  *
  * <p>So: about eighty lines of {@code java.net.http}, no domain crossover, no dependency tangle.
  *

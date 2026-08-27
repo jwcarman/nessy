@@ -30,7 +30,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityRef;
 import org.apache.pekko.cluster.typed.Cluster;
 import org.apache.pekko.cluster.typed.Join;
-import org.apache.pekko.serialization.jackson.JacksonObjectMapperProviderSetup;
+import org.apache.pekko.serialization.jackson3.JacksonObjectMapperProviderSetup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

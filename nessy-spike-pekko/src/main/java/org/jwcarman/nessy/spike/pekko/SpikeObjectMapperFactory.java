@@ -15,27 +15,32 @@
  */
 package org.jwcarman.nessy.spike.pekko;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.pekko.serialization.jackson.JacksonObjectMapperFactory;
+import org.apache.pekko.serialization.jackson3.JacksonObjectMapperFactory;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * THROWAWAY SPIKE. The seam Pekko offers for owning its ObjectMapper.
  *
- * <p>Worth knowing what this seam actually is. {@link JacksonObjectMapperFactory} has a dozen
- * override points, but eleven of them take and return {@code scala.collection.immutable.Seq} and
- * are effectively unusable from Java. {@link #newObjectMapper} is the one with a Java-shaped
- * signature, and it is enough: Pekko applies its configured modules and features to whatever mapper
- * is returned here, so an application can hand over a pre-configured mapper and keep Pekko's
- * behaviour on top of it.
+ * <p><b>Changed shape in Pekko 2.0, and for the better.</b> On 1.x this was {@code
+ * newObjectMapper(String bindingName, JsonFactory)} returning a fully built {@code ObjectMapper} —
+ * awkward, because Jackson 2 mappers are mutable and Pekko then reconfigured the instance you
+ * handed back. Jackson 3 mappers are immutable, so 2.0's seam is {@code
+ * newObjectMapperBuilder(JsonFactory)} returning a {@link JsonMapper.Builder} that Pekko finishes.
+ * That is the correct shape for an immutable mapper.
  *
- * <p>This one changes nothing — it exists to prove the seam is reachable, and to be the place a
- * real integration would hand Nessy's own pinned mapper over.
+ * <p>What did NOT improve: the other eleven override points still take and return {@code
+ * scala.collection.immutable.Seq} and remain effectively unusable from Java, and there is still no
+ * config key for the factory — registration is {@code JacksonObjectMapperProviderSetup} inside an
+ * {@code ActorSystemSetup}, i.e. Java code. See {@link SpikeCluster}.
+ *
+ * <p>This one changes nothing. It exists to prove the seam is reachable, and to mark the place a
+ * real integration would hand its own mapper configuration over.
  */
 public final class SpikeObjectMapperFactory extends JacksonObjectMapperFactory {
 
   @Override
-  public ObjectMapper newObjectMapper(String bindingName, JsonFactory jsonFactory) {
-    return super.newObjectMapper(bindingName, jsonFactory);
+  public JsonMapper.Builder newObjectMapperBuilder(JsonFactory jsonFactory) {
+    return super.newObjectMapperBuilder(jsonFactory);
   }
 }

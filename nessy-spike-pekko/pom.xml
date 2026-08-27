@@ -34,18 +34,16 @@
     reactor may depend on this module and nothing here is API.</description>
 
   <properties>
-    <!-- Pekko core: 1.7.0 is the newest 1.x line. Chosen over the 1.2.x the spike brief named
-         because its pekko-serialization-jackson is built against Jackson 2.21.6 rather than
-         2.19.2 — one minor behind this repo's pinned 2.22.0 instead of three. -->
-    <pekko.version>1.7.0</pekko.version>
-    <!-- pekko-persistence-jdbc's newest STABLE line. It declares pekko-persistence-query 1.1.5;
-         Pekko keeps binary compatibility across 1.x, so the 1.7.0 core above wins the version
-         mediation and the plugin rides it. -->
-    <pekko-persistence-jdbc.version>1.3.0</pekko-persistence-jdbc.version>
-    <!-- The Jackson line pekko-serialization-jackson 1.7.0 was built against. See the comment
-         in this POM's dependencyManagement for why the spike cannot use the reactor's 2.22.0. -->
-    <pekko-jackson.version>2.21.6</pekko-jackson.version>
-    <pekko-jackson-annotations.version>2.21</pekko-jackson-annotations.version>
+    <!-- Pekko 2.0.0-M4. Moved off the 1.7.0 line for ONE reason: 2.0 ships an official
+         pekko-serialization-jackson3 built on the `tools.jackson` (Jackson 3) package line,
+         which is the only thing that can dissolve the hard Jackson conflict the 1.x spike hit.
+         See the dependencyManagement note below. -->
+    <pekko.version>2.0.0-M4</pekko.version>
+    <!-- The durable-state plugin does NOT exist at M4: 2.0.0-M1 is the only 2.0 release, three
+         milestones behind core, and its POM pins pekko-persistence-query to 2.0.0-M1. The
+         dependencyManagement below forces every transitive org.apache.pekko artifact back up to
+         M4 so exactly one Pekko version is on the classpath. -->
+    <pekko-persistence-jdbc.version>2.0.0-M1</pekko-persistence-jdbc.version>
     <!-- This module is a spike: it is never published and never released. -->
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
@@ -53,72 +51,78 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- The supported way to keep the core artifacts consistent. Note what it does NOT cover:
+           pekko-persistence-jdbc is a separate project on its own release train, so the BOM
+           cannot resolve the M1-vs-M4 lag below. It DOES, however, force that plugin's
+           transitive pekko-persistence-query from 2.0.0-M1 up to M4, which is the thing that
+           actually matters, since dependencyManagement applies to transitive dependencies too. -->
       <dependency>
         <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_3</artifactId>
+        <artifactId>pekko-bom_2.13</artifactId>
         <version>${pekko.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+
       <!--  ==================================================================================
-           MEASURED FINDING, not a preference. The root POM pins jackson-databind 2.22.0 for
-           the whole reactor. pekko-serialization-jackson always registers
-           com.fasterxml.jackson.module.scala.DefaultScalaModule, and jackson-module-scala
-           enforces a HARD databind version range at module-registration time:
+           THE 1.x FINDING, AND HOW 2.0 DISSOLVES IT.
+
+           On Pekko 1.7.0 this block pinned the module BACK to jackson-databind 2.21.6, because
+           pekko-serialization-jackson registers com.fasterxml.jackson.module.scala.DefaultScalaModule
+           and jackson-module-scala enforces a hard databind range at registration time:
 
              JsonMappingException: Scala module 2.21.6 requires Jackson Databind version
              >= 2.21.0 and < 2.22.0 - Found jackson-databind version 2.22.0
 
-           That is thrown while the ActorSystem is starting, so it is not a warning that can
-           be lived with: with the reactor's own Jackson, Pekko does not boot at all.
+           thrown while the ActorSystem was starting. With the reactor's pinned 2.22.0, Pekko 1.x
+           did not boot at all.
 
-           This module therefore steps BACK to Pekko's Jackson line. It is allowed to, because
-           nothing depends on it. A real adoption would not have that luxury: it would have to
-           hold the whole reactor at whatever jackson-module-scala's range permits.
+           THAT PIN IS NOW GONE, and deliberately so. Pekko 2.0's pekko-serialization-jackson3 is
+           built on `tools.jackson.*` (Jackson 3) instead of `com.fasterxml.jackson.databind`, so
+           Pekko is not on our Jackson line at ALL and cannot collide with it. This module now
+           inherits the reactor's jackson-databind 2.22.0 from the root POM, unmodified, and
+           exercises BOTH lines in one JVM (see LmStudioSpikeModel).
+
+           The one artifact both lines share is jackson-annotations, which Jackson 3 deliberately
+           kept in the com.fasterxml namespace on the 2.x version scheme, and Pekko 2.0.0-M4
+           declares exactly 2.22, which is the root POM's pin. Nothing to reconcile.
            ================================================================================== -->
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-        <version>${pekko-jackson.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-core</artifactId>
-        <version>${pekko-jackson.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-annotations</artifactId>
-        <version>${pekko-jackson-annotations.version}</version>
-      </dependency>
     </dependencies>
   </dependencyManagement>
 
   <dependencies>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_3</artifactId>
+      <artifactId>pekko-actor-typed_2.13</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-cluster-sharding-typed_3</artifactId>
+      <artifactId>pekko-cluster-sharding-typed_2.13</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-typed_3</artifactId>
+      <artifactId>pekko-persistence-typed_2.13</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-serialization-jackson_3</artifactId>
+      <artifactId>pekko-serialization-jackson3_2.13</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-jdbc_3</artifactId>
+      <artifactId>pekko-persistence-jdbc_2.13</artifactId>
       <version>${pekko-persistence-jdbc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-slf4j_3</artifactId>
+      <artifactId>pekko-slf4j_2.13</artifactId>
+    </dependency>
+    <!-- Jackson 2, at the reactor's OWN pinned 2.22.0, inherited from the root POM. Used by
+         LmStudioSpikeModel. Under Pekko 1.x this could not have been here at 2.22.0 at all;
+         under 2.0 it sits beside Pekko's tools.jackson (Jackson 3) with nothing to reconcile,
+         and the live demo exercises both in one JVM. This dependency IS the coexistence test. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
@@ -131,7 +135,7 @@
 
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-testkit-typed_3</artifactId>
+      <artifactId>pekko-actor-testkit-typed_2.13</artifactId>
       <scope>test</scope>
     </dependency>
     <!-- PHASE 1's durability: the in-memory journal and durable-state store. Test scope on
@@ -139,7 +143,7 @@
          may be visible to main code. -->
     <dependency>
       <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_3</artifactId>
+      <artifactId>pekko-persistence-testkit_2.13</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -159,4 +163,26 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- MEASURED FINDING, Pekko 2.0 only. 2.0's artery remoting replaced its old
+               sun.misc.Unsafe machinery with org.agrona, and Agrona's UnsafeApi reaches for
+               jdk.internal.misc.Unsafe, which java.base does not export. Without this flag the
+               ActorSystem dies during startup on JDK 16+:
+
+                 java.lang.IllegalAccessError: class org.agrona.UnsafeApi (in unnamed module)
+                 cannot access class jdk.internal.misc.Unsafe (in module java.base) because
+                 module java.base does not export jdk.internal.misc to unnamed module
+
+               This is not a test-harness quirk: ANY JVM hosting Pekko 2.0 with the cluster
+               provider needs this flag on its command line. Pekko 1.7.0 needed no such thing. -->
+          <argLine>@{jacocoArgLine} --add-exports java.base/jdk.internal.misc=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
