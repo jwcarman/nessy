@@ -414,13 +414,18 @@ final class DeliveryWorker<O> implements ComputationPump {
    *
    * <p>An ignored transition is DROPPED — logged at WARN and acknowledged, never released for
    * redelivery (James's 2026-08-25 ruling, approval-lifecycle spec §4). A delivery whose scope is
-   * not in the status that awaits it is a permanent failure, not a race worth retrying: the handoff
-   * effect folds {@code ApprovalDeferred}/{@code ToolCallDeferred} only AFTER the callback has run,
-   * so no answer can outrun its own park; and a {@code RunningTool} or {@code Deferring…} call
-   * names no computation at all, so a delivered id reaching one is by definition an id the scope
-   * knows nothing of (spec §3). Nothing is lost by dropping that last case, because the window does
-   * not open in practice (spec §4). What remains is an orphan or a duplicate, and no amount of
-   * backoff makes it fold.
+   * not in the status that awaits it is a permanent failure, not a race worth retrying — and that
+   * rests entirely on ONE ordering, so read it before trusting the drop: the handoff effect folds
+   * {@code ApprovalDeferred}/{@code ToolCallDeferred} and lets it COMMIT <b>before</b> it runs the
+   * callback (deferral-by-callback spec §9a, ordering ruled 2026-08-26). The callback is the only
+   * thing that tells the world where to answer, so by the time any answer can exist the phase
+   * already names its id, and no answer can outrun its own park. Fold AFTER the callback instead
+   * and an instant answer meets a call still in {@code Deferring…} and is dropped right here —
+   * permanently, by this rule — leaving the call parked forever on a computation already completed
+   * and acked. And a {@code RunningTool} or {@code Deferring…} call names no computation at all, so
+   * a delivered id reaching one is by definition an id the scope knows nothing of (spec §3).
+   * Nothing is lost by dropping that last case, because the window does not open in practice (spec
+   * §4). What remains is an orphan or a duplicate, and no amount of backoff makes it fold.
    */
   private void fold(Routing routing, AgentEvent event, ComputationId delivered) {
     AgentType type = AgentType.of(routing.agentType());

@@ -83,8 +83,8 @@ class HandoffCallbackThrowsTest {
   private final ObjectMapper mapper = TestMappers.plainlyPinned();
   private final ContinuumClient<ToolResult, Routing> toolClient =
       TestToolClients.client("tool/test", mapper);
-  private final ContinuumClient<org.jwcarman.nessy.api.tool.approval.Approval, ApprovalRouting>
-      approvalClient = TestApprovalClients.client("approval/test", mapper);
+  private final ContinuumClient<Approval, ApprovalRouting> approvalClient =
+      TestApprovalClients.client("approval/test", mapper);
   private final PumpedExecutor pump = new PumpedExecutor();
 
   private final ToolCallExecutor executor =

@@ -45,9 +45,16 @@ public interface ToolCallExecutor {
   void seekApproval(ToolCall call, ModelResponseId responseId, Sink sink);
 
   /**
-   * Hand the approval off: create the computation, clip {@code term}, run {@code callback} with the
-   * id and the agreed deadline, and deliver {@code ApprovalDeferred}. A callback that throws
-   * delivers a failure instead (spec §9a).
+   * Hand the approval off. <b>The order is part of the contract</b> (spec §9a, ordering ruled
+   * 2026-08-26): create the computation, clip {@code term}, <b>deliver {@code ApprovalDeferred}
+   * through {@code sink} and let that fold commit</b>, and only THEN run {@code callback} with the
+   * id and the agreed deadline. An implementation that calls before it folds is wrong even where
+   * every test of its own passes: the callback tells the world where to answer, and an answer
+   * arriving before the park has committed meets a call that records no id and is dropped forever.
+   *
+   * <p>{@code sink} rethrows if the fold could not commit; let that propagate rather than running
+   * the callback anyway. A callback that throws delivers a failure instead, riding the id the phase
+   * now names.
    *
    * @param request the frozen question, which becomes the computation's continuation
    * @param callback what tells the world where to answer
@@ -68,7 +75,10 @@ public interface ToolCallExecutor {
    */
   void runTool(ToolCall call, ModelResponseId responseId, Sink sink);
 
-  /** The tool side's {@link #deferApproval}: delivers {@code ToolCallDeferred}, or a failure. */
+  /**
+   * The tool side's {@link #deferApproval}, under the same ordering contract: deliver {@code
+   * ToolCallDeferred} and let it commit, then call. Or a failure.
+   */
   void deferToolCall(
       ToolCall call,
       ComputationCallback callback,

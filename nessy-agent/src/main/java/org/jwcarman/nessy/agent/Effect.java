@@ -52,11 +52,19 @@ public sealed interface Effect {
   }
 
   /**
-   * Hand the approval off: create the computation, clip {@code term} to the harness's approval
-   * ceiling, run {@code callback} with the id and the agreed deadline, and yield {@code
-   * ApprovalDeferred}. A throwing callback yields a failure instead (spec §9a): we know it failed,
-   * not whether it reached the world first, so the call fails rather than re-asking and risking
-   * telling the world twice.
+   * Hand the approval off, in this order and no other (spec §9a, ordering ruled 2026-08-26): create
+   * the computation; clip {@code term} to the harness's approval ceiling; <b>fold {@code
+   * ApprovalDeferred} and let it commit</b>; and only THEN run {@code callback} with the id and the
+   * agreed deadline.
+   *
+   * <p>The fold must precede the callback because the callback is what tells the world where to
+   * answer, and the world may answer instantly. Fold afterwards and that answer meets a call still
+   * in {@code DeferringApproval}, which records no id — dropped permanently, and the call hangs on
+   * a computation already completed.
+   *
+   * <p>A throwing callback yields a failure instead: we know it failed, not whether it reached the
+   * world first, so the call fails rather than re-asking and risking telling the world twice. By
+   * then the park has folded, so that failure rides the id the phase now names.
    */
   record DeferApproval(
       ToolCall call, ApprovalRequest request, ComputationCallback callback, Duration term)
@@ -69,7 +77,10 @@ public sealed interface Effect {
     }
   }
 
-  /** The tool side's {@link DeferApproval}: yields {@code ToolCallDeferred}, or a failure. */
+  /**
+   * The tool side's {@link DeferApproval}, under the same ordering: fold {@code ToolCallDeferred}
+   * and let it commit, then call. Yields the park, or a failure.
+   */
   record DeferToolCall(ToolCall call, ComputationCallback callback, Duration term)
       implements Effect {
     public DeferToolCall {

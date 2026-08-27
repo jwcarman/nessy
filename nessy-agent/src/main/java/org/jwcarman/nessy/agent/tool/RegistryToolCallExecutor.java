@@ -70,11 +70,10 @@ import org.slf4j.LoggerFactory;
  * ApprovalRequest} through the grant's contributor and enrichers and let the approver read it. A
  * {@code RuntimeException} escaping conversion, the contributor or an enricher becomes a
  * fail-closed denial naming the stage; a {@code RuntimeException} escaping the approver becomes a
- * denial too. A deferral has already parked and folded itself through {@link
- * A deferral is now an ordinary RETURN (deferral-by-callback spec §9a): the outcome becomes {@code
- * ApprovalDeferralRequested}, carrying the callback and the term but no id, because at that moment
- * nothing has been created. The creating is {@link #deferApproval}'s job, dispatched only after
- * that fold has committed.
+ * denial too. A deferral is now an ordinary RETURN (deferral-by-callback spec §9a): the outcome
+ * becomes {@code ApprovalDeferralRequested}, carrying the callback and the term but no id, because
+ * at that moment nothing has been created. The creating is {@link #deferApproval}'s job, dispatched
+ * only after that fold has committed.
  *
  * <p>The {@code execute_tool} span (agentic-o11y spec §1.1, §3.1) is opened here rather than
  * derived from the fact stream, because for a DEFERRING tool the execution ends when the body

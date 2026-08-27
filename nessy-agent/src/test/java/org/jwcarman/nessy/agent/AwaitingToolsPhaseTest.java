@@ -208,6 +208,59 @@ class AwaitingToolsPhaseTest {
     assertThat(t.isDropped()).isTrue();
   }
 
+  /**
+   * The id filter on {@code AwaitingApproval}'s handoff-failure arm, which the whole design leans
+   * on and which nothing else covers.
+   *
+   * <p>That arm exists for one producer: {@code DeferApproval}'s catch, reporting a callback that
+   * threw after the park committed. It admits only the id THIS call recorded, and this is the test
+   * that says so — because an implementation admitting ANY id would pass every other test in the
+   * suite while opening precisely the stale-orphan hazard the {@code Deferring…} design was chosen
+   * to avoid: a computation left over from an earlier attempt could finish the call with an answer
+   * that was never about this wait.
+   */
+  @Test
+  void awaiting_approval_drops_a_handoff_failure_carrying_an_id_it_never_recorded() {
+    var phase =
+        awaiting(
+            calls(
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                new ToolCallPhase.SeekingApproval()));
+
+    var t =
+        phase.handle(
+            new AgentEvent.ToolFinished(
+                CALL_A,
+                Optional.of(OTHER),
+                new ToolOutcome.Failed(new ToolError("deferral handoff failed: boom"))));
+
+    assertThat(t.isDropped()).isTrue();
+  }
+
+  @Test
+  void awaiting_approval_takes_a_handoff_failure_carrying_the_id_it_recorded() {
+    var phase =
+        awaiting(
+            calls(
+                new ToolCallPhase.AwaitingApproval(PARKED, REQUEST),
+                new ToolCallPhase.SeekingApproval()));
+
+    var t =
+        phase.handle(
+            new AgentEvent.ToolFinished(
+                CALL_A,
+                Optional.of(PARKED),
+                new ToolOutcome.Failed(new ToolError("deferral handoff failed: boom"))));
+
+    assertThat(t.next())
+        .isEqualTo(
+            awaiting(
+                calls(
+                    new ToolCallPhase.Failed(
+                        new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                    new ToolCallPhase.SeekingApproval())));
+  }
+
   @Test
   void runningToolFinishedInProcessResultsInCompleted() {
     var phase =

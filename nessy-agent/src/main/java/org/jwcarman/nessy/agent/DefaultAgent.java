@@ -132,10 +132,12 @@ public final class DefaultAgent<O> implements Agent<O> {
    * ignored (§3.4).
    *
    * <p>A fold that cannot commit narrates {@link HarnessObserver#applyFailed} and then
-   * <b>rethrows</b>. Nothing outside now depends on that rethrow to stay honest — no door hands out
-   * an id any more (deferral-by-callback spec §7) — but it stays: a caller that drove this fold
-   * synchronously should learn that nothing was written. A DROPPED event is not a failure: this
-   * returns normally, as it always has.
+   * <b>rethrows</b>, and that rethrow is <b>load-bearing</b> — not defensive tidiness. {@code
+   * RegistryToolCallExecutor#handOff} folds a deferral's park through this door and then, if it
+   * returns, runs the callback that tells the world where to answer. This throw is the only thing
+   * that stops a callback from running after a park that did not commit; without it the world would
+   * hold an id for a wait no phase names, and the answer would be dropped forever. A DROPPED event
+   * is not a failure: this returns normally, as it always has.
    *
    * <p><b>Only the commit is guarded.</b> {@link #commit} covers handle → remember → save; the
    * transition's effects are dispatched afterwards, by {@link #follow}, OUTSIDE the catch. That
