@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2026 James Carman
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>nessy-spike-pekko</artifactId>
+  <name>Nessy Spike :: Pekko</name>
+  <description>THROWAWAY SPIKE. Does Apache Pekko's Cluster Sharding + DurableStateBehavior
+    replace the lease/driver/routing plumbing we have been designing by hand? Nothing in the
+    reactor may depend on this module and nothing here is API.</description>
+
+  <properties>
+    <!-- Pekko core: 1.7.0 is the newest 1.x line. Chosen over the 1.2.x the spike brief named
+         because its pekko-serialization-jackson is built against Jackson 2.21.6 rather than
+         2.19.2 — one minor behind this repo's pinned 2.22.0 instead of three. -->
+    <pekko.version>1.7.0</pekko.version>
+    <!-- pekko-persistence-jdbc's newest STABLE line. It declares pekko-persistence-query 1.1.5;
+         Pekko keeps binary compatibility across 1.x, so the 1.7.0 core above wins the version
+         mediation and the plugin rides it. -->
+    <pekko-persistence-jdbc.version>1.3.0</pekko-persistence-jdbc.version>
+    <!-- The Jackson line pekko-serialization-jackson 1.7.0 was built against. See the comment
+         in this POM's dependencyManagement for why the spike cannot use the reactor's 2.22.0. -->
+    <pekko-jackson.version>2.21.6</pekko-jackson.version>
+    <pekko-jackson-annotations.version>2.21</pekko-jackson-annotations.version>
+    <!-- This module is a spike: it is never published and never released. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.install.skip>true</maven.install.skip>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.pekko</groupId>
+        <artifactId>pekko-bom_3</artifactId>
+        <version>${pekko.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!--  ==================================================================================
+           MEASURED FINDING, not a preference. The root POM pins jackson-databind 2.22.0 for
+           the whole reactor. pekko-serialization-jackson always registers
+           com.fasterxml.jackson.module.scala.DefaultScalaModule, and jackson-module-scala
+           enforces a HARD databind version range at module-registration time:
+
+             JsonMappingException: Scala module 2.21.6 requires Jackson Databind version
+             >= 2.21.0 and < 2.22.0 - Found jackson-databind version 2.22.0
+
+           That is thrown while the ActorSystem is starting, so it is not a warning that can
+           be lived with: with the reactor's own Jackson, Pekko does not boot at all.
+
+           This module therefore steps BACK to Pekko's Jackson line. It is allowed to, because
+           nothing depends on it. A real adoption would not have that luxury: it would have to
+           hold the whole reactor at whatever jackson-module-scala's range permits.
+           ================================================================================== -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${pekko-jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${pekko-jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-annotations</artifactId>
+        <version>${pekko-jackson-annotations.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-actor-typed_3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-cluster-sharding-typed_3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-typed_3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-serialization-jackson_3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-jdbc_3</artifactId>
+      <version>${pekko-persistence-jdbc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-slf4j_3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-actor-testkit-typed_3</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- PHASE 1's durability: the in-memory journal and durable-state store. Test scope on
+         purpose — swapping to Postgres in PHASE 2 must be a config choice, so neither plugin
+         may be visible to main code. -->
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-testkit_3</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>${awaitility.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>
