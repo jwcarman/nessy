@@ -59,6 +59,7 @@ class LmStudioRoundDemo {
             new FakeRunner(),
             WatchmanPostgres.memories(),
             WatchmanPostgres.backlogs(),
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -100,9 +101,7 @@ class LmStudioRoundDemo {
       first.tell(
           agent,
           new AgentActor.Observe(
-              "It is " + Clock.systemUTC().instant() + ". Do your rounds.",
-              "rounds",
-              java.util.Map.of()));
+              "It is " + Clock.systemUTC().instant() + ". Do your rounds.", java.util.Map.of()));
 
       await()
           .atMost(PATIENCE)

@@ -102,8 +102,7 @@ class StateSizeTest {
         WatchmanPostgres.observe(agent, "Round " + round + ". Do your rounds.");
         actors.tell(
             agent,
-            new AgentActor.Observe(
-                "Round " + round + ". Do your rounds.", "rounds", java.util.Map.of()));
+            new AgentActor.Observe("Round " + round + ". Do your rounds.", java.util.Map.of()));
 
         await()
             .atMost(Duration.ofSeconds(30))

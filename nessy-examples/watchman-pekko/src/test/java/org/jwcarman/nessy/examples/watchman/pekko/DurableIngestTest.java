@@ -76,8 +76,7 @@ class DurableIngestTest {
   }
 
   private void parkOnApproval(WatchmanActorSystem actors, String agent) {
-    actors.tell(
-        agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
     await()
         .atMost(PATIENCE)
         .untilAsserted(

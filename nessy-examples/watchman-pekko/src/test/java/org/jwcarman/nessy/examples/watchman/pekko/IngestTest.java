@@ -63,6 +63,7 @@ class IngestTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -72,14 +73,14 @@ class IngestTest {
     actors.start();
     String agent = "ingest-" + UUID.randomUUID();
 
-    actors.tell(agent, new AgentActor.Observe("first", null, Map.of()));
+    actors.tell(agent, new AgentActor.Observe("first", Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(() -> assertThat(state(agent).phase()).isNotInstanceOf(Phase.Idle.class));
 
     // Arrives mid-round. The old behaviour dropped this on the floor and logged a refusal.
-    actors.tell(agent, new AgentActor.Observe("second", null, Map.of()));
+    actors.tell(agent, new AgentActor.Observe("second", Map.of()));
 
     // Assert: it is in the durable backlog, not on the floor.
     await()

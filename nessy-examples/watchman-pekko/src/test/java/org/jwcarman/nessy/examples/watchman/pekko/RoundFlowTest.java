@@ -62,6 +62,7 @@ class RoundFlowTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -86,7 +87,7 @@ class RoundFlowTest {
 
   /** Tell the agent the way the cron does; the agent itself writes the turn once it drains. */
   private void observe(String text) {
-    actors.tell(agent, new AgentActor.Observe(text, "rounds", Map.of()));
+    actors.tell(agent, new AgentActor.Observe(text, Map.of()));
   }
 
   /** Tool results by call id, straight out of Memory. */

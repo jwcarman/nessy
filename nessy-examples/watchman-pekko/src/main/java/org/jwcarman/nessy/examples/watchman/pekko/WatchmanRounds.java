@@ -39,11 +39,6 @@ public class WatchmanRounds {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
 
-  /**
-   * Every cron tick supersedes any earlier tick still queued: "do your rounds" is not cumulative.
-   */
-  public static final String ROUNDS = "rounds";
-
   private final WatchmanActorSystem actors;
   private final StartupSweep sweep;
   private final Traces traces;
@@ -77,10 +72,11 @@ public class WatchmanRounds {
           String observation = "It is " + clock.instant() + ". Do your rounds.";
           LOG.info("[watchman] telling the watchman: {}", observation);
           // The agent itself writes this into the transcript once it drains -- see
-          // AgentActor#startTurnIfWork. A durable backlog holds it until then.
+          // AgentActor#startTurnIfWork. A durable backlog holds it until then, coalescing any
+          // tick still queued per WatchmanObservations#COALESCER: "do your rounds" is not
+          // cumulative.
           actors.tell(
-              WatchmanGuardian.WATCHMAN,
-              new AgentActor.Observe(observation, ROUNDS, traces.capture()));
+              WatchmanGuardian.WATCHMAN, new AgentActor.Observe(observation, traces.capture()));
         });
   }
 }

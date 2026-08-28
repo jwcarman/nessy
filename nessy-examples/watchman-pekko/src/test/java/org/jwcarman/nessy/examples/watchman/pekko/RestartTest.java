@@ -65,9 +65,7 @@ class RestartTest {
     WatchmanActorSystem first =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
-      first.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(
@@ -130,9 +128,7 @@ class RestartTest {
     WatchmanActorSystem first =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofSeconds(60)));
     try {
-      first.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(

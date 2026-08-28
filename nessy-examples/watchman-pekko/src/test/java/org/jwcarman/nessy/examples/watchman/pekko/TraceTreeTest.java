@@ -80,7 +80,8 @@ class TraceTreeTest {
             new ScriptedWatchmanModel(Duration.ofMillis(10)),
             new FakeRunner(),
             new Memories(substrate, 8000),
-            new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class),
+            new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class),
+            WatchmanObservations.RENDERER,
             MicrometerTracing.over(sdk),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -125,7 +126,7 @@ class TraceTreeTest {
     try (Scope ignored = round.makeCurrent()) {
       carrier = traces.capture();
     }
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", carrier));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", carrier));
 
     await()
         .atMost(Duration.ofSeconds(30))

@@ -67,6 +67,7 @@ class PromptSizeTest {
             new FakeRunner(),
             budgeted,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -79,8 +80,7 @@ class PromptSizeTest {
     try {
       for (int round = 1; round <= 12; round++) {
         actors.tell(
-            agent,
-            new AgentActor.Observe("Round " + round + ". Do your rounds.", "rounds", Map.of()));
+            agent, new AgentActor.Observe("Round " + round + ". Do your rounds.", Map.of()));
 
         await()
             .atMost(Duration.ofSeconds(30))

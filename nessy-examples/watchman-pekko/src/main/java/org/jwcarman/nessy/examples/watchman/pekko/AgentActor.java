@@ -20,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.pekko.actor.typed.ActorRef;
@@ -36,7 +35,6 @@ import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.Remembrance;
 
 /**
@@ -98,13 +96,12 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   /**
    * From the cron, or from anyone with something to say.
    *
-   * @param coalesceKey observations sharing a key SUPERSEDE one another while a round is busy — a
-   *     cron tick is only ever "do your rounds now", so twenty queued ticks are one tick. The
-   *     sender decides, because only the sender knows whether its message replaces or accumulates:
-   *     a person's message must pass {@code null} and can never be merged with anything.
+   * <p>Whether observations sharing something in common SUPERSEDE one another while a round is busy
+   * is no longer a decision made per call — it is a property of the observation vocabulary itself,
+   * declared once by that vocabulary's {@link Coalescer} and applied at {@link Backlogs#ingest}.
+   * See {@link WatchmanObservations#COALESCER}.
    */
-  public record Observe(String text, String coalesceKey, Map<String, String> headers)
-      implements NessyMessage {}
+  public record Observe(String text, Map<String, String> headers) implements NessyMessage {}
 
   /** From a model worker. */
   public record ModelReplied(ModelReply reply, Map<String, String> headers)
@@ -169,6 +166,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       ActorRef<ToolWorker.RunTool> tools,
       Memories memories,
       Backlogs<String> backlogs,
+      ObservationRenderer<String> renderer,
       java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
@@ -462,7 +460,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       return Effect().persist(state.finishedTurn());
     }
     Backlogs.Taken<String> observation = taken.get();
-    deps.memories().forAgent(agentId).remember(userMessage(observation));
+    deps.memories().forAgent(agentId).remember(userMessage(deps.renderer(), observation));
     AgentState next =
         state
             .startingTurn(Identifiers.next())
@@ -477,10 +475,18 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
             });
   }
 
-  /** Key DERIVED from the entry id, never minted: re-taking after a crash must be free. */
-  static Remembrance.UserMessage userMessage(Backlogs.Taken<String> taken) {
+  /**
+   * Key DERIVED from the entry id, never minted: re-taking after a crash must be free.
+   *
+   * <p>Rendering happens HERE, at drain, never at ingest — see {@link Backlog}'s javadoc. A
+   * renderer supplied through {@link Dependencies} reaches an observation that was queued long
+   * before the renderer changed, because the backlog never held anything but the observation
+   * itself.
+   */
+  static Remembrance.UserMessage userMessage(
+      ObservationRenderer<String> renderer, Backlogs.Taken<String> taken) {
     return new Remembrance.UserMessage(
-        "obs:" + taken.entryId(), Message.user(List.of(new TextBlock(taken.observation()))));
+        "obs:" + taken.entryId(), Message.user(renderer.render(taken.observation())));
   }
 
   // ------------------------------------------------------------------------------------------

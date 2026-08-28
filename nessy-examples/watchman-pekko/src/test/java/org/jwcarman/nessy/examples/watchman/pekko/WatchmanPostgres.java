@@ -51,7 +51,7 @@ public final class WatchmanPostgres {
   public static Backlogs<String> backlogs() {
     return new SubstrateBacklogs<>(
         new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()),
-        Coalescer.none(),
+        WatchmanObservations.COALESCER,
         String.class);
   }
 
@@ -95,6 +95,7 @@ public final class WatchmanPostgres {
             new FakeRunner(),
             memories,
             backlogs(),
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),

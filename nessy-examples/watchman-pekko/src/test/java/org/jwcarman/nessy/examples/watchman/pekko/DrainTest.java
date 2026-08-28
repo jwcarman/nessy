@@ -92,6 +92,7 @@ class DrainTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -101,11 +102,11 @@ class DrainTest {
     actors.start();
     String agent = "drain-" + UUID.randomUUID();
 
-    actors.tell(agent, new AgentActor.Observe("first", null, Map.of()));
+    actors.tell(agent, new AgentActor.Observe("first", Map.of()));
     awaitParked(agent);
 
     // Arrives mid-round -- queued, not merged into the first turn's user message.
-    actors.tell(agent, new AgentActor.Observe("second", null, Map.of()));
+    actors.tell(agent, new AgentActor.Observe("second", Map.of()));
     denyPending(agent);
 
     // The round that just finished immediately starts the next one for what was queued.
@@ -137,8 +138,8 @@ class DrainTest {
     Memory memory = memories.forAgent("redrain");
     Backlogs.Taken<String> taken = new Backlogs.Taken<>("entry-a", "one");
 
-    memory.remember(AgentActor.userMessage(taken));
-    memory.remember(AgentActor.userMessage(taken));
+    memory.remember(AgentActor.userMessage(WatchmanObservations.RENDERER, taken));
+    memory.remember(AgentActor.userMessage(WatchmanObservations.RENDERER, taken));
 
     assertThat(memories.everything("redrain").messages()).hasSize(1);
   }

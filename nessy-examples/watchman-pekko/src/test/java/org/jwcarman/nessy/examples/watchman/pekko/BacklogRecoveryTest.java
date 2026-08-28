@@ -70,6 +70,7 @@ class BacklogRecoveryTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -83,7 +84,7 @@ class BacklogRecoveryTest {
     // for an observation still sitting in the backlog -- the exact shape of the crash window.
     backlogs.ingest(agent, "stranded", Instant.now());
     Backlogs.Taken<String> taken = backlogs.next(agent).orElseThrow();
-    memories.forAgent(agent).remember(AgentActor.userMessage(taken));
+    memories.forAgent(agent).remember(AgentActor.userMessage(WatchmanObservations.RENDERER, taken));
     AgentState torn =
         AgentState.idle()
             .startingTurn("turn-stuck")

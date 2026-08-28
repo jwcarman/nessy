@@ -58,6 +58,7 @@ class ClaimLifetimeTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -82,7 +83,7 @@ class ClaimLifetimeTest {
 
   @Test
   void a_completed_turn_leaves_no_claims() throws Exception {
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", Map.of()));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", Map.of()));
 
     await()
         .atMost(PATIENCE)

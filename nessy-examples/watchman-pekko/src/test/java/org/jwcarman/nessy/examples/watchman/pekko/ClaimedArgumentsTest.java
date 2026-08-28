@@ -73,6 +73,7 @@ class ClaimedArgumentsTest {
             new FakeRunner(),
             memories,
             backlogs,
+            WatchmanObservations.RENDERER,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -83,7 +84,7 @@ class ClaimedArgumentsTest {
     String agent = "claimed-args-" + UUID.randomUUID();
 
     // ... run a turn whose tool is called with `big` ...
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", Map.of()));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(15))

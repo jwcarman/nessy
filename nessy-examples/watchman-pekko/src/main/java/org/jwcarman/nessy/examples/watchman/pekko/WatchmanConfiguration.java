@@ -123,12 +123,18 @@ public class WatchmanConfiguration {
   }
 
   /**
-   * The durable backlog, on the same substrate as everything else. {@link Coalescer#none()} is the
-   * default -- everything accumulates -- until a real coalescing policy is wired in.
+   * The durable backlog, on the same substrate as everything else, coalescing per {@link
+   * WatchmanObservations#COALESCER}: twenty queued cron ticks become one.
    */
   @Bean
   public Backlogs<String> backlogs(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
-    return new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
+    return new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class);
+  }
+
+  /** How a drained observation becomes what the model reads. See {@link ObservationRenderer}. */
+  @Bean
+  public ObservationRenderer<String> observationRenderer() {
+    return WatchmanObservations.RENDERER;
   }
 
   /**
@@ -179,6 +185,7 @@ public class WatchmanConfiguration {
       CommandRunner runner,
       Memories memories,
       Backlogs<String> backlogs,
+      ObservationRenderer<String> renderer,
       Traces traces,
       Clock clock,
       BlockingWork blocking,
@@ -193,6 +200,7 @@ public class WatchmanConfiguration {
         runner,
         memories,
         backlogs,
+        renderer,
         traces,
         clock,
         blocking,
