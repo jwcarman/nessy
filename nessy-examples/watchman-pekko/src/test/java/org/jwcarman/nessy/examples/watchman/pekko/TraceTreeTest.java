@@ -202,7 +202,57 @@ class TraceTreeTest {
     // GenAI semantic conventions, asserted by name. These are DECLARED at their call sites rather
     // than derived from a message class, and this assertion is what keeps that honest: a missed
     // declaration produces an orphan span, never a compile error or an exception.
-    assertThat(names).contains("chat", "execute_tool");
+    assertThat(names).contains("search_memory", "chat", "create_memory", "execute_tool");
+
+    // Three spans where there used to be one: recall, the model call, and the remembrance are
+    // three different kinds of work with three different costs, and folding them into one leaf
+    // span is exactly the regression this task fixes. All three must hang off the SAME parent --
+    // whatever `chat` was already parented to -- so the trace still nests under the agent's
+    // receive span rather than the three scattering under each other.
+    List<String> chatParents =
+        finished.stream()
+            .filter(span -> span.getName().equals("chat"))
+            .map(SpanData::getParentSpanId)
+            .sorted()
+            .toList();
+    List<String> searchMemoryParents =
+        finished.stream()
+            .filter(span -> span.getName().equals("search_memory"))
+            .map(SpanData::getParentSpanId)
+            .sorted()
+            .toList();
+    List<String> createMemoryParents =
+        finished.stream()
+            .filter(span -> span.getName().equals("create_memory"))
+            .map(SpanData::getParentSpanId)
+            .sorted()
+            .toList();
+    assertThat(chatParents).isNotEmpty();
+    assertThat(searchMemoryParents).isEqualTo(chatParents);
+    assertThat(createMemoryParents).isEqualTo(chatParents);
+
+    // search_memory and create_memory are internal work, not a remote call -- no Span.Kind, which
+    // OpenTelemetry reports as INTERNAL.
+    assertThat(finished)
+        .filteredOn(
+            span ->
+                span.getName().equals("search_memory") || span.getName().equals("create_memory"))
+        .isNotEmpty()
+        .allSatisfy(span -> assertThat(span.getKind()).isEqualTo(SpanKind.INTERNAL));
+
+    // search_memory reports the size of what recall returned -- the number nobody could see
+    // before, and the one a token-budget bug would move.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("search_memory"))
+        .isNotEmpty()
+        .allSatisfy(
+            span -> {
+              var attributes = span.getAttributes();
+              assertThat(attributes.get(AttributeKey.stringKey("gen_ai.operation.name")))
+                  .isEqualTo("search_memory");
+              assertThat(attributes.get(AttributeKey.longKey("nessy.memory.messages"))).isNotNull();
+              assertThat(attributes.get(AttributeKey.longKey("nessy.memory.tokens"))).isNotNull();
+            });
 
     // The tool's identity is a TAG, not part of the span name -- a span name per tool would blow
     // up cardinality in every backend that indexes on it.

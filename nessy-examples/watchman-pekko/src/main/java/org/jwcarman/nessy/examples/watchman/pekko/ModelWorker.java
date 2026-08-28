@@ -21,6 +21,9 @@ import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.delivery.ConsumerController;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.TokenEstimator;
+import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 
 /**
@@ -32,6 +35,14 @@ import org.jwcarman.nessy.spi.Remembrance;
  * the number of workers IS the number of concurrent calls — no semaphore, no counter, no config.
  */
 public final class ModelWorker {
+
+  /**
+   * The same heuristic {@link Memories} budgets recall with — reused here only to make the size of
+   * what came back VISIBLE, never to change what is sent. Recomputing it against the
+   * already-budgeted {@link Context} reports what actually goes to the model, not the whole
+   * journal.
+   */
+  private static final TokenEstimator TOKEN_ESTIMATOR = TokenEstimator.heuristic();
 
   public sealed interface Command {}
 
@@ -64,29 +75,20 @@ public final class ModelWorker {
                     ModelDesk.ModelJob job = delivered.delivery().message();
                     // Recall, call, remember -- ALL on the blocking executor. Recall is a
                     // journal read through Memory, and the assistant turn is remembered before the
-                    // agent is told anything that depends on it. Neither may touch a dispatcher.
+                    // agent is told anything that depends on it. None of the three may touch a
+                    // dispatcher.
                     context.pipeToSelf(
                         java.util.concurrent.CompletableFuture.supplyAsync(
                             () -> {
-                              org.jwcarman.nessy.spi.Memory memory =
-                                  memories.forAgent(job.agentId());
-                              // GenAI semconv names this span `chat`, and it is CLIENT because
-                              // the model is a remote service. A generic per-message interceptor
-                              // would have named it after ModelJob; only a declared span gets
-                              // this right.
-                              ModelReply reply =
-                                  traces.inSpan(
-                                      "chat",
-                                      Span.Kind.CLIENT,
-                                      job.trace(),
-                                      () -> {
-                                        traces.tag("nessy.agent.id", job.agentId());
-                                        traces.tag("gen_ai.operation.name", "chat");
-                                        ModelReply result = model.reply(memory.recall());
-                                        tagUsage(traces, result.usage());
-                                        return result;
-                                      });
-                              remember(memory, reply);
+                              Memory memory = memories.forAgent(job.agentId());
+                              // Three spans where there used to be one, all children of the same
+                              // parent `chat` had before -- recall, the model call, and the
+                              // remembrance are three different kinds of work with three different
+                              // costs, and a trace that folds them into one leaf span cannot tell
+                              // a slow database from a slow model.
+                              Context recalled = recall(traces, job, memory);
+                              ModelReply reply = converse(traces, job, model, recalled);
+                              createMemory(traces, job, memory, reply);
                               return reply;
                             },
                             blocking),
@@ -120,14 +122,69 @@ public final class ModelWorker {
   }
 
   /**
-   * The assistant's turn is remembered before the agent hears about it.
+   * The journal read alone — {@code search_memory} in semconv's own {@code gen_ai.operation.name}
+   * enum ({@link org.jwcarman.nessy.agent.Observations#SEARCH_MEMORY} names the same string for
+   * {@code nessy-agent}; that constant is package-private there, so this module repeats the literal
+   * rather than widen it). Internal work, so no {@link Span.Kind}. Reported alongside is what was
+   * NOT visible before: how much context came back, which is the number a token-budget bug would
+   * move.
+   */
+  private static Context recall(Traces traces, ModelDesk.ModelJob job, Memory memory) {
+    return traces.inSpan(
+        "search_memory",
+        job.trace(),
+        () -> {
+          Context context = memory.recall();
+          traces.tag("nessy.agent.id", job.agentId());
+          traces.tag("gen_ai.operation.name", "search_memory");
+          traces.tag("nessy.memory.messages", (long) context.messages().size());
+          traces.tag("nessy.memory.tokens", context.tokens(TOKEN_ESTIMATOR));
+          return context;
+        });
+  }
+
+  /**
+   * The model call ALONE — nothing else inside it. GenAI semconv names this span {@code chat}, and
+   * it is CLIENT because the model is a remote service. A generic per-message interceptor would
+   * have named it after {@code ModelJob}; only a declared span gets this right.
+   */
+  private static ModelReply converse(
+      Traces traces, ModelDesk.ModelJob job, WatchmanModel model, Context recalled) {
+    return traces.inSpan(
+        "chat",
+        Span.Kind.CLIENT,
+        job.trace(),
+        () -> {
+          traces.tag("nessy.agent.id", job.agentId());
+          traces.tag("gen_ai.operation.name", "chat");
+          ModelReply result = model.reply(recalled);
+          tagUsage(traces, result.usage());
+          return result;
+        });
+  }
+
+  /**
+   * The assistant's turn is remembered before the agent hears about it — {@code create_memory} in
+   * semconv's own enum, and internal work like {@code search_memory}.
    *
    * <p>A {@link Remembrance.AssistantMessage} naming tool_use ids is WITHHELD from every later
    * recall until each of those ids has a matching exchange — Nessy's fold does that, so a crash
    * between this write and the agent's persist leaves a turn that simply does not appear in the
    * context rather than one the model would reject. That reconciliation used to be ours.
    */
-  private static void remember(org.jwcarman.nessy.spi.Memory memory, ModelReply reply) {
+  private static void createMemory(
+      Traces traces, ModelDesk.ModelJob job, Memory memory, ModelReply reply) {
+    traces.inSpan(
+        "create_memory",
+        job.trace(),
+        () -> {
+          traces.tag("nessy.agent.id", job.agentId());
+          traces.tag("gen_ai.operation.name", "create_memory");
+          remember(memory, reply);
+        });
+  }
+
+  private static void remember(Memory memory, ModelReply reply) {
     memory.remember(
         new Remembrance.AssistantMessage(
             org.jwcarman.nessy.api.Identifiers.next(), reply.message()));
