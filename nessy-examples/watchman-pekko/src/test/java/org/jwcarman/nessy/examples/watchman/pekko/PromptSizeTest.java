@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.typesafe.config.ConfigFactory;
-import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -70,7 +69,7 @@ class PromptSizeTest {
             new ScriptedWatchmanModel(Duration.ofMillis(5)),
             new FakeRunner(),
             budgeted,
-            new Traces(OpenTelemetry.noop()),
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),

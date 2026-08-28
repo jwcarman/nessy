@@ -15,9 +15,11 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
-import io.opentelemetry.api.OpenTelemetry;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
 import javax.sql.DataSource;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -57,12 +59,36 @@ public class WatchmanConfiguration {
   }
 
   /**
-   * Falls back to a no-op when nothing has configured OpenTelemetry, so the tests do not need a
-   * collector and the application still starts on a box with no observability stack.
+   * Falls back to no-ops when nothing has configured tracing, so the tests do not need a collector
+   * and the application still starts on a box with no observability stack.
+   *
+   * <p>Both beans come from Boot's tracing autoconfiguration when {@code micrometer-tracing} and a
+   * bridge are present. Depending on {@link Tracer} and {@link Propagator} rather than on {@code
+   * OpenTelemetry} directly is the point: OTel is the implementation underneath Micrometer, not the
+   * API this port codes against.
    */
   @Bean
-  public Traces traces(ObjectProvider<OpenTelemetry> openTelemetry) {
-    return new Traces(openTelemetry.getIfAvailable(OpenTelemetry::noop));
+  public Traces traces(ObjectProvider<Tracer> tracer, ObjectProvider<Propagator> propagator) {
+    Tracer resolved = tracer.getIfAvailable(() -> Tracer.NOOP);
+    Propagator resolvedPropagator = propagator.getIfAvailable(() -> Propagator.NOOP);
+    // SAY SO. A silent fall back to NOOP is how tracing died once already: opentelemetry-api left
+    // the runtime classpath, Boot's @ConditionalOnClass tracing autoconfiguration never ran, no
+    // Tracer bean existed, and every span in the application became a no-op while the app kept
+    // running and the tests kept passing. A fallback that hides a misconfiguration is worse than
+    // no fallback; this one still starts the app on a box with no observability stack, but it is
+    // no longer quiet about what that costs.
+    if (resolved == Tracer.NOOP || resolvedPropagator == Propagator.NOOP) {
+      LoggerFactory.getLogger(WatchmanConfiguration.class)
+          .warn(
+              "TRACING IS DISABLED: tracer={}, propagator={}. No spans will be recorded. This is"
+                  + " expected only when running without an observability stack; if you expected"
+                  + " traces, check that opentelemetry-api is on the RUNTIME classpath.",
+              resolved == Tracer.NOOP ? "NOOP" : resolved.getClass().getName(),
+              resolvedPropagator == Propagator.NOOP
+                  ? "NOOP"
+                  : resolvedPropagator.getClass().getName());
+    }
+    return new Traces(resolved, resolvedPropagator);
   }
 
   @Bean

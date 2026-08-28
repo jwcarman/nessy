@@ -69,7 +69,9 @@ public class WatchmanRounds {
    */
   @EventListener(ApplicationReadyEvent.class)
   public void recoverUnfinishedRounds() {
-    sweep.unfinishedAgents().forEach(agentId -> actors.tell(agentId, new AgentActor.Wake()));
+    sweep
+        .unfinishedAgents()
+        .forEach(agentId -> actors.tell(agentId, new AgentActor.Wake(actors.here())));
   }
 
   /** One round. Scheduled in the application; called directly by the tests. */

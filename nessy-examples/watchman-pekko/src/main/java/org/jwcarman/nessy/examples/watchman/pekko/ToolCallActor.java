@@ -40,7 +40,8 @@ public final class ToolCallActor {
   public sealed interface Command {}
 
   /** From the world, relayed by the agent: the human answered. */
-  public record Answer(boolean approved, String by, String note) implements Command {}
+  public record Answer(boolean approved, String by, String note, Map<String, String> headers)
+      implements Command {}
 
   /** From this call's own {@link ApprovalActor}. */
   public record Answered(boolean approved, String by, String note) implements Command {}
@@ -58,7 +59,7 @@ public final class ToolCallActor {
   public static Behavior<Command> create(
       String agentId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       Duration approvalTerm,
       Map<String, String> trace,
@@ -104,7 +105,7 @@ public final class ToolCallActor {
   private static void settleAsDenied(
       String agentId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       Map<String, String> trace,
       Memories memories,
       java.util.concurrent.Executor blocking,
@@ -135,7 +136,7 @@ public final class ToolCallActor {
   private static Behavior<Command> awaitingApproval(
       String agentId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<ApprovalActor.Command> approval,
       Map<String, String> trace,
@@ -173,7 +174,7 @@ public final class ToolCallActor {
   private static Behavior<Command> run(
       String agentId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<Command> self,
       Map<String, String> trace) {

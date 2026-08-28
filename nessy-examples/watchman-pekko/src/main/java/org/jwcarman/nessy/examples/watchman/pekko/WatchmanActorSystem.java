@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 
 import com.typesafe.config.Config;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -74,6 +75,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
   private final ActorRef<AgentRegistry.Command> registry;
   private final BlockingWork blocking;
   private final Duration askTimeout;
+  private final Traces traces;
 
   private volatile boolean running;
 
@@ -89,6 +91,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
       Duration askTimeout) {
     this.blocking = blocking;
     this.askTimeout = askTimeout;
+    this.traces = traces;
     this.system =
         ActorSystem.create(
             WatchmanGuardian.create(
@@ -113,8 +116,13 @@ public final class WatchmanActorSystem implements SmartLifecycle {
   }
 
   /** Fire-and-forget to one agent. No round trip, no future: the cron does not wait for a round. */
-  public void tell(String agentId, AgentActor.Command command) {
-    registry.tell(new AgentRegistry.Envelope(agentId, command));
+  public void tell(String agentId, AgentActor.NessyMessage message) {
+    registry.tell(new AgentRegistry.Envelope(agentId, message));
+  }
+
+  /** The trace context a caller at this boundary is standing in. */
+  public Map<String, String> here() {
+    return traces.capture();
   }
 
   /**
@@ -130,7 +138,9 @@ public final class WatchmanActorSystem implements SmartLifecycle {
         registry,
         replyTo ->
             new AgentRegistry.Envelope(
-                agentId, new AgentActor.AnswerApproval(callId, approved, by, note, replyTo)),
+                agentId,
+                new AgentActor.AnswerApproval(
+                    callId, approved, by, note, replyTo, traces.capture())),
         askTimeout,
         system.scheduler());
   }
@@ -139,7 +149,8 @@ public final class WatchmanActorSystem implements SmartLifecycle {
   public CompletionStage<TurnState> inspect(String agentId) {
     return AskPattern.<AgentRegistry.Command, TurnState>ask(
         registry,
-        replyTo -> new AgentRegistry.Envelope(agentId, new AgentActor.Inspect(replyTo)),
+        replyTo ->
+            new AgentRegistry.Envelope(agentId, new AgentActor.Inspect(replyTo, traces.capture())),
         askTimeout,
         system.scheduler());
   }

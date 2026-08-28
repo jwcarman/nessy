@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import io.micrometer.tracing.Span;
 import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
@@ -39,7 +40,7 @@ public final class ModelWorker {
 
   public record Replied(
       ModelReply reply,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       java.util.Map<String, String> trace,
       ActorRef<ConsumerController.Confirmed> confirmTo)
       implements Command {}
@@ -69,11 +70,19 @@ public final class ModelWorker {
                             () -> {
                               org.jwcarman.nessy.spi.Memory memory =
                                   memories.forAgent(job.agentId());
+                              // GenAI semconv names this span `chat`, and it is CLIENT because
+                              // the model is a remote service. A generic per-message interceptor
+                              // would have named it after ModelJob; only a declared span gets
+                              // this right.
                               ModelReply reply =
                                   traces.inSpan(
-                                      "model call",
+                                      "chat",
+                                      Span.Kind.CLIENT,
                                       job.trace(),
-                                      () -> model.reply(memory.recall()));
+                                      () -> {
+                                        traces.tag("nessy.agent.id", job.agentId());
+                                        return model.reply(memory.recall());
+                                      });
                               remember(memory, reply);
                               return reply;
                             },

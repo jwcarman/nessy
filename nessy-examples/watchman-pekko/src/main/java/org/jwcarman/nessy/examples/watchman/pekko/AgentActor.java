@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import io.micrometer.tracing.Span;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
@@ -55,15 +56,37 @@ import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
  * itself</b> need no state (a call moving from running to finished is just an actor stopping),
  * while <b>facts arriving from outside</b> must be persisted before they are acknowledged.
  */
-public final class AgentActor extends DurableStateBehavior<AgentActor.Command, TurnState> {
+public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessage, TurnState> {
 
   /** How a runtime asks for this agent to be let go. */
   @FunctionalInterface
   public interface StopRequest {
-    void requestStop(String agentId, ActorRef<Command> self);
+    void requestStop(String agentId, ActorRef<NessyMessage> self);
   }
 
-  public sealed interface Command {}
+  /**
+   * Every message this actor accepts, and the trace context that reached it.
+   *
+   * <p><b>Headers are on the interface, not on an envelope.</b> The alternative was a wrapper
+   * record — {@code NessyMessage(Command payload, Map<String,String> headers)} — which keeps
+   * tracing out of each record's signature. It was rejected because it makes carrying context
+   * OPTIONAL at every send site, and a send that forgets produces an orphan span rather than a
+   * compile error: a failure that is silent, rare, and only noticed when someone needs the trace.
+   * Here the compiler refuses to let a new message type exist without saying how it is traced.
+   *
+   * <p>The price is that {@code headers} appears in fifteen record signatures. That is the trade,
+   * taken deliberately, and it is cheaper than one silently broken trace.
+   *
+   * <p>Non-generic on purpose: {@code EntityTypeKey.create} and {@code ServiceKey.create} need
+   * class literals, and a generic type would be raw there — an unchecked warning this repo does not
+   * permit anyone to suppress. Each actor nests its own, which loses nothing because each actor
+   * already owns its own protocol.
+   */
+  public sealed interface NessyMessage {
+
+    /** W3C {@code traceparent} and friends. Empty when the sender had no context. */
+    Map<String, String> headers();
+  }
 
   /**
    * From the cron, or from anyone with something to say.
@@ -73,44 +96,52 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    *     sender decides, because only the sender knows whether its message replaces or accumulates:
    *     a person's message must pass {@code null} and can never be merged with anything.
    */
-  public record Observe(String text, String coalesceKey, Map<String, String> trace)
-      implements Command {}
+  public record Observe(String text, String coalesceKey, Map<String, String> headers)
+      implements NessyMessage {}
 
   /** From a model worker. */
-  public record ModelReplied(ModelReply reply, Map<String, String> trace) implements Command {}
+  public record ModelReplied(ModelReply reply, Map<String, String> headers)
+      implements NessyMessage {}
 
   /**
    * From one of this agent's own tool-call children. Carries no outcome: the result is already a
    * transcript turn, written by whoever produced it. The agent only records that the call is done.
    */
-  public record ToolCallSettled(String callId, Map<String, String> trace) implements Command {}
+  public record ToolCallSettled(String callId, Map<String, String> headers)
+      implements NessyMessage {}
 
   /**
    * From the approvals page. Carries a {@code replyTo} because the HTTP handler must not return 200
    * until this has been written down — see {@link #onAnswerApproval}.
    */
   public record AnswerApproval(
-      String callId, boolean approved, String by, String note, ActorRef<Ack> replyTo)
-      implements Command {}
+      String callId,
+      boolean approved,
+      String by,
+      String note,
+      ActorRef<Ack> replyTo,
+      Map<String, String> headers)
+      implements NessyMessage {}
 
   /** What the page is told once the decision is durable. */
   public record Ack(boolean accepted, String detail) {}
 
   /** From the page and the tests: what does this agent look like right now? */
-  public record Inspect(ActorRef<TurnState> replyTo) implements Command {}
+  public record Inspect(ActorRef<TurnState> replyTo, Map<String, String> headers)
+      implements NessyMessage {}
 
   /** From the startup sweep: exists only to bring the actor into memory so recovery can run. */
-  public record Wake() implements Command {}
+  public record Wake(Map<String, String> headers) implements NessyMessage {}
 
   /** From the world: let go of memory. */
-  public record Rest() implements Command {}
+  public record Rest(Map<String, String> headers) implements NessyMessage {}
 
   /** From the runtime, in response to {@link Rest}. The only message that ends the actor. */
-  public record Stop() implements Command {}
+  public record Stop(Map<String, String> headers) implements NessyMessage {}
 
-  public static final Stop STOP = new Stop();
+  public static final Stop STOP = new Stop(Map.of());
 
-  private final ActorContext<Command> context;
+  private final ActorContext<NessyMessage> context;
   private final String agentId;
   private final Dependencies deps;
 
@@ -135,7 +166,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
       Clock clock,
       Duration approvalTerm) {}
 
-  public static Behavior<Command> create(
+  public static Behavior<NessyMessage> create(
       String agentId, Dependencies deps, StopRequest stopRequest) {
     return Behaviors.setup(context -> new AgentActor(context, agentId, deps, stopRequest));
   }
@@ -143,7 +174,10 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   private final StopRequest stopRequest;
 
   private AgentActor(
-      ActorContext<Command> context, String agentId, Dependencies deps, StopRequest stopRequest) {
+      ActorContext<NessyMessage> context,
+      String agentId,
+      Dependencies deps,
+      StopRequest stopRequest) {
     super(PersistenceId.of("Watchman", agentId));
     this.context = context;
     this.agentId = agentId;
@@ -157,19 +191,99 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   }
 
   @Override
-  public CommandHandler<Command, TurnState> commandHandler() {
-    return (state, command) ->
-        switch (command) {
-          case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
-          case Wake ignored -> Effect().none();
-          case Rest ignored ->
-              Effect().none().thenRun(() -> stopRequest.requestStop(agentId, context.getSelf()));
-          case Stop ignored -> Effect().none().thenStop();
-          case Observe observe -> onObserve(state, observe);
-          case ModelReplied replied -> onModelReplied(state, replied);
-          case AnswerApproval answer -> onAnswerApproval(state, answer);
-          case ToolCallSettled settled -> onToolCallSettled(state, settled);
-        };
+  public CommandHandler<NessyMessage, TurnState> commandHandler() {
+    return (state, message) ->
+        deps.traces()
+            .inSpan(
+                spanName(message),
+                Span.Kind.CONSUMER,
+                message.headers(),
+                () -> {
+                  describe(state, message);
+                  return handle(state, message);
+                });
+  }
+
+  /**
+   * What this actor knows about itself, written onto the receive span.
+   *
+   * <p>These are the attributes that make a trace answer operational questions instead of merely
+   * showing that something happened:
+   *
+   * <ul>
+   *   <li><b>{@code nessy.actor.path}</b> — the full actor path. Under clustering this names the
+   *       node, which is the difference between "a turn stalled" and "a turn stalled on the box
+   *       that went away". It is also the only attribute here that changes when an entity moves.
+   *   <li><b>{@code nessy.agent.id}</b> — the partition key for everything: mailbox ordering,
+   *       persistence, and the one-turn-at-a-time rule. Filtering a trace search by it gives one
+   *       agent's whole history.
+   *   <li><b>{@code nessy.turn.phase}</b> — the phase the message ARRIVED at, which is what decides
+   *       whether it is admitted or dropped. A refused observation and an accepted one look
+   *       identical without it.
+   *   <li><b>{@code nessy.persistence.id}</b> — what to look up in the durable-state table.
+   * </ul>
+   *
+   * <p>All four are low cardinality per agent and bounded by the sealed protocol, so none of them
+   * is the attribute that blows up a backend's index.
+   */
+  private void describe(TurnState state, NessyMessage message) {
+    Traces traces = deps.traces();
+    traces.tag("messaging.system", "pekko");
+    traces.tag("nessy.agent.id", agentId);
+    traces.tag("nessy.actor.path", context.getSelf().path().toString());
+    traces.tag("nessy.message.type", message.getClass().getSimpleName());
+    traces.tag("nessy.turn.phase", state.getClass().getSimpleName());
+    traces.tag("nessy.persistence.id", persistenceId().id());
+
+    // The node. Locally this renders "pekko://watchman"; under clustering it becomes
+    // "pekko://watchman@host:port", so the SAME attribute answers "which box" the day we go
+    // multi-node, without anyone having to remember to add it then.
+    traces.tag("nessy.node.address", context.getSystem().address().toString());
+
+    // Live children against persisted work: the DIFFERENCE is the diagnostic. Two unsettled calls
+    // and zero children means the process restarted and the tool actors have not been respawned
+    // yet -- a state that is invisible from either number alone.
+    traces.tag("nessy.actor.children", String.valueOf(context.getChildren().size()));
+    if (state instanceof TurnState.WorkingTools working) {
+      traces.tag("nessy.tools.unsettled", String.valueOf(working.unsettled().size()));
+    }
+  }
+
+  /**
+   * The span every message gets, named for the actor and the message.
+   *
+   * <p>CONSUMER because the mailbox is a queue: paired with the PRODUCER span at the send, the gap
+   * between them is queue latency, which is exactly the thing an actor system makes easy to have
+   * and hard to see. The message type is safe in a span name because the protocol is a SEALED
+   * interface — the cardinality is bounded by the compiler, not by hope.
+   */
+  private static String spanName(NessyMessage message) {
+    return "agent receive " + message.getClass().getSimpleName();
+  }
+
+  /**
+   * Runs INSIDE the receive span, so {@code deps.traces().capture()} here is this actor's own
+   * context.
+   *
+   * <p><b>{@code here} is captured eagerly and on purpose.</b> A {@code thenRun} block runs after
+   * persistence commits, potentially on another thread, and always after this span's scope has
+   * closed — so a {@code capture()} inside one would come back empty and silently orphan everything
+   * downstream. Capturing at the top and closing over the result is what keeps a persisted effect's
+   * sends attached to the message that caused them.
+   */
+  private Effect<TurnState> handle(TurnState state, NessyMessage message) {
+    Map<String, String> here = deps.traces().capture();
+    return switch (message) {
+      case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
+      case Wake ignored -> Effect().none();
+      case Rest ignored ->
+          Effect().none().thenRun(() -> stopRequest.requestStop(agentId, context.getSelf()));
+      case Stop ignored -> Effect().none().thenStop();
+      case Observe observe -> onObserve(state, observe, here);
+      case ModelReplied replied -> onModelReplied(state, replied, here);
+      case AnswerApproval answer -> onAnswerApproval(state, answer, here);
+      case ToolCallSettled settled -> onToolCallSettled(state, settled, here);
+    };
   }
 
   /**
@@ -193,7 +307,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    * has to be written down before it is acknowledged — the rule the approvals page already follows.
    * A durable inbox is the real answer, not a field on this actor.
    */
-  private Effect<TurnState> onObserve(TurnState state, Observe observe) {
+  private Effect<TurnState> onObserve(TurnState state, Observe observe, Map<String, String> here) {
     if (!(state instanceof TurnState.Idle)) {
       context
           .getLog()
@@ -206,10 +320,11 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
     }
     // The user's turn is already in the transcript -- whoever sent this wrote it first. The agent
     // only records that a round has started.
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(observe.trace()));
+    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(here));
   }
 
-  private Effect<TurnState> onModelReplied(TurnState state, ModelReplied replied) {
+  private Effect<TurnState> onModelReplied(
+      TurnState state, ModelReplied replied, Map<String, String> here) {
     if (!(state instanceof TurnState.CallingModel)) {
       return Effect().none();
     }
@@ -231,7 +346,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
                             now))
                 .toList();
         var next = new TurnState.WorkingTools(calls);
-        yield Effect().persist(next).thenRun(() -> spawnMissing(next, replied.trace()));
+        yield Effect().persist(next).thenRun(() -> spawnMissing(next, here));
       }
     };
   }
@@ -250,7 +365,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    * and retries; if it dies after step 1 the decision is already durable and recovery applies it.
    * The one thing that cannot happen is a 200 for a decision nobody wrote down.
    */
-  private Effect<TurnState> onAnswerApproval(TurnState state, AnswerApproval answer) {
+  private Effect<TurnState> onAnswerApproval(
+      TurnState state, AnswerApproval answer, Map<String, String> here) {
     if (!(state instanceof TurnState.WorkingTools working)) {
       return Effect()
           .none()
@@ -278,17 +394,19 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
             () -> {
               var child = callActors.get(answer.callId());
               if (child != null) {
-                child.tell(new ToolCallActor.Answer(answer.approved(), answer.by(), answer.note()));
+                child.tell(
+                    new ToolCallActor.Answer(answer.approved(), answer.by(), answer.note(), here));
               } else {
                 // Nothing in memory (a restart since the park). The persisted decision is enough:
                 // spawn the call's actor and it reads the answer out of its own record.
-                spawnMissing(next, Map.of());
+                spawnMissing(next, here);
               }
             })
         .thenReply(answer.replyTo(), s -> new Ack(true, answer.approved() ? "approved" : "denied"));
   }
 
-  private Effect<TurnState> onToolCallSettled(TurnState state, ToolCallSettled settled) {
+  private Effect<TurnState> onToolCallSettled(
+      TurnState state, ToolCallSettled settled, Map<String, String> here) {
     if (!(state instanceof TurnState.WorkingTools working)) {
       return Effect().none();
     }
@@ -301,7 +419,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
     if (!updated.allSettled()) {
       return Effect().persist(updated);
     }
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(settled.trace()));
+    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(here));
   }
 
   // ------------------------------------------------------------------------------------------

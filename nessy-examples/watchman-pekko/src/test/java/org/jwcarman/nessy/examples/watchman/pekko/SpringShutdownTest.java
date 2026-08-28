@@ -117,7 +117,7 @@ class SpringShutdownTest {
     WatchmanActorSystem next =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
-      next.tell(agent, new AgentActor.Wake());
+      next.tell(agent, new AgentActor.Wake(java.util.Map.of()));
       await()
           .atMost(Duration.ofSeconds(45))
           .untilAsserted(

@@ -202,9 +202,24 @@
       <version>${htmx.version}</version>
     </dependency>
 
-    <!-- Telemetry, same wiring as the sibling watchman. opentelemetry-api is COMPILE scope here
-         because Traces.java names Context/Span/W3CTraceContextPropagator directly: actor messages
-         hop threads, so the propagation is ours to do by hand. -->
+    <!-- Telemetry. Traces.java codes against MICROMETER (io.micrometer.tracing.Tracer and
+         Propagator), not OpenTelemetry: OTel is the implementation underneath via
+         micrometer-tracing-bridge-otel, which the Boot starter brings at runtime. The main
+         sources contain no io.opentelemetry import at all, which is why opentelemetry-api is
+         RUNTIME scope here: runtime is absent from the COMPILE classpath, so the build itself
+         now enforces "main code does not touch OTel", while the jar still ships the API and
+         tests (which are on the runtime classpath) can still name OTel types deliberately, to
+         assert the spans a backend actually receives rather than the bridge's own types.
+
+         SCOPE THIS CAREFULLY, and do not "tidy" it to test. It was briefly TEST scope, and that
+         silently destroyed all tracing in the running application. Maven resolves by nearest
+         definition, so a direct test-scoped declaration BEATS the transitive compile-scoped one
+         from opentelemetry-sdk: the API left the runtime classpath entirely, Boot's tracing
+         autoconfiguration is @ConditionalOnClass on those very classes, no Tracer or Propagator
+         bean was created, and Traces fell back to the NOOP pair. Every span became a no-op and
+         nothing failed: the app ran, the tests passed, and the traces simply stopped existing.
+         The tests could not catch it because they construct OtelTracer/OtelPropagator directly
+         and never exercise Boot's wiring. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
@@ -216,6 +231,7 @@
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-api</artifactId>
+      <scope>runtime</scope>
     </dependency>
 
     <dependency>

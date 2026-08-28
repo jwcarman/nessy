@@ -148,7 +148,7 @@ class RestartTest {
       // what moved it -- this is the driver obligation, and it is ours rather than Pekko's.
       List<String> unfinished = new StartupSweep(WatchmanPostgres.dataSource()).unfinishedAgents();
       assertThat(unfinished).contains(agent);
-      unfinished.forEach(id -> second.tell(id, new AgentActor.Wake()));
+      unfinished.forEach(id -> second.tell(id, new AgentActor.Wake(java.util.Map.of())));
 
       await()
           .atMost(PATIENCE)

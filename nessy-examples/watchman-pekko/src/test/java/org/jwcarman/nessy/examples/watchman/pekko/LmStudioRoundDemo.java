@@ -58,7 +58,7 @@ class LmStudioRoundDemo {
                 4096),
             new FakeRunner(),
             WatchmanPostgres.memories(),
-            new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),

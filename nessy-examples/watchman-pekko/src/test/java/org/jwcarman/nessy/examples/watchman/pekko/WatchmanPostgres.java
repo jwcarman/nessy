@@ -82,7 +82,7 @@ public final class WatchmanPostgres {
             model,
             new FakeRunner(),
             memories,
-            new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),

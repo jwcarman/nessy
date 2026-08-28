@@ -53,7 +53,7 @@ public final class ModelDesk {
   public record ModelJob(
       String agentId,
       TurnState state,
-      ActorRef<AgentActor.Command> replyTo,
+      ActorRef<AgentActor.NessyMessage> replyTo,
       Map<String, String> trace) {}
 
   public sealed interface Command {}
@@ -62,7 +62,7 @@ public final class ModelDesk {
   public record CallModel(
       String agentId,
       TurnState state,
-      ActorRef<AgentActor.Command> replyTo,
+      ActorRef<AgentActor.NessyMessage> replyTo,
       Map<String, String> trace)
       implements Command {}
 

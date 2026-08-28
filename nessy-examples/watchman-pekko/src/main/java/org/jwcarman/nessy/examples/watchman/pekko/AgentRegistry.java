@@ -39,7 +39,7 @@ public final class AgentRegistry {
   public sealed interface Command {}
 
   /** The envelope, deliberately the same shape as sharding's. */
-  public record Envelope(String agentId, AgentActor.Command command) implements Command {}
+  public record Envelope(String agentId, AgentActor.NessyMessage message) implements Command {}
 
   /** Ask a live agent to stop; a no-op if it is not in memory. */
   public record Retire(String agentId) implements Command {}
@@ -51,12 +51,12 @@ public final class AgentRegistry {
   public static Behavior<Command> create(AgentActor.Dependencies deps) {
     return Behaviors.setup(
         context -> {
-          Map<String, ActorRef<AgentActor.Command>> agents = new HashMap<>();
+          Map<String, ActorRef<AgentActor.NessyMessage>> agents = new HashMap<>();
           return Behaviors.receive(Command.class)
               .onMessage(
                   Envelope.class,
                   envelope -> {
-                    agentFor(context, agents, envelope.agentId(), deps).tell(envelope.command());
+                    agentFor(context, agents, envelope.agentId(), deps).tell(envelope.message());
                     return Behaviors.same();
                   })
               .onMessage(
@@ -78,9 +78,9 @@ public final class AgentRegistry {
         });
   }
 
-  private static ActorRef<AgentActor.Command> agentFor(
+  private static ActorRef<AgentActor.NessyMessage> agentFor(
       ActorContext<Command> context,
-      Map<String, ActorRef<AgentActor.Command>> agents,
+      Map<String, ActorRef<AgentActor.NessyMessage>> agents,
       String agentId,
       AgentActor.Dependencies deps) {
     return agents.computeIfAbsent(
@@ -88,7 +88,7 @@ public final class AgentRegistry {
         id -> {
           AgentActor.StopRequest stopRequest =
               (stoppingId, self) -> context.getSelf().tell(new Retire(stoppingId));
-          ActorRef<AgentActor.Command> agent =
+          ActorRef<AgentActor.NessyMessage> agent =
               context.spawn(AgentActor.create(id, deps, stopRequest), "agent-" + safe(id));
           context.watchWith(agent, new AgentStopped(id));
           return agent;

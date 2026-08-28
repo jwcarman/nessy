@@ -49,13 +49,18 @@ public final class ToolWorker {
               ToolCallRecord call = message.call();
               CompletableFuture.supplyAsync(
                       () -> {
+                        // GenAI semconv names this span `execute_tool` and carries the tool name
+                        // as an attribute rather than baking it into the span name -- a name per
+                        // tool would blow up cardinality in every backend.
                         String result =
                             traces.inSpan(
-                                "tool " + call.tool(),
+                                "execute_tool",
                                 message.trace(),
                                 () -> {
-                                  Traces.attribute("watchman.tool", call.tool());
-                                  Traces.attribute("watchman.action", call.action());
+                                  traces.tag("nessy.agent.id", message.agentId());
+                                  traces.tag("nessy.tool.call.id", call.id());
+                                  traces.tag("gen_ai.tool.name", call.tool());
+                                  traces.tag("watchman.action", call.action());
                                   return WatchmanTools.run(
                                       runner, call.tool(), call.argumentsJson());
                                 });
