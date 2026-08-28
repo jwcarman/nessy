@@ -165,7 +165,7 @@ public final class ToolWorker {
   }
 
   /** An exception message with a class name, never bare {@code "null"} for a message-less one. */
-  private static String describe(Throwable e) {
+  static String describe(Throwable e) {
     String message = e.getMessage();
     return e.getClass().getSimpleName()
         + (message == null || message.isBlank() ? "" : ": " + message);

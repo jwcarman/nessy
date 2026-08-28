@@ -27,6 +27,8 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ONE tool call's entire life, as a behaviour. Ephemeral child of {@link AgentActor}.
@@ -43,6 +45,8 @@ import org.jwcarman.nessy.spi.Remembrance;
  * of the "re-ask is safe because nobody was told" argument, replaced by "we do not have to re-ask".
  */
 public final class ToolCallActor {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ToolCallActor.class);
 
   public sealed interface Command {}
 
@@ -112,6 +116,12 @@ public final class ToolCallActor {
    * agent is told. This actor is on a dispatcher, so the claim lookup and the append go to the
    * blocking executor and the agent is told from the completion -- telling an ActorRef from another
    * thread is the one thing that is always safe.
+   *
+   * <p><b>The agent is told ONLY when the exchange was actually recorded.</b> Same shape, same
+   * reasoning as {@link ToolWorker}: a throwing {@code remember} (or claim lookup) means nothing
+   * committed, and telling {@code ToolCallSettled} anyway would settle a call whose exchange the
+   * fold can never pair an assistant turn against. So on failure this says nothing back to the
+   * agent -- the call stays un-settled, and a respawn retries it, same as a worker's failed run.
    */
   private static void settleAsDenied(
       String agentId,
@@ -145,7 +155,16 @@ public final class ToolCallActor {
             },
             blocking)
         .whenComplete(
-            (done, failure) -> agent.tell(new AgentActor.ToolCallSettled(call.id(), trace)));
+            (done, failure) -> {
+              if (failure == null) {
+                agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
+              } else {
+                LOG.warn(
+                    "call {} not settled -- its exchange was never recorded: {}",
+                    call.id(),
+                    ToolWorker.describe(failure));
+              }
+            });
   }
 
   /**

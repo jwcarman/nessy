@@ -27,7 +27,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
-import org.apache.pekko.actor.typed.ActorRef;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,12 +34,12 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * {@link ToolWorker} in isolation, below the whole-round harness {@link RoundFlowTest} uses --
- * these tests exercise the one branch a full round can never force on demand: {@code remember}
- * itself throwing.
+ * {@link ToolCallActor} in isolation, below the whole-round harness {@link RoundFlowTest} uses --
+ * this test drives the denial path ({@code settleAsDenied}) against a substrate whose {@code
+ * remember} always fails, the branch a full round can never force on demand.
  */
-@DisplayName("A tool worker")
-class ToolWorkerTest {
+@DisplayName("A tool call actor")
+class ToolCallActorTest {
 
   private final ActorTestKit testKit = ActorTestKit.create();
   private final ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
@@ -53,8 +52,9 @@ class ToolWorkerTest {
 
   @Test
   @DisplayName(
-      "when remember throws, the call is never told it ran -- nothing was recorded to settle it against")
-  void a_remember_that_throws_never_settles_the_call() {
+      "when remember throws, a denied call is never told it settled -- nothing was recorded to"
+          + " settle it against")
+  void a_remember_that_throws_never_settles_a_denied_call() {
     String agentId = "agent-" + UUID.randomUUID();
     String turnId = "turn-" + UUID.randomUUID();
     Substrate substrate = new BatchThrowsSubstrate(new InMemorySubstrate(Clock.systemUTC()));
@@ -63,25 +63,37 @@ class ToolWorkerTest {
     String claimId = claims.put(agentId, turnId, "{}".getBytes(StandardCharsets.UTF_8));
     ToolCallRecord call =
         ToolCallRecord.asked(
-            "call-disk-1",
-            "disk_usage",
-            claimId,
-            WatchmanTools.action("disk_usage", "{}"),
-            Instant.now());
+                "call-prune-1",
+                "prune_images",
+                claimId,
+                WatchmanTools.action("prune_images", "{}"),
+                Instant.now())
+            .decidedBy(
+                new ToolCallRecord.Decision(false, "james", "not on a Friday", Instant.now()));
 
-    ActorRef<ToolWorker.RunTool> worker =
-        testKit.spawn(
-            ToolWorker.create(
-                new FakeRunner(), memories, blocking, MicrometerTracing.noop(), claims));
-    TestProbe<ToolCallActor.Command> replyTo = testKit.createTestProbe();
+    TestProbe<AgentActor.NessyMessage> agent = testKit.createTestProbe();
+    TestProbe<ToolWorker.RunTool> tools = testKit.createTestProbe();
 
-    worker.tell(new ToolWorker.RunTool(agentId, turnId, call, claimId, replyTo.getRef(), Map.of()));
+    testKit.spawn(
+        ToolCallActor.create(
+            agentId,
+            turnId,
+            call,
+            agent.getRef(),
+            tools.getRef(),
+            Duration.ofMinutes(10),
+            Map.of(),
+            Clock.systemUTC(),
+            memories,
+            blocking,
+            claims));
 
-    // The bug this guards against: telling Ran() here even though remember() blew up would
-    // settle a call whose exchange was never recorded -- the assistant turn naming it then hangs
-    // withheld from recall() forever, exactly like the original bug, just reached through a
-    // different door (a substrate failure rather than a thrown tool).
-    replyTo.expectNoMessage(Duration.ofSeconds(1));
+    // The bug this guards against: telling ToolCallSettled here even though remember() blew up
+    // would settle a denied call whose exchange was never recorded -- the assistant turn naming
+    // it then hangs withheld from recall() forever, the same bug ToolWorker had, reached through
+    // the denial door instead of the run door.
+    agent.expectNoMessage(Duration.ofSeconds(1));
+    tools.expectNoMessage(Duration.ofMillis(100));
     assertThat(memories.everything(agentId).messages()).isEmpty();
   }
 }
