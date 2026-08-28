@@ -81,7 +81,10 @@ public final class ModelWorker {
                                       job.trace(),
                                       () -> {
                                         traces.tag("nessy.agent.id", job.agentId());
-                                        return model.reply(memory.recall());
+                                        traces.tag("gen_ai.operation.name", "chat");
+                                        ModelReply result = model.reply(memory.recall());
+                                        tagUsage(traces, result.usage());
+                                        return result;
                                       });
                               remember(memory, reply);
                               return reply;
@@ -128,5 +131,17 @@ public final class ModelWorker {
     memory.remember(
         new Remembrance.AssistantMessage(
             org.jwcarman.nessy.api.Identifiers.next(), reply.message()));
+  }
+
+  /**
+   * Names follow the OpenTelemetry GenAI semantic conventions, matching what {@link
+   * ProviderWatchmanModel#record} already counts on the {@code MeterRegistry} so metrics and traces
+   * agree.
+   */
+  private static void tagUsage(Traces traces, org.jwcarman.nessy.api.conversation.Usage usage) {
+    traces.tag("gen_ai.usage.input_tokens", usage.inputTokens());
+    traces.tag("gen_ai.usage.output_tokens", usage.outputTokens());
+    traces.tag("gen_ai.usage.cache_read.input_tokens", usage.cacheReadInputTokens());
+    traces.tag("gen_ai.usage.cache_write.input_tokens", usage.cacheWriteInputTokens());
   }
 }

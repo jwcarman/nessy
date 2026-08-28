@@ -152,6 +152,20 @@ public final class Traces {
     }
   }
 
+  /**
+   * Adds an integer-valued tag to whatever span is current, if any.
+   *
+   * <p>GenAI semantic conventions want token counts as integer attributes, not stringified ones,
+   * which is what {@link Span#tag(String, long)} produces where {@link #tag(String, String)} would
+   * not.
+   */
+  public void tag(String key, long value) {
+    Span current = tracer.currentSpan();
+    if (current != null) {
+      current.tag(key, value);
+    }
+  }
+
   private static Span.Builder kinded(Span.Builder builder, Span.Kind kind) {
     return kind == null ? builder : builder.kind(kind);
   }

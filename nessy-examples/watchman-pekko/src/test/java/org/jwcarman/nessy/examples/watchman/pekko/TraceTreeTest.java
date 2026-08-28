@@ -219,6 +219,28 @@ class TraceTreeTest {
         .isNotEmpty()
         .allSatisfy(span -> assertThat(span.getKind()).isEqualTo(SpanKind.CLIENT));
 
+    // Every chat span carries what it cost -- the whole point of this task. The scripted model
+    // reports plausible, non-zero usage precisely so this cannot pass against an empty attribute.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("chat"))
+        .isNotEmpty()
+        .allSatisfy(
+            span -> {
+              var attributes = span.getAttributes();
+              assertThat(attributes.get(AttributeKey.stringKey("gen_ai.operation.name")))
+                  .isEqualTo("chat");
+              assertThat(attributes.get(AttributeKey.longKey("gen_ai.usage.input_tokens")))
+                  .isEqualTo(606L);
+              assertThat(attributes.get(AttributeKey.longKey("gen_ai.usage.output_tokens")))
+                  .isEqualTo(142L);
+              assertThat(
+                      attributes.get(AttributeKey.longKey("gen_ai.usage.cache_read.input_tokens")))
+                  .isEqualTo(0L);
+              assertThat(
+                      attributes.get(AttributeKey.longKey("gen_ai.usage.cache_write.input_tokens")))
+                  .isEqualTo(0L);
+            });
+
     System.out.println("[watchman] trace " + traceId + " spans: " + names);
   }
 
