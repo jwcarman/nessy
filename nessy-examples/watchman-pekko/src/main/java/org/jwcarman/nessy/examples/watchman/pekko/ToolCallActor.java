@@ -63,7 +63,7 @@ public final class ToolCallActor {
       Duration approvalTerm,
       Map<String, String> trace,
       java.time.Clock clock,
-      Transcript transcript,
+      Memories memories,
       java.util.concurrent.Executor blocking) {
 
     return Behaviors.setup(
@@ -77,7 +77,7 @@ public final class ToolCallActor {
                 call,
                 agent,
                 trace,
-                transcript,
+                memories,
                 blocking,
                 call.decision().by(),
                 call.decision().note());
@@ -89,7 +89,7 @@ public final class ToolCallActor {
                     ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
                     "approval");
             return awaitingApproval(
-                agentId, call, agent, tools, approval, trace, transcript, blocking);
+                agentId, call, agent, tools, approval, trace, memories, blocking);
           }
           return run(agentId, call, agent, tools, context.getSelf(), trace);
         });
@@ -106,13 +106,23 @@ public final class ToolCallActor {
       ToolCallRecord call,
       ActorRef<AgentActor.Command> agent,
       Map<String, String> trace,
-      Transcript transcript,
+      Memories memories,
       java.util.concurrent.Executor blocking,
       String by,
       String note) {
     String outcome = "denied by " + by + ": " + note;
     java.util.concurrent.CompletableFuture.runAsync(
-            () -> transcript.append(agentId, new Turn.ToolResult(call.id(), call.tool(), outcome)),
+            () ->
+                memories
+                    .forAgent(agentId)
+                    .remember(
+                        new org.jwcarman.nessy.spi.Remembrance.ToolExchange(
+                            call.id(),
+                            new org.jwcarman.nessy.api.tool.ToolCall(
+                                call.id(),
+                                call.tool(),
+                                WatchmanTools.argumentsOf(call.argumentsJson())),
+                            org.jwcarman.nessy.api.tool.ToolResult.error(outcome))),
             blocking)
         .whenComplete(
             (done, failure) -> agent.tell(new AgentActor.ToolCallSettled(call.id(), trace)));
@@ -129,7 +139,7 @@ public final class ToolCallActor {
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<ApprovalActor.Command> approval,
       Map<String, String> trace,
-      Transcript transcript,
+      Memories memories,
       java.util.concurrent.Executor blocking) {
     return Behaviors.receive(Command.class)
         .onMessage(
@@ -148,7 +158,7 @@ public final class ToolCallActor {
                     call,
                     agent,
                     trace,
-                    transcript,
+                    memories,
                     blocking,
                     answered.by(),
                     answered.note());

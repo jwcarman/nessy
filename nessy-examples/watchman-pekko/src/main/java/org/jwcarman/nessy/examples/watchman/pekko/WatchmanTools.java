@@ -17,7 +17,6 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
  * The four tools this port carries, and everything the rest of the system needs to know about them.
@@ -125,24 +125,31 @@ public final class WatchmanTools {
     return spec.render().apply(runner.run(argv, spec.timeout()), argv);
   }
 
-  /** The tool schemas, in the shape an OpenAI-compatible endpoint wants. */
-  public static ArrayNode schemas() {
-    ArrayNode tools = JSON.createArrayNode();
-    for (Spec spec : SPECS.values()) {
-      ObjectNode tool = tools.addObject();
-      tool.put("type", "function");
-      ObjectNode function = tool.putObject("function");
-      function.put("name", spec.name());
-      function.put("description", spec.description());
-      ObjectNode parameters = function.putObject("parameters");
-      parameters.put("type", "object");
-      parameters.putObject("properties");
-      // Every tool here takes no arguments: the watchman's read-only tools report everything, and
-      // the two acting ones have exactly one thing they do. That keeps the port about the actor
-      // composition instead of about JSON-schema plumbing.
-      parameters.putArray("required");
-    }
-    return tools;
+  /**
+   * The tools, as Nessy's own {@link ToolSpec}. The provider turns these into whatever the wire
+   * wants, so this port no longer assembles OpenAI JSON by hand.
+   *
+   * <p>Every tool here takes no arguments: the read-only ones report everything, and the two acting
+   * ones have exactly one thing they do. That keeps the port about the actor composition rather
+   * than about JSON-schema plumbing.
+   */
+  public static List<ToolSpec> specs() {
+    return SPECS.values().stream()
+        .map(spec -> new ToolSpec(spec.name(), spec.description(), emptyObjectSchema()))
+        .toList();
+  }
+
+  private static ObjectNode emptyObjectSchema() {
+    ObjectNode schema = JSON.createObjectNode();
+    schema.put("type", "object");
+    schema.putObject("properties");
+    schema.putArray("required");
+    return schema;
+  }
+
+  /** The model's arguments, as a node -- what a Remembrance.ToolExchange carries. */
+  public static JsonNode argumentsOf(String argumentsJson) {
+    return parse(argumentsJson);
   }
 
   private static JsonNode parse(String argumentsJson) {

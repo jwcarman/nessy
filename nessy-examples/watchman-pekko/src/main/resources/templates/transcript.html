@@ -8,7 +8,7 @@
     h1 { font-size: 1.2rem; }
     nav a { margin-right: 1rem; }
     td { vertical-align: top; padding: .35rem .6rem; border-bottom: 1px solid #eee; }
-    .seq, .when { white-space: nowrap; color: #666; }
+    .role { white-space: nowrap; color: #666; }
     pre { white-space: pre-wrap; margin: 0; }
   </style>
 </head>
@@ -16,10 +16,9 @@
 <h1>watchman (pekko) — the notes</h1>
 <nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
 <table>
-  <tr th:each="entry : ${entries}">
-    <td class="seq" th:text="${entry.seq}">1</td>
-    <td class="when" th:text="${entry.appendedAt}">when</td>
-    <td><pre th:text="${entry.turn}">turn</pre></td>
+  <tr th:each="note : ${notes}">
+    <td class="role" th:text="${note.role}">role</td>
+    <td><pre th:text="${note.text}">text</pre></td>
   </tr>
 </table>
 </body>

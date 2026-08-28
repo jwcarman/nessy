@@ -66,11 +66,14 @@ public class WatchmanConfiguration {
   }
 
   @Bean
-  public WatchmanModel watchmanModel(WatchmanProperties properties) {
+  public WatchmanModel watchmanModel(
+      WatchmanProperties properties,
+      org.jwcarman.nessy.spi.model.ModelProvider provider,
+      io.micrometer.core.instrument.MeterRegistry meters) {
     return properties.isScripted()
-        ? new ScriptedModel(java.time.Duration.ofMillis(50))
-        : new LmStudioModel(
-            properties.getModelUrl(), properties.getModelId(), properties.getModelApiKey());
+        ? new ScriptedWatchmanModel(java.time.Duration.ofMillis(50))
+        : new ProviderWatchmanModel(
+            provider.model(properties.getModelId()), meters, properties.getMaxTokens());
   }
 
   /**
@@ -83,9 +86,32 @@ public class WatchmanConfiguration {
     return new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource, clock);
   }
 
+  /**
+   * Memory, per agent, with the token budget applied on the way out. See {@link Memories} for why
+   * the budget is a decorator here rather than something Nessy applies for us.
+   */
   @Bean
-  public Transcript transcript(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
-    return new Transcript(substrate);
+  public Memories memories(
+      org.jwcarman.nessy.spi.substrate.Substrate substrate, WatchmanProperties properties) {
+    return new Memories(substrate, properties.getContextBudgetTokens());
+  }
+
+  /**
+   * The model provider, pointed at LM Studio. Base URL and key are the entire difference between
+   * talking to OpenAI and talking to a local endpoint.
+   *
+   * <p><b>One thing an application outside the module cannot do</b>, and it is worth reporting
+   * rather than working around silently: {@code OpenAiProviderConfig.provider(String)} is
+   * package-private. {@code XaiModelProviderBootstrap} can label its traffic {@code x_ai} only
+   * because it lives inside {@code org.jwcarman.nessy.model.openai}. From out here the provider
+   * name is stuck at {@code openai}, so every {@code gen_ai.provider.name} on this soak says
+   * "openai" when it means LM Studio. {@code apiKey} and {@code baseUrl} are public; this one is
+   * not, and there is no reason for the asymmetry.
+   */
+  @Bean(destroyMethod = "close")
+  public org.jwcarman.nessy.spi.model.ModelProvider modelProvider(WatchmanProperties properties) {
+    return org.jwcarman.nessy.model.openai.OpenAiModelProvider.create(
+        c -> c.apiKey(properties.getModelApiKey()).baseUrl(properties.getModelUrl()));
   }
 
   @Bean
@@ -107,7 +133,7 @@ public class WatchmanConfiguration {
   public WatchmanActorSystem watchmanActorSystem(
       WatchmanModel model,
       CommandRunner runner,
-      Transcript transcript,
+      Memories memories,
       Traces traces,
       Clock clock,
       BlockingWork blocking,
@@ -119,7 +145,7 @@ public class WatchmanConfiguration {
         PekkoConfigBridge.build("watchman-pekko", url, user, password),
         model,
         runner,
-        transcript,
+        memories,
         traces,
         clock,
         blocking,

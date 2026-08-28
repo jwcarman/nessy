@@ -74,15 +74,13 @@ class WatchmanToolsTest {
 
     @Test
     void every_tool_is_offered_with_a_description() {
-      var schemas = WatchmanTools.schemas();
-      List<String> names = new java.util.ArrayList<>();
-      schemas.forEach(tool -> names.add(tool.path("function").path("name").asText()));
+      var specs = WatchmanTools.specs();
+      List<String> names = specs.stream().map(org.jwcarman.nessy.api.tool.ToolSpec::name).toList();
 
       assertThat(names).isNotEmpty();
       assertThat(names)
           .containsExactlyInAnyOrder("disk_usage", "containers", "prune_images", "long_job");
-      schemas.forEach(
-          tool -> assertThat(tool.path("function").path("description").asText()).isNotBlank());
+      specs.forEach(spec -> assertThat(spec.description()).isNotBlank());
     }
   }
 

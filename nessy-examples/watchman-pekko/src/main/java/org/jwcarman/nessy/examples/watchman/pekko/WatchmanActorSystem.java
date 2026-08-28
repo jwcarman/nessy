@@ -81,7 +81,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
       Config config,
       WatchmanModel model,
       CommandRunner runner,
-      Transcript transcript,
+      Memories memories,
       Traces traces,
       java.time.Clock clock,
       BlockingWork blocking,
@@ -92,7 +92,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
     this.system =
         ActorSystem.create(
             WatchmanGuardian.create(
-                model, runner, transcript, traces, clock, blocking.executor(), 4, 8, approvalTerm),
+                model, runner, memories, traces, clock, blocking.executor(), 4, 8, approvalTerm),
             "watchman",
             config);
     this.registry = askForRegistry();

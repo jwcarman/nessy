@@ -16,8 +16,18 @@
 package org.jwcarman.nessy.examples.watchman.pekko;
 
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -53,13 +63,12 @@ public class ApprovalsController {
 
   private final PendingApprovals approvals;
   private final WatchmanActorSystem actors;
-  private final Transcript transcript;
+  private final Memories memories;
 
-  ApprovalsController(
-      PendingApprovals approvals, WatchmanActorSystem actors, Transcript transcript) {
+  ApprovalsController(PendingApprovals approvals, WatchmanActorSystem actors, Memories memories) {
     this.approvals = approvals;
     this.actors = actors;
-    this.transcript = transcript;
+    this.memories = memories;
   }
 
   /** What is waiting, longest wait first. */
@@ -70,15 +79,41 @@ public class ApprovalsController {
     return "index";
   }
 
+  /** One rendered transcript entry. */
+  public record Note(String role, String text) {}
+
   /**
-   * The watchman's notes, read straight from the journal — no actor involved, and no limit on how
-   * far back it goes. This page is the reason the transcript being append-only pays twice: it is
-   * cheap to read and every entry carries the time it was written.
+   * The watchman's notes, read straight from Memory — no actor involved.
+   *
+   * <p><b>Not {@code Context.lines()}</b>, and that is worth explaining. {@code lines()} renders
+   * role and TEXT, so an assistant turn that only asked for tools comes out blank and a tool result
+   * does not come out at all — on this application's transcript that is most of the page. The tool
+   * traffic is the interesting part of a watchman's round, so this walks the blocks instead.
    */
   @GetMapping("/transcript")
   public String transcript(Model model) {
-    model.addAttribute("entries", transcript.entries(WatchmanGuardian.WATCHMAN));
+    List<Note> notes = new ArrayList<>();
+    for (Message message : memories.everything(WatchmanGuardian.WATCHMAN).messages()) {
+      for (ContentBlock block : message.content()) {
+        switch (block) {
+          case TextBlock(String text) -> notes.add(new Note(role(message), text));
+          case ToolUseBlock(ToolCall call, String ignored) ->
+              notes.add(new Note("asked", call.name()));
+          case ToolResultBlock(String ignoredId, String content, boolean isError) ->
+              notes.add(new Note(isError ? "tool (error)" : "tool", content));
+          case ImageBlock ignored -> notes.add(new Note(role(message), "(image)"));
+          case ThinkingBlock(String thinking, String ignored) ->
+              notes.add(new Note("thinking", thinking));
+          case RedactedThinkingBlock ignored -> notes.add(new Note("thinking", "(redacted)"));
+        }
+      }
+    }
+    model.addAttribute("notes", notes);
     return "transcript";
+  }
+
+  private static String role(Message message) {
+    return message.role().name().toLowerCase(java.util.Locale.ROOT);
   }
 
   /**

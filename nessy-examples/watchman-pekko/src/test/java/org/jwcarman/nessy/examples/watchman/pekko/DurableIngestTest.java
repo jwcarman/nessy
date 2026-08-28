@@ -43,12 +43,6 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Answering an approval durably")
 class DurableIngestTest {
 
-  /** The scripted model makes ids unique per round; these are round one\'s. */
-  private static final String PRUNE = "call-prune-1";
-
-  private static final String DISK = "call-disk-1";
-  private static final String CONTAINERS = "call-containers-1";
-
   private static final Duration PATIENCE = Duration.ofSeconds(45);
 
   private final DataSource dataSource = WatchmanPostgres.dataSource();
@@ -90,24 +84,36 @@ class DurableIngestTest {
             () -> {
               TurnState state = stateOf(actors, agent);
               assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
-              assertThat(((TurnState.WorkingTools) state).call(PRUNE)).isPresent();
+              assertThat(Calls.pending(state, "prune_images")).isPresent();
             });
+  }
+
+  /** The pending prune call's id, which is unique per call and never hardcoded. */
+  private static String prune(WatchmanActorSystem actors, String agent) {
+    try {
+      return Calls.pending(
+              actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS), "prune_images")
+          .orElseThrow();
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   @Test
   void the_decision_is_on_disk_before_the_page_is_told_anything() throws Exception {
     String agent = "ingest-" + UUID.randomUUID();
     try (var ignored =
-        new AutoCloseableActors(WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20))))) {
+        new AutoCloseableActors(
+            WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20))))) {
       WatchmanActorSystem actors = ignored.actors();
       parkOnApproval(actors, agent);
       TurnState parked = onDisk(agent).orElseThrow();
       assertThat(parked).isInstanceOf(TurnState.WorkingTools.class);
-      assertThat(((TurnState.WorkingTools) parked).call(PRUNE).orElseThrow().decided()).isFalse();
+      assertThat(Calls.byTool(parked, "prune_images").orElseThrow().decided()).isFalse();
 
       AgentActor.Ack ack =
           actors
-              .answerApproval(agent, PRUNE, false, "james", "not today")
+              .answerApproval(agent, prune(actors, agent), false, "james", "not today")
               .toCompletableFuture()
               .get(20, TimeUnit.SECONDS);
 
@@ -126,11 +132,12 @@ class DurableIngestTest {
     String agent = "ingest-crash-" + UUID.randomUUID();
 
     try (var first =
-        new AutoCloseableActors(WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20))))) {
+        new AutoCloseableActors(
+            WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20))))) {
       parkOnApproval(first.actors(), agent);
       first
           .actors()
-          .answerApproval(agent, PRUNE, false, "james", "absolutely not")
+          .answerApproval(agent, prune(first.actors(), agent), false, "james", "absolutely not")
           .toCompletableFuture()
           .get(20, TimeUnit.SECONDS);
       // Terminate immediately: if the acknowledgement had raced ahead of the write, this is where
@@ -138,15 +145,14 @@ class DurableIngestTest {
     }
 
     try (var second =
-        new AutoCloseableActors(WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20))))) {
+        new AutoCloseableActors(
+            WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20))))) {
       await()
           .atMost(PATIENCE)
           .untilAsserted(
               () -> assertThat(stateOf(second.actors(), agent)).isInstanceOf(TurnState.Idle.class));
 
-      assertThat(WatchmanPostgres.transcript().recall(agent, stateOf(second.actors(), agent)))
-          .filteredOn(Turn.ToolResult.class::isInstance)
-          .extracting(turn -> ((Turn.ToolResult) turn).text())
+      assertThat(WatchmanPostgres.results(agent).values())
           .anySatisfy(text -> assertThat(text).contains("denied by james: absolutely not"));
     }
   }
@@ -177,11 +183,8 @@ class DurableIngestTest {
         return true;
       }
     }
-    return WatchmanPostgres.transcript().entries(agentId).stream()
-        .map(Transcript.Entry::turn)
-        .filter(Turn.ToolResult.class::isInstance)
-        .map(Turn.ToolResult.class::cast)
-        .anyMatch(result -> result.text().contains(expected));
+    return WatchmanPostgres.results(agentId).values().stream()
+        .anyMatch(text -> text.contains(expected));
   }
 
   /** Small shim so the tests can use try-with-resources over the lifecycle bean. */

@@ -37,12 +37,6 @@ import org.junit.jupiter.api.Test;
 @DisplayName("A parked round, across a restart")
 class RestartTest {
 
-  /** The scripted model makes ids unique per round; these are round one\'s. */
-  private static final String PRUNE = "call-prune-1";
-
-  private static final String DISK = "call-disk-1";
-  private static final String CONTAINERS = "call-containers-1";
-
   private static final Duration PATIENCE = Duration.ofSeconds(45);
 
   private TurnState stateOf(WatchmanActorSystem actors, String agent) {
@@ -53,11 +47,23 @@ class RestartTest {
     }
   }
 
+  /** The pending prune call's id, which is unique per call and never hardcoded. */
+  private static String prune(WatchmanActorSystem actors, String agent) {
+    try {
+      return Calls.pending(
+              actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS), "prune_images")
+          .orElseThrow();
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   @Test
   void a_round_parked_on_an_approval_is_answered_after_a_restart_and_finishes() throws Exception {
     String agent = "restart-" + UUID.randomUUID();
 
-    WatchmanActorSystem first = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20)));
+    WatchmanActorSystem first =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
       first.tell(
           agent,
@@ -68,14 +74,15 @@ class RestartTest {
               () -> {
                 TurnState state = stateOf(first, agent);
                 assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
-                assertThat(((TurnState.WorkingTools) state).call(PRUNE)).isPresent();
+                assertThat(Calls.pending(state, "prune_images")).isPresent();
               });
     } finally {
       first.stop(); // a real termination, awaited
     }
 
     // A genuinely new actor system, which has never heard of this round.
-    WatchmanActorSystem second = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20)));
+    WatchmanActorSystem second =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
       // The approvals page finds it by reading the agents' own persisted state -- no projection,
       // no second write, and no live actor required.
@@ -86,13 +93,13 @@ class RestartTest {
           .anySatisfy(
               row -> {
                 assertThat(row.agentId()).isEqualTo(agent);
-                assertThat(row.callId()).isEqualTo(PRUNE);
+                assertThat(row.tool()).isEqualTo("prune_images");
                 assertThat(row.action()).isEqualTo("docker image prune -af");
               });
 
       AgentActor.Ack ack =
           second
-              .answerApproval(agent, PRUNE, false, "james", "still no")
+              .answerApproval(agent, prune(second, agent), false, "james", "still no")
               .toCompletableFuture()
               .get(20, TimeUnit.SECONDS);
       assertThat(ack.accepted()).isTrue();
@@ -102,11 +109,9 @@ class RestartTest {
           .untilAsserted(
               () -> assertThat(stateOf(second, agent)).isInstanceOf(TurnState.Idle.class));
 
-      List<Turn> turns = WatchmanPostgres.transcript().recall(agent, stateOf(second, agent));
-      assertThat(turns).isNotEmpty();
-      assertThat(turns)
-          .filteredOn(Turn.ToolResult.class::isInstance)
-          .extracting(turn -> ((Turn.ToolResult) turn).text())
+      var results = WatchmanPostgres.results(agent);
+      assertThat(results).isNotEmpty();
+      assertThat(results.values())
           .anySatisfy(text -> assertThat(text).contains("denied by james: still no"))
           .anySatisfy(text -> assertThat(text).contains("91% used"));
 
@@ -122,7 +127,8 @@ class RestartTest {
   void a_round_killed_mid_model_call_is_re_driven_by_the_sweep_with_nobody_asking() {
     String agent = "resume-" + UUID.randomUUID();
 
-    WatchmanActorSystem first = WatchmanPostgres.start(new ScriptedModel(Duration.ofSeconds(60)));
+    WatchmanActorSystem first =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofSeconds(60)));
     try {
       first.tell(
           agent,
@@ -135,7 +141,8 @@ class RestartTest {
       first.stop();
     }
 
-    WatchmanActorSystem second = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20)));
+    WatchmanActorSystem second =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
       // Nothing is sent to this agent except the sweep's Wake. If the round moves, the sweep is
       // what moved it -- this is the driver obligation, and it is ours rather than Pekko's.

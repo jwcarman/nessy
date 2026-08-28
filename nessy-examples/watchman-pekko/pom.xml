@@ -116,6 +116,22 @@
       <artifactId>nessy-substrate-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Memory, and the Remembrance fold that pairs a tool_use with its result. SubstrateMemory
+         owns the transcript directly; this port no longer has one of its own. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
+         that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
+         that talks to it, pointed at a different base URL, exactly as XaiModelProviderBootstrap
+         points it at x.ai. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
     <!-- The actor runtime. -->
     <dependency>

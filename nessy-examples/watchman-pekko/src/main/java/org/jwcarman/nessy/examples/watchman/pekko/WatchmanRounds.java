@@ -46,19 +46,19 @@ public class WatchmanRounds {
 
   private final WatchmanActorSystem actors;
   private final StartupSweep sweep;
-  private final Transcript transcript;
+  private final Memories memories;
   private final Traces traces;
   private final Clock clock;
 
   WatchmanRounds(
       WatchmanActorSystem actors,
       StartupSweep sweep,
-      Transcript transcript,
+      Memories memories,
       Traces traces,
       Clock clock) {
     this.actors = actors;
     this.sweep = sweep;
-    this.transcript = transcript;
+    this.memories = memories;
     this.traces = traces;
     this.clock = clock;
   }
@@ -81,9 +81,14 @@ public class WatchmanRounds {
         () -> {
           String observation = "It is " + clock.instant() + ". Do your rounds.";
           LOG.info("[watchman] telling the watchman: {}", observation);
-          // Transcript first, then the agent -- this scheduler thread is not a dispatcher, so the
-          // append can block here, and the ordering is guaranteed by being sequential.
-          transcript.append(WatchmanGuardian.WATCHMAN, new Turn.User(observation));
+          // Remembered first, then the agent -- this scheduler thread is not a dispatcher, so the
+          // write can block here, and the ordering is guaranteed by being sequential.
+          memories
+              .forAgent(WatchmanGuardian.WATCHMAN)
+              .remember(
+                  new org.jwcarman.nessy.spi.Remembrance.UserMessage(
+                      org.jwcarman.nessy.api.Identifiers.next(),
+                      org.jwcarman.nessy.api.message.Message.user(observation)));
           actors.tell(
               WatchmanGuardian.WATCHMAN,
               new AgentActor.Observe(observation, ROUNDS, traces.capture()));

@@ -129,7 +129,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   public record Dependencies(
       ActorRef<ModelDesk.Command> modelDesk,
       ActorRef<ToolWorker.RunTool> tools,
-      Transcript transcript,
+      Memories memories,
       java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
@@ -213,11 +213,11 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
     if (!(state instanceof TurnState.CallingModel)) {
       return Effect().none();
     }
-    // Every arm's transcript turn was appended by the model worker before this message was sent.
+    // Every arm's assistant turn was remembered by the model worker before this message was sent.
     return switch (replied.reply()) {
       case ModelReply.Said ignored -> Effect().persist(new TurnState.Idle());
       case ModelReply.Failed ignored -> Effect().persist(new TurnState.Idle());
-      case ModelReply.AskedForTools(String preamble, var requests) -> {
+      case ModelReply.AskedForTools(var ignoredMessage, var requests, var ignoredUsage) -> {
         var now = deps.clock().instant();
         var calls =
             requests.stream()
@@ -225,9 +225,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
                     request ->
                         ToolCallRecord.asked(
                             request.id(),
-                            request.tool(),
-                            request.argumentsJson(),
-                            WatchmanTools.action(request.tool(), request.argumentsJson()),
+                            request.name(),
+                            request.arguments().toString(),
+                            WatchmanTools.action(request.name(), request.arguments().toString()),
                             now))
                 .toList();
         var next = new TurnState.WorkingTools(calls);
@@ -339,7 +339,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
                       deps.approvalTerm(),
                       trace,
                       deps.clock(),
-                      deps.transcript(),
+                      deps.memories(),
                       deps.blocking()),
                   ToolCallActor.nameFor(id)));
     }

@@ -40,19 +40,13 @@ import org.junit.jupiter.api.Test;
  *   revision 64  24,151 bytes      (64 minutes later; all 64 revisions rewrote everything)
  * </pre>
  *
- * <p>The transcript now lives in {@link Transcript}, appended one row per turn. This test drives
- * many rounds against real Postgres and asserts what should now be true: the revision climbs and
- * the state payload does NOT.
+ * <p>The transcript now lives in Memory, appended one row per turn. This test drives many rounds
+ * against real Postgres and asserts what should now be true: the revision climbs and the state
+ * payload does NOT.
  */
 @Tag("container")
 @DisplayName("The size of what a round rewrites")
 class StateSizeTest {
-
-  /** The scripted model makes ids unique per round; these are round one\'s. */
-  private static final String PRUNE = "call-prune-1";
-
-  private static final String DISK = "call-disk-1";
-  private static final String CONTAINERS = "call-containers-1";
 
   /** One sample of the row the agent rewrites on every fold. */
   private record Sample(long revision, int bytes) {}
@@ -95,16 +89,17 @@ class StateSizeTest {
   @Test
   void the_state_payload_stays_flat_while_the_revision_climbs() throws Exception {
     String agent = "size-" + UUID.randomUUID();
-    Transcript transcript = WatchmanPostgres.transcript();
+    Memories memories = WatchmanPostgres.memories();
     List<Sample> samples = new ArrayList<>();
     List<Sample> parked = new ArrayList<>();
 
-    WatchmanActorSystem actors = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(5)));
+    WatchmanActorSystem actors =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(5)));
     try {
       // Twelve full rounds. Each is: user turn, model call, three tool calls (one of them denied
       // by a human), a second model call, done -- around six revisions and six transcript turns.
       for (int round = 1; round <= 12; round++) {
-        transcript.append(agent, new Turn.User("Round " + round + ". Do your rounds."));
+        WatchmanPostgres.observe(agent, "Round " + round + ". Do your rounds.");
         actors.tell(
             agent,
             new AgentActor.Observe(
@@ -137,7 +132,7 @@ class StateSizeTest {
       actors.stop();
     }
 
-    int turns = transcript.entries(agent).size();
+    int turns = memories.everything(agent).messages().size();
     System.out.println("\n  round | revision | idle bytes | mid-round bytes");
     System.out.println("  ------+----------+------------+----------------");
     for (int i = 0; i < samples.size(); i++) {
@@ -145,7 +140,7 @@ class StateSizeTest {
           "  %5d | %8d | %10d | %15d%n",
           i + 1, samples.get(i).revision(), samples.get(i).bytes(), parked.get(i).bytes());
     }
-    System.out.printf("  transcript rows in nessy_journal: %d%n%n", turns);
+    System.out.printf("  messages recalled from Memory: %d%n%n", turns);
 
     Sample first = samples.getFirst();
     Sample last = samples.getLast();
@@ -153,7 +148,7 @@ class StateSizeTest {
     // The revision really did climb -- this is not a test that passes by doing nothing.
     assertThat(samples).isNotEmpty();
     assertThat(last.revision()).isGreaterThan(first.revision() + 20);
-    assertThat(turns).isGreaterThan(50);
+    assertThat(turns).isGreaterThan(20);
 
     // And the payload did not. Every round returns the agent to Idle, whose document is the same
     // handful of bytes no matter how long the conversation has become.

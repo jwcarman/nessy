@@ -16,17 +16,32 @@
 package org.jwcarman.nessy.examples.watchman.pekko;
 
 import java.util.List;
+import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
-/** What one model turn produced. */
+/**
+ * What one model turn produced, in Nessy's own vocabulary.
+ *
+ * <p>{@code message} is the assistant turn exactly as it will be remembered — no translation
+ * anywhere, because {@code Memory} stores {@link Message}s and the provider produces them.
+ */
 public sealed interface ModelReply {
 
-  record Said(String text) implements ModelReply {}
+  Message message();
 
-  record AskedForTools(String preamble, List<Turn.ToolRequest> requests) implements ModelReply {
+  Usage usage();
+
+  /** The model talked and asked for nothing. */
+  record Said(Message message, Usage usage) implements ModelReply {}
+
+  /** The model asked for tools. */
+  record AskedForTools(Message message, List<ToolCall> calls, Usage usage) implements ModelReply {
     public AskedForTools {
-      requests = List.copyOf(requests);
+      calls = List.copyOf(calls);
     }
   }
 
-  record Failed(String detail) implements ModelReply {}
+  /** The call failed; the round ends with a note rather than a crash. */
+  record Failed(Message message, Usage usage, String detail) implements ModelReply {}
 }

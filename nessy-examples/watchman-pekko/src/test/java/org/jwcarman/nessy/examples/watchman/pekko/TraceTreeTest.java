@@ -51,12 +51,6 @@ import org.junit.jupiter.api.Test;
 @DisplayName("The trace a round produces")
 class TraceTreeTest {
 
-  /** The scripted model makes ids unique per round; these are round one\'s. */
-  private static final String PRUNE = "call-prune-1";
-
-  private static final String DISK = "call-disk-1";
-  private static final String CONTAINERS = "call-containers-1";
-
   private InMemorySpanExporter spans;
   private OpenTelemetrySdk sdk;
   private WatchmanActorSystem actors;
@@ -79,10 +73,10 @@ class TraceTreeTest {
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
-            new ScriptedModel(Duration.ofMillis(10)),
+            new ScriptedWatchmanModel(Duration.ofMillis(10)),
             new FakeRunner(),
-            new Transcript(
-                new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC())),
+            new Memories(
+                new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC()), 8000),
             new Traces(sdk),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -105,6 +99,17 @@ class TraceTreeTest {
     }
   }
 
+  /** The pending prune call's id, which is unique per call and never hardcoded. */
+  private static String prune(WatchmanActorSystem actors, String agent) {
+    try {
+      return Calls.pending(
+              actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS), "prune_images")
+          .orElseThrow();
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   @Test
   void every_span_a_round_produces_hangs_off_the_one_round_span() throws Exception {
     Traces traces = new Traces(sdk);
@@ -122,10 +127,10 @@ class TraceTreeTest {
         .untilAsserted(
             () -> {
               assertThat(state()).isInstanceOf(TurnState.WorkingTools.class);
-              assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent();
+              assertThat(Calls.pending(state(), "prune_images")).isPresent();
             });
     actors
-        .answerApproval(agent, PRUNE, false, "james", "no")
+        .answerApproval(agent, prune(actors, agent), false, "james", "no")
         .toCompletableFuture()
         .get(15, TimeUnit.SECONDS);
     await()

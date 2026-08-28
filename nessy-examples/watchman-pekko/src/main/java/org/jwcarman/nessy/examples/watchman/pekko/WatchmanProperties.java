@@ -41,6 +41,33 @@ public class WatchmanProperties {
   /** Scripted mode spends nothing and reaches nothing; the tests and the demo use it. */
   private boolean scripted = false;
 
+  /**
+   * How much of the conversation may go into a prompt.
+   *
+   * <p>Without this the prompt grows with the transcript forever — the expensive curve, paid in
+   * tokens on every call and fatal to the context window long before the database notices.
+   */
+  private long contextBudgetTokens = 8000;
+
+  /** The model's own output budget for one turn. */
+  private int maxTokens = 4096;
+
+  public long getContextBudgetTokens() {
+    return contextBudgetTokens;
+  }
+
+  public void setContextBudgetTokens(long contextBudgetTokens) {
+    this.contextBudgetTokens = contextBudgetTokens;
+  }
+
+  public int getMaxTokens() {
+    return maxTokens;
+  }
+
+  public void setMaxTokens(int maxTokens) {
+    this.maxTokens = maxTokens;
+  }
+
   public Duration getApprovalTerm() {
     return approvalTerm;
   }

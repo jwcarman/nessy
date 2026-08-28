@@ -20,6 +20,7 @@ import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.delivery.ConsumerController;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * One model-calling worker: a work-pulling CONSUMER.
@@ -46,7 +47,7 @@ public final class ModelWorker {
   private ModelWorker() {}
 
   public static Behavior<Command> create(
-      WatchmanModel model, Transcript transcript, Executor blocking, Traces traces) {
+      WatchmanModel model, Memories memories, Executor blocking, Traces traces) {
     return Behaviors.setup(
         context -> {
           ActorRef<ConsumerController.Command<ModelDesk.ModelJob>> consumer =
@@ -60,30 +61,34 @@ public final class ModelWorker {
                   Delivered.class,
                   delivered -> {
                     ModelDesk.ModelJob job = delivered.delivery().message();
-                    // Recall, call, and append -- ALL on the blocking executor. The recall is a
-                    // journal read and the append a journal write; neither may touch a dispatcher,
-                    // and doing them here means the transcript is written before the agent is told
-                    // anything that depends on it.
+                    // Recall, call, remember -- ALL on the blocking executor. Recall is a
+                    // journal read through Memory, and the assistant turn is remembered before the
+                    // agent is told anything that depends on it. Neither may touch a dispatcher.
                     context.pipeToSelf(
                         java.util.concurrent.CompletableFuture.supplyAsync(
-                                () -> transcript.recall(job.agentId(), job.state()), blocking)
-                            .thenCompose(
-                                turns ->
-                                    traces.inSpan(
-                                        "model call",
-                                        job.trace(),
-                                        () -> model.reply(turns, blocking)))
-                            .thenApplyAsync(
-                                reply -> {
-                                  record(transcript, job.agentId(), reply);
-                                  return reply;
-                                },
-                                blocking),
+                            () -> {
+                              org.jwcarman.nessy.spi.Memory memory =
+                                  memories.forAgent(job.agentId());
+                              ModelReply reply =
+                                  traces.inSpan(
+                                      "model call",
+                                      job.trace(),
+                                      () -> model.reply(memory.recall()));
+                              remember(memory, reply);
+                              return reply;
+                            },
+                            blocking),
                         (reply, failure) ->
                             new Replied(
                                 failure == null
                                     ? reply
-                                    : new ModelReply.Failed(String.valueOf(failure)),
+                                    : new ModelReply.Failed(
+                                        org.jwcarman.nessy.api.message.Message.assistant(
+                                            java.util.List.of(
+                                                new org.jwcarman.nessy.api.message.TextBlock(
+                                                    "the round failed: " + failure))),
+                                        org.jwcarman.nessy.api.conversation.Usage.zero(),
+                                        String.valueOf(failure)),
                                 job.replyTo(),
                                 job.trace(),
                                 delivered.delivery().confirmTo()));
@@ -102,16 +107,17 @@ public final class ModelWorker {
         });
   }
 
-  /** The assistant's turn goes into the transcript before the agent hears about it. */
-  private static void record(Transcript transcript, String agentId, ModelReply reply) {
-    switch (reply) {
-      case ModelReply.Said(String text) ->
-          transcript.append(agentId, new Turn.Assistant(text, java.util.List.of()));
-      case ModelReply.AskedForTools(String preamble, var requests) ->
-          transcript.append(agentId, new Turn.Assistant(preamble, requests));
-      case ModelReply.Failed(String detail) ->
-          transcript.append(
-              agentId, new Turn.Assistant("the round failed: " + detail, java.util.List.of()));
-    }
+  /**
+   * The assistant's turn is remembered before the agent hears about it.
+   *
+   * <p>A {@link Remembrance.AssistantMessage} naming tool_use ids is WITHHELD from every later
+   * recall until each of those ids has a matching exchange — Nessy's fold does that, so a crash
+   * between this write and the agent's persist leaves a turn that simply does not appear in the
+   * context rather than one the model would reject. That reconciliation used to be ours.
+   */
+  private static void remember(org.jwcarman.nessy.spi.Memory memory, ModelReply reply) {
+    memory.remember(
+        new Remembrance.AssistantMessage(
+            org.jwcarman.nessy.api.Identifiers.next(), reply.message()));
   }
 }

@@ -20,7 +20,6 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -51,9 +50,14 @@ class LmStudioRoundDemo {
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
             WatchmanPostgres.config(),
-            new LmStudioModel("http://localhost:1234/v1", "qwen/qwen3.6-35b-a3b", "lm-studio"),
+            new ProviderWatchmanModel(
+                org.jwcarman.nessy.model.openai.OpenAiModelProvider.create(
+                        c -> c.apiKey("lm-studio").baseUrl("http://localhost:1234/v1"))
+                    .model("qwen/qwen3.6-35b-a3b"),
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                4096),
             new FakeRunner(),
-            WatchmanPostgres.transcript(),
+            WatchmanPostgres.memories(),
             new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -73,16 +77,10 @@ class LmStudioRoundDemo {
 
   private static void narrate(String heading, String agent, TurnState state) {
     System.out.println("\n=== " + heading + " ===");
-    for (Turn turn : WatchmanPostgres.transcript().recall(agent, state)) {
-      switch (turn) {
-        case Turn.User(String text) -> System.out.println("  user      | " + text);
-        case Turn.Assistant(String text, var calls) -> {
-          System.out.println("  assistant | " + (text.isBlank() ? "(no prose)" : text));
-          calls.forEach(call -> System.out.println("            | -> " + call.tool()));
-        }
-        case Turn.ToolResult(String id, String tool, String text) ->
-            System.out.println("  " + tool + " | " + text.replace("\n", "\n            | "));
-      }
+    // Context.lines() is Nessy's own rendering; no transcript type of ours is involved.
+    for (var line : WatchmanPostgres.memories().everything(agent).lines()) {
+      System.out.println(
+          String.format("  %-9s | %s", line.role(), line.text().replace("\n", "\n            | ")));
     }
     if (state instanceof TurnState.WorkingTools working) {
       working.calls().forEach(call -> System.out.println("  [call] " + call));
@@ -96,9 +94,7 @@ class LmStudioRoundDemo {
     Optional<String> parked;
     WatchmanActorSystem first = start();
     try {
-      WatchmanPostgres.transcript()
-          .append(
-              agent, new Turn.User("It is " + Clock.systemUTC().instant() + ". Do your rounds."));
+      WatchmanPostgres.observe(agent, "It is " + Clock.systemUTC().instant() + ". Do your rounds.");
       first.tell(
           agent,
           new AgentActor.Observe(
@@ -147,10 +143,11 @@ class LmStudioRoundDemo {
 
       TurnState done = state(second, agent);
       narrate("the finished round", agent, done);
-      List<Turn> turns = WatchmanPostgres.transcript().recall(agent, done);
-      assertThat(turns).isNotEmpty();
-      assertThat(turns).anyMatch(Turn.ToolResult.class::isInstance);
-      assertThat(turns.getLast()).isInstanceOf(Turn.Assistant.class);
+      var messages = WatchmanPostgres.memories().everything(agent).messages();
+      assertThat(messages).isNotEmpty();
+      assertThat(WatchmanPostgres.results(agent)).isNotEmpty();
+      assertThat(messages.getLast().role())
+          .isEqualTo(org.jwcarman.nessy.api.message.Role.ASSISTANT);
     } finally {
       second.stop();
     }

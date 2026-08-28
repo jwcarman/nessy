@@ -41,7 +41,7 @@ public final class ToolWorker {
   private ToolWorker() {}
 
   public static Behavior<RunTool> create(
-      CommandRunner runner, Transcript transcript, Executor blocking, Traces traces) {
+      CommandRunner runner, Memories memories, Executor blocking, Traces traces) {
     return Behaviors.receive(RunTool.class)
         .onMessage(
             RunTool.class,
@@ -59,11 +59,19 @@ public final class ToolWorker {
                                   return WatchmanTools.run(
                                       runner, call.tool(), call.argumentsJson());
                                 });
-                        // Transcript first, then the agent is told. Same thread, so the ordering
-                        // is not a hope -- and a crash in between leaves an orphan the recall
-                        // drops, never a state that references a turn nobody wrote.
-                        transcript.append(
-                            message.agentId(), new Turn.ToolResult(call.id(), call.tool(), result));
+                        // Remembered first, then the agent is told. Same thread, so the ordering
+                        // is not a hope -- and a crash in between leaves an exchange whose
+                        // assistant turn the fold will pair up, never a context the model rejects.
+                        memories
+                            .forAgent(message.agentId())
+                            .remember(
+                                new org.jwcarman.nessy.spi.Remembrance.ToolExchange(
+                                    call.id(),
+                                    new org.jwcarman.nessy.api.tool.ToolCall(
+                                        call.id(),
+                                        call.tool(),
+                                        WatchmanTools.argumentsOf(call.argumentsJson())),
+                                    org.jwcarman.nessy.api.tool.ToolResult.ok(result)));
                         return result;
                       },
                       blocking)

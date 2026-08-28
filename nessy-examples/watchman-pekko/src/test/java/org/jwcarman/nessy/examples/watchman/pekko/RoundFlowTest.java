@@ -22,7 +22,8 @@ import com.typesafe.config.ConfigFactory;
 import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -30,39 +31,36 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * A whole round, with no Postgres and no Docker: the actors, the scripted model and the fake host.
- *
- * <p>This is the port's equivalent of the sibling watchman's {@code RoundTest} — the proof that the
- * shape works before any of the durable machinery is involved.
+ * A whole round on Nessy's own Memory: the actors, the scripted model and the fake host, with no
+ * Postgres and no Docker.
  */
 @DisplayName("A watchman round")
 class RoundFlowTest {
 
-  /** The scripted model makes ids unique per round; these are round one\'s. */
-  private static final String PRUNE = "call-prune-1";
-
-  private static final String DISK = "call-disk-1";
-  private static final String CONTAINERS = "call-containers-1";
-
   private static final Duration PATIENCE = Duration.ofSeconds(30);
 
   private WatchmanActorSystem actors;
-  private Transcript transcript;
+  private Memories memories;
   private String agent;
 
   @BeforeEach
   void start() {
     agent = "watchman-" + UUID.randomUUID();
-    transcript =
-        new Transcript(new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC()));
+    memories = new Memories(new InMemorySubstrate(Clock.systemUTC()), 8000);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
-            new ScriptedModel(Duration.ofMillis(20)),
+            new ScriptedWatchmanModel(Duration.ofMillis(20)),
             new FakeRunner(),
-            transcript,
+            memories,
             new Traces(OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -84,19 +82,51 @@ class RoundFlowTest {
     }
   }
 
-  /** Tool results, by call id, straight out of the journal. */
-  private java.util.Map<String, String> results() {
-    java.util.Map<String, String> byCall = new java.util.LinkedHashMap<>();
-    transcript.entries(agent).stream()
-        .map(Transcript.Entry::turn)
-        .filter(Turn.ToolResult.class::isInstance)
-        .map(Turn.ToolResult.class::cast)
-        .forEach(result -> byCall.putIfAbsent(result.callId(), result.text()));
+  /** Remember the user turn the way the cron does, then tell the agent. */
+  private void observe(String text) {
+    memories
+        .forAgent(agent)
+        .remember(new Remembrance.UserMessage(Identifiers.next(), Message.user(text)));
+    actors.tell(agent, new AgentActor.Observe(text, "rounds", Map.of()));
+  }
+
+  /** Tool results by call id, straight out of Memory. */
+  private Map<String, String> results() {
+    Map<String, String> byCall = new LinkedHashMap<>();
+    for (Message message : memories.everything(agent).messages()) {
+      for (var block : message.content()) {
+        if (block instanceof ToolResultBlock result) {
+          byCall.putIfAbsent(result.toolUseId(), result.content());
+        }
+      }
+    }
     return byCall;
   }
 
   private void awaitState(Class<? extends TurnState> expected) {
     await().atMost(PATIENCE).untilAsserted(() -> assertThat(state()).isInstanceOf(expected));
+  }
+
+  private void awaitParked() {
+    awaitState(TurnState.WorkingTools.class);
+    await()
+        .atMost(PATIENCE)
+        .untilAsserted(() -> assertThat(Calls.pending(state(), "prune_images")).isPresent());
+  }
+
+  private String prune() {
+    return Calls.byTool(state(), "prune_images").orElseThrow().id();
+  }
+
+  private String disk() {
+    return Calls.byTool(state(), "disk_usage").orElseThrow().id();
+  }
+
+  private AgentActor.Ack answer(boolean approved, String note) throws Exception {
+    return actors
+        .answerApproval(agent, prune(), approved, "james", note)
+        .toCompletableFuture()
+        .get(15, TimeUnit.SECONDS);
   }
 
   @Nested
@@ -105,28 +135,24 @@ class RoundFlowTest {
 
     @Test
     void the_read_only_tools_run_and_the_one_that_needs_a_human_parks() {
-      actors.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      observe("It is noon. Do your rounds.");
 
-      awaitState(TurnState.WorkingTools.class);
+      awaitParked();
 
-      await()
-          .atMost(PATIENCE)
-          .untilAsserted(
-              () -> {
-                var working = (TurnState.WorkingTools) state();
-                assertThat(working.call(DISK)).isPresent();
-                // The result is a TRANSCRIPT turn now; the state records only that it settled.
-                assertThat(working.call(DISK).orElseThrow().settled()).isTrue();
-                assertThat(results()).containsEntry(DISK, "/ 91% used, 9G free");
-                assertThat(working.call(CONTAINERS).orElseThrow().settled()).isTrue();
-                // The one behind a human: asked for, not decided, not settled.
-                var prune = working.call(PRUNE).orElseThrow();
-                assertThat(prune.settled()).isFalse();
-                assertThat(prune.decided()).isFalse();
-                assertThat(prune.action()).isEqualTo("docker image prune -af");
-              });
+      var working = (TurnState.WorkingTools) state();
+      assertThat(Calls.byTool(working, "disk_usage")).isPresent();
+      assertThat(Calls.byTool(working, "disk_usage").orElseThrow().settled()).isTrue();
+
+      // MID-ROUND, recall shows NOTHING of this turn -- and that is Nessy's fold being right, not
+      // a bug. An assistant message naming three tool_use ids is withheld until all three have
+      // results, because a half-answered turn is a context no model will accept. The state is
+      // what knows a call has settled; Memory only publishes the turn once it is whole.
+      assertThat(results()).doesNotContainKey(disk());
+
+      var prune = Calls.byTool(working, "prune_images").orElseThrow();
+      assertThat(prune.settled()).isFalse();
+      assertThat(prune.decided()).isFalse();
+      assertThat(prune.action()).isEqualTo("docker image prune -af");
     }
   }
 
@@ -136,58 +162,42 @@ class RoundFlowTest {
 
     @Test
     void a_denial_settles_the_call_and_the_round_finishes() throws Exception {
-      actors.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
-      awaitState(TurnState.WorkingTools.class);
-      await()
-          .atMost(PATIENCE)
-          .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
+      observe("It is noon. Do your rounds.");
+      awaitParked();
+      String prune = prune();
+      String disk = disk();
 
-      AgentActor.Ack ack =
-          actors
-              .answerApproval(agent, PRUNE, false, "james", "not on a Friday")
-              .toCompletableFuture()
-              .get(15, TimeUnit.SECONDS);
+      assertThat(answer(false, "not on a Friday").accepted()).isTrue();
 
-      assertThat(ack.accepted()).isTrue();
       awaitState(TurnState.Idle.class);
+      // Once every call is answered the whole turn appears at once -- assistant, then results.
+      assertThat(results())
+          .containsEntry(prune, "denied by james: not on a Friday")
+          .containsEntry(disk, "/ 91% used, 9G free");
 
-      List<Turn> turns = transcript.recall(agent, state());
-      assertThat(turns).isNotEmpty();
-      assertThat(results()).containsEntry(PRUNE, "denied by james: not on a Friday");
-      assertThat(turns.getLast()).isInstanceOf(Turn.Assistant.class);
+      var messages = memories.everything(agent).messages();
+      assertThat(messages).isNotEmpty();
+      assertThat(messages.getLast().role()).isEqualTo(Role.ASSISTANT);
     }
 
     @Test
     void an_approval_runs_the_command_and_the_round_finishes() throws Exception {
-      actors.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
-      awaitState(TurnState.WorkingTools.class);
-      await()
-          .atMost(PATIENCE)
-          .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
+      observe("It is noon. Do your rounds.");
+      awaitParked();
+      String prune = prune();
 
-      actors
-          .answerApproval(agent, PRUNE, true, "james", "go on then")
-          .toCompletableFuture()
-          .get(15, TimeUnit.SECONDS);
+      assertThat(answer(true, "go on then").accepted()).isTrue();
 
       awaitState(TurnState.Idle.class);
       assertThat(results())
           .hasEntrySatisfying(
-              PRUNE, text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
+              prune, text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
     }
 
     @Test
     void an_answer_for_a_call_nobody_asked_about_is_refused_rather_than_swallowed()
         throws Exception {
-      actors.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      observe("It is noon. Do your rounds.");
       awaitState(TurnState.WorkingTools.class);
 
       AgentActor.Ack ack =
@@ -202,29 +212,24 @@ class RoundFlowTest {
 
     @Test
     void a_double_click_is_idempotent() throws Exception {
-      actors.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
-      awaitState(TurnState.WorkingTools.class);
-      await()
-          .atMost(PATIENCE)
-          .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
+      observe("It is noon. Do your rounds.");
+      awaitParked();
+      String prune = prune();
 
       actors
-          .answerApproval(agent, PRUNE, false, "james", "no")
+          .answerApproval(agent, prune, false, "james", "no")
           .toCompletableFuture()
           .get(15, TimeUnit.SECONDS);
       AgentActor.Ack second =
           actors
-              .answerApproval(agent, PRUNE, true, "james", "changed my mind")
+              .answerApproval(agent, prune, true, "james", "changed my mind")
               .toCompletableFuture()
               .get(15, TimeUnit.SECONDS);
 
       assertThat(second.accepted()).isTrue();
       assertThat(second.detail()).isEqualTo("already answered");
       awaitState(TurnState.Idle.class);
-      assertThat(results()).containsEntry(PRUNE, "denied by james: no");
+      assertThat(results()).containsEntry(prune, "denied by james: no");
     }
   }
 }

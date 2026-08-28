@@ -55,7 +55,7 @@ class SpringShutdownTest {
     @Bean
     @Primary
     WatchmanModel slowModel() {
-      return new ScriptedModel(Duration.ofSeconds(120));
+      return new ScriptedWatchmanModel(Duration.ofSeconds(120));
     }
 
     @Bean
@@ -114,7 +114,8 @@ class SpringShutdownTest {
     // Nothing was lost: the round is exactly where it was, and a fresh process resumes it.
     assertThat(new StartupSweep(WatchmanPostgres.dataSource()).unfinishedAgents()).contains(agent);
 
-    WatchmanActorSystem next = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20)));
+    WatchmanActorSystem next =
+        WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
       next.tell(agent, new AgentActor.Wake());
       await()

@@ -43,22 +43,45 @@ public final class WatchmanPostgres {
     return dataSource;
   }
 
-  public static Transcript transcript() {
-    return new Transcript(
-        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()));
+  public static Memories memories() {
+    return new Memories(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()), 8000);
+  }
+
+  /** Remember a user turn the way the cron does, before telling the agent. */
+  public static void observe(String agentId, String text) {
+    memories()
+        .forAgent(agentId)
+        .remember(
+            new org.jwcarman.nessy.spi.Remembrance.UserMessage(
+                org.jwcarman.nessy.api.Identifiers.next(),
+                org.jwcarman.nessy.api.message.Message.user(text)));
+  }
+
+  /** Tool results by call id, straight out of Memory. */
+  public static java.util.Map<String, String> results(String agentId) {
+    java.util.Map<String, String> byCall = new java.util.LinkedHashMap<>();
+    for (var message : memories().everything(agentId).messages()) {
+      for (var block : message.content()) {
+        if (block instanceof org.jwcarman.nessy.api.message.ToolResultBlock result) {
+          byCall.putIfAbsent(result.toolUseId(), result.content());
+        }
+      }
+    }
+    return byCall;
   }
 
   public static WatchmanActorSystem start(WatchmanModel model) {
-    return start(model, transcript());
+    return start(model, memories());
   }
 
-  public static WatchmanActorSystem start(WatchmanModel model, Transcript transcript) {
+  public static WatchmanActorSystem start(WatchmanModel model, Memories memories) {
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
             config(),
             model,
             new FakeRunner(),
-            transcript,
+            memories,
             new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),

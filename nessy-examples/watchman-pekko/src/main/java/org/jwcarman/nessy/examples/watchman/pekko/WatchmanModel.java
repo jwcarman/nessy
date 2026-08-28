@@ -15,15 +15,16 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
+import org.jwcarman.nessy.api.message.Context;
 
 /**
- * Given the round so far, say the next thing. Asynchronous by contract, and takes the executor the
- * blocking work must land on so no implementation can default to {@code ForkJoinPool.commonPool()}.
+ * Given the round so far, say the next thing.
+ *
+ * <p>Takes a {@link Context} — Nessy's own — because {@code Memory.recall()} produces one and the
+ * provider consumes one. Adopting either half alone would have needed a translation; adopting both
+ * means there is none.
  */
 public interface WatchmanModel {
 
-  CompletionStage<ModelReply> reply(List<Turn> transcript, Executor blocking);
+  ModelReply reply(Context context);
 }
