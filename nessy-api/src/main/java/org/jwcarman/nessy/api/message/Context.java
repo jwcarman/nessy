@@ -272,14 +272,19 @@ public record Context(List<Message> messages) {
   }
 
   /**
-   * Drops the head, one pair-safe boundary at a time, for as long as {@code estimator}'s summed
-   * {@link #tokens(TokenEstimator)} exceeds {@code budget} AND a pair-safe boundary still exists.
-   * When the boundaries run out before the budget does, the result is returned over budget,
-   * honestly — {@code limitTokens} never fabricates a cut that would break pairing to hit the
-   * number. Sums the whole context once, then subtracts each dropped boundary's own estimates as it
-   * goes, rather than re-summing the shrinking remainder every iteration — every message is
-   * estimated at most twice (once in the initial sum, once more only if it is later dropped), never
-   * once per remaining iteration.
+   * Drops the head, one pair-safe boundary at a time — the SMALLEST boundary that makes progress,
+   * never the largest — for as long as {@code estimator}'s summed {@link #tokens(TokenEstimator)}
+   * exceeds {@code budget} AND a pair-safe boundary still exists. Cutting minimally each iteration
+   * keeps as much of the context as the budget allows: {@link #pairSafeCut(int) pairSafeCut(0)}
+   * finds the LARGEST droppable prefix, which sheds far more than necessary to clear a budget
+   * exceeded by only a little; walking up from the front instead finds the nearest genuine user
+   * turn, drops only that much, and re-checks. When the boundaries run out before the budget does,
+   * the result is returned over budget, honestly — {@code limitTokens} never fabricates a cut that
+   * would break pairing to hit the number. Sums the whole context once, then subtracts each dropped
+   * boundary's own estimates as it goes, rather than re-summing the shrinking remainder every
+   * iteration — every message is estimated at most twice (once in the initial sum, once more only
+   * if it is later dropped), never once per remaining iteration, even though the number of
+   * iterations itself grows with the number of boundaries crossed.
    *
    * @param budget the token ceiling; must be at least 1
    * @param estimator the message-level token figure models never report
@@ -292,7 +297,7 @@ public record Context(List<Message> messages) {
     Context current = this;
     long remaining = tokens(estimator);
     while (remaining > budget) {
-      int cut = current.pairSafeCut(0);
+      int cut = smallestPairSafeCut(current.messages);
       if (cut == 0) {
         break;
       }
@@ -302,6 +307,23 @@ public record Context(List<Message> messages) {
       current = new Context(current.messages.subList(cut, current.messages.size()));
     }
     return current;
+  }
+
+  /**
+   * The smallest index {@code cut > 0} at which {@code messages.get(cut)} is a genuine user turn —
+   * the mirror image of {@link #pairSafeCut(int)}, which finds the largest such index. Walks upward
+   * from {@code 1} (index {@code 0} can never be a legal cut point: cutting there would drop
+   * nothing); {@code 0} when no index qualifies, matching {@link #pairSafeCut(int)}'s convention
+   * for "nothing is safe to cut here."
+   */
+  private static int smallestPairSafeCut(List<Message> messages) {
+    int limit = messages.size() - 1;
+    for (int cut = 1; cut <= limit; cut++) {
+      if (isGenuineUserTurn(messages.get(cut))) {
+        return cut;
+      }
+    }
+    return 0;
   }
 
   /** The sum of {@code estimator.estimate(message)} over every message in this context. */

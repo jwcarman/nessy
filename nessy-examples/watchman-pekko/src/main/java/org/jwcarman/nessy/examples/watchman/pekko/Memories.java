@@ -84,9 +84,30 @@ public final class Memories {
       delegate.remember(remembrance);
     }
 
+    /**
+     * Elides OLD tool results before dropping any messages, because tool output — a {@code df -hP}
+     * dump, a {@code docker ps} JSON dump — is what is actually bulky here, and a whole message is
+     * a coarser unit to shed than the fat in the middle of one. Only after eliding, if the budget
+     * still doesn't fit, does {@link Context#limitTokens} fall back to dropping whole messages.
+     *
+     * <p><b>The round in flight is never elided.</b> A round is: the model asks for tools, the
+     * tools run, and the model is called AGAIN to interpret their results. Eliding a result the
+     * model is about to be asked to interpret would leave that second call staring at a request
+     * with no answer — the model looks broken while the evidence it needed has actually been
+     * deleted out from under it, and that failure is far harder to notice from outside than being a
+     * little over budget. So the boundary is found structurally rather than guessed as a message
+     * count: {@link Context#pairSafeCut(int) pairSafeCut(1)} walks back from the tail to the last
+     * genuine (plain-text) human turn, striding past every {@code tool_use}/{@code tool_result}
+     * pair between it and the end — one pair for a single tool call, more for a chained sequence of
+     * calls within the same round, so this is not a number that only survives today's two-tool
+     * case. Everything from that boundary onward is the round in flight and survives {@link
+     * Context#elideToolResults} untouched.
+     */
     @Override
     public Context recall() {
-      return delegate.recall().limitTokens(budget, estimator);
+      Context full = delegate.recall();
+      int roundInFlight = full.messages().size() - full.pairSafeCut(1);
+      return full.elideToolResults(roundInFlight).limitTokens(budget, estimator);
     }
   }
 }

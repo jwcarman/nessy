@@ -563,9 +563,10 @@ class ContextTest {
     void dropping_boundaries_until_the_budget_fits() {
       // Heuristic estimator: characters / 4, floored at 1 token/message. Every message here is
       // 16 characters of text, so each costs exactly 4 tokens; six messages cost 24 total. Budget
-      // 10 forces a drop: the only pair-safe boundary at or before the naive limit is u3 (index
-      // 4), so the head [u1,a1,u2,a2] (16 tokens) goes, leaving [u3,a3] at 8 tokens — under
-      // budget, and the loop stops because 8 <= 10.
+      // 10 forces two smallest-cut passes: the first pair-safe boundary is u2 (index 2), dropping
+      // [u1,a1] (8 tokens, 16 tokens still remaining, still over budget); the next pair-safe
+      // boundary in what remains is u3 (index 2 of the shrunk list), dropping [u2,a2] (8 more
+      // tokens), leaving [u3,a3] at 8 tokens — under budget, and the loop stops because 8 <= 10.
       Message u1 = Message.user("uuuuuuuuuuuuuuuu");
       Message a1 = assistantText("aaaaaaaaaaaaaaaa");
       Message u2 = Message.user("uuuuuuuuuuuuuuuu");
@@ -597,6 +598,38 @@ class ContextTest {
     }
 
     @Test
+    void a_context_pushed_slightly_over_budget_keeps_the_large_majority() {
+      // Regression for the live-trace defect: pairSafeCut(0) finds the LARGEST droppable
+      // prefix, so a context nudged only slightly over budget used to lose almost everything
+      // in one pass (a measured case: 97 messages / 7845 tokens against an 8000 budget dropped
+      // to 3 messages / 257 tokens after one more exchange arrived). limitTokens must instead
+      // cut the smallest pair-safe boundary repeatedly, shedding only as much as it takes.
+      //
+      // 97 messages, alternating user/assistant text, each exactly 332 characters (83 tokens
+      // under the heuristic estimator: characters / 4). Total: 97 * 83 = 8051 tokens, 51 over
+      // an 8000 budget. The smallest pair-safe boundary is u2 at index 2 (index 0 is never a
+      // legal cut point); dropping just [u1, a1] (166 tokens) brings the total to 7885, under
+      // budget in a single, minimal step.
+      List<Message> original = new ArrayList<>(97);
+      String userText = "u".repeat(332);
+      String assistantTextContent = "a".repeat(332);
+      for (int i = 0; i < 48; i++) {
+        original.add(Message.user(userText));
+        original.add(assistantText(assistantTextContent));
+      }
+      original.add(assistantText(assistantTextContent));
+      Context context = Context.of(original);
+      TokenEstimator estimator = TokenEstimator.heuristic();
+
+      Context limited = context.limitTokens(8000, estimator);
+
+      assertThat(limited.messages()).isNotEmpty();
+      assertThat(limited.messages()).hasSize(95);
+      assertThat(limited.messages()).containsExactlyElementsOf(original.subList(2, 97));
+      assertThat(limited.tokens(estimator)).isEqualTo(7885);
+    }
+
+    @Test
     void a_budget_below_one_is_rejected() {
       Context context = Context.of(List.of(Message.user("hi")));
 
@@ -618,11 +651,11 @@ class ContextTest {
 
     @Test
     void every_message_is_estimated_at_most_twice() {
-      // Same shape as dropping_boundaries_until_the_budget_fits: the single real cut lands at
-      // index 4, dropping [u1,a1,u2,a2]. Linear behavior pinned by call count: the initial sum
-      // estimates all 6 messages once, then the subtracted prefix re-estimates only the 4 dropped
-      // messages — 10 calls total, never the O(n^2) blowup of re-summing the whole remainder every
-      // iteration.
+      // Same shape as dropping_boundaries_until_the_budget_fits: two smallest-cut passes drop
+      // [u1,a1] then [u2,a2], landing on [u3,a3]. Linear behavior pinned by call count: the
+      // initial sum estimates all 6 messages once, then each pass's subtracted prefix
+      // re-estimates only the 2 messages it drops — 6 + 2 + 2 = 10 calls total, never the
+      // O(n^2) blowup of re-summing the whole remainder every iteration.
       Message u1 = Message.user("uuuuuuuuuuuuuuuu");
       Message a1 = assistantText("aaaaaaaaaaaaaaaa");
       Message u2 = Message.user("uuuuuuuuuuuuuuuu");
