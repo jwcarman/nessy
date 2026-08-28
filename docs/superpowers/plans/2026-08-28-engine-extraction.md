@@ -21,7 +21,8 @@
 - Exception-assertion lambdas contain exactly ONE throwing invocation; arrange setup outside (Sonar S5778).
 - Assert emptiness before any all/none-match predicate on the same collection (S5841).
 - Tests are prose-style, no mocking library.
-- **Two changes are NOT authorized and must not be made by any task:** `ToolResult` gaining `List<ContentBlock>`, and any new method on `Model`. If a task appears to need either, stop and report.
+- **`ResultBlock` and `ModelDescription` are approved vocabulary** (James, 2026-08-28) and are introduced by Tasks 5 and 6 respectively. No task invents any OTHER public type, abstraction, or vocabulary word; if one seems necessary, stop and report.
+- **Backward compatibility with today's `ModelSettings` is explicitly waived** (James: *"let's not worry about what's there now, we just need to make it right"*). Break it and fix the callers.
 
 ---
 
@@ -156,7 +157,120 @@ void theStringDefaultSuppliesATextRendererTheCustomizerCanOverride() {
 
 ---
 
-### Task 5: `PekkoHarnessFactory`
+### Task 5: `ResultBlock` — tool results carry what can legally come back
+
+**Files:**
+- Create: `nessy-api/src/main/java/org/jwcarman/nessy/api/message/ResultBlock.java`
+- Modify: `message/TextBlock.java`, `message/ImageBlock.java`, `message/ToolResultBlock.java`, `tool/ToolResult.java`
+- Modify: every provider that renders a tool result — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`, `nessy-model-bedrock`
+- Test: `nessy-api/src/test/java/org/jwcarman/nessy/api/message/ResultBlockTest.java`
+
+**Interfaces:**
+- Produces:
+
+```java
+public sealed interface ResultBlock extends ContentBlock permits TextBlock, ImageBlock {}
+public record ToolResult(List<ResultBlock> content, boolean isError)
+public record ToolResultBlock(String toolUseId, List<ResultBlock> content, boolean isError)
+```
+
+**Why both types change:** `ToolResultBlock` is what carries a result into the transcript and out to
+the provider, and it is `String content` today. Widening `ToolResult` alone would flatten an image
+one layer down — the change would be cosmetic.
+
+- [ ] **Step 1: Write the failing test.**
+
+```java
+@Test
+void aToolResultCarriesTextAndImagesAndNothingElse() {
+  ToolResult result = ToolResult.ok(List.of(new TextBlock("done"), anImageBlock()));
+  assertThat(result.content()).hasSize(2);
+}
+
+@Test
+void theSealedGrammarAdmitsOnlyTextAndImages() {
+  assertThat(ResultBlock.class.getPermittedSubclasses())
+      .containsExactlyInAnyOrder(TextBlock.class, ImageBlock.class);
+}
+```
+
+- [ ] **Step 2: Run them.** Expect FAIL — no such type.
+
+- [ ] **Step 3: Introduce `ResultBlock`.** `TextBlock` and `ImageBlock` change their `implements ContentBlock` to `implements ResultBlock`; they remain `ContentBlock`s transitively, so every existing use site keeps compiling.
+
+- [ ] **Step 4: Widen `ToolResult` and `ToolResultBlock`** to `List<ResultBlock>`. Keep `ToolResult.ok(String)` / `error(String)` as conveniences wrapping a single `TextBlock` — most tools return text and should not pay for the general case.
+
+- [ ] **Step 5: Update the providers.** Anthropic's `tool_result` takes an array natively. **OpenAI-compatible providers must flatten non-text blocks explicitly, and dropping an image silently is the wrong answer** — flatten to a described placeholder and log at WARN. Write a test per provider asserting a two-block result survives its rendering.
+
+- [ ] **Step 6: Run the full suite.** `./mvnw -q clean verify`.
+
+- [ ] **Step 7: Commit.**
+
+---
+
+### Task 6: `ModelDescription` — the model states its own facts
+
+**Files:**
+- Create: `nessy-spi/src/main/java/org/jwcarman/nessy/spi/model/ModelDescription.java`
+- Modify: `nessy-spi/.../model/Model.java`, `nessy-spi/.../model/ModelSettings.java`
+- Modify: all four provider modules to implement `describe()`
+- Modify: `nessy-api/.../message/Context.java` call sites that took a caller-supplied window
+- Test: `nessy-spi/src/test/java/org/jwcarman/nessy/spi/model/ModelDescriptionTest.java`
+
+**Interfaces:**
+- Produces:
+
+```java
+public record ModelDescription(String id, long contextWindow, Set<Capability> capabilities)
+public interface Model { ModelDescription describe(); /* existing methods */ }
+public record ModelSettings(int maxTokens, Set<Capability> required)
+```
+
+**Why this exists:** `capabilities` and `contextWindow` are consulted only by
+`ProviderModelCallExecutor` today — four API promises nothing enforces. The cause is structural: a
+caller REQUESTS capabilities and a resolved `Model` never states what it SUPPORTS, so there is
+nowhere to compare. Resolving a model by name (Task 4) is the first moment anything holds both.
+
+- [ ] **Step 1: Write the failing tests.**
+
+```java
+@Test
+void aModelStatesItsOwnContextWindowSoNobodyHasToGuess() {
+  assertThat(model.describe().contextWindow()).isPositive();
+}
+
+@Test
+void resolvingAModelMissingARequiredCapabilityFailsImmediately() {
+  ModelSettings settings = new ModelSettings(1024, Set.of(Capability.VISION));
+  assertThatThrownBy(() -> resolver.resolve("text-only-model", settings))
+      .isInstanceOf(IllegalArgumentException.class)
+      .hasMessageContaining("VISION");
+}
+
+@Test
+void anUnknownModelNameFailsAtResolutionNotAtFirstTurn() {
+  assertThatThrownBy(() -> resolver.resolve("gpt-nonexistent", ModelSettings.defaults()))
+      .isInstanceOf(IllegalArgumentException.class);
+}
+```
+
+- [ ] **Step 2: Run them.** Expect FAIL.
+
+- [ ] **Step 3: Add `ModelDescription` and `Model.describe()`.** Each provider reports the real window and capabilities for the resolved model id.
+
+- [ ] **Step 4: Reshape `ModelSettings` to caller intent only** — `maxTokens` and `required` capabilities. **`contextWindow` is deleted from it entirely**: the model knows its own window, and a nullable field validated against `maxTokens` was guessing checked against guessing. Backward compatibility is waived; fix the callers.
+
+- [ ] **Step 5: Enforce at resolution.** In the model resolver: unknown name → fail; a `required` capability the description lacks → fail, naming the capability; `maxTokens` exceeding the real window → fail. Capabilities the model reports but nobody required are used opportunistically — a caller names only what it cannot live without, because a missing `PROMPT_CACHING` costs money while a missing `VISION` means the agent cannot function.
+
+- [ ] **Step 6: Feed the real window to `Context.limitTokens`.** This is the point of the task — the budget stops being a number someone typed.
+
+- [ ] **Step 7: Run the full suite.** `./mvnw -q clean verify`.
+
+- [ ] **Step 8: Commit.**
+
+---
+
+### Task 7: `PekkoHarnessFactory`
 
 **Files:**
 - Create: `nessy-engine/src/main/java/org/jwcarman/nessy/engine/PekkoHarnessFactory.java`
@@ -164,7 +278,7 @@ void theStringDefaultSuppliesATextRendererTheCustomizerCanOverride() {
 - Test: `nessy-engine/src/test/java/org/jwcarman/nessy/engine/PekkoHarnessFactoryTest.java`
 
 **Interfaces:**
-- Consumes: Task 4's `HarnessFactory`, Task 2's actors.
+- Consumes: Task 4's `HarnessFactory`, Task 2's actors, Task 6's model resolution.
 - Produces: the engine door used by Task 6.
 
 - [ ] **Step 1: Write the failing test** — a whole agent runs in-process on the testkit's system, with no Spring, no HTTP, and an `InMemorySubstrate`.
@@ -196,14 +310,14 @@ void anAgentIngestsAnObservationAndRunsATurn() {
 
 ---
 
-### Task 6: The watchman runs on `nessy-engine` — THE GATE
+### Task 8: The watchman runs on `nessy-engine` — THE GATE
 
 **Files:**
 - Modify: `nessy-examples/watchman-pekko/src/main/java/.../WatchmanConfiguration.java` (or equivalent Spring wiring) to obtain its agent through `HarnessFactory`
 - Modify: `nessy-examples/watchman-pekko/soak.sh` only if paths changed
 
 **Interfaces:**
-- Consumes: Task 5's `PekkoHarnessFactory`.
+- Consumes: Task 7's `PekkoHarnessFactory`.
 
 - [ ] **Step 1: Wire the example through the factory.** The `ActorSystem` stays a Spring bean; `PekkoHarnessFactory` becomes a bean built from it; the watchman agent comes from `factory.create(...)`.
 
@@ -217,7 +331,7 @@ void anAgentIngestsAnObservationAndRunsATurn() {
 
 ---
 
-### Task 7: Delete `nessy-agent`
+### Task 9: Delete `nessy-agent`
 
 **Files:**
 - Delete: `nessy-agent/` entirely
