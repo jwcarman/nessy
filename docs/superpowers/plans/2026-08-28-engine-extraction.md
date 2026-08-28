@@ -270,7 +270,67 @@ void anUnknownModelNameFailsAtResolutionNotAtFirstTurn() {
 
 ---
 
-### Task 7: `PekkoHarnessFactory`
+### Task 7: One codec pipeline, shared by Pekko and Substrate
+
+**Ruled 2026-08-28 by James:** *"That's a harness configuration level thing and it should be used by
+both pekko and substrate."*
+
+**Files:**
+- Create: `nessy-spi/.../codec/CodecCustomizer.java`, `nessy-spi/.../codec/CodecPipeline.java`
+- Create: `nessy-spi/.../substrate/PipelinedSubstrate.java` (decorator)
+- Modify: `nessy-engine/.../StateSerializer.java` to delegate to the pipeline
+- Test: pipeline round-trip, header identification, and a chain-change compatibility test
+
+**Interfaces:**
+- Consumes: Task 2's moved `StateSerializer`, Task 8's factory construction.
+- Produces: a `CodecPipeline` built at factory construction and consumed by BOTH stores.
+
+**Why one pipeline:** a customizer reaching only Pekko yields encrypted actor state beside plaintext
+memory — worse than choosing either consistently, and encryption is the first thing anyone will
+reach for.
+
+- [ ] **Step 1: Write the failing compatibility test — this is the point of the task.**
+
+```java
+@Test
+void bytesWrittenBeforeATransformWasAppendedStillDecodeAfterwards() {
+  byte[] written = new CodecPipeline(List.of()).encode(AN_AGENT_STATE);
+  CodecPipeline afterConfigChange = new CodecPipeline(List.of(new GzipCodec()));
+  assertThat(afterConfigChange.decode(written, AgentState.class)).isEqualTo(AN_AGENT_STATE);
+}
+
+@Test
+void reversingTheDeclarationOrderDoesNotSilentlyCorrupt() {
+  byte[] written = new CodecPipeline(List.of(new GzipCodec(), new Base64Codec())).encode(AN_AGENT_STATE);
+  CodecPipeline reversed = new CodecPipeline(List.of(new Base64Codec(), new GzipCodec()));
+  assertThat(reversed.decode(written, AgentState.class)).isEqualTo(AN_AGENT_STATE);
+}
+```
+
+- [ ] **Step 2: Run them.** Expect FAIL.
+
+- [ ] **Step 3: Implement `CodecPipeline` with a self-describing header.** The encoded bytes record
+  which chain produced them. **This is structural, not documentation.** There is no shared metadata
+  slot between Pekko's `manifest` and `Substrate`'s `kind`, so identifying the chain anywhere else
+  means two mechanisms that will drift. Value encoding defaults to `codec-jackson` (Jackson 3) as
+  UTF-8 JSON; `byte[] -> byte[]` codecs append in declaration order.
+
+- [ ] **Step 4: `CodecCustomizer` at factory construction**, NOT `HarnessConfig` — `Substrate` is
+  factory-level infrastructure and a per-agent chain over one shared store is incoherent.
+
+- [ ] **Step 5: Apply to `Substrate` as a decorator.** Its door is already bytes, so no SPI change.
+
+- [ ] **Step 6: Point `StateSerializer` at the pipeline.** Its manifest keeps meaning TYPE
+  (`AGENT_STATE_V2`); the chain identifies itself in the payload.
+
+- [ ] **Step 7: Resolve the artifact skew.** `codec-core` is `1.0.0-SNAPSHOT`, `codec-transforms` is
+  `0.7.0-SNAPSHOT`. Settle before depending on the pair; report if they are incompatible.
+
+- [ ] **Step 8: Full gate and commit.**
+
+---
+
+### Task 8: `PekkoHarnessFactory`
 
 **Files:**
 - Create: `nessy-engine/src/main/java/org/jwcarman/nessy/engine/PekkoHarnessFactory.java`
@@ -310,14 +370,14 @@ void anAgentIngestsAnObservationAndRunsATurn() {
 
 ---
 
-### Task 8: The watchman runs on `nessy-engine` — THE GATE
+### Task 9: The watchman runs on `nessy-engine` — THE GATE
 
 **Files:**
 - Modify: `nessy-examples/watchman-pekko/src/main/java/.../WatchmanConfiguration.java` (or equivalent Spring wiring) to obtain its agent through `HarnessFactory`
 - Modify: `nessy-examples/watchman-pekko/soak.sh` only if paths changed
 
 **Interfaces:**
-- Consumes: Task 7's `PekkoHarnessFactory`.
+- Consumes: Task 8's `PekkoHarnessFactory`.
 
 - [ ] **Step 1: Wire the example through the factory.** The `ActorSystem` stays a Spring bean; `PekkoHarnessFactory` becomes a bean built from it; the watchman agent comes from `factory.create(...)`.
 
@@ -331,7 +391,7 @@ void anAgentIngestsAnObservationAndRunsATurn() {
 
 ---
 
-### Task 9: Delete `nessy-agent`
+### Task 10: Delete `nessy-agent`
 
 **Files:**
 - Delete: `nessy-agent/` entirely
