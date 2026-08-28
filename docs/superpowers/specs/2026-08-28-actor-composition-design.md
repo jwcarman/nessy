@@ -280,6 +280,30 @@ park a turn can legitimately take, never a hardcoded constant.
 **Err long.** A leaked claim costs disk. A claim deleted too early breaks a turn. The costs are not
 symmetric and the policy should not pretend they are.
 
+### 8b. Claim age is the stalled-turn signal we do not otherwise have
+
+**Ruled 2026-08-28 by James.** The same periodic job reports the AGE DISTRIBUTION of live claims —
+how many are older than 1d, 3d, 7d, 14d — alongside what it deleted.
+
+The two numbers do different jobs. The delete count is a **lagging** signal: it says what already
+expired. The age buckets are a **leading** one: they show a leak forming, and they distinguish
+"many claims because we are busy" from "many claims because turns are not ending".
+
+**The sharp use is stall detection.** A turn deletes its own claims when it ends, and the longest a
+turn can legitimately live is one park — so a claim older than `approvalTerm` is, by construction,
+evidence of a turn that never finished. That is an answer to the actor spec's open item #2,
+*"silent stalls have no signal"*, obtained for free from a job we are already running. It is worth
+saying plainly because every other stall we hit on 2026-08-28 was invisible until someone went
+looking.
+
+Shape:
+
+- **Gauges, not a histogram.** Claims are a population sampled periodically, not a stream of events.
+  One gauge per bucket, tagged, plus a single gauge for the **oldest live claim's age** — usually
+  the most actionable number and one query to obtain.
+- Emit alongside the reaper's delete count, from the same pass, so stock and flow always agree about
+  the same moment.
+
 **This needs a `Substrate` door that does not exist.** Today the document door is `read` / `write` /
 `delete(kind, key, version)` / `keys(kind, limit)` — there is no way to find expired entries without
 scanning every kind. Either the claim's expiry becomes a column the store can index and sweep, or
