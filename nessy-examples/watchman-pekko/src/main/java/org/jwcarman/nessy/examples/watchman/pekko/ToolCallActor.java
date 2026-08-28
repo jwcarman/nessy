@@ -54,7 +54,7 @@ public final class ToolCallActor {
   public record Answered(boolean approved, String by, String note) implements Command {}
 
   /** From a tool worker: the command came back. */
-  public record Ran(String result) implements Command {}
+  public record Ran(ToolResult result) implements Command {}
 
   private ToolCallActor() {}
 

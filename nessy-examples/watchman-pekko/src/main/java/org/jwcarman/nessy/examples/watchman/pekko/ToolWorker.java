@@ -60,29 +60,45 @@ public final class ToolWorker {
               ToolCallRecord call = message.call();
               CompletableFuture.supplyAsync(
                       () -> {
-                        String arguments =
-                            claims
-                                .get(
-                                    message.agentId(), message.turnId(), message.argumentsClaimId())
-                                .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
-                                .orElseThrow(
-                                    () ->
-                                        new IllegalStateException(
-                                            "no claim for " + message.argumentsClaimId()));
-                        // GenAI semconv names this span `execute_tool` and carries the tool name
-                        // as an attribute rather than baking it into the span name -- a name per
-                        // tool would blow up cardinality in every backend.
-                        String result =
-                            traces.inSpan(
-                                "execute_tool",
-                                message.trace(),
-                                () -> {
-                                  traces.tag("nessy.agent.id", message.agentId());
-                                  traces.tag("nessy.tool.call.id", call.id());
-                                  traces.tag("gen_ai.tool.name", call.tool());
-                                  traces.tag("watchman.action", call.action());
-                                  return WatchmanTools.run(runner, call.tool(), arguments);
-                                });
+                        // Every tool call must record an exchange, on every path -- an unremembered
+                        // exchange leaves an assistant turn naming this call's tool_use id withheld
+                        // from recall() forever, along with every sibling result. So the whole run,
+                        // claim resolution included, is captured rather than left to skip the
+                        // remember below.
+                        String arguments = "{}";
+                        ToolResult result;
+                        try {
+                          arguments =
+                              claims
+                                  .get(
+                                      message.agentId(),
+                                      message.turnId(),
+                                      message.argumentsClaimId())
+                                  .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+                                  .orElseThrow(
+                                      () ->
+                                          new IllegalStateException(
+                                              "no claim for " + message.argumentsClaimId()));
+                          // GenAI semconv names this span `execute_tool` and carries the tool name
+                          // as an attribute rather than baking it into the span name -- a name per
+                          // tool would blow up cardinality in every backend.
+                          String finalArguments = arguments;
+                          result =
+                              ToolResult.ok(
+                                  traces.inSpan(
+                                      "execute_tool",
+                                      message.trace(),
+                                      () -> {
+                                        traces.tag("nessy.agent.id", message.agentId());
+                                        traces.tag("nessy.tool.call.id", call.id());
+                                        traces.tag("gen_ai.tool.name", call.tool());
+                                        traces.tag("watchman.action", call.action());
+                                        return WatchmanTools.run(
+                                            runner, call.tool(), finalArguments);
+                                      }));
+                        } catch (RuntimeException e) {
+                          result = ToolResult.error(String.valueOf(e.getMessage()));
+                        }
                         // Remembered first, then the agent is told. Same thread, so the ordering
                         // is not a hope -- and a crash in between leaves an exchange whose
                         // assistant turn the fold will pair up, never a context the model rejects.
@@ -95,7 +111,7 @@ public final class ToolWorker {
                                         call.id(),
                                         call.tool(),
                                         WatchmanTools.argumentsOf(arguments)),
-                                    ToolResult.ok(result)));
+                                    result));
                         return result;
                       },
                       blocking)
@@ -105,7 +121,9 @@ public final class ToolWorker {
                               .replyTo()
                               .tell(
                                   new ToolCallActor.Ran(
-                                      failure == null ? result : "failed: " + failure)));
+                                      failure == null
+                                          ? result
+                                          : ToolResult.error(String.valueOf(failure)))));
               return Behaviors.same();
             })
         .build();
