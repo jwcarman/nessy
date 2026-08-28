@@ -147,6 +147,38 @@ class CoalescerTest {
   }
 
   @Test
+  void
+      a_superseded_entry_takes_the_new_arrivals_id_but_keeps_its_position_and_first_arrival_time() {
+    Coalescer<Object> coalescer =
+        Coalescer.byKey(o -> o instanceof Quote q ? Optional.of(q.symbol()) : Optional.empty());
+
+    // AAPL arrives, then MSFT, then AAPL supersedes again -- the exact shape that let the soak's
+    // "rounds" tick reuse one entry id (and therefore one Remembrance key) forever.
+    Backlog<Object> backlog =
+        ingestAll(
+            coalescer,
+            Backlog.empty(),
+            List.of(
+                entry("a", new Quote("AAPL", 100), 0),
+                entry("b", new Quote("MSFT", 200), 1),
+                entry("c", new Quote("AAPL", 111), 30)));
+
+    assertThat(backlog.entries()).isNotEmpty();
+    assertThat(backlog.entries())
+        .element(0)
+        .satisfies(
+            e -> {
+              // The id CHANGES to the superseding arrival's -- the property whose absence let
+              // every coalesced observation reuse one Remembrance key forever.
+              assertThat(e.id()).isEqualTo("c");
+              assertThat(e.id()).isNotEqualTo("a");
+              // Position and receivedAt still describe when the topic first showed up.
+              assertThat(e.receivedAt()).isEqualTo(NOON);
+              assertThat(e.observation()).isEqualTo(new Quote("AAPL", 111));
+            });
+  }
+
+  @Test
   void a_merge_can_fold_rather_than_replace() {
     record Errors(String kind, int count) {}
     Coalescer<Object> coalescer =

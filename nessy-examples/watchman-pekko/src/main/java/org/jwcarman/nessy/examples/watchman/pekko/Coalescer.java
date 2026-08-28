@@ -76,20 +76,23 @@ public interface Coalescer<O> {
   static <O> Coalescer<O> byKey(Function<O, Optional<String>> key, BinaryOperator<O> merge) {
     return (current, incoming) ->
         key.apply(incoming.observation())
-            // Prefixed so a key can never collide with a minted id for an unkeyed entry.
-            .map(k -> "k:" + k)
             .map(
-                id ->
+                k ->
                     current
-                        .find(id)
+                        .findByKey(k)
                         .map(
                             existing ->
-                                current.replace(
-                                    id,
+                                current.supersede(
+                                    k,
+                                    incoming.id(),
                                     merge.apply(existing.observation(), incoming.observation())))
                         .orElseGet(
                             () ->
-                                current.append(id, incoming.observation(), incoming.receivedAt())))
+                                current.append(
+                                    incoming.id(),
+                                    incoming.observation(),
+                                    incoming.receivedAt(),
+                                    k)))
             .orElseGet(
                 () -> current.append(incoming.id(), incoming.observation(), incoming.receivedAt()));
   }
