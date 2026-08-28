@@ -431,6 +431,82 @@ brings up the rest beneath it, and a whole agent — ingest, coalescing, turn, t
 approval — is exercised in-process with no Spring, no HTTP, and no database beyond whichever
 `Substrate` the test chooses.
 
+## 12. Turn events: agent-scoped subscription
+
+**Ruled 2026-08-28 by James.** A caller subscribes to an AGENT and receives turn events across every
+turn it runs, until it unsubscribes. Each subscription yields its own actor whose only job is
+delivering to that one listener — an SSE response, a websocket, a test collector.
+
+`TurnEvent`, `TurnObserver`, and `Subscription extends AutoCloseable` already exist in `nessy-api`
+and do not change. What changes is **lifetime**: an observer was handed to one turn, and is now
+registered against an agent.
+
+### 12.1 The envelope, and why the events alone are not enough
+
+`TurnEvent` carries no turn id — `TextDelta(text)`, `ToolCallCompleted(call, result)`,
+`TurnEnded(failureReason)`. That was right when an observer belonged to one turn and "which turn?"
+was answered by construction. Agent-scoped, it is not: two turns interleaving deltas produce an
+unreadable stream.
+
+So delivery is an envelope and `TurnEvent` stays exactly as it is:
+
+```
+(eventId: UUIDv7, turnId, TurnEvent)
+```
+
+**UUIDv7 specifically, because it sorts.** A resume cursor must answer "everything after this",
+which a v4 makes unanswerable. The house convention hands us the ordering for free.
+
+### 12.2 The rule that matters most: the agent never blocks on a subscriber
+
+A browser on hotel wifi must not slow down a turn. **A subscriber that cannot keep up is dropped,
+and told it was dropped.** Never buffered without bound, never awaited.
+
+The per-listener actor exists FOR this: its mailbox absorbs jitter, and an overflow kills one actor
+instead of stalling the agent every other subscriber shares. Do not soften this rule into "grow the
+buffer" — an unbounded buffer converts a slow client into an agent-wide outage, which is the
+distributed-systems failure this whole design is otherwise built to avoid.
+
+Subscriber refs are `watch`ed, so a dead SSE connection deregisters itself. Without that, a
+long-lived agent accumulates refs to dead listeners forever.
+
+### 12.3 Lookback and resumption
+
+Each agent keeps a bounded ring of recent envelopes. **It is a transient actor field, never the
+persisted document** — §10 says the agent persists identifiers, and a replay buffer is content. A
+restart therefore empties it. That is correct behavior, not a limitation to be fixed later.
+
+On reconnect with a `Last-Event-ID`:
+
+| the cursor | what we send |
+|---|---|
+| is in the ring | everything after it |
+| is not in the ring, but sorts within it | everything sorting after it — v7 ordering makes this exact |
+| predates the oldest entry (or the ring is empty after a restart) | the whole ring, **plus a gap signal** |
+
+The middle row is why the ids sort: we answer correctly for a cursor we never held, rather than
+dumping the ring blind and duplicating what the client already has.
+
+**Silence on resume is the bug, not the lost events.** A client that resumes into a hole and is not
+told renders a coherent, wrong picture. The gap is a stream-level frame emitted by the SSE layer,
+NOT a `TurnEvent` variant — a gap is not something that happened during a turn, and putting it in
+the sealed grammar would force every observer to handle a case that is purely about transport.
+
+### 12.4 Non-goal: this is a view, never a source of truth
+
+Turn events are **lossy by design** — the exact inverse of the discipline governing memory, claims,
+and decisions everywhere else in this document. That asymmetry is why it is stated here: sooner or
+later someone will want to persist from an observer, drive an approval off an event, or reconstruct
+a transcript from the stream. All three are wrong, and all three look reasonable to someone who has
+only read this section. The truth is in `Memory`, `Claims`, and the Approver's store; the event
+stream is how a human watches it happen.
+
+### 12.5 Finding the subscription from another node
+
+`GET /agents/{id}/events` may land on any node. Resolution uses the same mechanism as everything
+else late-arriving (§8): the Receptionist, keyed per agent. Nothing new is minted, and nothing about
+subscription needs its own addressing scheme.
+
 ## 9. Other open items
 
 1. **§4's merge timestamp** — oldest versus now.
