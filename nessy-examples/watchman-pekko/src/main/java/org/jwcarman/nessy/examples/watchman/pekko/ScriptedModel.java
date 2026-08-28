@@ -45,18 +45,37 @@ public final class ScriptedModel implements WatchmanModel {
         blocking);
   }
 
+  /**
+   * Round-aware, and it has to be: the transcript now spans every round this agent has ever done,
+   * so "have any tools run?" is true forever after the first one. The question is whether tools
+   * have run since the LAST thing a human said.
+   *
+   * <p>Call ids are unique per round for the same reason. A real model never reissues an id, and
+   * {@link Transcript#recall} keeps only the first result for any given id -- so reusing {@code
+   * call-disk} every round would silently drop every result after the first.
+   */
   private static ModelReply script(List<Turn> transcript) {
-    boolean toolsHaveRun = transcript.stream().anyMatch(Turn.ToolResult.class::isInstance);
-    if (toolsHaveRun) {
+    int rounds = (int) transcript.stream().filter(Turn.User.class::isInstance).count();
+    int lastUser = -1;
+    for (int i = 0; i < transcript.size(); i++) {
+      if (transcript.get(i) instanceof Turn.User) {
+        lastUser = i;
+      }
+    }
+    boolean answeredThisRound =
+        transcript.subList(lastUser + 1, transcript.size()).stream()
+            .anyMatch(Turn.ToolResult.class::isInstance);
+    if (answeredThisRound) {
       return new ModelReply.Said(
           "Rounds complete. Disk is filling and there are unused images to reclaim.");
     }
+    String suffix = "-" + Math.max(rounds, 1);
     return new ModelReply.AskedForTools(
         "Looking at the box.",
         List.of(
-            new Turn.ToolRequest("call-disk", "disk_usage", "{}"),
-            new Turn.ToolRequest("call-containers", "containers", "{}"),
-            new Turn.ToolRequest("call-prune", "prune_images", "{}")));
+            new Turn.ToolRequest("call-disk" + suffix, "disk_usage", "{}"),
+            new Turn.ToolRequest("call-containers" + suffix, "containers", "{}"),
+            new Turn.ToolRequest("call-prune" + suffix, "prune_images", "{}")));
   }
 
   private static void sleep(Duration duration) {

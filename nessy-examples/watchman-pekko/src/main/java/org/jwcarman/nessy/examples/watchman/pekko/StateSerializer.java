@@ -37,11 +37,23 @@ public final class StateSerializer extends SerializerWithStringManifest {
 
   private static final int IDENTIFIER = 918_301;
 
-  /** Registers the time module the state needs; Pekko has no say in how our mapper is built. */
+  /**
+   * Our mapper: Pekko has no say in how it is built.
+   *
+   * <p>{@code FAIL_ON_UNKNOWN_PROPERTIES} is off, and that is a migration decision rather than
+   * laziness. A durable-state document is REWRITTEN in place, so there is no event log to replay
+   * and no automatic migration: the day a field leaves the state, every row still on disk carries
+   * it, and a strict reader turns "we shipped a smaller state" into "the agent cannot load". This
+   * was not hypothetical — moving the transcript out of {@link TurnState} made every pre-existing
+   * row unreadable until this line existed. Tolerating unknown fields makes a SHRINKING change
+   * safe; anything larger still needs {@link #manifest} bumped and a real migration.
+   */
   public static final ObjectMapper MAPPER =
       new ObjectMapper()
           .registerModule(new JavaTimeModule())
-          .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+          .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+          .disable(
+              com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   @Override
   public int identifier() {

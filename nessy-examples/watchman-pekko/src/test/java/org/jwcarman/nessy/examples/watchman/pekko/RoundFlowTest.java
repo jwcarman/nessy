@@ -40,19 +40,29 @@ import org.junit.jupiter.api.Test;
 @DisplayName("A watchman round")
 class RoundFlowTest {
 
+  /** The scripted model makes ids unique per round; these are round one\'s. */
+  private static final String PRUNE = "call-prune-1";
+
+  private static final String DISK = "call-disk-1";
+  private static final String CONTAINERS = "call-containers-1";
+
   private static final Duration PATIENCE = Duration.ofSeconds(30);
 
   private WatchmanActorSystem actors;
+  private Transcript transcript;
   private String agent;
 
   @BeforeEach
   void start() {
     agent = "watchman-" + UUID.randomUUID();
+    transcript =
+        new Transcript(new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC()));
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedModel(Duration.ofMillis(20)),
             new FakeRunner(),
+            transcript,
             new Traces(OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -74,6 +84,17 @@ class RoundFlowTest {
     }
   }
 
+  /** Tool results, by call id, straight out of the journal. */
+  private java.util.Map<String, String> results() {
+    java.util.Map<String, String> byCall = new java.util.LinkedHashMap<>();
+    transcript.entries(agent).stream()
+        .map(Transcript.Entry::turn)
+        .filter(Turn.ToolResult.class::isInstance)
+        .map(Turn.ToolResult.class::cast)
+        .forEach(result -> byCall.putIfAbsent(result.callId(), result.text()));
+    return byCall;
+  }
+
   private void awaitState(Class<? extends TurnState> expected) {
     await().atMost(PATIENCE).untilAsserted(() -> assertThat(state()).isInstanceOf(expected));
   }
@@ -84,7 +105,9 @@ class RoundFlowTest {
 
     @Test
     void the_read_only_tools_run_and_the_one_that_needs_a_human_parks() {
-      actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      actors.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
 
       awaitState(TurnState.WorkingTools.class);
 
@@ -93,12 +116,13 @@ class RoundFlowTest {
           .untilAsserted(
               () -> {
                 var working = (TurnState.WorkingTools) state();
-                assertThat(working.call("call-disk")).isPresent();
-                assertThat(working.call("call-disk").orElseThrow().outcome())
-                    .isEqualTo("/ 91% used, 9G free");
-                assertThat(working.call("call-containers").orElseThrow().settled()).isTrue();
+                assertThat(working.call(DISK)).isPresent();
+                // The result is a TRANSCRIPT turn now; the state records only that it settled.
+                assertThat(working.call(DISK).orElseThrow().settled()).isTrue();
+                assertThat(results()).containsEntry(DISK, "/ 91% used, 9G free");
+                assertThat(working.call(CONTAINERS).orElseThrow().settled()).isTrue();
                 // The one behind a human: asked for, not decided, not settled.
-                var prune = working.call("call-prune").orElseThrow();
+                var prune = working.call(PRUNE).orElseThrow();
                 assertThat(prune.settled()).isFalse();
                 assertThat(prune.decided()).isFalse();
                 assertThat(prune.action()).isEqualTo("docker image prune -af");
@@ -112,56 +136,58 @@ class RoundFlowTest {
 
     @Test
     void a_denial_settles_the_call_and_the_round_finishes() throws Exception {
-      actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      actors.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       awaitState(TurnState.WorkingTools.class);
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call("call-prune")).isPresent());
+              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
 
       AgentActor.Ack ack =
           actors
-              .answerApproval(agent, "call-prune", false, "james", "not on a Friday")
+              .answerApproval(agent, PRUNE, false, "james", "not on a Friday")
               .toCompletableFuture()
               .get(15, TimeUnit.SECONDS);
 
       assertThat(ack.accepted()).isTrue();
       awaitState(TurnState.Idle.class);
 
-      List<Turn> transcript = state().transcript();
-      assertThat(transcript).isNotEmpty();
-      assertThat(transcript)
-          .filteredOn(Turn.ToolResult.class::isInstance)
-          .extracting(turn -> ((Turn.ToolResult) turn).text())
-          .anySatisfy(text -> assertThat(text).contains("denied by james: not on a Friday"));
-      assertThat(transcript.getLast()).isInstanceOf(Turn.Assistant.class);
+      List<Turn> turns = transcript.recall(agent, state());
+      assertThat(turns).isNotEmpty();
+      assertThat(results()).containsEntry(PRUNE, "denied by james: not on a Friday");
+      assertThat(turns.getLast()).isInstanceOf(Turn.Assistant.class);
     }
 
     @Test
     void an_approval_runs_the_command_and_the_round_finishes() throws Exception {
-      actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      actors.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       awaitState(TurnState.WorkingTools.class);
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call("call-prune")).isPresent());
+              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
 
       actors
-          .answerApproval(agent, "call-prune", true, "james", "go on then")
+          .answerApproval(agent, PRUNE, true, "james", "go on then")
           .toCompletableFuture()
           .get(15, TimeUnit.SECONDS);
 
       awaitState(TurnState.Idle.class);
-      assertThat(state().transcript())
-          .filteredOn(Turn.ToolResult.class::isInstance)
-          .extracting(turn -> ((Turn.ToolResult) turn).text())
-          .anySatisfy(text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
+      assertThat(results())
+          .hasEntrySatisfying(
+              PRUNE, text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
     }
 
     @Test
     void an_answer_for_a_call_nobody_asked_about_is_refused_rather_than_swallowed()
         throws Exception {
-      actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      actors.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       awaitState(TurnState.WorkingTools.class);
 
       AgentActor.Ack ack =
@@ -176,30 +202,29 @@ class RoundFlowTest {
 
     @Test
     void a_double_click_is_idempotent() throws Exception {
-      actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      actors.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       awaitState(TurnState.WorkingTools.class);
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(((TurnState.WorkingTools) state()).call("call-prune")).isPresent());
+              () -> assertThat(((TurnState.WorkingTools) state()).call(PRUNE)).isPresent());
 
       actors
-          .answerApproval(agent, "call-prune", false, "james", "no")
+          .answerApproval(agent, PRUNE, false, "james", "no")
           .toCompletableFuture()
           .get(15, TimeUnit.SECONDS);
       AgentActor.Ack second =
           actors
-              .answerApproval(agent, "call-prune", true, "james", "changed my mind")
+              .answerApproval(agent, PRUNE, true, "james", "changed my mind")
               .toCompletableFuture()
               .get(15, TimeUnit.SECONDS);
 
       assertThat(second.accepted()).isTrue();
       assertThat(second.detail()).isEqualTo("already answered");
       awaitState(TurnState.Idle.class);
-      assertThat(state().transcript())
-          .filteredOn(Turn.ToolResult.class::isInstance)
-          .extracting(turn -> ((Turn.ToolResult) turn).text())
-          .anySatisfy(text -> assertThat(text).contains("denied by james: no"));
+      assertThat(results()).containsEntry(PRUNE, "denied by james: no");
     }
   }
 }

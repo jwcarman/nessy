@@ -37,6 +37,12 @@ import org.junit.jupiter.api.Test;
 @DisplayName("A parked round, across a restart")
 class RestartTest {
 
+  /** The scripted model makes ids unique per round; these are round one\'s. */
+  private static final String PRUNE = "call-prune-1";
+
+  private static final String DISK = "call-disk-1";
+  private static final String CONTAINERS = "call-containers-1";
+
   private static final Duration PATIENCE = Duration.ofSeconds(45);
 
   private TurnState stateOf(WatchmanActorSystem actors, String agent) {
@@ -53,14 +59,16 @@ class RestartTest {
 
     WatchmanActorSystem first = WatchmanPostgres.start(new ScriptedModel(Duration.ofMillis(20)));
     try {
-      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      first.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(
               () -> {
                 TurnState state = stateOf(first, agent);
                 assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
-                assertThat(((TurnState.WorkingTools) state).call("call-prune")).isPresent();
+                assertThat(((TurnState.WorkingTools) state).call(PRUNE)).isPresent();
               });
     } finally {
       first.stop(); // a real termination, awaited
@@ -78,13 +86,13 @@ class RestartTest {
           .anySatisfy(
               row -> {
                 assertThat(row.agentId()).isEqualTo(agent);
-                assertThat(row.callId()).isEqualTo("call-prune");
+                assertThat(row.callId()).isEqualTo(PRUNE);
                 assertThat(row.action()).isEqualTo("docker image prune -af");
               });
 
       AgentActor.Ack ack =
           second
-              .answerApproval(agent, "call-prune", false, "james", "still no")
+              .answerApproval(agent, PRUNE, false, "james", "still no")
               .toCompletableFuture()
               .get(20, TimeUnit.SECONDS);
       assertThat(ack.accepted()).isTrue();
@@ -94,9 +102,9 @@ class RestartTest {
           .untilAsserted(
               () -> assertThat(stateOf(second, agent)).isInstanceOf(TurnState.Idle.class));
 
-      List<Turn> transcript = stateOf(second, agent).transcript();
-      assertThat(transcript).isNotEmpty();
-      assertThat(transcript)
+      List<Turn> turns = WatchmanPostgres.transcript().recall(agent, stateOf(second, agent));
+      assertThat(turns).isNotEmpty();
+      assertThat(turns)
           .filteredOn(Turn.ToolResult.class::isInstance)
           .extracting(turn -> ((Turn.ToolResult) turn).text())
           .anySatisfy(text -> assertThat(text).contains("denied by james: still no"))
@@ -116,7 +124,9 @@ class RestartTest {
 
     WatchmanActorSystem first = WatchmanPostgres.start(new ScriptedModel(Duration.ofSeconds(60)));
     try {
-      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+      first.tell(
+          agent,
+          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(

@@ -7,15 +7,20 @@
     body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 70rem; }
     h1 { font-size: 1.2rem; }
     nav a { margin-right: 1rem; }
-    li { margin-bottom: .75rem; }
-    pre { white-space: pre-wrap; background: #f6f6f6; padding: .5rem; }
+    td { vertical-align: top; padding: .35rem .6rem; border-bottom: 1px solid #eee; }
+    .seq, .when { white-space: nowrap; color: #666; }
+    pre { white-space: pre-wrap; margin: 0; }
   </style>
 </head>
 <body>
-<h1>watchman (pekko) — <span th:text="${phase}">phase</span></h1>
+<h1>watchman (pekko) — the notes</h1>
 <nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
-<ol>
-  <li th:each="turn : ${turns}"><pre th:text="${turn}">turn</pre></li>
-</ol>
+<table>
+  <tr th:each="entry : ${entries}">
+    <td class="seq" th:text="${entry.seq}">1</td>
+    <td class="when" th:text="${entry.appendedAt}">when</td>
+    <td><pre th:text="${entry.turn}">turn</pre></td>
+  </tr>
+</table>
 </body>
 </html>

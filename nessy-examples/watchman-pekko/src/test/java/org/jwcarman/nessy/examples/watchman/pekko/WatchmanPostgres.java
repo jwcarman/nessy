@@ -43,12 +43,22 @@ public final class WatchmanPostgres {
     return dataSource;
   }
 
+  public static Transcript transcript() {
+    return new Transcript(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()));
+  }
+
   public static WatchmanActorSystem start(WatchmanModel model) {
+    return start(model, transcript());
+  }
+
+  public static WatchmanActorSystem start(WatchmanModel model, Transcript transcript) {
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
             config(),
             model,
             new FakeRunner(),
+            transcript,
             new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),

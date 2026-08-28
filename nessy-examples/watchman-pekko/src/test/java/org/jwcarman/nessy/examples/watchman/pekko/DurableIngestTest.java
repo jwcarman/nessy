@@ -43,6 +43,12 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Answering an approval durably")
 class DurableIngestTest {
 
+  /** The scripted model makes ids unique per round; these are round one\'s. */
+  private static final String PRUNE = "call-prune-1";
+
+  private static final String DISK = "call-disk-1";
+  private static final String CONTAINERS = "call-containers-1";
+
   private static final Duration PATIENCE = Duration.ofSeconds(45);
 
   private final DataSource dataSource = WatchmanPostgres.dataSource();
@@ -76,14 +82,15 @@ class DurableIngestTest {
   }
 
   private void parkOnApproval(WatchmanActorSystem actors, String agent) {
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+    actors.tell(
+        agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
     await()
         .atMost(PATIENCE)
         .untilAsserted(
             () -> {
               TurnState state = stateOf(actors, agent);
               assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
-              assertThat(((TurnState.WorkingTools) state).call("call-prune")).isPresent();
+              assertThat(((TurnState.WorkingTools) state).call(PRUNE)).isPresent();
             });
   }
 
@@ -96,12 +103,11 @@ class DurableIngestTest {
       parkOnApproval(actors, agent);
       TurnState parked = onDisk(agent).orElseThrow();
       assertThat(parked).isInstanceOf(TurnState.WorkingTools.class);
-      assertThat(((TurnState.WorkingTools) parked).call("call-prune").orElseThrow().decided())
-          .isFalse();
+      assertThat(((TurnState.WorkingTools) parked).call(PRUNE).orElseThrow().decided()).isFalse();
 
       AgentActor.Ack ack =
           actors
-              .answerApproval(agent, "call-prune", false, "james", "not today")
+              .answerApproval(agent, PRUNE, false, "james", "not today")
               .toCompletableFuture()
               .get(20, TimeUnit.SECONDS);
 
@@ -109,7 +115,7 @@ class DurableIngestTest {
       // Read directly, with no actor involved, on the very next statement.
       assertThat(ack.accepted()).isTrue();
       TurnState persisted = onDisk(agent).orElseThrow();
-      assertThat(deniedBy(persisted, "james", "not today"))
+      assertThat(deniedBy(agent, persisted, "james", "not today"))
           .as("the denial must be durable before the page is told anything")
           .isTrue();
     }
@@ -124,7 +130,7 @@ class DurableIngestTest {
       parkOnApproval(first.actors(), agent);
       first
           .actors()
-          .answerApproval(agent, "call-prune", false, "james", "absolutely not")
+          .answerApproval(agent, PRUNE, false, "james", "absolutely not")
           .toCompletableFuture()
           .get(20, TimeUnit.SECONDS);
       // Terminate immediately: if the acknowledgement had raced ahead of the write, this is where
@@ -138,7 +144,7 @@ class DurableIngestTest {
           .untilAsserted(
               () -> assertThat(stateOf(second.actors(), agent)).isInstanceOf(TurnState.Idle.class));
 
-      assertThat(stateOf(second.actors(), agent).transcript())
+      assertThat(WatchmanPostgres.transcript().recall(agent, stateOf(second.actors(), agent)))
           .filteredOn(Turn.ToolResult.class::isInstance)
           .extracting(turn -> ((Turn.ToolResult) turn).text())
           .anySatisfy(text -> assertThat(text).contains("denied by james: absolutely not"));
@@ -156,7 +162,7 @@ class DurableIngestTest {
    * satisfy the requirement -- but which one you will find is a race, and that is worth knowing.
    * See the report on what this costs the audit trail.
    */
-  private static boolean deniedBy(TurnState state, String by, String note) {
+  private static boolean deniedBy(String agentId, TurnState state, String by, String note) {
     String expected = "denied by " + by + ": " + note;
     if (state instanceof TurnState.WorkingTools working) {
       boolean onTheCall =
@@ -171,7 +177,8 @@ class DurableIngestTest {
         return true;
       }
     }
-    return state.transcript().stream()
+    return WatchmanPostgres.transcript().entries(agentId).stream()
+        .map(Transcript.Entry::turn)
         .filter(Turn.ToolResult.class::isInstance)
         .map(Turn.ToolResult.class::cast)
         .anyMatch(result -> result.text().contains(expected));

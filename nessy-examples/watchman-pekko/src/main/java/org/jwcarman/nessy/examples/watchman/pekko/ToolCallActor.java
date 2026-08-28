@@ -56,24 +56,31 @@ public final class ToolCallActor {
   }
 
   public static Behavior<Command> create(
+      String agentId,
       ToolCallRecord call,
       ActorRef<AgentActor.Command> agent,
       ActorRef<ToolWorker.RunTool> tools,
       Duration approvalTerm,
       Map<String, String> trace,
-      java.time.Clock clock) {
+      java.time.Clock clock,
+      Transcript transcript,
+      java.util.concurrent.Executor blocking) {
 
     return Behaviors.setup(
         context -> {
           if (call.decided() && call.decision().approved()) {
-            return run(call, agent, tools, context.getSelf(), trace);
+            return run(agentId, call, agent, tools, context.getSelf(), trace);
           }
           if (call.decided()) {
-            agent.tell(
-                new AgentActor.ToolCallSettled(
-                    call.id(),
-                    "denied by " + call.decision().by() + ": " + call.decision().note(),
-                    trace));
+            settleAsDenied(
+                agentId,
+                call,
+                agent,
+                trace,
+                transcript,
+                blocking,
+                call.decision().by(),
+                call.decision().note());
             return Behaviors.stopped();
           }
           if (WatchmanTools.needsApproval(call.tool())) {
@@ -81,10 +88,34 @@ public final class ToolCallActor {
                 context.spawn(
                     ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
                     "approval");
-            return awaitingApproval(call, agent, tools, approval, trace);
+            return awaitingApproval(
+                agentId, call, agent, tools, approval, trace, transcript, blocking);
           }
-          return run(call, agent, tools, context.getSelf(), trace);
+          return run(agentId, call, agent, tools, context.getSelf(), trace);
         });
+  }
+
+  /**
+   * A denial produces a transcript turn like any other outcome, and it must be written before the
+   * agent is told. This actor is on a dispatcher, so the append goes to the blocking executor and
+   * the agent is told from the completion -- telling an ActorRef from another thread is the one
+   * thing that is always safe.
+   */
+  private static void settleAsDenied(
+      String agentId,
+      ToolCallRecord call,
+      ActorRef<AgentActor.Command> agent,
+      Map<String, String> trace,
+      Transcript transcript,
+      java.util.concurrent.Executor blocking,
+      String by,
+      String note) {
+    String outcome = "denied by " + by + ": " + note;
+    java.util.concurrent.CompletableFuture.runAsync(
+            () -> transcript.append(agentId, new Turn.ToolResult(call.id(), call.tool(), outcome)),
+            blocking)
+        .whenComplete(
+            (done, failure) -> agent.tell(new AgentActor.ToolCallSettled(call.id(), trace)));
   }
 
   /**
@@ -92,11 +123,14 @@ public final class ToolCallActor {
    * agent persists only that this call has no outcome yet, plus the decision once one arrives.
    */
   private static Behavior<Command> awaitingApproval(
+      String agentId,
       ToolCallRecord call,
       ActorRef<AgentActor.Command> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<ApprovalActor.Command> approval,
-      Map<String, String> trace) {
+      Map<String, String> trace,
+      Transcript transcript,
+      java.util.concurrent.Executor blocking) {
     return Behaviors.receive(Command.class)
         .onMessage(
             Answer.class,
@@ -109,28 +143,38 @@ public final class ToolCallActor {
             Answered.class,
             answered -> {
               if (!answered.approved()) {
-                agent.tell(
-                    new AgentActor.ToolCallSettled(
-                        call.id(), "denied by " + answered.by() + ": " + answered.note(), trace));
+                settleAsDenied(
+                    agentId,
+                    call,
+                    agent,
+                    trace,
+                    transcript,
+                    blocking,
+                    answered.by(),
+                    answered.note());
                 return Behaviors.stopped();
               }
-              return Behaviors.setup(context -> run(call, agent, tools, context.getSelf(), trace));
+              return Behaviors.setup(
+                  context -> run(agentId, call, agent, tools, context.getSelf(), trace));
             })
         .build();
   }
 
   private static Behavior<Command> run(
+      String agentId,
       ToolCallRecord call,
       ActorRef<AgentActor.Command> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<Command> self,
       Map<String, String> trace) {
-    tools.tell(new ToolWorker.RunTool(call, self, trace));
+    tools.tell(new ToolWorker.RunTool(agentId, call, self, trace));
     return Behaviors.receive(Command.class)
         .onMessage(
             Ran.class,
             ran -> {
-              agent.tell(new AgentActor.ToolCallSettled(call.id(), ran.result(), trace));
+              // The worker already wrote the result to the transcript; the agent only needs to
+              // know the call is done.
+              agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
               return Behaviors.stopped();
             })
         // An answer for a call already running is a duplicate; ignoring it here is the whole of

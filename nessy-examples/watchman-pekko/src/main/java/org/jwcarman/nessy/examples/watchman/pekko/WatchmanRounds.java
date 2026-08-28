@@ -39,14 +39,26 @@ public class WatchmanRounds {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
 
+  /**
+   * Every cron tick supersedes any earlier tick still queued: "do your rounds" is not cumulative.
+   */
+  public static final String ROUNDS = "rounds";
+
   private final WatchmanActorSystem actors;
   private final StartupSweep sweep;
+  private final Transcript transcript;
   private final Traces traces;
   private final Clock clock;
 
-  WatchmanRounds(WatchmanActorSystem actors, StartupSweep sweep, Traces traces, Clock clock) {
+  WatchmanRounds(
+      WatchmanActorSystem actors,
+      StartupSweep sweep,
+      Transcript transcript,
+      Traces traces,
+      Clock clock) {
     this.actors = actors;
     this.sweep = sweep;
+    this.transcript = transcript;
     this.traces = traces;
     this.clock = clock;
   }
@@ -69,8 +81,12 @@ public class WatchmanRounds {
         () -> {
           String observation = "It is " + clock.instant() + ". Do your rounds.";
           LOG.info("[watchman] telling the watchman: {}", observation);
+          // Transcript first, then the agent -- this scheduler thread is not a dispatcher, so the
+          // append can block here, and the ordering is guaranteed by being sequential.
+          transcript.append(WatchmanGuardian.WATCHMAN, new Turn.User(observation));
           actors.tell(
-              WatchmanGuardian.WATCHMAN, new AgentActor.Observe(observation, traces.capture()));
+              WatchmanGuardian.WATCHMAN,
+              new AgentActor.Observe(observation, ROUNDS, traces.capture()));
         });
   }
 }

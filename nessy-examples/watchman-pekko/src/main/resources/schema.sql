@@ -60,5 +60,26 @@ CREATE TABLE IF NOT EXISTS watchman_pekko.durable_state (
   PRIMARY KEY(persistence_id)
 );
 
+-- Nessy's OWN substrate tables, verbatim from nessy-substrate-jdbc's nessy-postgresql.sql, in
+-- this port's schema. The transcript lives in nessy_journal -- one row per turn, appended, never
+-- rewritten -- which is what keeps durable_state flat forever.
+CREATE TABLE IF NOT EXISTS watchman_pekko.nessy_document (
+  kind        TEXT             NOT NULL,
+  key         TEXT COLLATE "C" NOT NULL,
+  payload     BYTEA            NOT NULL,
+  version     BIGINT           NOT NULL,
+  updated_at  TIMESTAMPTZ      NOT NULL,
+  PRIMARY KEY (kind, key)
+);
+
+CREATE TABLE IF NOT EXISTS watchman_pekko.nessy_journal (
+  kind         TEXT             NOT NULL,
+  key          TEXT COLLATE "C" NOT NULL,
+  seq          BIGINT           NOT NULL,
+  payload      BYTEA            NOT NULL,
+  appended_at  TIMESTAMPTZ      NOT NULL,
+  PRIMARY KEY (kind, key, seq)
+);
+
 CREATE INDEX IF NOT EXISTS state_tag_idx ON watchman_pekko.durable_state (tag);
 CREATE INDEX IF NOT EXISTS state_global_offset_idx ON watchman_pekko.durable_state (global_offset);

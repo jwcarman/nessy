@@ -87,7 +87,8 @@ class SpringShutdownTest {
 
     ConfigurableApplicationContext context = boot();
     WatchmanActorSystem actors = context.getBean(WatchmanActorSystem.class);
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
+    actors.tell(
+        agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(30))

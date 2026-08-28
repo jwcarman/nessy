@@ -45,7 +45,8 @@ public final class ModelWorker {
 
   private ModelWorker() {}
 
-  public static Behavior<Command> create(WatchmanModel model, Executor blocking, Traces traces) {
+  public static Behavior<Command> create(
+      WatchmanModel model, Transcript transcript, Executor blocking, Traces traces) {
     return Behaviors.setup(
         context -> {
           ActorRef<ConsumerController.Command<ModelDesk.ModelJob>> consumer =
@@ -59,11 +60,25 @@ public final class ModelWorker {
                   Delivered.class,
                   delivered -> {
                     ModelDesk.ModelJob job = delivered.delivery().message();
+                    // Recall, call, and append -- ALL on the blocking executor. The recall is a
+                    // journal read and the append a journal write; neither may touch a dispatcher,
+                    // and doing them here means the transcript is written before the agent is told
+                    // anything that depends on it.
                     context.pipeToSelf(
-                        traces.inSpan(
-                            "model call",
-                            job.trace(),
-                            () -> model.reply(job.transcript(), blocking)),
+                        java.util.concurrent.CompletableFuture.supplyAsync(
+                                () -> transcript.recall(job.agentId(), job.state()), blocking)
+                            .thenCompose(
+                                turns ->
+                                    traces.inSpan(
+                                        "model call",
+                                        job.trace(),
+                                        () -> model.reply(turns, blocking)))
+                            .thenApplyAsync(
+                                reply -> {
+                                  record(transcript, job.agentId(), reply);
+                                  return reply;
+                                },
+                                blocking),
                         (reply, failure) ->
                             new Replied(
                                 failure == null
@@ -85,5 +100,18 @@ public final class ModelWorker {
                   })
               .build();
         });
+  }
+
+  /** The assistant's turn goes into the transcript before the agent hears about it. */
+  private static void record(Transcript transcript, String agentId, ModelReply reply) {
+    switch (reply) {
+      case ModelReply.Said(String text) ->
+          transcript.append(agentId, new Turn.Assistant(text, java.util.List.of()));
+      case ModelReply.AskedForTools(String preamble, var requests) ->
+          transcript.append(agentId, new Turn.Assistant(preamble, requests));
+      case ModelReply.Failed(String detail) ->
+          transcript.append(
+              agentId, new Turn.Assistant("the round failed: " + detail, java.util.List.of()));
+    }
   }
 }

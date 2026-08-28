@@ -18,7 +18,6 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
@@ -66,15 +65,25 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
 
   public sealed interface Command {}
 
-  /** From the cron: do your rounds. */
-  public record Observe(String text, Map<String, String> trace) implements Command {}
+  /**
+   * From the cron, or from anyone with something to say.
+   *
+   * @param coalesceKey observations sharing a key SUPERSEDE one another while a round is busy — a
+   *     cron tick is only ever "do your rounds now", so twenty queued ticks are one tick. The
+   *     sender decides, because only the sender knows whether its message replaces or accumulates:
+   *     a person's message must pass {@code null} and can never be merged with anything.
+   */
+  public record Observe(String text, String coalesceKey, Map<String, String> trace)
+      implements Command {}
 
   /** From a model worker. */
   public record ModelReplied(ModelReply reply, Map<String, String> trace) implements Command {}
 
-  /** From one of this agent's own tool-call children. */
-  public record ToolCallSettled(String callId, String outcome, Map<String, String> trace)
-      implements Command {}
+  /**
+   * From one of this agent's own tool-call children. Carries no outcome: the result is already a
+   * transcript turn, written by whoever produced it. The agent only records that the call is done.
+   */
+  public record ToolCallSettled(String callId, Map<String, String> trace) implements Command {}
 
   /**
    * From the approvals page. Carries a {@code replyTo} because the HTTP handler must not return 200
@@ -120,6 +129,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   public record Dependencies(
       ActorRef<ModelDesk.Command> modelDesk,
       ActorRef<ToolWorker.RunTool> tools,
+      Transcript transcript,
+      java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
       Duration approvalTerm) {}
@@ -142,7 +153,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
 
   @Override
   public TurnState emptyState() {
-    return TurnState.Idle.empty();
+    return new TurnState.Idle();
   }
 
   @Override
@@ -161,34 +172,51 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
         };
   }
 
+  /**
+   * <b>An observation arriving mid-round is REFUSED, loudly, and that is the honest state of
+   * this.</b>
+   *
+   * <p>It used to be dropped in silence — {@code Effect().none()} with no log line — which is data
+   * loss dressed as a decision. It is now at least visible. It is still a drop.
+   *
+   * <p>I tried the obvious fix and backed it out. An in-memory queue on this actor, with the
+   * observations coalesced by {@link Observe#coalesceKey} and drained when the round reaches Idle,
+   * queues and coalesces correctly (twenty ticks really do collapse to one) — and then starts the
+   * NEXT round about 200 ms after the first one PARKS, while its approval is still outstanding. I
+   * could not isolate that interaction in the time available, and a watchman that begins a second
+   * round while a human is still looking at the first proposal is worse than one that drops a cron
+   * tick. So it is not here.
+   *
+   * <p>What the attempt did make clear is that the in-memory version was the wrong shape anyway.
+   * "Is this round finished?" is a question about PERSISTED state, and the answer has to be read
+   * from it rather than inferred from a callback; and an observation a caller was told we accepted
+   * has to be written down before it is acknowledged — the rule the approvals page already follows.
+   * A durable inbox is the real answer, not a field on this actor.
+   */
   private Effect<TurnState> onObserve(TurnState state, Observe observe) {
     if (!(state instanceof TurnState.Idle)) {
-      context.getLog().info("[watchman] a round is already in flight; dropping the cron tick");
+      context
+          .getLog()
+          .warn(
+              "[watchman] REFUSED an observation: a round is already in flight. It is not queued"
+                  + " and it is not coming back. text={}, key={}",
+              observe.text(),
+              observe.coalesceKey());
       return Effect().none();
     }
-    var next =
-        new TurnState.CallingModel(
-            TurnState.plus(state.transcript(), new Turn.User(observe.text())));
-    return Effect().persist(next).thenRun(() -> askModel(next, observe.trace()));
+    // The user's turn is already in the transcript -- whoever sent this wrote it first. The agent
+    // only records that a round has started.
+    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(observe.trace()));
   }
 
   private Effect<TurnState> onModelReplied(TurnState state, ModelReplied replied) {
     if (!(state instanceof TurnState.CallingModel)) {
       return Effect().none();
     }
+    // Every arm's transcript turn was appended by the model worker before this message was sent.
     return switch (replied.reply()) {
-      case ModelReply.Said(String text) ->
-          Effect()
-              .persist(
-                  new TurnState.Idle(
-                      TurnState.plus(state.transcript(), new Turn.Assistant(text, List.of()))));
-      case ModelReply.Failed(String detail) ->
-          Effect()
-              .persist(
-                  new TurnState.Idle(
-                      TurnState.plus(
-                          state.transcript(),
-                          new Turn.Assistant("the round failed: " + detail, List.of()))));
+      case ModelReply.Said ignored -> Effect().persist(new TurnState.Idle());
+      case ModelReply.Failed ignored -> Effect().persist(new TurnState.Idle());
       case ModelReply.AskedForTools(String preamble, var requests) -> {
         var now = deps.clock().instant();
         var calls =
@@ -202,9 +230,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
                             WatchmanTools.action(request.tool(), request.argumentsJson()),
                             now))
                 .toList();
-        var next =
-            new TurnState.WorkingTools(
-                TurnState.plus(state.transcript(), new Turn.Assistant(preamble, requests)), calls);
+        var next = new TurnState.WorkingTools(calls);
         yield Effect().persist(next).thenRun(() -> spawnMissing(next, replied.trace()));
       }
     };
@@ -271,21 +297,27 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
       return Effect().none(); // the at-least-once tail: a duplicate outcome
     }
     callActors.remove(settled.callId());
-    var updated = working.replace(call.get().settledWith(settled.outcome()));
+    var updated = working.replace(call.get().settle());
     if (!updated.allSettled()) {
       return Effect().persist(updated);
     }
-    var next = new TurnState.CallingModel(updated.transcriptWithResults());
-    return Effect().persist(next).thenRun(() -> askModel(next, settled.trace()));
+    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(settled.trace()));
   }
 
   // ------------------------------------------------------------------------------------------
   // Effects — all AFTER the state above has been durably written
   // ------------------------------------------------------------------------------------------
 
-  /** A plain fire-and-forget. The desk owns every scrap of the work-pulling protocol. */
-  private void askModel(TurnState.CallingModel state, Map<String, String> trace) {
-    deps.modelDesk().tell(new ModelDesk.CallModel(state.transcript(), context.getSelf(), trace));
+  /**
+   * A plain fire-and-forget. The desk owns every scrap of the work-pulling protocol, and the WORKER
+   * recalls the transcript on its own thread — the agent never assembles model context, and never
+   * holds one.
+   */
+  private void askModel(Map<String, String> trace) {
+    deps.modelDesk()
+        .tell(
+            new ModelDesk.CallModel(
+                agentId, new TurnState.CallingModel(), context.getSelf(), trace));
   }
 
   /**
@@ -300,12 +332,15 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
           id ->
               context.spawn(
                   ToolCallActor.create(
+                      agentId,
                       call,
                       context.getSelf(),
                       deps.tools(),
                       deps.approvalTerm(),
                       trace,
-                      deps.clock()),
+                      deps.clock(),
+                      deps.transcript(),
+                      deps.blocking()),
                   ToolCallActor.nameFor(id)));
     }
   }
@@ -338,7 +373,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
       case TurnState.Idle ignored -> {
         // nothing in flight
       }
-      case TurnState.CallingModel calling -> askModel(calling, Map.of());
+      case TurnState.CallingModel ignored -> askModel(Map.of());
       case TurnState.WorkingTools working -> spawnMissing(working, Map.of());
     }
   }

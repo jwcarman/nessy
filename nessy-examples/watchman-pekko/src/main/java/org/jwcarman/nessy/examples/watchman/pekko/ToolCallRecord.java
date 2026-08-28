@@ -18,29 +18,25 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 import java.time.Instant;
 
 /**
- * One tool call, as the AGENT persists it.
+ * One tool call, as the AGENT persists it — and no more than that.
  *
- * <p><b>Read this beside the spike's version and you can see where the round-3 collapse held and
- * where it did not.</b> The spike got this down to {@code (id, tool, argument, outcome)} — the
- * lifecycle lived entirely in {@link ToolCallActor}'s behaviour, and nothing about approval was
- * written down. Two of the watchman's real requirements pushed fields back in, and neither is a
- * state machine:
+ * <p>{@code settled} is a flag rather than the result text, deliberately: the RESULT is a
+ * transcript turn, appended once and never rewritten, so keeping a copy of it here would put a
+ * tool's whole output ({@code df} on a big box, a Docker inventory) into a document that is
+ * rewritten on every revision. The agent only ever asks "is this call done?", so a boolean is the
+ * whole of what it needs.
+ *
+ * <p>Two fields exist that a pure actor design would not need, and both are earned:
  *
  * <ul>
- *   <li>{@code decision} — because a human's answer must survive a crash. An answer relayed to a
- *       live child and never persisted is lost if the JVM dies a millisecond later, and "we told
- *       the operator 200 OK and then forgot" is the one failure this application may not have.
- *   <li>{@code askedAt} — because the approvals page shows dwell time, and no fact in an actor's
- *       mailbox has a timestamp anyone can read later.
+ *   <li>{@code decision} — a human's answer must be durable BEFORE the page is told it landed;
+ *   <li>{@code askedAt} — the approvals page shows dwell time and {@link ApprovalActor} recomputes
+ *       its deadline from it after a restart.
  * </ul>
  *
- * <p>What did NOT come back is the state machine: there is still no {@code AwaitingApproval |
- * Running | Denied} enumeration, no admission matrix and no per-variant re-fire rule. The
- * distinction that matters is between <b>facts arriving from outside</b>, which must be persisted,
- * and <b>transitions the machine drives itself</b>, which need not be.
- *
- * @param decision null until a human has answered; an approval-free tool never gets one
- * @param outcome null while the call is in flight
+ * <p>What is still absent is the state machine: there is no {@code AwaitingApproval | Running |
+ * Denied} enumeration, no admission matrix and no per-variant re-fire rule. Those live in the
+ * behaviour of {@link ToolCallActor}.
  */
 public record ToolCallRecord(
     String id,
@@ -49,18 +45,14 @@ public record ToolCallRecord(
     String action,
     Instant askedAt,
     Decision decision,
-    String outcome) {
+    boolean settled) {
 
   /** A human's answer, and who gave it. Persisted, because it cannot be reconstructed. */
   public record Decision(boolean approved, String by, String note, Instant at) {}
 
   public static ToolCallRecord asked(
       String id, String tool, String argumentsJson, String action, Instant now) {
-    return new ToolCallRecord(id, tool, argumentsJson, action, now, null, null);
-  }
-
-  public boolean settled() {
-    return outcome != null;
+    return new ToolCallRecord(id, tool, argumentsJson, action, now, null, false);
   }
 
   public boolean decided() {
@@ -68,10 +60,10 @@ public record ToolCallRecord(
   }
 
   public ToolCallRecord decidedBy(Decision made) {
-    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, made, outcome);
+    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, made, settled);
   }
 
-  public ToolCallRecord settledWith(String result) {
-    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, decision, result);
+  public ToolCallRecord settle() {
+    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, decision, true);
   }
 }

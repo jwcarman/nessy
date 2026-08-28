@@ -53,10 +53,13 @@ public class ApprovalsController {
 
   private final PendingApprovals approvals;
   private final WatchmanActorSystem actors;
+  private final Transcript transcript;
 
-  ApprovalsController(PendingApprovals approvals, WatchmanActorSystem actors) {
+  ApprovalsController(
+      PendingApprovals approvals, WatchmanActorSystem actors, Transcript transcript) {
     this.approvals = approvals;
     this.actors = actors;
+    this.transcript = transcript;
   }
 
   /** What is waiting, longest wait first. */
@@ -67,18 +70,15 @@ public class ApprovalsController {
     return "index";
   }
 
-  /** The watchman's notes: the transcript of the round it is in, or the one it just finished. */
+  /**
+   * The watchman's notes, read straight from the journal — no actor involved, and no limit on how
+   * far back it goes. This page is the reason the transcript being append-only pays twice: it is
+   * cheap to read and every entry carries the time it was written.
+   */
   @GetMapping("/transcript")
-  public CompletableFuture<String> transcript(Model model) {
-    return actors
-        .inspect(WatchmanGuardian.WATCHMAN)
-        .thenApply(
-            state -> {
-              model.addAttribute("turns", state.transcript());
-              model.addAttribute("phase", state.getClass().getSimpleName());
-              return "transcript";
-            })
-        .toCompletableFuture();
+  public String transcript(Model model) {
+    model.addAttribute("entries", transcript.entries(WatchmanGuardian.WATCHMAN));
+    return "transcript";
   }
 
   /**

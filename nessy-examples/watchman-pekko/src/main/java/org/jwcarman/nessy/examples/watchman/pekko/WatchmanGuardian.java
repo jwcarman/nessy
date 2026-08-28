@@ -76,6 +76,7 @@ public final class WatchmanGuardian {
   public static Behavior<Command> create(
       WatchmanModel model,
       CommandRunner runner,
+      Transcript transcript,
       Traces traces,
       Clock clock,
       Executor blocking,
@@ -89,7 +90,7 @@ public final class WatchmanGuardian {
 
           for (int i = 0; i < modelWorkers; i++) {
             context.spawn(
-                Behaviors.supervise(ModelWorker.create(model, blocking, traces))
+                Behaviors.supervise(ModelWorker.create(model, transcript, blocking, traces))
                     .onFailure(
                         SupervisorStrategy.restartWithBackoff(
                                 Duration.ofMillis(200), Duration.ofSeconds(5), 0.2)
@@ -99,13 +100,15 @@ public final class WatchmanGuardian {
 
           ActorRef<ToolWorker.RunTool> tools =
               context.spawn(
-                  Routers.pool(toolWorkers, ToolWorker.create(runner, blocking, traces)),
+                  Routers.pool(
+                      toolWorkers, ToolWorker.create(runner, transcript, blocking, traces)),
                   "tool-pool");
 
           ActorRef<AgentRegistry.Command> registry =
               context.spawn(
                   AgentRegistry.create(
-                      new AgentActor.Dependencies(desk, tools, traces, clock, approvalTerm)),
+                      new AgentActor.Dependencies(
+                          desk, tools, transcript, blocking, traces, clock, approvalTerm)),
                   "registry");
 
           return Behaviors.receive(Command.class)

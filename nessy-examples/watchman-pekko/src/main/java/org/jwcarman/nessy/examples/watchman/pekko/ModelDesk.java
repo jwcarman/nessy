@@ -17,7 +17,6 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.pekko.actor.typed.ActorRef;
@@ -46,14 +45,25 @@ public final class ModelDesk {
   public static final ServiceKey<ConsumerController.Command<ModelJob>> MODEL_WORKERS =
       ServiceKey.create(ConsumerController.serviceKeyClass(), "watchman-model-worker");
 
+  /**
+   * Note what is NOT in here: the transcript. The job carries the agent id and the CURRENT state,
+   * and the worker recalls the conversation itself on its own thread. Passing an ever-growing
+   * message through a mailbox would be the state-bloat mistake in a different costume.
+   */
   public record ModelJob(
-      List<Turn> transcript, ActorRef<AgentActor.Command> replyTo, Map<String, String> trace) {}
+      String agentId,
+      TurnState state,
+      ActorRef<AgentActor.Command> replyTo,
+      Map<String, String> trace) {}
 
   public sealed interface Command {}
 
   /** What an agent sends. */
   public record CallModel(
-      List<Turn> transcript, ActorRef<AgentActor.Command> replyTo, Map<String, String> trace)
+      String agentId,
+      TurnState state,
+      ActorRef<AgentActor.Command> replyTo,
+      Map<String, String> trace)
       implements Command {}
 
   /** The controller telling us a worker is free. */
@@ -99,7 +109,10 @@ public final class ModelDesk {
       return waiting(pending, demand);
     }
     CallModel call = pending.removeFirst();
-    demand.get().sendNextTo().tell(new ModelJob(call.transcript(), call.replyTo(), call.trace()));
+    demand
+        .get()
+        .sendNextTo()
+        .tell(new ModelJob(call.agentId(), call.state(), call.replyTo(), call.trace()));
     return waiting(pending, Optional.empty());
   }
 }

@@ -53,6 +53,7 @@ class LmStudioRoundDemo {
             WatchmanPostgres.config(),
             new LmStudioModel("http://localhost:1234/v1", "qwen/qwen3.6-35b-a3b", "lm-studio"),
             new FakeRunner(),
+            WatchmanPostgres.transcript(),
             new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -70,9 +71,9 @@ class LmStudioRoundDemo {
     }
   }
 
-  private static void narrate(String heading, TurnState state) {
+  private static void narrate(String heading, String agent, TurnState state) {
     System.out.println("\n=== " + heading + " ===");
-    for (Turn turn : state.transcript()) {
+    for (Turn turn : WatchmanPostgres.transcript().recall(agent, state)) {
       switch (turn) {
         case Turn.User(String text) -> System.out.println("  user      | " + text);
         case Turn.Assistant(String text, var calls) -> {
@@ -95,10 +96,15 @@ class LmStudioRoundDemo {
     Optional<String> parked;
     WatchmanActorSystem first = start();
     try {
+      WatchmanPostgres.transcript()
+          .append(
+              agent, new Turn.User("It is " + Clock.systemUTC().instant() + ". Do your rounds."));
       first.tell(
           agent,
           new AgentActor.Observe(
-              "It is " + Clock.systemUTC().instant() + ". Do your rounds.", java.util.Map.of()));
+              "It is " + Clock.systemUTC().instant() + ". Do your rounds.",
+              "rounds",
+              java.util.Map.of()));
 
       await()
           .atMost(PATIENCE)
@@ -107,7 +113,7 @@ class LmStudioRoundDemo {
               () -> assertThat(state(first, agent)).isNotInstanceOf(TurnState.CallingModel.class));
 
       TurnState afterModel = state(first, agent);
-      narrate("the real model's first turn", afterModel);
+      narrate("the real model's first turn", agent, afterModel);
       parked = parkedCall(afterModel);
     } finally {
       first.stop();
@@ -140,11 +146,11 @@ class LmStudioRoundDemo {
           .untilAsserted(() -> assertThat(state(second, agent)).isInstanceOf(TurnState.Idle.class));
 
       TurnState done = state(second, agent);
-      narrate("the finished round", done);
-      List<Turn> transcript = done.transcript();
-      assertThat(transcript).isNotEmpty();
-      assertThat(transcript).anyMatch(Turn.ToolResult.class::isInstance);
-      assertThat(transcript.getLast()).isInstanceOf(Turn.Assistant.class);
+      narrate("the finished round", agent, done);
+      List<Turn> turns = WatchmanPostgres.transcript().recall(agent, done);
+      assertThat(turns).isNotEmpty();
+      assertThat(turns).anyMatch(Turn.ToolResult.class::isInstance);
+      assertThat(turns.getLast()).isInstanceOf(Turn.Assistant.class);
     } finally {
       second.stop();
     }

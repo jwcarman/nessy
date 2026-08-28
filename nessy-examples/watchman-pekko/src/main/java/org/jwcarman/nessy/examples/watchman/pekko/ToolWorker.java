@@ -33,26 +33,39 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 public final class ToolWorker {
 
   public record RunTool(
-      ToolCallRecord call, ActorRef<ToolCallActor.Command> replyTo, Map<String, String> trace) {}
+      String agentId,
+      ToolCallRecord call,
+      ActorRef<ToolCallActor.Command> replyTo,
+      Map<String, String> trace) {}
 
   private ToolWorker() {}
 
-  public static Behavior<RunTool> create(CommandRunner runner, Executor blocking, Traces traces) {
+  public static Behavior<RunTool> create(
+      CommandRunner runner, Transcript transcript, Executor blocking, Traces traces) {
     return Behaviors.receive(RunTool.class)
         .onMessage(
             RunTool.class,
             message -> {
               ToolCallRecord call = message.call();
               CompletableFuture.supplyAsync(
-                      () ->
-                          traces.inSpan(
-                              "tool " + call.tool(),
-                              message.trace(),
-                              () -> {
-                                Traces.attribute("watchman.tool", call.tool());
-                                Traces.attribute("watchman.action", call.action());
-                                return WatchmanTools.run(runner, call.tool(), call.argumentsJson());
-                              }),
+                      () -> {
+                        String result =
+                            traces.inSpan(
+                                "tool " + call.tool(),
+                                message.trace(),
+                                () -> {
+                                  Traces.attribute("watchman.tool", call.tool());
+                                  Traces.attribute("watchman.action", call.action());
+                                  return WatchmanTools.run(
+                                      runner, call.tool(), call.argumentsJson());
+                                });
+                        // Transcript first, then the agent is told. Same thread, so the ordering
+                        // is not a hope -- and a crash in between leaves an orphan the recall
+                        // drops, never a state that references a turn nobody wrote.
+                        transcript.append(
+                            message.agentId(), new Turn.ToolResult(call.id(), call.tool(), result));
+                        return result;
+                      },
                       blocking)
                   .whenComplete(
                       (result, failure) ->

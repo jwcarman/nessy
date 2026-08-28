@@ -100,7 +100,24 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- The runtime under evaluation. Note the absence of every nessy-* artifact. -->
+    <!-- THE TRANSCRIPT IS NESSY'S, NOT OURS. The soak measured the cost of embedding it in the
+         durable state (14x growth in 64 minutes, every revision rewriting the whole document), and
+         the fix is an append-only journal, which Nessy already has. nessy-spi's Substrate gives
+         `JournalStore<T>` with append-at-expected-seq and resumable reads; nessy-substrate-jdbc
+         puts it on the DataSource Spring already owns. Writing a second journal by hand would have
+         been strictly worse. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-substrate-jdbc</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- The actor runtime. -->
     <dependency>
       <groupId>org.apache.pekko</groupId>
       <artifactId>pekko-actor-typed_2.13</artifactId>

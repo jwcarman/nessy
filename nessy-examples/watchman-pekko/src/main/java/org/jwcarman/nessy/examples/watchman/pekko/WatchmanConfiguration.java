@@ -73,6 +73,21 @@ public class WatchmanConfiguration {
             properties.getModelUrl(), properties.getModelId(), properties.getModelApiKey());
   }
 
+  /**
+   * Nessy's substrate, on the DataSource Spring already owns — one pool, not a second one. This is
+   * the piece the port reuses rather than reinvents: {@code JournalStore} gives append-at-expected-
+   * seq and resumable reads, which is exactly a transcript.
+   */
+  @Bean
+  public org.jwcarman.nessy.spi.substrate.Substrate substrate(DataSource dataSource, Clock clock) {
+    return new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource, clock);
+  }
+
+  @Bean
+  public Transcript transcript(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
+    return new Transcript(substrate);
+  }
+
   @Bean
   public StartupSweep startupSweep(DataSource dataSource) {
     return new StartupSweep(dataSource);
@@ -92,6 +107,7 @@ public class WatchmanConfiguration {
   public WatchmanActorSystem watchmanActorSystem(
       WatchmanModel model,
       CommandRunner runner,
+      Transcript transcript,
       Traces traces,
       Clock clock,
       BlockingWork blocking,
@@ -103,6 +119,7 @@ public class WatchmanConfiguration {
         PekkoConfigBridge.build("watchman-pekko", url, user, password),
         model,
         runner,
+        transcript,
         traces,
         clock,
         blocking,

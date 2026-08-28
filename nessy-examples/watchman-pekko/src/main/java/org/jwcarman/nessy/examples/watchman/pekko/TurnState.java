@@ -18,11 +18,20 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** The whole of what one watchman durably is: a transcript, and what this round is waiting on. */
+/**
+ * What one watchman durably is: the phase, and what this round is still waiting on. <b>Nothing
+ * else.</b>
+ *
+ * <p>The transcript used to live here, and the soak measured what that costs: a {@code
+ * DurableStateBehavior} rewrites its whole document on every revision, so an embedded transcript
+ * means every fold rewrites the entire conversation. Measured on the running watchman — 1,709 bytes
+ * at revision 5, 24,151 at revision 64. It now lives in {@link Transcript}, appended one row per
+ * turn, and this record is flat forever: a handful of in-flight calls at most, cleared the moment
+ * the round finishes.
+ */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "state")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = TurnState.Idle.class, name = "idle"),
@@ -31,28 +40,16 @@ import java.util.Optional;
 })
 public sealed interface TurnState {
 
-  List<Turn> transcript();
+  /** No round in flight. The steady state, and the smallest document this agent ever writes. */
+  record Idle() implements TurnState {}
 
-  record Idle(List<Turn> transcript) implements TurnState {
-    public Idle {
-      transcript = List.copyOf(transcript);
-    }
+  /** A model call is in flight. */
+  record CallingModel() implements TurnState {}
 
-    public static Idle empty() {
-      return new Idle(List.of());
-    }
-  }
-
-  record CallingModel(List<Turn> transcript) implements TurnState {
-    public CallingModel {
-      transcript = List.copyOf(transcript);
-    }
-  }
-
-  record WorkingTools(List<Turn> transcript, List<ToolCallRecord> calls) implements TurnState {
+  /** The model asked for tools. Each unsettled call has a live {@link ToolCallActor}. */
+  record WorkingTools(List<ToolCallRecord> calls) implements TurnState {
 
     public WorkingTools {
-      transcript = List.copyOf(transcript);
       calls = List.copyOf(calls);
     }
 
@@ -61,7 +58,7 @@ public sealed interface TurnState {
       return calls.stream().allMatch(ToolCallRecord::settled);
     }
 
-    /** The re-fire rule, entire: a call with no outcome needs an actor. */
+    /** The re-fire rule, entire: a call that has not settled needs an actor. */
     @JsonIgnore
     public List<ToolCallRecord> unsettled() {
       return calls.stream().filter(call -> !call.settled()).toList();
@@ -73,22 +70,7 @@ public sealed interface TurnState {
 
     public WorkingTools replace(ToolCallRecord updated) {
       return new WorkingTools(
-          transcript,
           calls.stream().map(call -> call.id().equals(updated.id()) ? updated : call).toList());
     }
-
-    /** The transcript this round hands back to the model once every call has settled. */
-    @JsonIgnore
-    public List<Turn> transcriptWithResults() {
-      List<Turn> lines = new ArrayList<>(transcript);
-      calls.forEach(call -> lines.add(new Turn.ToolResult(call.id(), call.tool(), call.outcome())));
-      return List.copyOf(lines);
-    }
-  }
-
-  static List<Turn> plus(List<Turn> transcript, Turn turn) {
-    List<Turn> lines = new ArrayList<>(transcript);
-    lines.add(turn);
-    return List.copyOf(lines);
   }
 }
