@@ -442,6 +442,15 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * shows the pre-turn phase, so nothing ever asks the model to answer it. {@link
    * AgentState#takenEntryId} is that durable record: it is written BEFORE the removal, and {@link
    * #resume} finishes an interrupted removal on recovery.
+   *
+   * <p><b>Claim deletion goes first, ahead of both stores above, and ahead of either exit
+   * branch.</b> It reads {@code state.turnId()} — the OLD turn, the one this call is ending — so it
+   * must run BEFORE {@code startingTurn(Identifiers.next())} mints the next turn's id below. Move
+   * it after that call and it deletes the wrong turn's claims, or (once {@code turnId} has already
+   * changed) none at all. And it deletes by KIND, not by the list of ids a {@code ToolCallRecord}
+   * happens to name, because a claim can be written by {@code put} and then orphaned by a crash
+   * before the state naming it is persisted; no record will ever mention that claim, so only a
+   * by-kind sweep — {@link Claims#deleteTurn} — catches it.
    */
   private Effect<AgentState> startTurnIfWork(AgentState state, Map<String, String> here) {
     if (state.turnId() != null) {
