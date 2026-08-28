@@ -88,11 +88,29 @@ public interface Backlogs<O> {
 }
 ```
 
-`Backlogs` is the plural, agent-keyed service; `Backlog<O>` remains the immutable value the
-`Coalescer` folds over, internal to the implementation. The pair does not quite mirror
-`Memories`/`Memory` — there the per-agent facade is returned by `forAgent(agentId)`, whereas here
-the agent id is a parameter — because `Backlog` was already ratified as the value's name and
-renaming a tested type to buy symmetry was not worth it.
+`Backlogs` is the plural, agent-keyed service; `Backlog<O>` is the immutable value the `Coalescer`
+folds over, internal to the implementation.
+
+**The name is ratified, and for a better reason than the one first recorded here.** An earlier draft
+defended `Backlog` merely as "already ratified, not worth renaming". James settled it properly on
+2026-08-28: **a backlog is a thing you GROOM.** Items are merged, superseded, deprioritised, dropped
+— which is exactly the vocabulary of `Coalescer`, where `merge` folds, `byKey` supersedes, returning
+the backlog unchanged vetoes, and a `Cancel` clears. Every operation this type supports is a
+grooming operation.
+
+Two alternatives were considered and rejected on evidence:
+
+- **`ObservationStream<O>`** — right concept, wrong word here. `pekko-stream` and
+  `pekko-stream-typed` are on this module's COMPILE classpath alongside `reactive-streams`, so
+  "Stream" already means `Source`/`Flow`: backpressured, composable, materialized. Ours is none of
+  those. Worse, a stream does not supersede its own elements, so the name hides the one behaviour
+  that makes the type interesting.
+- **`Observations<O>`** — collides with Micrometer's `Observation`, which is load-bearing in this
+  project's observability seam (`ObservationRegistry`).
+
+The pair does not mirror `Memories`/`Memory`, where the per-agent facade is returned by
+`forAgent(agentId)` and here the agent id is a parameter. That asymmetry stands: the singular of
+this concept is a snapshot, not a facade.
 
 `Backlog<O>` remains the immutable value the `Coalescer` folds over, now internal to the service
 rather than a component of the persisted document. `Coalescer<O>` is unchanged.
