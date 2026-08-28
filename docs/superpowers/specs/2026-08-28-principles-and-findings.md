@@ -195,7 +195,10 @@ counter, no configuration.
 | Orphan spans before wrapping operations properly | **278** |
 | After | **6** |
 | Full round trace, actor runtime | **11 spans, one trace id**, across four thread pools |
-| Observations refused while parked on one approval | **26 of 31 rounds** (later 32 of 38) |
+| Observations refused while parked on one approval, BEFORE the backlog | **26 of 31 rounds** (later 32 of 38) |
+| Observations refused while parked, AFTER the backlog | **0 of 8 rounds** — they coalesce and wait |
+| Ticks waiting behind a parked turn | **5 collapsed into 1 entry**, holding the first tick's `receivedAt` and the latest tick's content |
+| Agent state while parked, 3 claims held | **356 bytes at revision 15** — arguments live in claims, not the document |
 
 The last row is the number that justifies a durable backlog. The refusal message was honest —
 *"it is not queued and it is not coming back"* — but the transcript showed the observations'
@@ -204,7 +207,21 @@ the ingest design.
 
 **Consecutive `user-message` entries** appeared in the journal, one per refused observation, with
 no assistant turn between them — a malformed context, and the reason `remember` belongs at the
-*start of a turn* rather than at ingest.
+*start of a turn* rather than at ingest. After the change: **zero** consecutive pairs across a
+15-entry journal.
+
+**A bug NO test caught, found only by running (2026-08-28).** With the backlog shipped and every
+review clean, a six-round soak produced exactly ONE `user-message`. Every model call after the first
+ran against an identical stale context — `in=1222 out=1`, unchanged round after round — because
+`Coalescer.byKey` used the coalescing key as the backlog entry id, and the `Remembrance` key derived
+from that id. Every coalesced arrival therefore carried the key `obs:k:rounds`, and
+idempotence-by-key silently swallowed all of them after the first. Two individually defensible
+decisions composing into total data loss, with nothing thrown and a green suite.
+
+The lesson is not "coalescing is hard". It is that **the soak asserted the absence of a bad thing
+(refusals) and not the presence of a good one (observations recorded)**. Zero refusals and zero
+errors looked like success while the agent did nothing at all. Count what should happen, not only
+what should not.
 
 ### 2.5 Runtime and integration
 
