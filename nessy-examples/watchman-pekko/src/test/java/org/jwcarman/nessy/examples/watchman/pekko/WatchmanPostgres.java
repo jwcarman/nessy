@@ -48,6 +48,18 @@ public final class WatchmanPostgres {
         new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()), 8000);
   }
 
+  public static Backlogs<String> backlogs() {
+    return new SubstrateBacklogs<>(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()),
+        WatchmanObservations.COALESCER,
+        String.class);
+  }
+
+  public static Claims claims() {
+    return new Claims(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()));
+  }
+
   /** Remember a user turn the way the cron does, before telling the agent. */
   public static void observe(String agentId, String text) {
     memories()
@@ -82,11 +94,14 @@ public final class WatchmanPostgres {
             model,
             new FakeRunner(),
             memories,
-            new Traces(io.opentelemetry.api.OpenTelemetry.noop()),
+            backlogs(),
+            WatchmanObservations.RENDERER,
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(15));
+            Duration.ofSeconds(15),
+            claims());
     actors.start();
     return actors;
   }

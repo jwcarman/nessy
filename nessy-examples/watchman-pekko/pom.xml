@@ -30,9 +30,12 @@
 
   <artifactId>nessy-example-watchman-pekko</artifactId>
   <name>Nessy Example: Watchman (Pekko port)</name>
-  <description>THROWAWAY SPIKE. The watchman, ported onto the actor design, so the two can be run
-    side by side. Depends on NO nessy-* module: the actor system replaces the harness, and that is
-    the whole point of the comparison.</description>
+  <description>The watchman on the actor runtime. NO LONGER A SPIKE: as of 2026-08-28 this is where
+    Nessy's Pekko-based engine is being built, and the design here is the design of record rather
+    than a comparison. It depends on nessy-spi, nessy-agent, nessy-substrate-jdbc and
+    nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
+    Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
+    both counts.</description>
 
   <properties>
     <maven.deploy.skip>true</maven.deploy.skip>
@@ -202,9 +205,24 @@
       <version>${htmx.version}</version>
     </dependency>
 
-    <!-- Telemetry, same wiring as the sibling watchman. opentelemetry-api is COMPILE scope here
-         because Traces.java names Context/Span/W3CTraceContextPropagator directly: actor messages
-         hop threads, so the propagation is ours to do by hand. -->
+    <!-- Telemetry. Traces.java codes against MICROMETER (io.micrometer.tracing.Tracer and
+         Propagator), not OpenTelemetry: OTel is the implementation underneath via
+         micrometer-tracing-bridge-otel, which the Boot starter brings at runtime. The main
+         sources contain no io.opentelemetry import at all, which is why opentelemetry-api is
+         RUNTIME scope here: runtime is absent from the COMPILE classpath, so the build itself
+         now enforces "main code does not touch OTel", while the jar still ships the API and
+         tests (which are on the runtime classpath) can still name OTel types deliberately, to
+         assert the spans a backend actually receives rather than the bridge's own types.
+
+         SCOPE THIS CAREFULLY, and do not "tidy" it to test. It was briefly TEST scope, and that
+         silently destroyed all tracing in the running application. Maven resolves by nearest
+         definition, so a direct test-scoped declaration BEATS the transitive compile-scoped one
+         from opentelemetry-sdk: the API left the runtime classpath entirely, Boot's tracing
+         autoconfiguration is @ConditionalOnClass on those very classes, no Tracer or Propagator
+         bean was created, and Traces fell back to the NOOP pair. Every span became a no-op and
+         nothing failed: the app ran, the tests passed, and the traces simply stopped existing.
+         The tests could not catch it because they construct OtelTracer/OtelPropagator directly
+         and never exercise Boot's wiring. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
@@ -216,6 +234,7 @@
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-api</artifactId>
+      <scope>runtime</scope>
     </dependency>
 
     <dependency>

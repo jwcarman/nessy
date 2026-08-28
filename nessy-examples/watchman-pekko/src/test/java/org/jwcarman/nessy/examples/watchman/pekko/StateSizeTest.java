@@ -67,8 +67,8 @@ class StateSizeTest {
   }
 
   /** The id changes every round, exactly as a real model's would. */
-  private static java.util.Optional<String> pendingPrune(TurnState state) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private static java.util.Optional<String> pendingPrune(AgentState state) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return java.util.Optional.empty();
     }
     return working.calls().stream()
@@ -78,7 +78,7 @@ class StateSizeTest {
         .findFirst();
   }
 
-  private TurnState stateOf(WatchmanActorSystem actors, String agent) {
+  private AgentState stateOf(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -102,15 +102,14 @@ class StateSizeTest {
         WatchmanPostgres.observe(agent, "Round " + round + ". Do your rounds.");
         actors.tell(
             agent,
-            new AgentActor.Observe(
-                "Round " + round + ". Do your rounds.", "rounds", java.util.Map.of()));
+            new AgentActor.Observe("Round " + round + ". Do your rounds.", java.util.Map.of()));
 
         await()
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
                 () -> {
-                  TurnState state = stateOf(actors, agent);
-                  assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
+                  AgentState state = stateOf(actors, agent);
+                  assertThat(state.phase()).isInstanceOf(Phase.WorkingTools.class);
                   assertThat(pendingPrune(state)).isPresent();
                 });
 
@@ -124,7 +123,7 @@ class StateSizeTest {
         await()
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
-                () -> assertThat(stateOf(actors, agent)).isInstanceOf(TurnState.Idle.class));
+                () -> assertThat(stateOf(actors, agent).phase()).isInstanceOf(Phase.Idle.class));
 
         samples.add(sample(agent));
       }

@@ -15,10 +15,13 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import io.micrometer.tracing.Span;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.PostStop;
@@ -30,6 +33,10 @@ import org.apache.pekko.persistence.typed.state.javadsl.CommandHandler;
 import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
 import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
+import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * The watchman itself: one durable actor per agent id, and the parent of everything a round does.
@@ -55,62 +62,95 @@ import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
  * itself</b> need no state (a call moving from running to finished is just an actor stopping),
  * while <b>facts arriving from outside</b> must be persisted before they are acknowledged.
  */
-public final class AgentActor extends DurableStateBehavior<AgentActor.Command, TurnState> {
+public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessage, AgentState> {
 
   /** How a runtime asks for this agent to be let go. */
   @FunctionalInterface
   public interface StopRequest {
-    void requestStop(String agentId, ActorRef<Command> self);
+    void requestStop(String agentId, ActorRef<NessyMessage> self);
   }
 
-  public sealed interface Command {}
+  /**
+   * Every message this actor accepts, and the trace context that reached it.
+   *
+   * <p><b>Headers are on the interface, not on an envelope.</b> The alternative was a wrapper
+   * record — {@code NessyMessage(Command payload, Map<String,String> headers)} — which keeps
+   * tracing out of each record's signature. It was rejected because it makes carrying context
+   * OPTIONAL at every send site, and a send that forgets produces an orphan span rather than a
+   * compile error: a failure that is silent, rare, and only noticed when someone needs the trace.
+   * Here the compiler refuses to let a new message type exist without saying how it is traced.
+   *
+   * <p>The price is that {@code headers} appears in fifteen record signatures. That is the trade,
+   * taken deliberately, and it is cheaper than one silently broken trace.
+   *
+   * <p>Non-generic on purpose: {@code EntityTypeKey.create} and {@code ServiceKey.create} need
+   * class literals, and a generic type would be raw there — an unchecked warning this repo does not
+   * permit anyone to suppress. Each actor nests its own, which loses nothing because each actor
+   * already owns its own protocol.
+   */
+  public sealed interface NessyMessage {
+
+    /** W3C {@code traceparent} and friends. Empty when the sender had no context. */
+    Map<String, String> headers();
+  }
 
   /**
    * From the cron, or from anyone with something to say.
    *
-   * @param coalesceKey observations sharing a key SUPERSEDE one another while a round is busy — a
-   *     cron tick is only ever "do your rounds now", so twenty queued ticks are one tick. The
-   *     sender decides, because only the sender knows whether its message replaces or accumulates:
-   *     a person's message must pass {@code null} and can never be merged with anything.
+   * <p>Whether observations sharing something in common SUPERSEDE one another while a round is busy
+   * is no longer a decision made per call — it is a property of the observation vocabulary itself,
+   * declared once by that vocabulary's {@link Coalescer} and applied at {@link Backlogs#ingest}.
+   * See {@link WatchmanObservations#COALESCER}.
    */
-  public record Observe(String text, String coalesceKey, Map<String, String> trace)
-      implements Command {}
+  public record Observe(String text, Map<String, String> headers) implements NessyMessage {}
 
   /** From a model worker. */
-  public record ModelReplied(ModelReply reply, Map<String, String> trace) implements Command {}
+  public record ModelReplied(ModelReply reply, Map<String, String> headers)
+      implements NessyMessage {}
 
   /**
    * From one of this agent's own tool-call children. Carries no outcome: the result is already a
    * transcript turn, written by whoever produced it. The agent only records that the call is done.
    */
-  public record ToolCallSettled(String callId, Map<String, String> trace) implements Command {}
+  public record ToolCallSettled(String callId, Map<String, String> headers)
+      implements NessyMessage {}
 
   /**
    * From the approvals page. Carries a {@code replyTo} because the HTTP handler must not return 200
    * until this has been written down — see {@link #onAnswerApproval}.
    */
   public record AnswerApproval(
-      String callId, boolean approved, String by, String note, ActorRef<Ack> replyTo)
-      implements Command {}
+      String callId,
+      boolean approved,
+      String by,
+      String note,
+      ActorRef<Ack> replyTo,
+      Map<String, String> headers)
+      implements NessyMessage {}
 
   /** What the page is told once the decision is durable. */
   public record Ack(boolean accepted, String detail) {}
 
   /** From the page and the tests: what does this agent look like right now? */
-  public record Inspect(ActorRef<TurnState> replyTo) implements Command {}
+  public record Inspect(ActorRef<AgentState> replyTo, Map<String, String> headers)
+      implements NessyMessage {}
 
-  /** From the startup sweep: exists only to bring the actor into memory so recovery can run. */
-  public record Wake() implements Command {}
+  /**
+   * From the startup sweep, or self-sent by {@link #resume}: brings the actor into memory so
+   * recovery can run. Beyond that, see {@link #onWake} — an idle agent with a non-empty backlog
+   * starts a turn here rather than staying parked forever.
+   */
+  public record Wake(Map<String, String> headers) implements NessyMessage {}
 
   /** From the world: let go of memory. */
-  public record Rest() implements Command {}
+  public record Rest(Map<String, String> headers) implements NessyMessage {}
 
   /** From the runtime, in response to {@link Rest}. The only message that ends the actor. */
-  public record Stop() implements Command {}
+  public record Stop(Map<String, String> headers) implements NessyMessage {}
 
-  public static final Stop STOP = new Stop();
+  public static final Stop STOP = new Stop(Map.of());
 
-  private final ActorContext<Command> context;
+  private final ActorContext<NessyMessage> context;
   private final String agentId;
   private final Dependencies deps;
 
@@ -130,12 +170,15 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
       ActorRef<ModelDesk.Command> modelDesk,
       ActorRef<ToolWorker.RunTool> tools,
       Memories memories,
+      Backlogs<String> backlogs,
+      ObservationRenderer<String> renderer,
       java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
-      Duration approvalTerm) {}
+      Duration approvalTerm,
+      Claims claims) {}
 
-  public static Behavior<Command> create(
+  public static Behavior<NessyMessage> create(
       String agentId, Dependencies deps, StopRequest stopRequest) {
     return Behaviors.setup(context -> new AgentActor(context, agentId, deps, stopRequest));
   }
@@ -143,7 +186,10 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   private final StopRequest stopRequest;
 
   private AgentActor(
-      ActorContext<Command> context, String agentId, Dependencies deps, StopRequest stopRequest) {
+      ActorContext<NessyMessage> context,
+      String agentId,
+      Dependencies deps,
+      StopRequest stopRequest) {
     super(PersistenceId.of("Watchman", agentId));
     this.context = context;
     this.agentId = agentId;
@@ -152,86 +198,175 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   }
 
   @Override
-  public TurnState emptyState() {
-    return new TurnState.Idle();
+  public AgentState emptyState() {
+    return AgentState.idle();
   }
 
   @Override
-  public CommandHandler<Command, TurnState> commandHandler() {
-    return (state, command) ->
-        switch (command) {
-          case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
-          case Wake ignored -> Effect().none();
-          case Rest ignored ->
-              Effect().none().thenRun(() -> stopRequest.requestStop(agentId, context.getSelf()));
-          case Stop ignored -> Effect().none().thenStop();
-          case Observe observe -> onObserve(state, observe);
-          case ModelReplied replied -> onModelReplied(state, replied);
-          case AnswerApproval answer -> onAnswerApproval(state, answer);
-          case ToolCallSettled settled -> onToolCallSettled(state, settled);
-        };
+  public CommandHandler<NessyMessage, AgentState> commandHandler() {
+    return (state, message) ->
+        deps.traces()
+            .inSpan(
+                spanName(message),
+                Span.Kind.CONSUMER,
+                message.headers(),
+                () -> {
+                  describe(state, message);
+                  return handle(state, message);
+                });
   }
 
   /**
-   * <b>An observation arriving mid-round is REFUSED, loudly, and that is the honest state of
-   * this.</b>
+   * What this actor knows about itself, written onto the receive span.
    *
-   * <p>It used to be dropped in silence — {@code Effect().none()} with no log line — which is data
-   * loss dressed as a decision. It is now at least visible. It is still a drop.
+   * <p>These are the attributes that make a trace answer operational questions instead of merely
+   * showing that something happened:
    *
-   * <p>I tried the obvious fix and backed it out. An in-memory queue on this actor, with the
-   * observations coalesced by {@link Observe#coalesceKey} and drained when the round reaches Idle,
-   * queues and coalesces correctly (twenty ticks really do collapse to one) — and then starts the
-   * NEXT round about 200 ms after the first one PARKS, while its approval is still outstanding. I
-   * could not isolate that interaction in the time available, and a watchman that begins a second
-   * round while a human is still looking at the first proposal is worse than one that drops a cron
-   * tick. So it is not here.
+   * <ul>
+   *   <li><b>{@code nessy.actor.path}</b> — the full actor path. Under clustering this names the
+   *       node, which is the difference between "a turn stalled" and "a turn stalled on the box
+   *       that went away". It is also the only attribute here that changes when an entity moves.
+   *   <li><b>{@code nessy.agent.id}</b> — the partition key for everything: mailbox ordering,
+   *       persistence, and the one-turn-at-a-time rule. Filtering a trace search by it gives one
+   *       agent's whole history.
+   *   <li><b>{@code nessy.turn.phase}</b> — the phase the message ARRIVED at, which is what decides
+   *       whether it is admitted or dropped. A refused observation and an accepted one look
+   *       identical without it.
+   *   <li><b>{@code nessy.persistence.id}</b> — what to look up in the durable-state table.
+   * </ul>
    *
-   * <p>What the attempt did make clear is that the in-memory version was the wrong shape anyway.
-   * "Is this round finished?" is a question about PERSISTED state, and the answer has to be read
-   * from it rather than inferred from a callback; and an observation a caller was told we accepted
-   * has to be written down before it is acknowledged — the rule the approvals page already follows.
-   * A durable inbox is the real answer, not a field on this actor.
+   * <p>All four are low cardinality per agent and bounded by the sealed protocol, so none of them
+   * is the attribute that blows up a backend's index.
    */
-  private Effect<TurnState> onObserve(TurnState state, Observe observe) {
-    if (!(state instanceof TurnState.Idle)) {
-      context
-          .getLog()
-          .warn(
-              "[watchman] REFUSED an observation: a round is already in flight. It is not queued"
-                  + " and it is not coming back. text={}, key={}",
-              observe.text(),
-              observe.coalesceKey());
-      return Effect().none();
+  private void describe(AgentState state, NessyMessage message) {
+    Traces traces = deps.traces();
+    traces.tag("messaging.system", "pekko");
+    traces.tag("nessy.agent.id", agentId);
+    traces.tag("nessy.actor.path", context.getSelf().path().toString());
+    traces.tag("nessy.message.type", message.getClass().getSimpleName());
+    traces.tag("nessy.turn.phase", state.phase().getClass().getSimpleName());
+    traces.tag("nessy.persistence.id", persistenceId().id());
+
+    // The node. Locally this renders "pekko://watchman"; under clustering it becomes
+    // "pekko://watchman@host:port", so the SAME attribute answers "which box" the day we go
+    // multi-node, without anyone having to remember to add it then.
+    traces.tag("nessy.node.address", context.getSystem().address().toString());
+
+    // Live children against persisted work: the DIFFERENCE is the diagnostic. Two unsettled calls
+    // and zero children means the process restarted and the tool actors have not been respawned
+    // yet -- a state that is invisible from either number alone.
+    traces.tag("nessy.actor.children", String.valueOf(context.getChildren().size()));
+    if (state.phase() instanceof Phase.WorkingTools working) {
+      traces.tag("nessy.tools.unsettled", String.valueOf(working.unsettled().size()));
     }
-    // The user's turn is already in the transcript -- whoever sent this wrote it first. The agent
-    // only records that a round has started.
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(observe.trace()));
   }
 
-  private Effect<TurnState> onModelReplied(TurnState state, ModelReplied replied) {
-    if (!(state instanceof TurnState.CallingModel)) {
+  /**
+   * The span every message gets, named for the actor and the message.
+   *
+   * <p>CONSUMER because the mailbox is a queue: paired with the PRODUCER span at the send, the gap
+   * between them is queue latency, which is exactly the thing an actor system makes easy to have
+   * and hard to see. The message type is safe in a span name because the protocol is a SEALED
+   * interface — the cardinality is bounded by the compiler, not by hope.
+   */
+  private static String spanName(NessyMessage message) {
+    return "agent receive " + message.getClass().getSimpleName();
+  }
+
+  /**
+   * Runs INSIDE the receive span, so {@code deps.traces().capture()} here is this actor's own
+   * context.
+   *
+   * <p><b>{@code here} is captured eagerly and on purpose.</b> A {@code thenRun} block runs after
+   * persistence commits, potentially on another thread, and always after this span's scope has
+   * closed — so a {@code capture()} inside one would come back empty and silently orphan everything
+   * downstream. Capturing at the top and closing over the result is what keeps a persisted effect's
+   * sends attached to the message that caused them.
+   */
+  private Effect<AgentState> handle(AgentState state, NessyMessage message) {
+    Map<String, String> here = deps.traces().capture();
+    return switch (message) {
+      case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
+      case Wake ignored -> onWake(state, here);
+      case Rest ignored ->
+          Effect().none().thenRun(() -> stopRequest.requestStop(agentId, context.getSelf()));
+      case Stop ignored -> Effect().none().thenStop();
+      case Observe observe -> onObserve(state, observe, here);
+      case ModelReplied replied -> onModelReplied(state, replied, here);
+      case AnswerApproval answer -> onAnswerApproval(state, answer, here);
+      case ToolCallSettled settled -> onToolCallSettled(state, settled, here);
+    };
+  }
+
+  /**
+   * <b>An observation is durable the instant {@link Backlogs#ingest} returns — never refused, never
+   * dropped.</b> Measured live on a one-minute cadence while parked on a single approval: 26 of 31
+   * rounds refused under the version that came before this one. That was not an edge case, it was
+   * the steady state of any agent that both runs continuously and asks a human anything.
+   *
+   * <p>Idle means nobody else is going to drain this, so a turn starts right here. A round already
+   * in flight drains it when that round finishes — see {@link #onModelReplied} and {@link
+   * #startTurnIfWork}.
+   */
+  private Effect<AgentState> onObserve(
+      AgentState state, Observe observe, Map<String, String> here) {
+    deps.backlogs().ingest(agentId, observe.text(), deps.clock().instant());
+    if (state.phase() instanceof Phase.Idle) {
+      return startTurnIfWork(state, here);
+    }
+    return Effect().none();
+  }
+
+  /**
+   * From the startup sweep, or a self-send from {@link #resume}: bring the actor into memory and,
+   * if it turns out to be idle with something waiting, start the turn nobody else will.
+   *
+   * <p><b>Idempotent by construction.</b> If the phase is not {@link Phase.Idle} this is a pure
+   * no-op — a round already in flight owes this message nothing, exactly like {@link #onObserve}'s
+   * non-idle branch. If the phase IS idle, this defers entirely to {@link #startTurnIfWork}, which
+   * is itself safe to call more than once: an empty backlog persists the same idle state it started
+   * from, and a non-empty one drains exactly one entry, same as any other arrival.
+   */
+  private Effect<AgentState> onWake(AgentState state, Map<String, String> here) {
+    if (state.phase() instanceof Phase.Idle) {
+      return startTurnIfWork(state, here);
+    }
+    return Effect().none();
+  }
+
+  private Effect<AgentState> onModelReplied(
+      AgentState state, ModelReplied replied, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.CallingModel)) {
       return Effect().none();
     }
     // Every arm's assistant turn was remembered by the model worker before this message was sent.
     return switch (replied.reply()) {
-      case ModelReply.Said ignored -> Effect().persist(new TurnState.Idle());
-      case ModelReply.Failed ignored -> Effect().persist(new TurnState.Idle());
+      case ModelReply.Said ignored -> startTurnIfWork(state, here);
+      case ModelReply.Failed ignored -> startTurnIfWork(state, here);
       case ModelReply.AskedForTools(var ignoredMessage, var requests, var ignoredUsage) -> {
         var now = deps.clock().instant();
         var calls =
             requests.stream()
                 .map(
-                    request ->
-                        ToolCallRecord.asked(
-                            request.id(),
-                            request.name(),
-                            request.arguments().toString(),
-                            WatchmanTools.action(request.name(), request.arguments().toString()),
-                            now))
+                    request -> {
+                      String arguments = request.arguments().toString();
+                      String claimId =
+                          deps.claims()
+                              .put(
+                                  agentId,
+                                  state.turnId(),
+                                  arguments.getBytes(StandardCharsets.UTF_8));
+                      return ToolCallRecord.asked(
+                          request.id(),
+                          request.name(),
+                          claimId,
+                          WatchmanTools.action(request.name(), arguments),
+                          now);
+                    })
                 .toList();
-        var next = new TurnState.WorkingTools(calls);
-        yield Effect().persist(next).thenRun(() -> spawnMissing(next, replied.trace()));
+        var nextPhase = new Phase.WorkingTools(calls);
+        var next = state.withPhase(nextPhase);
+        yield Effect().persist(next).thenRun(() -> spawnMissing(next.turnId(), nextPhase, here));
       }
     };
   }
@@ -250,8 +385,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    * and retries; if it dies after step 1 the decision is already durable and recovery applies it.
    * The one thing that cannot happen is a 200 for a decision nobody wrote down.
    */
-  private Effect<TurnState> onAnswerApproval(TurnState state, AnswerApproval answer) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private Effect<AgentState> onAnswerApproval(
+      AgentState state, AnswerApproval answer, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Effect()
           .none()
           .thenReply(answer.replyTo(), s -> new Ack(false, "no round is waiting on this agent"));
@@ -271,25 +407,28 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
             .decidedBy(
                 new ToolCallRecord.Decision(
                     answer.approved(), answer.by(), answer.note(), deps.clock().instant()));
-    var next = working.replace(decided);
+    var nextPhase = working.replace(decided);
+    var next = state.withPhase(nextPhase);
     return Effect()
         .persist(next)
         .thenRun(
             () -> {
               var child = callActors.get(answer.callId());
               if (child != null) {
-                child.tell(new ToolCallActor.Answer(answer.approved(), answer.by(), answer.note()));
+                child.tell(
+                    new ToolCallActor.Answer(answer.approved(), answer.by(), answer.note(), here));
               } else {
                 // Nothing in memory (a restart since the park). The persisted decision is enough:
                 // spawn the call's actor and it reads the answer out of its own record.
-                spawnMissing(next, Map.of());
+                spawnMissing(next.turnId(), nextPhase, here);
               }
             })
         .thenReply(answer.replyTo(), s -> new Ack(true, answer.approved() ? "approved" : "denied"));
   }
 
-  private Effect<TurnState> onToolCallSettled(TurnState state, ToolCallSettled settled) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private Effect<AgentState> onToolCallSettled(
+      AgentState state, ToolCallSettled settled, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Effect().none();
     }
     var call = working.call(settled.callId());
@@ -299,9 +438,77 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
     callActors.remove(settled.callId());
     var updated = working.replace(call.get().settle());
     if (!updated.allSettled()) {
-      return Effect().persist(updated);
+      return Effect().persist(state.withPhase(updated));
     }
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(settled.trace()));
+    var next = state.withPhase(new Phase.CallingModel());
+    return Effect().persist(next).thenRun(() -> askModel(next, here));
+  }
+
+  /**
+   * Turn start, and the only place a queued observation becomes a transcript entry.
+   *
+   * <p>ONE observation per turn, never the whole backlog. Draining everything into a single user
+   * message would silently override the caller's {@link Coalescer} policy: a vocabulary whose
+   * coalescer returns no key is saying "these must never merge", and merging them here would do
+   * exactly that without the caller's own {@code merge} function. Coalescing on write, inside
+   * {@link Backlogs#ingest}, is the only place observations become one — see {@link Backlog}.
+   *
+   * <p><b>The order across the two stores is deliberate, and so is what {@code persist}
+   * carries.</b> {@code remember} writes the fact first (principle 1.1: a crash here leaves an
+   * orphan transcript entry, and the deterministic {@code "obs:"} key makes re-taking it a no-op).
+   * But removing the backlog entry is ALSO destructive, and it must not happen before something
+   * durable says it happened — otherwise a crash between the removal and the state write strands
+   * the entry: gone from the backlog, present in the transcript, but the persisted state still
+   * shows the pre-turn phase, so nothing ever asks the model to answer it. {@link
+   * AgentState#takenEntryId} is that durable record: it is written BEFORE the removal, and {@link
+   * #resume} finishes an interrupted removal on recovery.
+   *
+   * <p><b>Claim deletion goes first, ahead of both stores above, and ahead of either exit
+   * branch.</b> It reads {@code state.turnId()} — the OLD turn, the one this call is ending — so it
+   * must run BEFORE {@code startingTurn(Identifiers.next())} mints the next turn's id below. Move
+   * it after that call and it deletes the wrong turn's claims, or (once {@code turnId} has already
+   * changed) none at all. And it deletes by KIND, not by the list of ids a {@code ToolCallRecord}
+   * happens to name, because a claim can be written by {@code put} and then orphaned by a crash
+   * before the state naming it is persisted; no record will ever mention that claim, so only a
+   * by-kind sweep — {@link Claims#deleteTurn} — catches it.
+   */
+  private Effect<AgentState> startTurnIfWork(AgentState state, Map<String, String> here) {
+    if (state.turnId() != null) {
+      // The whole kind goes, so this needs no list of ids and cannot miss an orphan.
+      deps.claims().deleteTurn(agentId, state.turnId());
+    }
+    Optional<Backlogs.Taken<String>> taken = deps.backlogs().next(agentId);
+    if (taken.isEmpty()) {
+      return Effect().persist(state.finishedTurn());
+    }
+    Backlogs.Taken<String> observation = taken.get();
+    deps.memories().forAgent(agentId).remember(userMessage(deps.renderer(), observation));
+    AgentState next =
+        state
+            .startingTurn(Identifiers.next())
+            .withPhase(new Phase.CallingModel())
+            .taking(observation.entryId());
+    return Effect()
+        .persist(next)
+        .thenRun(
+            () -> {
+              deps.backlogs().taken(agentId, observation.entryId());
+              askModel(next, here);
+            });
+  }
+
+  /**
+   * Key DERIVED from the entry id, never minted: re-taking after a crash must be free.
+   *
+   * <p>Rendering happens HERE, at drain, never at ingest — see {@link Backlog}'s javadoc. A
+   * renderer supplied through {@link Dependencies} reaches an observation that was queued long
+   * before the renderer changed, because the backlog never held anything but the observation
+   * itself.
+   */
+  static Remembrance.UserMessage userMessage(
+      ObservationRenderer<String> renderer, Backlogs.Taken<String> taken) {
+    return new Remembrance.UserMessage(
+        "obs:" + taken.entryId(), Message.user(renderer.render(taken.observation())));
   }
 
   // ------------------------------------------------------------------------------------------
@@ -313,11 +520,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    * recalls the transcript on its own thread — the agent never assembles model context, and never
    * holds one.
    */
-  private void askModel(Map<String, String> trace) {
-    deps.modelDesk()
-        .tell(
-            new ModelDesk.CallModel(
-                agentId, new TurnState.CallingModel(), context.getSelf(), trace));
+  private void askModel(AgentState state, Map<String, String> trace) {
+    deps.modelDesk().tell(new ModelDesk.CallModel(agentId, state, context.getSelf(), trace));
   }
 
   /**
@@ -325,7 +529,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    * construction, which is exactly why the same method serves the normal path, the
    * answered-after-a-restart path, and recovery.
    */
-  private void spawnMissing(TurnState.WorkingTools state, Map<String, String> trace) {
+  private void spawnMissing(String turnId, Phase.WorkingTools state, Map<String, String> trace) {
     for (ToolCallRecord call : state.unsettled()) {
       callActors.computeIfAbsent(
           call.id(),
@@ -333,6 +537,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
               context.spawn(
                   ToolCallActor.create(
                       agentId,
+                      turnId,
                       call,
                       context.getSelf(),
                       deps.tools(),
@@ -340,7 +545,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
                       trace,
                       deps.clock(),
                       deps.memories(),
-                      deps.blocking()),
+                      deps.blocking(),
+                      deps.claims()),
                   ToolCallActor.nameFor(id)));
     }
   }
@@ -350,7 +556,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
   // ------------------------------------------------------------------------------------------
 
   @Override
-  public SignalHandler<TurnState> signalHandler() {
+  public SignalHandler<AgentState> signalHandler() {
     return newSignalHandlerBuilder()
         .onSignal(RecoveryCompleted.instance(), this::resume)
         .onSignal(
@@ -366,23 +572,49 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.Command, T
    *
    * <p>A round resumed here is on a NEW trace, linked to the one that parked it — see {@link
    * Traces#inLinkedSpan}. A round that waited three days is not one span.
+   *
+   * <p><b>Finishes an interrupted {@code startTurnIfWork}, first.</b> {@link
+   * AgentState#takenEntryId} is non-null exactly when a crash may have happened between {@code
+   * remember} and {@code backlogs().taken()} for that entry — see {@link #startTurnIfWork}. Calling
+   * {@code taken} again is safe whether or not the earlier call actually landed: {@link
+   * SubstrateBacklogs} treats removing an already-removed entry as a no-op.
+   *
+   * <p><b>The {@link Phase.Idle} arm is not "nothing in flight".</b> {@link #onObserve} commits to
+   * the backlog and only THEN returns the persisted effect Pekko applies — a DB-round-trip-wide
+   * window in which supervision can stop the actor after the backlog write but before the phase
+   * ever leaves {@code Idle}. Nothing else notices: {@code Wake} used to be a no-op, and {@link
+   * StartupSweep#unfinishedAgents} only wakes agents whose phase is NOT idle. So a torn observation
+   * would sit in the backlog forever unless recovery itself checks.
+   *
+   * <p>It checks by peeking the backlog right here — a plain read, not a mutation — and
+   * self-sending {@link Wake} only when something is actually waiting. That peek is what keeps an
+   * ordinary idle recovery (the overwhelming common case: a fresh agent, or one that was truly
+   * idle) from manufacturing a message, and a span, that has no reason to exist. When the peek DOES
+   * find something, the self-sent {@code Wake} routes back through the ordinary command handler
+   * (see {@link #onWake}) so the turn it starts is persisted the ordinary way, with an {@link
+   * Effect}, which a signal handler cannot produce directly.
    */
-  private void resume(TurnState state) {
+  private void resume(AgentState state) {
     context.getLog().info("[watchman] {} rehydrated while {}", agentId, name(state));
-    switch (state) {
-      case TurnState.Idle ignored -> {
-        // nothing in flight
+    if (state.takenEntryId() != null) {
+      deps.backlogs().taken(agentId, state.takenEntryId());
+    }
+    switch (state.phase()) {
+      case Phase.Idle ignored -> {
+        if (deps.backlogs().next(agentId).isPresent()) {
+          context.getSelf().tell(new Wake(Map.of()));
+        }
       }
-      case TurnState.CallingModel ignored -> askModel(Map.of());
-      case TurnState.WorkingTools working -> spawnMissing(working, Map.of());
+      case Phase.CallingModel ignored -> askModel(state, Map.of());
+      case Phase.WorkingTools working -> spawnMissing(state.turnId(), working, Map.of());
     }
   }
 
-  private static String name(TurnState state) {
-    return switch (state) {
-      case TurnState.Idle ignored -> "idle";
-      case TurnState.CallingModel ignored -> "calling the model";
-      case TurnState.WorkingTools ignored -> "working tools";
+  private static String name(AgentState state) {
+    return switch (state.phase()) {
+      case Phase.Idle ignored -> "idle";
+      case Phase.CallingModel ignored -> "calling the model";
+      case Phase.WorkingTools ignored -> "working tools";
     };
   }
 }

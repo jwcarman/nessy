@@ -19,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.typesafe.config.ConfigFactory;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
@@ -70,18 +72,22 @@ class TraceTreeTest {
                     io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator.getInstance()))
             .build();
     agent = "trace-" + UUID.randomUUID();
+    org.jwcarman.nessy.spi.substrate.Substrate substrate =
+        new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC());
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(10)),
             new FakeRunner(),
-            new Memories(
-                new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC()), 8000),
-            new Traces(sdk),
+            new Memories(substrate, 8000),
+            new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class),
+            WatchmanObservations.RENDERER,
+            MicrometerTracing.over(sdk),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10));
+            Duration.ofSeconds(10),
+            new Claims(substrate));
     actors.start();
   }
 
@@ -91,7 +97,7 @@ class TraceTreeTest {
     sdk.close();
   }
 
-  private TurnState state() {
+  private AgentState state() {
     try {
       return actors.inspect(agent).toCompletableFuture().get(15, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -112,7 +118,7 @@ class TraceTreeTest {
 
   @Test
   void every_span_a_round_produces_hangs_off_the_one_round_span() throws Exception {
-    Traces traces = new Traces(sdk);
+    Traces traces = MicrometerTracing.over(sdk);
 
     // The cron's span, and the carrier it hands to the agent.
     Span round = sdk.getTracer("test").spanBuilder("watchman round").startSpan();
@@ -120,13 +126,13 @@ class TraceTreeTest {
     try (Scope ignored = round.makeCurrent()) {
       carrier = traces.capture();
     }
-    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", carrier));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", carrier));
 
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () -> {
-              assertThat(state()).isInstanceOf(TurnState.WorkingTools.class);
+              assertThat(state().phase()).isInstanceOf(Phase.WorkingTools.class);
               assertThat(Calls.pending(state(), "prune_images")).isPresent();
             });
     actors
@@ -135,7 +141,7 @@ class TraceTreeTest {
         .get(15, TimeUnit.SECONDS);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(() -> assertThat(state()).isInstanceOf(TurnState.Idle.class));
+        .untilAsserted(() -> assertThat(state().phase()).isInstanceOf(Phase.Idle.class));
     round.end();
 
     List<SpanData> finished = spans.getFinishedSpanItems();
@@ -144,27 +150,103 @@ class TraceTreeTest {
     String traceId = round.getSpanContext().getTraceId();
     List<String> names = finished.stream().map(SpanData::getName).toList();
 
-    // The whole round is ONE trace: the model calls and every tool ran under the cron's trace id,
+    // The whole ROUND is one trace: the model calls and every tool ran under the cron's trace id,
     // despite each of them happening on a different thread in a different actor.
+    //
+    // "The round" is the operative word. Every receive now opens a span, including messages that
+    // did NOT come from the round -- Inspect from the transcript page, AnswerApproval from the
+    // approvals page. Those are correctly roots of their OWN traces, because that is what they
+    // are: a human opening a page is not part of the cron tick that happened an hour ago. An
+    // earlier version of this assertion demanded that every span share the round's trace, which
+    // was only true back when the actor spanned nothing it had not been asked to do.
+    List<String> externallyCaused =
+        List.of("agent receive Inspect", "agent receive AnswerApproval");
     assertThat(finished)
         .filteredOn(span -> !span.getName().equals("watchman round"))
+        .filteredOn(span -> !externallyCaused.contains(span.getName()))
         .isNotEmpty()
         .allSatisfy(span -> assertThat(span.getTraceId()).isEqualTo(traceId));
 
-    assertThat(names).contains("model call", "tool disk_usage", "tool containers");
-
-    // And the tools really are children of the round rather than roots of their own.
+    // And the externally-caused ones really are roots, not orphans pointing at a dead parent.
     assertThat(finished)
-        .filteredOn(span -> span.getName().startsWith("tool "))
+        .filteredOn(span -> externallyCaused.contains(span.getName()))
         .isNotEmpty()
-        .allSatisfy(span -> assertThat(span.getParentSpanId()).isNotEqualTo("0000000000000000"));
+        .allSatisfy(span -> assertThat(span.getParentSpanId()).isEqualTo("0000000000000000"));
+
+    // The actor topology, readable straight off the trace: this is the argument for spanning every
+    // receive rather than only the work. The names say which actor handled which message.
+    assertThat(names)
+        .contains(
+            "agent receive Observe", "agent receive ModelReplied", "agent receive ToolCallSettled");
+
+    // ...and the attributes are what make that topology answer operational questions rather than
+    // merely showing that something happened. Asserted because they are easy to drop by accident
+    // and nothing else would notice.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("agent receive Observe"))
+        .singleElement()
+        .satisfies(
+            span -> {
+              var attributes = span.getAttributes();
+              assertThat(attributes.get(AttributeKey.stringKey("nessy.agent.id"))).isEqualTo(agent);
+              assertThat(attributes.get(AttributeKey.stringKey("nessy.actor.path")))
+                  .contains("agent-");
+              assertThat(attributes.get(AttributeKey.stringKey("nessy.node.address")))
+                  .startsWith("pekko://watchman");
+              assertThat(attributes.get(AttributeKey.stringKey("nessy.turn.phase")))
+                  .isEqualTo("Idle");
+              assertThat(attributes.get(AttributeKey.stringKey("messaging.system")))
+                  .isEqualTo("pekko");
+            });
+
+    // GenAI semantic conventions, asserted by name. These are DECLARED at their call sites rather
+    // than derived from a message class, and this assertion is what keeps that honest: a missed
+    // declaration produces an orphan span, never a compile error or an exception.
+    assertThat(names).contains("chat", "execute_tool");
+
+    // The tool's identity is a TAG, not part of the span name -- a span name per tool would blow
+    // up cardinality in every backend that indexes on it.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("execute_tool"))
+        .isNotEmpty()
+        .allSatisfy(span -> assertThat(span.getParentSpanId()).isNotEqualTo("0000000000000000"))
+        .extracting(span -> span.getAttributes().get(AttributeKey.stringKey("gen_ai.tool.name")))
+        .contains("disk_usage", "containers");
+
+    // The model call is CLIENT: the model is a remote service, not internal work.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("chat"))
+        .isNotEmpty()
+        .allSatisfy(span -> assertThat(span.getKind()).isEqualTo(SpanKind.CLIENT));
+
+    // Every chat span carries what it cost -- the whole point of this task. The scripted model
+    // reports plausible, non-zero usage precisely so this cannot pass against an empty attribute.
+    assertThat(finished)
+        .filteredOn(span -> span.getName().equals("chat"))
+        .isNotEmpty()
+        .allSatisfy(
+            span -> {
+              var attributes = span.getAttributes();
+              assertThat(attributes.get(AttributeKey.stringKey("gen_ai.operation.name")))
+                  .isEqualTo("chat");
+              assertThat(attributes.get(AttributeKey.longKey("gen_ai.usage.input_tokens")))
+                  .isEqualTo(606L);
+              assertThat(attributes.get(AttributeKey.longKey("gen_ai.usage.output_tokens")))
+                  .isEqualTo(142L);
+              assertThat(
+                      attributes.get(AttributeKey.longKey("gen_ai.usage.cache_read.input_tokens")))
+                  .isEqualTo(0L);
+              assertThat(
+                      attributes.get(AttributeKey.longKey("gen_ai.usage.cache_write.input_tokens")))
+                  .isEqualTo(0L);
+            });
 
     System.out.println("[watchman] trace " + traceId + " spans: " + names);
   }
 
   @Test
   void a_round_resumed_after_a_park_is_a_new_trace_linked_to_the_old_one() {
-    Traces traces = new Traces(sdk);
+    Traces traces = MicrometerTracing.over(sdk);
     Span asked = sdk.getTracer("test").spanBuilder("watchman round").startSpan();
     Map<String, String> carrier;
     try (Scope ignored = asked.makeCurrent()) {

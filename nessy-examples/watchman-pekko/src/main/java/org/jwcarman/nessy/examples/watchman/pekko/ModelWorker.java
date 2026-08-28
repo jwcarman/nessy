@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import io.micrometer.tracing.Span;
 import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
@@ -39,7 +40,7 @@ public final class ModelWorker {
 
   public record Replied(
       ModelReply reply,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       java.util.Map<String, String> trace,
       ActorRef<ConsumerController.Confirmed> confirmTo)
       implements Command {}
@@ -69,11 +70,22 @@ public final class ModelWorker {
                             () -> {
                               org.jwcarman.nessy.spi.Memory memory =
                                   memories.forAgent(job.agentId());
+                              // GenAI semconv names this span `chat`, and it is CLIENT because
+                              // the model is a remote service. A generic per-message interceptor
+                              // would have named it after ModelJob; only a declared span gets
+                              // this right.
                               ModelReply reply =
                                   traces.inSpan(
-                                      "model call",
+                                      "chat",
+                                      Span.Kind.CLIENT,
                                       job.trace(),
-                                      () -> model.reply(memory.recall()));
+                                      () -> {
+                                        traces.tag("nessy.agent.id", job.agentId());
+                                        traces.tag("gen_ai.operation.name", "chat");
+                                        ModelReply result = model.reply(memory.recall());
+                                        tagUsage(traces, result.usage());
+                                        return result;
+                                      });
                               remember(memory, reply);
                               return reply;
                             },
@@ -119,5 +131,17 @@ public final class ModelWorker {
     memory.remember(
         new Remembrance.AssistantMessage(
             org.jwcarman.nessy.api.Identifiers.next(), reply.message()));
+  }
+
+  /**
+   * Names follow the OpenTelemetry GenAI semantic conventions, matching what {@link
+   * ProviderWatchmanModel#record} already counts on the {@code MeterRegistry} so metrics and traces
+   * agree.
+   */
+  private static void tagUsage(Traces traces, org.jwcarman.nessy.api.conversation.Usage usage) {
+    traces.tag("gen_ai.usage.input_tokens", usage.inputTokens());
+    traces.tag("gen_ai.usage.output_tokens", usage.outputTokens());
+    traces.tag("gen_ai.usage.cache_read.input_tokens", usage.cacheReadInputTokens());
+    traces.tag("gen_ai.usage.cache_write.input_tokens", usage.cacheWriteInputTokens());
   }
 }

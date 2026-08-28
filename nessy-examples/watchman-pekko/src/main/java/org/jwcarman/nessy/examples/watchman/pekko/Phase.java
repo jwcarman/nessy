@@ -22,33 +22,27 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * What one watchman durably is: the phase, and what this round is still waiting on. <b>Nothing
- * else.</b>
+ * What one round is still waiting on: the phase, and nothing else.
  *
- * <p>The transcript used to live here, and the soak measured what that costs: a {@code
- * DurableStateBehavior} rewrites its whole document on every revision, so an embedded transcript
- * means every fold rewrites the entire conversation. Measured on the running watchman — 1,709 bytes
- * at revision 5, 24,151 at revision 64. It now lives in {@link Transcript}, appended one row per
- * turn, and this record is flat forever: a handful of in-flight calls at most, cleared the moment
- * the round finishes.
+ * <p>Carved out of the old {@code TurnState} when the document that holds it grew a turn id — see
+ * {@link AgentState}. The three variants and every helper move here unchanged.
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "state")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "phase")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = TurnState.Idle.class, name = "idle"),
-  @JsonSubTypes.Type(value = TurnState.CallingModel.class, name = "calling-model"),
-  @JsonSubTypes.Type(value = TurnState.WorkingTools.class, name = "working-tools")
+  @JsonSubTypes.Type(value = Phase.Idle.class, name = "idle"),
+  @JsonSubTypes.Type(value = Phase.CallingModel.class, name = "calling-model"),
+  @JsonSubTypes.Type(value = Phase.WorkingTools.class, name = "working-tools")
 })
-public sealed interface TurnState {
+public sealed interface Phase {
 
-  /** No round in flight. The steady state, and the smallest document this agent ever writes. */
-  record Idle() implements TurnState {}
+  /** No round in flight. The steady state. */
+  record Idle() implements Phase {}
 
   /** A model call is in flight. */
-  record CallingModel() implements TurnState {}
+  record CallingModel() implements Phase {}
 
   /** The model asked for tools. Each unsettled call has a live {@link ToolCallActor}. */
-  record WorkingTools(List<ToolCallRecord> calls) implements TurnState {
-
+  record WorkingTools(List<ToolCallRecord> calls) implements Phase {
     public WorkingTools {
       calls = List.copyOf(calls);
     }
@@ -58,7 +52,6 @@ public sealed interface TurnState {
       return calls.stream().allMatch(ToolCallRecord::settled);
     }
 
-    /** The re-fire rule, entire: a call that has not settled needs an actor. */
     @JsonIgnore
     public List<ToolCallRecord> unsettled() {
       return calls.stream().filter(call -> !call.settled()).toList();

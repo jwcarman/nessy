@@ -15,11 +15,18 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ONE tool call's entire life, as a behaviour. Ephemeral child of {@link AgentActor}.
@@ -37,16 +44,19 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
  */
 public final class ToolCallActor {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ToolCallActor.class);
+
   public sealed interface Command {}
 
   /** From the world, relayed by the agent: the human answered. */
-  public record Answer(boolean approved, String by, String note) implements Command {}
+  public record Answer(boolean approved, String by, String note, Map<String, String> headers)
+      implements Command {}
 
   /** From this call's own {@link ApprovalActor}. */
   public record Answered(boolean approved, String by, String note) implements Command {}
 
   /** From a tool worker: the command came back. */
-  public record Ran(String result) implements Command {}
+  public record Ran(ToolResult result) implements Command {}
 
   private ToolCallActor() {}
 
@@ -57,23 +67,27 @@ public final class ToolCallActor {
 
   public static Behavior<Command> create(
       String agentId,
+      String turnId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       Duration approvalTerm,
       Map<String, String> trace,
-      java.time.Clock clock,
+      Clock clock,
       Memories memories,
-      java.util.concurrent.Executor blocking) {
+      Executor blocking,
+      Claims claims) {
 
     return Behaviors.setup(
         context -> {
           if (call.decided() && call.decision().approved()) {
-            return run(agentId, call, agent, tools, context.getSelf(), trace);
+            return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
           }
           if (call.decided()) {
             settleAsDenied(
                 agentId,
+                turnId,
+                claims,
                 call,
                 agent,
                 trace,
@@ -89,43 +103,97 @@ public final class ToolCallActor {
                     ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
                     "approval");
             return awaitingApproval(
-                agentId, call, agent, tools, approval, trace, memories, blocking);
+                agentId, turnId, call, agent, tools, approval, trace, memories, blocking, claims);
           }
-          return run(agentId, call, agent, tools, context.getSelf(), trace);
+          return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
         });
   }
 
   /**
    * A denial produces a transcript turn like any other outcome, and it must be written before the
-   * agent is told. This actor is on a dispatcher, so the append goes to the blocking executor and
-   * the agent is told from the completion -- telling an ActorRef from another thread is the one
-   * thing that is always safe.
+   * agent is told. This actor is on a dispatcher, so the claim lookup and the append go to the
+   * blocking executor and the agent is told from the completion -- telling an ActorRef from another
+   * thread is the one thing that is always safe.
+   *
+   * <p><b>The agent is told ONLY when the exchange was actually recorded.</b> Same shape, same
+   * reasoning as {@link ToolWorker}: a throwing {@code remember} means nothing committed, and
+   * telling {@code ToolCallSettled} anyway would settle a call whose exchange the fold can never
+   * pair an assistant turn against. So on that failure this says nothing back to the agent -- the
+   * call stays un-settled, and a respawn retries it, same as a worker's failed run.
+   *
+   * <p><b>Two failure modes this must not treat differently from {@link ToolWorker}.</b> A claim
+   * resolution failure is CAUGHT here, exactly like {@link ToolWorker#runAndRemember} -- the round
+   * must continue rather than the future failing silently out of {@code orElseThrow}, stalling this
+   * call in {@code WorkingTools} forever, on the watchman's most common path (a denial). And the
+   * submission to {@code blocking} is wrapped exactly the way {@link ToolWorker#create} wraps it: a
+   * rejected submission (the executor mid-shutdown) is logged, not left to propagate synchronously
+   * out of the message handler and kill this actor.
    */
   private static void settleAsDenied(
       String agentId,
+      String turnId,
+      Claims claims,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       Map<String, String> trace,
       Memories memories,
-      java.util.concurrent.Executor blocking,
+      Executor blocking,
       String by,
       String note) {
     String outcome = "denied by " + by + ": " + note;
-    java.util.concurrent.CompletableFuture.runAsync(
-            () ->
-                memories
-                    .forAgent(agentId)
-                    .remember(
-                        new org.jwcarman.nessy.spi.Remembrance.ToolExchange(
-                            call.id(),
-                            new org.jwcarman.nessy.api.tool.ToolCall(
-                                call.id(),
-                                call.tool(),
-                                WatchmanTools.argumentsOf(call.argumentsJson())),
-                            org.jwcarman.nessy.api.tool.ToolResult.error(outcome))),
-            blocking)
-        .whenComplete(
-            (done, failure) -> agent.tell(new AgentActor.ToolCallSettled(call.id(), trace)));
+    try {
+      CompletableFuture.runAsync(
+              () -> recordDenial(agentId, turnId, claims, call, memories, outcome), blocking)
+          .whenComplete(
+              (done, failure) -> {
+                if (failure == null) {
+                  agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
+                } else {
+                  LOG.warn(
+                      "call {} not settled -- its exchange was never recorded: {}",
+                      call.id(),
+                      ToolWorker.describe(failure));
+                }
+              });
+    } catch (RuntimeException rejected) {
+      // The executor rejected submission outright (e.g. mid-shutdown): the same rule applies -- no
+      // commit happened, so no ToolCallSettled is told. Matches ToolWorker#create.
+      LOG.warn(
+          "call {} not settled -- could not even be submitted: {}",
+          call.id(),
+          ToolWorker.describe(rejected));
+    }
+  }
+
+  /**
+   * Runs on the virtual thread {@code blocking} hands us. A claim lookup that throws is CAUGHT and
+   * recorded as a {@link ToolResult#error}, exactly like {@link ToolWorker#runAndRemember} -- the
+   * round continues rather than the future failing out from under {@code whenComplete} with nothing
+   * ever told to the agent.
+   */
+  private static void recordDenial(
+      String agentId,
+      String turnId,
+      Claims claims,
+      ToolCallRecord call,
+      Memories memories,
+      String outcome) {
+    String arguments;
+    try {
+      arguments =
+          claims
+              .get(agentId, turnId, call.argumentsClaimId())
+              .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+              .orElseThrow(
+                  () -> new IllegalStateException("no claim for " + call.argumentsClaimId()));
+    } catch (RuntimeException e) {
+      ToolResult result =
+          ToolResult.error("tool arguments could not be resolved: " + ToolWorker.describe(e));
+      ToolWorker.remember(memories, agentId, call, WatchmanTools.argumentsOf("{}"), result);
+      return;
+    }
+    ToolWorker.remember(
+        memories, agentId, call, WatchmanTools.argumentsOf(arguments), ToolResult.error(outcome));
   }
 
   /**
@@ -134,13 +202,15 @@ public final class ToolCallActor {
    */
   private static Behavior<Command> awaitingApproval(
       String agentId,
+      String turnId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<ApprovalActor.Command> approval,
       Map<String, String> trace,
       Memories memories,
-      java.util.concurrent.Executor blocking) {
+      Executor blocking,
+      Claims claims) {
     return Behaviors.receive(Command.class)
         .onMessage(
             Answer.class,
@@ -155,6 +225,8 @@ public final class ToolCallActor {
               if (!answered.approved()) {
                 settleAsDenied(
                     agentId,
+                    turnId,
+                    claims,
                     call,
                     agent,
                     trace,
@@ -165,19 +237,20 @@ public final class ToolCallActor {
                 return Behaviors.stopped();
               }
               return Behaviors.setup(
-                  context -> run(agentId, call, agent, tools, context.getSelf(), trace));
+                  context -> run(agentId, turnId, call, agent, tools, context.getSelf(), trace));
             })
         .build();
   }
 
   private static Behavior<Command> run(
       String agentId,
+      String turnId,
       ToolCallRecord call,
-      ActorRef<AgentActor.Command> agent,
+      ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<Command> self,
       Map<String, String> trace) {
-    tools.tell(new ToolWorker.RunTool(agentId, call, self, trace));
+    tools.tell(new ToolWorker.RunTool(agentId, turnId, call, call.argumentsClaimId(), self, trace));
     return Behaviors.receive(Command.class)
         .onMessage(
             Ran.class,

@@ -39,7 +39,7 @@ class RestartTest {
 
   private static final Duration PATIENCE = Duration.ofSeconds(45);
 
-  private TurnState stateOf(WatchmanActorSystem actors, String agent) {
+  private AgentState stateOf(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -65,15 +65,13 @@ class RestartTest {
     WatchmanActorSystem first =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
-      first.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(
               () -> {
-                TurnState state = stateOf(first, agent);
-                assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
+                AgentState state = stateOf(first, agent);
+                assertThat(state.phase()).isInstanceOf(Phase.WorkingTools.class);
                 assertThat(Calls.pending(state, "prune_images")).isPresent();
               });
     } finally {
@@ -107,7 +105,7 @@ class RestartTest {
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(stateOf(second, agent)).isInstanceOf(TurnState.Idle.class));
+              () -> assertThat(stateOf(second, agent).phase()).isInstanceOf(Phase.Idle.class));
 
       var results = WatchmanPostgres.results(agent);
       assertThat(results).isNotEmpty();
@@ -130,13 +128,12 @@ class RestartTest {
     WatchmanActorSystem first =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofSeconds(60)));
     try {
-      first.tell(
-          agent,
-          new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+      first.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(stateOf(first, agent)).isInstanceOf(TurnState.CallingModel.class));
+              () ->
+                  assertThat(stateOf(first, agent).phase()).isInstanceOf(Phase.CallingModel.class));
     } finally {
       first.stop();
     }
@@ -148,12 +145,14 @@ class RestartTest {
       // what moved it -- this is the driver obligation, and it is ours rather than Pekko's.
       List<String> unfinished = new StartupSweep(WatchmanPostgres.dataSource()).unfinishedAgents();
       assertThat(unfinished).contains(agent);
-      unfinished.forEach(id -> second.tell(id, new AgentActor.Wake()));
+      unfinished.forEach(id -> second.tell(id, new AgentActor.Wake(java.util.Map.of())));
 
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(stateOf(second, agent)).isInstanceOf(TurnState.WorkingTools.class));
+              () ->
+                  assertThat(stateOf(second, agent).phase())
+                      .isInstanceOf(Phase.WorkingTools.class));
     } finally {
       second.stop();
     }

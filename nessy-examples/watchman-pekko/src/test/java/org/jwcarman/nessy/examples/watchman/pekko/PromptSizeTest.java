@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.typesafe.config.ConfigFactory;
-import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -30,12 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TokenEstimator;
-import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -63,6 +58,7 @@ class PromptSizeTest {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories budgeted = new Memories(substrate, BUDGET);
     Memories unbudgeted = new Memories(substrate, Long.MAX_VALUE);
+    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
 
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
@@ -70,30 +66,28 @@ class PromptSizeTest {
             new ScriptedWatchmanModel(Duration.ofMillis(5)),
             new FakeRunner(),
             budgeted,
-            new Traces(OpenTelemetry.noop()),
+            backlogs,
+            WatchmanObservations.RENDERER,
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10));
+            Duration.ofSeconds(10),
+            new Claims(substrate));
     actors.start();
 
     List<Sample> samples = new ArrayList<>();
     try {
       for (int round = 1; round <= 12; round++) {
-        Memory memory = budgeted.forAgent(agent);
-        memory.remember(
-            new Remembrance.UserMessage(
-                Identifiers.next(), Message.user("Round " + round + ". Do your rounds.")));
         actors.tell(
-            agent,
-            new AgentActor.Observe("Round " + round + ". Do your rounds.", "rounds", Map.of()));
+            agent, new AgentActor.Observe("Round " + round + ". Do your rounds.", Map.of()));
 
         await()
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
                 () -> {
-                  TurnState state = stateOf(actors, agent);
-                  assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
+                  AgentState state = stateOf(actors, agent);
+                  assertThat(state.phase()).isInstanceOf(Phase.WorkingTools.class);
                   assertThat(pendingPrune(state)).isPresent();
                 });
         String callId = pendingPrune(stateOf(actors, agent)).orElseThrow();
@@ -107,7 +101,7 @@ class PromptSizeTest {
         await()
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
-                () -> assertThat(stateOf(actors, agent)).isInstanceOf(TurnState.Idle.class));
+                () -> assertThat(stateOf(actors, agent).phase()).isInstanceOf(Phase.Idle.class));
 
         Context whole = unbudgeted.everything(agent);
         Context sent = budgeted.forAgent(agent).recall();
@@ -146,7 +140,7 @@ class PromptSizeTest {
     assertThat(last.budgetedTokens()).isLessThan(last.unbudgetedTokens());
   }
 
-  private static TurnState stateOf(WatchmanActorSystem actors, String agent) {
+  private static AgentState stateOf(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -154,8 +148,8 @@ class PromptSizeTest {
     }
   }
 
-  private static Optional<String> pendingPrune(TurnState state) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private static Optional<String> pendingPrune(AgentState state) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Optional.empty();
     }
     return working.calls().stream()

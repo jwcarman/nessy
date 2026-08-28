@@ -42,7 +42,7 @@ public final class StartupSweep {
   private static final Logger LOG = LoggerFactory.getLogger(StartupSweep.class);
 
   private static final String QUERY =
-      "SELECT persistence_id, state_payload FROM durable_state"
+      "SELECT persistence_id, state_payload, state_serial_manifest FROM durable_state"
           + " WHERE persistence_id LIKE 'Watchman|%'";
 
   private final DataSource dataSource;
@@ -59,8 +59,8 @@ public final class StartupSweep {
         ResultSet results = statement.executeQuery()) {
       while (results.next()) {
         String persistenceId = results.getString(1);
-        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.TURN_STATE_V1);
-        if (!(state instanceof TurnState.Idle)) {
+        Object state = codec.fromBinary(results.getBytes(2), results.getString(3));
+        if (state instanceof AgentState agent && !(agent.phase() instanceof Phase.Idle)) {
           unfinished.add(persistenceId.substring(persistenceId.indexOf('|') + 1));
         }
       }

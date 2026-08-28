@@ -47,7 +47,7 @@ class DurableIngestTest {
 
   private final DataSource dataSource = WatchmanPostgres.dataSource();
 
-  private TurnState stateOf(WatchmanActorSystem actors, String agent) {
+  private AgentState stateOf(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -56,7 +56,7 @@ class DurableIngestTest {
   }
 
   /** Straight out of Postgres, bypassing every actor: what is ACTUALLY on disk right now. */
-  private Optional<TurnState> onDisk(String agent) {
+  private Optional<AgentState> onDisk(String agent) {
     StateSerializer codec = new StateSerializer();
     try (Connection connection = dataSource.getConnection();
         PreparedStatement statement =
@@ -68,7 +68,7 @@ class DurableIngestTest {
           return Optional.empty();
         }
         return Optional.of(
-            (TurnState) codec.fromBinary(rows.getBytes(1), StateSerializer.TURN_STATE_V1));
+            (AgentState) codec.fromBinary(rows.getBytes(1), StateSerializer.AGENT_STATE_V2));
       }
     } catch (Exception e) {
       throw new IllegalStateException(e);
@@ -76,14 +76,13 @@ class DurableIngestTest {
   }
 
   private void parkOnApproval(WatchmanActorSystem actors, String agent) {
-    actors.tell(
-        agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
     await()
         .atMost(PATIENCE)
         .untilAsserted(
             () -> {
-              TurnState state = stateOf(actors, agent);
-              assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
+              AgentState state = stateOf(actors, agent);
+              assertThat(state.phase()).isInstanceOf(Phase.WorkingTools.class);
               assertThat(Calls.pending(state, "prune_images")).isPresent();
             });
   }
@@ -107,8 +106,8 @@ class DurableIngestTest {
             WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20))))) {
       WatchmanActorSystem actors = ignored.actors();
       parkOnApproval(actors, agent);
-      TurnState parked = onDisk(agent).orElseThrow();
-      assertThat(parked).isInstanceOf(TurnState.WorkingTools.class);
+      AgentState parked = onDisk(agent).orElseThrow();
+      assertThat(parked.phase()).isInstanceOf(Phase.WorkingTools.class);
       assertThat(Calls.byTool(parked, "prune_images").orElseThrow().decided()).isFalse();
 
       AgentActor.Ack ack =
@@ -120,7 +119,7 @@ class DurableIngestTest {
       // The instant the page is allowed to render a redirect, the answer is already in Postgres.
       // Read directly, with no actor involved, on the very next statement.
       assertThat(ack.accepted()).isTrue();
-      TurnState persisted = onDisk(agent).orElseThrow();
+      AgentState persisted = onDisk(agent).orElseThrow();
       assertThat(deniedBy(agent, persisted, "james", "not today"))
           .as("the denial must be durable before the page is told anything")
           .isTrue();
@@ -150,7 +149,9 @@ class DurableIngestTest {
       await()
           .atMost(PATIENCE)
           .untilAsserted(
-              () -> assertThat(stateOf(second.actors(), agent)).isInstanceOf(TurnState.Idle.class));
+              () ->
+                  assertThat(stateOf(second.actors(), agent).phase())
+                      .isInstanceOf(Phase.Idle.class));
 
       assertThat(WatchmanPostgres.results(agent).values())
           .anySatisfy(text -> assertThat(text).contains("denied by james: absolutely not"));
@@ -168,9 +169,9 @@ class DurableIngestTest {
    * satisfy the requirement -- but which one you will find is a race, and that is worth knowing.
    * See the report on what this costs the audit trail.
    */
-  private static boolean deniedBy(String agentId, TurnState state, String by, String note) {
+  private static boolean deniedBy(String agentId, AgentState state, String by, String note) {
     String expected = "denied by " + by + ": " + note;
-    if (state instanceof TurnState.WorkingTools working) {
+    if (state.phase() instanceof Phase.WorkingTools working) {
       boolean onTheCall =
           working.calls().stream()
               .anyMatch(

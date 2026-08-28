@@ -110,6 +110,13 @@ serialization covers a closed set with discriminators we control.
 one fewer thing users must supply, one fewer place user types reach the wire. The
 trade is that a renderer change cannot be replayed over old observations.
 
+> **AMENDED 2026-08-28** by `2026-08-28-ingest-and-turns-design.md` §3.1: this is
+> reversed. The backlog holds `O`, and rendering moves to the drain. Once an
+> observation is rendered the domain object is gone, and with it any way for a user
+> to express what should happen when two observations meet — coalescing would be
+> reduced to matching key strings. `Codec<O>` comes back as the price; the accepted
+> loss above (a renderer change not reaching queued observations) is recovered.
+
 **Users never write actors.** Tools, grants, a renderer, a vocabulary. Pekko is
 invisible above that line — which means its costs are ours to carry, not theirs to
 learn, and replacing it later would not be an API change.

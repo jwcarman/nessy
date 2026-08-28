@@ -33,6 +33,10 @@ public final class ScriptedWatchmanModel implements WatchmanModel {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
+  // Plausible, non-zero on purpose: a script that always reports Usage.zero() would let a chat
+  // span's token attributes go missing without any test noticing.
+  private static final Usage USAGE = new Usage(606, 142, 0, 0);
+
   private final Duration latency;
 
   public ScriptedWatchmanModel(Duration latency) {
@@ -55,7 +59,7 @@ public final class ScriptedWatchmanModel implements WatchmanModel {
               List.of(
                   new TextBlock(
                       "Rounds complete. Disk is filling and there are unused images to reclaim."))),
-          Usage.zero());
+          USAGE);
     }
 
     // Unique per CALL, never derived from the context -- which is a property real models have and
@@ -77,7 +81,7 @@ public final class ScriptedWatchmanModel implements WatchmanModel {
             new ToolUseBlock(calls.get(0), null),
             new ToolUseBlock(calls.get(1), null),
             new ToolUseBlock(calls.get(2), null));
-    return new ModelReply.AskedForTools(Message.assistant(blocks), calls, Usage.zero());
+    return new ModelReply.AskedForTools(Message.assistant(blocks), calls, USAGE);
   }
 
   /** A user message that is a person talking, not a batch of tool results. */

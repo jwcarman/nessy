@@ -19,10 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.typesafe.config.ConfigFactory;
-import io.opentelemetry.api.OpenTelemetry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -31,12 +31,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * A whole round on Nessy's own Memory: the actors, the scripted model and the fake host, with no
@@ -54,18 +54,23 @@ class RoundFlowTest {
   @BeforeEach
   void start() {
     agent = "watchman-" + UUID.randomUUID();
-    memories = new Memories(new InMemorySubstrate(Clock.systemUTC()), 8000);
+    Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
+    memories = new Memories(substrate, 8000);
+    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(20)),
             new FakeRunner(),
             memories,
-            new Traces(OpenTelemetry.noop()),
+            backlogs,
+            WatchmanObservations.RENDERER,
+            MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10));
+            Duration.ofSeconds(10),
+            new Claims(substrate));
     actors.start();
   }
 
@@ -74,7 +79,7 @@ class RoundFlowTest {
     actors.stop();
   }
 
-  private TurnState state() {
+  private AgentState state() {
     try {
       return actors.inspect(agent).toCompletableFuture().get(15, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -82,12 +87,9 @@ class RoundFlowTest {
     }
   }
 
-  /** Remember the user turn the way the cron does, then tell the agent. */
+  /** Tell the agent the way the cron does; the agent itself writes the turn once it drains. */
   private void observe(String text) {
-    memories
-        .forAgent(agent)
-        .remember(new Remembrance.UserMessage(Identifiers.next(), Message.user(text)));
-    actors.tell(agent, new AgentActor.Observe(text, "rounds", Map.of()));
+    actors.tell(agent, new AgentActor.Observe(text, Map.of()));
   }
 
   /** Tool results by call id, straight out of Memory. */
@@ -103,12 +105,14 @@ class RoundFlowTest {
     return byCall;
   }
 
-  private void awaitState(Class<? extends TurnState> expected) {
-    await().atMost(PATIENCE).untilAsserted(() -> assertThat(state()).isInstanceOf(expected));
+  private void awaitState(Class<? extends Phase> expected) {
+    await()
+        .atMost(PATIENCE)
+        .untilAsserted(() -> assertThat(state().phase()).isInstanceOf(expected));
   }
 
   private void awaitParked() {
-    awaitState(TurnState.WorkingTools.class);
+    awaitState(Phase.WorkingTools.class);
     await()
         .atMost(PATIENCE)
         .untilAsserted(() -> assertThat(Calls.pending(state(), "prune_images")).isPresent());
@@ -139,7 +143,7 @@ class RoundFlowTest {
 
       awaitParked();
 
-      var working = (TurnState.WorkingTools) state();
+      var working = (Phase.WorkingTools) state().phase();
       assertThat(Calls.byTool(working, "disk_usage")).isPresent();
       assertThat(Calls.byTool(working, "disk_usage").orElseThrow().settled()).isTrue();
 
@@ -169,7 +173,7 @@ class RoundFlowTest {
 
       assertThat(answer(false, "not on a Friday").accepted()).isTrue();
 
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       // Once every call is answered the whole turn appears at once -- assistant, then results.
       assertThat(results())
           .containsEntry(prune, "denied by james: not on a Friday")
@@ -188,7 +192,7 @@ class RoundFlowTest {
 
       assertThat(answer(true, "go on then").accepted()).isTrue();
 
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       assertThat(results())
           .hasEntrySatisfying(
               prune, text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
@@ -198,7 +202,7 @@ class RoundFlowTest {
     void an_answer_for_a_call_nobody_asked_about_is_refused_rather_than_swallowed()
         throws Exception {
       observe("It is noon. Do your rounds.");
-      awaitState(TurnState.WorkingTools.class);
+      awaitState(Phase.WorkingTools.class);
 
       AgentActor.Ack ack =
           actors
@@ -228,8 +232,124 @@ class RoundFlowTest {
 
       assertThat(second.accepted()).isTrue();
       assertThat(second.detail()).isEqualTo("already answered");
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       assertThat(results()).containsEntry(prune, "denied by james: no");
+    }
+  }
+
+  @Nested
+  @DisplayName("A tool that throws")
+  class AToolThatThrows {
+
+    private WatchmanActorSystem throwingActors;
+    private Memories throwingMemories;
+    private String throwingAgent;
+
+    @BeforeEach
+    void start_a_system_whose_host_throws_on_disk_usage() {
+      throwingAgent = "watchman-" + UUID.randomUUID();
+      Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
+      throwingMemories = new Memories(substrate, 8000);
+      Backlogs<String> backlogs =
+          new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
+      throwingActors =
+          new WatchmanActorSystem(
+              ConfigFactory.load("watchman-inmemory").resolve(),
+              new ScriptedWatchmanModel(Duration.ofMillis(20)),
+              new ThrowingRunner(),
+              throwingMemories,
+              backlogs,
+              WatchmanObservations.RENDERER,
+              MicrometerTracing.noop(),
+              Clock.systemUTC(),
+              new BlockingWork(),
+              Duration.ofMinutes(10),
+              Duration.ofSeconds(10),
+              new Claims(substrate));
+      throwingActors.start();
+    }
+
+    @AfterEach
+    void stop_the_throwing_system() {
+      throwingActors.stop();
+    }
+
+    private AgentState throwingState() {
+      try {
+        return throwingActors
+            .inspect(throwingAgent)
+            .toCompletableFuture()
+            .get(15, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new IllegalStateException(e);
+      }
+    }
+
+    @Test
+    void the_thrown_call_is_remembered_as_an_error_and_its_assistant_turn_survives_recall()
+        throws Exception {
+      throwingActors.tell(
+          throwingAgent, new AgentActor.Observe("It is noon. Do your rounds.", Map.of()));
+
+      await()
+          .atMost(PATIENCE)
+          .untilAsserted(
+              () -> assertThat(Calls.pending(throwingState(), "prune_images")).isPresent());
+
+      String diskCallId = Calls.byTool(throwingState(), "disk_usage").orElseThrow().id();
+      String pruneCallId = Calls.byTool(throwingState(), "prune_images").orElseThrow().id();
+
+      AgentActor.Ack ack =
+          throwingActors
+              .answerApproval(throwingAgent, pruneCallId, false, "james", "not now")
+              .toCompletableFuture()
+              .get(15, TimeUnit.SECONDS);
+      assertThat(ack.accepted()).isTrue();
+
+      await()
+          .atMost(PATIENCE)
+          .untilAsserted(() -> assertThat(throwingState().phase()).isInstanceOf(Phase.Idle.class));
+
+      List<Message> messages = throwingMemories.everything(throwingAgent).messages();
+
+      Map<String, ToolResultBlock> resultsById = new LinkedHashMap<>();
+      for (Message message : messages) {
+        for (var block : message.content()) {
+          if (block instanceof ToolResultBlock result) {
+            resultsById.putIfAbsent(result.toolUseId(), result);
+          }
+        }
+      }
+      assertThat(resultsById).isNotEmpty();
+      assertThat(resultsById).containsKey(diskCallId);
+      assertThat(resultsById.get(diskCallId).isError()).isTrue();
+
+      // The bug this guards against: a thrown tool that skips `remember` leaves its assistant
+      // turn (naming this tool_use id, among the round's other calls) withheld from recall
+      // forever, along with every sibling result -- silently dropping a whole turn of context.
+      List<ToolUseBlock> toolUses =
+          messages.stream()
+              .filter(message -> message.role() == Role.ASSISTANT)
+              .flatMap(message -> message.content().stream())
+              .filter(ToolUseBlock.class::isInstance)
+              .map(ToolUseBlock.class::cast)
+              .toList();
+      assertThat(toolUses).isNotEmpty();
+      assertThat(toolUses).anyMatch(block -> block.call().id().equals(diskCallId));
+    }
+  }
+
+  /** Throws when {@code disk_usage} shells out; every other canned command runs normally. */
+  private static final class ThrowingRunner implements CommandRunner {
+
+    private final CommandRunner delegate = new FakeRunner();
+
+    @Override
+    public Output run(List<String> argv, Duration timeout) {
+      if (argv.equals(List.of("df", "-hP"))) {
+        throw new IllegalStateException("host unreachable");
+      }
+      return delegate.run(argv, timeout);
     }
   }
 }

@@ -56,7 +56,15 @@ public final class Memories {
     this.budgetTokens = budgetTokens;
   }
 
-  /** The transcript for one agent. Blocking; callers guarantee they are not on a dispatcher. */
+  /**
+   * The transcript for one agent. Blocking — and, as of this branch, NOT always off a dispatcher:
+   * {@link AgentActor#startTurnIfWork} is a caller, and it runs inline in {@link AgentActor}'s
+   * command handler, on the Pekko dispatcher. That call, plus {@code Backlogs#ingest}, {@code
+   * Claims#put}, and {@code Claims#deleteTurn} (see {@link BlockingWork}), are the four places a
+   * blocking substrate call now happens on that dispatcher rather than on {@link BlockingWork}'s
+   * virtual threads — a starvation risk for the dispatcher {@link ModelWorker} and {@link
+   * ModelDesk} also fold on, not a documentation guarantee this method can still make.
+   */
   public Memory forAgent(String agentId) {
     Memory delegate = new SubstrateMemory(substrate, agentId, StateSerializer.MAPPER);
     return new Budgeted(delegate, budgetTokens, estimator);

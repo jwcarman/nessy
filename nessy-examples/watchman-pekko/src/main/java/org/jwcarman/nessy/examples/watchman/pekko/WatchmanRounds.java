@@ -39,26 +39,14 @@ public class WatchmanRounds {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
 
-  /**
-   * Every cron tick supersedes any earlier tick still queued: "do your rounds" is not cumulative.
-   */
-  public static final String ROUNDS = "rounds";
-
   private final WatchmanActorSystem actors;
   private final StartupSweep sweep;
-  private final Memories memories;
   private final Traces traces;
   private final Clock clock;
 
-  WatchmanRounds(
-      WatchmanActorSystem actors,
-      StartupSweep sweep,
-      Memories memories,
-      Traces traces,
-      Clock clock) {
+  WatchmanRounds(WatchmanActorSystem actors, StartupSweep sweep, Traces traces, Clock clock) {
     this.actors = actors;
     this.sweep = sweep;
-    this.memories = memories;
     this.traces = traces;
     this.clock = clock;
   }
@@ -69,7 +57,9 @@ public class WatchmanRounds {
    */
   @EventListener(ApplicationReadyEvent.class)
   public void recoverUnfinishedRounds() {
-    sweep.unfinishedAgents().forEach(agentId -> actors.tell(agentId, new AgentActor.Wake()));
+    sweep
+        .unfinishedAgents()
+        .forEach(agentId -> actors.tell(agentId, new AgentActor.Wake(actors.here())));
   }
 
   /** One round. Scheduled in the application; called directly by the tests. */
@@ -81,17 +71,12 @@ public class WatchmanRounds {
         () -> {
           String observation = "It is " + clock.instant() + ". Do your rounds.";
           LOG.info("[watchman] telling the watchman: {}", observation);
-          // Remembered first, then the agent -- this scheduler thread is not a dispatcher, so the
-          // write can block here, and the ordering is guaranteed by being sequential.
-          memories
-              .forAgent(WatchmanGuardian.WATCHMAN)
-              .remember(
-                  new org.jwcarman.nessy.spi.Remembrance.UserMessage(
-                      org.jwcarman.nessy.api.Identifiers.next(),
-                      org.jwcarman.nessy.api.message.Message.user(observation)));
+          // The agent itself writes this into the transcript once it drains -- see
+          // AgentActor#startTurnIfWork. A durable backlog holds it until then, coalescing any
+          // tick still queued per WatchmanObservations#COALESCER: "do your rounds" is not
+          // cumulative.
           actors.tell(
-              WatchmanGuardian.WATCHMAN,
-              new AgentActor.Observe(observation, ROUNDS, traces.capture()));
+              WatchmanGuardian.WATCHMAN, new AgentActor.Observe(observation, traces.capture()));
         });
   }
 }

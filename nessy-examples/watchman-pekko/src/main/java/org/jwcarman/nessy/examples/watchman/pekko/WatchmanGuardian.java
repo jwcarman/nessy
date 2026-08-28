@@ -23,6 +23,7 @@ import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.actor.typed.javadsl.Routers;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 
 /**
  * THE SHAPE. Every actor in the watchman, and who owns whom, in one method.
@@ -77,12 +78,15 @@ public final class WatchmanGuardian {
       WatchmanModel model,
       CommandRunner runner,
       Memories memories,
+      Backlogs<String> backlogs,
+      ObservationRenderer<String> renderer,
       Traces traces,
       Clock clock,
       Executor blocking,
       int modelWorkers,
       int toolWorkers,
-      Duration approvalTerm) {
+      Duration approvalTerm,
+      Claims claims) {
 
     return Behaviors.setup(
         context -> {
@@ -100,14 +104,24 @@ public final class WatchmanGuardian {
 
           ActorRef<ToolWorker.RunTool> tools =
               context.spawn(
-                  Routers.pool(toolWorkers, ToolWorker.create(runner, memories, blocking, traces)),
+                  Routers.pool(
+                      toolWorkers, ToolWorker.create(runner, memories, blocking, traces, claims)),
                   "tool-pool");
 
           ActorRef<AgentRegistry.Command> registry =
               context.spawn(
                   AgentRegistry.create(
                       new AgentActor.Dependencies(
-                          desk, tools, memories, blocking, traces, clock, approvalTerm)),
+                          desk,
+                          tools,
+                          memories,
+                          backlogs,
+                          renderer,
+                          blocking,
+                          traces,
+                          clock,
+                          approvalTerm,
+                          claims)),
                   "registry");
 
           return Behaviors.receive(Command.class)

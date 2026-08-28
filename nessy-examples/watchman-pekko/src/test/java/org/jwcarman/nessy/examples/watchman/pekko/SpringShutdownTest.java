@@ -87,15 +87,19 @@ class SpringShutdownTest {
 
     ConfigurableApplicationContext context = boot();
     WatchmanActorSystem actors = context.getBean(WatchmanActorSystem.class);
-    actors.tell(
-        agent, new AgentActor.Observe("It is noon. Do your rounds.", "rounds", java.util.Map.of()));
+    actors.tell(agent, new AgentActor.Observe("It is noon. Do your rounds.", java.util.Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () ->
-                assertThat(actors.inspect(agent).toCompletableFuture().get(10, TimeUnit.SECONDS))
-                    .isInstanceOf(TurnState.CallingModel.class));
+                assertThat(
+                        actors
+                            .inspect(agent)
+                            .toCompletableFuture()
+                            .get(10, TimeUnit.SECONDS)
+                            .phase())
+                    .isInstanceOf(Phase.CallingModel.class));
 
     // Ctrl-C, with a 120-second model call in flight.
     long began = System.nanoTime();
@@ -117,13 +121,17 @@ class SpringShutdownTest {
     WatchmanActorSystem next =
         WatchmanPostgres.start(new ScriptedWatchmanModel(Duration.ofMillis(20)));
     try {
-      next.tell(agent, new AgentActor.Wake());
+      next.tell(agent, new AgentActor.Wake(java.util.Map.of()));
       await()
           .atMost(Duration.ofSeconds(45))
           .untilAsserted(
               () ->
-                  assertThat(next.inspect(agent).toCompletableFuture().get(10, TimeUnit.SECONDS))
-                      .isInstanceOf(TurnState.WorkingTools.class));
+                  assertThat(
+                          next.inspect(agent)
+                              .toCompletableFuture()
+                              .get(10, TimeUnit.SECONDS)
+                              .phase())
+                      .isInstanceOf(Phase.WorkingTools.class));
     } finally {
       next.stop();
     }
