@@ -97,15 +97,11 @@
          property so each artifact resolves to a version that actually
          exists. -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
-    <!-- org.jwcarman.codec 0.4.0 (Central release, no snapshots): the typed-
-         serialization seam nessy-spi's homegrown Codec/CodecFactory retired
-         into (2026-08-24 codec-adoption spec). Matches the codec version
-         continuum 0.3.0 itself depends on. Also the version that stopped
-         codec-core dragging spring-boot-autoconfigure -> spring-boot ->
-         spring-core/context/aop/beans/expression onto the compile classpath
-         of every Nessy application, Spring-free ones included: 0.4.0's
-         codec-core has no compile dependencies at all. -->
-    <codec.version>0.4.0</codec.version>
+    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.7.0 is the first
+         release carrying codec-jackson (Jackson 3) alongside codec-transforms,
+         codec-crypto, codec-zstd and codec-lz4 — the appendable byte[] -> byte[] set the
+         shared codec pipeline composes. -->
+    <codec.version>0.7.0</codec.version>
     <!-- org.jwcarman.continuum 0.4.0 (Central release): the durable-computation
          library Nessy adopts for pending/deadline/expiry/memoized-outcome/outbox
          (2026-08-24 continuum-adoption spec). 0.4.0 is the line whose
