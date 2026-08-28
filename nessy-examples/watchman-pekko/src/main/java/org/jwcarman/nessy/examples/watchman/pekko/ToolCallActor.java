@@ -24,9 +24,7 @@ import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.Remembrance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,10 +116,18 @@ public final class ToolCallActor {
    * thread is the one thing that is always safe.
    *
    * <p><b>The agent is told ONLY when the exchange was actually recorded.</b> Same shape, same
-   * reasoning as {@link ToolWorker}: a throwing {@code remember} (or claim lookup) means nothing
-   * committed, and telling {@code ToolCallSettled} anyway would settle a call whose exchange the
-   * fold can never pair an assistant turn against. So on failure this says nothing back to the
-   * agent -- the call stays un-settled, and a respawn retries it, same as a worker's failed run.
+   * reasoning as {@link ToolWorker}: a throwing {@code remember} means nothing committed, and
+   * telling {@code ToolCallSettled} anyway would settle a call whose exchange the fold can never
+   * pair an assistant turn against. So on that failure this says nothing back to the agent -- the
+   * call stays un-settled, and a respawn retries it, same as a worker's failed run.
+   *
+   * <p><b>Two failure modes this must not treat differently from {@link ToolWorker}.</b> A claim
+   * resolution failure is CAUGHT here, exactly like {@link ToolWorker#runAndRemember} -- the round
+   * must continue rather than the future failing silently out of {@code orElseThrow}, stalling this
+   * call in {@code WorkingTools} forever, on the watchman's most common path (a denial). And the
+   * submission to {@code blocking} is wrapped exactly the way {@link ToolWorker#create} wraps it: a
+   * rejected submission (the executor mid-shutdown) is logged, not left to propagate synchronously
+   * out of the message handler and kill this actor.
    */
   private static void settleAsDenied(
       String agentId,
@@ -135,36 +141,59 @@ public final class ToolCallActor {
       String by,
       String note) {
     String outcome = "denied by " + by + ": " + note;
-    CompletableFuture.runAsync(
-            () -> {
-              String arguments =
-                  claims
-                      .get(agentId, turnId, call.argumentsClaimId())
-                      .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
-                      .orElseThrow(
-                          () ->
-                              new IllegalStateException("no claim for " + call.argumentsClaimId()));
-              memories
-                  .forAgent(agentId)
-                  .remember(
-                      new Remembrance.ToolExchange(
-                          call.id(),
-                          new ToolCall(
-                              call.id(), call.tool(), WatchmanTools.argumentsOf(arguments)),
-                          ToolResult.error(outcome)));
-            },
-            blocking)
-        .whenComplete(
-            (done, failure) -> {
-              if (failure == null) {
-                agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
-              } else {
-                LOG.warn(
-                    "call {} not settled -- its exchange was never recorded: {}",
-                    call.id(),
-                    ToolWorker.describe(failure));
-              }
-            });
+    try {
+      CompletableFuture.runAsync(
+              () -> recordDenial(agentId, turnId, claims, call, memories, outcome), blocking)
+          .whenComplete(
+              (done, failure) -> {
+                if (failure == null) {
+                  agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
+                } else {
+                  LOG.warn(
+                      "call {} not settled -- its exchange was never recorded: {}",
+                      call.id(),
+                      ToolWorker.describe(failure));
+                }
+              });
+    } catch (RuntimeException rejected) {
+      // The executor rejected submission outright (e.g. mid-shutdown): the same rule applies -- no
+      // commit happened, so no ToolCallSettled is told. Matches ToolWorker#create.
+      LOG.warn(
+          "call {} not settled -- could not even be submitted: {}",
+          call.id(),
+          ToolWorker.describe(rejected));
+    }
+  }
+
+  /**
+   * Runs on the virtual thread {@code blocking} hands us. A claim lookup that throws is CAUGHT and
+   * recorded as a {@link ToolResult#error}, exactly like {@link ToolWorker#runAndRemember} -- the
+   * round continues rather than the future failing out from under {@code whenComplete} with nothing
+   * ever told to the agent.
+   */
+  private static void recordDenial(
+      String agentId,
+      String turnId,
+      Claims claims,
+      ToolCallRecord call,
+      Memories memories,
+      String outcome) {
+    String arguments;
+    try {
+      arguments =
+          claims
+              .get(agentId, turnId, call.argumentsClaimId())
+              .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+              .orElseThrow(
+                  () -> new IllegalStateException("no claim for " + call.argumentsClaimId()));
+    } catch (RuntimeException e) {
+      ToolResult result =
+          ToolResult.error("tool arguments could not be resolved: " + ToolWorker.describe(e));
+      ToolWorker.remember(memories, agentId, call, WatchmanTools.argumentsOf("{}"), result);
+      return;
+    }
+    ToolWorker.remember(
+        memories, agentId, call, WatchmanTools.argumentsOf(arguments), ToolResult.error(outcome));
   }
 
   /**

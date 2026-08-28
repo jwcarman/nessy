@@ -135,7 +135,11 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   public record Inspect(ActorRef<AgentState> replyTo, Map<String, String> headers)
       implements NessyMessage {}
 
-  /** From the startup sweep: exists only to bring the actor into memory so recovery can run. */
+  /**
+   * From the startup sweep, or self-sent by {@link #resume}: brings the actor into memory so
+   * recovery can run. Beyond that, see {@link #onWake} — an idle agent with a non-empty backlog
+   * starts a turn here rather than staying parked forever.
+   */
   public record Wake(Map<String, String> headers) implements NessyMessage {}
 
   /** From the world: let go of memory. */
@@ -283,7 +287,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     Map<String, String> here = deps.traces().capture();
     return switch (message) {
       case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
-      case Wake ignored -> Effect().none();
+      case Wake ignored -> onWake(state, here);
       case Rest ignored ->
           Effect().none().thenRun(() -> stopRequest.requestStop(agentId, context.getSelf()));
       case Stop ignored -> Effect().none().thenStop();
@@ -307,6 +311,23 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   private Effect<AgentState> onObserve(
       AgentState state, Observe observe, Map<String, String> here) {
     deps.backlogs().ingest(agentId, observe.text(), deps.clock().instant());
+    if (state.phase() instanceof Phase.Idle) {
+      return startTurnIfWork(state, here);
+    }
+    return Effect().none();
+  }
+
+  /**
+   * From the startup sweep, or a self-send from {@link #resume}: bring the actor into memory and,
+   * if it turns out to be idle with something waiting, start the turn nobody else will.
+   *
+   * <p><b>Idempotent by construction.</b> If the phase is not {@link Phase.Idle} this is a pure
+   * no-op — a round already in flight owes this message nothing, exactly like {@link #onObserve}'s
+   * non-idle branch. If the phase IS idle, this defers entirely to {@link #startTurnIfWork}, which
+   * is itself safe to call more than once: an empty backlog persists the same idle state it started
+   * from, and a non-empty one drains exactly one entry, same as any other arrival.
+   */
+  private Effect<AgentState> onWake(AgentState state, Map<String, String> here) {
     if (state.phase() instanceof Phase.Idle) {
       return startTurnIfWork(state, here);
     }
@@ -557,6 +578,21 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * remember} and {@code backlogs().taken()} for that entry — see {@link #startTurnIfWork}. Calling
    * {@code taken} again is safe whether or not the earlier call actually landed: {@link
    * SubstrateBacklogs} treats removing an already-removed entry as a no-op.
+   *
+   * <p><b>The {@link Phase.Idle} arm is not "nothing in flight".</b> {@link #onObserve} commits to
+   * the backlog and only THEN returns the persisted effect Pekko applies — a DB-round-trip-wide
+   * window in which supervision can stop the actor after the backlog write but before the phase
+   * ever leaves {@code Idle}. Nothing else notices: {@code Wake} used to be a no-op, and {@link
+   * StartupSweep#unfinishedAgents} only wakes agents whose phase is NOT idle. So a torn observation
+   * would sit in the backlog forever unless recovery itself checks.
+   *
+   * <p>It checks by peeking the backlog right here — a plain read, not a mutation — and
+   * self-sending {@link Wake} only when something is actually waiting. That peek is what keeps an
+   * ordinary idle recovery (the overwhelming common case: a fresh agent, or one that was truly
+   * idle) from manufacturing a message, and a span, that has no reason to exist. When the peek DOES
+   * find something, the self-sent {@code Wake} routes back through the ordinary command handler
+   * (see {@link #onWake}) so the turn it starts is persisted the ordinary way, with an {@link
+   * Effect}, which a signal handler cannot produce directly.
    */
   private void resume(AgentState state) {
     context.getLog().info("[watchman] {} rehydrated while {}", agentId, name(state));
@@ -565,7 +601,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     }
     switch (state.phase()) {
       case Phase.Idle ignored -> {
-        // nothing in flight
+        if (deps.backlogs().next(agentId).isPresent()) {
+          context.getSelf().tell(new Wake(Map.of()));
+        }
       }
       case Phase.CallingModel ignored -> askModel(state, Map.of());
       case Phase.WorkingTools working -> spawnMissing(state.turnId(), working, Map.of());

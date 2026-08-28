@@ -151,7 +151,11 @@ public final class ToolWorker {
     return result;
   }
 
-  private static void remember(
+  /**
+   * Package-visible so {@link ToolCallActor#settleAsDenied} can record a denial's exchange in
+   * exactly the same shape as a run's outcome -- one recording routine, two callers.
+   */
+  static void remember(
       Memories memories,
       String agentId,
       ToolCallRecord call,

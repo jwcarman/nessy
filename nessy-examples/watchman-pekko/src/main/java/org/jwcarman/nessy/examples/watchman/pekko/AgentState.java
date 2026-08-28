@@ -19,9 +19,13 @@ import java.util.Objects;
 
 /**
  * Everything an agent persists: identifiers, status, and human decisions. NEVER content — tool
- * results live in Memory and tool arguments live in Claims. With the transcript out, this document
- * measured 16 bytes idle and stayed flat across 100+ revisions; that property is the reason this
- * record holds what it holds.
+ * results live in Memory and tool arguments live in Claims. This record serializes without {@code
+ * NON_NULL}, so even idle it is not the {@code {"state":"idle"}} of the old {@code TurnState} it
+ * replaced — it is {@code {"turnId":null,"phase":{"phase":"idle"},"takenEntryId":null}}. The
+ * branch's own soak, driven against real Postgres, measured 356 bytes at revision 15 with three
+ * claims held mid-round, and flat thereafter regardless of how long the conversation grows. That
+ * flatness — not any particular byte count — is the property this record's shape is for: content
+ * lives in Memory and Claims, so nothing here grows with the transcript.
  *
  * @param turnId names the turn in flight, and owns that turn's claims. Null when idle.
  * @param takenEntryId names the {@link Backlog} entry this turn consumed, if any. It is an

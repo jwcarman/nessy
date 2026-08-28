@@ -132,9 +132,4 @@ public record Backlog<O>(List<Entry<O>> entries) {
   public Optional<Entry<O>> findByKey(String coalesceKey) {
     return entries.stream().filter(entry -> coalesceKey.equals(entry.coalesceKey())).findFirst();
   }
-
-  /** Everything drains at once: N observations become ONE turn, never N turns. */
-  public Backlog<O> cleared() {
-    return empty();
-  }
 }
