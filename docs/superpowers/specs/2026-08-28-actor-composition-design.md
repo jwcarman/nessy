@@ -252,6 +252,40 @@ happens to a late answer for an already-settled call (the at-most-once rule says
 but then its claim has no owner to be swept with), and whether a deferred result's claim needs an
 owner that outlives its turn.
 
+## 8a. Claim expiry — the backstop for everything §8 leaks
+
+**Ruled 2026-08-28 by James.** Every claim carries an **expiry instant**, and a periodic job
+deletes expired claims **and reports how many it deleted**.
+
+`deleteTurn` at turn end stays the primary mechanism. Expiry is the backstop, and it covers every
+path that mechanism misses, without any of them needing their own analysis:
+
+- a turn abandoned by a stall never reaches its own deletion (open item in the actor spec)
+- a deferred result arriving after its turn settled has no owner to be swept with (§8)
+- a claim written just before a crash that no state ever names
+
+**The count is the point, not decoration.** A silent reaper cannot be distinguished from a dead
+one, and a rising count is the signal that something upstream stopped deleting its own claims. Emit
+it as a metric, not only a log line.
+
+Two things this must get right, and both are the hazard that TTL-versus-`approvalTerm` already
+posed for transcript retention:
+
+**Expiry must exceed the longest legitimate life.** A claim holds the arguments of a call that may
+park on a human for `approvalTerm` — three days by default, and configurable. Expire it sooner and
+we delete the arguments of a call a human is about to approve, so the tool cannot run: the failure
+looks like a broken approval rather than a retention bug. So expiry is derived from the longest
+park a turn can legitimately take, never a hardcoded constant.
+
+**Err long.** A leaked claim costs disk. A claim deleted too early breaks a turn. The costs are not
+symmetric and the policy should not pretend they are.
+
+**This needs a `Substrate` door that does not exist.** Today the document door is `read` / `write` /
+`delete(kind, key, version)` / `keys(kind, limit)` — there is no way to find expired entries without
+scanning every kind. Either the claim's expiry becomes a column the store can index and sweep, or
+the SPI grows something like `deleteExpired(String kindPrefix, Instant now)` returning a count. That
+is new SPI surface and wants James's yes before it lands.
+
 ## 9. Other open items
 
 1. **§4's merge timestamp** — oldest versus now.
