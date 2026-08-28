@@ -41,7 +41,7 @@ import java.time.Instant;
 public record ToolCallRecord(
     String id,
     String tool,
-    String argumentsJson,
+    String argumentsClaimId,
     String action,
     Instant askedAt,
     Decision decision,
@@ -51,8 +51,8 @@ public record ToolCallRecord(
   public record Decision(boolean approved, String by, String note, Instant at) {}
 
   public static ToolCallRecord asked(
-      String id, String tool, String argumentsJson, String action, Instant now) {
-    return new ToolCallRecord(id, tool, argumentsJson, action, now, null, false);
+      String id, String tool, String argumentsClaimId, String action, Instant now) {
+    return new ToolCallRecord(id, tool, argumentsClaimId, action, now, null, false);
   }
 
   public boolean decided() {
@@ -60,10 +60,10 @@ public record ToolCallRecord(
   }
 
   public ToolCallRecord decidedBy(Decision made) {
-    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, made, settled);
+    return new ToolCallRecord(id, tool, argumentsClaimId, action, askedAt, made, settled);
   }
 
   public ToolCallRecord settle() {
-    return new ToolCallRecord(id, tool, argumentsJson, action, askedAt, decision, true);
+    return new ToolCallRecord(id, tool, argumentsClaimId, action, askedAt, decision, true);
   }
 }

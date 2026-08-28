@@ -66,7 +66,8 @@ class RoundFlowTest {
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10));
+            Duration.ofSeconds(10),
+            new Claims(substrate));
     actors.start();
   }
 

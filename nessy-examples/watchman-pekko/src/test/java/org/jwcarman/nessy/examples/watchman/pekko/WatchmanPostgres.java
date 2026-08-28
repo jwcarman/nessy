@@ -55,6 +55,11 @@ public final class WatchmanPostgres {
         String.class);
   }
 
+  public static Claims claims() {
+    return new Claims(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()));
+  }
+
   /** Remember a user turn the way the cron does, before telling the agent. */
   public static void observe(String agentId, String text) {
     memories()
@@ -94,7 +99,8 @@ public final class WatchmanPostgres {
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(15));
+            Duration.ofSeconds(15),
+            claims());
     actors.start();
     return actors;
   }

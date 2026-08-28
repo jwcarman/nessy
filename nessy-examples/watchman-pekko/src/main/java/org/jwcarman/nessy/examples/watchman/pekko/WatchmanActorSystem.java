@@ -89,7 +89,8 @@ public final class WatchmanActorSystem implements SmartLifecycle {
       java.time.Clock clock,
       BlockingWork blocking,
       Duration approvalTerm,
-      Duration askTimeout) {
+      Duration askTimeout,
+      Claims claims) {
     this.blocking = blocking;
     this.askTimeout = askTimeout;
     this.traces = traces;
@@ -105,7 +106,8 @@ public final class WatchmanActorSystem implements SmartLifecycle {
                 blocking.executor(),
                 4,
                 8,
-                approvalTerm),
+                approvalTerm,
+                claims),
             "watchman",
             config);
     this.registry = askForRegistry();

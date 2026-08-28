@@ -83,7 +83,8 @@ public final class WatchmanGuardian {
       Executor blocking,
       int modelWorkers,
       int toolWorkers,
-      Duration approvalTerm) {
+      Duration approvalTerm,
+      Claims claims) {
 
     return Behaviors.setup(
         context -> {
@@ -101,14 +102,23 @@ public final class WatchmanGuardian {
 
           ActorRef<ToolWorker.RunTool> tools =
               context.spawn(
-                  Routers.pool(toolWorkers, ToolWorker.create(runner, memories, blocking, traces)),
+                  Routers.pool(
+                      toolWorkers, ToolWorker.create(runner, memories, blocking, traces, claims)),
                   "tool-pool");
 
           ActorRef<AgentRegistry.Command> registry =
               context.spawn(
                   AgentRegistry.create(
                       new AgentActor.Dependencies(
-                          desk, tools, memories, backlogs, blocking, traces, clock, approvalTerm)),
+                          desk,
+                          tools,
+                          memories,
+                          backlogs,
+                          blocking,
+                          traces,
+                          clock,
+                          approvalTerm,
+                          claims)),
                   "registry");
 
           return Behaviors.receive(Command.class)

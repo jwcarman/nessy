@@ -132,6 +132,15 @@ public class WatchmanConfiguration {
   }
 
   /**
+   * Tool arguments, on the same substrate as everything else — see {@link Claims} for why they live
+   * here rather than in the agent's own persisted document.
+   */
+  @Bean
+  public Claims claims(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
+    return new Claims(substrate);
+  }
+
+  /**
    * The model provider, pointed at LM Studio. Base URL and key are the entire difference between
    * talking to OpenAI and talking to a local endpoint.
    *
@@ -174,6 +183,7 @@ public class WatchmanConfiguration {
       Clock clock,
       BlockingWork blocking,
       WatchmanProperties properties,
+      Claims claims,
       @Value("${spring.datasource.url}") String url,
       @Value("${spring.datasource.username}") String user,
       @Value("${spring.datasource.password}") String password) {
@@ -187,6 +197,7 @@ public class WatchmanConfiguration {
         clock,
         blocking,
         properties.getApprovalTerm(),
-        properties.getAskTimeout());
+        properties.getAskTimeout(),
+        claims);
   }
 }

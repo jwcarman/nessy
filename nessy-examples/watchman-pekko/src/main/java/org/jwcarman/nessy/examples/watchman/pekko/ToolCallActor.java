@@ -15,11 +15,18 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * ONE tool call's entire life, as a behaviour. Ephemeral child of {@link AgentActor}.
@@ -58,23 +65,27 @@ public final class ToolCallActor {
 
   public static Behavior<Command> create(
       String agentId,
+      String turnId,
       ToolCallRecord call,
       ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       Duration approvalTerm,
       Map<String, String> trace,
-      java.time.Clock clock,
+      Clock clock,
       Memories memories,
-      java.util.concurrent.Executor blocking) {
+      Executor blocking,
+      Claims claims) {
 
     return Behaviors.setup(
         context -> {
           if (call.decided() && call.decision().approved()) {
-            return run(agentId, call, agent, tools, context.getSelf(), trace);
+            return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
           }
           if (call.decided()) {
             settleAsDenied(
                 agentId,
+                turnId,
+                claims,
                 call,
                 agent,
                 trace,
@@ -90,40 +101,48 @@ public final class ToolCallActor {
                     ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
                     "approval");
             return awaitingApproval(
-                agentId, call, agent, tools, approval, trace, memories, blocking);
+                agentId, turnId, call, agent, tools, approval, trace, memories, blocking, claims);
           }
-          return run(agentId, call, agent, tools, context.getSelf(), trace);
+          return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
         });
   }
 
   /**
    * A denial produces a transcript turn like any other outcome, and it must be written before the
-   * agent is told. This actor is on a dispatcher, so the append goes to the blocking executor and
-   * the agent is told from the completion -- telling an ActorRef from another thread is the one
-   * thing that is always safe.
+   * agent is told. This actor is on a dispatcher, so the claim lookup and the append go to the
+   * blocking executor and the agent is told from the completion -- telling an ActorRef from another
+   * thread is the one thing that is always safe.
    */
   private static void settleAsDenied(
       String agentId,
+      String turnId,
+      Claims claims,
       ToolCallRecord call,
       ActorRef<AgentActor.NessyMessage> agent,
       Map<String, String> trace,
       Memories memories,
-      java.util.concurrent.Executor blocking,
+      Executor blocking,
       String by,
       String note) {
     String outcome = "denied by " + by + ": " + note;
-    java.util.concurrent.CompletableFuture.runAsync(
-            () ->
-                memories
-                    .forAgent(agentId)
-                    .remember(
-                        new org.jwcarman.nessy.spi.Remembrance.ToolExchange(
-                            call.id(),
-                            new org.jwcarman.nessy.api.tool.ToolCall(
-                                call.id(),
-                                call.tool(),
-                                WatchmanTools.argumentsOf(call.argumentsJson())),
-                            org.jwcarman.nessy.api.tool.ToolResult.error(outcome))),
+    CompletableFuture.runAsync(
+            () -> {
+              String arguments =
+                  claims
+                      .get(agentId, turnId, call.argumentsClaimId())
+                      .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+                      .orElseThrow(
+                          () ->
+                              new IllegalStateException("no claim for " + call.argumentsClaimId()));
+              memories
+                  .forAgent(agentId)
+                  .remember(
+                      new Remembrance.ToolExchange(
+                          call.id(),
+                          new ToolCall(
+                              call.id(), call.tool(), WatchmanTools.argumentsOf(arguments)),
+                          ToolResult.error(outcome)));
+            },
             blocking)
         .whenComplete(
             (done, failure) -> agent.tell(new AgentActor.ToolCallSettled(call.id(), trace)));
@@ -135,13 +154,15 @@ public final class ToolCallActor {
    */
   private static Behavior<Command> awaitingApproval(
       String agentId,
+      String turnId,
       ToolCallRecord call,
       ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<ApprovalActor.Command> approval,
       Map<String, String> trace,
       Memories memories,
-      java.util.concurrent.Executor blocking) {
+      Executor blocking,
+      Claims claims) {
     return Behaviors.receive(Command.class)
         .onMessage(
             Answer.class,
@@ -156,6 +177,8 @@ public final class ToolCallActor {
               if (!answered.approved()) {
                 settleAsDenied(
                     agentId,
+                    turnId,
+                    claims,
                     call,
                     agent,
                     trace,
@@ -166,19 +189,20 @@ public final class ToolCallActor {
                 return Behaviors.stopped();
               }
               return Behaviors.setup(
-                  context -> run(agentId, call, agent, tools, context.getSelf(), trace));
+                  context -> run(agentId, turnId, call, agent, tools, context.getSelf(), trace));
             })
         .build();
   }
 
   private static Behavior<Command> run(
       String agentId,
+      String turnId,
       ToolCallRecord call,
       ActorRef<AgentActor.NessyMessage> agent,
       ActorRef<ToolWorker.RunTool> tools,
       ActorRef<Command> self,
       Map<String, String> trace) {
-    tools.tell(new ToolWorker.RunTool(agentId, call, self, trace));
+    tools.tell(new ToolWorker.RunTool(agentId, turnId, call, call.argumentsClaimId(), self, trace));
     return Behaviors.receive(Command.class)
         .onMessage(
             Ran.class,

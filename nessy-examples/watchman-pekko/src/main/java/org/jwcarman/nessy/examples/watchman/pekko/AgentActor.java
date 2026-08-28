@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.examples.watchman.pekko;
 
 import io.micrometer.tracing.Span;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
@@ -171,7 +172,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
-      Duration approvalTerm) {}
+      Duration approvalTerm,
+      Claims claims) {}
 
   public static Behavior<NessyMessage> create(
       String agentId, Dependencies deps, StopRequest stopRequest) {
@@ -326,17 +328,25 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
         var calls =
             requests.stream()
                 .map(
-                    request ->
-                        ToolCallRecord.asked(
-                            request.id(),
-                            request.name(),
-                            request.arguments().toString(),
-                            WatchmanTools.action(request.name(), request.arguments().toString()),
-                            now))
+                    request -> {
+                      String arguments = request.arguments().toString();
+                      String claimId =
+                          deps.claims()
+                              .put(
+                                  agentId,
+                                  state.turnId(),
+                                  arguments.getBytes(StandardCharsets.UTF_8));
+                      return ToolCallRecord.asked(
+                          request.id(),
+                          request.name(),
+                          claimId,
+                          WatchmanTools.action(request.name(), arguments),
+                          now);
+                    })
                 .toList();
         var nextPhase = new Phase.WorkingTools(calls);
         var next = state.withPhase(nextPhase);
-        yield Effect().persist(next).thenRun(() -> spawnMissing(nextPhase, here));
+        yield Effect().persist(next).thenRun(() -> spawnMissing(next.turnId(), nextPhase, here));
       }
     };
   }
@@ -390,7 +400,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
               } else {
                 // Nothing in memory (a restart since the park). The persisted decision is enough:
                 // spawn the call's actor and it reads the answer out of its own record.
-                spawnMissing(nextPhase, here);
+                spawnMissing(next.turnId(), nextPhase, here);
               }
             })
         .thenReply(answer.replyTo(), s -> new Ack(true, answer.approved() ? "approved" : "denied"));
@@ -478,7 +488,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * construction, which is exactly why the same method serves the normal path, the
    * answered-after-a-restart path, and recovery.
    */
-  private void spawnMissing(Phase.WorkingTools state, Map<String, String> trace) {
+  private void spawnMissing(String turnId, Phase.WorkingTools state, Map<String, String> trace) {
     for (ToolCallRecord call : state.unsettled()) {
       callActors.computeIfAbsent(
           call.id(),
@@ -486,6 +496,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
               context.spawn(
                   ToolCallActor.create(
                       agentId,
+                      turnId,
                       call,
                       context.getSelf(),
                       deps.tools(),
@@ -493,7 +504,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
                       trace,
                       deps.clock(),
                       deps.memories(),
-                      deps.blocking()),
+                      deps.blocking(),
+                      deps.claims()),
                   ToolCallActor.nameFor(id)));
     }
   }
@@ -536,7 +548,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
         // nothing in flight
       }
       case Phase.CallingModel ignored -> askModel(state, Map.of());
-      case Phase.WorkingTools working -> spawnMissing(working, Map.of());
+      case Phase.WorkingTools working -> spawnMissing(state.turnId(), working, Map.of());
     }
   }
 
