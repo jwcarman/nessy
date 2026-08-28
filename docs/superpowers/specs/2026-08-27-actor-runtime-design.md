@@ -70,6 +70,14 @@ We were hand-rolling an actor system, badly.
 
 **No `TurnActor`.** Only one turn runs at a time per agent, so a turn actor adds a
 layer with no concurrency to exploit and no state the agent does not already hold.
+
+> **AMENDED 2026-08-28** by `2026-08-28-actor-composition-design.md`. A `TurnActor`
+> exists, for a reason this ruling did not weigh: it lets the agent's job shrink to the
+> backlog and lifecycle, gives a turn its own failure boundary, and makes it the ONLY
+> thing that touches `Memory`. That last point is not aesthetic — three fix rounds on
+> 2026-08-28 went to `ToolWorker` and `ToolCallActor` each holding their own
+> record-then-notify ordering and diverging. It stays ephemeral, so "the only actor that
+> persists" is unchanged.
 `AgentActor` *is* "one per agent, holding the current turn"; `Idle` is "no turn in
 flight." This changes only if agents ever need concurrent turns.
 

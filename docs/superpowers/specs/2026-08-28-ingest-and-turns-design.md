@@ -62,6 +62,15 @@ Two rules do most of the work:
 
 ### 2.1 Where the backlog lives
 
+> **AMENDED 2026-08-28 (later the same day)** by `2026-08-28-actor-composition-design.md`:
+> the backlog moves BACK into the agent's durable state as `List<BacklogItem<O>>`. The
+> content-in-state objection below stands on its own terms, but two things answer it —
+> coalescing bounds the list, and holding it in state makes taking an observation ATOMIC
+> (one CAS moves an item from the backlog to an in-flight slot). The separate-store version
+> needed a `takenEntryId` field and a bespoke recovery path to get the same guarantee.
+> Read the rest of this section as the argument that produced the service shape, which the
+> composition spec then supersedes.
+
 **AMENDED 2026-08-28 by James, before implementation.** An earlier draft of this section put the
 backlog IN the agent's durable state. It does not. State holds identifiers, status and human
 decisions — never content — and observations are content, so keeping them there contradicted the
