@@ -58,6 +58,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-agent</module>
+    <module>nessy-engine</module>
     <module>nessy-intent</module>
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
@@ -77,6 +78,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
+    <pekko.version>1.7.0</pekko.version>
     <anthropic.version>2.53.0</anthropic.version>
     <openai.version>4.50.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
