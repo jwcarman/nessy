@@ -76,8 +76,9 @@ public final class PendingApprovals {
         ResultSet results = statement.executeQuery()) {
       while (results.next()) {
         String agentId = agentId(results.getString(1));
-        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.TURN_STATE_V1);
-        if (state instanceof TurnState.WorkingTools working) {
+        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.AGENT_STATE_V2);
+        if (state instanceof AgentState agent
+            && agent.phase() instanceof Phase.WorkingTools working) {
           working.calls().stream()
               .filter(call -> WatchmanTools.needsApproval(call.tool()))
               .filter(call -> !call.decided() && !call.settled())

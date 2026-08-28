@@ -94,8 +94,13 @@ class SpringShutdownTest {
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () ->
-                assertThat(actors.inspect(agent).toCompletableFuture().get(10, TimeUnit.SECONDS))
-                    .isInstanceOf(TurnState.CallingModel.class));
+                assertThat(
+                        actors
+                            .inspect(agent)
+                            .toCompletableFuture()
+                            .get(10, TimeUnit.SECONDS)
+                            .phase())
+                    .isInstanceOf(Phase.CallingModel.class));
 
     // Ctrl-C, with a 120-second model call in flight.
     long began = System.nanoTime();
@@ -122,8 +127,12 @@ class SpringShutdownTest {
           .atMost(Duration.ofSeconds(45))
           .untilAsserted(
               () ->
-                  assertThat(next.inspect(agent).toCompletableFuture().get(10, TimeUnit.SECONDS))
-                      .isInstanceOf(TurnState.WorkingTools.class));
+                  assertThat(
+                          next.inspect(agent)
+                              .toCompletableFuture()
+                              .get(10, TimeUnit.SECONDS)
+                              .phase())
+                      .isInstanceOf(Phase.WorkingTools.class));
     } finally {
       next.stop();
     }

@@ -59,8 +59,8 @@ public final class StartupSweep {
         ResultSet results = statement.executeQuery()) {
       while (results.next()) {
         String persistenceId = results.getString(1);
-        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.TURN_STATE_V1);
-        if (!(state instanceof TurnState.Idle)) {
+        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.AGENT_STATE_V2);
+        if (state instanceof AgentState agent && !(agent.phase() instanceof Phase.Idle)) {
           unfinished.add(persistenceId.substring(persistenceId.indexOf('|') + 1));
         }
       }

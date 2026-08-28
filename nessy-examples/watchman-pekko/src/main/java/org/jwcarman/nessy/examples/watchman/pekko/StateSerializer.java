@@ -33,7 +33,7 @@ import org.apache.pekko.serialization.SerializerWithStringManifest;
  */
 public final class StateSerializer extends SerializerWithStringManifest {
 
-  public static final String TURN_STATE_V1 = "watchman-turn-state-v1";
+  public static final String AGENT_STATE_V2 = "watchman-agent-state-v2";
 
   private static final int IDENTIFIER = 918_301;
 
@@ -44,7 +44,7 @@ public final class StateSerializer extends SerializerWithStringManifest {
    * laziness. A durable-state document is REWRITTEN in place, so there is no event log to replay
    * and no automatic migration: the day a field leaves the state, every row still on disk carries
    * it, and a strict reader turns "we shipped a smaller state" into "the agent cannot load". This
-   * was not hypothetical — moving the transcript out of {@link TurnState} made every pre-existing
+   * was not hypothetical — moving the transcript out of {@link AgentState} made every pre-existing
    * row unreadable until this line existed. Tolerating unknown fields makes a SHRINKING change
    * safe; anything larger still needs {@link #manifest} bumped and a real migration.
    */
@@ -62,8 +62,8 @@ public final class StateSerializer extends SerializerWithStringManifest {
 
   @Override
   public String manifest(Object o) {
-    if (o instanceof TurnState) {
-      return TURN_STATE_V1;
+    if (o instanceof AgentState) {
+      return AGENT_STATE_V2;
     }
     throw new IllegalArgumentException("not a watchman state: " + o.getClass());
   }
@@ -79,11 +79,11 @@ public final class StateSerializer extends SerializerWithStringManifest {
 
   @Override
   public Object fromBinary(byte[] bytes, String manifest) {
-    if (!TURN_STATE_V1.equals(manifest)) {
+    if (!AGENT_STATE_V2.equals(manifest)) {
       throw new IllegalArgumentException("unknown manifest: " + manifest);
     }
     try {
-      return MAPPER.readValue(bytes, TurnState.class);
+      return MAPPER.readValue(bytes, AgentState.class);
     } catch (IOException e) {
       throw new UncheckedIOException("could not read " + manifest, e);
     }

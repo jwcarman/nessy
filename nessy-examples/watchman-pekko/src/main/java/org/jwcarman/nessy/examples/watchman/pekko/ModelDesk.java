@@ -52,7 +52,7 @@ public final class ModelDesk {
    */
   public record ModelJob(
       String agentId,
-      TurnState state,
+      AgentState state,
       ActorRef<AgentActor.NessyMessage> replyTo,
       Map<String, String> trace) {}
 
@@ -61,7 +61,7 @@ public final class ModelDesk {
   /** What an agent sends. */
   public record CallModel(
       String agentId,
-      TurnState state,
+      AgentState state,
       ActorRef<AgentActor.NessyMessage> replyTo,
       Map<String, String> trace)
       implements Command {}

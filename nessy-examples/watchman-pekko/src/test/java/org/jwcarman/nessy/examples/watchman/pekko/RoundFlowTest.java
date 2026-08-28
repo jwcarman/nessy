@@ -73,7 +73,7 @@ class RoundFlowTest {
     actors.stop();
   }
 
-  private TurnState state() {
+  private AgentState state() {
     try {
       return actors.inspect(agent).toCompletableFuture().get(15, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -102,12 +102,14 @@ class RoundFlowTest {
     return byCall;
   }
 
-  private void awaitState(Class<? extends TurnState> expected) {
-    await().atMost(PATIENCE).untilAsserted(() -> assertThat(state()).isInstanceOf(expected));
+  private void awaitState(Class<? extends Phase> expected) {
+    await()
+        .atMost(PATIENCE)
+        .untilAsserted(() -> assertThat(state().phase()).isInstanceOf(expected));
   }
 
   private void awaitParked() {
-    awaitState(TurnState.WorkingTools.class);
+    awaitState(Phase.WorkingTools.class);
     await()
         .atMost(PATIENCE)
         .untilAsserted(() -> assertThat(Calls.pending(state(), "prune_images")).isPresent());
@@ -138,7 +140,7 @@ class RoundFlowTest {
 
       awaitParked();
 
-      var working = (TurnState.WorkingTools) state();
+      var working = (Phase.WorkingTools) state().phase();
       assertThat(Calls.byTool(working, "disk_usage")).isPresent();
       assertThat(Calls.byTool(working, "disk_usage").orElseThrow().settled()).isTrue();
 
@@ -168,7 +170,7 @@ class RoundFlowTest {
 
       assertThat(answer(false, "not on a Friday").accepted()).isTrue();
 
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       // Once every call is answered the whole turn appears at once -- assistant, then results.
       assertThat(results())
           .containsEntry(prune, "denied by james: not on a Friday")
@@ -187,7 +189,7 @@ class RoundFlowTest {
 
       assertThat(answer(true, "go on then").accepted()).isTrue();
 
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       assertThat(results())
           .hasEntrySatisfying(
               prune, text -> assertThat(text).contains("Total reclaimed space: 4.2GB"));
@@ -197,7 +199,7 @@ class RoundFlowTest {
     void an_answer_for_a_call_nobody_asked_about_is_refused_rather_than_swallowed()
         throws Exception {
       observe("It is noon. Do your rounds.");
-      awaitState(TurnState.WorkingTools.class);
+      awaitState(Phase.WorkingTools.class);
 
       AgentActor.Ack ack =
           actors
@@ -227,7 +229,7 @@ class RoundFlowTest {
 
       assertThat(second.accepted()).isTrue();
       assertThat(second.detail()).isEqualTo("already answered");
-      awaitState(TurnState.Idle.class);
+      awaitState(Phase.Idle.class);
       assertThat(results()).containsEntry(prune, "denied by james: no");
     }
   }

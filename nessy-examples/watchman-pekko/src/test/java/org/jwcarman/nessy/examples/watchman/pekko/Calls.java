@@ -27,15 +27,19 @@ final class Calls {
 
   private Calls() {}
 
-  static Optional<ToolCallRecord> byTool(TurnState state, String tool) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  static Optional<ToolCallRecord> byTool(AgentState state, String tool) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Optional.empty();
     }
+    return byTool(working, tool);
+  }
+
+  static Optional<ToolCallRecord> byTool(Phase.WorkingTools working, String tool) {
     return working.calls().stream().filter(call -> tool.equals(call.tool())).findFirst();
   }
 
   /** A call still waiting on a human. */
-  static Optional<String> pending(TurnState state, String tool) {
+  static Optional<String> pending(AgentState state, String tool) {
     return byTool(state, tool)
         .filter(call -> !call.decided() && !call.settled())
         .map(ToolCallRecord::id);

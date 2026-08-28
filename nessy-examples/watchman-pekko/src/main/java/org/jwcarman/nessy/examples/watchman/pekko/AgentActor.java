@@ -56,7 +56,7 @@ import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
  * itself</b> need no state (a call moving from running to finished is just an actor stopping),
  * while <b>facts arriving from outside</b> must be persisted before they are acknowledged.
  */
-public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessage, TurnState> {
+public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessage, AgentState> {
 
   /** How a runtime asks for this agent to be let go. */
   @FunctionalInterface
@@ -127,7 +127,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   public record Ack(boolean accepted, String detail) {}
 
   /** From the page and the tests: what does this agent look like right now? */
-  public record Inspect(ActorRef<TurnState> replyTo, Map<String, String> headers)
+  public record Inspect(ActorRef<AgentState> replyTo, Map<String, String> headers)
       implements NessyMessage {}
 
   /** From the startup sweep: exists only to bring the actor into memory so recovery can run. */
@@ -186,12 +186,12 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   }
 
   @Override
-  public TurnState emptyState() {
-    return new TurnState.Idle();
+  public AgentState emptyState() {
+    return AgentState.idle();
   }
 
   @Override
-  public CommandHandler<NessyMessage, TurnState> commandHandler() {
+  public CommandHandler<NessyMessage, AgentState> commandHandler() {
     return (state, message) ->
         deps.traces()
             .inSpan(
@@ -226,13 +226,13 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * <p>All four are low cardinality per agent and bounded by the sealed protocol, so none of them
    * is the attribute that blows up a backend's index.
    */
-  private void describe(TurnState state, NessyMessage message) {
+  private void describe(AgentState state, NessyMessage message) {
     Traces traces = deps.traces();
     traces.tag("messaging.system", "pekko");
     traces.tag("nessy.agent.id", agentId);
     traces.tag("nessy.actor.path", context.getSelf().path().toString());
     traces.tag("nessy.message.type", message.getClass().getSimpleName());
-    traces.tag("nessy.turn.phase", state.getClass().getSimpleName());
+    traces.tag("nessy.turn.phase", state.phase().getClass().getSimpleName());
     traces.tag("nessy.persistence.id", persistenceId().id());
 
     // The node. Locally this renders "pekko://watchman"; under clustering it becomes
@@ -244,7 +244,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     // and zero children means the process restarted and the tool actors have not been respawned
     // yet -- a state that is invisible from either number alone.
     traces.tag("nessy.actor.children", String.valueOf(context.getChildren().size()));
-    if (state instanceof TurnState.WorkingTools working) {
+    if (state.phase() instanceof Phase.WorkingTools working) {
       traces.tag("nessy.tools.unsettled", String.valueOf(working.unsettled().size()));
     }
   }
@@ -271,7 +271,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * downstream. Capturing at the top and closing over the result is what keeps a persisted effect's
    * sends attached to the message that caused them.
    */
-  private Effect<TurnState> handle(TurnState state, NessyMessage message) {
+  private Effect<AgentState> handle(AgentState state, NessyMessage message) {
     Map<String, String> here = deps.traces().capture();
     return switch (message) {
       case Inspect inspect -> Effect().none().thenRun(() -> inspect.replyTo().tell(state));
@@ -307,8 +307,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * has to be written down before it is acknowledged — the rule the approvals page already follows.
    * A durable inbox is the real answer, not a field on this actor.
    */
-  private Effect<TurnState> onObserve(TurnState state, Observe observe, Map<String, String> here) {
-    if (!(state instanceof TurnState.Idle)) {
+  private Effect<AgentState> onObserve(
+      AgentState state, Observe observe, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.Idle)) {
       context
           .getLog()
           .warn(
@@ -320,18 +321,19 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     }
     // The user's turn is already in the transcript -- whoever sent this wrote it first. The agent
     // only records that a round has started.
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(here));
+    var next = state.withPhase(new Phase.CallingModel());
+    return Effect().persist(next).thenRun(() -> askModel(next, here));
   }
 
-  private Effect<TurnState> onModelReplied(
-      TurnState state, ModelReplied replied, Map<String, String> here) {
-    if (!(state instanceof TurnState.CallingModel)) {
+  private Effect<AgentState> onModelReplied(
+      AgentState state, ModelReplied replied, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.CallingModel)) {
       return Effect().none();
     }
     // Every arm's assistant turn was remembered by the model worker before this message was sent.
     return switch (replied.reply()) {
-      case ModelReply.Said ignored -> Effect().persist(new TurnState.Idle());
-      case ModelReply.Failed ignored -> Effect().persist(new TurnState.Idle());
+      case ModelReply.Said ignored -> Effect().persist(state.withPhase(new Phase.Idle()));
+      case ModelReply.Failed ignored -> Effect().persist(state.withPhase(new Phase.Idle()));
       case ModelReply.AskedForTools(var ignoredMessage, var requests, var ignoredUsage) -> {
         var now = deps.clock().instant();
         var calls =
@@ -345,8 +347,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
                             WatchmanTools.action(request.name(), request.arguments().toString()),
                             now))
                 .toList();
-        var next = new TurnState.WorkingTools(calls);
-        yield Effect().persist(next).thenRun(() -> spawnMissing(next, here));
+        var nextPhase = new Phase.WorkingTools(calls);
+        var next = state.withPhase(nextPhase);
+        yield Effect().persist(next).thenRun(() -> spawnMissing(nextPhase, here));
       }
     };
   }
@@ -365,9 +368,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * and retries; if it dies after step 1 the decision is already durable and recovery applies it.
    * The one thing that cannot happen is a 200 for a decision nobody wrote down.
    */
-  private Effect<TurnState> onAnswerApproval(
-      TurnState state, AnswerApproval answer, Map<String, String> here) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private Effect<AgentState> onAnswerApproval(
+      AgentState state, AnswerApproval answer, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Effect()
           .none()
           .thenReply(answer.replyTo(), s -> new Ack(false, "no round is waiting on this agent"));
@@ -387,7 +390,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
             .decidedBy(
                 new ToolCallRecord.Decision(
                     answer.approved(), answer.by(), answer.note(), deps.clock().instant()));
-    var next = working.replace(decided);
+    var nextPhase = working.replace(decided);
+    var next = state.withPhase(nextPhase);
     return Effect()
         .persist(next)
         .thenRun(
@@ -399,15 +403,15 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
               } else {
                 // Nothing in memory (a restart since the park). The persisted decision is enough:
                 // spawn the call's actor and it reads the answer out of its own record.
-                spawnMissing(next, here);
+                spawnMissing(nextPhase, here);
               }
             })
         .thenReply(answer.replyTo(), s -> new Ack(true, answer.approved() ? "approved" : "denied"));
   }
 
-  private Effect<TurnState> onToolCallSettled(
-      TurnState state, ToolCallSettled settled, Map<String, String> here) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private Effect<AgentState> onToolCallSettled(
+      AgentState state, ToolCallSettled settled, Map<String, String> here) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Effect().none();
     }
     var call = working.call(settled.callId());
@@ -417,9 +421,10 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     callActors.remove(settled.callId());
     var updated = working.replace(call.get().settle());
     if (!updated.allSettled()) {
-      return Effect().persist(updated);
+      return Effect().persist(state.withPhase(updated));
     }
-    return Effect().persist(new TurnState.CallingModel()).thenRun(() -> askModel(here));
+    var next = state.withPhase(new Phase.CallingModel());
+    return Effect().persist(next).thenRun(() -> askModel(next, here));
   }
 
   // ------------------------------------------------------------------------------------------
@@ -431,11 +436,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * recalls the transcript on its own thread — the agent never assembles model context, and never
    * holds one.
    */
-  private void askModel(Map<String, String> trace) {
-    deps.modelDesk()
-        .tell(
-            new ModelDesk.CallModel(
-                agentId, new TurnState.CallingModel(), context.getSelf(), trace));
+  private void askModel(AgentState state, Map<String, String> trace) {
+    deps.modelDesk().tell(new ModelDesk.CallModel(agentId, state, context.getSelf(), trace));
   }
 
   /**
@@ -443,7 +445,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * construction, which is exactly why the same method serves the normal path, the
    * answered-after-a-restart path, and recovery.
    */
-  private void spawnMissing(TurnState.WorkingTools state, Map<String, String> trace) {
+  private void spawnMissing(Phase.WorkingTools state, Map<String, String> trace) {
     for (ToolCallRecord call : state.unsettled()) {
       callActors.computeIfAbsent(
           call.id(),
@@ -468,7 +470,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   // ------------------------------------------------------------------------------------------
 
   @Override
-  public SignalHandler<TurnState> signalHandler() {
+  public SignalHandler<AgentState> signalHandler() {
     return newSignalHandlerBuilder()
         .onSignal(RecoveryCompleted.instance(), this::resume)
         .onSignal(
@@ -485,22 +487,22 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * <p>A round resumed here is on a NEW trace, linked to the one that parked it — see {@link
    * Traces#inLinkedSpan}. A round that waited three days is not one span.
    */
-  private void resume(TurnState state) {
+  private void resume(AgentState state) {
     context.getLog().info("[watchman] {} rehydrated while {}", agentId, name(state));
-    switch (state) {
-      case TurnState.Idle ignored -> {
+    switch (state.phase()) {
+      case Phase.Idle ignored -> {
         // nothing in flight
       }
-      case TurnState.CallingModel ignored -> askModel(Map.of());
-      case TurnState.WorkingTools working -> spawnMissing(working, Map.of());
+      case Phase.CallingModel ignored -> askModel(state, Map.of());
+      case Phase.WorkingTools working -> spawnMissing(working, Map.of());
     }
   }
 
-  private static String name(TurnState state) {
-    return switch (state) {
-      case TurnState.Idle ignored -> "idle";
-      case TurnState.CallingModel ignored -> "calling the model";
-      case TurnState.WorkingTools ignored -> "working tools";
+  private static String name(AgentState state) {
+    return switch (state.phase()) {
+      case Phase.Idle ignored -> "idle";
+      case Phase.CallingModel ignored -> "calling the model";
+      case Phase.WorkingTools ignored -> "working tools";
     };
   }
 }

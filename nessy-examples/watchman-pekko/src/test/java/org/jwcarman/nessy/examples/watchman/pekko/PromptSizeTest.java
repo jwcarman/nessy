@@ -91,8 +91,8 @@ class PromptSizeTest {
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
                 () -> {
-                  TurnState state = stateOf(actors, agent);
-                  assertThat(state).isInstanceOf(TurnState.WorkingTools.class);
+                  AgentState state = stateOf(actors, agent);
+                  assertThat(state.phase()).isInstanceOf(Phase.WorkingTools.class);
                   assertThat(pendingPrune(state)).isPresent();
                 });
         String callId = pendingPrune(stateOf(actors, agent)).orElseThrow();
@@ -106,7 +106,7 @@ class PromptSizeTest {
         await()
             .atMost(Duration.ofSeconds(30))
             .untilAsserted(
-                () -> assertThat(stateOf(actors, agent)).isInstanceOf(TurnState.Idle.class));
+                () -> assertThat(stateOf(actors, agent).phase()).isInstanceOf(Phase.Idle.class));
 
         Context whole = unbudgeted.everything(agent);
         Context sent = budgeted.forAgent(agent).recall();
@@ -145,7 +145,7 @@ class PromptSizeTest {
     assertThat(last.budgetedTokens()).isLessThan(last.unbudgetedTokens());
   }
 
-  private static TurnState stateOf(WatchmanActorSystem actors, String agent) {
+  private static AgentState stateOf(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(20, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -153,8 +153,8 @@ class PromptSizeTest {
     }
   }
 
-  private static Optional<String> pendingPrune(TurnState state) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private static Optional<String> pendingPrune(AgentState state) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Optional.empty();
     }
     return working.calls().stream()

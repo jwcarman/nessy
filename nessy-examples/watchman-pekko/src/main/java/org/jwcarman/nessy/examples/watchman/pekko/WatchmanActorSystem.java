@@ -146,8 +146,8 @@ public final class WatchmanActorSystem implements SmartLifecycle {
   }
 
   /** What one agent looks like right now — used by the tests and the transcript page. */
-  public CompletionStage<TurnState> inspect(String agentId) {
-    return AskPattern.<AgentRegistry.Command, TurnState>ask(
+  public CompletionStage<AgentState> inspect(String agentId) {
+    return AskPattern.<AgentRegistry.Command, AgentState>ask(
         registry,
         replyTo ->
             new AgentRegistry.Envelope(agentId, new AgentActor.Inspect(replyTo, traces.capture())),

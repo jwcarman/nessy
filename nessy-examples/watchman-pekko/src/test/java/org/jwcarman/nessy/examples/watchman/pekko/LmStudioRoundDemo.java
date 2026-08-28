@@ -67,7 +67,7 @@ class LmStudioRoundDemo {
     return actors;
   }
 
-  private static TurnState state(WatchmanActorSystem actors, String agent) {
+  private static AgentState state(WatchmanActorSystem actors, String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(60, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -75,14 +75,14 @@ class LmStudioRoundDemo {
     }
   }
 
-  private static void narrate(String heading, String agent, TurnState state) {
+  private static void narrate(String heading, String agent, AgentState state) {
     System.out.println("\n=== " + heading + " ===");
     // Context.lines() is Nessy's own rendering; no transcript type of ours is involved.
     for (var line : WatchmanPostgres.memories().everything(agent).lines()) {
       System.out.println(
           String.format("  %-9s | %s", line.role(), line.text().replace("\n", "\n            | ")));
     }
-    if (state instanceof TurnState.WorkingTools working) {
+    if (state.phase() instanceof Phase.WorkingTools working) {
       working.calls().forEach(call -> System.out.println("  [call] " + call));
     }
   }
@@ -106,9 +106,11 @@ class LmStudioRoundDemo {
           .atMost(PATIENCE)
           .pollInterval(Duration.ofSeconds(2))
           .untilAsserted(
-              () -> assertThat(state(first, agent)).isNotInstanceOf(TurnState.CallingModel.class));
+              () ->
+                  assertThat(state(first, agent).phase())
+                      .isNotInstanceOf(Phase.CallingModel.class));
 
-      TurnState afterModel = state(first, agent);
+      AgentState afterModel = state(first, agent);
       narrate("the real model's first turn", agent, afterModel);
       parked = parkedCall(afterModel);
     } finally {
@@ -139,9 +141,10 @@ class LmStudioRoundDemo {
       await()
           .atMost(PATIENCE)
           .pollInterval(Duration.ofSeconds(2))
-          .untilAsserted(() -> assertThat(state(second, agent)).isInstanceOf(TurnState.Idle.class));
+          .untilAsserted(
+              () -> assertThat(state(second, agent).phase()).isInstanceOf(Phase.Idle.class));
 
-      TurnState done = state(second, agent);
+      AgentState done = state(second, agent);
       narrate("the finished round", agent, done);
       var messages = WatchmanPostgres.memories().everything(agent).messages();
       assertThat(messages).isNotEmpty();
@@ -153,8 +156,8 @@ class LmStudioRoundDemo {
     }
   }
 
-  private static Optional<String> parkedCall(TurnState state) {
-    if (!(state instanceof TurnState.WorkingTools working)) {
+  private static Optional<String> parkedCall(AgentState state) {
+    if (!(state.phase() instanceof Phase.WorkingTools working)) {
       return Optional.empty();
     }
     return working.calls().stream()

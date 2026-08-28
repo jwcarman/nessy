@@ -93,7 +93,7 @@ class TraceTreeTest {
     sdk.close();
   }
 
-  private TurnState state() {
+  private AgentState state() {
     try {
       return actors.inspect(agent).toCompletableFuture().get(15, TimeUnit.SECONDS);
     } catch (Exception e) {
@@ -128,7 +128,7 @@ class TraceTreeTest {
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () -> {
-              assertThat(state()).isInstanceOf(TurnState.WorkingTools.class);
+              assertThat(state().phase()).isInstanceOf(Phase.WorkingTools.class);
               assertThat(Calls.pending(state(), "prune_images")).isPresent();
             });
     actors
@@ -137,7 +137,7 @@ class TraceTreeTest {
         .get(15, TimeUnit.SECONDS);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(() -> assertThat(state()).isInstanceOf(TurnState.Idle.class));
+        .untilAsserted(() -> assertThat(state().phase()).isInstanceOf(Phase.Idle.class));
     round.end();
 
     List<SpanData> finished = spans.getFinishedSpanItems();
