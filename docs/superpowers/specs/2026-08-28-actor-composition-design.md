@@ -1,7 +1,7 @@
 # The actor composition
 
 **Status:** designed in conversation with James, 2026-08-28. Written down before it is built.
-One thing is deliberately OPEN — see §8, routing a late answer back to the right actor.
+Routing a late answer back to a specific ephemeral actor (§8) was resolved on the same day.
 
 **Amends** `2026-08-27-actor-runtime-design.md` on two points it states outright:
 
@@ -221,36 +221,80 @@ execution itself", which is the irreducible part — the part Temporal also decl
 `maxAttempts` is our version of that contract: it does not make a tool safe, it lets the tool's
 owner say whether it is.
 
-## 8. OPEN — routing a late answer to the right actor
+## 8. Routing a late answer to the right actor
 
-**Deliberately unresolved. Do not implement around it.**
+**RESOLVED 2026-08-28 with James.** An approval answered three days later, or a deferred tool result
+returning hours later, has to reach a specific ephemeral actor from a caller holding only a token.
 
-An approval answered three days later, or a deferred tool result returning hours later, has to
-reach a specific ephemeral actor four levels down, from a web request holding only
-`(agentId, callId)`.
+### 8.1 Not a persisted actor path
 
-What is already settled:
+Pekko will serialise an `ActorRef` — `ActorRefResolver.toSerializationFormat` / `resolveActorRef` —
+and persisting that string is the obvious first idea. **Reject it.** `resolveActorRef` on a dead
+actor's path does not fail; it returns a ref that routes to **dead letters**. So a stale slip means
+a human clicks deny, receives a 200, and nothing happens — silently. That is the exact scenario the
+"persist the decision BEFORE the reply" ruling exists to prevent, reintroduced through the
+addressing layer. A path is also node-encoded, so it breaks again whenever a sharded entity moves.
 
-- The fact must be **durable before it is acknowledged** — a human clicks deny, we return 200, and
-  the box loses power a millisecond later. The `Approver` owns decision durability; a deferred
-  result is written to a claim by the inbound door.
-- The live and dead paths must **agree**: a live actor is told, a respawned one asks, and neither
-  is special-cased.
+**A path is an address, not an identity.**
 
-The candidates:
+### 8.2 The Receptionist holds the identity
 
-- **Forward down the tree** — every layer learns about approvals to pass them along, coupling the
-  turn and invocation actors to something they otherwise ignore.
-- **Receptionist registration** under `(agentId, callId)` — the waiting actor registers, the door
-  looks it up and tells it directly, nothing between them knows. Closest to the existing
-  "answers route by address" ruling.
-- **Approver/claim-mediated only** — the door writes durably and the actor discovers it, which is
-  needed for the restart path regardless.
+```java
+ServiceKey.create(ApprovalActor.Command.class, "approval:" + agentId + ":" + callId)
+```
 
-Realistically the last two together. What is NOT settled: how the Receptionist key is scoped, what
-happens to a late answer for an already-settled call (the at-most-once rule says drop with a WARN —
-but then its claim has no owner to be swept with), and whether a deferred result's claim needs an
-owner that outlives its turn.
+The key is derived from facts that outlive any process. The **registration** is re-established by
+whoever is alive and is never persisted, so it cannot go stale. `find` returns the live refs, or
+empty — and empty is a fact the caller can act on rather than a message quietly vanishing.
+
+The inbound door then has no special cases:
+
+```
+write the fact durably     (the Approver's decision, or the result claim)   ← the truth
+respond 200                                                                  ← now honest
+Receptionist.find(key) → tell if present                                     ← latency only
+```
+
+An empty `find` needs no retry and no queue: a respawned actor asks on startup (§6). Live actor is
+told, dead actor asks, neither is special-cased.
+
+**The notification may genuinely be dropped, and that is correct** — principle 1.10, notifications
+are hints. Losing one costs the latency until the actor asks. It cannot lose a decision, because
+the decision was durable before anyone was told anything. Do not "fix" this later by adding
+delivery guarantees to the notification; the guarantee is in the write.
+
+**Register only what can be answered from outside.** Receptionist registrations gossip across a
+cluster, so registering every actor would churn. Only actors awaiting an EXTERNAL answer need to be
+findable — approvals and deferred tool results, which are rare and long-lived. A tool call that
+finishes in fifty milliseconds never registers.
+
+`ServiceKey.create` takes a class literal, so a registered actor's protocol must be non-generic —
+which this design already guarantees, since `O` never travels below the agent (§3).
+
+### 8.3 The token handed to a tool
+
+A tool that defers is handed a **string encoding the service key**, and presents it later.
+
+This is what Continuum's computation id was for, and it is better in the way that matters: **derived,
+not minted.** Continuum allocated an opaque id, stored it in a registry, and the registry had to be
+consulted to learn what it meant — hence its own storage and its own lifecycle, and the possibility
+of an orphan. A token over `(agentId, callId)` allocates nothing, cannot be orphaned, and survives a
+restart precisely because it was never bound to a live actor.
+
+It also leaves the actor spec's §7 ruling intact rather than reversing it: *"answers route by
+address... nothing is minted and nothing is handed out."* Handing over a token that ENCODES an
+address the call already had is giving out the envelope, not minting an identity.
+
+**It must be unforgeable once it leaves the process.** A tool may be a remote MCP server, and a raw
+`agent-x:call-y` is guessable — anyone able to reach the endpoint could deliver a fabricated result
+into another agent's turn, or answer an approval. An HMAC over `(agentId, callId)` with a server
+secret is enough and stays stateless, so nothing is stored and "nothing is minted" still holds.
+
+### 8.4 What this retires
+
+The result-claim (§7.1) is a durable, deduplicating, expiry-swept memoised outcome keyed by call.
+That was the last job Continuum was kept for in the actor spec — *"a memoised outcome remains the
+only answer to 'it ran and died'"* — so that reason no longer stands.
 
 ## 8a. Claim expiry — the backstop for everything §8 leaks
 
