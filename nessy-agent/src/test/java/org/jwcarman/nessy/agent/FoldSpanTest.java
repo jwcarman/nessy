@@ -169,6 +169,11 @@ class FoldSpanTest {
     }
 
     @Override
+    public long head(String kind, String key) {
+      return delegate.head(kind, key);
+    }
+
+    @Override
     public void batch(List<Substrate.Op> ops) {
       delegate.batch(ops);
     }

@@ -129,6 +129,16 @@ public final class InMemorySubstrate extends SubstrateSupport implements Substra
   }
 
   @Override
+  public long head(String kind, String key) {
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
+    synchronized (lock) {
+      NavigableMap<Long, Entry> journal = journals.get(new DocKey(kind, key));
+      return journal == null || journal.isEmpty() ? 0L : journal.lastKey();
+    }
+  }
+
+  @Override
   public void batch(List<Op> ops) {
     Objects.requireNonNull(ops, "ops must not be null");
     List<Op> snapshot = List.copyOf(ops);

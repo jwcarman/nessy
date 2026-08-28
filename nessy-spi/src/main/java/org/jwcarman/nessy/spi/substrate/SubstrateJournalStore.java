@@ -70,8 +70,7 @@ final class SubstrateJournalStore<T> implements JournalStore<T> {
   }
 
   private long head(String key) {
-    List<Substrate.Entry> entries = substrate.entries(kind, key, 1);
-    return entries.isEmpty() ? 0L : entries.getLast().seq();
+    return substrate.head(kind, key);
   }
 
   /**

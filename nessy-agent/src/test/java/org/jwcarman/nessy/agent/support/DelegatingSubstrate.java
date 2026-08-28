@@ -68,6 +68,11 @@ public final class DelegatingSubstrate implements Substrate {
   }
 
   @Override
+  public long head(String kind, String key) {
+    return delegate.head(kind, key);
+  }
+
+  @Override
   public void batch(List<Op> ops) {
     delegate.batch(ops);
   }

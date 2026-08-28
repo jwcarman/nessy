@@ -219,6 +219,43 @@ public abstract class SubstrateContract {
   }
 
   @Test
+  void theHeadOfAnUnknownKeyIsZero() {
+    Substrate substrate = createSubstrate();
+
+    assertThat(substrate.head(KIND, "never-appended")).isZero();
+  }
+
+  @Test
+  void theHeadOfAKeyWithOneEntryIsThatEntrysSeq() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "first".getBytes(UTF_8));
+
+    assertThat(substrate.head(KIND, "k")).isEqualTo(1L);
+  }
+
+  @Test
+  void theHeadOfAKeyWithSeveralEntriesIsTheHighestSeq() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "one".getBytes(UTF_8));
+    substrate.append(KIND, "k", 2, "two".getBytes(UTF_8));
+    substrate.append(KIND, "k", 3, "three".getBytes(UTF_8));
+
+    assertThat(substrate.head(KIND, "k")).isEqualTo(3L);
+  }
+
+  @Test
+  void theHeadAgreesWithTheLastSeqEntriesReports() {
+    Substrate substrate = createSubstrate();
+    substrate.append(KIND, "k", 1, "one".getBytes(UTF_8));
+    substrate.append(KIND, "k", 2, "two".getBytes(UTF_8));
+    substrate.append(KIND, "k", 3, "three".getBytes(UTF_8));
+    List<Substrate.Entry> entries = substrate.entries(KIND, "k", 1);
+
+    assertThat(entries).isNotEmpty();
+    assertThat(substrate.head(KIND, "k")).isEqualTo(entries.getLast().seq());
+  }
+
+  @Test
   void keysAreAscendingAndScopedToOneKind() {
     Substrate substrate = createSubstrate();
     substrate.write(KIND, "c", "3".getBytes(UTF_8), 0);

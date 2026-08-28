@@ -94,6 +94,22 @@ public interface Substrate {
   List<Entry> entries(String kind, String key, long fromSeq);
 
   /**
+   * The highest {@code seq} appended at {@code (kind, key)}, or {@code 0} if the key has never been
+   * appended to — the same "no entries yet" value {@link #append(String, String, long, byte[])}
+   * expects as {@code expectedSeq} for a journal's first entry.
+   *
+   * <p>Deliberately abstract, not a default implemented via {@link #entries(String, String, long)}:
+   * every caller of this method — {@code SubstrateJournalStore#append} above all — calls it once
+   * per write and, on {@link ConflictException}, again per retry, so it must read the {@code (kind,
+   * key, seq)} key space alone and never a payload. A default backed by {@code entries} would let
+   * an implementation silently inherit that O(journal) cost instead of answering the question
+   * deliberately.
+   *
+   * @throws NullPointerException if {@code kind} or {@code key} is null
+   */
+  long head(String kind, String key);
+
+  /**
    * Applies {@code ops} atomically: all succeed or none apply. Any CAS or seq miss fails the whole
    * batch with {@link ConflictException} and leaves every shape it touches untouched (spec §4.3).
    *

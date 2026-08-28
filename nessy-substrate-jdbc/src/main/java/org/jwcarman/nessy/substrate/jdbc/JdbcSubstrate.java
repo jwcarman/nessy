@@ -96,6 +96,8 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
   private static final String SELECT_JOURNAL_SQL =
       "SELECT seq, payload, appended_at FROM nessy_journal "
           + "WHERE kind = ? AND key = ? AND seq >= ? ORDER BY seq";
+  private static final String SELECT_JOURNAL_HEAD_SQL =
+      "SELECT MAX(seq) FROM nessy_journal WHERE kind = ? AND key = ?";
 
   private final DataSource dataSource;
   private final Clock clock;
@@ -412,6 +414,32 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
             }
           }
           return List.copyOf(entries);
+        });
+  }
+
+  /**
+   * Overrides the {@link Substrate#head(String, String)} default with {@code MAX(seq)}: the journal
+   * table's primary key is {@code (kind, key, seq)}, so this is answered from the primary key index
+   * alone — a backward index scan for the last {@code seq} under {@code (kind, key)} — and never
+   * touches a {@code payload} column.
+   */
+  @Override
+  public long head(String kind, String key) {
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
+    return inTransaction(
+        connection -> {
+          try (PreparedStatement select = connection.prepareStatement(SELECT_JOURNAL_HEAD_SQL)) {
+            select.setString(1, kind);
+            select.setString(2, key);
+            try (ResultSet row = select.executeQuery()) {
+              if (!row.next()) {
+                return 0L;
+              }
+              long head = row.getLong(1);
+              return row.wasNull() ? 0L : head;
+            }
+          }
         });
   }
 
