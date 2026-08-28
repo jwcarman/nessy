@@ -30,9 +30,12 @@
 
   <artifactId>nessy-example-watchman-pekko</artifactId>
   <name>Nessy Example: Watchman (Pekko port)</name>
-  <description>THROWAWAY SPIKE. The watchman, ported onto the actor design, so the two can be run
-    side by side. Depends on NO nessy-* module: the actor system replaces the harness, and that is
-    the whole point of the comparison.</description>
+  <description>The watchman on the actor runtime. NO LONGER A SPIKE: as of 2026-08-28 this is where
+    Nessy's Pekko-based engine is being built, and the design here is the design of record rather
+    than a comparison. It depends on nessy-spi, nessy-agent, nessy-substrate-jdbc and
+    nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
+    Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
+    both counts.</description>
 
   <properties>
     <maven.deploy.skip>true</maven.deploy.skip>

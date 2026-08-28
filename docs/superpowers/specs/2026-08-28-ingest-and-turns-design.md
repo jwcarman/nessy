@@ -36,8 +36,8 @@ and become transcript entries only when a turn starts.**
 ## 2. The shape
 
 ```
-tell(O)     →  coalesce against the current backlog  →  persist         (no transcript write)
-turn start  →  drain  →  render  →  ONE user message →  remember  →  CallingModel
+tell(O)     →  coalesce against the current backlog  →  persist      (no transcript write)
+turn start  →  take ONE  →  render  →  user message  →  remember  →  CallingModel
 ```
 
 Two rules do most of the work:
@@ -45,13 +45,76 @@ Two rules do most of the work:
 - **Nothing is written to the transcript at ingest.** A queued observation is invisible to the
   running turn, so a turn reasons against a context that does not shift underneath it, and no
   observation can wedge itself between an assistant turn and its tool results.
-- **The whole backlog drains into one turn**, never one entry per turn. Once observations are in
-  the model's context together, running a turn per observation would have each successive turn
-  re-answer content the previous one already saw.
+- **One observation per turn** — the backlog is a source of *the next* observation, not a batch.
+  **AMENDED 2026-08-28 by James**, reversing an earlier draft that drained the whole backlog into
+  one turn. The reason is that draining all of it would **silently override the user's own
+  coalescing policy**: a vocabulary returning no key is saying "these must never merge", and
+  merging them into one `Message.user` at drain does precisely that — later, and without their
+  `merge` function. Coalescing on write is the ONLY place observations become one.
+
+  The earlier draft's argument — that N turns would each re-answer content the previous turn saw —
+  died when `remember` moved to turn start (§4). Nothing enters the transcript until a turn takes
+  it, so successive turns alternate `user → assistant → user → assistant` correctly.
+
+  The cost, accepted: N queued observations become N model calls. Coalescing already collapses the
+  repetitive cases, so what remains is genuinely distinct; a vocabulary that would rather batch them
+  says so with a `merge`.
 
 ### 2.1 Where the backlog lives
 
-**In the agent's durable state**, not a separate store and not a separate actor.
+**AMENDED 2026-08-28 by James, before implementation.** An earlier draft of this section put the
+backlog IN the agent's durable state. It does not. State holds identifiers, status and human
+decisions — never content — and observations are content, so keeping them there contradicted the
+rule §4a applies to tool arguments and results, and reproduced the very mechanic §4a.1 removes:
+every ingest rewriting the whole state document.
+
+**The backlog is a SERVICE the actor depends on** — in James's words, *"simply a source of the next
+observation as far as it's concerned"*. It sits alongside `Memories` and `Claims`:
+
+```java
+public interface Backlogs<O> {
+
+  /** Coalesce against what is already waiting, then persist. Durable before it returns. */
+  void ingest(String agentId, O observation, Instant receivedAt);
+
+  /** Give me what is waiting, if anything. ONE observation — see §2. */
+  Optional<Taken<O>> next(String agentId);
+
+  /** The taken observation is removed only after its transcript entry is written (§4.1). */
+  void taken(String agentId, String entryId);
+
+  /** What `next` hands back: the observation, plus the entry id its Remembrance key derives from. */
+  record Taken<O>(String entryId, O observation) {}
+}
+```
+
+`Backlogs` is the plural, agent-keyed service; `Backlog<O>` remains the immutable value the
+`Coalescer` folds over, internal to the implementation. The pair does not quite mirror
+`Memories`/`Memory` — there the per-agent facade is returned by `forAgent(agentId)`, whereas here
+the agent id is a parameter — because `Backlog` was already ratified as the value's name and
+renaming a tested type to buy symmetry was not worth it.
+
+`Backlog<O>` remains the immutable value the `Coalescer` folds over, now internal to the service
+rather than a component of the persisted document. `Coalescer<O>` is unchanged.
+
+**Because state does not reference the backlog, there is no cross-store invariant** — no ordering
+rule to obey and no dangling reference possible. The drain's two writes (transcript, then clear)
+stay safe by the deterministic key of §4.1, not by atomicity.
+
+The properties the in-state version was chosen for all survive:
+
+- **Durable on arrival.** `ingest` persists before it returns, so a caller told "accepted" is safe.
+- **Ordering is free.** One actor per agent id means one mailbox, so `tell`s are serialized by the
+  runtime and two concurrent ingests cannot race.
+- **Coalescing stays pure.** The service does the I/O around the fold; the fold itself reads no
+  clock and touches no store, which is why it is testable with no actor present.
+
+The cost, stated plainly: the backlog's persistence is hand-rolled over `Substrate` rather than
+riding `DurableStateBehavior` for free.
+
+### 2.1a The rejected alternative, and why
+
+**In the agent's durable state**, which was the original draft.
 
 The `AgentActor`'s mailbox is already a serialization point: messages are handled one at a time in
 arrival order. That supplies ordering for free and removes the read-modify-write race between two
@@ -66,9 +129,11 @@ Keeping the backlog *in the state* additionally means:
   testable with no actor present.
 - **No second store on the ingest path**, so no cross-store crash window there.
 
-**This is safe only because coalescing bounds the backlog** (§3). Principle 2.1's measurement is
-the warning: content that grows without bound inside durable state grew it 14× in 64 minutes,
-because every revision rewrites the whole document.
+It was rejected because that last point is only true while the backlog stays small, and "small"
+was doing the same work a size threshold would — the exact judgement call §4a.2 refuses to make for
+tool arguments. Principle 2.1's measurement is the warning it ignored: content that grows without
+bound inside durable state grew it 14× in 64 minutes, because every revision rewrites the whole
+document. A backlog holding user observations is content by any honest reading.
 
 ## 3. Coalescing
 
@@ -97,13 +162,14 @@ caller's thread.
 The general contract is a fold, mirroring `AgentPhase.handle`:
 
 ```java
-Backlog<O> ingest(Backlog<O> current, O incoming, Instant now);
+Backlog<O> ingest(Backlog<O> current, Backlog.Entry<O> incoming);
 ```
 
-`Instant now` is in the signature deliberately. Staleness — "drop quotes older than five minutes"
-— is foreseeable for anything market- or sensor-shaped, and a pure function must not read a clock.
-Passing the instant keeps the function pure and testable while making time expressible. Backlog
-entries therefore carry `receivedAt`.
+The arriving entry carries its own id and `receivedAt`, which is deliberate on both counts. Time is
+in the signature because staleness — "drop quotes older than five minutes" — is foreseeable for
+anything market- or sensor-shaped, and a pure function must not read a clock; the entry supplies
+the only clock reading the fold ever needs. The id is there because a pure function cannot invent a
+unique one either. The caller mints both.
 
 This one method expresses everything we could name: keep-latest, fold, veto (return the backlog
 unchanged), cross-key supersede (a `Cancel` clearing the queue), ordering and priority, dedup by
@@ -117,7 +183,7 @@ vocabularies actually want — is a provided implementation rather than a second
 ```java
 public interface Coalescer<O> {
 
-  Backlog<O> ingest(Backlog<O> current, O incoming, Instant now);
+  Backlog<O> ingest(Backlog<O> current, Backlog.Entry<O> incoming);
 
   /** Never coalesce: every observation accumulates. The default. */
   static <O> Coalescer<O> none() { ... }
@@ -159,36 +225,39 @@ An entry replaced by a newer one holds its **original** place in the backlog. Th
 message then reads in the order topics first arrived, which is what a reader expects of a
 conversation.
 
-## 4. The drain
+## 4. Taking the next observation
 
 At turn start, and only then:
 
-1. Take the whole backlog.
-2. Render each observation through `ObservationRenderer<O>`, yielding `List<ContentBlock>` each.
-3. **Concatenate the block lists in order into ONE `Message.user`.**
-4. `remember` that message.
-5. Clear the backlog and transition to `CallingModel`.
+1. Take **one** observation from the backlog — `Optional<O>`; empty means nothing is waiting.
+2. Render it through `ObservationRenderer<O>`, yielding `List<ContentBlock>`.
+3. `remember` it as one `Message.user`.
+4. Remove it from the backlog and transition to `CallingModel`.
 
-Blocks, not concatenated strings. Concatenation cannot represent non-text content, invents a
-separator that the model then reads, and destroys the provenance that block boundaries preserve.
-`ObservationRenderer<O>` already returns `List<ContentBlock>`, so this is the natural operation.
+Blocks, not concatenated strings — a renderer may emit non-text content, and a separator we invent
+would be read by the model as if the user had typed it.
 
-### 4.1 Re-drain is safe by determinism, not atomicity
+### 4.1 Re-taking is safe by determinism, not atomicity
 
-Writing the merged user message to the transcript and clearing the backlog from state are two
-stores, and cannot be atomic. Per principle 1.2, they are made **deterministic** instead: the
-merged message's `Remembrance` key is derived from the ids of the drained entries rather than
-minted fresh.
+Writing the user message to the transcript and removing the entry from the backlog are two stores,
+and cannot be atomic. Per principle 1.2 they are made **deterministic** instead: the message's
+`Remembrance` key is derived from the backlog entry's id rather than minted fresh.
 
-A crash between the two writes leaves the entries in the backlog. The next drain produces the same
-key, and idempotence-by-key makes the transcript write a no-op. Ordering follows principle 1.1 —
-the transcript entry is written first, so a crash leaves an orphan entry rather than a dangling
-reference.
+A crash between the two writes leaves the entry in the backlog. The next turn takes it again,
+produces the same key, and idempotence-by-key makes the transcript write a no-op. Ordering follows
+principle 1.1 — the transcript entry is written first, so a crash leaves an orphan entry rather than
+a dangling reference.
 
 ### 4.2 An idle agent is not a special case
 
-An observation arriving at an idle agent takes the same path: it is coalesced into the backlog,
-persisted, and the agent immediately drains. There is no fast path to get subtly wrong.
+An observation arriving at an idle agent takes the same path: coalesced into the backlog, persisted,
+and the agent immediately takes it. There is no fast path to get subtly wrong.
+
+### 4.3 A turn ending checks the backlog again
+
+When a turn completes, the agent asks the backlog for the next observation before going `Idle`. If
+one is waiting it starts the next turn immediately; otherwise it rests. That is what makes a queued
+observation arrive at a busy agent without needing anything periodic to notice it.
 
 ## 4a. What the agent persists
 
@@ -264,7 +333,8 @@ A parked turn may own its claims for days. Bounded and deterministic is not the 
 
 | store | holds | lifetime |
 |---|---|---|
-| agent state | ids, status, decisions, claim references, backlog | the agent's |
+| agent state | ids, status, decisions, claim references | the agent's |
+| backlog | observations awaiting a turn, coalesced | until drained |
 | claims | tool arguments | the turn's |
 | `Memory` | the conversation | its own business |
 
