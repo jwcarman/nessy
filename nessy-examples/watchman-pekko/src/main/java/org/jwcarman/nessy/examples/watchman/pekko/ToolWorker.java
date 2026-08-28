@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +26,8 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Runs one tool. Behind a pool router.
@@ -38,8 +41,21 @@ import org.jwcarman.nessy.spi.Remembrance;
  * id, and this worker is the one place that resolves it, on the same virtual thread that runs the
  * tool. That keeps the argument text out of the actor mailbox and out of every trace attribute that
  * touches {@code RunTool} — it exists for exactly as long as this call takes.
+ *
+ * <p><b>{@link ToolCallActor.Ran} is told ONLY when an exchange was actually recorded.</b> A thrown
+ * tool becomes a {@link ToolResult#error}, recorded like any other outcome -- that keeps {@code
+ * isError} doing its documented job. But {@code remember} itself can throw (a substrate problem:
+ * connectivity, serialization) or the submission to {@code blocking} can be rejected (the executor
+ * shutting down); either failure means nothing committed, per {@code Memory}'s Law 1 ("append
+ * before commit"). Telling the actor {@code Ran} anyway would settle a call whose exchange the fold
+ * can never pair an assistant turn against -- exactly the bug this worker exists to not have. So on
+ * either failure this worker says nothing: the call stays un-settled, and a respawn (the same
+ * recovery path a mid-run crash already relies on) retries it from scratch, rather than a false
+ * settle standing in for a retry the actor protocol has no message for.
  */
 public final class ToolWorker {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ToolWorker.class);
 
   public record RunTool(
       String agentId,
@@ -57,75 +73,101 @@ public final class ToolWorker {
         .onMessage(
             RunTool.class,
             message -> {
-              ToolCallRecord call = message.call();
-              CompletableFuture.supplyAsync(
-                      () -> {
-                        // Every tool call must record an exchange, on every path -- an unremembered
-                        // exchange leaves an assistant turn naming this call's tool_use id withheld
-                        // from recall() forever, along with every sibling result. So the whole run,
-                        // claim resolution included, is captured rather than left to skip the
-                        // remember below.
-                        String arguments = "{}";
-                        ToolResult result;
-                        try {
-                          arguments =
-                              claims
-                                  .get(
-                                      message.agentId(),
-                                      message.turnId(),
-                                      message.argumentsClaimId())
-                                  .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
-                                  .orElseThrow(
-                                      () ->
-                                          new IllegalStateException(
-                                              "no claim for " + message.argumentsClaimId()));
-                          // GenAI semconv names this span `execute_tool` and carries the tool name
-                          // as an attribute rather than baking it into the span name -- a name per
-                          // tool would blow up cardinality in every backend.
-                          String finalArguments = arguments;
-                          result =
-                              ToolResult.ok(
-                                  traces.inSpan(
-                                      "execute_tool",
-                                      message.trace(),
-                                      () -> {
-                                        traces.tag("nessy.agent.id", message.agentId());
-                                        traces.tag("nessy.tool.call.id", call.id());
-                                        traces.tag("gen_ai.tool.name", call.tool());
-                                        traces.tag("watchman.action", call.action());
-                                        return WatchmanTools.run(
-                                            runner, call.tool(), finalArguments);
-                                      }));
-                        } catch (RuntimeException e) {
-                          result = ToolResult.error(String.valueOf(e.getMessage()));
-                        }
-                        // Remembered first, then the agent is told. Same thread, so the ordering
-                        // is not a hope -- and a crash in between leaves an exchange whose
-                        // assistant turn the fold will pair up, never a context the model rejects.
-                        memories
-                            .forAgent(message.agentId())
-                            .remember(
-                                new Remembrance.ToolExchange(
-                                    call.id(),
-                                    new ToolCall(
-                                        call.id(),
-                                        call.tool(),
-                                        WatchmanTools.argumentsOf(arguments)),
-                                    result));
-                        return result;
-                      },
-                      blocking)
-                  .whenComplete(
-                      (result, failure) ->
-                          message
-                              .replyTo()
-                              .tell(
-                                  new ToolCallActor.Ran(
-                                      failure == null
-                                          ? result
-                                          : ToolResult.error(String.valueOf(failure)))));
+              try {
+                CompletableFuture.supplyAsync(
+                        () -> runAndRemember(message, runner, memories, traces, claims), blocking)
+                    .whenComplete(
+                        (result, failure) -> {
+                          if (failure == null) {
+                            message.replyTo().tell(new ToolCallActor.Ran(result));
+                          } else {
+                            LOG.warn(
+                                "call {} not settled -- its exchange was never recorded: {}",
+                                message.call().id(),
+                                describe(failure));
+                          }
+                        });
+              } catch (RuntimeException rejected) {
+                // The executor rejected submission outright (e.g. mid-shutdown): the same rule
+                // applies -- no commit happened, so no Ran() is told.
+                LOG.warn(
+                    "call {} not settled -- could not even be submitted: {}",
+                    message.call().id(),
+                    describe(rejected));
+              }
               return Behaviors.same();
             })
         .build();
+  }
+
+  /**
+   * Runs the tool and remembers its exchange, on the virtual thread {@code blocking} hands us.
+   * Remembered first, then the agent is told (by the caller, once this returns) -- same thread, so
+   * the ordering is not a hope, and a crash in between leaves an exchange whose assistant turn the
+   * fold will pair up, never a context the model rejects.
+   *
+   * <p>A thrown claim lookup or tool run becomes {@link ToolResult#error}, recorded like any other
+   * outcome. A thrown {@code remember} is NOT caught here -- it propagates so the caller can tell
+   * the difference between "the tool failed, but its failure is on the record" and "nothing is on
+   * the record at all."
+   */
+  private static ToolResult runAndRemember(
+      RunTool message, CommandRunner runner, Memories memories, Traces traces, Claims claims) {
+    ToolCallRecord call = message.call();
+    String arguments;
+    try {
+      arguments =
+          claims
+              .get(message.agentId(), message.turnId(), message.argumentsClaimId())
+              .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+              .orElseThrow(
+                  () -> new IllegalStateException("no claim for " + message.argumentsClaimId()));
+    } catch (RuntimeException e) {
+      ToolResult result = ToolResult.error("tool arguments could not be resolved: " + describe(e));
+      remember(memories, message.agentId(), call, WatchmanTools.argumentsOf("{}"), result);
+      return result;
+    }
+    ToolResult result;
+    try {
+      // GenAI semconv names this span `execute_tool` and carries the tool name as an attribute
+      // rather than baking it into the span name -- a name per tool would blow up cardinality in
+      // every backend.
+      result =
+          ToolResult.ok(
+              traces.inSpan(
+                  "execute_tool",
+                  message.trace(),
+                  () -> {
+                    traces.tag("nessy.agent.id", message.agentId());
+                    traces.tag("nessy.tool.call.id", call.id());
+                    traces.tag("gen_ai.tool.name", call.tool());
+                    traces.tag("watchman.action", call.action());
+                    return WatchmanTools.run(runner, call.tool(), arguments);
+                  }));
+    } catch (RuntimeException e) {
+      result = ToolResult.error(describe(e));
+    }
+    remember(memories, message.agentId(), call, WatchmanTools.argumentsOf(arguments), result);
+    return result;
+  }
+
+  private static void remember(
+      Memories memories,
+      String agentId,
+      ToolCallRecord call,
+      JsonNode arguments,
+      ToolResult result) {
+    memories
+        .forAgent(agentId)
+        .remember(
+            new Remembrance.ToolExchange(
+                call.id(), new ToolCall(call.id(), call.tool(), arguments), result));
+  }
+
+  /** An exception message with a class name, never bare {@code "null"} for a message-less one. */
+  private static String describe(Throwable e) {
+    String message = e.getMessage();
+    return e.getClass().getSimpleName()
+        + (message == null || message.isBlank() ? "" : ": " + message);
   }
 }
