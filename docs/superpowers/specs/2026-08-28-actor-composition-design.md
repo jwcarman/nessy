@@ -213,6 +213,25 @@ Three reasons, in order of weight:
 a span attribute rather than behind a reference nobody dereferences while debugging. That is a
 stated choice, so nobody "fixes" the inconsistency in either direction.
 
+### 7.3 Deleting claims: bulk by id, and no owner field
+
+**Ruled 2026-08-28 by James.** A claim carries NO owner. The turn actor holds every `callId` it
+minted, so it deletes its claims by handing that list to a bulk delete — one batch, not N calls.
+
+An owner field would exist only so a sweeper could ask "whose claims are these?", and nothing needs
+to ask: the happy path already knows the ids, and the crash path is covered by expiry (§8a). So the
+field would buy nothing while adding a value that can go stale — a claim naming a turn that no
+longer exists is a lie a sweeper would then act on. Two mechanisms cover the whole space:
+
+| path | mechanism |
+|---|---|
+| turn completes, or fails, or is denied | bulk delete by id, one batch |
+| turn dies before deleting, or a late answer outlives its turn | expiry reaper (§8a) |
+
+The bulk door is a `Substrate` batch so the deletions land together; a partial delete is
+indistinguishable from a leak, and the reaper would clean the remainder anyway — but the metric in
+§8a would then be measuring our own bug rather than the condition it exists to detect.
+
 ### 7.2 What this does NOT solve
 
 A crash **inside** the tool call, before the runner writes the claim, remains unknowable. The
@@ -305,7 +324,7 @@ deletes expired claims **and reports how many it deleted**.
 path that mechanism misses, without any of them needing their own analysis:
 
 - a turn abandoned by a stall never reaches its own deletion (open item in the actor spec)
-- a deferred result arriving after its turn settled has no owner to be swept with (§8)
+- a deferred result arriving after its turn settled is never named by any live turn (§8, §7.3)
 - a claim written just before a crash that no state ever names
 
 **The count is the point, not decoration.** A silent reaper cannot be distinguished from a dead
@@ -353,6 +372,64 @@ Shape:
 scanning every kind. Either the claim's expiry becomes a column the store can index and sweep, or
 the SPI grows something like `deleteExpired(String kindPrefix, Instant now)` returning a count. That
 is new SPI surface and wants James's yes before it lands.
+
+## 10. Durability: exactly one durable actor
+
+**Ruled 2026-08-28 by James.** `AgentActor` persists. Nothing below it does, and this is a design
+rule rather than an accident of what has been written so far.
+
+**Durability follows the truth, not the actor.** For each actor, ask what is lost if it dies:
+
+| actor | state | already durable as |
+|---|---|---|
+| **AgentActor** | backlog, turn id, taken entry id | **nothing else — so it persists** |
+| TurnActor | the conversation | `Memory` |
+| ToolInvocationActor | which phase it is in | derived: is there a decision? a result claim? |
+| ApprovalActor | waiting | the Approver's decision store |
+| ToolExecutionActor | the result | the result claim (§7.1) |
+
+Only the agent owns something no other store holds, and even it persists identifiers rather than
+content (measured: 356 bytes at revision 15, holding three claims).
+
+The argument for stopping at one is correctness, not cost. **Every durable actor is another source
+of truth, and two sources of truth can disagree.** A persisted `ToolInvocationActor` that recovers
+believing "approved" while the Approver's store says "denied" needs an arbiter, and any rule we
+write for that is wrong under some interleaving. With one durable actor and derived children, the
+question cannot be posed.
+
+**Persistence does not buy at-most-once, and nobody should reach for it expecting that.** The
+tempting second candidate is the executor: an actor that calls a non-idempotent tool and dies before
+writing its claim. Persisting that actor changes nothing — the side effect happened OUTSIDE the
+actor, so the window between "called" and "recorded" is identical either way (§7.2). If we ever need
+at-most-once, the mechanism is an attempt marker written BEFORE the call. That is a claim write, not
+a `DurableStateBehavior`.
+
+## 11. The harness door: an ActorSystem in
+
+**Ruled 2026-08-28 by James.** The engine is constructed from an `ActorSystem` and spins everything
+else up itself — matching the harness-first spec's door discipline, one level down.
+
+`ActorSystem` is the right seam because it is **the one type that is identical local and clustered**,
+and every extension hangs off it. So the harness chooses how agents come up by asking the system what
+it has, and the caller never states which world they are in:
+
+| what the system offers | how agents come up |
+|---|---|
+| no cluster extension | spawned locally |
+| cluster sharding | `ClusterSharding.get(system).init(Entity.of(...))` |
+
+Nothing else in Pekko has that property, and it is why this seam is worth more than its convenience
+in tests.
+
+**A harness handed an existing system cannot be its guardian.** The guardian behavior is fixed when
+the system is created, so top-level spawning goes through `SpawnProtocol` — the harness either asks
+for `ActorSystem<SpawnProtocol.Command>` or spawns beneath a named parent it owns. This is the detail
+that decides the signature; settle it before writing the door, not after.
+
+Testing falls out rather than being designed for: `ActorTestKit` hands over a system, the harness
+brings up the rest beneath it, and a whole agent — ingest, coalescing, turn, tool invocation,
+approval — is exercised in-process with no Spring, no HTTP, and no database beyond whichever
+`Substrate` the test chooses.
 
 ## 9. Other open items
 
