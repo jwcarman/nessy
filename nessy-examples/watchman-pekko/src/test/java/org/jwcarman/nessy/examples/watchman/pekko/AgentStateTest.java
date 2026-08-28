@@ -77,4 +77,19 @@ class AgentStateTest {
 
     assertThat(after).isEqualTo(before);
   }
+
+  @Test
+  void a_taken_backlog_entry_id_round_trips_through_the_state_serializer() {
+    AgentState before =
+        AgentState.idle()
+            .startingTurn("turn-1")
+            .withPhase(new Phase.CallingModel())
+            .taking("entry-42");
+
+    StateSerializer codec = new StateSerializer();
+    Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);
+
+    assertThat(after).isEqualTo(before);
+    assertThat(((AgentState) after).takenEntryId()).isEqualTo("entry-42");
+  }
 }

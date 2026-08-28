@@ -422,6 +422,16 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * coalescer returns no key is saying "these must never merge", and merging them here would do
    * exactly that without the caller's own {@code merge} function. Coalescing on write, inside
    * {@link Backlogs#ingest}, is the only place observations become one — see {@link Backlog}.
+   *
+   * <p><b>The order across the two stores is deliberate, and so is what {@code persist}
+   * carries.</b> {@code remember} writes the fact first (principle 1.1: a crash here leaves an
+   * orphan transcript entry, and the deterministic {@code "obs:"} key makes re-taking it a no-op).
+   * But removing the backlog entry is ALSO destructive, and it must not happen before something
+   * durable says it happened — otherwise a crash between the removal and the state write strands
+   * the entry: gone from the backlog, present in the transcript, but the persisted state still
+   * shows the pre-turn phase, so nothing ever asks the model to answer it. {@link
+   * AgentState#takenEntryId} is that durable record: it is written BEFORE the removal, and {@link
+   * #resume} finishes an interrupted removal on recovery.
    */
   private Effect<AgentState> startTurnIfWork(AgentState state, Map<String, String> here) {
     Optional<Backlogs.Taken<String>> taken = deps.backlogs().next(agentId);
@@ -429,12 +439,19 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       return Effect().persist(state.finishedTurn());
     }
     Backlogs.Taken<String> observation = taken.get();
-    // Transcript FIRST, then the state that references it (principle 1.1): a crash here leaves an
-    // orphan entry, and the deterministic key below makes re-taking it a no-op.
     deps.memories().forAgent(agentId).remember(userMessage(observation));
-    deps.backlogs().taken(agentId, observation.entryId());
-    AgentState next = state.startingTurn(Identifiers.next()).withPhase(new Phase.CallingModel());
-    return Effect().persist(next).thenRun(() -> askModel(next, here));
+    AgentState next =
+        state
+            .startingTurn(Identifiers.next())
+            .withPhase(new Phase.CallingModel())
+            .taking(observation.entryId());
+    return Effect()
+        .persist(next)
+        .thenRun(
+            () -> {
+              deps.backlogs().taken(agentId, observation.entryId());
+              askModel(next, here);
+            });
   }
 
   /** Key DERIVED from the entry id, never minted: re-taking after a crash must be free. */
@@ -502,9 +519,18 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    *
    * <p>A round resumed here is on a NEW trace, linked to the one that parked it — see {@link
    * Traces#inLinkedSpan}. A round that waited three days is not one span.
+   *
+   * <p><b>Finishes an interrupted {@code startTurnIfWork}, first.</b> {@link
+   * AgentState#takenEntryId} is non-null exactly when a crash may have happened between {@code
+   * remember} and {@code backlogs().taken()} for that entry — see {@link #startTurnIfWork}. Calling
+   * {@code taken} again is safe whether or not the earlier call actually landed: {@link
+   * SubstrateBacklogs} treats removing an already-removed entry as a no-op.
    */
   private void resume(AgentState state) {
     context.getLog().info("[watchman] {} rehydrated while {}", agentId, name(state));
+    if (state.takenEntryId() != null) {
+      deps.backlogs().taken(agentId, state.takenEntryId());
+    }
     switch (state.phase()) {
       case Phase.Idle ignored -> {
         // nothing in flight
