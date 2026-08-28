@@ -123,6 +123,15 @@ public class WatchmanConfiguration {
   }
 
   /**
+   * The durable backlog, on the same substrate as everything else. {@link Coalescer#none()} is the
+   * default -- everything accumulates -- until a real coalescing policy is wired in.
+   */
+  @Bean
+  public Backlogs<String> backlogs(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
+    return new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
+  }
+
+  /**
    * The model provider, pointed at LM Studio. Base URL and key are the entire difference between
    * talking to OpenAI and talking to a local endpoint.
    *
@@ -160,6 +169,7 @@ public class WatchmanConfiguration {
       WatchmanModel model,
       CommandRunner runner,
       Memories memories,
+      Backlogs<String> backlogs,
       Traces traces,
       Clock clock,
       BlockingWork blocking,
@@ -172,6 +182,7 @@ public class WatchmanConfiguration {
         model,
         runner,
         memories,
+        backlogs,
         traces,
         clock,
         blocking,

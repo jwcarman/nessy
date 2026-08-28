@@ -18,10 +18,10 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 import java.util.Objects;
 
 /**
- * Everything an agent persists: identifiers, status, human decisions, and the observations waiting
- * for a turn. NEVER content — tool results live in Memory and tool arguments live in Claims. With
- * the transcript out, this document measured 16 bytes idle and stayed flat across 100+ revisions;
- * that property is the reason this record holds what it holds.
+ * Everything an agent persists: identifiers, status, and human decisions. NEVER content — tool
+ * results live in Memory and tool arguments live in Claims. With the transcript out, this document
+ * measured 16 bytes idle and stayed flat across 100+ revisions; that property is the reason this
+ * record holds what it holds.
  *
  * @param turnId names the turn in flight, and owns that turn's claims. Null when idle.
  */

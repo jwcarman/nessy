@@ -72,13 +72,15 @@ class TraceTreeTest {
                     io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator.getInstance()))
             .build();
     agent = "trace-" + UUID.randomUUID();
+    org.jwcarman.nessy.spi.substrate.Substrate substrate =
+        new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC());
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(10)),
             new FakeRunner(),
-            new Memories(
-                new org.jwcarman.nessy.spi.substrate.InMemorySubstrate(Clock.systemUTC()), 8000),
+            new Memories(substrate, 8000),
+            new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class),
             MicrometerTracing.over(sdk),
             Clock.systemUTC(),
             new BlockingWork(),

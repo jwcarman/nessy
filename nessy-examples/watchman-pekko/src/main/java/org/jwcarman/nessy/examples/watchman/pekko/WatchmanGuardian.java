@@ -77,6 +77,7 @@ public final class WatchmanGuardian {
       WatchmanModel model,
       CommandRunner runner,
       Memories memories,
+      Backlogs<String> backlogs,
       Traces traces,
       Clock clock,
       Executor blocking,
@@ -107,7 +108,7 @@ public final class WatchmanGuardian {
               context.spawn(
                   AgentRegistry.create(
                       new AgentActor.Dependencies(
-                          desk, tools, memories, blocking, traces, clock, approvalTerm)),
+                          desk, tools, memories, backlogs, blocking, traces, clock, approvalTerm)),
                   "registry");
 
           return Behaviors.receive(Command.class)

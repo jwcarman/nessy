@@ -19,7 +19,9 @@ import io.micrometer.tracing.Span;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.PostStop;
@@ -31,6 +33,10 @@ import org.apache.pekko.persistence.typed.state.javadsl.CommandHandler;
 import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
 import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
+import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * The watchman itself: one durable actor per agent id, and the parent of everything a round does.
@@ -161,6 +167,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       ActorRef<ModelDesk.Command> modelDesk,
       ActorRef<ToolWorker.RunTool> tools,
       Memories memories,
+      Backlogs<String> backlogs,
       java.util.concurrent.Executor blocking,
       Traces traces,
       Clock clock,
@@ -287,42 +294,22 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
   }
 
   /**
-   * <b>An observation arriving mid-round is REFUSED, loudly, and that is the honest state of
-   * this.</b>
+   * <b>An observation is durable the instant {@link Backlogs#ingest} returns — never refused, never
+   * dropped.</b> Measured live on a one-minute cadence while parked on a single approval: 26 of 31
+   * rounds refused under the version that came before this one. That was not an edge case, it was
+   * the steady state of any agent that both runs continuously and asks a human anything.
    *
-   * <p>It used to be dropped in silence — {@code Effect().none()} with no log line — which is data
-   * loss dressed as a decision. It is now at least visible. It is still a drop.
-   *
-   * <p>I tried the obvious fix and backed it out. An in-memory queue on this actor, with the
-   * observations coalesced by {@link Observe#coalesceKey} and drained when the round reaches Idle,
-   * queues and coalesces correctly (twenty ticks really do collapse to one) — and then starts the
-   * NEXT round about 200 ms after the first one PARKS, while its approval is still outstanding. I
-   * could not isolate that interaction in the time available, and a watchman that begins a second
-   * round while a human is still looking at the first proposal is worse than one that drops a cron
-   * tick. So it is not here.
-   *
-   * <p>What the attempt did make clear is that the in-memory version was the wrong shape anyway.
-   * "Is this round finished?" is a question about PERSISTED state, and the answer has to be read
-   * from it rather than inferred from a callback; and an observation a caller was told we accepted
-   * has to be written down before it is acknowledged — the rule the approvals page already follows.
-   * A durable inbox is the real answer, not a field on this actor.
+   * <p>Idle means nobody else is going to drain this, so a turn starts right here. A round already
+   * in flight drains it when that round finishes — see {@link #onModelReplied} and {@link
+   * #startTurnIfWork}.
    */
   private Effect<AgentState> onObserve(
       AgentState state, Observe observe, Map<String, String> here) {
-    if (!(state.phase() instanceof Phase.Idle)) {
-      context
-          .getLog()
-          .warn(
-              "[watchman] REFUSED an observation: a round is already in flight. It is not queued"
-                  + " and it is not coming back. text={}, key={}",
-              observe.text(),
-              observe.coalesceKey());
-      return Effect().none();
+    deps.backlogs().ingest(agentId, observe.text(), deps.clock().instant());
+    if (state.phase() instanceof Phase.Idle) {
+      return startTurnIfWork(state, here);
     }
-    // The user's turn is already in the transcript -- whoever sent this wrote it first. The agent
-    // only records that a round has started.
-    var next = state.withPhase(new Phase.CallingModel());
-    return Effect().persist(next).thenRun(() -> askModel(next, here));
+    return Effect().none();
   }
 
   private Effect<AgentState> onModelReplied(
@@ -332,8 +319,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     }
     // Every arm's assistant turn was remembered by the model worker before this message was sent.
     return switch (replied.reply()) {
-      case ModelReply.Said ignored -> Effect().persist(state.withPhase(new Phase.Idle()));
-      case ModelReply.Failed ignored -> Effect().persist(state.withPhase(new Phase.Idle()));
+      case ModelReply.Said ignored -> startTurnIfWork(state, here);
+      case ModelReply.Failed ignored -> startTurnIfWork(state, here);
       case ModelReply.AskedForTools(var ignoredMessage, var requests, var ignoredUsage) -> {
         var now = deps.clock().instant();
         var calls =
@@ -425,6 +412,35 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
     }
     var next = state.withPhase(new Phase.CallingModel());
     return Effect().persist(next).thenRun(() -> askModel(next, here));
+  }
+
+  /**
+   * Turn start, and the only place a queued observation becomes a transcript entry.
+   *
+   * <p>ONE observation per turn, never the whole backlog. Draining everything into a single user
+   * message would silently override the caller's {@link Coalescer} policy: a vocabulary whose
+   * coalescer returns no key is saying "these must never merge", and merging them here would do
+   * exactly that without the caller's own {@code merge} function. Coalescing on write, inside
+   * {@link Backlogs#ingest}, is the only place observations become one — see {@link Backlog}.
+   */
+  private Effect<AgentState> startTurnIfWork(AgentState state, Map<String, String> here) {
+    Optional<Backlogs.Taken<String>> taken = deps.backlogs().next(agentId);
+    if (taken.isEmpty()) {
+      return Effect().persist(state.finishedTurn());
+    }
+    Backlogs.Taken<String> observation = taken.get();
+    // Transcript FIRST, then the state that references it (principle 1.1): a crash here leaves an
+    // orphan entry, and the deterministic key below makes re-taking it a no-op.
+    deps.memories().forAgent(agentId).remember(userMessage(observation));
+    deps.backlogs().taken(agentId, observation.entryId());
+    AgentState next = state.startingTurn(Identifiers.next()).withPhase(new Phase.CallingModel());
+    return Effect().persist(next).thenRun(() -> askModel(next, here));
+  }
+
+  /** Key DERIVED from the entry id, never minted: re-taking after a crash must be free. */
+  static Remembrance.UserMessage userMessage(Backlogs.Taken<String> taken) {
+    return new Remembrance.UserMessage(
+        "obs:" + taken.entryId(), Message.user(List.of(new TextBlock(taken.observation()))));
   }
 
   // ------------------------------------------------------------------------------------------

@@ -30,12 +30,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * A whole round on Nessy's own Memory: the actors, the scripted model and the fake host, with no
@@ -53,13 +52,16 @@ class RoundFlowTest {
   @BeforeEach
   void start() {
     agent = "watchman-" + UUID.randomUUID();
-    memories = new Memories(new InMemorySubstrate(Clock.systemUTC()), 8000);
+    Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
+    memories = new Memories(substrate, 8000);
+    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(20)),
             new FakeRunner(),
             memories,
+            backlogs,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -81,11 +83,8 @@ class RoundFlowTest {
     }
   }
 
-  /** Remember the user turn the way the cron does, then tell the agent. */
+  /** Tell the agent the way the cron does; the agent itself writes the turn once it drains. */
   private void observe(String text) {
-    memories
-        .forAgent(agent)
-        .remember(new Remembrance.UserMessage(Identifiers.next(), Message.user(text)));
     actors.tell(agent, new AgentActor.Observe(text, "rounds", Map.of()));
   }
 

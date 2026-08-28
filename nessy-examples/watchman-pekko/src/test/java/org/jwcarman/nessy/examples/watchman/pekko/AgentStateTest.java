@@ -17,6 +17,8 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -42,6 +44,33 @@ class AgentStateTest {
   void the_serialised_form_round_trips_through_the_state_serializer() {
     AgentState before =
         AgentState.idle().startingTurn("turn-1").withPhase(new Phase.CallingModel());
+
+    StateSerializer codec = new StateSerializer();
+    Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);
+
+    assertThat(after).isEqualTo(before);
+  }
+
+  @Test
+  void a_working_tools_phase_carrying_real_tool_calls_round_trips_through_the_state_serializer() {
+    ToolCallRecord unsettled =
+        ToolCallRecord.asked(
+            "call-1",
+            "prune_images",
+            "{}",
+            "docker image prune -af",
+            Instant.parse("2026-08-24T12:00:00Z"));
+    ToolCallRecord decidedAndSettled =
+        ToolCallRecord.asked(
+                "call-2", "disk_usage", "{}", "df -h", Instant.parse("2026-08-24T12:00:00Z"))
+            .decidedBy(
+                new ToolCallRecord.Decision(
+                    true, "james", "go ahead", Instant.parse("2026-08-24T12:05:00Z")))
+            .settle();
+    AgentState before =
+        AgentState.idle()
+            .startingTurn("turn-1")
+            .withPhase(new Phase.WorkingTools(List.of(unsettled, decidedAndSettled)));
 
     StateSerializer codec = new StateSerializer();
     Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);

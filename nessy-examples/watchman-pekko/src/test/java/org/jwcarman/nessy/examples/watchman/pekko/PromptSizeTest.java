@@ -29,12 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TokenEstimator;
-import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -62,6 +58,7 @@ class PromptSizeTest {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories budgeted = new Memories(substrate, BUDGET);
     Memories unbudgeted = new Memories(substrate, Long.MAX_VALUE);
+    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
 
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
@@ -69,6 +66,7 @@ class PromptSizeTest {
             new ScriptedWatchmanModel(Duration.ofMillis(5)),
             new FakeRunner(),
             budgeted,
+            backlogs,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
@@ -79,10 +77,6 @@ class PromptSizeTest {
     List<Sample> samples = new ArrayList<>();
     try {
       for (int round = 1; round <= 12; round++) {
-        Memory memory = budgeted.forAgent(agent);
-        memory.remember(
-            new Remembrance.UserMessage(
-                Identifiers.next(), Message.user("Round " + round + ". Do your rounds.")));
         actors.tell(
             agent,
             new AgentActor.Observe("Round " + round + ". Do your rounds.", "rounds", Map.of()));

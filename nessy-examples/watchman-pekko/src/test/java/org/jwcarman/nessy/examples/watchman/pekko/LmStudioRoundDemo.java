@@ -58,6 +58,7 @@ class LmStudioRoundDemo {
                 4096),
             new FakeRunner(),
             WatchmanPostgres.memories(),
+            WatchmanPostgres.backlogs(),
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
