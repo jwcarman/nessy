@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman.pekko;
 
 import java.util.List;
 import java.util.Optional;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
 
 /**

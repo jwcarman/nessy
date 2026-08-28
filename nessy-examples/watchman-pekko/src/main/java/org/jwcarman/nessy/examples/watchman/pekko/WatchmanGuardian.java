@@ -23,6 +23,7 @@ import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.actor.typed.javadsl.Routers;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 
 /**
  * THE SHAPE. Every actor in the watchman, and who owns whom, in one method.

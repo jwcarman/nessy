@@ -19,6 +19,7 @@ import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;

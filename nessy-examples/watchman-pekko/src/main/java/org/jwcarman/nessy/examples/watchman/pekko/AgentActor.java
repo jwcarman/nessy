@@ -33,6 +33,7 @@ import org.apache.pekko.persistence.typed.state.javadsl.CommandHandler;
 import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
 import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
+import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Remembrance;
