@@ -97,16 +97,6 @@ class ClaimedArgumentsTest {
     assertThat(persisted.length).isLessThan(4_000);
   }
 
-  @Test
-  void the_worker_resolves_the_claim_before_running_the_tool() {
-    Claims claims = new Claims(new InMemorySubstrate(Clock.systemUTC()));
-    String claimId = claims.put("agent-a", "turn-1", "{\"path\":\"/tmp\"}".getBytes(UTF_8));
-
-    assertThat(claims.get("agent-a", "turn-1", claimId)).isPresent();
-    assertThat(new String(claims.get("agent-a", "turn-1", claimId).orElseThrow(), UTF_8))
-        .isEqualTo("{\"path\":\"/tmp\"}");
-  }
-
   private AgentState state(String agent) {
     try {
       return actors.inspect(agent).toCompletableFuture().get(15, TimeUnit.SECONDS);

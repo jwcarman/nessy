@@ -444,6 +444,10 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * #resume} finishes an interrupted removal on recovery.
    */
   private Effect<AgentState> startTurnIfWork(AgentState state, Map<String, String> here) {
+    if (state.turnId() != null) {
+      // The whole kind goes, so this needs no list of ids and cannot miss an orphan.
+      deps.claims().deleteTurn(agentId, state.turnId());
+    }
     Optional<Backlogs.Taken<String>> taken = deps.backlogs().next(agentId);
     if (taken.isEmpty()) {
       return Effect().persist(state.finishedTurn());
