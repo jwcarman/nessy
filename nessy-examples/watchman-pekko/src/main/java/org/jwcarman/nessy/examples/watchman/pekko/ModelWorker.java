@@ -59,7 +59,7 @@ public final class ModelWorker {
   private ModelWorker() {}
 
   public static Behavior<Command> create(
-      WatchmanModel model, Memories memories, Executor blocking, Traces traces) {
+      AgentModel model, Memories memories, Executor blocking, Traces traces) {
     return Behaviors.setup(
         context -> {
           ActorRef<ConsumerController.Command<ModelDesk.ModelJob>> consumer =
@@ -149,7 +149,7 @@ public final class ModelWorker {
    * have named it after {@code ModelJob}; only a declared span gets this right.
    */
   private static ModelReply converse(
-      Traces traces, ModelDesk.ModelJob job, WatchmanModel model, Context recalled) {
+      Traces traces, ModelDesk.ModelJob job, AgentModel model, Context recalled) {
     return traces.inSpan(
         "chat",
         Span.Kind.CLIENT,

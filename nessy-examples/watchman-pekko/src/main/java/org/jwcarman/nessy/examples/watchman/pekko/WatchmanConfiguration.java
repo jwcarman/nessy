@@ -36,9 +36,9 @@ import org.springframework.context.annotation.Configuration;
  * than leaving it looking easy by luck. In Pekko Classic an actor was instantiated reflectively
  * from a {@code Props} class, so Spring could not inject into it and the whole {@code
  * SpringExtension} / {@code IndirectActorProducer} genre existed to work around that. In Typed the
- * Behavior factory IS the injection point: Spring builds {@link CommandRunner}, {@link
- * WatchmanModel} and the rest, and {@link WatchmanGuardian#create} takes them as parameters. No
- * extension, no producer, no ApplicationContext lookup, no bean-name strings.
+ * Behavior factory IS the injection point: Spring builds {@link CommandRunner}, {@link AgentModel}
+ * and the rest, and {@link WatchmanGuardian#create} takes them as parameters. No extension, no
+ * producer, no ApplicationContext lookup, no bean-name strings.
  */
 @Configuration
 @EnableConfigurationProperties(WatchmanProperties.class)
@@ -93,7 +93,7 @@ public class WatchmanConfiguration {
   }
 
   @Bean
-  public WatchmanModel watchmanModel(
+  public AgentModel watchmanModel(
       WatchmanProperties properties,
       org.jwcarman.nessy.spi.model.ModelProvider provider,
       io.micrometer.core.instrument.MeterRegistry meters) {
@@ -182,7 +182,7 @@ public class WatchmanConfiguration {
    */
   @Bean
   public WatchmanActorSystem watchmanActorSystem(
-      WatchmanModel model,
+      AgentModel model,
       CommandRunner runner,
       Memories memories,
       Backlogs<String> backlogs,

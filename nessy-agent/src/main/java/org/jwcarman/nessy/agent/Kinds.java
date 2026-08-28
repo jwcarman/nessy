@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import org.jwcarman.nessy.api.agent.AgentType;
+
 /**
  * The one place a kind-scoped name is composed (computation-identity spec §3; continuum-adoption
  * spec §3): {@code tool/<agentType>} and {@code approval/<agentType>}. Every caller — {@link

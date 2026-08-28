@@ -35,6 +35,7 @@ import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Remembrance;
 
@@ -176,7 +177,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       Traces traces,
       Clock clock,
       Duration approvalTerm,
-      Claims claims) {}
+      Claims claims,
+      AgentTools toolset,
+      AgentType agentType) {}
 
   public static Behavior<NessyMessage> create(
       String agentId, Dependencies deps, StopRequest stopRequest) {
@@ -190,7 +193,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       String agentId,
       Dependencies deps,
       StopRequest stopRequest) {
-    super(PersistenceId.of("Watchman", agentId));
+    super(PersistenceId.of(deps.agentType().name(), agentId));
     this.context = context;
     this.agentId = agentId;
     this.deps = deps;
@@ -360,7 +363,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
                           request.id(),
                           request.name(),
                           claimId,
-                          WatchmanTools.action(request.name(), arguments),
+                          deps.toolset().action(request.name(), arguments),
                           now);
                     })
                 .toList();
@@ -546,7 +549,8 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
                       deps.clock(),
                       deps.memories(),
                       deps.blocking(),
-                      deps.claims()),
+                      deps.claims(),
+                      deps.toolset()),
                   ToolCallActor.nameFor(id)));
     }
   }

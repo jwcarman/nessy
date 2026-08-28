@@ -34,6 +34,7 @@ import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestApprovalClients;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestToolClients;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;

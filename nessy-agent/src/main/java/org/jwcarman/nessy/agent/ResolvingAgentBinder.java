@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
  * The ordinary {@link AgentBinder} built from an {@link AgentResolver}: resolve the scope's

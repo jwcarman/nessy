@@ -24,6 +24,7 @@ import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.actor.typed.javadsl.Routers;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
+import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
  * THE SHAPE. Every actor in the watchman, and who owns whom, in one method.
@@ -75,7 +76,7 @@ public final class WatchmanGuardian {
   private WatchmanGuardian() {}
 
   public static Behavior<Command> create(
-      WatchmanModel model,
+      AgentModel model,
       CommandRunner runner,
       Memories memories,
       Backlogs<String> backlogs,
@@ -105,7 +106,9 @@ public final class WatchmanGuardian {
           ActorRef<ToolWorker.RunTool> tools =
               context.spawn(
                   Routers.pool(
-                      toolWorkers, ToolWorker.create(runner, memories, blocking, traces, claims)),
+                      toolWorkers,
+                      ToolWorker.create(
+                          WatchmanTools.boundTo(runner), memories, blocking, traces, claims)),
                   "tool-pool");
 
           ActorRef<AgentRegistry.Command> registry =
@@ -121,7 +124,9 @@ public final class WatchmanGuardian {
                           traces,
                           clock,
                           approvalTerm,
-                          claims)),
+                          claims,
+                          WatchmanTools.boundTo(runner),
+                          AgentType.of("Watchman"))),
                   "registry");
 
           return Behaviors.receive(Command.class)

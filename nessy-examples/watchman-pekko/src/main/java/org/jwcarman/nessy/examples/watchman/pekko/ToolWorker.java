@@ -68,14 +68,14 @@ public final class ToolWorker {
   private ToolWorker() {}
 
   public static Behavior<RunTool> create(
-      CommandRunner runner, Memories memories, Executor blocking, Traces traces, Claims claims) {
+      AgentTools tools, Memories memories, Executor blocking, Traces traces, Claims claims) {
     return Behaviors.receive(RunTool.class)
         .onMessage(
             RunTool.class,
             message -> {
               try {
                 CompletableFuture.supplyAsync(
-                        () -> runAndRemember(message, runner, memories, traces, claims), blocking)
+                        () -> runAndRemember(message, tools, memories, traces, claims), blocking)
                     .whenComplete(
                         (result, failure) -> {
                           if (failure == null) {
@@ -112,7 +112,7 @@ public final class ToolWorker {
    * the record at all."
    */
   private static ToolResult runAndRemember(
-      RunTool message, CommandRunner runner, Memories memories, Traces traces, Claims claims) {
+      RunTool message, AgentTools tools, Memories memories, Traces traces, Claims claims) {
     ToolCallRecord call = message.call();
     String arguments;
     try {
@@ -124,7 +124,7 @@ public final class ToolWorker {
                   () -> new IllegalStateException("no claim for " + message.argumentsClaimId()));
     } catch (RuntimeException e) {
       ToolResult result = ToolResult.error("tool arguments could not be resolved: " + describe(e));
-      remember(memories, message.agentId(), call, WatchmanTools.argumentsOf("{}"), result);
+      remember(memories, message.agentId(), call, tools.argumentsOf("{}"), result);
       return result;
     }
     ToolResult result;
@@ -141,13 +141,13 @@ public final class ToolWorker {
                     traces.tag("nessy.agent.id", message.agentId());
                     traces.tag("nessy.tool.call.id", call.id());
                     traces.tag("gen_ai.tool.name", call.tool());
-                    traces.tag("watchman.action", call.action());
-                    return WatchmanTools.run(runner, call.tool(), arguments);
+                    traces.tag("nessy.tool.action", call.action());
+                    return tools.run(call.tool(), arguments);
                   }));
     } catch (RuntimeException e) {
       result = ToolResult.error(describe(e));
     }
-    remember(memories, message.agentId(), call, WatchmanTools.argumentsOf(arguments), result);
+    remember(memories, message.agentId(), call, tools.argumentsOf(arguments), result);
     return result;
   }
 

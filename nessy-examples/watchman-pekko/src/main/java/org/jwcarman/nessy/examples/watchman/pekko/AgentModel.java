@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.message.Context;
  * provider consumes one. Adopting either half alone would have needed a translation; adopting both
  * means there is none.
  */
-public interface WatchmanModel {
+public interface AgentModel {
 
   ModelReply reply(Context context);
 }

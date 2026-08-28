@@ -110,7 +110,7 @@ class ClaimedArgumentsTest {
    * Always proposes the one call that needs a human, carrying a huge argument -- so the round parks
    * with the record durable and nothing settles it out from under the assertion.
    */
-  private record OneBigProposal(String bigArgument) implements WatchmanModel {
+  private record OneBigProposal(String bigArgument) implements AgentModel {
 
     @Override
     public ModelReply reply(Context context) {

@@ -72,7 +72,11 @@ class ToolWorkerTest {
     ActorRef<ToolWorker.RunTool> worker =
         testKit.spawn(
             ToolWorker.create(
-                new FakeRunner(), memories, blocking, MicrometerTracing.noop(), claims));
+                WatchmanTools.boundTo(new FakeRunner()),
+                memories,
+                blocking,
+                MicrometerTracing.noop(),
+                claims));
     TestProbe<ToolCallActor.Command> replyTo = testKit.createTestProbe();
 
     worker.tell(new ToolWorker.RunTool(agentId, turnId, call, claimId, replyTo.getRef(), Map.of()));

@@ -104,6 +104,34 @@ public final class WatchmanTools {
     return Optional.ofNullable(SPECS.get(name));
   }
 
+  /**
+   * The watchman's tools as the engine's {@link AgentTools}, bound to the runner that executes
+   * them. The engine never learns that these happen to be shell commands.
+   */
+  public static AgentTools boundTo(CommandRunner runner) {
+    return new AgentTools() {
+      @Override
+      public boolean needsApproval(String tool) {
+        return WatchmanTools.needsApproval(tool);
+      }
+
+      @Override
+      public String action(String tool, String argumentsJson) {
+        return WatchmanTools.action(tool, argumentsJson);
+      }
+
+      @Override
+      public String run(String tool, String argumentsJson) {
+        return WatchmanTools.run(runner, tool, argumentsJson);
+      }
+
+      @Override
+      public com.fasterxml.jackson.databind.JsonNode argumentsOf(String argumentsJson) {
+        return WatchmanTools.argumentsOf(argumentsJson);
+      }
+    };
+  }
+
   public static boolean needsApproval(String tool) {
     return spec(tool).map(Spec::needsApproval).orElse(false);
   }

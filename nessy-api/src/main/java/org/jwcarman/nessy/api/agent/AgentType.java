@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent;
+package org.jwcarman.nessy.api.agent;
 
 /** The recipe's name. The type is code; the id is data (spec §1.1). */
 public record AgentType(String name) {

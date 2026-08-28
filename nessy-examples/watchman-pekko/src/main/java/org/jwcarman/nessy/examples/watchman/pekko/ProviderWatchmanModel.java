@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * <p>Pointed at LM Studio rather than OpenAI, which is a base URL and nothing else — the same move
  * {@code XaiModelProviderBootstrap} makes for x.ai.
  */
-public final class ProviderWatchmanModel implements WatchmanModel {
+public final class ProviderWatchmanModel implements AgentModel {
 
   private static final Logger LOG = LoggerFactory.getLogger(ProviderWatchmanModel.class);
 

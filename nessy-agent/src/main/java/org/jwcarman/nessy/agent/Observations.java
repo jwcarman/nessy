@@ -26,6 +26,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.StaleStateException;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.Approval;
 import org.jwcarman.nessy.spi.substrate.ConflictException;

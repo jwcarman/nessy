@@ -29,7 +29,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /** A watchman round with no tokens and no network. Deterministic on the context it is given. */
-public final class ScriptedWatchmanModel implements WatchmanModel {
+public final class ScriptedWatchmanModel implements AgentModel {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 

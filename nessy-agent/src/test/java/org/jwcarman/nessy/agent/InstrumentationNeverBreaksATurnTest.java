@@ -57,6 +57,7 @@ import org.jwcarman.nessy.agent.support.TestToolClients;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.TextBlock;

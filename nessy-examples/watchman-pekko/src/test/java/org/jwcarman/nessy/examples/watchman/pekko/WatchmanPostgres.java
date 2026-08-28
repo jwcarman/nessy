@@ -83,11 +83,11 @@ public final class WatchmanPostgres {
     return byCall;
   }
 
-  public static WatchmanActorSystem start(WatchmanModel model) {
+  public static WatchmanActorSystem start(AgentModel model) {
     return start(model, memories());
   }
 
-  public static WatchmanActorSystem start(WatchmanModel model, Memories memories) {
+  public static WatchmanActorSystem start(AgentModel model, Memories memories) {
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
             config(),

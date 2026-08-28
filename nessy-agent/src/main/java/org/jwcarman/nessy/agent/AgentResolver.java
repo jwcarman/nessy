@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import org.jwcarman.nessy.api.agent.AgentType;
+
 /**
  * Binds a scope coordinate to its live instance (spec §4.3 amendment, extending the binder
  * principle): whoever implements this provably holds — or can construct — the scope's {@link

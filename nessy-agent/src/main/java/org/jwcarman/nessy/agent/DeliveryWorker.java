@@ -31,6 +31,7 @@ import org.jwcarman.continuum.api.ResultTtl;
 import org.jwcarman.continuum.api.TypedDelivery;
 import org.jwcarman.continuum.api.TypedOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approval;

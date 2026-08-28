@@ -82,7 +82,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
 
   public WatchmanActorSystem(
       Config config,
-      WatchmanModel model,
+      AgentModel model,
       CommandRunner runner,
       Memories memories,
       Backlogs<String> backlogs,

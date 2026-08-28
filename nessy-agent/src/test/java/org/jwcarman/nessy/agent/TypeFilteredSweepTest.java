@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
  * Isolation by construction (computation-identity spec §3, superseding harness-first spec §5's

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.List;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;

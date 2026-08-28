@@ -90,7 +90,8 @@ class ToolCallActorTest {
             Clock.systemUTC(),
             memories,
             blocking,
-            claims));
+            claims,
+            WatchmanTools.boundTo(new FakeRunner())));
 
     // The bug this guards against: telling ToolCallSettled here even though remember() blew up
     // would settle a denied call whose exchange was never recorded -- the assistant turn naming
@@ -139,7 +140,8 @@ class ToolCallActorTest {
             Clock.systemUTC(),
             memories,
             blocking,
-            claims));
+            claims,
+            WatchmanTools.boundTo(new FakeRunner())));
 
     // Unlike a throwing remember (above), an unresolved claim IS caught -- the round must not
     // stall on the watchman's most common path (a denial). The agent is told the call settled.
@@ -193,7 +195,8 @@ class ToolCallActorTest {
                         Clock.systemUTC(),
                         memories,
                         rejecting,
-                        claims)))
+                        claims,
+                        WatchmanTools.boundTo(new FakeRunner()))))
         .doesNotThrowAnyException();
 
     agent.expectNoMessage(Duration.ofSeconds(1));

@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import org.jwcarman.nessy.api.agent.AgentType;
+
 /**
  * The out-of-band delivery door (spec §4.3): whoever implements this provably holds — or can
  * construct — the scope's instance, and hands the event through its package-private door. Hosts

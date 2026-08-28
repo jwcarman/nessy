@@ -76,7 +76,8 @@ public final class ToolCallActor {
       Clock clock,
       Memories memories,
       Executor blocking,
-      Claims claims) {
+      Claims claims,
+      AgentTools toolset) {
 
     return Behaviors.setup(
         context -> {
@@ -94,16 +95,18 @@ public final class ToolCallActor {
                 memories,
                 blocking,
                 call.decision().by(),
-                call.decision().note());
+                call.decision().note(),
+                toolset);
             return Behaviors.stopped();
           }
-          if (WatchmanTools.needsApproval(call.tool())) {
+          if (toolset.needsApproval(call.tool())) {
             ActorRef<ApprovalActor.Command> approval =
                 context.spawn(
                     ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
                     "approval");
             return awaitingApproval(
-                agentId, turnId, call, agent, tools, approval, trace, memories, blocking, claims);
+                agentId, turnId, call, agent, tools, approval, trace, memories, blocking, claims,
+                toolset);
           }
           return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
         });
@@ -139,11 +142,13 @@ public final class ToolCallActor {
       Memories memories,
       Executor blocking,
       String by,
-      String note) {
+      String note,
+      AgentTools toolset) {
     String outcome = "denied by " + by + ": " + note;
     try {
       CompletableFuture.runAsync(
-              () -> recordDenial(agentId, turnId, claims, call, memories, outcome), blocking)
+              () -> recordDenial(agentId, turnId, claims, call, memories, outcome, toolset),
+              blocking)
           .whenComplete(
               (done, failure) -> {
                 if (failure == null) {
@@ -177,7 +182,8 @@ public final class ToolCallActor {
       Claims claims,
       ToolCallRecord call,
       Memories memories,
-      String outcome) {
+      String outcome,
+      AgentTools toolset) {
     String arguments;
     try {
       arguments =
@@ -189,11 +195,11 @@ public final class ToolCallActor {
     } catch (RuntimeException e) {
       ToolResult result =
           ToolResult.error("tool arguments could not be resolved: " + ToolWorker.describe(e));
-      ToolWorker.remember(memories, agentId, call, WatchmanTools.argumentsOf("{}"), result);
+      ToolWorker.remember(memories, agentId, call, toolset.argumentsOf("{}"), result);
       return;
     }
     ToolWorker.remember(
-        memories, agentId, call, WatchmanTools.argumentsOf(arguments), ToolResult.error(outcome));
+        memories, agentId, call, toolset.argumentsOf(arguments), ToolResult.error(outcome));
   }
 
   /**
@@ -210,7 +216,8 @@ public final class ToolCallActor {
       Map<String, String> trace,
       Memories memories,
       Executor blocking,
-      Claims claims) {
+      Claims claims,
+      AgentTools toolset) {
     return Behaviors.receive(Command.class)
         .onMessage(
             Answer.class,
@@ -233,7 +240,8 @@ public final class ToolCallActor {
                     memories,
                     blocking,
                     answered.by(),
-                    answered.note());
+                    answered.note(),
+                    toolset);
                 return Behaviors.stopped();
               }
               return Behaviors.setup(

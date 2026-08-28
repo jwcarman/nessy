@@ -54,7 +54,7 @@ class SpringShutdownTest {
 
     @Bean
     @Primary
-    WatchmanModel slowModel() {
+    AgentModel slowModel() {
       return new ScriptedWatchmanModel(Duration.ofSeconds(120));
     }
 
