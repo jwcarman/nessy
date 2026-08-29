@@ -215,3 +215,13 @@ To be paid once `nessy-agent` is deleted:
    currently sitting in the engine.
 6. **`LayeringTest` grows a case for `nessy-engine`**, so the boundary that is checked mechanically
    for api and spi is checked for the engine too.
+
+### 8.4 Two more debts, from Task 8
+
+7. **Generalise the engine to `O`.** `AgentActor`, `Backlogs` and the renderer are all bound to
+   `String`, so `HarnessFactory.create(Class<O>, ...)` throws for anything else. The String door is
+   the real implementation until they are generic.
+8. **`Adapter.spawn` is not an option** — recorded so nobody re-derives it. Pekko refuses to create a
+   top-level actor from outside a system with a custom user guardian, so §3.1's `SpawnProtocol`
+   requirement is a constraint rather than a preference: the factory takes
+   `ActorSystem<SpawnProtocol.Command>`.

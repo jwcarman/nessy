@@ -123,6 +123,22 @@
       <artifactId>pekko-actor-testkit-typed_2.13</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-testkit_2.13</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-testing</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <!-- The engine emits spans through Micrometer's Tracer and never names OpenTelemetry.
          These are test-only: a real tracer to assert against, which is the whole point of
          MicrometerTracing. A host picks its own bridge. -->

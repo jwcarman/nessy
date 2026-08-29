@@ -46,6 +46,7 @@ public final class HarnessConfig<O> {
   private Coalescer<O> coalescer = Coalescer.none();
   private Duration approvalTerm = Duration.ofDays(3);
   private int backlogCapacity = 1024;
+  private int maxTokens = 8192;
 
   HarnessConfig() {}
 
@@ -116,6 +117,22 @@ public final class HarnessConfig<O> {
     }
     this.backlogCapacity = backlogCapacity;
     return this;
+  }
+
+  /**
+   * The longest answer to allow. Validated against the resolved model's real context window, so an
+   * impossible budget fails at {@code create} rather than at the provider.
+   */
+  public HarnessConfig<O> maxTokens(int maxTokens) {
+    if (maxTokens < 1) {
+      throw new IllegalArgumentException("maxTokens must be at least 1");
+    }
+    this.maxTokens = maxTokens;
+    return this;
+  }
+
+  int maxTokens() {
+    return maxTokens;
   }
 
   AgentType type() {
