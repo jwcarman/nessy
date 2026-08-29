@@ -112,12 +112,12 @@ final class DeliveryWorker<O> implements ComputationPump {
   private static final BatchSize TOOL_BATCH_SIZE = BatchSize.of(100);
 
   private final Substrate store;
-  private final Harness<O> harness;
+  private final DefaultHarness<O> harness;
   private final AgentBinder binder;
 
   /**
    * Where {@link #nudge()} submits its post-completion approval/tool drain passes (continuum-
-   * adoption spec §7) — the production door ({@link Harness#of}) hands in the shared {@link
+   * adoption spec §7) — the production door ({@link DefaultHarness#of}) hands in the shared {@link
    * ComputationScheduler} itself (it doubles as an {@link Executor}); a pre-migration test
    * constructor that never wires Continuum hands in a direct {@code Runnable::run} executor, which
    * is never actually reached since {@link #approvalClient}/{@link #toolClient} are null there too.
@@ -147,22 +147,23 @@ final class DeliveryWorker<O> implements ComputationPump {
    * are guarded no-ops (spec §3), and this worker is never {@link ComputationScheduler#register}ed
    * — nothing ever calls the four expiry/purge {@link ComputationPump} methods on it.
    */
-  DeliveryWorker(Substrate store, ObjectMapper mapper, Harness<O> harness, AgentResolver resolver) {
+  DeliveryWorker(
+      Substrate store, ObjectMapper mapper, DefaultHarness<O> harness, AgentResolver resolver) {
     this(store, mapper, harness, resolver, Runnable::run, null, null);
   }
 
   /**
    * The production shape (continuum-adoption spec §3, §7): a worker wired for the approval and tool
    * kinds' Continuum clients and the {@link Executor} {@link #nudge()}'s post-completion drain
-   * passes submit to — {@link Harness#of} hands in the same shared {@link ComputationScheduler} it
-   * registers this worker's six pumps with.
+   * passes submit to — {@link DefaultHarness#of} hands in the same shared {@link
+   * ComputationScheduler} it registers this worker's six pumps with.
    *
    * @param nudgeExecutor where {@link #nudge()} submits its approval/tool drain passes
    */
   DeliveryWorker(
       Substrate store,
       ObjectMapper mapper,
-      Harness<O> harness,
+      DefaultHarness<O> harness,
       AgentResolver resolver,
       Executor nudgeExecutor,
       ContinuumClient<Approval, ApprovalRouting> approvalClient,

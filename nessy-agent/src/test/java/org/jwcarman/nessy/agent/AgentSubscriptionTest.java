@@ -140,15 +140,15 @@ class AgentSubscriptionTest {
    * narrates its deltas synchronously once {@code pump} is drained — no approval, no worker fold,
    * just enough real wiring to prove the fanout routes correctly by id.
    */
-  private static Harness<String> chatHarness(
+  private static DefaultHarness<String> chatHarness(
       AgentType type, ScriptedModel model, PumpedExecutor pump) {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
     ToolCallExecutor noTools = new NoToolsExecutor();
-    Harness<String> harness =
-        Harness.of(
+    DefaultHarness<String> harness =
+        DefaultHarness.of(
             type,
             "test_provider",
             "test-model",
@@ -220,8 +220,8 @@ class AgentSubscriptionTest {
       java.util.function.Function<String, AgentPhaseStore> storeFactory =
           rawId -> new SubstrateAgentPhaseStore(substrate, rawId, Clock.systemUTC(), mapper);
 
-      Harness<String> harness =
-          Harness.of(
+      DefaultHarness<String> harness =
+          DefaultHarness.of(
               type,
               "test_provider",
               "test-model",
@@ -324,7 +324,7 @@ class AgentSubscriptionTest {
               List.of(
                   List.of(new ModelEvent.TextChunk("for a")),
                   List.of(new ModelEvent.TextChunk("for b"))));
-      Harness<String> harness = chatHarness(type, model, pump);
+      DefaultHarness<String> harness = chatHarness(type, model, pump);
 
       var agentA = harness.bind(AgentId.of("scope-a"));
       var agentB = harness.bind(AgentId.of("scope-b"));
@@ -360,7 +360,7 @@ class AgentSubscriptionTest {
       var pump = new PumpedExecutor();
       var type = AgentType.of("subscription-close-idempotent");
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
-      Harness<String> harness = chatHarness(type, model, pump);
+      DefaultHarness<String> harness = chatHarness(type, model, pump);
       var agent = harness.bind(AgentId.of("scope-a"));
       var recorder = new RecordingTurnObserver();
 
@@ -379,7 +379,7 @@ class AgentSubscriptionTest {
               List.of(
                   List.of(new ModelEvent.TextChunk("first")),
                   List.of(new ModelEvent.TextChunk("second"))));
-      Harness<String> harness = chatHarness(type, model, pump);
+      DefaultHarness<String> harness = chatHarness(type, model, pump);
       var agent = harness.bind(AgentId.of("scope-a"));
       var recorder = new RecordingTurnObserver();
 
@@ -420,8 +420,8 @@ class AgentSubscriptionTest {
       ToolCallExecutor noTools = new NoToolsExecutor();
       String scopeId = "scope-a";
 
-      Harness<String> harness =
-          Harness.of(
+      DefaultHarness<String> harness =
+          DefaultHarness.of(
               type,
               "test_provider",
               "test-model",
@@ -502,8 +502,8 @@ class AgentSubscriptionTest {
             }
           };
 
-      Harness<String> harness =
-          Harness.of(
+      DefaultHarness<String> harness =
+          DefaultHarness.of(
               type,
               "test_provider",
               "test-model",
@@ -564,7 +564,7 @@ class AgentSubscriptionTest {
       var pump = new PumpedExecutor();
       var type = AgentType.of("subscription-leak-check");
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
-      Harness<String> harness = chatHarness(type, model, pump);
+      DefaultHarness<String> harness = chatHarness(type, model, pump);
       var id = AgentId.of("scope-a");
       var agent = harness.bind(id);
       var recorder = new RecordingTurnObserver();

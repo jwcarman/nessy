@@ -39,6 +39,7 @@ import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.ApprovalCodec;
 import org.jwcarman.nessy.agent.ApprovalRouting;
+import org.jwcarman.nessy.agent.DefaultHarness;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Routing;
@@ -512,7 +513,7 @@ public final class HarnessConfig<O> {
                 () -> openSegments.get(AgentId.of(id)));
 
     Harness<O> harness =
-        Harness.of(
+        DefaultHarness.of(
             agentType,
             effectiveModel.provider(),
             effectiveModel.id(),

@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.DefaultAgent;
+import org.jwcarman.nessy.agent.DefaultHarness;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
@@ -88,7 +89,7 @@ public final class TestAgents {
       HarnessObserver observer,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
-    Harness<O> harness =
+    DefaultHarness<O> harness =
         harness(
             type,
             memory,
@@ -119,7 +120,7 @@ public final class TestAgents {
    * DeliveryWorker} directly (against its own substrate, for deterministic control over sweeps in a
    * test) must never race this harness's own background heartbeat over the same documents.
    */
-  public static <O> Harness<O> harness(
+  public static <O> DefaultHarness<O> harness(
       Memory memory,
       AgentPhaseStore store,
       Backlog<O> backlog,
@@ -149,7 +150,7 @@ public final class TestAgents {
    * Backlog, ObservationRenderer, ModelCallExecutor, ToolCallExecutor, HarnessObserver, boolean,
    * StalenessPolicy)} for why a fixture ever needs this.
    */
-  public static <O> Harness<O> harness(
+  public static <O> DefaultHarness<O> harness(
       AgentType type,
       Memory memory,
       AgentPhaseStore store,
@@ -179,7 +180,7 @@ public final class TestAgents {
    * TestObservationRegistry} for the fixtures that assert on what the harness recorded, rather than
    * the {@link ObservationRegistry#NOOP} every other fixture wants.
    */
-  public static <O> Harness<O> harness(
+  public static <O> DefaultHarness<O> harness(
       AgentType type,
       Memory memory,
       AgentPhaseStore store,
@@ -195,8 +196,8 @@ public final class TestAgents {
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
-    Harness<O> harness =
-        Harness.of(
+    DefaultHarness<O> harness =
+        DefaultHarness.of(
             type,
             "test_provider",
             "test-model",

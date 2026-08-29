@@ -230,7 +230,7 @@ class AgentAskTest {
 
       agent.ask("hello");
 
-      assertThat(harness.hasSubscribers(id)).isFalse();
+      assertThat(((DefaultHarness<String>) harness).hasSubscribers(id)).isFalse();
     }
 
     @Test
@@ -270,7 +270,7 @@ class AgentAskTest {
       TurnOutcome outcome = agent.ask("hello");
 
       assertThat(outcome).isInstanceOf(TurnOutcome.Failed.class);
-      assertThat(harness.hasSubscribers(id)).isFalse();
+      assertThat(((DefaultHarness<String>) harness).hasSubscribers(id)).isFalse();
     }
   }
 
@@ -298,14 +298,14 @@ class AgentAskTest {
       HarnessTeardown.track(harness);
       var id = AgentId.of("scope-1");
       var agent = harness.bind(id);
-      var alreadyInFlight = harness.awaitApproval(id);
+      var alreadyInFlight = ((DefaultHarness<String>) harness).awaitApproval(id);
 
       try {
         assertThatThrownBy(() -> agent.ask("hello"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("previous ask");
       } finally {
-        harness.cancelApprovalWait(id, alreadyInFlight);
+        ((DefaultHarness<String>) harness).cancelApprovalWait(id, alreadyInFlight);
       }
     }
   }

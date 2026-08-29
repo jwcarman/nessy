@@ -187,7 +187,7 @@ class StaleRetryCounterTest {
   @Nested
   class InTheShell {
 
-    private Harness<String> harnessWith(Memory memory) {
+    private DefaultHarness<String> harnessWith(Memory memory) {
       return TestAgents.harness(
           TYPE,
           memory,
@@ -213,7 +213,7 @@ class StaleRetryCounterTest {
      */
     @Test
     void an_observation_that_loses_the_idle_race_counts_one_stale_retry() {
-      Harness<String> harness = harnessWith(new SecondWriter(1));
+      DefaultHarness<String> harness = harnessWith(new SecondWriter(1));
 
       harness.bind(SCOPE).tell("restart prod-eu");
 
@@ -228,7 +228,7 @@ class StaleRetryCounterTest {
      */
     @Test
     void a_model_fold_that_loses_the_race_counts_one_stale_retry_and_still_commits() {
-      Harness<String> harness = harnessWith(new SecondWriter(2));
+      DefaultHarness<String> harness = harnessWith(new SecondWriter(2));
 
       harness.bind(SCOPE).tell("restart prod-eu");
 
@@ -274,7 +274,7 @@ class StaleRetryCounterTest {
     @Test
     void a_delivery_that_loses_the_race_counts_one_stale_retry_and_still_folds() {
       var memory = new SecondWriter(1);
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           TestAgents.harness(
               TYPE,
               memory,

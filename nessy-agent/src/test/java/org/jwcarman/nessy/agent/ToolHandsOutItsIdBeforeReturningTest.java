@@ -185,7 +185,7 @@ class ToolHandsOutItsIdBeforeReturningTest {
           APPROVAL_CEILING,
           TOOL_CEILING);
 
-  private final Harness<String> harness =
+  private final DefaultHarness<String> harness =
       TestAgents.<String>harness(
           memory,
           store,

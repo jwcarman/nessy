@@ -125,7 +125,7 @@ class DeliveryWorkerMismatchedDeliveryTest {
                   .deadline(Duration.ofHours(1)));
   private final TestObservationRegistry registry = TestObservationRegistry.create();
   private final RecordingHarnessObserver drops = new RecordingHarnessObserver();
-  private final Harness<String> harness =
+  private final DefaultHarness<String> harness =
       TestAgents.<String>harness(
           AgentType.of("test"),
           new VerbatimMemory(),

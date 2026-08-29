@@ -457,7 +457,7 @@ class InstrumentationNeverBreaksATurnTest {
       var store = new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
       var contender =
           new SubstrateAgentPhaseStore(substrate, SCOPE.value(), Clock.systemUTC(), mapper);
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           TestAgents.harness(
               AgentType.of("test"),
               new SecondWriter(contender, 1),

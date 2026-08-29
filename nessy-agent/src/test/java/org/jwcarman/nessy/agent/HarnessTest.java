@@ -104,7 +104,7 @@ class HarnessTest {
    * purpose, entirely decoupled from whatever storage {@code memoryFactory}/{@code storeFactory}
    * actually exercise in a given test.
    */
-  private static Harness<String> harness(
+  private static DefaultHarness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
       List<HarnessObserver> observers,
@@ -132,7 +132,7 @@ class HarnessTest {
    * TurnObserver#noop()} — fix round 1, MINOR-6: {@link Guards#harnessRequiresATurnObserver()}
    * needs a null to pass through.
    */
-  private static Harness<String> harness(
+  private static DefaultHarness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
       List<HarnessObserver> observers,
@@ -147,7 +147,7 @@ class HarnessTest {
     var mapper = TestMappers.plainlyPinned();
     var approvalClient = TestApprovalClients.client(Kinds.approval(type), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(type), mapper);
-    return Harness.of(
+    return DefaultHarness.of(
         type,
         "test_provider",
         "test-model",
@@ -176,10 +176,10 @@ class HarnessTest {
    * one). The model and tool executors here capture nothing, so what {@code ownedExecutor} pins is
    * ownership alone — who closes what on {@link Harness#shutdown()}.
    */
-  private static Harness<String> harnessOwning(ExecutorService ownedExecutor) {
+  private static DefaultHarness<String> harnessOwning(ExecutorService ownedExecutor) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    return Harness.of(
+    return DefaultHarness.of(
         TYPE,
         "test_provider",
         "test-model",
@@ -304,7 +304,7 @@ class HarnessTest {
       // is not "no observer", it is "the narrating observer this harness always builds for itself,
       // and nothing else". The old guard asserted a requireNonNull the parameter's disappearance
       // retired; what is worth pinning now is that the harness still builds.
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -446,7 +446,7 @@ class HarnessTest {
 
     @Test
     void constructingADefaultAgentWithAModelExecutorFactoryThatReturnsNullFailsLoudly() {
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -465,7 +465,7 @@ class HarnessTest {
 
     @Test
     void constructingADefaultAgentWithAToolExecutorFactoryThatReturnsNullFailsLoudly() {
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -489,7 +489,7 @@ class HarnessTest {
     @Test
     void twoDifferentIdsGetDistinctHandlesThatDoNotLeakIntoEachOther() {
       var substrate = new InMemorySubstrate();
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -523,7 +523,7 @@ class HarnessTest {
     @Test
     void bindingTheSameIdTwiceSeesTheSameSubstrate() {
       var substrate = new InMemorySubstrate();
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -554,7 +554,7 @@ class HarnessTest {
       Object registry = new Object();
       List<Object> receivedByFactory = new ArrayList<>();
       List<ModelCallExecutor> produced = new ArrayList<>();
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -591,7 +591,7 @@ class HarnessTest {
       Object registry = new Object();
       List<Object> receivedByFactory = new ArrayList<>();
       List<ToolCallExecutor> produced = new ArrayList<>();
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               RENDERER,
@@ -627,7 +627,7 @@ class HarnessTest {
     @Test
     void bindReturnsAnAgentThatDrainsIntoTheSameSubstrateBindingExposes() {
       var substrate = new InMemorySubstrate();
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           harness(
               TYPE,
               text -> List.of(new TextBlock(text)),

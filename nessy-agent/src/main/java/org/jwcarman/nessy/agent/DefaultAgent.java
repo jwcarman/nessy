@@ -43,12 +43,12 @@ import org.jwcarman.nessy.spi.substrate.Versioned;
  */
 public final class DefaultAgent<O> implements Agent<O> {
 
-  private final Harness<O> harness;
+  private final DefaultHarness<O> harness;
   private final Binding<O> binding;
   private final ModelCallExecutor model;
   private final ToolCallExecutor tools;
 
-  DefaultAgent(Harness<O> harness, Binding<O> binding) {
+  DefaultAgent(DefaultHarness<O> harness, Binding<O> binding) {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     this.binding = Objects.requireNonNull(binding, "binding must not be null");
     this.model =
@@ -87,12 +87,12 @@ public final class DefaultAgent<O> implements Agent<O> {
    * <p>Parking is the one outcome {@link TurnEvent} can never carry (its own javadoc: "Parking is
    * never narrated at all"), so it is detected off the fold itself: the {@code ApprovalDeferred}
    * that records the park completes this id's registered wait (see {@link
-   * Harness#awaitApproval(AgentId)} and {@link Harness#parked(AgentId, TurnOutcome.Parked)}). A
-   * fresh wait is registered for this id BEFORE {@code tell} ever dispatches anything, so a
-   * synchronous park inside the very call that registers it can never race ahead of the
-   * registration. Whichever resolves first — the turn's own {@code TurnEnded}, or the park —
-   * decides the {@link TurnOutcome}; the other input, if it never fires, is retired in the {@code
-   * finally} block so it cannot leak into a later, unrelated {@code ask} on the same id.
+   * DefaultHarness#awaitApproval(AgentId)} and {@link DefaultHarness#parked(AgentId,
+   * TurnOutcome.Parked)}). A fresh wait is registered for this id BEFORE {@code tell} ever
+   * dispatches anything, so a synchronous park inside the very call that registers it can never
+   * race ahead of the registration. Whichever resolves first — the turn's own {@code TurnEnded}, or
+   * the park — decides the {@link TurnOutcome}; the other input, if it never fires, is retired in
+   * the {@code finally} block so it cannot leak into a later, unrelated {@code ask} on the same id.
    */
   @Override
   public TurnOutcome ask(O observation) {

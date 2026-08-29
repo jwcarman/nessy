@@ -106,7 +106,7 @@ class FactStreamTest {
   }
 
   /** A harness whose model call does nothing: one {@code Observed} fold is all this file needs. */
-  private static Harness<String> harness() {
+  private static DefaultHarness<String> harness() {
     ModelCallExecutor silentModel = sink -> {};
     ToolCallExecutor noTools = new NoToolsExecutor();
     AgentPhaseStore store =
@@ -129,7 +129,7 @@ class FactStreamTest {
 
     @Test
     void a_subscriber_is_told_which_scope_each_fact_belongs_to() {
-      Harness<String> harness = harness();
+      DefaultHarness<String> harness = harness();
       var recorder = new RecordingHarnessObserver();
 
       try (Subscription subscription = harness.subscribe(recorder)) {
@@ -148,7 +148,7 @@ class FactStreamTest {
 
     @Test
     void closing_a_subscription_takes_the_subscriber_off_the_stream() {
-      Harness<String> harness = harness();
+      DefaultHarness<String> harness = harness();
       var recorder = new RecordingHarnessObserver();
       Subscription subscription = harness.subscribe(recorder);
       subscription.close();
@@ -165,7 +165,7 @@ class FactStreamTest {
      */
     @Test
     void the_configured_observer_and_a_subscriber_both_ride_the_one_stream() {
-      Harness<String> harness = harness();
+      DefaultHarness<String> harness = harness();
 
       // narrator + configured + Observations
       assertThat(harness.facts().subscriberCount()).isEqualTo(3);
@@ -187,7 +187,7 @@ class FactStreamTest {
      */
     @Test
     void a_throwing_subscriber_never_propagates_into_the_fold() {
-      Harness<String> harness = harness();
+      DefaultHarness<String> harness = harness();
       Agent<String> agent = harness.bind(SCOPE);
 
       try (Subscription subscription = harness.subscribe(new Saboteur())) {
@@ -198,7 +198,7 @@ class FactStreamTest {
 
     @Test
     void a_throwing_subscriber_does_not_starve_the_ones_beside_it() {
-      Harness<String> harness = harness();
+      DefaultHarness<String> harness = harness();
       var recorder = new RecordingHarnessObserver();
 
       try (Subscription saboteur = harness.subscribe(new Saboteur());

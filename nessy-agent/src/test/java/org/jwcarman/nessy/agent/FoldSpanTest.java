@@ -231,8 +231,8 @@ class FoldSpanTest {
         List.of(new TextBlock("done")), List.of(), ModelResponseId.of("r1"));
   }
 
-  private Harness<String> shellOver(Substrate substrate, Memory memory) {
-    Harness<String> harness =
+  private DefaultHarness<String> shellOver(Substrate substrate, Memory memory) {
+    DefaultHarness<String> harness =
         TestAgents.harness(
             TYPE,
             memory,
@@ -328,7 +328,7 @@ class FoldSpanTest {
     void a_cas_conflict_in_the_worker_produces_a_second_fold_span() {
       var store =
           new SubstrateAgentPhaseStore(underlying, SCOPE.value(), Clock.systemUTC(), mapper);
-      Harness<String> harness =
+      DefaultHarness<String> harness =
           TestAgents.harness(
               TYPE,
               new SecondWriter(1),

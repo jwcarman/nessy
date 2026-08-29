@@ -117,7 +117,7 @@ class HarnessDemo {
     var approvalClient = TestApprovalClients.client(Kinds.approval(demoType), lifeSupportMapper);
     var toolClient = TestToolClients.client(Kinds.tool(demoType), lifeSupportMapper);
     var harness =
-        Harness.<String>of(
+        DefaultHarness.<String>of(
             demoType,
             "test_provider",
             "test-model",

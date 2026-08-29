@@ -131,7 +131,7 @@ class DeliveryWorkerSilentLossWarningTest {
     AgentPhaseStore harnessStore =
         new SubstrateAgentPhaseStore(substrate, "test-scope", Clock.systemUTC(), mapper);
 
-    Harness<String> harness =
+    DefaultHarness<String> harness =
         TestAgents.<String>harness(
             type,
             NOOP_MEMORY,

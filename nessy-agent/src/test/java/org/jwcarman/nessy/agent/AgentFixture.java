@@ -72,8 +72,8 @@ final class AgentFixture {
     var fixtureType = AgentType.of("fixture");
     var approvalClient = TestApprovalClients.client(Kinds.approval(fixtureType), mapper);
     var toolClient = TestToolClients.client(Kinds.tool(fixtureType), mapper);
-    Harness<String> harness =
-        Harness.of(
+    DefaultHarness<String> harness =
+        DefaultHarness.of(
             fixtureType,
             "test_provider",
             "test-model",
