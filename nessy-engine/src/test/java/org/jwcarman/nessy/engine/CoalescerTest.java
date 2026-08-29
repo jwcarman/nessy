@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.Coalescer;
 
 /**
  * The backlog reducer, exercised with no actor in sight — which is the point of it being a pure

@@ -17,9 +17,9 @@ package org.jwcarman.nessy.examples.watchman;
 
 import java.util.List;
 import java.util.Optional;
+import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.engine.Coalescer;
 
 /**
  * The watchman's observation vocabulary, such as it is: a String, because this port has exactly one

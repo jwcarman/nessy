@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine;
+package org.jwcarman.nessy.api.agent;
 
 import java.util.Optional;
 import java.util.function.BinaryOperator;

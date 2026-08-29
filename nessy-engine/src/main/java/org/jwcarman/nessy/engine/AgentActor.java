@@ -35,6 +35,8 @@ import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.agent.AgentType;
+import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Remembrance;

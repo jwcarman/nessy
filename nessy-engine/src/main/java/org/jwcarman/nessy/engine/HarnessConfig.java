@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.agent.AgentType;
+import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 
 /**

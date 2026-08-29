@@ -24,6 +24,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.slf4j.Logger;

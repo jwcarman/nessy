@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.jwcarman.nessy.api.agent.Coalescer;
 
 /**
  * A SERVICE the actor depends on — a source of the next observation — not state {@link AgentState}

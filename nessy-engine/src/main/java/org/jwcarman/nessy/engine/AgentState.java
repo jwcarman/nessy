@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.agent.Backlog;
 
 /**
  * Everything an agent persists: identifiers, status, and human decisions. NEVER content — tool
