@@ -125,7 +125,7 @@ public final class HarnessActor {
                   wiring.tools(),
                   wiring.agentType());
 
-          Agents agents = Agents.local(context, deps);
+          Agents agents = Agents.sharded(context.getSystem(), wiring.agentType(), deps);
 
           return Behaviors.receive(Command.class)
               .onMessage(

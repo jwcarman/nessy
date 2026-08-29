@@ -195,8 +195,11 @@ class TraceTreeTest {
             span -> {
               var attributes = span.getAttributes();
               assertThat(attributes.get(AttributeKey.stringKey("nessy.agent.id"))).isEqualTo(agent);
+              // Sharding names an entity by its id, so the path identifies the agent directly
+              // rather than through an "agent-" prefix a local parent used to add.
               assertThat(attributes.get(AttributeKey.stringKey("nessy.actor.path")))
-                  .contains("agent-");
+                  .contains("/sharding/")
+                  .endsWith(agent);
               assertThat(attributes.get(AttributeKey.stringKey("nessy.node.address")))
                   .startsWith("pekko://watchman");
               assertThat(attributes.get(AttributeKey.stringKey("nessy.turn.phase")))

@@ -15,19 +15,29 @@
  */
 package org.jwcarman.nessy.engine;
 
-import org.apache.pekko.actor.typed.ActorRef;
-import org.apache.pekko.actor.typed.javadsl.ActorContext;
+import org.apache.pekko.actor.typed.ActorSystem;
+import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
+import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
+import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
+import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
- * How a message reaches the agent named by an id.
+ * Routes a message to the one actor instance for an agent, starting it if it is not running.
  *
- * <p>One method, because nothing above it ever holds an agent — every operation is {@code (agent
- * id, message)}. That is exactly what makes local and clustered interchangeable: a handle would
- * claim you are holding the agent when all you have is a name you can send to, and under sharding
- * the entity may move between two calls. An address is not an identity (composition spec §8).
+ * <p>That is the whole requirement: <b>exactly one instance per (agent type, agent id)</b>, and
+ * deterministic routing to it. Everything else follows — nothing above this holds an agent, so a
+ * handle can never go stale, and how many harnesses exist stops mattering because they all address
+ * the same entity.
  *
- * <p>Neither implementation keeps a map. Locally the parent asks Pekko for its own child by name;
- * clustered, sharding already knows where every entity lives.
+ * <p><b>Cluster sharding is what provides it.</b> Not a map, not a claim, not a guard: Pekko
+ * already solves this, cluster-wide, and it works on a single node (measured 2026-08-29 — one
+ * instance created across five sends). The alternative, agents as children of a harness actor, can
+ * only hold the invariant if something also guarantees one harness per type, and nothing local can
+ * guarantee that across processes — Pekko will not even fail on a duplicate actor name, it silently
+ * renames.
+ *
+ * <p>The entity key needs no new concept. One harness is one agent type, so it is the harness's own
+ * {@link AgentType}.
  */
 @FunctionalInterface
 interface Agents {
@@ -35,34 +45,28 @@ interface Agents {
   /** Delivers {@code message} to {@code agentId}, starting that agent if it is not running. */
   void tell(String agentId, AgentActor.NessyMessage message);
 
-  /**
-   * Agents as children of the harness actor, found by name.
-   *
-   * <p><b>No map.</b> {@code getChild} IS Pekko's registry of children; keeping a second one beside
-   * it was only ever necessary because that call returns an untyped ref, and {@code unsafeUpcast}
-   * answers it. The upcast is safe by construction — this actor spawned the child itself, with a
-   * behavior of exactly this type. Dropping the map also drops the death-watch that existed solely
-   * to remove entries from it.
-   */
-  static Agents local(ActorContext<HarnessActor.Command> context, AgentActor.Dependencies deps) {
-    return (agentId, message) -> {
-      String name = "agent-" + safe(agentId);
-      ActorRef<AgentActor.NessyMessage> agent =
-          context
-              .getChild(name)
-              .map(ActorRef::<AgentActor.NessyMessage>unsafeUpcast)
-              .orElseGet(
-                  () ->
-                      context.spawn(
-                          AgentActor.create(
-                              agentId, deps, (stoppingId, self) -> self.tell(AgentActor.STOP)),
-                          name));
-      agent.tell(message);
-    };
+  /** The entity key for one agent type. */
+  static EntityTypeKey<AgentActor.NessyMessage> keyFor(AgentType agentType) {
+    return EntityTypeKey.create(AgentActor.NessyMessage.class, agentType.name());
   }
 
-  /** An actor name Pekko will accept, from an agent id a caller chose. */
-  private static String safe(String agentId) {
-    return agentId.replaceAll("[^A-Za-z0-9-]", "_");
+  /**
+   * Registers this agent type with sharding and returns the door to its entities.
+   *
+   * <p>{@code init} is what makes this node able to host entities of the type; {@code entityRefFor}
+   * then addresses one by id from anywhere in the cluster, whether or not it currently exists here.
+   */
+  static Agents sharded(ActorSystem<?> system, AgentType agentType, AgentActor.Dependencies deps) {
+    EntityTypeKey<AgentActor.NessyMessage> key = keyFor(agentType);
+    ClusterSharding sharding = ClusterSharding.get(system);
+    sharding.init(
+        Entity.of(
+            key,
+            entityContext ->
+                AgentActor.create(
+                    entityContext.getEntityId(),
+                    deps,
+                    (stoppingId, self) -> self.tell(AgentActor.STOP))));
+    return (agentId, message) -> sharding.entityRefFor(key, agentId).tell(message);
   }
 }

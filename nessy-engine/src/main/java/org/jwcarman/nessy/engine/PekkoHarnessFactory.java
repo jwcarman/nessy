@@ -65,6 +65,8 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final AgentTools tools;
   private final MeterRegistry meters;
   private final Traces traces;
+  private final java.util.concurrent.atomic.AtomicInteger roots =
+      new java.util.concurrent.atomic.AtomicInteger();
   private final Clock clock;
   private final Executor blocking;
 
@@ -218,8 +220,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    */
   private ActorRef<HarnessActor.Command> spawnRoot(
       AgentType agentType, Behavior<HarnessActor.Command> behavior) {
-    EngineCodecs.of(system).claim(agentType);
-    String name = "nessy-harness-" + agentType.name();
+    String name = "nessy-harness-" + agentType.name() + "-" + roots.incrementAndGet();
     return AskPattern.<SpawnProtocol.Command, ActorRef<HarnessActor.Command>>ask(
             system,
             replyTo -> new SpawnProtocol.Spawn<>(behavior, name, Props.empty(), replyTo),

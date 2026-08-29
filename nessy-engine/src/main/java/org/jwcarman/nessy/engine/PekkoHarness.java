@@ -77,9 +77,6 @@ public final class PekkoHarness implements Harness<String> {
   @Override
   public void shutdown() {
     harness.tell(new HarnessActor.Stop());
-    // Releasing the type lets a stopped harness be rebuilt -- a test that stands one up per case
-    // would otherwise fail on the second, and a host reconfiguring at runtime could never restart.
-    EngineCodecs.of(system).release(type);
   }
 
   /** Sends a message to one agent — the only way anything reaches an agent. */

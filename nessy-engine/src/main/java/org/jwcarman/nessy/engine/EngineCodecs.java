@@ -16,8 +16,6 @@
 package org.jwcarman.nessy.engine;
 
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pekko.actor.AbstractExtensionId;
 import org.apache.pekko.actor.ActorSystem;
@@ -26,7 +24,6 @@ import org.apache.pekko.actor.ExtendedActorSystem;
 import org.apache.pekko.actor.Extension;
 import org.apache.pekko.actor.ExtensionId;
 import org.apache.pekko.actor.ExtensionIdProvider;
-import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.spi.codec.CodecPipeline;
 
 /**
@@ -36,9 +33,7 @@ import org.jwcarman.nessy.spi.codec.CodecPipeline;
  * is the only reason this can enforce anything: a per-factory field cannot see a second factory on
  * the same system, and an extension can.
  *
- * <p>Two things live here, both for that reason.
- *
- * <p><b>The codec pipeline</b>, because Pekko instantiates a serializer reflectively from {@code
+ * <p>It holds the codec pipeline, because Pekko instantiates a serializer reflectively from {@code
  * .conf} and can hand it nothing except an {@link ExtendedActorSystem}. Without this, actor state
  * would be stored raw while everything through {@code Substrate} was compressed or encrypted.
  *
@@ -92,7 +87,6 @@ public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.EngineS
 
     private final AtomicReference<CodecPipeline> pipeline =
         new AtomicReference<>(CodecPipeline.none());
-    private final Set<String> claimedTypes = ConcurrentHashMap.newKeySet();
 
     private EngineState() {}
 
@@ -109,29 +103,6 @@ public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.EngineS
     /** The installed pipeline, or one that transforms nothing if none was installed. */
     public CodecPipeline pipeline() {
       return pipeline.get();
-    }
-
-    /**
-     * Claims {@code agentType} for a harness on this system.
-     *
-     * @throws IllegalStateException if some harness on this system already has it
-     */
-    public void claim(AgentType agentType) {
-      Objects.requireNonNull(agentType, "agentType must not be null");
-      if (!claimedTypes.add(agentType.name())) {
-        throw new IllegalStateException(
-            ("a harness for agent type '%s' already exists on this actor system. One harness IS one"
-                    + " agent type: a second would parent its own agent-<id> children, and those"
-                    + " agents would share a persistence id with the first — two"
-                    + " DurableStateBehaviors writing the same row. Pekko will not catch this;"
-                    + " SpawnProtocol silently renames a duplicate rather than failing.")
-                .formatted(agentType.name()));
-      }
-    }
-
-    /** Releases a claim, so a stopped harness's type can be built again. */
-    public void release(AgentType agentType) {
-      claimedTypes.remove(Objects.requireNonNull(agentType, "agentType must not be null").name());
     }
   }
 }

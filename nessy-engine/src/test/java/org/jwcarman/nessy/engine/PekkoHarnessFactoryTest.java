@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -108,9 +107,22 @@ class PekkoHarnessFactoryTest {
             SpawnProtocol.create(),
             "engine-test",
             ConfigFactory.parseString(
-                // AgentActor is a DurableStateBehavior; without a store it dies at creation and the
-                // observation lands in dead letters.
-                "pekko.persistence.state.plugin = \"pekko.persistence.testkit.state\""));
+                """
+                # AgentActor is a DurableStateBehavior; without a store it dies at creation and the
+                # observation lands in dead letters.
+                pekko.persistence.state.plugin = "pekko.persistence.testkit.state"
+                # Agents are sharded entities, which is what guarantees exactly one instance per
+                # (type, id). Sharding needs a cluster -- one node is a cluster.
+                pekko.actor.provider = cluster
+                pekko.remote.artery.canonical.hostname = "127.0.0.1"
+                pekko.remote.artery.canonical.port = 0
+                pekko.cluster.jmx.multi-mbeans-in-same-jvm = on
+                pekko.cluster.downing-provider-class = "org.apache.pekko.cluster.sbr.SplitBrainResolverProvider"
+                """));
+    // A single-node cluster still has to be formed before sharding will host anything.
+    org.apache.pekko.cluster.typed.Cluster cluster =
+        org.apache.pekko.cluster.typed.Cluster.get(system);
+    cluster.manager().tell(new org.apache.pekko.cluster.typed.Join(cluster.selfMember().address()));
     substrate = new InMemorySubstrate();
     factory =
         new PekkoHarnessFactory(
@@ -175,52 +187,25 @@ class PekkoHarnessFactoryTest {
     }
 
     @Test
-    void refuses_a_second_harness_for_an_agent_type_even_from_a_DIFFERENT_factory() {
-      // The hole a per-factory guard leaves. Pekko does not close it either: asked to spawn a
-      // duplicate name, SpawnProtocol silently renames rather than failing.
-      factory.create(config -> config.type("watchman"));
-      PekkoHarnessFactory second =
-          new PekkoHarnessFactory(
-              system,
-              substrate,
-              providerOf(ScriptedModel.script(s2 -> s2.text("hi").endTurn())),
-              "scripted",
-              NO_TOOLS,
-              new SimpleMeterRegistry(),
-              MicrometerTracing.noop(),
-              Clock.systemUTC(),
-              Executors.newSingleThreadExecutor(),
-              CodecPipeline.none());
+    void routes_two_harnesses_for_one_type_to_the_SAME_agent_instance() {
+      // The invariant is exactly one agent actor per (type, id) -- harness count is irrelevant to
+      // it. Sharding makes that true by construction, so a second harness is harmless rather than
+      // forbidden. Before sharding, these two would have parented rival agent-a1 children writing
+      // the same persistence id.
+      Harness<String> first = factory.create(config -> config.type("test"));
+      Harness<String> second = factory.create(config -> config.type("test"));
 
-      assertThatThrownBy(() -> second.create(config -> config.type("watchman")))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("persistence id");
-    }
+      first.observe("a1", "from the first harness");
+      second.observe("a1", "from the second harness");
 
-    @Test
-    void lets_a_type_be_built_again_once_its_harness_has_shut_down() {
-      factory.create(config -> config.type("watchman")).shutdown();
-
-      assertThatCode(() -> factory.create(config -> config.type("watchman")))
-          .doesNotThrowAnyException();
-    }
-
-    @Test
-    void refuses_a_second_harness_for_an_agent_type_it_already_built() {
-      factory.create(config -> config.type("watchman"));
-
-      assertThatThrownBy(() -> factory.create(config -> config.type("watchman")))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("already exists")
-          .hasMessageContaining("persistence id");
-    }
-
-    @Test
-    void still_allows_a_second_harness_for_a_different_agent_type() {
-      factory.create(config -> config.type("watchman"));
-
-      assertThatCode(() -> factory.create(config -> config.type("planner")))
-          .doesNotThrowAnyException();
+      Awaitility.await()
+          .atMost(java.time.Duration.ofSeconds(20))
+          .untilAsserted(
+              () ->
+                  assertThat(
+                          new Memories(substrate, 100_000).everything("a1").messages().toString())
+                      .contains("from the first harness")
+                      .contains("from the second harness"));
     }
 
     @Test

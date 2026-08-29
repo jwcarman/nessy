@@ -110,6 +110,10 @@ public final class WatchmanActorSystem implements SmartLifecycle {
     this.askTimeout = askTimeout;
     this.traces = traces;
     this.system = ActorSystem.create(SpawnProtocol.create(), "watchman", config);
+    // A single-node cluster still has to be formed before sharding will host entities.
+    org.apache.pekko.cluster.typed.Cluster cluster =
+        org.apache.pekko.cluster.typed.Cluster.get(system);
+    cluster.manager().tell(new org.apache.pekko.cluster.typed.Join(cluster.selfMember().address()));
     this.harness =
         new PekkoHarnessFactory(
                 system,
@@ -150,6 +154,10 @@ public final class WatchmanActorSystem implements SmartLifecycle {
     // with a custom user guardian -- which is what lets a harness be handed a system it does not
     // own.
     this.system = ActorSystem.create(SpawnProtocol.create(), "watchman", config);
+    // A single-node cluster still has to be formed before sharding will host entities.
+    org.apache.pekko.cluster.typed.Cluster cluster =
+        org.apache.pekko.cluster.typed.Cluster.get(system);
+    cluster.manager().tell(new org.apache.pekko.cluster.typed.Join(cluster.selfMember().address()));
     this.harness =
         new PekkoHarnessFactory(
                 system,
