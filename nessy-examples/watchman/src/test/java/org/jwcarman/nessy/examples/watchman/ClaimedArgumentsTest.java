@@ -41,7 +41,6 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentModel;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Memories;
@@ -49,7 +48,6 @@ import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.ModelReply;
 import org.jwcarman.nessy.engine.Phase;
 import org.jwcarman.nessy.engine.StateSerializer;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.ToolCallRecord;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -79,7 +77,6 @@ class ClaimedArgumentsTest {
     String big = "x".repeat(200_000);
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories memories = new Memories(substrate, 8000);
-    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),

@@ -24,6 +24,7 @@ import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.actor.typed.javadsl.Routers;
 import org.jwcarman.nessy.api.agent.AgentType;
+import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 
 /**
@@ -65,7 +66,7 @@ public final class EngineRoot {
       AgentModel model,
       AgentTools tools,
       Memories memories,
-      Backlogs<String> backlogs,
+      Coalescer<String> coalescer,
       ObservationRenderer<String> renderer,
       Traces traces,
       Clock clock,
@@ -113,7 +114,7 @@ public final class EngineRoot {
                           desk,
                           tools,
                           wiring.memories(),
-                          wiring.backlogs(),
+                          wiring.coalescer(),
                           wiring.renderer(),
                           wiring.blocking(),
                           wiring.traces(),

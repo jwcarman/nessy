@@ -21,7 +21,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.PostStop;
@@ -35,7 +34,7 @@ import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.apache.pekko.persistence.typed.state.javadsl.SignalHandler;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.agent.AgentType;
-import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.BacklogItem;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.Message;
@@ -173,7 +172,7 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       ActorRef<ModelDesk.Command> modelDesk,
       ActorRef<ToolWorker.RunTool> tools,
       Memories memories,
-      Backlogs<String> backlogs,
+      Coalescer<String> coalescer,
       ObservationRenderer<String> renderer,
       java.util.concurrent.Executor blocking,
       Traces traces,
@@ -315,11 +314,15 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    */
   private Effect<AgentState> onObserve(
       AgentState state, Observe observe, Map<String, String> here) {
-    deps.backlogs().ingest(agentId, observe.text(), deps.clock().instant());
-    if (state.phase() instanceof Phase.Idle) {
-      return startTurnIfWork(state, here);
+    AgentState ingested =
+        state.ingesting(
+            deps.coalescer(),
+            new BacklogItem<>(Identifiers.next(), observe.text(), deps.clock().instant()));
+    if (ingested.phase() instanceof Phase.Idle) {
+      return startTurnIfWork(ingested, here);
     }
-    return Effect().none();
+    // Busy: the arrival is durable the moment this state is written, and waits its turn.
+    return Effect().persist(ingested);
   }
 
   /**
@@ -482,22 +485,21 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
       // The whole kind goes, so this needs no list of ids and cannot miss an orphan.
       deps.claims().deleteTurn(agentId, state.turnId());
     }
-    Optional<Backlogs.Taken<String>> taken = deps.backlogs().next(agentId);
-    if (taken.isEmpty()) {
+    if (!state.hasWork()) {
       return Effect().persist(state.finishedTurn());
     }
-    Backlogs.Taken<String> observation = taken.get();
-    deps.memories().forAgent(agentId).remember(userMessage(deps.renderer(), observation));
+    // ONE durable write moves the head into flight. The old shape took from a store and then
+    // recorded that it had taken, with a crash window between -- which is what takenEntryId
+    // existed to reconcile. Nothing to reconcile now.
     AgentState next =
-        state
-            .startingTurn(Identifiers.next())
-            .withPhase(new Phase.CallingModel())
-            .taking(observation.entryId());
+        state.taking().startingTurn(Identifiers.next()).withPhase(new Phase.CallingModel());
     return Effect()
         .persist(next)
         .thenRun(
             () -> {
-              deps.backlogs().taken(agentId, observation.entryId());
+              deps.memories()
+                  .forAgent(agentId)
+                  .remember(userMessage(deps.renderer(), next.current()));
               askModel(next, here);
             });
   }
@@ -511,9 +513,9 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    * itself.
    */
   public static Remembrance.UserMessage userMessage(
-      ObservationRenderer<String> renderer, Backlogs.Taken<String> taken) {
+      ObservationRenderer<String> renderer, BacklogItem<String> item) {
     return new Remembrance.UserMessage(
-        "obs:" + taken.entryId(), Message.user(renderer.render(taken.observation())));
+        "obs:" + item.id(), Message.user(renderer.render(item.observation())));
   }
 
   // ------------------------------------------------------------------------------------------
@@ -602,12 +604,11 @@ public final class AgentActor extends DurableStateBehavior<AgentActor.NessyMessa
    */
   private void resume(AgentState state) {
     context.getLog().info("[watchman] {} rehydrated while {}", agentId, name(state));
-    if (state.takenEntryId() != null) {
-      deps.backlogs().taken(agentId, state.takenEntryId());
-    }
     switch (state.phase()) {
       case Phase.Idle ignored -> {
-        if (deps.backlogs().next(agentId).isPresent()) {
+        // The backlog rode in with the state, so there is nothing to reconcile against a store --
+        // if work is waiting, wake and take it.
+        if (state.hasWork()) {
           context.getSelf().tell(new Wake(Map.of()));
         }
       }

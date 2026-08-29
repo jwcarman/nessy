@@ -34,13 +34,11 @@ import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Calls;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -107,8 +105,6 @@ class CoalescingRoundsTest {
   void six_rounds_of_a_coalescing_tick_produce_six_user_messages_not_one() throws Exception {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories memories = new Memories(substrate, 8000);
-    Backlogs<String> backlogs =
-        new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),

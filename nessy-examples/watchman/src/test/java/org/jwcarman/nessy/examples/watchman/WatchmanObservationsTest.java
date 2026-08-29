@@ -17,21 +17,15 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.BacklogItem;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.engine.AgentActor;
-import org.jwcarman.nessy.engine.Backlog;
-import org.jwcarman.nessy.engine.Backlogs;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 
 @DisplayName("The watchman's own observation vocabulary")
 class WatchmanObservationsTest {
@@ -42,17 +36,17 @@ class WatchmanObservationsTest {
 
     @Test
     void twenty_cron_ticks_waiting_behind_a_turn_become_one() {
-      Backlog<String> backlog = Backlog.empty();
+      List<BacklogItem<String>> backlog = List.of();
       for (int i = 0; i < 20; i++) {
         backlog =
             WatchmanObservations.COALESCER.ingest(
                 backlog,
-                new Backlog.Entry<>(
-                    "t" + i, "It is 12:0" + i + ". Do your rounds.", Instant.EPOCH));
+                new BacklogItem<>("t" + i, "It is 12:0" + i + ". Do your rounds.", Instant.EPOCH));
       }
 
       assertThat(backlog.size()).isEqualTo(1);
-      assertThat(backlog.observations()).containsExactly("It is 12:019. Do your rounds.");
+      assertThat(backlog.stream().map(BacklogItem::observation))
+          .containsExactly("It is 12:019. Do your rounds.");
     }
   }
 
@@ -62,13 +56,10 @@ class WatchmanObservationsTest {
 
     @Test
     void a_renderer_change_reaches_an_observation_already_sitting_in_the_backlog() {
-      // Queued under WatchmanObservations.RENDERER -- the renderer that will "change" below did
-      // not exist yet when this observation was ingested.
-      Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
-      Backlogs<String> backlogs =
-          new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class);
-      backlogs.ingest("watchman", "disk at 91%", Instant.EPOCH);
-      Backlogs.Taken<String> queued = backlogs.next("watchman").orElseThrow();
+      // Waiting under WatchmanObservations.RENDERER -- the renderer that will "change" below did
+      // not exist yet when this observation arrived. The item lives in the agent's state, so this
+      // is the same value the actor would hand its renderer.
+      BacklogItem<String> queued = new BacklogItem<>("e1", "disk at 91%", Instant.EPOCH);
 
       ObservationRenderer<String> shouting =
           observation -> List.of(new TextBlock(observation.toUpperCase(java.util.Locale.ROOT)));

@@ -34,12 +34,10 @@ import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.TokenEstimator;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.ToolCallRecord;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -68,7 +66,6 @@ class PromptSizeTest {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories budgeted = new Memories(substrate, BUDGET);
     Memories unbudgeted = new Memories(substrate, Long.MAX_VALUE);
-    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
 
     WatchmanActorSystem actors =
         new WatchmanActorSystem(

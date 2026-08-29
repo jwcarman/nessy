@@ -30,12 +30,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -63,7 +61,6 @@ class IngestTest {
   void is_kept_rather_than_refused() {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories memories = new Memories(substrate, 8000);
-    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     // Scripted slow enough that "second" is guaranteed to land while "first" is still in flight.
     actors =
         new WatchmanActorSystem(
@@ -95,8 +92,7 @@ class IngestTest {
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
             () ->
-                assertThat(backlogs.next(agent))
-                    .hasValueSatisfying(
-                        taken -> assertThat(taken.observation()).isEqualTo("second")));
+                assertThat(actors.inspect(agent).toCompletableFuture().join().backlog())
+                    .anySatisfy(item -> assertThat(item.observation()).isEqualTo("second")));
   }
 }

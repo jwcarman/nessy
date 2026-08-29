@@ -22,12 +22,10 @@ import java.time.Clock;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.engine.AgentModel;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.ProviderAgentModel;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.spi.codec.CodecPipeline;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -138,15 +136,6 @@ public class WatchmanConfiguration {
   public Memories memories(
       org.jwcarman.nessy.spi.substrate.Substrate substrate, WatchmanProperties properties) {
     return new Memories(substrate, properties.getContextBudgetTokens());
-  }
-
-  /**
-   * The durable backlog, on the same substrate as everything else, coalescing per {@link
-   * WatchmanObservations#COALESCER}: twenty queued cron ticks become one.
-   */
-  @Bean
-  public Backlogs<String> backlogs(org.jwcarman.nessy.spi.substrate.Substrate substrate) {
-    return new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class);
   }
 
   /** How a drained observation becomes what the model reads. See {@link ObservationRenderer}. */

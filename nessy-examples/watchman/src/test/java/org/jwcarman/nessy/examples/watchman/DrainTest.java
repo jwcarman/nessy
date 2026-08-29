@@ -28,19 +28,18 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.agent.BacklogItem;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Calls;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -94,7 +93,6 @@ class DrainTest {
   void each_queued_observation_becomes_its_own_turn_not_one_merged_message() throws Exception {
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories memories = new Memories(substrate, 8000);
-    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     actors =
         new WatchmanActorSystem(
             ConfigFactory.load("watchman-inmemory").resolve(),
@@ -145,7 +143,7 @@ class DrainTest {
   void remembering_the_same_drained_observation_twice_does_not_duplicate_it() {
     Memories memories = new Memories(new InMemorySubstrate(Clock.systemUTC()), 8000);
     Memory memory = memories.forAgent("redrain");
-    Backlogs.Taken<String> taken = new Backlogs.Taken<>("entry-a", "one");
+    BacklogItem<String> taken = new BacklogItem<>("entry-a", "one", java.time.Instant.EPOCH);
 
     memory.remember(AgentActor.userMessage(WatchmanObservations.RENDERER, taken));
     memory.remember(AgentActor.userMessage(WatchmanObservations.RENDERER, taken));

@@ -31,14 +31,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Calls;
 import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -60,7 +58,6 @@ class ClaimLifetimeTest {
     agent = "watchman-" + UUID.randomUUID();
     Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
     Memories memories = new Memories(substrate, 8000);
-    Backlogs<String> backlogs = new SubstrateBacklogs<>(substrate, Coalescer.none(), String.class);
     claims = new Claims(substrate);
     actors =
         new WatchmanActorSystem(

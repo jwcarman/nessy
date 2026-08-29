@@ -404,6 +404,37 @@ actor, so the window between "called" and "recorded" is identical either way (§
 at-most-once, the mechanism is an attempt marker written BEFORE the call. That is a claim write, not
 a `DurableStateBehavior`.
 
+### 10.1 AMENDED 2026-08-28 — "exactly one durable actor" was too strong
+
+James: *"If the turn actor is not durable and it's somehow lost, we will process the observation
+over again... thereby executing tools again."* He is right, and the argument above missed why.
+
+**Claims do not deduplicate across a re-run.** They are keyed by call id, and re-processing an
+observation calls the model again, which mints FRESH call ids. The old claims match nothing, so
+every tool executes a second time. Claim-based dedup protects within ONE turn's call list; it does
+nothing against restarting the turn.
+
+Nor does the earlier "the side effect happens outside the actor" argument save it. That argument is
+about the irreducible millisecond between calling a tool and recording its result. This is a
+different and much larger window: an entire turn re-executed from the observation.
+
+**Nothing is broken today** only because there is no separate turn actor — `AgentActor` IS the
+orchestrator, it is durable, and its phase holds the tool-call records, so recovery re-issues just
+the unsettled calls. The hazard arrives the moment §5's `TurnActor` is split out.
+
+**The corrected rule.** Not "one durable actor" but:
+
+> Every fact has exactly ONE durable home, and anything that can outlive a deploy must have one.
+
+Two sources of truth for the SAME fact is the thing to avoid; that was the real content of §10. A
+turn's progress is not a copy of something the agent holds — once `TurnActor` exists it is the only
+home for it. And a turn can sit parked on an approval for `approvalTerm`, three days by default, so
+a deploy during it is a certainty rather than a risk.
+
+**Therefore:** when `TurnActor` is split out it is DURABLE, or the agent keeps holding the turn's
+progress as it does now. Splitting it out non-durable is the version that silently re-runs
+`prune_images`.
+
 ## 11. The harness door: an ActorSystem in
 
 **Ruled 2026-08-28 by James.** The engine is constructed from an `ActorSystem` and spins everything

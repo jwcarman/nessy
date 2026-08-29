@@ -15,85 +15,86 @@
  */
 package org.jwcarman.nessy.api.agent;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 
 /**
- * What happens when an observation meets a backlog that is already holding some.
+ * How a waiting backlog is groomed as observations arrive (actor-composition spec §4).
  *
- * <p>This is a REDUCTION, deliberately the same shape as the phase reducer: a pure function from
- * (state, input) to state, testable with no actor anywhere near it. One method expresses everything
- * we could foresee — keep-latest, folding, veto, cross-key supersede, ordering, and a cap if one is
- * ever wanted:
+ * <p>A backlog is a thing you <b>groom</b> — items merged, superseded, dropped — which is exactly
+ * the set of operations this expresses. It is a plain {@code List}: the agent holds it as state, so
+ * a wrapper type around a list bought nothing but a name.
  *
- * <pre>
- *   keep the latest quote per symbol   Coalescer.byKey(q -&gt; Optional.of(q.symbol()))
- *   fold five errors into a count      Coalescer.byKey(Error::kind, Error::plus)
- *   a Cancel clears the queue          implement ingest directly
- *   ignore a heartbeat entirely        return current, unchanged
- * </pre>
+ * <p>Called on every arrival. <b>Coalescing on write is the only place observations become one</b>,
+ * which is why a turn takes exactly one item: draining the whole backlog into a single turn would
+ * silently override this policy and merge what a vocabulary declined to merge.
  *
- * <p><b>Declared by the vocabulary, not passed per call.</b> The policy is a property of the
- * observation TYPE — a quote always keeps-latest-per-symbol, a person's message never merges — so
- * one caller passing an inconsistent key cannot silently break coalescing for everyone else. The
- * original reasoning survives ("only the sender knows whether its message replaces or
- * accumulates"); the decision just moves to the one place the sender defines their world.
+ * <p>Implementations must be PURE. The only clock available is {@link BacklogItem#receivedAt()}.
  *
- * <p><b>Purity is the contract.</b> No clock and no I/O: the arriving entry carries its own {@code
- * receivedAt}, so staleness ("drop anything older than five minutes") is expressible without
- * reading a clock, and the function stays reproducible. Debounce ("coalesce anything within 500ms")
- * is deliberately NOT expressible here — it requires waiting, which is a timer, which belongs to an
- * actor.
+ * @param <O> the observation type
  */
 @FunctionalInterface
 public interface Coalescer<O> {
 
   /**
-   * @param incoming already carries its id and {@code receivedAt}; the caller mints those, because
-   *     a pure function cannot invent a unique id or read a clock
+   * The backlog after {@code incoming} arrives — appended, merged into an existing item, or
+   * dropped.
+   *
+   * <p>A merged item must be a NEW {@link BacklogItem} with a fresh id; reusing an id collides the
+   * derived {@code Remembrance} key and silently swallows every observation after the first.
    */
-  Backlog<O> ingest(Backlog<O> current, Backlog.Entry<O> incoming);
+  List<BacklogItem<O>> ingest(List<BacklogItem<O>> current, BacklogItem<O> incoming);
 
-  /** Everything accumulates. The default, and correct for anything a person typed. */
+  /** Merges nothing: every observation gets its own turn. */
   static <O> Coalescer<O> none() {
-    return (current, incoming) ->
-        current.append(incoming.id(), incoming.observation(), incoming.receivedAt());
+    return (current, incoming) -> {
+      List<BacklogItem<O>> next = new ArrayList<>(current);
+      next.add(incoming);
+      return List.copyOf(next);
+    };
   }
 
-  /** Group by key, keep the latest. Twenty cron ticks become one tick. */
+  /** Supersedes any waiting item sharing a key: the latest wins, the earlier is forgotten. */
   static <O> Coalescer<O> byKey(Function<O, Optional<String>> key) {
     return byKey(key, (existing, incoming) -> incoming);
   }
 
   /**
-   * Group by key, folding within the group.
+   * Merges any waiting item sharing a key, using {@code merge} to combine the observations.
    *
-   * <p>An absent key means "never coalesce": that observation accumulates like any unkeyed one. A
-   * superseded entry keeps its position and its original {@code receivedAt} — a chatty topic must
-   * not outrank an older one merely by being noisy.
+   * <p>The survivor keeps the EARLIER item's {@code receivedAt} — its queue position stays honest,
+   * and a busy topic cannot look eternally fresh to a staleness policy (spec §9.1).
    */
   static <O> Coalescer<O> byKey(Function<O, Optional<String>> key, BinaryOperator<O> merge) {
-    return (current, incoming) ->
-        key.apply(incoming.observation())
-            .map(
-                k ->
-                    current
-                        .findByKey(k)
-                        .map(
-                            existing ->
-                                current.supersede(
-                                    k,
-                                    incoming.id(),
-                                    merge.apply(existing.observation(), incoming.observation())))
-                        .orElseGet(
-                            () ->
-                                current.append(
-                                    incoming.id(),
-                                    incoming.observation(),
-                                    incoming.receivedAt(),
-                                    k)))
-            .orElseGet(
-                () -> current.append(incoming.id(), incoming.observation(), incoming.receivedAt()));
+    return (current, incoming) -> {
+      Optional<String> incomingKey = key.apply(incoming.observation());
+      if (incomingKey.isEmpty()) {
+        List<BacklogItem<O>> next = new ArrayList<>(current);
+        next.add(incoming);
+        return List.copyOf(next);
+      }
+      String k = incomingKey.get();
+      List<BacklogItem<O>> next = new ArrayList<>(current.size() + 1);
+      boolean merged = false;
+      for (BacklogItem<O> item : current) {
+        if (!merged && key.apply(item.observation()).filter(k::equals).isPresent()) {
+          next.add(
+              new BacklogItem<>(
+                  incoming.id(),
+                  merge.apply(item.observation(), incoming.observation()),
+                  item.receivedAt()));
+          merged = true;
+        } else {
+          next.add(item);
+        }
+      }
+      if (!merged) {
+        next.add(incoming);
+      }
+      return List.copyOf(next);
+    };
   }
 }

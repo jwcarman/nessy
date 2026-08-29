@@ -173,8 +173,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
 
     Memories memories = new Memories(substrate, budget);
     Claims claims = new Claims(substrate);
-    Backlogs<String> backlogs =
-        new SubstrateBacklogs<>(substrate, config.coalescer(), String.class);
 
     ActorRef<EngineRoot.Command> root =
         spawnRoot(
@@ -183,7 +181,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                     agentModel,
                     tools,
                     memories,
-                    backlogs,
+                    config.coalescer(),
                     config.renderer(),
                     traces,
                     clock,

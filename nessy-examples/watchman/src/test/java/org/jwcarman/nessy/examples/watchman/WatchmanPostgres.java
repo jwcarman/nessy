@@ -21,12 +21,10 @@ import java.time.Duration;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.engine.AgentModel;
-import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.postgresql.ds.PGSimpleDataSource;
 
 /** The running watchman-postgres, in its own schema so the sibling application is untouched. */
@@ -59,13 +57,6 @@ public final class WatchmanPostgres {
   public static Memories memories() {
     return new Memories(
         new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()), 8000);
-  }
-
-  public static Backlogs<String> backlogs() {
-    return new SubstrateBacklogs<>(
-        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()),
-        WatchmanObservations.COALESCER,
-        String.class);
   }
 
   public static Claims claims() {

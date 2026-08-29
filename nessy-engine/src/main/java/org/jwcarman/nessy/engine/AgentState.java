@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.engine;
 
+import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.agent.Backlog;
+import org.jwcarman.nessy.api.agent.BacklogItem;
+import org.jwcarman.nessy.api.agent.Coalescer;
 
 /**
  * Everything an agent persists: identifiers, status, and human decisions. NEVER content — tool
@@ -36,32 +38,79 @@ import org.jwcarman.nessy.api.agent.Backlog;
  *     removed, and nothing durable would say so without this field. {@link AgentActor#resume}
  *     finishes the removal on recovery. Null when no turn is in flight.
  */
-public record AgentState(String turnId, Phase phase, String takenEntryId) {
+public record AgentState(
+    String turnId, Phase phase, BacklogItem<String> inFlight, List<BacklogItem<String>> backlog) {
 
   public AgentState {
     Objects.requireNonNull(phase, "phase must not be null");
+    backlog = backlog == null ? List.of() : List.copyOf(backlog);
   }
 
   public static AgentState idle() {
-    return new AgentState(null, new Phase.Idle(), null);
+    return new AgentState(null, new Phase.Idle(), null, List.of());
+  }
+
+  /** The backlog after {@code coalescer} decides what {@code incoming} does to it. */
+  /**
+   * The backlog after {@code coalescer} decides what {@code incoming} does to it.
+   *
+   * <p>The coalescer sees the WAITING items only, never {@link #inFlight()}. That separation is the
+   * whole reason a separate slot exists: a policy that supersedes on a key would otherwise merge
+   * away the very observation a turn is running on, and the turn would finish by discarding an item
+   * that is no longer the one it processed.
+   */
+  public AgentState ingesting(Coalescer<String> coalescer, BacklogItem<String> incoming) {
+    return new AgentState(turnId, phase, inFlight, coalescer.ingest(backlog, incoming));
+  }
+
+  /**
+   * The observation this turn is working on — the head, which stays until the turn ends.
+   *
+   * <p>There is no separate "in flight" slot, and that is a safety property rather than a
+   * simplification. A slot exists to hold an item ALREADY REMOVED from the backlog but not yet
+   * remembered; a crash in that window loses the observation outright. Leaving the item at the head
+   * until {@link #finishedTurn()} means the window never opens: recovery re-reads the same head,
+   * and {@code remember} is idempotent by the item's id.
+   */
+  /** The observation this turn is working on — out of the coalescer's reach until the turn ends. */
+  public BacklogItem<String> current() {
+    if (inFlight == null) {
+      throw new IllegalStateException("no observation is being worked on");
+    }
+    return inFlight;
+  }
+
+  /**
+   * Moves the head of the backlog into flight — ONE durable write.
+   *
+   * <p>Taking and recording-that-it-was-taken used to be two writes against a separate store, with
+   * a crash window between them that a {@code takenEntryId} breadcrumb existed to reconcile. Here
+   * they are the same write, and there is nothing left to reconcile.
+   */
+  public AgentState taking() {
+    if (backlog.isEmpty()) {
+      throw new IllegalStateException("nothing to take");
+    }
+    return new AgentState(
+        turnId, phase, backlog.getFirst(), List.copyOf(backlog.subList(1, backlog.size())));
+  }
+
+  /** Whether anything is waiting to become a turn. */
+  public boolean hasWork() {
+    return !backlog.isEmpty();
   }
 
   public AgentState withPhase(Phase next) {
-    return new AgentState(turnId, next, takenEntryId);
+    return new AgentState(turnId, next, inFlight, backlog);
   }
 
   /** Names the turn about to run. Its claims are deleted under this id when the turn ends. */
   public AgentState startingTurn(String newTurnId) {
-    return new AgentState(newTurnId, phase, takenEntryId);
-  }
-
-  /** Names the backlog entry this turn is about to consume — see {@link #takenEntryId}. */
-  public AgentState taking(String entryId) {
-    return new AgentState(turnId, phase, entryId);
+    return new AgentState(newTurnId, phase, inFlight, backlog);
   }
 
   /** Back to rest: no turn, no claims owed, no backlog entry outstanding. */
   public AgentState finishedTurn() {
-    return new AgentState(null, new Phase.Idle(), null);
+    return new AgentState(null, new Phase.Idle(), null, backlog);
   }
 }
