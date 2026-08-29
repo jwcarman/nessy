@@ -125,13 +125,13 @@ public final class HarnessActor {
                   wiring.tools(),
                   wiring.agentType());
 
-          Agents agents = Agents.sharded(context.getSystem(), wiring.agentType(), deps);
+          RoutingStrategy routing = RoutingStrategy.forSystem(context, wiring.agentType(), deps);
 
           return Behaviors.receive(Command.class)
               .onMessage(
                   Envelope.class,
                   envelope -> {
-                    agents.tell(envelope.agentId(), envelope.message());
+                    routing.tell(envelope.agentId(), envelope.message());
                     return Behaviors.same();
                   })
               .onMessage(Stop.class, stop -> Behaviors.stopped())

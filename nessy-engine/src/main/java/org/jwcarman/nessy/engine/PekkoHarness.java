@@ -77,6 +77,10 @@ public final class PekkoHarness implements Harness<String> {
   @Override
   public void shutdown() {
     harness.tell(new HarnessActor.Stop());
+    if (!RoutingStrategy.isClustered(system)) {
+      // Local routing claimed this type; releasing lets it be built again after a restart.
+      LocalAgentTypes.of(system).release(type);
+    }
   }
 
   /** Sends a message to one agent — the only way anything reaches an agent. */

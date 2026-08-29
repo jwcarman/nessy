@@ -220,6 +220,11 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    */
   private ActorRef<HarnessActor.Command> spawnRoot(
       AgentType agentType, Behavior<HarnessActor.Command> behavior) {
+    // Local routing parents agents under the harness, so it needs one harness per type; sharding
+    // routes every harness to the same entity and needs no such rule.
+    if (!RoutingStrategy.isClustered(system)) {
+      LocalAgentTypes.of(system).reserve(agentType);
+    }
     String name = "nessy-harness-" + agentType.name() + "-" + roots.incrementAndGet();
     return AskPattern.<SpawnProtocol.Command, ActorRef<HarnessActor.Command>>ask(
             system,

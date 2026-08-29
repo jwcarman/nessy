@@ -16,13 +16,14 @@
 package org.jwcarman.nessy.engine;
 
 import org.apache.pekko.actor.typed.ActorSystem;
+import org.apache.pekko.actor.typed.javadsl.ActorContext;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
- * Routes a message to the one actor instance for an agent, starting it if it is not running.
+ * How a message reaches the one actor instance for an agent, starting it if it is not running.
  *
  * <p>That is the whole requirement: <b>exactly one instance per (agent type, agent id)</b>, and
  * deterministic routing to it. Everything else follows — nothing above this holds an agent, so a
@@ -40,10 +41,55 @@ import org.jwcarman.nessy.api.agent.AgentType;
  * {@link AgentType}.
  */
 @FunctionalInterface
-interface Agents {
+interface RoutingStrategy {
 
   /** Delivers {@code message} to {@code agentId}, starting that agent if it is not running. */
   void tell(String agentId, AgentActor.NessyMessage message);
+
+  /**
+   * The strategy this actor system calls for.
+   *
+   * <p>Reading {@code pekko.actor.provider} rather than probing: {@code ClusterSharding.get} throws
+   * on a non-clustered system, and a check should not depend on catching an exception.
+   */
+  static RoutingStrategy forSystem(
+      ActorContext<HarnessActor.Command> context,
+      AgentType agentType,
+      AgentActor.Dependencies deps) {
+    return isClustered(context.getSystem())
+        ? sharded(context.getSystem(), agentType, deps)
+        : local(context, deps);
+  }
+
+  /** Whether this system can host sharded entities. */
+  static boolean isClustered(ActorSystem<?> system) {
+    return "cluster".equals(system.settings().config().getString("pekko.actor.provider"));
+  }
+
+  /**
+   * RoutingStrategy as children of the harness actor, found by name.
+   *
+   * <p><b>No map.</b> {@code getChild} IS Pekko's registry of children; a second one beside it was
+   * only ever needed because that call returns an untyped ref, which {@code unsafeUpcast} answers.
+   * The upcast is safe by construction — this actor spawned the child itself, with a behavior of
+   * exactly this type.
+   */
+  static RoutingStrategy local(
+      ActorContext<HarnessActor.Command> context, AgentActor.Dependencies deps) {
+    return (agentId, message) -> {
+      String name = "agent-" + agentId.replaceAll("[^A-Za-z0-9-]", "_");
+      context
+          .getChild(name)
+          .map(child -> child.<AgentActor.NessyMessage>unsafeUpcast())
+          .orElseGet(
+              () ->
+                  context.spawn(
+                      AgentActor.create(
+                          agentId, deps, (stoppingId, self) -> self.tell(AgentActor.STOP)),
+                      name))
+          .tell(message);
+    };
+  }
 
   /** The entity key for one agent type. */
   static EntityTypeKey<AgentActor.NessyMessage> keyFor(AgentType agentType) {
@@ -56,7 +102,8 @@ interface Agents {
    * <p>{@code init} is what makes this node able to host entities of the type; {@code entityRefFor}
    * then addresses one by id from anywhere in the cluster, whether or not it currently exists here.
    */
-  static Agents sharded(ActorSystem<?> system, AgentType agentType, AgentActor.Dependencies deps) {
+  static RoutingStrategy sharded(
+      ActorSystem<?> system, AgentType agentType, AgentActor.Dependencies deps) {
     EntityTypeKey<AgentActor.NessyMessage> key = keyFor(agentType);
     ClusterSharding sharding = ClusterSharding.get(system);
     sharding.init(

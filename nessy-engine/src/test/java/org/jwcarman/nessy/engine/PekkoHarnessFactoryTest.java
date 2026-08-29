@@ -111,7 +111,7 @@ class PekkoHarnessFactoryTest {
                 # AgentActor is a DurableStateBehavior; without a store it dies at creation and the
                 # observation lands in dead letters.
                 pekko.persistence.state.plugin = "pekko.persistence.testkit.state"
-                # Agents are sharded entities, which is what guarantees exactly one instance per
+                # RoutingStrategy are sharded entities, which is what guarantees exactly one instance per
                 # (type, id). Sharding needs a cluster -- one node is a cluster.
                 pekko.actor.provider = cluster
                 pekko.remote.artery.canonical.hostname = "127.0.0.1"
@@ -184,6 +184,11 @@ class PekkoHarnessFactoryTest {
       assertThatThrownBy(() -> factory.create(Integer.class, config -> {}))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("String observations only");
+    }
+
+    @Test
+    void a_clustered_system_is_detected_as_such() {
+      assertThat(RoutingStrategy.isClustered(system)).isTrue();
     }
 
     @Test
