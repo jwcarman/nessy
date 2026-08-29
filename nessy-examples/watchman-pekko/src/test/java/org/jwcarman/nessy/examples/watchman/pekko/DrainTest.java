@@ -36,7 +36,6 @@ import org.jwcarman.nessy.engine.AgentState;
 import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Calls;
-import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Coalescer;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
@@ -101,15 +100,14 @@ class DrainTest {
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(20)),
             new FakeRunner(),
-            memories,
-            backlogs,
-            WatchmanObservations.RENDERER,
+            substrate,
+            Coalescer.none(),
+            8000,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10),
-            new Claims(substrate));
+            Duration.ofSeconds(10));
     actors.start();
     String agent = "drain-" + UUID.randomUUID();
 

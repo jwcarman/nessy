@@ -94,7 +94,7 @@ public class ApprovalsController {
   @GetMapping("/transcript")
   public String transcript(Model model) {
     List<Note> notes = new ArrayList<>();
-    for (Message message : memories.everything(WatchmanGuardian.WATCHMAN).messages()) {
+    for (Message message : memories.everything(Watchman.AGENT_ID).messages()) {
       for (ContentBlock block : message.content()) {
         switch (block) {
           case TextBlock(String text) -> notes.add(new Note(role(message), text));

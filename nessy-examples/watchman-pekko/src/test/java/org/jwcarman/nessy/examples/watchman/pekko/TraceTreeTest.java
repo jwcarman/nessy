@@ -43,11 +43,8 @@ import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Calls;
-import org.jwcarman.nessy.engine.Claims;
-import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.Traces;
 
 /**
@@ -89,15 +86,14 @@ class TraceTreeTest {
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(10)),
             new FakeRunner(),
-            new Memories(substrate, 8000),
-            new SubstrateBacklogs<>(substrate, WatchmanObservations.COALESCER, String.class),
-            WatchmanObservations.RENDERER,
+            substrate,
+            WatchmanObservations.COALESCER,
+            8000,
             MicrometerTracing.over(sdk),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10),
-            new Claims(substrate));
+            Duration.ofSeconds(10));
     actors.start();
   }
 
@@ -335,7 +331,7 @@ class TraceTreeTest {
 
   @Test
   void the_actor_system_is_the_one_we_built() {
-    ActorSystem<WatchmanGuardian.Command> system = actors.raw();
+    ActorSystem<org.apache.pekko.actor.typed.SpawnProtocol.Command> system = actors.raw();
 
     assertThat(system.name()).isEqualTo("watchman");
   }

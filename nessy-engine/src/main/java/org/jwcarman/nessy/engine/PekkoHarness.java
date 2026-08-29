@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.agent.AgentType;
  * registry does not exist the instant {@code spawn} returns — asking for it is how a caller waits
  * for the tree without the factory blocking on construction.
  */
-final class PekkoHarness implements Harness<String> {
+public final class PekkoHarness implements Harness<String> {
 
   private static final Duration WIRING_PATIENCE = Duration.ofSeconds(10);
 
@@ -77,7 +77,15 @@ final class PekkoHarness implements Harness<String> {
     root.tell(new EngineRoot.Stop());
   }
 
-  private ActorRef<AgentRegistry.Command> registry() {
+  /**
+   * The registry this harness owns — the door for a host that needs more than {@link Harness}
+   * offers: waking an agent, answering an approval, inspecting one.
+   *
+   * <p>On the concrete type rather than the interface deliberately. {@link Harness} is the small
+   * surface every engine must satisfy; this is the escape hatch for a host that has knowingly
+   * bought into THIS engine, and it is where the watchman's approvals page lives.
+   */
+  public ActorRef<AgentRegistry.Command> registry() {
     ActorRef<AgentRegistry.Command> known = registry;
     if (known != null) {
       return known;

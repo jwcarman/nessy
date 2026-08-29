@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman.pekko;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
@@ -28,6 +29,9 @@ import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.ProviderAgentModel;
 import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.Traces;
+import org.jwcarman.nessy.spi.codec.CodecPipeline;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -195,31 +199,30 @@ public class WatchmanConfiguration {
    */
   @Bean
   public WatchmanActorSystem watchmanActorSystem(
-      AgentModel model,
+      Substrate substrate,
+      ModelProvider models,
       CommandRunner runner,
-      Memories memories,
-      Backlogs<String> backlogs,
-      ObservationRenderer<String> renderer,
+      MeterRegistry meters,
       Traces traces,
       Clock clock,
       BlockingWork blocking,
       WatchmanProperties properties,
-      Claims claims,
       @Value("${spring.datasource.url}") String url,
       @Value("${spring.datasource.username}") String user,
       @Value("${spring.datasource.password}") String password) {
     return new WatchmanActorSystem(
         PekkoConfigBridge.build("watchman-pekko", url, user, password),
-        model,
-        runner,
-        memories,
-        backlogs,
-        renderer,
+        substrate,
+        models,
+        WatchmanTools.boundTo(runner),
+        meters,
         traces,
         clock,
         blocking,
-        properties.getApprovalTerm(),
+        properties,
         properties.getAskTimeout(),
-        claims);
+        // No transforms: the watchman stores plain JSON so a human can read the tables while
+        // soaking. The seam is here the day that stops being true.
+        CodecPipeline.none());
   }
 }

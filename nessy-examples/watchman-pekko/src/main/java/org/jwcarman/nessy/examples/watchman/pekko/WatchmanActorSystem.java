@@ -16,25 +16,27 @@
 package org.jwcarman.nessy.examples.watchman.pekko;
 
 import com.typesafe.config.Config;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.ActorSystem;
+import org.apache.pekko.actor.typed.SpawnProtocol;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
-import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentModel;
 import org.jwcarman.nessy.engine.AgentRegistry;
 import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Backlogs;
+import org.jwcarman.nessy.engine.AgentTools;
 import org.jwcarman.nessy.engine.BlockingWork;
-import org.jwcarman.nessy.engine.Claims;
-import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.Coalescer;
+import org.jwcarman.nessy.engine.PekkoHarness;
+import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.engine.Traces;
+import org.jwcarman.nessy.spi.codec.CodecPipeline;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
@@ -81,7 +83,8 @@ public final class WatchmanActorSystem implements SmartLifecycle {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanActorSystem.class);
 
-  private final ActorSystem<WatchmanGuardian.Command> system;
+  private final ActorSystem<SpawnProtocol.Command> system;
+  private final PekkoHarness harness;
   private final ActorRef<AgentRegistry.Command> registry;
   private final BlockingWork blocking;
   private final Duration askTimeout;
@@ -89,54 +92,91 @@ public final class WatchmanActorSystem implements SmartLifecycle {
 
   private volatile boolean running;
 
+  /**
+   * The shape the tests use: a scripted model and an explicit budget and coalescer.
+   *
+   * <p>Routed through the SAME factory as production — only the model's source differs — so these
+   * tests exercise the real spawn path rather than a parallel wiring nobody ships.
+   */
   public WatchmanActorSystem(
       Config config,
       AgentModel model,
       CommandRunner runner,
-      Memories memories,
-      Backlogs<String> backlogs,
-      ObservationRenderer<String> renderer,
+      Substrate substrate,
+      Coalescer<String> coalescer,
+      long budgetTokens,
       Traces traces,
       java.time.Clock clock,
       BlockingWork blocking,
       Duration approvalTerm,
-      Duration askTimeout,
-      Claims claims) {
+      Duration askTimeout) {
     this.blocking = blocking;
     this.askTimeout = askTimeout;
     this.traces = traces;
-    this.system =
-        ActorSystem.create(
-            WatchmanGuardian.create(
+    this.system = ActorSystem.create(SpawnProtocol.create(), "watchman", config);
+    this.harness =
+        new PekkoHarnessFactory(
+                system,
+                substrate,
                 model,
-                runner,
-                memories,
-                backlogs,
-                renderer,
+                budgetTokens,
+                WatchmanTools.boundTo(runner),
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
                 traces,
                 clock,
                 blocking.executor(),
-                4,
-                8,
-                approvalTerm,
-                claims),
-            "watchman",
-            config);
-    this.registry = askForRegistry();
+                CodecPipeline.none())
+            .create(
+                cfg ->
+                    cfg.type("Watchman")
+                        .systemPrompt(WatchmanPrompt.SYSTEM)
+                        .coalescer(coalescer)
+                        .renderer(WatchmanObservations.RENDERER)
+                        .approvalTerm(approvalTerm));
+    this.registry = harness.registry();
   }
 
-  private ActorRef<AgentRegistry.Command> askForRegistry() {
-    try {
-      return AskPattern.<WatchmanGuardian.Command, ActorRef<AgentRegistry.Command>>ask(
-              system, WatchmanGuardian.GetRegistry::new, Duration.ofSeconds(20), system.scheduler())
-          .toCompletableFuture()
-          .get(20, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("interrupted starting the actor system", e);
-    } catch (ExecutionException | TimeoutException e) {
-      throw new IllegalStateException("the guardian never handed out a registry", e);
-    }
+  public WatchmanActorSystem(
+      Config config,
+      Substrate substrate,
+      ModelProvider models,
+      AgentTools tools,
+      MeterRegistry meters,
+      Traces traces,
+      java.time.Clock clock,
+      BlockingWork blocking,
+      WatchmanProperties properties,
+      Duration askTimeout,
+      CodecPipeline pipeline) {
+    this.blocking = blocking;
+    this.askTimeout = askTimeout;
+    this.traces = traces;
+    // SpawnProtocol as the guardian, because Pekko refuses top-level spawns from outside a system
+    // with a custom user guardian -- which is what lets a harness be handed a system it does not
+    // own.
+    this.system = ActorSystem.create(SpawnProtocol.create(), "watchman", config);
+    this.harness =
+        new PekkoHarnessFactory(
+                system,
+                substrate,
+                models,
+                properties.getModelId(),
+                tools,
+                meters,
+                traces,
+                clock,
+                blocking.executor(),
+                pipeline)
+            .create(
+                cfg ->
+                    cfg.type("Watchman")
+                        .systemPrompt(WatchmanPrompt.SYSTEM)
+                        .modelName(properties.getModelId())
+                        .maxTokens(properties.getMaxTokens())
+                        .coalescer(WatchmanObservations.COALESCER)
+                        .renderer(WatchmanObservations.RENDERER)
+                        .approvalTerm(properties.getApprovalTerm()));
+    this.registry = harness.registry();
   }
 
   /** Fire-and-forget to one agent. No round trip, no future: the cron does not wait for a round. */
@@ -179,7 +219,7 @@ public final class WatchmanActorSystem implements SmartLifecycle {
         system.scheduler());
   }
 
-  public ActorSystem<WatchmanGuardian.Command> raw() {
+  public ActorSystem<SpawnProtocol.Command> raw() {
     return system;
   }
 

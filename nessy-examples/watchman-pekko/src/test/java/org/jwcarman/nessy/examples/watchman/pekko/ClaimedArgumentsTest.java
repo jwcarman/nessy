@@ -85,15 +85,14 @@ class ClaimedArgumentsTest {
             ConfigFactory.load("watchman-inmemory").resolve(),
             new OneBigProposal(big),
             new FakeRunner(),
-            memories,
-            backlogs,
-            WatchmanObservations.RENDERER,
+            substrate,
+            Coalescer.none(),
+            8000,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10),
-            new Claims(substrate));
+            Duration.ofSeconds(10));
     actors.start();
     String agent = "claimed-args-" + UUID.randomUUID();
 

@@ -77,8 +77,7 @@ public class WatchmanRounds {
           // AgentActor#startTurnIfWork. A durable backlog holds it until then, coalescing any
           // tick still queued per WatchmanObservations#COALESCER: "do your rounds" is not
           // cumulative.
-          actors.tell(
-              WatchmanGuardian.WATCHMAN, new AgentActor.Observe(observation, traces.capture()));
+          actors.tell(Watchman.AGENT_ID, new AgentActor.Observe(observation, traces.capture()));
         });
   }
 }

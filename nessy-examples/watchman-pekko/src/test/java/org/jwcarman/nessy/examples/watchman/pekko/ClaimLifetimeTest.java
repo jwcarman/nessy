@@ -67,15 +67,14 @@ class ClaimLifetimeTest {
             ConfigFactory.load("watchman-inmemory").resolve(),
             new ScriptedWatchmanModel(Duration.ofMillis(20)),
             new FakeRunner(),
-            memories,
-            backlogs,
-            WatchmanObservations.RENDERER,
+            substrate,
+            Coalescer.none(),
+            8000,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(10),
-            claims);
+            Duration.ofSeconds(10));
     actors.start();
   }
 

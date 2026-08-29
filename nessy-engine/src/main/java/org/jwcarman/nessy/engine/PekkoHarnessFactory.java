@@ -60,6 +60,8 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Substrate substrate;
   private final ModelProvider models;
   private final String defaultModelId;
+  private final AgentModel prebuilt;
+  private final long prebuiltBudget;
   private final AgentTools tools;
   private final MeterRegistry meters;
   private final Traces traces;
@@ -91,6 +93,46 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
     this.models = Objects.requireNonNull(models, "models must not be null");
     this.defaultModelId = Objects.requireNonNull(defaultModelId, "defaultModelId must not be null");
+    this.prebuilt = null;
+    this.prebuiltBudget = 0;
+    this.tools = Objects.requireNonNull(tools, "tools must not be null");
+    this.meters = Objects.requireNonNull(meters, "meters must not be null");
+    this.traces = Objects.requireNonNull(traces, "traces must not be null");
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.blocking = Objects.requireNonNull(blocking, "blocking must not be null");
+    EngineCodecs.of(system).use(Objects.requireNonNull(pipeline, "pipeline must not be null"));
+  }
+
+  /**
+   * For a host that already has its model — a scripted one in a test, or anything that is not a
+   * {@code Model} behind a {@code ModelProvider}.
+   *
+   * <p>The budget must be given, because it is normally DERIVED from the model's own context window
+   * and a pre-built {@link AgentModel} cannot be asked. That is the trade: this door skips the
+   * capability and window checks the provider door performs, so production should not use it.
+   *
+   * @param budgetTokens how much context a turn may read
+   */
+  public PekkoHarnessFactory(
+      ActorSystem<SpawnProtocol.Command> system,
+      Substrate substrate,
+      AgentModel model,
+      long budgetTokens,
+      AgentTools tools,
+      MeterRegistry meters,
+      Traces traces,
+      Clock clock,
+      Executor blocking,
+      CodecPipeline pipeline) {
+    this.system = Objects.requireNonNull(system, "system must not be null");
+    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
+    this.models = null;
+    this.defaultModelId = null;
+    this.prebuilt = Objects.requireNonNull(model, "model must not be null");
+    if (budgetTokens < 1) {
+      throw new IllegalArgumentException("budgetTokens must be at least 1");
+    }
+    this.prebuiltBudget = budgetTokens;
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.meters = Objects.requireNonNull(meters, "meters must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
@@ -108,18 +150,28 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    * HarnessConfig<O>} it privately knows is a {@code HarnessConfig<String>}.
    */
   @Override
-  public Harness<String> create(HarnessCustomizer<String> customizer) {
+  public PekkoHarness create(HarnessCustomizer<String> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     HarnessConfig<String> config = new HarnessConfig<>();
     config.renderer(text -> List.of(new TextBlock(text)));
     customizer.customize(config);
 
-    Model model = resolve(config);
-    ModelDescription description = model.describe();
-    ModelSettings settings = new ModelSettings(config.maxTokens(), Set.of());
-    settings.requireSatisfiedBy(description);
+    AgentModel agentModel;
+    long budget;
+    if (prebuilt != null) {
+      agentModel = prebuilt;
+      budget = prebuiltBudget;
+    } else {
+      Model model = resolve(config);
+      ModelDescription description = model.describe();
+      ModelSettings settings = new ModelSettings(config.maxTokens(), Set.of());
+      settings.requireSatisfiedBy(description);
+      budget = budgetFor(description, settings);
+      agentModel =
+          new ProviderAgentModel(model, meters, config.maxTokens(), config.systemPrompt(), tools);
+    }
 
-    Memories memories = new Memories(substrate, budgetFor(description, settings));
+    Memories memories = new Memories(substrate, budget);
     Claims claims = new Claims(substrate);
     Backlogs<String> backlogs =
         new SubstrateBacklogs<>(substrate, config.coalescer(), String.class);
@@ -128,8 +180,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
         spawnRoot(
             EngineRoot.create(
                 new EngineRoot.Wiring(
-                    new ProviderAgentModel(
-                        model, meters, config.maxTokens(), config.systemPrompt(), tools),
+                    agentModel,
                     tools,
                     memories,
                     backlogs,

@@ -66,15 +66,14 @@ class LmStudioRoundDemo {
                 WatchmanPrompt.SYSTEM,
                 WatchmanTools.boundTo(new FakeRunner())),
             new FakeRunner(),
-            WatchmanPostgres.memories(),
-            WatchmanPostgres.backlogs(),
-            WatchmanObservations.RENDERER,
+            WatchmanPostgres.substrate(),
+            WatchmanObservations.COALESCER,
+            8000,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(30),
-            WatchmanPostgres.claims());
+            Duration.ofSeconds(30));
     actors.start();
     return actors;
   }

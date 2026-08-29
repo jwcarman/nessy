@@ -23,6 +23,7 @@ import org.jwcarman.nessy.engine.AgentModel;
 import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Claims;
+import org.jwcarman.nessy.engine.Coalescer;
 import org.jwcarman.nessy.engine.Memories;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.SubstrateBacklogs;
@@ -48,6 +49,11 @@ public final class WatchmanPostgres {
     dataSource.setUser(USER);
     dataSource.setPassword(PASSWORD);
     return dataSource;
+  }
+
+  /** One substrate over the shared DataSource — what the engine stores everything through. */
+  public static org.jwcarman.nessy.spi.substrate.Substrate substrate() {
+    return new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC());
   }
 
   public static Memories memories() {
@@ -100,15 +106,14 @@ public final class WatchmanPostgres {
             config(),
             model,
             new FakeRunner(),
-            memories,
-            backlogs(),
-            WatchmanObservations.RENDERER,
+            substrate(),
+            Coalescer.none(),
+            8000,
             MicrometerTracing.noop(),
             Clock.systemUTC(),
             new BlockingWork(),
             Duration.ofMinutes(10),
-            Duration.ofSeconds(15),
-            claims());
+            Duration.ofSeconds(15));
     actors.start();
     return actors;
   }
