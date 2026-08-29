@@ -159,3 +159,59 @@ OpenAI-compatible providers to flatten non-text blocks.
 The **product spec** — `Agent`, `Tool`, `Memory`, `Approver` described without mentioning Pekko —
 is downstream of this work and gets its own document. This spec is about where code lives; that one
 is about what Nessy is.
+
+## 8. Lines still to draw — the deferred api migration
+
+**Ruled 2026-08-28 by James** (*"whatever the quickest path forward. I want proper lines drawn on
+everything eventually so we need to move what doesn't belong later to clean it up"*).
+
+§2's module table is the destination, not the next step. Moving the harness doors into `nessy-api`
+turned out to be blocked behind vocabulary still tangled with the engine being deleted, so the
+migration is deferred until `nessy-agent` is gone — and recorded here so it is paid rather than
+forgotten.
+
+### 8.1 What blocked it
+
+`Harness`'s transitive closure inside `nessy-agent` is **21 types**, and they are two different
+things wearing one coat:
+
+| | types |
+|---|---|
+| **Vocabulary that belongs in `nessy-api`** | `Agent`, `AgentId`, `TurnOutcome`, `ApprovalDesk`, `CompletionDesk` |
+| **The scheduler engine's reducer machinery, deleted with it** | `AgentEvent`, `AgentPhase`, `AgentTransition`, `Effect`, `ModelOutcome`, `ModelResponseId`, `ToolCallEvent`, `ToolCallPhase`, `ToolCallTransition`, `ToolError`, `ToolOutcome`, `Routing`, `ApprovalRouting`, `ContinuumIds`, `AgentPhaseStore` |
+
+The pull runs through the desks: `ApprovalDesk` reaches `AgentPhaseStore`, which drags the whole
+event/phase model. Moving the doors to api today would haul the engine we are deleting into the
+vocabulary module — the exact inversion `LayeringTest` exists to prevent.
+
+**Sequencing this after the deletion is strictly cheaper: 15 of those 21 types cease to exist**, so
+the extraction shrinks to the six that were always vocabulary.
+
+### 8.2 The interim shape
+
+`nessy-engine` owns its door types (`HarnessFactory`, `HarnessConfig`, `HarnessCustomizer`, and its
+own `Harness`). `nessy-agent` keeps its own until it is deleted. This is knowingly two types named
+`Harness` for the duration.
+
+They are not duplicates of one design. The engine's door names no `ApprovalDesk` or `CompletionDesk`
+— in the actor engine an approval goes through the `Approver` and its own actor (composition spec
+§7), never a desk — so the engine's door is genuinely a different shape, not the same shape written
+twice.
+
+### 8.3 The debt, itemised
+
+To be paid once `nessy-agent` is deleted:
+
+1. **`Agent`, `AgentId`, `TurnOutcome` move to `nessy-api`** — pure vocabulary with no engine tie.
+2. **The engine's `Harness`, `HarnessConfig`, `HarnessCustomizer`, `HarnessFactory` move to
+   `nessy-api`**, satisfying §2.1: infrastructure to the factory's constructor, vocabulary on the
+   config. Only then is there one `Harness`.
+3. **`ApprovalDesk` / `CompletionDesk`: decide, do not drift.** Either they become api interfaces
+   with engine-side implementations, or the actor engine's Approver route replaces them outright.
+   The interim shape ducks this question; it must be answered, not inherited.
+4. **`AgentActor.userMessage` returns to package-private** (deferred from Task 2b, where a module
+   boundary separated it from its white-box tests).
+5. **`Coalescer`, `BacklogItem`, `StalenessPolicy` move to `nessy-api`** — user-facing vocabulary
+   currently sitting in the engine.
+6. **`LayeringTest` grows a case for `nessy-engine`**, so the boundary that is checked mechanically
+   for api and spi is checked for the engine too.
