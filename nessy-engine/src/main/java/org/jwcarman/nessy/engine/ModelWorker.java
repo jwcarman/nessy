@@ -189,7 +189,7 @@ public final class ModelWorker {
 
   /**
    * Names follow the OpenTelemetry GenAI semantic conventions, matching what {@link
-   * ProviderWatchmanModel#record} already counts on the {@code MeterRegistry} so metrics and traces
+   * ProviderAgentModel#record} already counts on the {@code MeterRegistry} so metrics and traces
    * agree.
    */
   private static void tagUsage(Traces traces, org.jwcarman.nessy.api.conversation.Usage usage) {

@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.engine;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
  * The tools an agent can call, as the engine sees them: a name, whether it needs a human, and a way
@@ -31,6 +33,14 @@ import com.fasterxml.jackson.databind.JsonNode;
  * first, and it is replaced rather than grown.
  */
 public interface AgentTools {
+
+  /**
+   * What the model is told it can call.
+   *
+   * <p>The same catalog the engine executes against, so a tool cannot be offered and then be
+   * unrunnable — the two used to come from separate places and could disagree.
+   */
+  List<ToolSpec> specs();
 
   /** Whether calling {@code tool} requires a human's approval before it runs. */
   boolean needsApproval(String tool);

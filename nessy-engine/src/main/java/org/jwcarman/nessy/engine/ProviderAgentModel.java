@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.examples.watchman.pekko;
+package org.jwcarman.nessy.engine;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -28,8 +29,6 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.engine.AgentModel;
-import org.jwcarman.nessy.engine.ModelReply;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -50,27 +49,20 @@ import org.slf4j.LoggerFactory;
  * <p>Pointed at LM Studio rather than OpenAI, which is a base URL and nothing else — the same move
  * {@code XaiModelProviderBootstrap} makes for x.ai.
  */
-public final class ProviderWatchmanModel implements AgentModel {
+public final class ProviderAgentModel implements AgentModel {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ProviderWatchmanModel.class);
-
-  private static final String SYSTEM =
-      """
-      You are the watchman for a single Linux server. Every half hour you do your rounds.
-
-      Use your read-only tools to look at the box: disk_usage and containers. If something needs
-      fixing that you cannot fix yourself, propose the tool that would fix it -- prune_images
-      removes unused Docker images and REQUIRES a human to approve it, so propose it and do not
-      expect it to run during this round. long_job starts a whole-disk trim that takes minutes.
-
-      Call the tools you need, then write one short paragraph of notes about what you found.
-      """;
+  private static final Logger LOG = LoggerFactory.getLogger(ProviderAgentModel.class);
 
   private final Model model;
   private final MeterRegistry meters;
   private final int maxTokens;
+  private final String systemPrompt;
+  private final AgentTools tools;
 
-  public ProviderWatchmanModel(Model model, MeterRegistry meters, int maxTokens) {
+  public ProviderAgentModel(
+      Model model, MeterRegistry meters, int maxTokens, String systemPrompt, AgentTools tools) {
+    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.model = model;
     this.meters = meters;
     this.maxTokens = maxTokens;
@@ -81,9 +73,9 @@ public final class ProviderWatchmanModel implements AgentModel {
     ModelRequest request =
         new ModelRequest(
             context,
-            SYSTEM,
+            systemPrompt,
             maxTokens,
-            WatchmanTools.specs(),
+            tools.specs(),
             // Ask for caching. A provider that cannot do it says so and nothing fails -- which is
             // itself the measurement: cache_read stays zero rather than going missing.
             Set.of(Capability.PROMPT_CACHING),

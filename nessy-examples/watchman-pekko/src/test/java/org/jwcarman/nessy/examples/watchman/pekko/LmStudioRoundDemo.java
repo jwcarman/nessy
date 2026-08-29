@@ -31,6 +31,7 @@ import org.jwcarman.nessy.engine.AgentState;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.MicrometerTracing;
 import org.jwcarman.nessy.engine.Phase;
+import org.jwcarman.nessy.engine.ProviderAgentModel;
 import org.jwcarman.nessy.engine.ToolCallRecord;
 
 /**
@@ -56,12 +57,14 @@ class LmStudioRoundDemo {
     WatchmanActorSystem actors =
         new WatchmanActorSystem(
             WatchmanPostgres.config(),
-            new ProviderWatchmanModel(
+            new ProviderAgentModel(
                 org.jwcarman.nessy.model.openai.OpenAiModelProvider.create(
                         c -> c.apiKey("lm-studio").baseUrl("http://localhost:1234/v1"))
                     .model("qwen/qwen3.6-35b-a3b"),
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
-                4096),
+                4096,
+                WatchmanPrompt.SYSTEM,
+                WatchmanTools.boundTo(new FakeRunner())),
             new FakeRunner(),
             WatchmanPostgres.memories(),
             WatchmanPostgres.backlogs(),

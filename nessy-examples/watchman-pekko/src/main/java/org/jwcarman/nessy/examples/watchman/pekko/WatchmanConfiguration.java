@@ -25,6 +25,7 @@ import org.jwcarman.nessy.engine.Backlogs;
 import org.jwcarman.nessy.engine.BlockingWork;
 import org.jwcarman.nessy.engine.Claims;
 import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.ProviderAgentModel;
 import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.engine.Traces;
 import org.slf4j.LoggerFactory;
@@ -103,11 +104,16 @@ public class WatchmanConfiguration {
   public AgentModel watchmanModel(
       WatchmanProperties properties,
       org.jwcarman.nessy.spi.model.ModelProvider provider,
+      CommandRunner runner,
       io.micrometer.core.instrument.MeterRegistry meters) {
     return properties.isScripted()
         ? new ScriptedWatchmanModel(java.time.Duration.ofMillis(50))
-        : new ProviderWatchmanModel(
-            provider.model(properties.getModelId()), meters, properties.getMaxTokens());
+        : new ProviderAgentModel(
+            provider.model(properties.getModelId()),
+            meters,
+            properties.getMaxTokens(),
+            WatchmanPrompt.SYSTEM,
+            WatchmanTools.boundTo(runner));
   }
 
   /**

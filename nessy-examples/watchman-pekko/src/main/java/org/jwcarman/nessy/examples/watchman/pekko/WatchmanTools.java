@@ -113,6 +113,11 @@ public final class WatchmanTools {
   public static AgentTools boundTo(CommandRunner runner) {
     return new AgentTools() {
       @Override
+      public java.util.List<org.jwcarman.nessy.api.tool.ToolSpec> specs() {
+        return WatchmanTools.specs();
+      }
+
+      @Override
       public boolean needsApproval(String tool) {
         return WatchmanTools.needsApproval(tool);
       }
