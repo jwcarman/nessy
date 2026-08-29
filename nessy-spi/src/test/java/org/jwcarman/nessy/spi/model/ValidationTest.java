@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -34,37 +35,46 @@ class ValidationTest {
 
   @Test
   void a_model_settings_without_tokens_to_spend_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings(0, Set.of(), null))
+    assertThatThrownBy(() -> new ModelSettings(0, Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void a_model_settings_context_window_at_or_below_max_tokens_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings(1024, Set.of(), 1024L))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_model_settings_accepts_a_null_context_window() {
-    var settings = new ModelSettings(1024, Set.of(), null);
-
-    assertThat(settings.contextWindow()).isNull();
-  }
-
-  @Test
-  void a_model_settings_context_window_above_max_tokens_is_accepted() {
-    var settings = new ModelSettings(1024, Set.of(), 200_000L);
-
-    assertThat(settings.contextWindow()).isEqualTo(200_000L);
-  }
-
-  @Test
-  void the_defaults_use_the_published_max_tokens_constant_and_no_extras() {
+  void the_defaults_use_the_published_max_tokens_constant_and_require_nothing() {
     var settings = ModelSettings.defaults();
 
     assertThat(settings.maxTokens()).isEqualTo(ModelSettings.DEFAULT_MAX_TOKENS);
-    assertThat(settings.capabilities()).isEmpty();
-    assertThat(settings.contextWindow()).isNull();
+    assertThat(settings.required()).isEmpty();
+  }
+
+  @Test
+  void settings_are_rejected_by_a_model_that_lacks_a_required_capability() {
+    var settings = new ModelSettings(1024, Set.of(Capability.IMAGE_INPUT));
+    var textOnly = new ModelDescription("text-only", "test", 200_000, Set.of());
+
+    assertThatThrownBy(() -> settings.requireSatisfiedBy(textOnly))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("IMAGE_INPUT");
+  }
+
+  @Test
+  void settings_are_rejected_by_a_model_whose_window_cannot_hold_the_answer() {
+    var settings = new ModelSettings(200_000, Set.of());
+    var small = new ModelDescription("small", "test", 8_192, Set.of());
+
+    assertThatThrownBy(() -> settings.requireSatisfiedBy(small))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("context window");
+  }
+
+  @Test
+  void settings_a_model_can_honour_pass_without_complaint() {
+    var settings = new ModelSettings(1024, Set.of(Capability.THINKING));
+    var capable =
+        new ModelDescription(
+            "capable", "test", 200_000, Set.of(Capability.THINKING, Capability.IMAGE_INPUT));
+
+    assertThatCode(() -> settings.requireSatisfiedBy(capable)).doesNotThrowAnyException();
   }
 
   @Test

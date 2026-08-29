@@ -47,6 +47,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -626,6 +627,10 @@ class ObservedTurnTest {
 
   /** A model whose stream throws before it ever yields an event. */
   static final class ExplodingModel implements Model {
+    @Override
+    public ModelDescription describe() {
+      return new ModelDescription("exploding", "scripted", 128000, Set.of());
+    }
 
     @Override
     public ModelStream stream(ModelRequest request) {

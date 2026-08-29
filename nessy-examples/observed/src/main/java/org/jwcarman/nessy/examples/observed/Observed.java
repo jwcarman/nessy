@@ -134,7 +134,7 @@ public final class Observed {
     // PROMPT_CACHING requested, not assumed: a provider that cannot do it says so, and the two
     // cache-token attributes on the chat span (gen_ai.usage.cache_read/cache_write.input_tokens)
     // are how you find out whether it did.
-    ModelSettings settings = new ModelSettings(1024, Set.of(Capability.PROMPT_CACHING), null);
+    ModelSettings settings = new ModelSettings(1024, Set.of(Capability.PROMPT_CACHING));
     Tool<Calculate> calculator =
         Tool.of(
             Calculate.class,

@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -41,6 +42,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * other way), so this is the small, single-purpose double this module's own tests need.
  */
 final class RecordingTextModel implements Model {
+  @Override
+  public ModelDescription describe() {
+    return new ModelDescription("recording-text", "test", 128000, Set.of());
+  }
 
   private final Deque<String> replies;
   private final List<ModelRequest> requests = new ArrayList<>();

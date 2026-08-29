@@ -16,12 +16,14 @@
 package org.jwcarman.nessy.testing;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -38,6 +40,19 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * request log.
  */
 public final class ScriptedModel implements Model {
+
+  /**
+   * Claims every capability, because it has none of the constraints a real one does — it answers
+   * from a script and never reaches a provider. A test that needs a model LACKING something should
+   * say so explicitly rather than relying on this one being poor.
+   */
+  private static final ModelDescription DESCRIPTION =
+      new ModelDescription("scripted", "scripted", 128_000, EnumSet.allOf(Capability.class));
+
+  @Override
+  public ModelDescription describe() {
+    return DESCRIPTION;
+  }
 
   private final List<List<ModelEvent>> turns;
   private final List<ModelRequest> requests = new ArrayList<>();

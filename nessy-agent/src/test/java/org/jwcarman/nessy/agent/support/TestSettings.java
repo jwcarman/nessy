@@ -28,7 +28,7 @@ public final class TestSettings {
   private TestSettings() {}
 
   public static ModelSettings settings() {
-    return new ModelSettings(1024, Set.of(), null);
+    return new ModelSettings(1024, Set.of());
   }
 
   public static ToolRegistry emptyRegistry() {

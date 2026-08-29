@@ -137,6 +137,10 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       Executor executor,
       ObservationRegistry observations,
       Supplier<Observation> parentSegment) {
+    // The comparison that never existed (engine-extraction spec §6): both halves were always
+    // here -- a caller's required capabilities and the model's own report -- and nothing put them
+    // side by side, so asking for something a provider did not offer failed silently forever.
+    settings.requireSatisfiedBy(model.describe());
     this.model = Objects.requireNonNull(model, "model must not be null");
     this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     this.settings = Objects.requireNonNull(settings, "settings must not be null");
@@ -161,7 +165,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
               systemPrompt,
               settings.maxTokens(),
               tools.specs(),
-              settings.capabilities(),
+              settings.required(),
               null);
       return stream(request);
     } catch (RuntimeException e) {

@@ -17,7 +17,6 @@ package org.jwcarman.nessy.spi.model;
 
 import java.time.Duration;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -68,19 +67,9 @@ public final class RetryingModel implements Model {
     }
   }
 
+  /** The delegate's own description; retrying changes how a call is made, never what it is. */
   @Override
-  public Set<Capability> capabilities() {
-    return delegate.capabilities();
-  }
-
-  @Override
-  public String id() {
-    return delegate.id();
-  }
-
-  /** The vendor is the delegate's; retrying changes how a call is made, never who serves it. */
-  @Override
-  public String provider() {
-    return delegate.provider();
+  public ModelDescription describe() {
+    return delegate.describe();
   }
 }

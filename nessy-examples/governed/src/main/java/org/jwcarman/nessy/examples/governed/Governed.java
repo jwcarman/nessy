@@ -104,7 +104,7 @@ public final class Governed {
         new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     IntentStore<OpsIntent> intentStore =
         new SubstrateIntentStore<>(substrate, SCOPE_ID, OpsIntent.class, intentMapper);
-    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
+    ModelSettings settings = new ModelSettings(1024, Set.of());
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.ToolCallDecided> decisions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();

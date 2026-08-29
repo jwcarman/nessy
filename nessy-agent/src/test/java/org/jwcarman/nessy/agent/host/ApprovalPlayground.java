@@ -82,7 +82,7 @@ public final class ApprovalPlayground {
 
   public static void main(String[] args) throws Exception {
     var selection = ModelDiscovery.select();
-    var settings = new ModelSettings(1024, Set.of(), null);
+    var settings = new ModelSettings(1024, Set.of());
     var pending = new LinkedBlockingQueue<ComputationId>();
     Approver queueing =
         context ->

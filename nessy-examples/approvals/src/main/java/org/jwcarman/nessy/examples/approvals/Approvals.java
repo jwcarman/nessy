@@ -86,7 +86,7 @@ public final class Approvals {
    */
   static String runScripted() throws InterruptedException {
     Model model = scriptedModel();
-    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
+    ModelSettings settings = new ModelSettings(1024, Set.of());
     BlockingQueue<ComputationId> requests = new LinkedBlockingQueue<>();
     BlockingQueue<String> replies = new LinkedBlockingQueue<>();
     TurnObserver observer =
@@ -139,7 +139,7 @@ public final class Approvals {
 
   private static void runInteractive() throws IOException {
     var selection = ModelDiscovery.select();
-    var settings = new ModelSettings(1024, Set.of(), null);
+    var settings = new ModelSettings(1024, Set.of());
     var pending = new LinkedBlockingQueue<ComputationId>();
 
     // The harness is immortal, not closeable (spec §4): it is kept for the process's lifetime, not

@@ -26,6 +26,7 @@ import java.util.function.Predicate;
 import org.jwcarman.nessy.model.anthropic.AnthropicRequests.ThinkingConfig;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -178,19 +179,18 @@ public final class AnthropicModelProvider implements ModelProvider {
       return new AnthropicStream(client.messages().createStreaming(params));
     }
 
+    /**
+     * What this model is. The context window is a per-provider constant for now — every current
+     * Claude model reads 200k.
+     *
+     * <p>A per-model figure belongs here the day one is available; a wrong window is caught at
+     *
+     * <p>resolution rather than mid-turn, which is the point of reporting it at all.
+     */
     @Override
-    public Set<Capability> capabilities() {
-      return CAPABILITIES;
-    }
+    public ModelDescription describe() {
 
-    @Override
-    public String id() {
-      return id;
-    }
-
-    @Override
-    public String provider() {
-      return PROVIDER;
+      return new ModelDescription(id, PROVIDER, 200_000, CAPABILITIES);
     }
 
     private ThinkingConfig thinkingConfigFor(ModelRequest request) {

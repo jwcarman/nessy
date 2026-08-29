@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -130,6 +131,10 @@ final class FakeBootstrap implements ModelProviderBootstrap {
   }
 
   private record FakeModel(String id) implements Model {
+    @Override
+    public ModelDescription describe() {
+      return new ModelDescription(id, "test", 128_000, Set.of());
+    }
 
     @Override
     public ModelStream stream(ModelRequest request) {

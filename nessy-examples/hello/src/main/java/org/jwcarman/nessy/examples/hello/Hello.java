@@ -55,7 +55,7 @@ public final class Hello {
   static String run(Iterable<String> args) {
     boolean scripted = contains(args, "--scripted");
     Model model = scripted ? scriptedModel() : ModelDiscovery.select().model();
-    ModelSettings settings = new ModelSettings(1024, Set.of(), null);
+    ModelSettings settings = new ModelSettings(1024, Set.of());
     Tool<Calculate> calculator =
         Tool.of(
             Calculate.class,

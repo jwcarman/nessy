@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -103,6 +104,10 @@ public final class StarterTestBootstrap implements ModelProviderBootstrap {
    * hard-coded id would prove nothing.
    */
   private record IdentifiedModel(String id, ScriptedModel delegate) implements Model {
+    @Override
+    public ModelDescription describe() {
+      return new ModelDescription(id, PROVIDER_NAME, 128_000, delegate.capabilities());
+    }
 
     private IdentifiedModel(String id) {
       this(id, ScriptedModel.script(s -> s.text("nothing to do").endTurn()));

@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -194,19 +195,19 @@ public final class OpenAiModelProvider implements ModelProvider {
       return new OpenAiStream(client.chat().completions().createStreaming(params));
     }
 
+    /**
+     * What this model is. The context window is a per-provider constant for now — the GPT-4o class
+     * floor; an OpenAI-COMPATIBLE endpoint (LM Studio, vLLM) may differ wildly and this is a guess
+     * until the endpoint is asked.
+     *
+     * <p>A per-model figure belongs here the day one is available; a wrong window is caught at
+     *
+     * <p>resolution rather than mid-turn, which is the point of reporting it at all.
+     */
     @Override
-    public Set<Capability> capabilities() {
-      return CAPABILITIES;
-    }
+    public ModelDescription describe() {
 
-    @Override
-    public String id() {
-      return id;
-    }
-
-    @Override
-    public String provider() {
-      return provider;
+      return new ModelDescription(id, provider, 128_000, CAPABILITIES);
     }
   }
 }

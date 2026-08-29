@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -90,6 +91,11 @@ class AgentAskTest {
     void a_failing_model_call_resolves_failed_with_the_models_own_reason() {
       Model exploding =
           new Model() {
+            @Override
+            public ModelDescription describe() {
+              return new ModelDescription("scripted", "test", 128_000, java.util.Set.of());
+            }
+
             @Override
             public ModelStream stream(ModelRequest request) {
               throw new IllegalStateException("boom");
@@ -237,6 +243,11 @@ class AgentAskTest {
     void ask_leaks_no_subscription_for_a_failed_turn() {
       Model exploding =
           new Model() {
+            @Override
+            public ModelDescription describe() {
+              return new ModelDescription("scripted", "test", 128_000, java.util.Set.of());
+            }
+
             @Override
             public ModelStream stream(ModelRequest request) {
               throw new IllegalStateException("boom");

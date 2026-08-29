@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -31,6 +32,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * injected latch before returning its scripted events; every later call returns immediately.
  */
 public final class LatchedModel implements Model {
+  @Override
+  public ModelDescription describe() {
+    return new ModelDescription("latched", "scripted", 128000, Set.of());
+  }
 
   private final CountDownLatch gate;
   private final List<List<ModelEvent>> scripts;

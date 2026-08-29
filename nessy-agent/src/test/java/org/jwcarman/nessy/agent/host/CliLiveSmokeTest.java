@@ -49,7 +49,7 @@ class CliLiveSmokeTest {
     assumeTrue(anyProviderKeyPresent(), "no model provider API key set");
 
     var selection = ModelDiscovery.select();
-    var settings = new ModelSettings(64, Set.of(), null);
+    var settings = new ModelSettings(64, Set.of());
     var input =
         new ByteArrayInputStream(
             "Reply with exactly the word: pong\n".getBytes(StandardCharsets.UTF_8));

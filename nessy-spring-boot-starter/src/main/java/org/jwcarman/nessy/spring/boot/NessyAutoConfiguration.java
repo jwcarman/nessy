@@ -225,8 +225,7 @@ public class NessyAutoConfiguration {
    */
   static ModelSettings settings(NessyProperties properties) {
     ModelSettings defaults = ModelSettings.defaults();
-    return new ModelSettings(
-        defaults.maxTokens(), properties.capabilities(), defaults.contextWindow());
+    return new ModelSettings(defaults.maxTokens(), properties.capabilities());
   }
 
   /**

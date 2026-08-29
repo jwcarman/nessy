@@ -37,11 +37,23 @@ public interface Model {
    */
   ModelStream stream(ModelRequest request);
 
+  /**
+   * What this model is, in one place: its id, its provider, its context window, and what it can do.
+   *
+   * <p>The single method an implementation must answer. {@link #id()}, {@link #provider()} and
+   * {@link #capabilities()} read off it, so nothing has to be kept in step by hand.
+   */
+  ModelDescription describe();
+
   /** What this model can actually do. See {@link Capability}. */
-  Set<Capability> capabilities();
+  default Set<Capability> capabilities() {
+    return describe().capabilities();
+  }
 
   /** This model's id at its vendor — {@code "claude-opus-5"} — for banners and logs. */
-  String id();
+  default String id() {
+    return describe().id();
+  }
 
   /**
    * The semconv {@code gen_ai.provider.name} value of the vendor this model is bound at: {@code
@@ -58,5 +70,7 @@ public interface Model {
    * <p>No default: every implementation answers, so a new vendor cannot quietly report someone
    * else's name.
    */
-  String provider();
+  default String provider() {
+    return describe().provider();
+  }
 }

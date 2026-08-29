@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -37,6 +38,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * RuntimeException} thrown instead of replying at all, for the never-throw test.
  */
 final class ScriptedCriticModel implements Model {
+  @Override
+  public ModelDescription describe() {
+    return new ModelDescription("scripted-critic", "test", 128000, Set.of());
+  }
 
   private final Deque<Object> script = new ArrayDeque<>();
   private final List<ModelRequest> requests = new ArrayList<>();

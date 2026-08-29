@@ -49,6 +49,7 @@ import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -313,6 +314,10 @@ class InTheLoopScopesTest {
 
   /** A model that records a probe while its stream is being consumed. */
   private final class ProbingModel implements Model {
+    @Override
+    public ModelDescription describe() {
+      return new ModelDescription("probing", "scripted", 128000, Set.of());
+    }
 
     @Override
     public ModelStream stream(ModelRequest request) {

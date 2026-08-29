@@ -31,6 +31,11 @@ import org.jwcarman.nessy.api.message.Message;
 class RetryingModelTest {
 
   static final class FlakyModel implements Model {
+    @Override
+    public ModelDescription describe() {
+      return new ModelDescription("flaky", "test", 128000, Set.of(Capability.THINKING));
+    }
+
     int calls;
     final int failuresBeforeSuccess;
     final RuntimeException failure;
