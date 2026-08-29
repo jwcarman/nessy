@@ -20,14 +20,11 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
-import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.actor.typed.SpawnProtocol;
-import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentModel;
-import org.jwcarman.nessy.engine.AgentRegistry;
 import org.jwcarman.nessy.engine.AgentState;
 import org.jwcarman.nessy.engine.AgentTools;
 import org.jwcarman.nessy.engine.BlockingWork;
@@ -85,7 +82,6 @@ public final class WatchmanActorSystem implements SmartLifecycle {
 
   private final ActorSystem<SpawnProtocol.Command> system;
   private final PekkoHarness harness;
-  private final ActorRef<AgentRegistry.Command> registry;
   private final BlockingWork blocking;
   private final Duration askTimeout;
   private final Traces traces;
@@ -133,7 +129,6 @@ public final class WatchmanActorSystem implements SmartLifecycle {
                         .coalescer(coalescer)
                         .renderer(WatchmanObservations.RENDERER)
                         .approvalTerm(approvalTerm));
-    this.registry = harness.registry();
   }
 
   public WatchmanActorSystem(
@@ -176,12 +171,11 @@ public final class WatchmanActorSystem implements SmartLifecycle {
                         .coalescer(WatchmanObservations.COALESCER)
                         .renderer(WatchmanObservations.RENDERER)
                         .approvalTerm(properties.getApprovalTerm()));
-    this.registry = harness.registry();
   }
 
   /** Fire-and-forget to one agent. No round trip, no future: the cron does not wait for a round. */
   public void tell(String agentId, AgentActor.NessyMessage message) {
-    registry.tell(new AgentRegistry.Envelope(agentId, message));
+    harness.tell(agentId, message);
   }
 
   /** The trace context a caller at this boundary is standing in. */
@@ -198,25 +192,17 @@ public final class WatchmanActorSystem implements SmartLifecycle {
    */
   public CompletionStage<AgentActor.Ack> answerApproval(
       String agentId, String callId, boolean approved, String by, String note) {
-    return AskPattern.<AgentRegistry.Command, AgentActor.Ack>ask(
-        registry,
+    return harness.ask(
+        agentId,
         replyTo ->
-            new AgentRegistry.Envelope(
-                agentId,
-                new AgentActor.AnswerApproval(
-                    callId, approved, by, note, replyTo, traces.capture())),
-        askTimeout,
-        system.scheduler());
+            new AgentActor.AnswerApproval(callId, approved, by, note, replyTo, traces.capture()),
+        askTimeout);
   }
 
   /** What one agent looks like right now — used by the tests and the transcript page. */
   public CompletionStage<AgentState> inspect(String agentId) {
-    return AskPattern.<AgentRegistry.Command, AgentState>ask(
-        registry,
-        replyTo ->
-            new AgentRegistry.Envelope(agentId, new AgentActor.Inspect(replyTo, traces.capture())),
-        askTimeout,
-        system.scheduler());
+    return harness.ask(
+        agentId, replyTo -> new AgentActor.Inspect(replyTo, traces.capture()), askTimeout);
   }
 
   public ActorSystem<SpawnProtocol.Command> raw() {

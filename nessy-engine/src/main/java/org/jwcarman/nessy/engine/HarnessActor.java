@@ -28,41 +28,45 @@ import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.agent.ObservationRenderer;
 
 /**
- * The top of the engine's own subtree: the model desk and its workers, the tool pool, and the
- * registry that owns agents.
+ * One harness, as an actor: the parent of every agent of ONE type, plus the machinery they share.
+ *
+ * <p><b>Its whole protocol is {@link Envelope}</b> — an agent id and a message. Nothing above it
+ * ever receives an agent reference, which is what lets the routing underneath swap between local
+ * children and cluster sharding without a single caller noticing. {@link Harness} is the façade
+ * over this; it only ever tells.
  *
  * <p><b>Not a Pekko guardian.</b> A guardian is the behavior an {@code ActorSystem} is CREATED
- * with, and a harness handed an existing system can never be one (engine-extraction spec §3.1) — so
- * this is spawned beneath whatever guardian the caller already has. It exists so the engine has a
- * single parent: stop this one actor and everything the harness started stops with it, without the
- * harness tracking children by hand.
+ * with, and a harness handed an existing system can never be one (engine-extraction spec §3.1).
+ * This is spawned beneath whatever guardian the caller already has, and stopping it stops
+ * everything the harness started.
+ *
+ * <p><b>One harness is one agent type</b>, which is why the sharding entity key needs no separate
+ * concept: it is the harness's own {@link AgentType}.
  *
  * <p><b>Why the two worker tiers differ.</b> Tools go behind a pool router because they are cheap
  * and local, and a router is one line. Model calls go through a work-pulling desk because a router
  * bounds concurrent message PROCESSING rather than concurrent in-flight WORK — and for calls that
  * cost money or hit a rate limit, in-flight is the number that matters. See {@link ModelDesk}.
  */
-public final class EngineRoot {
+public final class HarnessActor {
 
   /** What this actor accepts. */
   public sealed interface Command {}
 
-  /** Hands out the registry once the tree is up. */
-  public record GetRegistry(ActorRef<ActorRef<AgentRegistry.Command>> replyTo) implements Command {}
-
   /**
-   * Stops this subtree and everything beneath it.
-   *
-   * <p>A command rather than an outside {@code stop} call, because a top-level actor is stopped by
-   * its own decision — and because this is the single point that takes the engine down, which is
-   * what having one parent bought us.
+   * A message for one agent. Deliberately the same shape as cluster sharding's, so the clustered
+   * routing is a substitution rather than a redesign.
    */
+  public record Envelope(String agentId, AgentActor.NessyMessage message) implements Command {}
+
+  /** Stops this harness and every agent beneath it. */
   public record Stop() implements Command {}
 
-  private EngineRoot() {}
+  private HarnessActor() {}
 
-  /** Everything the engine needs that a host supplies. */
+  /** Everything a harness needs that a host supplies. */
   public record Wiring(
+      AgentType agentType,
       AgentModel model,
       AgentTools tools,
       Memories memories,
@@ -74,10 +78,9 @@ public final class EngineRoot {
       int modelWorkers,
       int toolWorkers,
       Duration approvalTerm,
-      Claims claims,
-      AgentType agentType) {}
+      Claims claims) {}
 
-  /** The engine's subtree, ready to be spawned under a caller's system. */
+  /** The harness's subtree, ready to be spawned under a caller's system. */
   public static Behavior<Command> create(Wiring wiring) {
     return Behaviors.setup(
         context -> {
@@ -107,29 +110,28 @@ public final class EngineRoot {
                           wiring.claims())),
                   "tool-pool");
 
-          ActorRef<AgentRegistry.Command> registry =
-              context.spawn(
-                  AgentRegistry.create(
-                      new AgentActor.Dependencies(
-                          desk,
-                          tools,
-                          wiring.memories(),
-                          wiring.coalescer(),
-                          wiring.renderer(),
-                          wiring.blocking(),
-                          wiring.traces(),
-                          wiring.clock(),
-                          wiring.approvalTerm(),
-                          wiring.claims(),
-                          wiring.tools(),
-                          wiring.agentType())),
-                  "registry");
+          AgentActor.Dependencies deps =
+              new AgentActor.Dependencies(
+                  desk,
+                  tools,
+                  wiring.memories(),
+                  wiring.coalescer(),
+                  wiring.renderer(),
+                  wiring.blocking(),
+                  wiring.traces(),
+                  wiring.clock(),
+                  wiring.approvalTerm(),
+                  wiring.claims(),
+                  wiring.tools(),
+                  wiring.agentType());
+
+          Agents agents = Agents.local(context, deps);
 
           return Behaviors.receive(Command.class)
               .onMessage(
-                  GetRegistry.class,
-                  get -> {
-                    get.replyTo().tell(registry);
+                  Envelope.class,
+                  envelope -> {
+                    agents.tell(envelope.agentId(), envelope.message());
                     return Behaviors.same();
                   })
               .onMessage(Stop.class, stop -> Behaviors.stopped())

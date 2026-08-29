@@ -18,34 +18,40 @@ package org.jwcarman.nessy.engine;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.jwcarman.nessy.api.agent.AgentType;
 
 /**
- * A {@link Harness} over one {@link EngineRoot} subtree.
+ * The façade over one {@link HarnessActor}.
  *
- * <p>Holds the root rather than the registry, and asks the root for the registry once, lazily. The
- * root is spawned synchronously but its children are created inside {@code Behaviors.setup}, so the
- * registry does not exist the instant {@code spawn} returns — asking for it is how a caller waits
- * for the tree without the factory blocking on construction.
+ * <p>It holds an {@link ActorRef} and nothing else — no registry, no cache, no map. Every operation
+ * is an agent id and a message, so there is no state here to go stale.
+ *
+ * <p><b>Every observation routes through here</b>, and there is no other door: nothing outside the
+ * engine can obtain an agent. That is what lets the routing underneath change — local children
+ * today, cluster sharding later — without a single caller noticing.
+ *
+ * <p>Its predecessor asked the tree for a registry on first use and cached it, which made the first
+ * {@code observe()} on every harness block on an ask. The harness actor owns routing now, so the
+ * hot path is a tell.
  */
 public final class PekkoHarness implements Harness<String> {
 
-  private static final Duration WIRING_PATIENCE = Duration.ofSeconds(10);
-
   private final AgentType type;
-  private final ActorRef<EngineRoot.Command> root;
+  private final ActorRef<HarnessActor.Command> harness;
   private final ActorSystem<?> system;
   private final Traces traces;
 
-  private volatile ActorRef<AgentRegistry.Command> registry;
-
   PekkoHarness(
-      AgentType type, ActorRef<EngineRoot.Command> root, ActorSystem<?> system, Traces traces) {
+      AgentType type,
+      ActorRef<HarnessActor.Command> harness,
+      ActorSystem<?> system,
+      Traces traces) {
     this.type = Objects.requireNonNull(type, "type must not be null");
-    this.root = Objects.requireNonNull(root, "root must not be null");
+    this.harness = Objects.requireNonNull(harness, "harness must not be null");
     this.system = Objects.requireNonNull(system, "system must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
   }
@@ -57,16 +63,12 @@ public final class PekkoHarness implements Harness<String> {
 
   @Override
   public void observe(String agentId, String observation) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(observation, "observation must not be null");
-    registry()
-        .tell(
-            new AgentRegistry.Envelope(
-                agentId, new AgentActor.Observe(observation, traces.capture())));
+    tell(agentId, new AgentActor.Observe(observation, traces.capture()));
   }
 
   /**
-   * Stops the subtree this harness spawned, and only that.
+   * Stops this harness and every agent beneath it, and only those.
    *
    * <p>The caller's {@code ActorSystem} keeps running — it was borrowed. A harness that terminated
    * it would take down whatever else the host is doing on the same system, which inside a Boot app
@@ -74,26 +76,29 @@ public final class PekkoHarness implements Harness<String> {
    */
   @Override
   public void shutdown() {
-    root.tell(new EngineRoot.Stop());
+    harness.tell(new HarnessActor.Stop());
+  }
+
+  /** Sends a message to one agent — the only way anything reaches an agent. */
+  public void tell(String agentId, AgentActor.NessyMessage message) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(message, "message must not be null");
+    harness.tell(new HarnessActor.Envelope(agentId, message));
   }
 
   /**
-   * The registry this harness owns — the door for a host that needs more than {@link Harness}
-   * offers: waking an agent, answering an approval, inspecting one.
+   * Sends a message to one agent and waits for its answer.
    *
-   * <p>On the concrete type rather than the interface deliberately. {@link Harness} is the small
-   * surface every engine must satisfy; this is the escape hatch for a host that has knowingly
-   * bought into THIS engine, and it is where the watchman's approvals page lives.
+   * <p>The reply-to ref belongs to the ASKER, never to the agent, so this does not reintroduce a
+   * handle: the agent is still reached only by name.
    */
-  public ActorRef<AgentRegistry.Command> registry() {
-    ActorRef<AgentRegistry.Command> known = registry;
-    if (known != null) {
-      return known;
-    }
-    CompletionStage<ActorRef<AgentRegistry.Command>> asked =
-        AskPattern.ask(root, EngineRoot.GetRegistry::new, WIRING_PATIENCE, system.scheduler());
-    ActorRef<AgentRegistry.Command> resolved = asked.toCompletableFuture().join();
-    registry = resolved;
-    return resolved;
+  public <R> CompletionStage<R> ask(
+      String agentId, Function<ActorRef<R>, AgentActor.NessyMessage> message, Duration patience) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    return AskPattern.<HarnessActor.Command, R>ask(
+        harness,
+        replyTo -> new HarnessActor.Envelope(agentId, message.apply(replyTo)),
+        patience,
+        system.scheduler());
   }
 }

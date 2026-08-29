@@ -174,10 +174,11 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     Memories memories = new Memories(substrate, budget);
     Claims claims = new Claims(substrate);
 
-    ActorRef<EngineRoot.Command> root =
+    ActorRef<HarnessActor.Command> root =
         spawnRoot(
-            EngineRoot.create(
-                new EngineRoot.Wiring(
+            HarnessActor.create(
+                new HarnessActor.Wiring(
+                    config.type(),
                     agentModel,
                     tools,
                     memories,
@@ -189,8 +190,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                     MODEL_WORKERS,
                     TOOL_WORKERS,
                     config.approvalTerm(),
-                    claims,
-                    config.type())));
+                    claims)));
 
     return new PekkoHarness(config.type(), root, system, traces);
   }
@@ -216,9 +216,9 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    * <p>Blocking here is deliberate and bounded: a harness that returned before its tree existed
    * would hand back something whose first {@code observe} raced the wiring.
    */
-  private ActorRef<EngineRoot.Command> spawnRoot(Behavior<EngineRoot.Command> behavior) {
-    String name = "nessy-engine-" + roots.incrementAndGet();
-    return AskPattern.<SpawnProtocol.Command, ActorRef<EngineRoot.Command>>ask(
+  private ActorRef<HarnessActor.Command> spawnRoot(Behavior<HarnessActor.Command> behavior) {
+    String name = "nessy-harness-" + roots.incrementAndGet();
+    return AskPattern.<SpawnProtocol.Command, ActorRef<HarnessActor.Command>>ask(
             system,
             replyTo -> new SpawnProtocol.Spawn<>(behavior, name, Props.empty(), replyTo),
             SPAWN_PATIENCE,
