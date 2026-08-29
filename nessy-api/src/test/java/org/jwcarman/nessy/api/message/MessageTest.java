@@ -35,7 +35,7 @@ class MessageTest {
 
   @Test
   void tool_results_are_carried_on_a_user_message() {
-    ToolResultBlock block = new ToolResultBlock("call_1", "contents", false);
+    ToolResultBlock block = ToolResultBlock.of("call_1", "contents", false);
 
     Message message = Message.toolResults(List.of(block));
 
@@ -67,6 +67,6 @@ class MessageTest {
   void tool_result_factories_set_the_error_flag() {
     assertThat(ToolResult.ok("fine").isError()).isFalse();
     assertThat(ToolResult.error("boom").isError()).isTrue();
-    assertThat(ToolResult.error("boom").content()).isEqualTo("boom");
+    assertThat(ToolResult.error("boom").content()).containsExactly(new TextBlock("boom"));
   }
 }

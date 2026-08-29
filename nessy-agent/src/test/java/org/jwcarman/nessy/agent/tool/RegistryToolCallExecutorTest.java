@@ -507,7 +507,7 @@ class RegistryToolCallExecutorTest {
                         TurnEvent.ToolCallCompleted.class,
                         completed -> {
                           assertThat(completed.result().isError()).isTrue();
-                          assertThat(completed.result().content()).contains("unknown tool");
+                          assertThat(completed.result().text()).contains("unknown tool");
                         }));
   }
 

@@ -379,7 +379,7 @@ public record Context(List<Message> messages) {
     for (ContentBlock block : content) {
       elided.add(
           block instanceof ToolResultBlock toolResult
-              ? new ToolResultBlock(toolResult.toolUseId(), "[elided]", toolResult.isError())
+              ? ToolResultBlock.of(toolResult.toolUseId(), "[elided]", toolResult.isError())
               : block);
     }
     return new Message(message.role(), elided);

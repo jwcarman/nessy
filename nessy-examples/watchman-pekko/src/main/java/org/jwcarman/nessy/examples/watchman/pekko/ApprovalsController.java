@@ -100,8 +100,8 @@ public class ApprovalsController {
           case TextBlock(String text) -> notes.add(new Note(role(message), text));
           case ToolUseBlock(ToolCall call, String ignored) ->
               notes.add(new Note("asked", call.name()));
-          case ToolResultBlock(String ignoredId, String content, boolean isError) ->
-              notes.add(new Note(isError ? "tool (error)" : "tool", content));
+          case ToolResultBlock result ->
+              notes.add(new Note(result.isError() ? "tool (error)" : "tool", result.text()));
           case ImageBlock ignored -> notes.add(new Note(role(message), "(image)"));
           case ThinkingBlock(String thinking, String ignored) ->
               notes.add(new Note("thinking", thinking));

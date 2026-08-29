@@ -176,7 +176,7 @@ class BedrockRequestsTest {
     void becomes_a_tool_use_block_with_id_name_and_input() {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var built =
           BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
@@ -197,8 +197,8 @@ class BedrockRequestsTest {
       var toolResultTurn =
           Message.toolResults(
               List.of(
-                  new ToolResultBlock("call-1", "ok", false),
-                  new ToolResultBlock("call-2", "ok", false)));
+                  ToolResultBlock.of("call-1", "ok", false),
+                  ToolResultBlock.of("call-2", "ok", false)));
       var built =
           BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
@@ -217,7 +217,7 @@ class BedrockRequestsTest {
       arguments.put("verbose", true);
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var built =
           BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
@@ -240,7 +240,7 @@ class BedrockRequestsTest {
           new ToolUseBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "some-signature");
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
 
       // No exception, and the rebuilt block carries the call unchanged — Bedrock's ToolUseBlock
       // has no signature-shaped field for GeminiRequests' equivalent to replay onto.
@@ -261,7 +261,7 @@ class BedrockRequestsTest {
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var built =
           BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
 
@@ -309,7 +309,7 @@ class BedrockRequestsTest {
     void becomes_a_tool_result_block_addressed_by_the_matching_call_s_id() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "42", false);
+      var result = ToolResultBlock.of("call-1", "42", false);
       var built =
           BedrockRequests.toRequest(
               request(
@@ -331,7 +331,7 @@ class BedrockRequestsTest {
     void an_error_result_carries_the_error_status() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "file not found", true);
+      var result = ToolResultBlock.of("call-1", "file not found", true);
       var built =
           BedrockRequests.toRequest(
               request(
@@ -348,8 +348,8 @@ class BedrockRequestsTest {
     void multiple_results_become_sibling_content_blocks_on_one_message_in_order() {
       var firstUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var secondUse = new ToolUseBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
-      var first = new ToolResultBlock("call-1", "first", false);
-      var second = new ToolResultBlock("call-2", "second", false);
+      var first = ToolResultBlock.of("call-1", "first", false);
+      var second = ToolResultBlock.of("call-2", "second", false);
       var built =
           BedrockRequests.toRequest(
               request(
@@ -372,7 +372,7 @@ class BedrockRequestsTest {
     void a_tool_result_followed_by_text_becomes_one_user_message_with_both_blocks_in_order() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "13", false);
+      var result = ToolResultBlock.of("call-1", "13", false);
       var text = new TextBlock("try again");
       var built =
           BedrockRequests.toRequest(
@@ -391,7 +391,7 @@ class BedrockRequestsTest {
 
     static Stream<Arguments> pure_content_messages() {
       return Stream.of(
-          Arguments.of(List.of(new ToolResultBlock("call-1", "ok", false)), true),
+          Arguments.of(List.of(ToolResultBlock.of("call-1", "ok", false)), true),
           Arguments.of(List.of(new TextBlock("hello there")), false));
     }
 

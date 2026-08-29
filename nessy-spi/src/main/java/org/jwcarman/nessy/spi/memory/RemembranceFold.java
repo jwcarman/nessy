@@ -23,6 +23,7 @@ import java.util.Map;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ResultBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -88,7 +89,7 @@ final class RemembranceFold {
     tryCompletePending();
   }
 
-  private void addExchange(ToolCall call, String content, boolean isError) {
+  private void addExchange(ToolCall call, List<ResultBlock> content, boolean isError) {
     ToolResultBlock block = new ToolResultBlock(call.id(), content, isError);
     if (pendingIds != null && pendingIds.contains(call.id())) {
       collected.put(call.id(), block);

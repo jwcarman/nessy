@@ -52,7 +52,7 @@ class ValidationTest {
 
   @Test
   void a_tool_result_block_without_content_is_rejected() {
-    assertThatThrownBy(() -> new ToolResultBlock("c1", null, false))
+    assertThatThrownBy(() -> ToolResultBlock.of("c1", null, false))
         .isInstanceOf(NullPointerException.class);
   }
 

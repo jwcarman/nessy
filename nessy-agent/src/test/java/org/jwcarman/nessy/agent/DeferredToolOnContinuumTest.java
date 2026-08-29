@@ -621,7 +621,7 @@ class DeferredToolOnContinuumTest {
           .anySatisfy(
               m ->
                   assertThat(m.content())
-                      .contains(new ToolResultBlock("c1", "central op done", false)));
+                      .contains(ToolResultBlock.of("c1", "central op done", false)));
       assertThat(provider.requests()).hasSize(2); // the parked call, then the resumed follow-up
     } finally {
       e2eHarness.shutdown();

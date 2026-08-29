@@ -116,7 +116,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Denied(new ToolResultBlock("c1", "not today", true)),
+                    new ToolCallPhase.Denied(ToolResultBlock.of("c1", "not today", true)),
                     new ToolCallPhase.SeekingApproval())));
     assertThat(t.effects()).isEmpty();
   }
@@ -191,7 +191,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Denied(new ToolResultBlock("c1", "no", true)),
+                    new ToolCallPhase.Denied(ToolResultBlock.of("c1", "no", true)),
                     new ToolCallPhase.SeekingApproval())));
   }
 
@@ -257,7 +257,7 @@ class AwaitingToolsPhaseTest {
             awaiting(
                 calls(
                     new ToolCallPhase.Failed(
-                        new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                        ToolResultBlock.of("c1", "deferral handoff failed: boom", true)),
                     new ToolCallPhase.SeekingApproval())));
   }
 
@@ -272,7 +272,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                    new ToolCallPhase.Completed(ToolResultBlock.of("c1", "42", false)),
                     new ToolCallPhase.SeekingApproval())));
   }
 
@@ -445,7 +445,7 @@ class AwaitingToolsPhaseTest {
               awaiting(
                   calls(
                       new ToolCallPhase.Failed(
-                          new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                          ToolResultBlock.of("c1", "deferral handoff failed: boom", true)),
                       new ToolCallPhase.SeekingApproval())));
     }
 
@@ -466,7 +466,7 @@ class AwaitingToolsPhaseTest {
               awaiting(
                   calls(
                       new ToolCallPhase.Failed(
-                          new ToolResultBlock("c1", "deferral handoff failed: boom", true)),
+                          ToolResultBlock.of("c1", "deferral handoff failed: boom", true)),
                       new ToolCallPhase.SeekingApproval())));
     }
   }
@@ -508,7 +508,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                    new ToolCallPhase.Completed(ToolResultBlock.of("c1", "42", false)),
                     new ToolCallPhase.SeekingApproval())));
   }
 
@@ -525,7 +525,7 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void completedIgnoresEverythingForThatCall() {
-    var completed = new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false));
+    var completed = new ToolCallPhase.Completed(ToolResultBlock.of("c1", "42", false));
     var phase = awaiting(calls(completed, new ToolCallPhase.SeekingApproval()));
 
     assertThat(phase.handle(returned(CALL_A, Optional.empty(), "again")).isDropped()).isTrue();
@@ -555,7 +555,7 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                new ToolCallPhase.Completed(ToolResultBlock.of("c1", "42", false)),
                 new ToolCallPhase.RunningTool()));
 
     var t = phase.handle(returned(CALL_B, Optional.empty(), "ok"));
@@ -566,8 +566,7 @@ class AwaitingToolsPhaseTest {
             TURN,
             Message.toolResults(
                 List.of(
-                    new ToolResultBlock("c1", "42", false),
-                    new ToolResultBlock("c2", "ok", false))));
+                    ToolResultBlock.of("c1", "42", false), ToolResultBlock.of("c2", "ok", false))));
     assertThat(t.effects()).containsExactly(new Effect.CallModel());
   }
 
@@ -576,7 +575,7 @@ class AwaitingToolsPhaseTest {
     var phase =
         awaiting(
             calls(
-                new ToolCallPhase.Completed(new ToolResultBlock("c1", "42", false)),
+                new ToolCallPhase.Completed(ToolResultBlock.of("c1", "42", false)),
                 new ToolCallPhase.AwaitingApproval(PARKED, REQUEST)));
 
     var t = phase.handle(answered(CALL_B, Optional.of(PARKED), Approval.denied("too risky")));
@@ -586,8 +585,8 @@ class AwaitingToolsPhaseTest {
             TURN,
             Message.toolResults(
                 List.of(
-                    new ToolResultBlock("c1", "42", false),
-                    new ToolResultBlock("c2", "too risky", true))));
+                    ToolResultBlock.of("c1", "42", false),
+                    ToolResultBlock.of("c2", "too risky", true))));
   }
 
   @Test
@@ -604,7 +603,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Failed(new ToolResultBlock("c1", "timed out", true)),
+                    new ToolCallPhase.Failed(ToolResultBlock.of("c1", "timed out", true)),
                     new ToolCallPhase.SeekingApproval())));
   }
 
@@ -633,7 +632,7 @@ class AwaitingToolsPhaseTest {
         .isEqualTo(
             awaiting(
                 calls(
-                    new ToolCallPhase.Failed(new ToolResultBlock("c1", "bad input", true)),
+                    new ToolCallPhase.Failed(ToolResultBlock.of("c1", "bad input", true)),
                     new ToolCallPhase.SeekingApproval())));
   }
 

@@ -256,7 +256,7 @@ class AnthropicRequestsTest {
       var text = new TextBlock("the visible answer");
       var assistantMessage = Message.assistant(List.of(unsigned, toolUse, text));
       var toolResultMessage =
-          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+          Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage, toolResultMessage)),
@@ -280,7 +280,7 @@ class AnthropicRequestsTest {
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
       var assistantMessage = Message.assistant(List.of(toolUse));
       var toolResultMessage =
-          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+          Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage, toolResultMessage)),
@@ -302,7 +302,7 @@ class AnthropicRequestsTest {
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
       var assistantMessage = Message.assistant(List.of(toolUse));
       var toolResultMessage =
-          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+          Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage, toolResultMessage)),
@@ -339,7 +339,7 @@ class AnthropicRequestsTest {
     void become_a_user_tool_result_block_carrying_is_error() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "file not found", true);
+      var result = ToolResultBlock.of("call-1", "file not found", true);
       var params =
           AnthropicRequests.toParams(
               request(
@@ -360,7 +360,7 @@ class AnthropicRequestsTest {
     void a_successful_result_carries_is_error_false() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-2", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-2", "42", false);
+      var result = ToolResultBlock.of("call-2", "42", false);
       var params =
           AnthropicRequests.toParams(
               request(

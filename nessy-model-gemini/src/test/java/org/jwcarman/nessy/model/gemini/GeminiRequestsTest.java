@@ -176,7 +176,7 @@ class GeminiRequestsTest {
     void becomes_a_function_call_part_with_name_and_args() {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var modelContent = contents.get(0);
@@ -196,8 +196,8 @@ class GeminiRequestsTest {
       var toolResultTurn =
           Message.toolResults(
               List.of(
-                  new ToolResultBlock("call-1", "ok", false),
-                  new ToolResultBlock("call-2", "ok", false)));
+                  ToolResultBlock.of("call-1", "ok", false),
+                  ToolResultBlock.of("call-2", "ok", false)));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -218,7 +218,7 @@ class GeminiRequestsTest {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), encoded);
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -231,7 +231,7 @@ class GeminiRequestsTest {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -245,7 +245,7 @@ class GeminiRequestsTest {
           new ToolUseBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "not-base64!!");
       var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
 
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
@@ -263,7 +263,7 @@ class GeminiRequestsTest {
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
-      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -307,7 +307,7 @@ class GeminiRequestsTest {
     void becomes_a_function_response_part_addressed_by_the_matching_call_s_name() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "42", false);
+      var result = ToolResultBlock.of("call-1", "42", false);
       var contents =
           GeminiRequests.toContents(
               request(
@@ -327,7 +327,7 @@ class GeminiRequestsTest {
     void an_error_result_carries_the_error_key_instead_of_output() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "file not found", true);
+      var result = ToolResultBlock.of("call-1", "file not found", true);
       var contents =
           GeminiRequests.toContents(
               request(
@@ -345,8 +345,8 @@ class GeminiRequestsTest {
     void multiple_results_become_sibling_parts_on_one_content_in_order() {
       var firstUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var secondUse = new ToolUseBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
-      var first = new ToolResultBlock("call-1", "first", false);
-      var second = new ToolResultBlock("call-2", "second", false);
+      var first = ToolResultBlock.of("call-1", "first", false);
+      var second = ToolResultBlock.of("call-2", "second", false);
       var contents =
           GeminiRequests.toContents(
               request(
@@ -370,7 +370,7 @@ class GeminiRequestsTest {
     void a_tool_result_followed_by_text_becomes_one_user_content_with_both_parts_in_order() {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = new ToolResultBlock("call-1", "13", false);
+      var result = ToolResultBlock.of("call-1", "13", false);
       var text = new TextBlock("try again");
       var contents =
           GeminiRequests.toContents(
@@ -388,7 +388,7 @@ class GeminiRequestsTest {
 
     static Stream<Arguments> pure_content_messages() {
       return Stream.of(
-          Arguments.of(List.of(new ToolResultBlock("call-1", "ok", false)), true),
+          Arguments.of(List.of(ToolResultBlock.of("call-1", "ok", false)), true),
           Arguments.of(List.of(new TextBlock("hello there")), false));
     }
 

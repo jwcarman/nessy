@@ -161,7 +161,7 @@ class HandoffCallbackThrowsTest {
               ToolCallPhase.Failed.class,
               failed -> {
                 assertThat(failed.block().isError()).isTrue();
-                assertThat(failed.block().content()).contains("the pager is down");
+                assertThat(failed.block().text()).contains("the pager is down");
               });
     }
 
@@ -204,7 +204,7 @@ class HandoffCallbackThrowsTest {
               ToolCallPhase.Failed.class,
               failed -> {
                 assertThat(failed.block().isError()).isTrue();
-                assertThat(failed.block().content()).contains("the pager is down");
+                assertThat(failed.block().text()).contains("the pager is down");
               });
     }
 

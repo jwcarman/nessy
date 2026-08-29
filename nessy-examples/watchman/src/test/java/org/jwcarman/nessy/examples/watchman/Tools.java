@@ -29,7 +29,7 @@ final class Tools {
   /** The content of a tool's ready result; a failure if the tool deferred instead. */
   static <I> String content(Tool<I> tool, I input) {
     return switch (tool.execute(input, FakeContext.toolContext())) {
-      case Awaited.Ready<ToolResult> ready -> ready.value().content();
+      case Awaited.Ready<ToolResult> ready -> ready.value().text();
       case Awaited.Deferred<ToolResult> deferred ->
           throw new AssertionError(tool.name() + " deferred; a ready result was expected");
     };

@@ -23,6 +23,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.ResultBlock;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
@@ -31,6 +32,8 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
@@ -62,6 +65,8 @@ import software.amazon.awssdk.services.bedrockruntime.model.ToolSpecification;
  * {@code GeminiRequests} keeps for its own unsupported block.
  */
 public final class BedrockRequests {
+
+  private static final Logger LOG = LoggerFactory.getLogger(BedrockRequests.class);
 
   private BedrockRequests() {}
 
@@ -99,6 +104,39 @@ public final class BedrockRequests {
     }
 
     return builder.build();
+  }
+
+  /**
+   * A tool's answer as text.
+   *
+   * <p>This wire could carry {@code ToolResultContentBlock.fromImage}, but this module does not
+   * claim {@code IMAGE_INPUT} at all (see the class javadoc), so an image would be a capability it
+   * never advertised.
+   *
+   * <p><b>An image in a tool result degrades; an image in a prompt still throws.</b> That looks
+   * inconsistent and is deliberate: a prompt image is written by a developer and is a mistake worth
+   * failing fast on, while a tool image arrives at runtime from a tool that may have had no idea
+   * which provider it was feeding. Killing a whole turn over it is the worse of two bad outcomes —
+   * but it is never dropped in silence, because a model reasoning about a screenshot it was never
+   * shown produces confident nonsense.
+   */
+  private static String flatten(ToolResultBlock result) {
+    var rendered = new ArrayList<String>(result.content().size());
+    for (ResultBlock block : result.content()) {
+      switch (block) {
+        case TextBlock(String text) -> rendered.add(text);
+        case ImageBlock(String mediaType, String data) -> {
+          LOG.warn(
+              "tool result {} carried a {} image ({} base64 chars) that this provider does not"
+                  + " claim to support; substituting a placeholder",
+              result.toolUseId(),
+              mediaType,
+              data.length());
+          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
+        }
+      }
+    }
+    return String.join("\n", rendered);
   }
 
   private static Tool toTool(ToolSpec spec) {
@@ -165,13 +203,13 @@ public final class BedrockRequests {
                       .name(call.name())
                       .input(toDocument(call.arguments()))
                       .build()));
-      case ToolResultBlock(String toolUseId, String content, boolean isError) ->
+      case ToolResultBlock result ->
           Optional.of(
               software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromToolResult(
                   software.amazon.awssdk.services.bedrockruntime.model.ToolResultBlock.builder()
-                      .toolUseId(toolUseId)
-                      .content(ToolResultContentBlock.fromText(content))
-                      .status(isError ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS)
+                      .toolUseId(result.toolUseId())
+                      .content(ToolResultContentBlock.fromText(flatten(result)))
+                      .status(result.isError() ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS)
                       .build()));
       case ThinkingBlock _ -> Optional.empty();
       case RedactedThinkingBlock _ -> Optional.empty();

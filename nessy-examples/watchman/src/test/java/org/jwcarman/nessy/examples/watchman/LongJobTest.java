@@ -102,7 +102,7 @@ class LongJobTest {
 
     assertThat(entry.getKey()).isEqualTo(FakeContext.DEFERRED);
     assertThat(entry.getValue().isError()).isFalse();
-    assertThat(entry.getValue().content()).contains("fstrim -av").contains("/: 12 GiB");
+    assertThat(entry.getValue().text()).contains("fstrim -av").contains("/: 12 GiB");
   }
 
   @Test
@@ -119,7 +119,7 @@ class LongJobTest {
     Map.Entry<ComputationId, ToolResult> entry = awaitCompletion();
 
     assertThat(entry.getValue().isError()).isTrue();
-    assertThat(entry.getValue().content()).contains("exit 1").contains("not supported");
+    assertThat(entry.getValue().text()).contains("exit 1").contains("not supported");
   }
 
   /**
@@ -150,7 +150,7 @@ class LongJobTest {
 
       assertThat(entry.getKey()).isEqualTo(FakeContext.DEFERRED);
       assertThat(entry.getValue().isError()).isTrue();
-      assertThat(entry.getValue().content()).contains("the host went away");
+      assertThat(entry.getValue().text()).contains("the host went away");
     }
 
     /**

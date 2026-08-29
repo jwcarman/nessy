@@ -100,14 +100,14 @@ class MessageCodecTest {
 
     @Test
     void aToolResultBlockRoundTrips() {
-      var block = new ToolResultBlock("call-1", "42", false);
+      var block = ToolResultBlock.of("call-1", "42", false);
       var message = Message.toolResults(List.of(block));
       assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aFailedToolResultBlockRoundTrips() {
-      var block = new ToolResultBlock("call-1", "boom", true);
+      var block = ToolResultBlock.of("call-1", "boom", true);
       var message = Message.toolResults(List.of(block));
       assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
@@ -125,11 +125,11 @@ class MessageCodecTest {
 
     @Test
     void aToolResultBlockEmitsTheExactGoldenShape() {
-      var block = new ToolResultBlock("call-1", "42", false);
+      var block = ToolResultBlock.of("call-1", "42", false);
       assertThat(CODECS.write(block))
           .isEqualTo(
-              "{\"type\":\"tool-result\",\"toolUseId\":\"call-1\",\"content\":\"42\","
-                  + "\"isError\":false}");
+              "{\"type\":\"tool-result\",\"toolUseId\":\"call-1\","
+                  + "\"content\":[{\"type\":\"text\",\"text\":\"42\"}],\"isError\":false}");
     }
 
     @Test
@@ -178,7 +178,7 @@ class MessageCodecTest {
               List.of(
                   Message.user("what's the weather"),
                   Message.assistant(List.of(new ToolUseBlock(call))),
-                  Message.toolResults(List.of(new ToolResultBlock(call.id(), "sunny", false))),
+                  Message.toolResults(List.of(ToolResultBlock.of(call.id(), "sunny", false))),
                   Message.assistant(List.of(new TextBlock("it's sunny")))));
       assertThat(CODEC.context(CODEC.toJson(context))).isEqualTo(context);
     }

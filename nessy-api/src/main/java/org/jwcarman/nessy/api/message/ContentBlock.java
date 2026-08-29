@@ -35,9 +35,4 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = ToolResultBlock.class, name = "tool-result")
 })
 public sealed interface ContentBlock
-    permits TextBlock,
-        ToolUseBlock,
-        ToolResultBlock,
-        ThinkingBlock,
-        RedactedThinkingBlock,
-        ImageBlock {}
+    permits ResultBlock, ToolUseBlock, ToolResultBlock, ThinkingBlock, RedactedThinkingBlock {}

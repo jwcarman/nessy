@@ -130,11 +130,11 @@ class StateCodecTest {
                   "d",
                   new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false)),
+                  new ToolCallPhase.Completed(ToolResultBlock.of("e", "audited", false)),
                   "f",
-                  new ToolCallPhase.Denied(new ToolResultBlock("f", "too risky", true)),
+                  new ToolCallPhase.Denied(ToolResultBlock.of("f", "too risky", true)),
                   "g",
-                  new ToolCallPhase.Failed(new ToolResultBlock("g", "timed out", true))),
+                  new ToolCallPhase.Failed(ToolResultBlock.of("g", "timed out", true))),
               RESPONSE_ID);
 
       var roundTripped = (AgentPhase.AwaitingTools) CODEC.phase(CODEC.toJson(phase));
@@ -196,11 +196,11 @@ class StateCodecTest {
                   "d",
                   new ToolCallPhase.AwaitingResult(ComputationId.of("tool-1")),
                   "e",
-                  new ToolCallPhase.Completed(new ToolResultBlock("e", "audited", false)),
+                  new ToolCallPhase.Completed(ToolResultBlock.of("e", "audited", false)),
                   "f",
-                  new ToolCallPhase.Denied(new ToolResultBlock("f", "too risky", true)),
+                  new ToolCallPhase.Denied(ToolResultBlock.of("f", "too risky", true)),
                   "g",
-                  new ToolCallPhase.Failed(new ToolResultBlock("g", "timed out", true))),
+                  new ToolCallPhase.Failed(ToolResultBlock.of("g", "timed out", true))),
               RESPONSE_ID);
 
       String json = CODEC.toJson(phase);

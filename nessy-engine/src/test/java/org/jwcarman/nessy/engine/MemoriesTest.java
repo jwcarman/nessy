@@ -87,9 +87,8 @@ class MemoriesTest {
   private static String toolResultContent(Context context, String toolUseId) {
     for (Message message : context.messages()) {
       for (ContentBlock block : message.content()) {
-        if (block instanceof ToolResultBlock(String id, String content, boolean _)
-            && id.equals(toolUseId)) {
-          return content;
+        if (block instanceof ToolResultBlock result && result.toolUseId().equals(toolUseId)) {
+          return result.text();
         }
       }
     }

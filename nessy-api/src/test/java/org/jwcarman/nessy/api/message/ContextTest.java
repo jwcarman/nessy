@@ -58,7 +58,7 @@ class ContextTest {
       Message results =
           Message.toolResults(
               List.of(
-                  new ToolResultBlock("c1", "ok", false), new ToolResultBlock("c2", "ok", false)));
+                  ToolResultBlock.of("c1", "ok", false), ToolResultBlock.of("c2", "ok", false)));
 
       Context context = Context.of(List.of(assistant, results));
 
@@ -79,7 +79,7 @@ class ContextTest {
     void a_partial_results_message_is_rejected() {
       Message assistant =
           Message.assistant(List.of(new ToolUseBlock(call("c1")), new ToolUseBlock(call("c2"))));
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       List<Message> messages = List.of(assistant, results);
 
       assertThatThrownBy(() -> Context.of(messages))
@@ -93,8 +93,8 @@ class ContextTest {
       Message results =
           Message.toolResults(
               List.of(
-                  new ToolResultBlock("c1", "ok", false),
-                  new ToolResultBlock("unknown", "ok", false)));
+                  ToolResultBlock.of("c1", "ok", false),
+                  ToolResultBlock.of("unknown", "ok", false)));
       List<Message> messages = List.of(assistant, results);
 
       assertThatThrownBy(() -> Context.of(messages))
@@ -104,7 +104,7 @@ class ContextTest {
 
     @Test
     void a_result_outside_an_answering_message_is_rejected() {
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Message user = Message.user("hi");
       List<Message> messages = List.of(user, results);
 
@@ -117,7 +117,7 @@ class ContextTest {
     void an_interleaved_message_breaks_the_pair() {
       Message assistant = Message.assistant(List.of(new ToolUseBlock(call("c1"))));
       Message interleaved = Message.user("wait, one more thing");
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       List<Message> messages = List.of(assistant, interleaved, results);
 
       assertThatThrownBy(() -> Context.of(messages))
@@ -136,8 +136,7 @@ class ContextTest {
     void a_results_message_may_carry_trailing_blocks_after_the_answers() {
       Message assistant = toolUse("c1");
       Message results =
-          Message.toolResults(
-              List.of(new ToolResultBlock("c1", "ok", false), new TextBlock("btw")));
+          Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false), new TextBlock("btw")));
 
       Context context = Context.of(List.of(assistant, results));
 
@@ -170,7 +169,7 @@ class ContextTest {
       // message. That and the tool_use message above it are not genuine user turns, so the
       // walk continues down to index 2 (u2), the nearest genuine user turn.
       Message toolUse = Message.assistant(List.of(new ToolUseBlock(call("c1"))));
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Context context =
           Context.of(
               List.of(
@@ -189,7 +188,7 @@ class ContextTest {
     @Test
     void zero_when_nothing_qualifies() {
       Message toolUse = Message.assistant(List.of(new ToolUseBlock(call("c1"))));
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Context context = Context.of(List.of(toolUse, results));
 
       assertThat(context.pairSafeCut(0)).isZero();
@@ -231,7 +230,7 @@ class ContextTest {
     void dropping_either_half_of_an_exchange_takes_the_whole_exchange() {
       Message before = Message.user("before");
       Message assistant = toolUse("c1");
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Message after = Message.user("after");
       Context context = Context.of(List.of(before, assistant, results, after));
 
@@ -268,9 +267,9 @@ class ContextTest {
       // Pins the i += 2 step: matching only the first exchange's results message must not spill
       // over into the second exchange.
       Message assistant1 = toolUse("c1");
-      Message results1 = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results1 = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Message assistant2 = toolUse("c2");
-      Message results2 = Message.toolResults(List.of(new ToolResultBlock("c2", "ok", false)));
+      Message results2 = Message.toolResults(List.of(ToolResultBlock.of("c2", "ok", false)));
       Context context = Context.of(List.of(assistant1, results1, assistant2, results2));
 
       Context dropped = context.drop(message -> message == results1);
@@ -281,10 +280,10 @@ class ContextTest {
     @Test
     void a_plain_message_between_exchanges_drops_alone() {
       Message assistant1 = toolUse("c1");
-      Message results1 = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results1 = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Message plain = Message.user("in between");
       Message assistant2 = toolUse("c2");
-      Message results2 = Message.toolResults(List.of(new ToolResultBlock("c2", "ok", false)));
+      Message results2 = Message.toolResults(List.of(ToolResultBlock.of("c2", "ok", false)));
       Context context = Context.of(List.of(assistant1, results1, plain, assistant2, results2));
 
       Context dropped = context.drop(message -> message == plain);
@@ -308,7 +307,7 @@ class ContextTest {
     @Test
     void a_rewrite_that_breaks_pairing_throws_naming_the_orphan() {
       Message assistant = toolUse("c1");
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Context context = Context.of(List.of(assistant, results));
       UnaryOperator<Message> renameCallId =
           message -> message == assistant ? toolUse("c1-renamed") : message;
@@ -415,12 +414,12 @@ class ContextTest {
       Message oldResult =
           Message.toolResults(
               List.of(
-                  new ToolResultBlock("call-1", "forty-two", false),
-                  new ToolResultBlock("call-2", "boom", true)));
+                  ToolResultBlock.of("call-1", "forty-two", false),
+                  ToolResultBlock.of("call-2", "boom", true)));
       Message middle = Message.user("in between");
       Message assistant2 = toolUse("call-3");
       Message recentResult =
-          Message.toolResults(List.of(new ToolResultBlock("call-3", "still fresh", false)));
+          Message.toolResults(List.of(ToolResultBlock.of("call-3", "still fresh", false)));
       Context context =
           Context.of(List.of(assistant1, oldResult, middle, assistant2, recentResult));
 
@@ -431,8 +430,8 @@ class ContextTest {
               assistant1,
               Message.toolResults(
                   List.of(
-                      new ToolResultBlock("call-1", "[elided]", false),
-                      new ToolResultBlock("call-2", "[elided]", true))),
+                      ToolResultBlock.of("call-1", "[elided]", false),
+                      ToolResultBlock.of("call-2", "[elided]", true))),
               middle,
               assistant2,
               recentResult);
@@ -442,10 +441,10 @@ class ContextTest {
     @Test
     void recent_messages_are_verbatim() {
       Message assistantCall1 = toolUse("call-1");
-      Message oldResult = Message.toolResults(List.of(new ToolResultBlock("call-1", "old", false)));
+      Message oldResult = Message.toolResults(List.of(ToolResultBlock.of("call-1", "old", false)));
       Message recentAssistant = toolUse("call-2");
       Message recentResult =
-          Message.toolResults(List.of(new ToolResultBlock("call-2", "recent", false)));
+          Message.toolResults(List.of(ToolResultBlock.of("call-2", "recent", false)));
       Context context =
           Context.of(List.of(assistantCall1, oldResult, recentAssistant, recentResult));
 
@@ -460,7 +459,7 @@ class ContextTest {
       TextBlock untouchedText = new TextBlock("keep me exactly as I am");
       Message assistant1 = toolUse("call-1");
       Message oldMixed =
-          Message.user(List.of(untouchedText, new ToolResultBlock("call-1", "gone", false)));
+          Message.user(List.of(untouchedText, ToolResultBlock.of("call-1", "gone", false)));
       Message recent = Message.user("recent");
       Context context = Context.of(List.of(assistant1, oldMixed, recent));
 
@@ -473,9 +472,9 @@ class ContextTest {
     @Test
     void keep_zero_elides_everything_and_keep_huge_elides_nothing() {
       Message assistant1 = toolUse("call-1");
-      Message first = Message.toolResults(List.of(new ToolResultBlock("call-1", "one", false)));
+      Message first = Message.toolResults(List.of(ToolResultBlock.of("call-1", "one", false)));
       Message assistant2 = toolUse("call-2");
-      Message second = Message.toolResults(List.of(new ToolResultBlock("call-2", "two", false)));
+      Message second = Message.toolResults(List.of(ToolResultBlock.of("call-2", "two", false)));
       Context context = Context.of(List.of(assistant1, first, assistant2, second));
 
       Context elidesEverything = context.elideToolResults(0);
@@ -484,9 +483,9 @@ class ContextTest {
       assertThat(elidesEverything.messages())
           .containsExactly(
               assistant1,
-              Message.toolResults(List.of(new ToolResultBlock("call-1", "[elided]", false))),
+              Message.toolResults(List.of(ToolResultBlock.of("call-1", "[elided]", false))),
               assistant2,
-              Message.toolResults(List.of(new ToolResultBlock("call-2", "[elided]", false))));
+              Message.toolResults(List.of(ToolResultBlock.of("call-2", "[elided]", false))));
       assertThat(elidesNothing.messages()).containsExactly(assistant1, first, assistant2, second);
       assertThat(elidesNothing.messages().get(1)).isSameAs(first);
       assertThat(elidesNothing.messages().get(3)).isSameAs(second);
@@ -511,7 +510,7 @@ class ContextTest {
       // would naively land inside the tool exchange, so the boundary walks down to u2 (index 2),
       // leaving a tail of 6 messages — longer than the 3 requested.
       Message toolUse = toolUse("c1");
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Message u1 = Message.user("u1");
       Message a1 = assistantText("a1");
       Message u2 = Message.user("u2");
@@ -529,7 +528,7 @@ class ContextTest {
     @Test
     void no_safe_boundary_returns_the_context_unchanged() {
       Message toolUse = toolUse("c1");
-      Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message results = Message.toolResults(List.of(ToolResultBlock.of("c1", "ok", false)));
       Context context = Context.of(List.of(toolUse, results));
 
       Context kept = context.keepRecent(0);
@@ -587,7 +586,7 @@ class ContextTest {
       Message assistant = toolUse("c1");
       Message results =
           Message.toolResults(
-              List.of(new ToolResultBlock("c1", "a fairly long tool result", false)));
+              List.of(ToolResultBlock.of("c1", "a fairly long tool result", false)));
       Context context = Context.of(List.of(assistant, results));
       TokenEstimator estimator = TokenEstimator.heuristic();
 

@@ -109,7 +109,7 @@ class RoundFlowTest {
     for (Message message : memories.everything(agent).messages()) {
       for (var block : message.content()) {
         if (block instanceof ToolResultBlock result) {
-          byCall.putIfAbsent(result.toolUseId(), result.content());
+          byCall.putIfAbsent(result.toolUseId(), result.text());
         }
       }
     }

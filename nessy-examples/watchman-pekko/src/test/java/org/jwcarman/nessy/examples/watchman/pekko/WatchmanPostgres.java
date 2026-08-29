@@ -83,7 +83,7 @@ public final class WatchmanPostgres {
     for (var message : memories().everything(agentId).messages()) {
       for (var block : message.content()) {
         if (block instanceof org.jwcarman.nessy.api.message.ToolResultBlock result) {
-          byCall.putIfAbsent(result.toolUseId(), result.content());
+          byCall.putIfAbsent(result.toolUseId(), result.text());
         }
       }
     }

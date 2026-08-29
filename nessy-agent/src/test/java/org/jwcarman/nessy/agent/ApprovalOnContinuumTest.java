@@ -303,7 +303,7 @@ class ApprovalOnContinuumTest {
         .satisfies(
             result -> {
               assertThat(result.isError()).isTrue();
-              assertThat(result.content()).contains("not on a Friday");
+              assertThat(result.text()).contains("not on a Friday");
             });
   }
 
@@ -324,7 +324,7 @@ class ApprovalOnContinuumTest {
         .satisfies(
             result -> {
               assertThat(result.isError()).isTrue();
-              assertThat(result.content()).contains("withdrawn");
+              assertThat(result.text()).contains("withdrawn");
             });
   }
 

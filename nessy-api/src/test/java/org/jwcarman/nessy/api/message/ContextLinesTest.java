@@ -36,7 +36,7 @@ class ContextLinesTest {
                         new ThinkingBlock("pondering", "sig"),
                         new TextBlock("hello"),
                         new ToolUseBlock(call))),
-                Message.toolResults(List.of(new ToolResultBlock(call.id(), "done", false)))));
+                Message.toolResults(List.of(ToolResultBlock.of(call.id(), "done", false)))));
 
     List<Context.Line> lines = context.lines();
 
@@ -52,7 +52,7 @@ class ContextLinesTest {
         Context.of(
             List.of(
                 Message.assistant(List.of(new ToolUseBlock(call))),
-                Message.toolResults(List.of(new ToolResultBlock(call.id(), "done", false)))));
+                Message.toolResults(List.of(ToolResultBlock.of(call.id(), "done", false)))));
 
     List<Context.Line> lines = context.lines();
 

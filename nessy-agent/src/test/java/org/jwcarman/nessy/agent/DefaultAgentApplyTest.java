@@ -119,8 +119,8 @@ class DefaultAgentApplyTest {
             Message.assistant(turnBlocks),
             Message.toolResults(
                 List.of(
-                    new ToolResultBlock("a", "42", false),
-                    new ToolResultBlock("b", "restarted", false))),
+                    ToolResultBlock.of("a", "42", false),
+                    ToolResultBlock.of("b", "restarted", false))),
             Message.assistant(List.of(new TextBlock("both done"))));
   }
 
@@ -205,7 +205,7 @@ class DefaultAgentApplyTest {
             turn,
             Message.toolResults(
                 List.of(
-                    new ToolResultBlock("a", "42", false), new ToolResultBlock("b", "ok", false))),
+                    ToolResultBlock.of("a", "42", false), ToolResultBlock.of("b", "ok", false))),
             Message.assistant(List.of(new TextBlock("done"))));
     assertThat(f.model.callCount()).isEqualTo(1);
     assertThat(f.store.load().value()).isEqualTo(new AgentPhase.Idle());

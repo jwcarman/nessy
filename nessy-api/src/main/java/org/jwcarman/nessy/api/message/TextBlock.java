@@ -18,7 +18,7 @@ package org.jwcarman.nessy.api.message;
 import java.util.Objects;
 
 /** Prose, from either side of the conversation. */
-public record TextBlock(String text) implements ContentBlock {
+public record TextBlock(String text) implements ResultBlock {
 
   public TextBlock {
     Objects.requireNonNull(text, "text must not be null");

@@ -55,7 +55,7 @@ class PhaseOutstandingTest {
             TURN,
             Map.of(
                 "a",
-                new ToolCallPhase.Completed(new ToolResultBlock("a", "42", false)),
+                new ToolCallPhase.Completed(ToolResultBlock.of("a", "42", false)),
                 "b",
                 new ToolCallPhase.SeekingApproval()),
             ModelResponseId.of("response-1"));

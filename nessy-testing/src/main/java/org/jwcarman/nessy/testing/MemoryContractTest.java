@@ -85,8 +85,7 @@ public abstract class MemoryContractTest {
     List<Message> messages = memory.recall().messages();
     assertThat(messages).hasSize(2);
     assertThat(messages.getFirst()).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content())
-        .containsExactly(new ToolResultBlock("c1", "42", false));
+    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
   }
 
   @Test
@@ -104,8 +103,7 @@ public abstract class MemoryContractTest {
     List<Message> messages = memory.recall().messages();
     assertThat(messages).hasSize(2);
     assertThat(messages.getFirst()).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content())
-        .containsExactly(new ToolResultBlock("c1", "42", false));
+    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
   }
 
   @Test
@@ -132,8 +130,7 @@ public abstract class MemoryContractTest {
     assertThat(messages).hasSize(3);
     assertThat(messages.getFirst()).isEqualTo(Message.user("hi"));
     assertThat(messages.get(1)).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content())
-        .containsExactly(new ToolResultBlock("c1", "42", false));
+    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
   }
 
   @Test

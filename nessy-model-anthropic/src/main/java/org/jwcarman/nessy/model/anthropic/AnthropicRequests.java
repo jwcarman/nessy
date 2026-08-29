@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.ResultBlock;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
@@ -330,15 +331,37 @@ public final class AnthropicRequests {
                       .input(toInput(call.arguments()))
                       .cacheControl(cacheControl)
                       .build()));
-      case ToolResultBlock(String toolUseId, String content, boolean isError) ->
+      case ToolResultBlock(String toolUseId, List<ResultBlock> content, boolean isError) ->
           Optional.of(
               ContentBlockParam.ofToolResult(
                   ToolResultBlockParam.builder()
                       .toolUseId(toolUseId)
-                      .content(content)
+                      .contentOfBlocks(
+                          content.stream().map(AnthropicRequests::toResultBlock).toList())
                       .isError(isError)
                       .cacheControl(cacheControl)
                       .build()));
+    };
+  }
+
+  /**
+   * One block of a tool's answer. Anthropic takes text and images natively here, which is exactly
+   * what {@link ResultBlock} permits — so nothing a tool can legally return has to be flattened
+   * away on the path to the model.
+   */
+  private static ToolResultBlockParam.Content.Block toResultBlock(ResultBlock block) {
+    return switch (block) {
+      case TextBlock(String text) ->
+          ToolResultBlockParam.Content.Block.ofText(TextBlockParam.builder().text(text).build());
+      case ImageBlock(String mediaType, String base64Data) ->
+          ToolResultBlockParam.Content.Block.ofImage(
+              ImageBlockParam.builder()
+                  .source(
+                      Base64ImageSource.builder()
+                          .mediaType(Base64ImageSource.MediaType.of(mediaType))
+                          .data(base64Data)
+                          .build())
+                  .build());
     };
   }
 

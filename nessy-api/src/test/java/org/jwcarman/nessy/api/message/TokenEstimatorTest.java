@@ -43,7 +43,7 @@ class TokenEstimatorTest {
   @Test
   void tool_results_count_their_content() {
     Message message =
-        Message.toolResults(List.of(new ToolResultBlock("call-1", "a".repeat(40), false)));
+        Message.toolResults(List.of(ToolResultBlock.of("call-1", "a".repeat(40), false)));
 
     long estimate = TokenEstimator.heuristic().estimate(message);
 
@@ -56,7 +56,7 @@ class TokenEstimatorTest {
         Message.user(
             List.of(
                 new TextBlock("a".repeat(20)),
-                new ToolResultBlock("call-1", "b".repeat(20), false)));
+                ToolResultBlock.of("call-1", "b".repeat(20), false)));
 
     long estimate = TokenEstimator.heuristic().estimate(message);
 

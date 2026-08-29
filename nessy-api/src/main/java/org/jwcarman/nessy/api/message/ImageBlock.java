@@ -18,7 +18,7 @@ package org.jwcarman.nessy.api.message;
 import java.util.Objects;
 
 /** An image attached to a message, base64-encoded with its media type. */
-public record ImageBlock(String mediaType, String base64Data) implements ContentBlock {
+public record ImageBlock(String mediaType, String base64Data) implements ResultBlock {
 
   public ImageBlock {
     Objects.requireNonNull(mediaType, "mediaType must not be null");

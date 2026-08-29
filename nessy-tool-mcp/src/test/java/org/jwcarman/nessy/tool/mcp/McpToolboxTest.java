@@ -188,7 +188,7 @@ class McpToolboxTest {
         ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
 
         assertThat(result.isError()).isFalse();
-        assertThat(result.content()).isEqualTo("line one\nline two");
+        assertThat(result.text()).isEqualTo("line one\nline two");
       }
     }
 
@@ -208,7 +208,7 @@ class McpToolboxTest {
         ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
 
         assertThat(result.isError()).isTrue();
-        assertThat(result.content()).isEqualTo("boom");
+        assertThat(result.text()).isEqualTo("boom");
       }
     }
 
@@ -227,7 +227,7 @@ class McpToolboxTest {
         ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
 
         assertThat(result.isError()).isFalse();
-        assertThat(result.content()).contains("YWJj").contains("image/png");
+        assertThat(result.text()).contains("YWJj").contains("image/png");
       }
     }
   }

@@ -997,7 +997,7 @@ class NessyHarnessDoorTest {
               .map(TurnEvent.ToolCallCompleted.class::cast)
               .findFirst();
       assertThat(completed).isPresent();
-      assertThat(completed.get().result().content()).isEqualTo("1234");
+      assertThat(completed.get().result().text()).isEqualTo("1234");
     }
 
     /**

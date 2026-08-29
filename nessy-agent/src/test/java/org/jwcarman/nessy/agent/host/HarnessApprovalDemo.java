@@ -200,7 +200,7 @@ class HarnessApprovalDemo {
               .messages();
       assertThat(transcript).hasSize(4);
       assertThat(transcript.get(2).content())
-          .contains(new ToolResultBlock("c1", "not during business hours", true));
+          .contains(ToolResultBlock.of("c1", "not during business hours", true));
     } finally {
       harness.shutdown();
     }

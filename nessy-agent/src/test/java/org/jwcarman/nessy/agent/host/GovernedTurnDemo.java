@@ -293,7 +293,7 @@ class GovernedTurnDemo {
       ToolResultBlock restartResult = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("restart result: " + restartResult);
       assertThat(restartResult.isError()).isTrue();
-      assertThat(restartResult.content())
+      assertThat(restartResult.text())
           .contains("risk severity VERY_HIGH meets or exceeds threshold VERY_HIGH");
     } finally {
       harness.shutdown();
@@ -343,7 +343,7 @@ class GovernedTurnDemo {
       ToolResultBlock restartResult = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("restart result: " + restartResult);
       assertThat(restartResult.isError()).isTrue();
-      assertThat(restartResult.content()).contains("no risk assessment deposited under 'risk'");
+      assertThat(restartResult.text()).contains("no risk assessment deposited under 'risk'");
     } finally {
       harness.shutdown();
     }

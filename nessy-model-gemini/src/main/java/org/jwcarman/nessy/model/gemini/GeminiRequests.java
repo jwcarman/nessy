@@ -32,8 +32,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.ResultBlock;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
@@ -188,6 +190,34 @@ public final class GeminiRequests {
     };
   }
 
+  /**
+   * A tool's answer as the text a function response carries.
+   *
+   * <p>This is the block that made the widening dangerous rather than merely incomplete: the
+   * response map takes {@code Object}, so handing it the block list would have COMPILED and then
+   * serialised a list of records onto the wire. Rendering is explicit here for that reason.
+   *
+   * <p>An image is replaced by a visible placeholder and logged, never dropped in silence.
+   */
+  private static String flatten(ToolResultBlock result) {
+    var rendered = new ArrayList<String>(result.content().size());
+    for (ResultBlock block : result.content()) {
+      switch (block) {
+        case TextBlock(String text) -> rendered.add(text);
+        case ImageBlock(String mediaType, String data) -> {
+          LOGGER.warn(
+              "tool result {} carried a {} image ({} base64 chars) that this wire cannot send;"
+                  + " substituting a placeholder",
+              result.toolUseId(),
+              mediaType,
+              data.length());
+          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
+        }
+      }
+    }
+    return String.join("\n", rendered);
+  }
+
   private static Part toFunctionResponsePart(
       ToolResultBlock result, Map<String, String> callNamesById) {
     String name = callNamesById.get(result.toolUseId());
@@ -195,8 +225,9 @@ public final class GeminiRequests {
       throw new IllegalArgumentException(
           "tool result for an unknown call id: " + result.toolUseId());
     }
+    String rendered = flatten(result);
     Map<String, Object> response =
-        result.isError() ? Map.of("error", result.content()) : Map.of("output", result.content());
+        result.isError() ? Map.of("error", rendered) : Map.of("output", rendered);
     return Part.fromFunctionResponse(name, response);
   }
 

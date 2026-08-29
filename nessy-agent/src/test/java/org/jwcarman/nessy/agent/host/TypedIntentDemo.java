@@ -357,7 +357,7 @@ class TypedIntentDemo {
       ToolResultBlock mismatchDenial = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("mismatch denial: " + mismatchDenial);
       assertThat(mismatchDenial.isError()).isTrue();
-      assertThat(mismatchDenial.content()).contains("prod-eu").contains("prod-us");
+      assertThat(mismatchDenial.text()).contains("prod-eu").contains("prod-us");
     } finally {
       harness.shutdown();
     }
@@ -421,7 +421,7 @@ class TypedIntentDemo {
       ToolResultBlock bindingError = (ToolResultBlock) transcript.get(2).content().getFirst();
       System.out.println("binding error: " + bindingError);
       assertThat(bindingError.isError()).isTrue();
-      assertThat(bindingError.content()).contains("Restart").contains("Diagnose");
+      assertThat(bindingError.text()).contains("Restart").contains("Diagnose");
     } finally {
       harness.shutdown();
     }

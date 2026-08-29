@@ -259,7 +259,7 @@ class ToolHandsOutItsIdBeforeReturningTest {
         .satisfies(
             result -> {
               assertThat(result.isError()).isFalse();
-              assertThat(result.content()).isEqualTo("answered at once");
+              assertThat(result.text()).isEqualTo("answered at once");
             });
     // nothing was dropped: the phase named the id before the callback could give it away
     assertThat(warnings()).isEmpty();

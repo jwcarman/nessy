@@ -38,11 +38,14 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ResultBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Assembles a wire-neutral {@link ModelRequest} into the openai-java SDK's {@link
@@ -57,6 +60,8 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  * on this wire to round-trip them through.
  */
 public final class OpenAiRequests {
+
+  private static final Logger LOG = LoggerFactory.getLogger(OpenAiRequests.class);
 
   private static final String ERROR_PREFIX = "ERROR: ";
 
@@ -155,8 +160,35 @@ public final class OpenAiRequests {
     return "data:%s;base64,%s".formatted(image.mediaType(), image.base64Data());
   }
 
+  /**
+   * A tool's answer as the one string this wire has room for.
+   *
+   * <p>The chat-completions tool message takes text and nothing else, so an image a tool returned
+   * cannot travel. <b>It is replaced by a visible placeholder and logged, never dropped in
+   * silence</b> — a model reasoning about a screenshot it was never shown produces confident
+   * nonsense, and the only thing worse than losing the image is losing it invisibly.
+   */
+  private static String flatten(ToolResultBlock result) {
+    var rendered = new ArrayList<String>(result.content().size());
+    for (ResultBlock block : result.content()) {
+      switch (block) {
+        case TextBlock(String text) -> rendered.add(text);
+        case ImageBlock(String mediaType, String data) -> {
+          LOG.warn(
+              "tool result {} carried a {} image ({} base64 chars) that this wire cannot send;"
+                  + " substituting a placeholder",
+              result.toolUseId(),
+              mediaType,
+              data.length());
+          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
+        }
+      }
+    }
+    return String.join("\n", rendered);
+  }
+
   private static ChatCompletionMessageParam toToolMessageParam(ToolResultBlock result) {
-    var content = result.isError() ? ERROR_PREFIX + result.content() : result.content();
+    var content = result.isError() ? ERROR_PREFIX + flatten(result) : flatten(result);
     return ChatCompletionMessageParam.ofTool(
         ChatCompletionToolMessageParam.builder()
             .toolCallId(result.toolUseId())

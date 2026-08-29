@@ -155,7 +155,7 @@ public sealed interface ToolCallPhase {
       case Approval.Approved _ ->
           ToolCallTransition.to(new RunningTool(), new Effect.RunTool(call));
       case Approval.Denied(var reason, var _) ->
-          ToolCallTransition.to(new Denied(new ToolResultBlock(call.id(), reason, true)));
+          ToolCallTransition.to(new Denied(ToolResultBlock.of(call.id(), reason, true)));
     };
   }
 
@@ -169,7 +169,7 @@ public sealed interface ToolCallPhase {
       case ToolOutcome.Returned(var result) ->
           ToolCallTransition.to(new Failed(new ToolResultBlock(call.id(), result.content(), true)));
       case ToolOutcome.Failed(var error) ->
-          ToolCallTransition.to(new Failed(new ToolResultBlock(call.id(), error.message(), true)));
+          ToolCallTransition.to(new Failed(ToolResultBlock.of(call.id(), error.message(), true)));
     };
   }
 
