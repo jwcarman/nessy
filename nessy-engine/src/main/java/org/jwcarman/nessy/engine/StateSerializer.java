@@ -20,7 +20,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import org.apache.pekko.actor.ExtendedActorSystem;
 import org.apache.pekko.serialization.SerializerWithStringManifest;
+import org.jwcarman.nessy.spi.codec.CodecPipeline;
 
 /**
  * Our codec, plugged into Pekko. Carried forward from the spike, and it is what keeps {@code
@@ -32,6 +34,26 @@ import org.apache.pekko.serialization.SerializerWithStringManifest;
  * about the format because they are the same object.
  */
 public final class StateSerializer extends SerializerWithStringManifest {
+
+  private final EngineCodecs.Pipelines codecs;
+
+  /**
+   * The constructor Pekko prefers. Declaring it is the only way a serializer built reflectively
+   * from {@code .conf} can reach anything the harness configured — here, the codec pipeline, so
+   * actor state is transformed exactly the way everything through {@code Substrate} is.
+   */
+  public StateSerializer(ExtendedActorSystem system) {
+    this.codecs = EngineCodecs.of(system);
+  }
+
+  /** For direct use outside an actor system (the approvals page reads these bytes back). */
+  public StateSerializer() {
+    this.codecs = null;
+  }
+
+  private CodecPipeline pipeline() {
+    return codecs == null ? CodecPipeline.none() : codecs.pipeline();
+  }
 
   public static final String AGENT_STATE_V2 = "watchman-agent-state-v2";
 
@@ -71,7 +93,7 @@ public final class StateSerializer extends SerializerWithStringManifest {
   @Override
   public byte[] toBinary(Object o) {
     try {
-      return MAPPER.writeValueAsBytes(o);
+      return pipeline().encode(MAPPER.writeValueAsBytes(o));
     } catch (IOException e) {
       throw new UncheckedIOException("could not write " + o.getClass(), e);
     }
@@ -83,7 +105,7 @@ public final class StateSerializer extends SerializerWithStringManifest {
       throw new IllegalArgumentException("unknown manifest: " + manifest);
     }
     try {
-      return MAPPER.readValue(bytes, AgentState.class);
+      return MAPPER.readValue(pipeline().decode(bytes), AgentState.class);
     } catch (IOException e) {
       throw new UncheckedIOException("could not read " + manifest, e);
     }
