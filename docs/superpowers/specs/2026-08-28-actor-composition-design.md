@@ -409,24 +409,18 @@ a `DurableStateBehavior`.
 James: *"If the turn actor is not durable and it's somehow lost, we will process the observation
 over again... thereby executing tools again."* He is right, and the argument above missed why.
 
-**Claims as we key them today do not deduplicate across a re-run.** They are keyed by the model's
-call id, and re-processing an observation calls the model again, which mints FRESH call ids — so the
-old claims match nothing and every tool executes a second time.
+**Claims do not deduplicate across a re-run, and cannot be made to.** Re-processing an observation
+calls the model again, which mints fresh call ids, so nothing lines up with what was parked before.
 
-**But that is our choice, not a property of claims** (James: *"Claims don't need anything but an id.
-They're just parking spots for arbitrary data."*). Key one by something stable across a re-run —
-`(agentId, observation id, tool name, arguments hash)` — and re-processing the same observation
-lands on the SAME parking spot and finds the result already sitting in it. That is memoisation, and
-it is what Continuum did.
+I proposed keying claims by content — `(agent, observation, tool, arguments hash)` — to make them
+memoise. **That was wrong on two counts** (James: *"No, you do not get to choose the claim id...
+that should be assigned by the claim check service"*). The signature is
+`String put(agentId, turnId, byte[])`: the id is RETURNED, never supplied. And that is the point of
+the pattern rather than an accident of the API — a claim check is a ticket the service issues, and a
+ticket you name yourself is not a claim check.
 
-It is a large mitigation for a small change, and it is not a complete one: a re-run calls the model
-again, and a non-deterministic model may ask for different tools or different arguments, which key
-differently and execute. So content-keyed claims turn "a lost turn re-runs EVERY tool" into "it
-re-runs only what the model asks for differently."
-
-**Order of work: content-keyed claims first** — nearly free, and they help even when a turn
-survives. Durable turn progress is what makes the guarantee deterministic rather than probabilistic.
-Not either/or.
+Cross-restart deduplication is a DIFFERENT mechanism — a content-addressed memo — and calling it a
+claim would blur a door that is currently unambiguous. If we want it, it gets its own name.
 
 Nor does the earlier "the side effect happens outside the actor" argument save it. That argument is
 about the irreducible millisecond between calling a tool and recording its result. This is a
@@ -446,8 +440,8 @@ home for it. And a turn can sit parked on an approval for `approvalTerm`, three 
 a deploy during it is a certainty rather than a risk.
 
 **Therefore:** when `TurnActor` is split out it is DURABLE, or the agent keeps holding the turn's
-progress as it does now — and claims get content keys either way. Splitting it out non-durable, with
-call-id-keyed claims, is the version that silently re-runs `prune_images`.
+progress as it does now. Splitting it out non-durable is the version that silently re-runs
+`prune_images`, and no amount of cleverness with claim ids substitutes for it.
 
 ## 11. The harness door: an ActorSystem in
 
