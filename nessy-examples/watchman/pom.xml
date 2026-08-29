@@ -29,32 +29,32 @@
   </parent>
 
   <artifactId>nessy-example-watchman</artifactId>
-  <name>Nessy Example: Watchman</name>
-  <description>The soak: a Spring Boot agent that does rounds on a Linux box and waits days for a human</description>
+  <name>Nessy Example: Watchman (Pekko port)</name>
+  <description>The watchman on the actor runtime. NO LONGER A SPIKE: as of 2026-08-28 this is where
+    Nessy's Pekko-based engine is being built, and the design here is the design of record rather
+    than a comparison. It depends on nessy-spi, nessy-agent, nessy-substrate-jdbc and
+    nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
+    Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
+    both counts.</description>
 
   <properties>
-    <!-- Examples are never published: this module's own maven.deploy.skip keeps the deploy
-         goal from running here, and the aggregator's maven.source.skip/maven.javadoc.skip/
-         gpg.skip keep the release profile's source jar, javadoc jar, and signing step off this
-         module too. -->
     <maven.deploy.skip>true</maven.deploy.skip>
-    <!-- HTMX, from a webjar rather than a CDN: the box this runs on is a LAN server that may have
-         no outbound internet at all, and an approval page that cannot render without one is not a
-         page you can trust in an outage. The version appears in the template's script path. -->
+    <maven.install.skip>true</maven.install.skip>
+    <pekko-persistence-jdbc.version>1.3.0</pekko-persistence-jdbc.version>
     <htmx.version>2.0.4</htmx.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <!-- Spring Boot's BOM, imported HERE and imported LAST, for exactly the reasons
-           nessy-spring-boot-starter's own pom spells out: importing it into the parent re-versions
-           every module in the reactor, and everything declared ABOVE it wins, because Maven
-           resolves competing managed entries for one artifact in declaration order. The block
-           below re-states the versions this repo pins for artifacts Boot also has an opinion
-           about, so this module runs on the same jackson, junit, logback, postgresql and
-           testcontainers as every other module. Micrometer, OpenTelemetry and Spring itself are
-           left to Boot: this is a Boot application, and Boot's whole value is the combination it
-           tested. -->
+      <dependency>
+        <groupId>org.apache.pekko</groupId>
+        <artifactId>pekko-bom_2.13</artifactId>
+        <version>${pekko.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Same ordering rule the sibling watchman documents at length: everything this repo pins
+           is declared ABOVE Boot's BOM, so Boot only decides what this repo has no opinion on. -->
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
@@ -70,31 +70,9 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>org.testcontainers</groupId>
-        <artifactId>testcontainers-bom</artifactId>
-        <version>${testcontainers.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
         <groupId>org.assertj</groupId>
         <artifactId>assertj-core</artifactId>
         <version>${assertj.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.slf4j</groupId>
-        <artifactId>slf4j-api</artifactId>
-        <version>${slf4j.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>ch.qos.logback</groupId>
-        <artifactId>logback-classic</artifactId>
-        <version>${logback.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>ch.qos.logback</groupId>
-        <artifactId>logback-core</artifactId>
-        <version>${logback.version}</version>
       </dependency>
       <dependency>
         <groupId>org.postgresql</groupId>
@@ -106,13 +84,6 @@
         <artifactId>awaitility</artifactId>
         <version>${awaitility.version}</version>
       </dependency>
-      <!-- OpenTelemetry pinned to the repo's version rather than Boot's, and it has to be: the
-           logback appender (2.31.1-alpha, pinned in the parent) drags in opentelemetry-api-incubator
-           at 1.65.0-alpha, and Boot 4.1.1 manages opentelemetry-api at 1.62.0. That split pair fails
-           at runtime with ClassNotFoundException on io.opentelemetry.api.incubator.common.
-           ExtendedAttributeKey the moment the appender is installed — the exact class of breakage
-           the parent's own logback-core comment warns about. Importing the BOM here puts api and
-           incubator back on the same line, and matches what nessy-examples/observed already runs. -->
       <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-bom</artifactId>
@@ -131,37 +102,91 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- The whole harness, from beans. Nothing in this module wires a Nessy type by hand. -->
+    <!-- THE TRANSCRIPT IS NESSY'S, NOT OURS. The soak measured the cost of embedding it in the
+         durable state (14x growth in 64 minutes, every revision rewriting the whole document), and
+         the fix is an append-only journal, which Nessy already has. nessy-spi's Substrate gives
+         `JournalStore<T>` with append-at-expected-seq and resumable reads; nessy-substrate-jdbc
+         puts it on the DataSource Spring already owns. Writing a second journal by hand would have
+         been strictly worse. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spring-boot-starter</artifactId>
+      <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- The durable pair the starter wires when it finds them beside a DataSource. An agent that
-         parks approvals for days and survives reboots is the entire point of the soak, so these
-         are not optional here. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-substrate-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.continuum</groupId>
-      <artifactId>continuum-jdbc</artifactId>
-    </dependency>
-    <!-- One provider, as in hello and observed. Discovery arrives through the starter. -->
+    <!-- Memory, and the Remembrance fold that pairs a tool_use with its result. SubstrateMemory
+         owns the transcript directly; this port no longer has one of its own. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-anthropic</artifactId>
+      <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Compile scope, as in hello: the scripted mode is a mode of the application, not a test
-         fixture. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
+      <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
-      <scope>compile</scope>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
+         that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
+         that talks to it, pointed at a different base URL, exactly as XaiModelProviderBootstrap
+         points it at x.ai. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- The actor runtime. -->
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-actor-typed_2.13</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-typed_2.13</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-jdbc_2.13</artifactId>
+      <version>${pekko-persistence-jdbc.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-slf4j_2.13</artifactId>
+    </dependency>
+
+    <!-- The BINDING behind pekko-slf4j. Without it SLF4J finds no provider, falls back to its
+         NOP logger, and every line this application and Pekko write goes nowhere — the first
+         soak attempt produced a running process and an empty log file. The original watchman
+         declares logback for the same reason; the starters used here do not drag it in. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+
+    <!-- Jackson 2, DECLARED EXPLICITLY. Boot 4 ships Jackson 3 (tools.jackson) in its web
+         starter, so com.fasterxml.jackson.databind is no longer transitively present at all.
+         StateSerializer and the model client both use Jackson 2 deliberately: it is the reactor's
+         pinned line, and because our serializer is ours, Pekko has no opinion about it either way. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
     </dependency>
 
     <dependency>
@@ -191,57 +216,42 @@
       <version>${htmx.version}</version>
     </dependency>
 
-    <!-- Telemetry (watchman spec §2.3). The actuator owns the ObservationRegistry, and the starter
-         hands it to the harness's seam. -->
+    <!-- Telemetry. Traces.java codes against MICROMETER (io.micrometer.tracing.Tracer and
+         Propagator), not OpenTelemetry: OTel is the implementation underneath via
+         micrometer-tracing-bridge-otel, which the Boot starter brings at runtime. The main
+         sources contain no io.opentelemetry import at all, which is why opentelemetry-api is
+         RUNTIME scope here: runtime is absent from the COMPILE classpath, so the build itself
+         now enforces "main code does not touch OTel", while the jar still ships the API and
+         tests (which are on the runtime classpath) can still name OTel types deliberately, to
+         assert the spans a backend actually receives rather than the bridge's own types.
+
+         SCOPE THIS CAREFULLY, and do not "tidy" it to test. It was briefly TEST scope, and that
+         silently destroyed all tracing in the running application. Maven resolves by nearest
+         definition, so a direct test-scoped declaration BEATS the transitive compile-scoped one
+         from opentelemetry-sdk: the API left the runtime classpath entirely, Boot's tracing
+         autoconfiguration is @ConditionalOnClass on those very classes, no Tracer or Propagator
+         bean was created, and Traces fell back to the NOOP pair. Every span became a no-op and
+         nothing failed: the app ran, the tests passed, and the traces simply stopped existing.
+         The tests could not catch it because they construct OtelTracer/OtelPropagator directly
+         and never exercise Boot's wiring. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
-    <!-- The OTLP wires, and the reason this is ONE starter rather than the three runtime libraries
-         it contains.
-
-         nessy-examples/observed declares micrometer-tracing-bridge-otel, opentelemetry-exporter-otlp
-         and micrometer-registry-otlp directly, and builds the SDK by hand — correct there, because
-         it is a Boot-free main(). Copying that shape into a Boot 4 application produces a build that
-         compiles, starts, exports METRICS, and silently exports no traces and no logs at all: Boot 4
-         moved tracing and OTLP autoconfiguration out of spring-boot-actuator-autoconfigure into
-         separate module jars (spring-boot-micrometer-tracing-opentelemetry, spring-boot-opentelemetry),
-         and those arrive only through this starter. Without it there is no OpenTelemetry bean, no
-         SdkTracerProvider, no span exporter — so management.otlp.tracing.* and
-         management.tracing.sampling.* bind to nothing and Tempo stays empty.
-
-         The starter SUBSUMES all three libraries above (see its own pom: micrometer-registry-otlp,
-         micrometer-tracing-bridge-otel, opentelemetry-exporter-otlp, all runtime), which is why they
-         are no longer declared here. TelemetryWiringTest asserts the beans exist, so this cannot
-         regress silently again. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-opentelemetry</artifactId>
     </dependency>
-    <!-- Logs, correlated to the spans by trace id. NOT brought by the starter, and not installed by
-         Boot either: the appender has to be handed the OpenTelemetry instance at startup, which is
-         what Telemetry#openTelemetryAppenderInstaller does. The perpetual "-alpha" suffix is the
-         opentelemetry-java-instrumentation project's versioning convention for every instrumentation
-         module, not a sign of abandonment — see nessy-examples/observed's README. -->
     <dependency>
-      <groupId>io.opentelemetry.instrumentation</groupId>
-      <artifactId>opentelemetry-logback-appender-1.0</artifactId>
-      <version>${opentelemetry-logback-appender.version}</version>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+      <scope>runtime</scope>
     </dependency>
-    <!-- Compile scope, because Telemetry names OpenTelemetryAppender and its supertype lives here.
-         spring-boot-starter-logging brings logback at RUNTIME only, which is enough to log and not
-         enough to compile against the appender. -->
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <scope>compile</scope>
-    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
-      <!-- The no-mocking-library promise (design of record), enforced by the build rather than by
-           discipline. Every seam this module tests through is a hand-written fake. -->
       <exclusions>
         <exclusion>
           <groupId>org.mockito</groupId>
@@ -253,9 +263,6 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <!-- Boot 4 split the test slices out of spring-boot-test-autoconfigure: MockMvc's
-         @AutoConfigureMockMvc now lives in org.springframework.boot.webmvc.test.autoconfigure,
-         shipped by this starter rather than by spring-boot-starter-test. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc-test</artifactId>
@@ -266,19 +273,32 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Lets TraceTreeTest assert the SHAPE of the trace rather than eyeball it in Grafana.
+         Trace context across actor messages is the highest-risk part of this port, so it gets a
+         test that fails if the tree ever flattens into orphans. -->
     <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-testing</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-actor-testkit-typed_2.13</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-testkit_2.13</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

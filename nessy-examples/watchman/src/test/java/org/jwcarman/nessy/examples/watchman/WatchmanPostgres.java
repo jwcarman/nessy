@@ -15,80 +15,106 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
+import com.typesafe.config.Config;
+import java.time.Clock;
+import java.time.Duration;
 import javax.sql.DataSource;
-import org.jwcarman.continuum.jdbc.JdbcContinuumRepository;
-import org.jwcarman.nessy.spring.boot.PendingApprovals;
-import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
+import org.jwcarman.nessy.engine.AgentModel;
+import org.jwcarman.nessy.engine.Backlogs;
+import org.jwcarman.nessy.engine.BlockingWork;
+import org.jwcarman.nessy.engine.Claims;
+import org.jwcarman.nessy.engine.Coalescer;
+import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.MicrometerTracing;
+import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.postgresql.ds.PGSimpleDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
-/**
- * The one Postgres the Boot-and-database tests share, and the three shipped schemas applied to it.
- *
- * <p>Why a real database rather than the in-memory stores: the pending-approvals projection IS a
- * table. Asserting "the approval is on the page" against in-memory stores would be asserting
- * something else — the page reads {@code PendingApprovalsRepository}, the starter only declares it
- * beside a {@code DataSource}, and the whole point of these tests is the path a human's browser
- * takes.
- *
- * <p>Untagged and started once for the JVM, the same way {@code DurableResumeTest} and {@code
- * StarterOnPostgresTest} do it. The image is the glibc one, never {@code -alpine} — see {@code
- * JdbcSubstrateContractTest} for why.
- */
-final class WatchmanPostgres {
+/** The running watchman-postgres, in its own schema so the sibling application is untouched. */
+public final class WatchmanPostgres {
 
-  private static final PostgreSQLContainer<?> CONTAINER = new PostgreSQLContainer<>("postgres:17");
-
-  static {
-    CONTAINER.start();
-  }
+  public static final String URL =
+      "jdbc:postgresql://localhost:5432/watchman?currentSchema=watchman";
+  public static final String USER = "watchman";
+  public static final String PASSWORD = "watchman";
 
   private WatchmanPostgres() {}
 
-  /**
-   * A {@code DataSource} over the shared container with every shipped schema already applied.
-   *
-   * <p>Applied here rather than in a {@code @BeforeAll}: a Boot context is built lazily on first
-   * use, and the harness's pumps start querying the moment it is.
-   */
-  static DataSource dataSource() {
+  public static Config config() {
+    return PekkoConfigBridge.build("watchman", URL, USER, PASSWORD);
+  }
+
+  public static DataSource dataSource() {
     PGSimpleDataSource dataSource = new PGSimpleDataSource();
-    dataSource.setUrl(CONTAINER.getJdbcUrl());
-    dataSource.setUser(CONTAINER.getUsername());
-    dataSource.setPassword(CONTAINER.getPassword());
-    applySchemas(dataSource);
+    dataSource.setUrl(URL);
+    dataSource.setUser(USER);
+    dataSource.setPassword(PASSWORD);
     return dataSource;
   }
 
-  private static void applySchemas(DataSource dataSource) {
-    String substrate = resource(JdbcSubstrate.class, "nessy-postgresql.sql");
-    String continuum = resource(JdbcContinuumRepository.class, "continuum-postgresql.sql");
-    String projection = resource(PendingApprovals.class, "pending-approvals-postgresql.sql");
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
-      statement.execute(substrate);
-      statement.execute(continuum);
-      statement.execute(projection);
-    } catch (SQLException e) {
-      throw new IllegalStateException("failed to apply the shipped schemas", e);
-    }
+  /** One substrate over the shared DataSource — what the engine stores everything through. */
+  public static org.jwcarman.nessy.spi.substrate.Substrate substrate() {
+    return new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC());
   }
 
-  private static String resource(Class<?> beside, String name) {
-    try (InputStream in = beside.getResourceAsStream(name)) {
-      if (in == null) {
-        throw new IllegalStateException(name + " not found beside " + beside.getName());
+  public static Memories memories() {
+    return new Memories(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()), 8000);
+  }
+
+  public static Backlogs<String> backlogs() {
+    return new SubstrateBacklogs<>(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()),
+        WatchmanObservations.COALESCER,
+        String.class);
+  }
+
+  public static Claims claims() {
+    return new Claims(
+        new org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate(dataSource(), Clock.systemUTC()));
+  }
+
+  /** Remember a user turn the way the cron does, before telling the agent. */
+  public static void observe(String agentId, String text) {
+    memories()
+        .forAgent(agentId)
+        .remember(
+            new org.jwcarman.nessy.spi.Remembrance.UserMessage(
+                org.jwcarman.nessy.api.Identifiers.next(),
+                org.jwcarman.nessy.api.message.Message.user(text)));
+  }
+
+  /** Tool results by call id, straight out of Memory. */
+  public static java.util.Map<String, String> results(String agentId) {
+    java.util.Map<String, String> byCall = new java.util.LinkedHashMap<>();
+    for (var message : memories().everything(agentId).messages()) {
+      for (var block : message.content()) {
+        if (block instanceof org.jwcarman.nessy.api.message.ToolResultBlock result) {
+          byCall.putIfAbsent(result.toolUseId(), result.text());
+        }
       }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
     }
+    return byCall;
+  }
+
+  public static WatchmanActorSystem start(AgentModel model) {
+    return start(model, memories());
+  }
+
+  public static WatchmanActorSystem start(AgentModel model, Memories memories) {
+    WatchmanActorSystem actors =
+        new WatchmanActorSystem(
+            config(),
+            model,
+            new FakeRunner(),
+            substrate(),
+            Coalescer.none(),
+            8000,
+            MicrometerTracing.noop(),
+            Clock.systemUTC(),
+            new BlockingWork(),
+            Duration.ofMinutes(10),
+            Duration.ofSeconds(15));
+    actors.start();
+    return actors;
   }
 }

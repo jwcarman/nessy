@@ -3,12 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>watchman — waiting</title>
-  <!--/* HTMX from a webjar, never a CDN: this box may have no outbound internet at all, and an
-         approval page that cannot render during an outage is exactly the page you need then.
-         hx-boost on the body is the whole of the JavaScript here — it turns the two buttons'
-         ordinary form posts into AJAX and follows the redirect, and with scripting off they stay
-         ordinary form posts that work. */-->
+  <title>watchman (pekko) — waiting</title>
   <script th:src="@{/webjars/htmx.org/2.0.4/dist/htmx.min.js}"></script>
   <style>
     body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; max-width: 70rem; }
@@ -16,42 +11,34 @@
     nav a { margin-right: 1rem; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border-bottom: 1px solid #ddd; padding: .5rem; text-align: left; vertical-align: top; }
-    th { font-weight: 600; }
     .action { font-weight: 600; }
     .dwell { white-space: nowrap; }
-    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: .5rem; }
     form { display: inline; }
     input[type=text] { width: 14rem; }
   </style>
 </head>
 <body hx-boost="true">
-<h1>watchman — waiting for a human</h1>
-<nav><a th:href="@{/}">waiting</a><a th:href="@{/recent}">recently answered</a></nav>
+<h1>watchman (pekko) — waiting for a human</h1>
+<nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
 
-<p th:if="${rows.isEmpty()}">Nothing is waiting. The watchman has proposed nothing you have not already answered.</p>
+<p th:if="${rows.isEmpty()}">Nothing is waiting.</p>
 
 <table th:unless="${rows.isEmpty()}">
   <thead>
-  <tr><th>what will run</th><th>agent</th><th>parked at</th><th>waiting</th><th>decide</th></tr>
+  <tr><th>what will run</th><th>agent</th><th>asked at</th><th>waiting</th><th>decide</th></tr>
   </thead>
   <tbody>
   <tr th:each="row : ${rows}">
-    <td>
-      <div class="action" th:text="${row.action}">the command</div>
-      <details>
-        <summary>the request it was judged on</summary>
-        <pre th:text="${row.request}">{}</pre>
-      </details>
-    </td>
-    <td th:text="${row.agent}">agent</td>
-    <td th:text="${row.parkedAt}">when</td>
+    <td><div class="action" th:text="${row.action}">the command</div></td>
+    <td th:text="${row.agentId}">agent</td>
+    <td th:text="${row.askedAt}">when</td>
     <td class="dwell" th:text="${row.dwell}">how long</td>
     <td>
-      <form method="post" th:action="@{/approve/{id}(id=${row.id})}">
+      <form method="post" th:action="@{/approve/{a}/{c}(a=${row.agentId},c=${row.callId})}">
         <input type="text" name="note" placeholder="note (optional)">
         <button type="submit">approve</button>
       </form>
-      <form method="post" th:action="@{/deny/{id}(id=${row.id})}">
+      <form method="post" th:action="@{/deny/{a}/{c}(a=${row.agentId},c=${row.callId})}">
         <input type="text" name="reason" placeholder="reason">
         <button type="submit">deny</button>
       </form>

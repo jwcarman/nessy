@@ -15,24 +15,11 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.time.Duration;
-import java.util.List;
+/** The one agent this application runs. */
+public final class Watchman {
 
-/**
- * The one seam between every tool and the host. Copied unchanged in spirit from the sibling
- * watchman: an interface so that no test in this module ever shells out.
- */
-public interface CommandRunner {
+  /** One box, one watchman — the same id the sibling application uses. */
+  public static final String AGENT_ID = "watchman";
 
-  Output run(List<String> argv, Duration timeout);
-
-  record Output(int exitCode, String stdout, String stderr) {
-    public boolean succeeded() {
-      return exitCode == 0;
-    }
-
-    public String text() {
-      return succeeded() || !stdout.isBlank() ? stdout : stderr;
-    }
-  }
+  private Watchman() {}
 }

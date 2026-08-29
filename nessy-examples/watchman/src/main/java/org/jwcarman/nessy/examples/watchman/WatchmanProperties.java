@@ -15,56 +15,120 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/**
- * Everything about the watchman that is site-specific: who may answer an approval, where the notes
- * live, and how long a command may take.
- *
- * <p>The round's cron expression is deliberately NOT here. {@code @Scheduled} reads {@code
- * ${watchman.cron:...}} straight from the environment, and a second copy in a record would be a
- * second place to get it wrong.
- *
- * @param user the single account the approval page accepts, from HTTP basic auth; it becomes the
- *     principal on every {@code ApprovalDesk} answer, so it ends up in the audit trail
- * @param password that account's password — required, with no default, because a LAN is not a trust
- *     boundary and a shipped default password is how a home server ends up on the internet
- * @param notesDir the directory the daily notes are written to and read back from
- * @param noteHistory how many previous notes {@code previous_notes} hands the model by default
- * @param commandTimeout how long any one host command may take before it is destroyed
- * @param upgradeTimeout how long a package upgrade may take before it is destroyed. Separate from
- *     {@code commandTimeout} and much longer for a blunt reason: the timeout is enforced with
- *     {@code destroyForcibly()}, and thirty seconds of budget on {@code apt-get -y upgrade} is a
- *     SIGKILL to dpkg mid-transaction — a half-configured package database on a real server. A
- *     kernel upgrade over a slow link can genuinely take ten minutes; fifteen is the honest default
- */
-@ConfigurationProperties("watchman")
-public record WatchmanProperties(
-    String user,
-    String password,
-    Path notesDir,
-    Integer noteHistory,
-    Duration commandTimeout,
-    Duration upgradeTimeout) {
+/** Everything an operator tunes, in the same place every other Spring property lives. */
+@ConfigurationProperties(prefix = "watchman")
+public class WatchmanProperties {
+
+  /** How long a proposal may wait for a human before it is denied on their behalf. */
+  private Duration approvalTerm = Duration.ofDays(3);
+
+  /** How long the web layer waits for the agent to confirm a decision is durable. */
+  private Duration askTimeout = Duration.ofSeconds(10);
+
+  private String user = "";
+  private String password = "";
+
+  /** Where the model lives. Defaults to LM Studio on this box. */
+  private String modelUrl = "http://localhost:1234/v1";
+
+  private String modelId = "qwen/qwen3.6-35b-a3b";
+
+  private String modelApiKey = "lm-studio";
+
+  /** Scripted mode spends nothing and reaches nothing; the tests and the demo use it. */
+  private boolean scripted = false;
 
   /**
-   * Defaults for everything that has a sensible one, and a loud failure for the two that do not. A
-   * blank credential fails the context at startup rather than opening the page to everyone.
+   * How much of the conversation may go into a prompt.
+   *
+   * <p>Without this the prompt grows with the transcript forever — the expensive curve, paid in
+   * tokens on every call and fatal to the context window long before the database notices.
    */
-  public WatchmanProperties {
-    require(user, "watchman.user");
-    require(password, "watchman.password");
-    notesDir = notesDir == null ? Path.of("notes") : notesDir;
-    noteHistory = noteHistory == null ? 3 : noteHistory;
-    commandTimeout = commandTimeout == null ? Duration.ofSeconds(30) : commandTimeout;
-    upgradeTimeout = upgradeTimeout == null ? Duration.ofMinutes(15) : upgradeTimeout;
+  private long contextBudgetTokens = 8000;
+
+  /** The model's own output budget for one turn. */
+  private int maxTokens = 4096;
+
+  public long getContextBudgetTokens() {
+    return contextBudgetTokens;
   }
 
-  private static void require(String value, String key) {
-    if (value == null || value.isBlank()) {
-      throw new IllegalStateException(key + " is required and has no default");
-    }
+  public void setContextBudgetTokens(long contextBudgetTokens) {
+    this.contextBudgetTokens = contextBudgetTokens;
+  }
+
+  public int getMaxTokens() {
+    return maxTokens;
+  }
+
+  public void setMaxTokens(int maxTokens) {
+    this.maxTokens = maxTokens;
+  }
+
+  public Duration getApprovalTerm() {
+    return approvalTerm;
+  }
+
+  public void setApprovalTerm(Duration approvalTerm) {
+    this.approvalTerm = approvalTerm;
+  }
+
+  public Duration getAskTimeout() {
+    return askTimeout;
+  }
+
+  public void setAskTimeout(Duration askTimeout) {
+    this.askTimeout = askTimeout;
+  }
+
+  public String getUser() {
+    return user;
+  }
+
+  public void setUser(String user) {
+    this.user = user;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+
+  public String getModelUrl() {
+    return modelUrl;
+  }
+
+  public void setModelUrl(String modelUrl) {
+    this.modelUrl = modelUrl;
+  }
+
+  public String getModelId() {
+    return modelId;
+  }
+
+  public void setModelId(String modelId) {
+    this.modelId = modelId;
+  }
+
+  public String getModelApiKey() {
+    return modelApiKey;
+  }
+
+  public void setModelApiKey(String modelApiKey) {
+    this.modelApiKey = modelApiKey;
+  }
+
+  public boolean isScripted() {
+    return scripted;
+  }
+
+  public void setScripted(boolean scripted) {
+    this.scripted = scripted;
   }
 }
