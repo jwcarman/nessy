@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -171,6 +172,55 @@ class PekkoHarnessFactoryTest {
       assertThatThrownBy(() -> factory.create(Integer.class, config -> {}))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("String observations only");
+    }
+
+    @Test
+    void refuses_a_second_harness_for_an_agent_type_even_from_a_DIFFERENT_factory() {
+      // The hole a per-factory guard leaves. Pekko does not close it either: asked to spawn a
+      // duplicate name, SpawnProtocol silently renames rather than failing.
+      factory.create(config -> config.type("watchman"));
+      PekkoHarnessFactory second =
+          new PekkoHarnessFactory(
+              system,
+              substrate,
+              providerOf(ScriptedModel.script(s2 -> s2.text("hi").endTurn())),
+              "scripted",
+              NO_TOOLS,
+              new SimpleMeterRegistry(),
+              MicrometerTracing.noop(),
+              Clock.systemUTC(),
+              Executors.newSingleThreadExecutor(),
+              CodecPipeline.none());
+
+      assertThatThrownBy(() -> second.create(config -> config.type("watchman")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("persistence id");
+    }
+
+    @Test
+    void lets_a_type_be_built_again_once_its_harness_has_shut_down() {
+      factory.create(config -> config.type("watchman")).shutdown();
+
+      assertThatCode(() -> factory.create(config -> config.type("watchman")))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    void refuses_a_second_harness_for_an_agent_type_it_already_built() {
+      factory.create(config -> config.type("watchman"));
+
+      assertThatThrownBy(() -> factory.create(config -> config.type("watchman")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("already exists")
+          .hasMessageContaining("persistence id");
+    }
+
+    @Test
+    void still_allows_a_second_harness_for_a_different_agent_type() {
+      factory.create(config -> config.type("watchman"));
+
+      assertThatCode(() -> factory.create(config -> config.type("planner")))
+          .doesNotThrowAnyException();
     }
 
     @Test

@@ -35,7 +35,7 @@ import org.jwcarman.nessy.spi.codec.CodecPipeline;
  */
 public final class StateSerializer extends SerializerWithStringManifest {
 
-  private final EngineCodecs.Pipelines codecs;
+  private final EngineCodecs.EngineState codecs;
 
   /**
    * The constructor Pekko prefers. Declaring it is the only way a serializer built reflectively

@@ -560,3 +560,32 @@ subscription needs its own addressing scheme.
    content is an array and Anthropic's `tool_result` accepts images. Ruled, not scheduled. It makes
    the type recursive and forces OpenAI-compatible providers to flatten non-text blocks, and
    dropping an image silently would be the wrong answer.
+
+## 13. Routing to exactly one agent
+
+**Ruled 2026-08-29 by James:** *"it doesn't matter how many harness actors we have as long as there
+is deterministic routing to exactly one agent actor."*
+
+The invariant is **one agent actor per (agent type, agent id)**. Harness count is not part of it.
+
+| strategy | how the invariant holds | scope |
+|---|---|---|
+| **local children** | the harness actor is the parent, so it holds only if there is ONE harness per type | one JVM |
+| **cluster sharding** | `entityRefFor(typeKey, id)` routes every caller to the same entity | whole cluster |
+
+**Sharding is the real answer**, and it makes duplicate harnesses harmless: N harnesses for one type
+all address the same entity. The entity key needs no new concept — one harness is one agent type, so
+it is `EntityTypeKey.create(NessyMessage.class, agentType.name())`.
+
+**Local routing needs a guard, and Pekko does not provide one.** Asked to spawn a duplicate actor
+name, `SpawnProtocol` silently RENAMES rather than failing — measured 2026-08-29: `same`, then
+`same-1`. So a second harness for a type would quietly parent a second `agent-<id>`, and the two
+would write the same persistence id. The guard is a claim held in a per-`ActorSystem` extension,
+because Pekko creates exactly one extension per system and synchronises it — a per-factory field
+cannot see a second factory on the same system.
+
+**The guard belongs to the local strategy, not to harnesses.** When the sharded strategy lands it
+skips the claim; keeping it would forbid something that is safe under sharding.
+
+**It covers one JVM only.** Nothing local can know about another process. Two JVMs routing locally to
+the same agent type is unprotected, and only sharding fixes that.

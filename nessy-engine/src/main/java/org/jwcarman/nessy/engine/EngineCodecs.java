@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.engine;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pekko.actor.AbstractExtensionId;
 import org.apache.pekko.actor.ActorSystem;
@@ -24,24 +26,40 @@ import org.apache.pekko.actor.ExtendedActorSystem;
 import org.apache.pekko.actor.Extension;
 import org.apache.pekko.actor.ExtensionId;
 import org.apache.pekko.actor.ExtensionIdProvider;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.spi.codec.CodecPipeline;
 
 /**
- * How the {@link CodecPipeline} reaches a serializer Pekko builds for itself.
+ * Engine state that belongs to an {@code ActorSystem} rather than to any one harness.
  *
- * <p>Pekko instantiates a serializer reflectively from {@code .conf}, so it cannot be handed
- * anything at construction — except an {@link ExtendedActorSystem}, which it IS given when it
- * declares that constructor. An extension hangs off that system, so the serializer can ask for the
- * pipeline the harness configured instead of inventing its own.
+ * <p>Pekko creates exactly one extension instance per system and synchronises that creation, which
+ * is the only reason this can enforce anything: a per-factory field cannot see a second factory on
+ * the same system, and an extension can.
  *
- * <p>Without this the actor state would be stored raw while everything going through {@code
- * Substrate} was compressed or encrypted — the exact split the one-pipeline rule exists to prevent.
+ * <p>Two things live here, both for that reason.
  *
- * <p><b>Set once, before any agent runs.</b> The factory installs the pipeline while building; the
- * serializer reads it per call, so a system that never had one keeps storing payloads untransformed
- * rather than failing.
+ * <p><b>The codec pipeline</b>, because Pekko instantiates a serializer reflectively from {@code
+ * .conf} and can hand it nothing except an {@link ExtendedActorSystem}. Without this, actor state
+ * would be stored raw while everything through {@code Substrate} was compressed or encrypted.
+ *
+ * <p><b>The set of agent types already claimed by a LOCALLY-ROUTED harness.</b>
+ *
+ * <p>The invariant that actually matters is <b>deterministic routing to exactly one agent actor per
+ * (type, id)</b> — how many harness actors exist is irrelevant to it. This claim is not a rule
+ * about harnesses; it is a workaround for a limitation of local parenting, where the harness actor
+ * IS the parent, so two harnesses mean two {@code agent-<id>} children sharing a persistence id —
+ * two {@code DurableStateBehavior}s writing the same row and fighting over revisions.
+ *
+ * <p>Pekko will not catch that for us. Asked to spawn a duplicate name, {@code SpawnProtocol}
+ * silently RENAMES (measured 2026-08-29: {@code same}, then {@code same-1}), so the corruption
+ * would arrive with no error at all.
+ *
+ * <p><b>Cluster sharding does not need this and must not use it.</b> Sharding routes every harness
+ * to the same entity for a given (type key, id), so duplicate harnesses are harmless there — and it
+ * enforces the real invariant cluster-wide, which nothing local can do across processes. When the
+ * sharded strategy lands, it skips the claim rather than inheriting a rule that stopped applying.
  */
-public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.Pipelines>
+public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.EngineState>
     implements ExtensionIdProvider {
 
   /** The one id Pekko keys the extension by. */
@@ -55,35 +73,34 @@ public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.Pipelin
   }
 
   @Override
-  public Pipelines createExtension(ExtendedActorSystem system) {
-    return new Pipelines();
+  public EngineState createExtension(ExtendedActorSystem system) {
+    return new EngineState();
   }
 
-  /** The pipeline this actor system's serializers should use. */
-  public static Pipelines of(ClassicActorSystemProvider system) {
+  /** This actor system's engine state. */
+  public static EngineState of(ClassicActorSystemProvider system) {
     return INSTANCE.get(system);
   }
 
-  /** The pipeline this actor system's serializers should use. */
-  public static Pipelines of(ActorSystem system) {
+  /** This actor system's engine state. */
+  public static EngineState of(ActorSystem system) {
     return INSTANCE.get(system);
   }
 
-  /** Engine-scoped codec state, one per actor system. */
-  public static final class Pipelines implements Extension {
+  /** Engine state, one per actor system. */
+  public static final class EngineState implements Extension {
 
     private final AtomicReference<CodecPipeline> pipeline =
         new AtomicReference<>(CodecPipeline.none());
+    private final Set<String> claimedTypes = ConcurrentHashMap.newKeySet();
 
-    private Pipelines() {}
+    private EngineState() {}
 
     /**
      * Installs the pipeline every serializer on this system will use.
      *
-     * <p>Called by the harness factory before any agent starts. Changing it while payloads are
-     * being written is not supported and not defended against: the chain is recorded in each
-     * payload, so already-written bytes stay readable, but a half-switched system is nobody's
-     * intent.
+     * <p>Called by the harness factory before any agent starts. The serializer reads it per call,
+     * so install order does not matter as long as it happens before the first serialize.
      */
     public void use(CodecPipeline pipeline) {
       this.pipeline.set(Objects.requireNonNull(pipeline, "pipeline must not be null"));
@@ -92,6 +109,29 @@ public final class EngineCodecs extends AbstractExtensionId<EngineCodecs.Pipelin
     /** The installed pipeline, or one that transforms nothing if none was installed. */
     public CodecPipeline pipeline() {
       return pipeline.get();
+    }
+
+    /**
+     * Claims {@code agentType} for a harness on this system.
+     *
+     * @throws IllegalStateException if some harness on this system already has it
+     */
+    public void claim(AgentType agentType) {
+      Objects.requireNonNull(agentType, "agentType must not be null");
+      if (!claimedTypes.add(agentType.name())) {
+        throw new IllegalStateException(
+            ("a harness for agent type '%s' already exists on this actor system. One harness IS one"
+                    + " agent type: a second would parent its own agent-<id> children, and those"
+                    + " agents would share a persistence id with the first — two"
+                    + " DurableStateBehaviors writing the same row. Pekko will not catch this;"
+                    + " SpawnProtocol silently renames a duplicate rather than failing.")
+                .formatted(agentType.name()));
+      }
+    }
+
+    /** Releases a claim, so a stopped harness's type can be built again. */
+    public void release(AgentType agentType) {
+      claimedTypes.remove(Objects.requireNonNull(agentType, "agentType must not be null").name());
     }
   }
 }

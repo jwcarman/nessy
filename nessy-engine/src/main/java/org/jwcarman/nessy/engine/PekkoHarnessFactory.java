@@ -22,13 +22,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.Props;
 import org.apache.pekko.actor.typed.SpawnProtocol;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
+import org.jwcarman.nessy.api.agent.AgentType;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.codec.CodecPipeline;
 import org.jwcarman.nessy.spi.model.Model;
@@ -67,7 +67,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Traces traces;
   private final Clock clock;
   private final Executor blocking;
-  private final AtomicInteger roots = new AtomicInteger();
 
   /**
    * @param system the caller's actor system — borrowed, never terminated
@@ -176,6 +175,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
 
     ActorRef<HarnessActor.Command> root =
         spawnRoot(
+            config.type(),
             HarnessActor.create(
                 new HarnessActor.Wiring(
                     config.type(),
@@ -216,8 +216,10 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    * <p>Blocking here is deliberate and bounded: a harness that returned before its tree existed
    * would hand back something whose first {@code observe} raced the wiring.
    */
-  private ActorRef<HarnessActor.Command> spawnRoot(Behavior<HarnessActor.Command> behavior) {
-    String name = "nessy-harness-" + roots.incrementAndGet();
+  private ActorRef<HarnessActor.Command> spawnRoot(
+      AgentType agentType, Behavior<HarnessActor.Command> behavior) {
+    EngineCodecs.of(system).claim(agentType);
+    String name = "nessy-harness-" + agentType.name();
     return AskPattern.<SpawnProtocol.Command, ActorRef<HarnessActor.Command>>ask(
             system,
             replyTo -> new SpawnProtocol.Spawn<>(behavior, name, Props.empty(), replyTo),
