@@ -409,10 +409,24 @@ a `DurableStateBehavior`.
 James: *"If the turn actor is not durable and it's somehow lost, we will process the observation
 over again... thereby executing tools again."* He is right, and the argument above missed why.
 
-**Claims do not deduplicate across a re-run.** They are keyed by call id, and re-processing an
-observation calls the model again, which mints FRESH call ids. The old claims match nothing, so
-every tool executes a second time. Claim-based dedup protects within ONE turn's call list; it does
-nothing against restarting the turn.
+**Claims as we key them today do not deduplicate across a re-run.** They are keyed by the model's
+call id, and re-processing an observation calls the model again, which mints FRESH call ids — so the
+old claims match nothing and every tool executes a second time.
+
+**But that is our choice, not a property of claims** (James: *"Claims don't need anything but an id.
+They're just parking spots for arbitrary data."*). Key one by something stable across a re-run —
+`(agentId, observation id, tool name, arguments hash)` — and re-processing the same observation
+lands on the SAME parking spot and finds the result already sitting in it. That is memoisation, and
+it is what Continuum did.
+
+It is a large mitigation for a small change, and it is not a complete one: a re-run calls the model
+again, and a non-deterministic model may ask for different tools or different arguments, which key
+differently and execute. So content-keyed claims turn "a lost turn re-runs EVERY tool" into "it
+re-runs only what the model asks for differently."
+
+**Order of work: content-keyed claims first** — nearly free, and they help even when a turn
+survives. Durable turn progress is what makes the guarantee deterministic rather than probabilistic.
+Not either/or.
 
 Nor does the earlier "the side effect happens outside the actor" argument save it. That argument is
 about the irreducible millisecond between calling a tool and recording its result. This is a
@@ -432,8 +446,8 @@ home for it. And a turn can sit parked on an approval for `approvalTerm`, three 
 a deploy during it is a certainty rather than a risk.
 
 **Therefore:** when `TurnActor` is split out it is DURABLE, or the agent keeps holding the turn's
-progress as it does now. Splitting it out non-durable is the version that silently re-runs
-`prune_images`.
+progress as it does now — and claims get content keys either way. Splitting it out non-durable, with
+call-id-keyed claims, is the version that silently re-runs `prune_images`.
 
 ## 11. The harness door: an ActorSystem in
 
