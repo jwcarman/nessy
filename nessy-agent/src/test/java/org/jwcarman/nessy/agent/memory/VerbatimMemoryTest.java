@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 
 class VerbatimMemoryTest {
 

@@ -17,11 +17,11 @@ package org.jwcarman.nessy.agent.support;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 
 /**
  * Remembers every {@link Remembrance} in order, raw ({@link #facts()}), and delegates the

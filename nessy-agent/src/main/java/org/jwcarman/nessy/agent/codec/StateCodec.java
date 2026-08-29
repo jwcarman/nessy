@@ -23,6 +23,7 @@ import java.util.TreeMap;
 import org.jwcarman.nessy.agent.AgentPhase;
 import org.jwcarman.nessy.agent.ToolCallPhase;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.codec.Codecs;
 
 /**
  * Internal storage machinery: renders {@link AgentPhase} to and from the JSON the byte-payload

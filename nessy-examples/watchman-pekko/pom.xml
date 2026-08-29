@@ -122,6 +122,18 @@
          owns the transcript directly; this port no longer has one of its own. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-engine</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-engine</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-agent</artifactId>
       <version>${project.version}</version>
     </dependency>

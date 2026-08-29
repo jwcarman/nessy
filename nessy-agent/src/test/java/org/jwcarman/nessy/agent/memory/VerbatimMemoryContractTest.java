@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.memory;
 
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 import org.jwcarman.nessy.testing.MemoryContractTest;
 
 class VerbatimMemoryContractTest extends MemoryContractTest {

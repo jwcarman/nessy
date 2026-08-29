@@ -35,7 +35,6 @@ import org.jwcarman.continuum.DefaultContinuum;
 import org.jwcarman.continuum.api.BatchSize;
 import org.jwcarman.continuum.api.Computation;
 import org.jwcarman.continuum.memory.InMemoryContinuumRepository;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
@@ -65,6 +64,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
+import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Versioned;
 

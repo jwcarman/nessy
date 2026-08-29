@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.codec.spi.CodecFactory;
-import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.support.MarkerBytesCodec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -36,6 +35,9 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.memory.MessageCodec;
+import org.jwcarman.nessy.spi.memory.RememberedMarker;
+import org.jwcarman.nessy.spi.memory.SubstrateMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 

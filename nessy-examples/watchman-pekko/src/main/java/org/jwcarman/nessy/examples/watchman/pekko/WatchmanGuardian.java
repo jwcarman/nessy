@@ -23,8 +23,18 @@ import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.SupervisorStrategy;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.actor.typed.javadsl.Routers;
-import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.api.agent.AgentType;
+import org.jwcarman.nessy.api.agent.ObservationRenderer;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.AgentModel;
+import org.jwcarman.nessy.engine.AgentRegistry;
+import org.jwcarman.nessy.engine.Backlogs;
+import org.jwcarman.nessy.engine.Claims;
+import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.ModelDesk;
+import org.jwcarman.nessy.engine.ModelWorker;
+import org.jwcarman.nessy.engine.ToolWorker;
+import org.jwcarman.nessy.engine.Traces;
 
 /**
  * THE SHAPE. Every actor in the watchman, and who owns whom, in one method.

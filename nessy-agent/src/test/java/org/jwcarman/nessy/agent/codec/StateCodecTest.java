@@ -37,6 +37,8 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.authorization.Key;
+import org.jwcarman.nessy.spi.codec.Codecs;
+import org.jwcarman.nessy.spi.memory.MessageCodec;
 
 class StateCodecTest {
 

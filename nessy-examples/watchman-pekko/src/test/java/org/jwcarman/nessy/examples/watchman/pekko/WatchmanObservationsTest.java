@@ -23,8 +23,12 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.spi.ObservationRenderer;
+import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.Backlog;
+import org.jwcarman.nessy.engine.Backlogs;
+import org.jwcarman.nessy.engine.SubstrateBacklogs;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 

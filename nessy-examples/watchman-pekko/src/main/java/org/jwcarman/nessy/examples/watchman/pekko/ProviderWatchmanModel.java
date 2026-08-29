@@ -28,6 +28,8 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.engine.AgentModel;
+import org.jwcarman.nessy.engine.ModelReply;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;

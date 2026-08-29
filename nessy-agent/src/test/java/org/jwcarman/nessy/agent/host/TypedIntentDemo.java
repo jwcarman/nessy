@@ -27,7 +27,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentPhase;
-import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -62,6 +61,7 @@ import org.jwcarman.nessy.intent.IntentRules;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.SubstrateIntentStore;
+import org.jwcarman.nessy.spi.memory.SubstrateMemory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 

@@ -31,6 +31,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.TokenEstimator;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.AgentState;
+import org.jwcarman.nessy.engine.Backlogs;
+import org.jwcarman.nessy.engine.BlockingWork;
+import org.jwcarman.nessy.engine.Claims;
+import org.jwcarman.nessy.engine.Coalescer;
+import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.MicrometerTracing;
+import org.jwcarman.nessy.engine.Phase;
+import org.jwcarman.nessy.engine.SubstrateBacklogs;
+import org.jwcarman.nessy.engine.ToolCallRecord;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 

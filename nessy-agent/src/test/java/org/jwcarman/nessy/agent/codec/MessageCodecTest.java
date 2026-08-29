@@ -34,6 +34,8 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.spi.codec.Codecs;
+import org.jwcarman.nessy.spi.memory.MessageCodec;
 
 class MessageCodecTest {
 

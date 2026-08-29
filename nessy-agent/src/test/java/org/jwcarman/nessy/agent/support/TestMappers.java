@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.agent.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jwcarman.nessy.agent.codec.Codecs;
+import org.jwcarman.nessy.spi.codec.Codecs;
 
 /**
  * Test-only mapper source: recipes built directly in a test (bypassing {@code Nessy}'s builders)

@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.engine.Memories;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;

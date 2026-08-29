@@ -29,6 +29,11 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.AgentState;
+import org.jwcarman.nessy.engine.Memories;
+import org.jwcarman.nessy.engine.Phase;
+import org.jwcarman.nessy.engine.ToolCallRecord;
 
 /**
  * THE MEASUREMENT. The soak found the durable state growing with the conversation, because a {@code

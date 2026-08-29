@@ -17,6 +17,7 @@ package org.jwcarman.nessy.agent.memory;
 
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.memory.SubstrateMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.testing.MemoryContractTest;
 

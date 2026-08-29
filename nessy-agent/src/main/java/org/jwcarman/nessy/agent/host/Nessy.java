@@ -27,7 +27,7 @@ import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.spi.ObservationRenderer;
+import org.jwcarman.nessy.api.agent.ObservationRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;

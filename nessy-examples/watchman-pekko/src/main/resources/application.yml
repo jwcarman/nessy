@@ -45,4 +45,5 @@ management:
 logging:
   level:
     org.apache.pekko: INFO
+    org.jwcarman.nessy.engine: DEBUG
     org.jwcarman.nessy.examples.watchman.pekko: DEBUG

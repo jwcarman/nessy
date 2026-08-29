@@ -25,6 +25,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.engine.AgentTools;
+import org.jwcarman.nessy.engine.ToolCallActor;
 
 /**
  * The four tools this port carries, and everything the rest of the system needs to know about them.

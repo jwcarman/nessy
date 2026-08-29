@@ -23,7 +23,6 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentPhase;
-import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentPhaseStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -40,6 +39,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
+import org.jwcarman.nessy.spi.memory.SubstrateMemory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 

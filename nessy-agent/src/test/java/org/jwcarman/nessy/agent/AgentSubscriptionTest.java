@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
@@ -64,6 +63,7 @@ import org.jwcarman.nessy.api.tool.approval.Approver;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.memory.SubstrateMemory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 

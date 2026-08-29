@@ -26,6 +26,12 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.AgentState;
+import org.jwcarman.nessy.engine.BlockingWork;
+import org.jwcarman.nessy.engine.MicrometerTracing;
+import org.jwcarman.nessy.engine.Phase;
+import org.jwcarman.nessy.engine.ToolCallRecord;
 
 /**
  * THE WHOLE THING, with a real model: a round against LM Studio, a proposal parked for a human, a

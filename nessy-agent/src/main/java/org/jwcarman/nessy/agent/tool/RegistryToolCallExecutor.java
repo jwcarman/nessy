@@ -36,7 +36,6 @@ import org.jwcarman.nessy.agent.Routing;
 import org.jwcarman.nessy.agent.ToolCallAddress;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -57,6 +56,7 @@ import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.approval.Approvers;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.codec.Codecs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

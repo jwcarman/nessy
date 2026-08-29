@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.examples.watchman.pekko;
 
 import java.time.Clock;
+import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.engine.Traces;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;

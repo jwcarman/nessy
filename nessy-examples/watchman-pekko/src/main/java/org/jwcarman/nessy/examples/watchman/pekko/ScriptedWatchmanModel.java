@@ -27,6 +27,8 @@ import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.engine.AgentModel;
+import org.jwcarman.nessy.engine.ModelReply;
 
 /** A watchman round with no tokens and no network. Deterministic on the context it is given. */
 public final class ScriptedWatchmanModel implements AgentModel {

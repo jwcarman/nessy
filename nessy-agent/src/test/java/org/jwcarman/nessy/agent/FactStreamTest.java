@@ -26,7 +26,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.HarnessObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
@@ -40,6 +39,7 @@ import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.Subscription;
+import org.jwcarman.nessy.spi.memory.VerbatimMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
