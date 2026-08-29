@@ -97,10 +97,13 @@
          property so each artifact resolves to a version that actually
          exists. -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
-    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.7.0 is the first
-         release carrying codec-jackson (Jackson 3) alongside codec-transforms,
-         codec-crypto, codec-zstd and codec-lz4 — the appendable byte[] -> byte[] set the
-         shared codec pipeline composes. -->
+    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.7.0 is the first release
+         carrying codec-transforms, codec-crypto, codec-zstd and codec-lz4 — the appendable
+         byte[] -> byte[] set the shared codec pipeline composes.
+
+         The VALUE codec stays codec-jackson2. Not inertia: our types carry Jackson annotations,
+         and Jackson 2 measured MUCH faster than 3 in James's benchmarks (2026-08-28). 0.7.0 also
+         ships codec-jackson (Jackson 3); we deliberately do not use it. -->
     <codec.version>0.7.0</codec.version>
     <!-- org.jwcarman.continuum 0.4.0 (Central release): the durable-computation
          library Nessy adopts for pending/deadline/expiry/memoized-outcome/outbox

@@ -312,8 +312,8 @@ void reversingTheDeclarationOrderDoesNotSilentlyCorrupt() {
 - [ ] **Step 3: Implement `CodecPipeline` with a self-describing header.** The encoded bytes record
   which chain produced them. **This is structural, not documentation.** There is no shared metadata
   slot between Pekko's `manifest` and `Substrate`'s `kind`, so identifying the chain anywhere else
-  means two mechanisms that will drift. Value encoding defaults to `codec-jackson` (Jackson 3) as
-  UTF-8 JSON; `byte[] -> byte[]` codecs append in declaration order.
+  means two mechanisms that will drift. Value encoding stays `codec-jackson2` — our types are Jackson-annotated and Jackson 2
+  benchmarks MUCH faster than 3 (James, 2026-08-28); `byte[] -> byte[]` codecs append in declaration order.
 
 - [ ] **Step 4: `CodecCustomizer` at factory construction**, NOT `HarnessConfig` — `Substrate` is
   factory-level infrastructure and a per-agent chain over one shared store is incoherent.
@@ -323,8 +323,6 @@ void reversingTheDeclarationOrderDoesNotSilentlyCorrupt() {
 - [ ] **Step 6: Point `StateSerializer` at the pipeline.** Its manifest keeps meaning TYPE
   (`AGENT_STATE_V2`); the chain identifies itself in the payload.
 
-- [ ] **Step 7: Resolve the artifact skew.** `codec-core` is `1.0.0-SNAPSHOT`, `codec-transforms` is
-  `0.7.0-SNAPSHOT`. Settle before depending on the pair; report if they are incompatible.
 
 - [ ] **Step 8: Full gate and commit.**
 
