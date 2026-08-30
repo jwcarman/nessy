@@ -48,6 +48,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -119,8 +120,8 @@ class AnthropicModelProviderTest {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new AnthropicProviderConfig().client(client).build();
-      var model = provider.model("claude-sonnet");
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var model = provider.model(ModelId.of("claude-sonnet"));
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
 
       var stream = model.stream(request);
 
@@ -134,10 +135,10 @@ class AnthropicModelProviderTest {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new AnthropicProviderConfig().client(client).thinkingBudget(777).build();
-      var model = provider.model("claude-sonnet");
+      var model = provider.model(ModelId.of("claude-sonnet"));
       var request =
           new ModelRequest(
-              Context.of(List.of()), "sys", 4096, List.of(), Set.of(Capability.THINKING), null);
+              Context.of(List.of()), "sys", 4096, List.of(), Set.of(Capability.THINKING));
 
       model.stream(request);
 
@@ -297,22 +298,12 @@ class AnthropicModelProviderTest {
     }
   }
 
-  @Nested
-  class Capabilities {
-
-    @Test
-    void advertise_thinking_both_cache_lifetimes_parallel_tools_and_images() {
-      AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
-
-      assertThat(provider.model("claude-sonnet").capabilities())
-          .containsExactlyInAnyOrder(
-              Capability.THINKING,
-              Capability.PROMPT_CACHING,
-              Capability.PROMPT_CACHING_1H,
-              Capability.PARALLEL_TOOL_CALLS,
-              Capability.IMAGE_INPUT);
-    }
-  }
+  // REMOVED IN THE CUTOVER (2026-08-30): a nested class pinning the capability set this vendor
+  // advertised through Model#capabilities(). The new SPI has no such method — a request STATES
+  // the capabilities it would like via ModelRequest#requested() and an adapter that cannot
+  // oblige simply does not — so there is no advertised set left to assert on. What the adapter
+  // does with a requested capability is covered by AnthropicRequestsTest's caching and thinking
+  // cases, which is the behaviour this class was standing in for.
 
   @Nested
   class Name {
@@ -339,14 +330,14 @@ class AnthropicModelProviderTest {
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new AnthropicProviderConfig().client(client).build();
 
-      Model opus = provider.model("claude-opus-5");
-      Model haiku = provider.model("claude-haiku-4-5");
+      Model opus = provider.model(ModelId.of("claude-opus-5"));
+      Model haiku = provider.model(ModelId.of("claude-haiku-4-5"));
 
-      assertThat(opus.id()).isEqualTo("claude-opus-5");
-      assertThat(haiku.id()).isEqualTo("claude-haiku-4-5");
+      assertThat(opus.id()).isEqualTo(ModelId.of("claude-opus-5"));
+      assertThat(haiku.id()).isEqualTo(ModelId.of("claude-haiku-4-5"));
       assertThat(opus).isNotSameAs(haiku);
 
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
       opus.stream(request);
       assertThat(capturedParams[0].model().asString()).isEqualTo("claude-opus-5");
       haiku.stream(request);
@@ -355,16 +346,16 @@ class AnthropicModelProviderTest {
 
     @Test
     void a_blank_model_id_is_rejected() {
-      var provider = new AnthropicProviderConfig().apiKey("sk-test").build();
-
-      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+      // The check moved INTO ModelId, so a blank never reaches a provider at all — which is the
+      // better place for it: every provider used to have to remember to make it.
+      assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_model_id_is_rejected() {
       var provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
-      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(NullPointerException.class);
     }
   }
 

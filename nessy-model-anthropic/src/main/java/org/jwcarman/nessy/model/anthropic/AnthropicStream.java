@@ -31,8 +31,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -44,7 +44,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * next {@link ModelEvent}; the turn is never buffered in full. {@code tool_use} content blocks are
  * the one case that spans several SDK events ({@code content_block_start} through {@code
  * content_block_stop}): their id, name, and streamed JSON fragments are accumulated internally and
- * surfaced as a single {@link ModelEvent.ToolUseEmitted} once the block closes.
+ * surfaced as a single {@link ModelEvent.ToolCallEmitted} once the block closes.
  *
  * <p>{@link #iterator()} is one-shot: each call wraps a fresh {@link Iterator} over the SDK's
  * {@code Stream}, but that {@code Stream} itself is a standard single-use {@link
@@ -80,8 +80,6 @@ public final class AnthropicStream implements ModelStream {
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
     private long inputTokens;
-    private long cacheReadInputTokens;
-    private long cacheWriteInputTokens;
     private boolean turnEnded;
 
     private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
@@ -108,8 +106,8 @@ public final class AnthropicStream implements ModelStream {
      * Pulls SDK events until there's something to hand back, or the SDK stream is exhausted.
      *
      * <p>A real stream always closes with {@code message_delta} (which is where {@link
-     * ModelEvent.TurnEnded} comes from) before {@code message_stop}. If the underlying events run
-     * out without one ever having been translated, the turn ended without a stop reason — silently
+     * ModelEvent.Stopped} comes from) before {@code message_stop}. If the underlying events run out
+     * without one ever having been translated, the turn ended without a stop reason — silently
      * returning "no more events" here would let the harness treat that as a normal, successful end
      * of turn, so it fails loudly instead.
      *
@@ -181,8 +179,6 @@ public final class AnthropicStream implements ModelStream {
      * @param cacheWrite the vendor's {@code cache_creation_input_tokens}
      */
     private void readUsage(long uncachedInputTokens, long cacheRead, long cacheWrite) {
-      cacheReadInputTokens = cacheRead;
-      cacheWriteInputTokens = cacheWrite;
       inputTokens = uncachedInputTokens + cacheRead + cacheWrite;
     }
 
@@ -238,7 +234,7 @@ public final class AnthropicStream implements ModelStream {
     private void translateContentBlockStop(RawContentBlockStopEvent event) {
       var toolUse = toolUsesByIndex.remove(event.index());
       if (toolUse != null) {
-        pending.add(new ModelEvent.ToolUseEmitted(toolUse.toToolCall()));
+        pending.add(new ModelEvent.ToolCallEmitted(toolUse.toToolCall(), null));
       }
     }
 
@@ -249,13 +245,14 @@ public final class AnthropicStream implements ModelStream {
               .stopReason()
               .orElseThrow(
                   () -> new IllegalStateException("message_delta event is missing stop_reason"));
-      var usage =
-          new Usage(
-              inputTokens,
-              event.usage().outputTokens(),
-              cacheReadInputTokens,
-              cacheWriteInputTokens);
-      pending.add(new ModelEvent.TurnEnded(mapStopReason(stopReason), usage));
+      var usage = new Usage(inputTokens, event.usage().outputTokens());
+      // A refusal is its own event now, not a stop reason: StopReason names only the three ways a
+      // turn that HAPPENED can end, and a refused turn did not happen. Anthropic reports it in the
+      // same field as the others, so this is where the two shapes part company.
+      pending.add(
+          "refusal".equals(stopReason.asString())
+              ? new ModelEvent.Refused("refusal", "the model declined to answer", usage)
+              : new ModelEvent.Stopped(mapStopReason(stopReason), usage));
       turnEnded = true;
     }
 
@@ -269,6 +266,10 @@ public final class AnthropicStream implements ModelStream {
     // out of room" (context, not output budget), and the fold already halts cleanly on
     // MAX_TOKENS, so no new StopReason variant is needed to handle it correctly.
     //
+    // "refusal" is handled before this method is reached: it becomes a ModelEvent.Refused rather
+    // than a stop reason, so it is deliberately absent from the switch below and falls through to
+    // the default only if that branch is ever removed.
+    //
     // "pause_turn" is a KNOWN SDK value that this method still deliberately throws on: it is
     // emitted only for server-side tools (e.g. the built-in web search tool), which this harness
     // never requests via AnthropicRequests, so it is unreachable through our params today. It will
@@ -279,7 +280,6 @@ public final class AnthropicStream implements ModelStream {
         case "end_turn", "stop_sequence" -> StopReason.END_TURN;
         case "tool_use" -> StopReason.TOOL_USE;
         case "max_tokens", "model_context_window_exceeded" -> StopReason.MAX_TOKENS;
-        case "refusal" -> StopReason.REFUSAL;
         default ->
             throw new IllegalStateException(
                 "Unrecognized Anthropic stop_reason: " + reason.asString());

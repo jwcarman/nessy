@@ -35,18 +35,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.ImageBlock;
+import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ThinkingBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.block.ToolResultContentBlock;
+import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.ResultBlock;
-import org.jwcarman.nessy.api.message.Role;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
@@ -153,7 +154,7 @@ public final class AnthropicRequests {
    * blocks that carry a marker.
    */
   private record DraftedMessage(
-      MessageParam.Role role, List<ContentBlock> source, List<ContentBlockParam> blocks) {}
+      MessageParam.Role role, List<Block> source, List<ContentBlockParam> blocks) {}
 
   /**
    * The conversation, with the prompt-cache breakpoints on it (soak finding F1, 2026-08-26).
@@ -199,7 +200,7 @@ public final class AnthropicRequests {
    * conversation has no block that may carry one at all.
    */
   private static Set<Integer> conversationBreakpoints(List<DraftedMessage> drafts) {
-    List<ContentBlock> flattened =
+    List<Block> flattened =
         drafts.stream().map(DraftedMessage::source).flatMap(List::stream).toList();
     int moving = lastEligibleAtOrBefore(flattened, flattened.size() - 1);
     if (moving < 0) {
@@ -209,7 +210,7 @@ public final class AnthropicRequests {
     return anchor < 0 ? Set.of(moving) : Set.of(anchor, moving);
   }
 
-  private static int lastEligibleAtOrBefore(List<ContentBlock> blocks, int from) {
+  private static int lastEligibleAtOrBefore(List<Block> blocks, int from) {
     for (int i = Math.min(from, blocks.size() - 1); i >= 0; i--) {
       if (mayCarryCacheControl(blocks.get(i))) {
         return i;
@@ -223,24 +224,24 @@ public final class AnthropicRequests {
    * thinking and redacted thinking may not — the API defines no {@code cache_control} on either,
    * which is visible in the SDK as the absence of the builder method the others have.
    */
-  private static boolean mayCarryCacheControl(ContentBlock block) {
+  private static boolean mayCarryCacheControl(Block block) {
     return switch (block) {
-      case TextBlock _, ImageBlock _, ToolUseBlock _, ToolResultBlock _ -> true;
+      case TextBlock _, ImageBlock _, ToolCallBlock _, ToolResultBlock _ -> true;
       case ThinkingBlock _, RedactedThinkingBlock _ -> false;
     };
   }
 
   private static void addTools(
       MessageCreateParams.Builder builder,
-      List<ToolSpec> tools,
+      List<org.jwcarman.nessy.api.tool.Tool<?>> tools,
       Optional<CacheControlEphemeral> marker) {
     for (int i = 0; i < tools.size(); i++) {
-      var spec = tools.get(i);
+      var declared = tools.get(i);
       var tool =
           Tool.builder()
-              .name(spec.name())
-              .description(spec.description())
-              .inputSchema(AnthropicSchemas.toInputSchema(spec.inputSchema()));
+              .name(declared.name())
+              .description(declared.description())
+              .inputSchema(AnthropicSchemas.toInputSchema(declared.inputSchema()));
       if (i == tools.size() - 1) {
         tool.cacheControl(marker);
       }
@@ -260,10 +261,14 @@ public final class AnthropicRequests {
    * block, which {@link #toContentBlockParam} drops, leaving nothing behind.
    */
   private static Optional<DraftedMessage> draft(Message message) {
-    var role = message.role() == Role.USER ? MessageParam.Role.USER : MessageParam.Role.ASSISTANT;
-    var source = new ArrayList<ContentBlock>();
+    // Role is no longer carried on the message; the arm IS the role. Tool results go up as a
+    // USER message, which is Anthropic's encoding for them — the model said the call, the
+    // caller says the answer.
+    var role =
+        message instanceof AssistantMessage ? MessageParam.Role.ASSISTANT : MessageParam.Role.USER;
+    var source = new ArrayList<Block>();
     var blocks = new ArrayList<ContentBlockParam>();
-    for (ContentBlock block : message.content()) {
+    for (Block block : contentOf(message)) {
       toContentBlockParam(block, Optional.empty())
           .ifPresent(
               param -> {
@@ -277,8 +282,17 @@ public final class AnthropicRequests {
     return Optional.of(new DraftedMessage(role, List.copyOf(source), List.copyOf(blocks)));
   }
 
+  /** The blocks of a message, whichever arm it is. */
+  private static List<? extends Block> contentOf(Message message) {
+    return switch (message) {
+      case UserMessage user -> user.content();
+      case AssistantMessage assistant -> assistant.content();
+      case ToolResultMessage results -> results.blocks();
+    };
+  }
+
   /**
-   * Maps one {@link ContentBlock} to its param form, or nothing at all.
+   * Maps one {@link Block} to its param form, or nothing at all.
    *
    * <p>An unsigned {@link ThinkingBlock} — signature the empty string — is one block dropped
    * outright: it means the transcript predates response signing, and Anthropic rejects unsigned
@@ -293,7 +307,7 @@ public final class AnthropicRequests {
    * on either, which is why {@link #mayCarryCacheControl} never chooses one.
    */
   private static Optional<ContentBlockParam> toContentBlockParam(
-      ContentBlock block, Optional<CacheControlEphemeral> cacheControl) {
+      Block block, Optional<CacheControlEphemeral> cacheControl) {
     return switch (block) {
       case TextBlock(String text) ->
           text.isEmpty()
@@ -322,7 +336,7 @@ public final class AnthropicRequests {
           Optional.of(
               ContentBlockParam.ofRedactedThinking(
                   RedactedThinkingBlockParam.builder().data(data).build()));
-      case ToolUseBlock(ToolCall call, _) ->
+      case ToolCallBlock(ToolCall call, _) ->
           Optional.of(
               ContentBlockParam.ofToolUse(
                   ToolUseBlockParam.builder()
@@ -331,7 +345,10 @@ public final class AnthropicRequests {
                       .input(toInput(call.arguments()))
                       .cacheControl(cacheControl)
                       .build()));
-      case ToolResultBlock(String toolUseId, List<ResultBlock> content, boolean isError) ->
+      case ToolResultBlock(
+              String toolUseId,
+              List<ToolResultContentBlock> content,
+              boolean isError) ->
           Optional.of(
               ContentBlockParam.ofToolResult(
                   ToolResultBlockParam.builder()
@@ -345,23 +362,15 @@ public final class AnthropicRequests {
   }
 
   /**
-   * One block of a tool's answer. Anthropic takes text and images natively here, which is exactly
-   * what {@link ResultBlock} permits — so nothing a tool can legally return has to be flattened
-   * away on the path to the model.
+   * One block of a tool's answer. Anthropic would take images here too, but {@link
+   * ToolResultContentBlock} permits text and nothing else, so this is a total switch over a single
+   * arm. The narrowing is the API's, not this adapter's: nothing a tool can legally return is
+   * flattened away on the path to the model.
    */
-  private static ToolResultBlockParam.Content.Block toResultBlock(ResultBlock block) {
+  private static ToolResultBlockParam.Content.Block toResultBlock(ToolResultContentBlock block) {
     return switch (block) {
       case TextBlock(String text) ->
           ToolResultBlockParam.Content.Block.ofText(TextBlockParam.builder().text(text).build());
-      case ImageBlock(String mediaType, String base64Data) ->
-          ToolResultBlockParam.Content.Block.ofImage(
-              ImageBlockParam.builder()
-                  .source(
-                      Base64ImageSource.builder()
-                          .mediaType(Base64ImageSource.MediaType.of(mediaType))
-                          .data(base64Data)
-                          .build())
-                  .build());
     };
   }
 

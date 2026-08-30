@@ -21,12 +21,11 @@ import com.anthropic.errors.AnthropicRetryableException;
 import com.anthropic.errors.InternalServerException;
 import com.anthropic.errors.RateLimitException;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Predicate;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.model.anthropic.AnthropicRequests.ThinkingConfig;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -39,24 +38,17 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * {@link AnthropicStream}, {@link AnthropicSchemas}); this class is the one place that owns the
  * client and actually talks to the network.
  */
-public final class AnthropicModelProvider implements ModelProvider {
+public final class AnthropicModelProvider implements ModelProvider, AutoCloseable {
 
   /**
-   * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
-   * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
+   * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor (agentic-o11y spec
+   * §1.1). No longer reported through the SPI — {@code Model} describes nothing now — but kept as
+   * the one spelling of the vendor's name for anything that reports on this adapter's behalf.
    */
   static final String PROVIDER = "anthropic";
 
-  private static final Set<Capability> CAPABILITIES =
-      Set.of(
-          Capability.THINKING,
-          Capability.PROMPT_CACHING,
-          Capability.PROMPT_CACHING_1H,
-          Capability.PARALLEL_TOOL_CALLS,
-          Capability.IMAGE_INPUT);
-
   /**
-   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModel} should retry.
+   * Which failures a caller wrapping this gateway in a retry should retry.
    *
    * <p>Grounded in the SDK's own retry classification: the anthropic-java SDK's internal HTTP
    * client retries a raw {@link java.io.IOException} or {@link AnthropicRetryableException}
@@ -133,14 +125,12 @@ public final class AnthropicModelProvider implements ModelProvider {
   }
 
   @Override
-  public Model model(String id) {
-    if (id == null || id.isBlank()) {
-      throw new IllegalArgumentException("id must not be blank");
-    }
+  public Model model(ModelId id) {
+    Objects.requireNonNull(id, "id must not be null");
     return new AnthropicModel(id);
   }
 
-  @Override
+  /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
     return "Anthropic";
   }
@@ -160,37 +150,24 @@ public final class AnthropicModelProvider implements ModelProvider {
     }
   }
 
-  /**
-   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
-   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
-   * disturbing the gateway.
-   */
+  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
   private final class AnthropicModel implements Model {
 
-    private final String id;
+    private final ModelId id;
 
-    private AnthropicModel(String id) {
+    private AnthropicModel(ModelId id) {
       this.id = id;
     }
 
     @Override
-    public ModelStream stream(ModelRequest request) {
-      var params = AnthropicRequests.toParams(request, id, thinkingConfigFor(request));
-      return new AnthropicStream(client.messages().createStreaming(params));
+    public ModelId id() {
+      return id;
     }
 
-    /**
-     * What this model is. The context window is a per-provider constant for now — every current
-     * Claude model reads 200k.
-     *
-     * <p>A per-model figure belongs here the day one is available; a wrong window is caught at
-     *
-     * <p>resolution rather than mid-turn, which is the point of reporting it at all.
-     */
     @Override
-    public ModelDescription describe() {
-
-      return new ModelDescription(id, PROVIDER, 200_000, CAPABILITIES);
+    public ModelStream stream(ModelRequest request) {
+      var params = AnthropicRequests.toParams(request, id.value(), thinkingConfigFor(request));
+      return new AnthropicStream(client.messages().createStreaming(params));
     }
 
     private ThinkingConfig thinkingConfigFor(ModelRequest request) {

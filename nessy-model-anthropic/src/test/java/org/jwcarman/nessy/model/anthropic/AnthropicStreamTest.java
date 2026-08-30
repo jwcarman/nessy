@@ -41,8 +41,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
@@ -234,7 +234,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
     }
   }
 
@@ -260,7 +260,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("see "),
               new ModelEvent.TextChunk("here"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(4, 2, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(4, 2)));
     }
   }
 
@@ -283,7 +283,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(17, 5, 7, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(17, 5)));
     }
 
     @Test
@@ -302,7 +302,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(35, 5, 0, 25)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(35, 5)));
     }
 
     /**
@@ -329,7 +329,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5)));
     }
 
     @Test
@@ -348,7 +348,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
     }
   }
 
@@ -373,7 +373,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.ThinkingChunk("Let me think"),
               new ModelEvent.ThinkingSigned("sig-123"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 8, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(20, 8)));
     }
   }
 
@@ -395,7 +395,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.RedactedThinkingEmitted("opaque-data"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(6, 2, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(6, 2)));
     }
   }
 
@@ -421,20 +421,20 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents).hasSize(3);
-      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolUseEmitted.class);
-      var firstCall = ((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call();
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
+      var firstCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(firstCall.id()).isEqualTo("toolu_1");
       assertThat(firstCall.name()).isEqualTo("get_weather");
       assertThat(firstCall.arguments().get("location").asText()).isEqualTo("NYC");
 
-      assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolUseEmitted.class);
-      var secondCall = ((ModelEvent.ToolUseEmitted) modelEvents.get(1)).call();
+      assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
+      var secondCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call();
       assertThat(secondCall.id()).isEqualTo("toolu_2");
       assertThat(secondCall.name()).isEqualTo("get_time");
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
       assertThat(modelEvents.get(2))
-          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(15, 12, 0, 0)));
+          .isEqualTo(new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(15, 12)));
     }
 
     @Test
@@ -449,8 +449,8 @@ class AnthropicStreamTest {
 
       var modelEvents = drain(events);
 
-      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolUseEmitted.class);
-      var call = ((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call();
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
+      var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(call)
           .isEqualTo(new ToolCall("toolu_3", "ping", JsonNodeFactory.instance.objectNode()));
       assertThat(call.arguments().size()).isZero();
@@ -471,7 +471,7 @@ class AnthropicStreamTest {
 
       var modelEvents = drain(events);
 
-      var call = ((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call();
+      var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(call)
           .isEqualTo(new ToolCall("toolu_4", "ping", JsonNodeFactory.instance.objectNode()));
     }
@@ -530,7 +530,7 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(5, 3, 0, 0)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(5, 3)));
     }
 
     @Test
@@ -567,7 +567,7 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(37, 9, 0, 0)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(37, 9)));
     }
   }
 
@@ -577,22 +577,20 @@ class AnthropicStreamTest {
     @Test
     void end_turn_maps_to_end_turn() {
       var modelEvents = drain(List.of(messageStart(1), messageDelta("end_turn", 1), messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.END_TURN);
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason()).isEqualTo(StopReason.END_TURN);
     }
 
     @Test
     void tool_use_maps_to_tool_use() {
       var modelEvents = drain(List.of(messageStart(1), messageDelta("tool_use", 1), messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.TOOL_USE);
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason()).isEqualTo(StopReason.TOOL_USE);
     }
 
     @Test
     void max_tokens_maps_to_max_tokens() {
       var modelEvents =
           drain(List.of(messageStart(1), messageDelta("max_tokens", 1), messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 
@@ -600,15 +598,16 @@ class AnthropicStreamTest {
     void stop_sequence_maps_to_end_turn() {
       var modelEvents =
           drain(List.of(messageStart(1), messageDelta("stop_sequence", 1), messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.END_TURN);
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason()).isEqualTo(StopReason.END_TURN);
     }
 
     @Test
-    void refusal_maps_to_refusal() {
+    void refusal_becomes_a_refused_event_rather_than_a_stop_reason() {
       var modelEvents = drain(List.of(messageStart(1), messageDelta("refusal", 1), messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.REFUSAL);
+      // StopReason names only the three ways a turn that HAPPENED can end, so a refusal is no
+      // longer one of them: it is its own event, and asserting that is asserting the shape change.
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.Refused.class);
+      assertThat(((ModelEvent.Refused) modelEvents.get(0)).category()).isEqualTo("refusal");
     }
 
     @Test
@@ -623,7 +622,7 @@ class AnthropicStreamTest {
                   messageStart(1),
                   messageDelta("model_context_window_exceeded", 1),
                   messageStop()));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 

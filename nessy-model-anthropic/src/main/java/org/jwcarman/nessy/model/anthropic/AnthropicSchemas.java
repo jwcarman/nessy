@@ -22,13 +22,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
- * Converts a {@link ToolSpec}'s wire-neutral {@link ObjectNode} schema into the SDK's {@link
- * Tool.InputSchema}.
+ * Converts a {@link org.jwcarman.nessy.api.tool.Tool}'s wire-neutral {@link ObjectNode} schema into
+ * the SDK's {@link Tool.InputSchema}.
  *
- * <p>{@code ToolSpec.inputSchema()} is already a JSON Schema object built by the caller, not a Java
+ * <p>{@code Tool.inputSchema()} is already a JSON Schema object built by the caller, not a Java
  * type to introspect, so there is no generation step here — only a field-by-field copy of {@code
  * properties}, {@code required}, {@code $defs}, and {@code oneOf} onto the SDK's builder. A type
  * referenced by more than one property is hoisted into {@code $defs} and pointed at with {@code
