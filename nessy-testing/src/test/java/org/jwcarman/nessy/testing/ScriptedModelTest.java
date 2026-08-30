@@ -24,10 +24,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.UserMessage;
+import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -37,7 +38,7 @@ class ScriptedModelTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        Context.of(List.of(Message.user("hi"))), "system", 1024, List.of(), Set.of(), null);
+        Context.of(List.of(UserMessage.of("hi"))), "system", 1024, List.of(), Set.of());
   }
 
   private static List<ModelEvent> drain(ModelStream stream) {
@@ -50,45 +51,45 @@ class ScriptedModelTest {
 
   @Test
   void replays_a_single_text_turn() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
-    List<ModelEvent> events = drain(provider.stream(request()));
+    List<ModelEvent> events = drain(model.stream(request()));
 
     assertThat(events)
         .containsExactly(
             new ModelEvent.TextChunk("Hello"),
-            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+            new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
   }
 
   @Test
   void replays_turns_in_order() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModel provider =
+    ScriptedModel model =
         ScriptedModel.script(
-            s -> s.toolUse("c1", "read_file", args).endWithToolUse().text("Done").endTurn());
+            s -> s.toolCall("c1", "read_file", args).endWithToolCalls().text("Done").endTurn());
 
-    assertThat(drain(provider.stream(request()))).hasSize(2);
-    assertThat(drain(provider.stream(request())))
+    assertThat(drain(model.stream(request()))).hasSize(2);
+    assertThat(drain(model.stream(request())))
         .containsExactly(
             new ModelEvent.TextChunk("Done"),
-            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+            new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
   }
 
   @Test
   void records_every_request_it_received() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
-    provider.stream(request()).close();
+    model.stream(request()).close();
 
-    assertThat(provider.requests()).hasSize(1);
-    assertThat(provider.requests().getFirst().systemPrompt()).isEqualTo("system");
+    assertThat(model.requests()).hasSize(1);
+    assertThat(model.requests().getFirst().systemPrompt()).isEqualTo("system");
   }
 
   @Test
   void iterating_the_same_stream_twice_is_a_loud_failure() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
-    try (ModelStream stream = provider.stream(request())) {
+    try (ModelStream stream = model.stream(request())) {
       stream.iterator();
       assertThatThrownBy(stream::iterator)
           .isInstanceOf(IllegalStateException.class)
@@ -98,24 +99,24 @@ class ScriptedModelTest {
 
   @Test
   void requests_is_a_snapshot_rather_than_a_live_view() {
-    ScriptedModel provider =
+    ScriptedModel model =
         ScriptedModel.script(s -> s.text("Hello").endTurn().text("Again").endTurn());
-    provider.stream(request()).close();
-    List<ModelRequest> snapshot = provider.requests();
+    model.stream(request()).close();
+    List<ModelRequest> snapshot = model.requests();
 
-    provider.stream(request()).close();
+    model.stream(request()).close();
 
     assertThat(snapshot).hasSize(1);
-    assertThat(provider.requests()).hasSize(2);
+    assertThat(model.requests()).hasSize(2);
   }
 
   @Test
   void running_out_of_script_is_a_loud_failure() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
-    provider.stream(request()).close();
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn());
+    model.stream(request()).close();
     ModelRequest exhaustedRequest = request();
 
-    assertThatThrownBy(() -> provider.stream(exhaustedRequest))
+    assertThatThrownBy(() -> model.stream(exhaustedRequest))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("script exhausted");
   }
@@ -130,59 +131,66 @@ class ScriptedModelTest {
   @Test
   void replays_thinking_and_tool_use_events_in_a_single_turn() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModel provider =
+    ScriptedModel model =
         ScriptedModel.script(
             s ->
                 s.thinking("pondering")
                     .thinkingSigned("sig-123")
                     .redactedThinking("opaque-data")
-                    .toolUse("c1", "read_file", args)
-                    .endWithToolUse());
+                    .toolCall("c1", "read_file", args)
+                    .endWithToolCalls());
 
-    assertThat(drain(provider.stream(request())))
+    assertThat(drain(model.stream(request())))
         .containsExactly(
             new ModelEvent.ThinkingChunk("pondering"),
             new ModelEvent.ThinkingSigned("sig-123"),
             new ModelEvent.RedactedThinkingEmitted("opaque-data"),
-            new ModelEvent.ToolUseEmitted(new ToolCall("c1", "read_file", args)),
-            new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), null),
+            new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(0, 0)));
   }
 
   @Test
   void replays_a_signed_tool_use_event() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
-    ScriptedModel provider =
+    ScriptedModel model =
         ScriptedModel.script(
-            s -> s.toolUseSigned("c1", "read_file", args, "sig-123").endWithToolUse());
+            s -> s.toolCall("c1", "read_file", args, "sig-123").endWithToolCalls());
 
-    assertThat(drain(provider.stream(request())))
+    assertThat(drain(model.stream(request())))
         .containsExactly(
-            new ModelEvent.ToolUseEmitted(new ToolCall("c1", "read_file", args), "sig-123"),
-            new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), "sig-123"),
+            new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(0, 0)));
   }
 
   @Test
-  void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
-    Usage usage = new Usage(12, 34, 0, 0);
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn(usage));
+  void end_turn_with_explicit_usage_is_recorded_on_the_stopped_event() {
+    Usage usage = new Usage(12, 34);
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn(usage));
 
-    assertThat(drain(provider.stream(request())))
+    assertThat(drain(model.stream(request())))
         .containsExactly(
-            new ModelEvent.TextChunk("Hello"),
-            new ModelEvent.TurnEnded(StopReason.END_TURN, usage));
-  }
-
-  @Test
-  void capabilities_are_empty() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
-
-    assertThat(provider.capabilities()).isEmpty();
+            new ModelEvent.TextChunk("Hello"), new ModelEvent.Stopped(StopReason.END_TURN, usage));
   }
 
   @Test
   void reports_scripted_as_its_id() {
-    ScriptedModel provider = ScriptedModel.script(s -> s.text("Hello").endTurn());
+    ScriptedModel model = ScriptedModel.script(s -> s.text("Hello").endTurn());
 
-    assertThat(provider.id()).isEqualTo("scripted");
+    assertThat(model.id()).isEqualTo(ModelId.of("scripted"));
+  }
+
+  @Test
+  void a_refusal_is_the_whole_turn() {
+    ScriptedModel model = ScriptedModel.script(s -> s.refuse("safety", "not answering that"));
+
+    assertThat(drain(model.stream(request())))
+        .containsExactly(new ModelEvent.Refused("safety", "not answering that", new Usage(0, 0)));
+  }
+
+  @Test
+  void a_turn_left_unended_is_a_loud_failure() {
+    assertThatThrownBy(() -> ScriptedModel.script(s -> s.text("dangling")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("never ended");
   }
 }

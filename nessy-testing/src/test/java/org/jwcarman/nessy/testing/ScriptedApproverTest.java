@@ -17,75 +17,83 @@ package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.Map;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.approval.Approval;
-import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
-import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class ScriptedApproverTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
 
-  private static ApprovalRequest requestNamed(String action) {
-    ObjectMapper mapper = new ObjectMapper();
-    return ApprovalRequest.draft("ops", "prod-eu", CALL, Map.of(), mapper).action(action).freeze();
+  private static ApprovalRequest asking(String description) {
+    return new ApprovalRequest(
+        AgentType.of("ops"), AgentId.of("prod-eu"), CALL, description, Instant.EPOCH);
   }
-
-  /** The whole of a context now: the frozen question, and nothing to call. */
-  private record AnsweringContext(ApprovalRequest request) implements ApprovalContext {}
 
   @Test
   void answers_in_the_scripted_order_then_defers() {
     ScriptedApprover approver =
-        ScriptedApprover.answering(Approval.approved(), Approval.denied("no"));
+        ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.denied("no"));
 
-    ApprovalOutcome first = approver.approve(new AnsweringContext(requestNamed("first")));
-    ApprovalOutcome second = approver.approve(new AnsweringContext(requestNamed("second")));
-    ApprovalOutcome third = approver.approve(new AnsweringContext(requestNamed("third")));
+    Awaited<ApprovalResult> first = approver.approve(asking("first"));
+    Awaited<ApprovalResult> second = approver.approve(asking("second"));
+    Awaited<ApprovalResult> third = approver.approve(asking("third"));
 
-    assertThat(first).isEqualTo(new ApprovalOutcome.Answered(Approval.approved()));
-    assertThat(second).isEqualTo(new ApprovalOutcome.Answered(Approval.denied("no")));
-    assertThat(third).isInstanceOf(ApprovalOutcome.Deferred.class);
+    assertThat(first).isEqualTo(Awaited.ready(ApprovalResult.approved()));
+    assertThat(second).isEqualTo(Awaited.ready(ApprovalResult.denied("no")));
+    assertThat(third).isInstanceOf(Awaited.Deferred.class);
   }
 
   @Test
   void an_empty_script_defers_immediately() {
     ScriptedApprover approver = ScriptedApprover.deferring();
 
-    ApprovalOutcome outcome = approver.approve(new AnsweringContext(requestNamed("only")));
+    Awaited<ApprovalResult> result = approver.approve(asking("only"));
 
-    assertThat(outcome).isInstanceOf(ApprovalOutcome.Deferred.class);
+    assertThat(result).isInstanceOf(Awaited.Deferred.class);
+  }
+
+  @Test
+  void a_deferral_leases_a_time_in_the_future() {
+    ScriptedApprover approver = ScriptedApprover.deferring();
+
+    Awaited<ApprovalResult> result = approver.approve(asking("only"));
+
+    assertThat(result)
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Awaited.Deferred.class))
+        .satisfies(deferred -> assertThat(deferred.expiresAt()).isAfter(Instant.now()));
   }
 
   @Test
   void records_every_request_it_was_handed_in_order() {
     ScriptedApprover approver =
-        ScriptedApprover.answering(Approval.approved(), Approval.approved());
+        ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.approved());
 
-    approver.approve(new AnsweringContext(requestNamed("first")));
-    approver.approve(new AnsweringContext(requestNamed("second")));
+    approver.approve(asking("first"));
+    approver.approve(asking("second"));
 
     assertThat(approver.requests())
-        .extracting(ApprovalRequest::action)
+        .extracting(ApprovalRequest::description)
         .containsExactly("first", "second");
   }
 
   @Test
   void requests_is_a_snapshot_rather_than_a_live_view() {
     ScriptedApprover approver =
-        ScriptedApprover.answering(Approval.approved(), Approval.approved());
-    approver.approve(new AnsweringContext(requestNamed("first")));
-    var snapshot = approver.requests();
+        ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.approved());
+    approver.approve(asking("first"));
+    List<ApprovalRequest> snapshot = approver.requests();
 
-    approver.approve(new AnsweringContext(requestNamed("second")));
+    approver.approve(asking("second"));
 
-    assertThat(snapshot).hasSize(1);
-    assertThat(approver.requests()).hasSize(2);
+    assertThat(snapshot).extracting(ApprovalRequest::description).containsExactly("first");
   }
 }

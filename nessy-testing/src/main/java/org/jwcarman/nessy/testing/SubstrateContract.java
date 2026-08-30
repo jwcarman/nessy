@@ -526,4 +526,37 @@ public abstract class SubstrateContract {
 
     assertThatThrownBy(() -> substrate.batch(null)).isInstanceOf(NullPointerException.class);
   }
+
+  @Test
+  void deletingAKindRemovesEveryKeyInItAndReportsHowMany() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "a", "one".getBytes(UTF_8), 0);
+    substrate.write(KIND, "b", "two".getBytes(UTF_8), 0);
+    substrate.write("other", "a", "three".getBytes(UTF_8), 0);
+
+    int deleted = substrate.deleteKind(KIND);
+
+    assertThat(deleted).isEqualTo(2);
+    assertThat(substrate.read(KIND, "a")).isEmpty();
+    assertThat(substrate.read(KIND, "b")).isEmpty();
+    // Namespacing survives the sweep: a key of the same name under another kind is untouched.
+    assertThat(substrate.read("other", "a")).isPresent();
+  }
+
+  @Test
+  void deletingAnUnknownKindDeletesNothing() {
+    assertThat(createSubstrate().deleteKind("never-written")).isZero();
+  }
+
+  @Test
+  void aDeletedKindCanBeWrittenAgainFromVersionZero() {
+    Substrate substrate = createSubstrate();
+    substrate.write(KIND, "k", "one".getBytes(UTF_8), 0);
+    substrate.deleteKind(KIND);
+
+    substrate.write(KIND, "k", "two".getBytes(UTF_8), 0);
+
+    assertThat(substrate.read(KIND, "k"))
+        .hasValueSatisfying(document -> assertThat(document.version()).isEqualTo(1L));
+  }
 }

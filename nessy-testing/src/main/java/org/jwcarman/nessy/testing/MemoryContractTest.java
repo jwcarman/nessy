@@ -16,125 +16,108 @@
 package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.Remembrance;
 
 /**
- * The runnable conformance harness every {@link Memory} implementation owes (remembrance spec §5):
- * idempotent re-remember converges to one fact; {@link Memory#recall()} respects remember order;
- * the {@link Remembrance.ToolExchange} pairing invariant never splits; re-delivery of facts already
- * remembered is tolerated. A third-party {@code Memory} extends this class directly and implements
- * {@link #freshMemory()} — the one abstract member — to run every test here against its own
- * instance, exactly as the substrate-backed memory in {@code nessy-agent} does.
+ * The runnable conformance harness every {@link Memory} implementation owes: recall respects
+ * remember order, agents cannot read each other's transcripts, an assistant turn that called tools
+ * is refused unless its answers come with it, and a recalled context is always one a provider will
+ * accept. A third-party {@code Memory} extends this class directly and implements {@link
+ * #freshMemory()} — the one abstract member — to run every test here against its own instance.
  *
- * <p>Public and main-scope, on purpose (spec §5): a conformance suite that only test-scoped code
- * could see would be unusable by a Memory implementation living outside this repository. Pulls in
+ * <p>Public and main-scope, on purpose: a conformance suite that only test-scoped code could see
+ * would be unusable by a {@code Memory} implementation living outside this repository. Pulls in
  * {@code junit-jupiter-api} and {@code assertj-core} directly, never the {@code junit-jupiter}
  * aggregator, so depending on this class never drags a test engine onto a caller's own main
- * classpath (mirrors the {@code nessy-tck} convention this module's {@code pom.xml} already notes).
+ * classpath (this module's {@code pom.xml} already notes the convention).
  */
 public abstract class MemoryContractTest {
+
+  private static final AgentId ONE = AgentId.of("agent-one");
+  private static final AgentId TWO = AgentId.of("agent-two");
 
   /** A brand-new, empty {@link Memory} instance — a fresh one per call, never reused or shared. */
   protected abstract Memory freshMemory();
 
   @Test
-  void rememberingTheSameKeyTwiceConvergesToOneFact() {
-    Memory memory = freshMemory();
-    Remembrance remembrance = new Remembrance.UserMessage("turn-1", Message.user("hello"));
-
-    memory.remember(remembrance);
-    memory.remember(remembrance);
-
-    assertThat(memory.recall().messages()).containsExactly(Message.user("hello"));
+  void recallingAnAgentThatHasNeverBeenToldAnythingIsEmpty() {
+    assertThat(freshMemory().recall(ONE).messages()).isEmpty();
   }
 
   @Test
   void recallReturnsMessagesInRememberOrder() {
     Memory memory = freshMemory();
 
-    memory.remember(new Remembrance.UserMessage("turn-1", Message.user("first")));
-    memory.remember(new Remembrance.UserMessage("turn-2", Message.user("second")));
-    memory.remember(new Remembrance.UserMessage("turn-3", Message.user("third")));
+    memory.remember(ONE, UserMessage.of("first"));
+    memory.remember(ONE, UserMessage.of("second"));
+    memory.remember(ONE, UserMessage.of("third"));
 
-    assertThat(memory.recall().messages())
-        .containsExactly(Message.user("first"), Message.user("second"), Message.user("third"));
+    assertThat(memory.recall(ONE).messages())
+        .containsExactly(
+            UserMessage.of("first"), UserMessage.of("second"), UserMessage.of("third"));
   }
 
   @Test
-  void theToolExchangePairingInvariantNeverSplits() {
+  void oneAgentCannotReadAnother() {
+    Memory memory = freshMemory();
+
+    memory.remember(ONE, UserMessage.of("mine"));
+
+    assertThat(memory.recall(TWO).messages()).isEmpty();
+  }
+
+  @Test
+  void aToolCallingTurnIsRememberedWithItsAnswers() {
     Memory memory = freshMemory();
     ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    Message assistantTurn = Message.assistant(List.of(new ToolUseBlock(call)));
+    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
+    ToolResultMessage answers =
+        new ToolResultMessage(List.of(ToolResultBlock.of("c1", ToolResult.ok("42"))));
 
-    memory.remember(new Remembrance.AssistantMessage("response-1", assistantTurn));
-    memory.remember(new Remembrance.ToolExchange("exec-1", call, ToolResult.ok("42")));
+    memory.remember(ONE, turn, answers);
 
-    // Context's own validating constructor already enforces the pairing invariant — an
-    // unanswered tool_use, or a stray tool_result, throws building the Context recall() returns.
-    // A successful recall() here IS the proof that the exchange paired, whole, with its call.
-    List<Message> messages = memory.recall().messages();
+    // Context's own validating constructor enforces the pairing invariant — an unanswered tool
+    // call, or a stray answer, throws while building the Context recall() returns. A successful
+    // recall() here IS the proof that the exchange was stored whole.
+    List<Message> messages = memory.recall(ONE).messages();
     assertThat(messages).hasSize(2);
-    assertThat(messages.getFirst()).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
+    assertThat(messages.getFirst()).isEqualTo(turn);
+    assertThat(messages.getLast()).isEqualTo(answers);
   }
 
   @Test
-  void theToolExchangePairingInvariantSurvivesArrivingBeforeItsAssistantMessage() {
-    // The exact ordering the durable worker produces for a tool call that finishes before its
-    // sibling calls do (remembrance spec §2): the exchange is remembered first, the assistant
-    // message only once every sibling call has answered.
+  void aToolCallingTurnCannotBeRememberedAlone() {
     Memory memory = freshMemory();
     ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    Message assistantTurn = Message.assistant(List.of(new ToolUseBlock(call)));
+    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
 
-    memory.remember(new Remembrance.ToolExchange("exec-1", call, ToolResult.ok("42")));
-    memory.remember(new Remembrance.AssistantMessage("response-1", assistantTurn));
-
-    List<Message> messages = memory.recall().messages();
-    assertThat(messages).hasSize(2);
-    assertThat(messages.getFirst()).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
+    assertThatThrownBy(() -> memory.remember(ONE, turn))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void reDeliveryOfAlreadyRememberedFactsIsTolerated() {
-    // The at-least-once redrive story (remembrance spec §1 law 1): a caller that crashes between
-    // its own remember and its own commit redrives the whole turn, re-remembering every fact the
-    // fold implied — including ones it already remembered before the crash.
+  void answersMustMatchTheCallsTheyAnswer() {
     Memory memory = freshMemory();
     ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    Message assistantTurn = Message.assistant(List.of(new ToolUseBlock(call)));
-    Remembrance userFact = new Remembrance.UserMessage("turn-1", Message.user("hi"));
-    Remembrance assistantFact = new Remembrance.AssistantMessage("response-1", assistantTurn);
-    Remembrance exchangeFact = new Remembrance.ToolExchange("exec-1", call, ToolResult.ok("42"));
+    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
+    ToolResultMessage wrong =
+        new ToolResultMessage(List.of(ToolResultBlock.of("other", ToolResult.ok("42"))));
 
-    memory.remember(userFact);
-    memory.remember(assistantFact);
-    memory.remember(exchangeFact);
-    // the redrive: the exact same facts, in the exact same order, remembered again
-    memory.remember(userFact);
-    memory.remember(assistantFact);
-    memory.remember(exchangeFact);
-
-    List<Message> messages = memory.recall().messages();
-    assertThat(messages).hasSize(3);
-    assertThat(messages.getFirst()).isEqualTo(Message.user("hi"));
-    assertThat(messages.get(1)).isEqualTo(assistantTurn);
-    assertThat(messages.getLast().content()).containsExactly(ToolResultBlock.of("c1", "42", false));
-  }
-
-  @Test
-  void aFreshMemoryRecallsAnEmptyContext() {
-    assertThat(freshMemory().recall().messages()).isEmpty();
+    assertThatThrownBy(() -> memory.remember(ONE, turn, wrong))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

@@ -17,51 +17,59 @@ package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.Map;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.approval.Approval;
-import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
-import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 
 class RecordingApproverTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
 
-  private static ApprovalRequest requestNamed(String action) {
-    ObjectMapper mapper = new ObjectMapper();
-    return ApprovalRequest.draft("ops", "prod-eu", CALL, Map.of(), mapper).action(action).freeze();
+  private static ApprovalRequest asking(String description) {
+    return new ApprovalRequest(
+        AgentType.of("ops"), AgentId.of("prod-eu"), CALL, description, Instant.EPOCH);
   }
 
   @Test
-  void records_the_request_and_outcome_its_delegate_produced() {
-    ScriptedApprover delegate = ScriptedApprover.answering(Approval.approved());
+  void records_the_request_and_the_answer_its_delegate_produced() {
+    ScriptedApprover delegate = ScriptedApprover.answering(ApprovalResult.approved());
     RecordingApprover approver = new RecordingApprover(delegate);
-    ApprovalRequest request = requestNamed("restart prod-eu");
+    ApprovalRequest request = asking("restart prod-eu");
 
-    ApprovalOutcome outcome = approver.approve(new AnsweringContext(request));
+    Awaited<ApprovalResult> result = approver.approve(request);
 
-    assertThat(approver.answers()).containsExactly(new RecordingApprover.Answer(request, outcome));
+    assertThat(approver.answers()).containsExactly(new RecordingApprover.Answer(request, result));
   }
 
   @Test
   void requests_is_sugar_over_answers() {
-    ScriptedApprover delegate =
-        ScriptedApprover.answering(Approval.approved(), Approval.denied("no"));
-    RecordingApprover approver = new RecordingApprover(delegate);
+    RecordingApprover approver =
+        new RecordingApprover(
+            ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.denied("no")));
 
-    approver.approve(new AnsweringContext(requestNamed("first")));
-    approver.approve(new AnsweringContext(requestNamed("second")));
+    approver.approve(asking("first"));
+    approver.approve(asking("second"));
 
     assertThat(approver.requests())
-        .extracting(ApprovalRequest::action)
+        .extracting(ApprovalRequest::description)
         .containsExactly("first", "second");
   }
 
-  /** The whole of a context now: the frozen question, and nothing to call. */
-  private record AnsweringContext(ApprovalRequest request) implements ApprovalContext {}
+  @Test
+  void a_delegate_that_defers_is_recorded_as_having_deferred() {
+    RecordingApprover approver = new RecordingApprover(ScriptedApprover.deferring());
+
+    approver.approve(asking("only"));
+
+    assertThat(approver.answers()).isNotEmpty();
+    assertThat(approver.answers())
+        .allSatisfy(answer -> assertThat(answer.result()).isInstanceOf(Awaited.Deferred.class));
+  }
 }

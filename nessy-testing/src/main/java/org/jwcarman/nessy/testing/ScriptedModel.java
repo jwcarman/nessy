@@ -16,14 +16,11 @@
 package org.jwcarman.nessy.testing;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -41,18 +38,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  */
 public final class ScriptedModel implements Model {
 
-  /**
-   * Claims every capability, because it has none of the constraints a real one does — it answers
-   * from a script and never reaches a provider. A test that needs a model LACKING something should
-   * say so explicitly rather than relying on this one being poor.
-   */
-  private static final ModelDescription DESCRIPTION =
-      new ModelDescription("scripted", "scripted", 128_000, EnumSet.allOf(Capability.class));
-
-  @Override
-  public ModelDescription describe() {
-    return DESCRIPTION;
-  }
+  private static final ModelId ID = ModelId.of("scripted");
 
   private final List<List<ModelEvent>> turns;
   private final List<ModelRequest> requests = new ArrayList<>();
@@ -64,7 +50,7 @@ public final class ScriptedModel implements Model {
 
   /**
    * Scripts a {@link ScriptedModel}: {@code customizer} fills in a live {@link
-   * ScriptedModelConfig}, then this factory turns it into the finished provider. No public {@code
+   * ScriptedModelConfig}, then this factory turns it into the finished model. No public {@code
    * build()} survives here; the factory is the only place a {@link ScriptedModelConfig} ever turns
    * into a {@link ScriptedModel} (design of record 2026-08-16 §1).
    */
@@ -73,6 +59,15 @@ public final class ScriptedModel implements Model {
     ScriptedModelConfig config = new ScriptedModelConfig();
     customizer.customize(config);
     return config.build();
+  }
+
+  /**
+   * Not a real vendor, and deliberately not pretending to be one: a test asserting on which model
+   * answered should see that this turn came from the script, not from Anthropic.
+   */
+  @Override
+  public ModelId id() {
+    return ID;
   }
 
   @Override
@@ -106,26 +101,7 @@ public final class ScriptedModel implements Model {
     };
   }
 
-  @Override
-  public Set<Capability> capabilities() {
-    return Set.of();
-  }
-
-  @Override
-  public String id() {
-    return "scripted";
-  }
-
-  /**
-   * Not a real vendor, and deliberately not pretending to be one: a test asserting on {@code
-   * gen_ai.provider.name} should see that this turn came from the script, not from Anthropic.
-   */
-  @Override
-  public String provider() {
-    return "scripted";
-  }
-
-  /** A snapshot of every request this provider was handed, oldest first. */
+  /** A snapshot of every request this model was handed, oldest first. */
   public synchronized List<ModelRequest> requests() {
     return List.copyOf(requests);
   }

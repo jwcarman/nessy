@@ -18,23 +18,23 @@ package org.jwcarman.nessy.testing;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
-import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.approval.Approver;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 
 /**
- * A thin wrapper around any {@link Approver}, recording every (request, outcome) pair it produced,
+ * A thin wrapper around any {@link Approver}, recording every (request, answer) pair it produced,
  * oldest first — the approval-vocabulary counterpart of wrapping a {@code Memory} to watch what it
  * remembers.
  */
 public final class RecordingApprover implements Approver {
 
   /** One answer this approver's delegate gave: the question, and how it answered. */
-  public record Answer(ApprovalRequest request, ApprovalOutcome outcome) {
+  public record Answer(ApprovalRequest request, Awaited<ApprovalResult> result) {
     public Answer {
       Objects.requireNonNull(request, "request must not be null");
-      Objects.requireNonNull(outcome, "outcome must not be null");
+      Objects.requireNonNull(result, "result must not be null");
     }
   }
 
@@ -46,14 +46,14 @@ public final class RecordingApprover implements Approver {
   }
 
   @Override
-  public ApprovalOutcome approve(ApprovalContext context) {
-    Objects.requireNonNull(context, "context must not be null");
-    ApprovalOutcome outcome = delegate.approve(context);
-    answers.add(new Answer(context.request(), outcome));
-    return outcome;
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
+    Objects.requireNonNull(request, "request must not be null");
+    Awaited<ApprovalResult> result = delegate.approve(request);
+    answers.add(new Answer(request, result));
+    return result;
   }
 
-  /** Every (request, outcome) pair this approver has seen, oldest first. */
+  /** Every (request, answer) pair this approver has seen, oldest first. */
   public List<Answer> answers() {
     return List.copyOf(answers);
   }

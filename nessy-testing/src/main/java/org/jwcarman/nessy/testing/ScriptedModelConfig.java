@@ -18,8 +18,8 @@ package org.jwcarman.nessy.testing;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
@@ -27,10 +27,12 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
  * What {@link ScriptedModel#script(ScriptedModelCustomizer)} hands a customizer: a CONFIG, not a
  * builder (design of record 2026-08-16 §1) — fluent setters, no public {@code build()}. Scripts one
  * turn at a time: each event-adding call ({@link #text}, {@link #thinking}, etc.) appends to the
- * turn under construction, and {@link #endTurn()}/{@link #endWithToolUse()} closes it and starts
+ * turn under construction, and {@link #endTurn()}/{@link #endWithToolCalls()} closes it and starts
  * the next.
  */
 public final class ScriptedModelConfig {
+
+  private static final Usage NOTHING = new Usage(0, 0);
 
   private final List<List<ModelEvent>> turns = new ArrayList<>();
   private List<ModelEvent> current = new ArrayList<>();
@@ -57,31 +59,38 @@ public final class ScriptedModelConfig {
     return this;
   }
 
-  public ScriptedModelConfig toolUse(String id, String name, ObjectNode arguments) {
-    current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments)));
-    return this;
+  public ScriptedModelConfig toolCall(String id, String name, ObjectNode arguments) {
+    return toolCall(id, name, arguments, null);
   }
 
-  public ScriptedModelConfig toolUseSigned(
+  public ScriptedModelConfig toolCall(
       String id, String name, ObjectNode arguments, String signature) {
-    current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments), signature));
+    current.add(new ModelEvent.ToolCallEmitted(new ToolCall(id, name, arguments), signature));
     return this;
   }
 
   public ScriptedModelConfig endTurn() {
-    return end(StopReason.END_TURN, Usage.zero());
+    return end(StopReason.END_TURN, NOTHING);
   }
 
   public ScriptedModelConfig endTurn(Usage usage) {
     return end(StopReason.END_TURN, usage);
   }
 
-  public ScriptedModelConfig endWithToolUse() {
-    return end(StopReason.TOOL_USE, Usage.zero());
+  public ScriptedModelConfig endWithToolCalls() {
+    return end(StopReason.TOOL_USE, NOTHING);
+  }
+
+  /** The provider declined the whole turn — nothing was said, and nothing will be. */
+  public ScriptedModelConfig refuse(String category, String explanation) {
+    current.add(new ModelEvent.Refused(category, explanation, NOTHING));
+    turns.add(List.copyOf(current));
+    current = new ArrayList<>();
+    return this;
   }
 
   private ScriptedModelConfig end(StopReason reason, Usage usage) {
-    current.add(new ModelEvent.TurnEnded(reason, usage));
+    current.add(new ModelEvent.Stopped(reason, usage));
     turns.add(List.copyOf(current));
     current = new ArrayList<>();
     return this;
@@ -97,7 +106,7 @@ public final class ScriptedModelConfig {
   ScriptedModel build() {
     if (!current.isEmpty()) {
       throw new IllegalStateException(
-          "last turn was never ended: call endTurn() or endWithToolUse()");
+          "last turn was never ended: call endTurn(), endWithToolCalls() or refuse()");
     }
     return new ScriptedModel(turns);
   }

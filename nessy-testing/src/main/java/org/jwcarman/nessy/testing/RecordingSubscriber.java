@@ -15,29 +15,34 @@
  */
 package org.jwcarman.nessy.testing;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentSubscriber;
 
 /**
- * Captures everything handed to it, so tests can assert on it — a general-purpose recording {@link
- * Consumer} for any listener-shaped seam.
+ * Captures every {@link AgentEvent} handed to it, so tests can assert on what an agent announced.
+ *
+ * <p>Subscribers are called from engine threads, so the log is a {@link CopyOnWriteArrayList} and
+ * every accessor hands back a snapshot: a test asserting while a turn is still running reads a
+ * consistent list rather than a half-written one.
  */
-public final class RecordingSubscriber implements Consumer<Object> {
+public final class RecordingSubscriber implements AgentSubscriber {
 
-  private final List<Object> received = new CopyOnWriteArrayList<>();
+  private final List<AgentEvent> received = new CopyOnWriteArrayList<>();
 
   @Override
-  public void accept(Object event) {
+  public void on(AgentEvent event) {
     received.add(event);
   }
 
-  public List<Object> all() {
-    return Collections.unmodifiableList(received);
+  /** Every event seen, oldest first. */
+  public List<AgentEvent> all() {
+    return List.copyOf(received);
   }
 
-  public <E> List<E> ofType(Class<E> type) {
+  /** Just the events of one variant, oldest first. */
+  public <E extends AgentEvent> List<E> ofType(Class<E> type) {
     return received.stream().filter(type::isInstance).map(type::cast).toList();
   }
 }

@@ -110,6 +110,14 @@
       <artifactId>assertj-core</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Certifies Transcripts against MemoryContractTest, the conformance suite every Memory
+         owes. Test-scoped: nessy-testing sees only nessy-api and nessy-spi, so this cannot
+         become a cycle. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

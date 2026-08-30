@@ -58,6 +58,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
+    <module>nessy-testing</module>
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
     <module>nessy-spike-pekko-cluster</module>
@@ -304,6 +305,11 @@
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-spi</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-testing</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

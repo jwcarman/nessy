@@ -15,25 +15,25 @@
  */
 package org.jwcarman.nessy.testing;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.jwcarman.nessy.api.tool.approval.Approval;
-import org.jwcarman.nessy.api.tool.approval.ApprovalContext;
-import org.jwcarman.nessy.api.tool.approval.ApprovalOutcome;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.approval.Approver;
-import org.jwcarman.nessy.api.tool.approval.Approvers;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 
 /**
- * An approver that answers from a script, like {@code ScriptedModel}; when the script runs out it
+ * An approver that answers from a script, like {@link ScriptedModel}; when the script runs out it
  * defers.
  *
- * <p>This is how a grant's authorization decision gets tested without a real desk, a real person,
- * or a real Continuum standing behind it. It also records every request it was handed, oldest
- * first, so a test can assert on what the harness <em>asked</em>.
+ * <p>This is how a binding's authorization decision gets tested without a real desk and without a
+ * real person. It also records every request it was handed, oldest first, so a test can assert on
+ * what the harness <em>asked</em>.
  *
  * <p>Thread-safe. A turn with several tool calls seeks approval for each of them on its own
  * executor thread, so {@link #approve} runs concurrently: the script is a {@link
@@ -44,15 +44,21 @@ import org.jwcarman.nessy.api.tool.approval.Approvers;
  */
 public final class ScriptedApprover implements Approver {
 
-  private final Deque<Approval> answers;
+  /**
+   * How long a deferral this approver hands out lasts. Long enough that no test races it, short
+   * enough that it is obviously a test value rather than a production term.
+   */
+  private static final Duration LEASE = Duration.ofHours(1);
+
+  private final Deque<ApprovalResult> answers;
   private final List<ApprovalRequest> requests = new CopyOnWriteArrayList<>();
 
-  private ScriptedApprover(Deque<Approval> answers) {
+  private ScriptedApprover(Deque<ApprovalResult> answers) {
     this.answers = answers;
   }
 
   /** Scripts a fixed sequence of answers, given out in order, one per {@link #approve} call. */
-  public static ScriptedApprover answering(Approval... answers) {
+  public static ScriptedApprover answering(ApprovalResult... answers) {
     Objects.requireNonNull(answers, "answers must not be null");
     return new ScriptedApprover(new ConcurrentLinkedDeque<>(List.of(answers)));
   }
@@ -63,11 +69,11 @@ public final class ScriptedApprover implements Approver {
   }
 
   @Override
-  public ApprovalOutcome approve(ApprovalContext context) {
-    Objects.requireNonNull(context, "context must not be null");
-    requests.add(context.request());
-    Approval next = answers.poll();
-    return next == null ? Approvers.defer().approve(context) : new ApprovalOutcome.Answered(next);
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
+    Objects.requireNonNull(request, "request must not be null");
+    requests.add(request);
+    ApprovalResult next = answers.poll();
+    return next == null ? Awaited.deferred(Instant.now().plus(LEASE)) : Awaited.ready(next);
   }
 
   /** A snapshot of every request this approver was handed, oldest first. */

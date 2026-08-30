@@ -20,49 +20,64 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 
 class RecordingSubscriberTest {
+
+  private static final AgentEvent STARTED = new AgentEvent.TurnStarted("t1");
+  private static final AgentEvent SAID = new AgentEvent.TextDelta("t1", "hello");
+  private static final AgentEvent MORE = new AgentEvent.TextDelta("t1", " there");
 
   @Test
   void records_every_event_handed_to_it_in_order() {
     RecordingSubscriber subscriber = new RecordingSubscriber();
 
-    subscriber.accept("first");
-    subscriber.accept(42);
-    subscriber.accept("second");
+    subscriber.on(STARTED);
+    subscriber.on(SAID);
+    subscriber.on(MORE);
 
-    assertThat(subscriber.all()).containsExactly("first", 42, "second");
+    assertThat(subscriber.all()).containsExactly(STARTED, SAID, MORE);
   }
 
   @Test
   void all_is_unmodifiable() {
     RecordingSubscriber subscriber = new RecordingSubscriber();
-    subscriber.accept("event");
+    subscriber.on(STARTED);
+    List<AgentEvent> all = subscriber.all();
 
-    List<Object> all = subscriber.all();
-
-    assertThatThrownBy(() -> all.add("intruder")).isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> all.add(SAID)).isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
-  void of_type_filters_and_casts_to_the_requested_type() {
+  void all_is_a_snapshot_rather_than_a_live_view() {
     RecordingSubscriber subscriber = new RecordingSubscriber();
+    subscriber.on(STARTED);
+    List<AgentEvent> snapshot = subscriber.all();
 
-    subscriber.accept("a string event");
-    subscriber.accept(7);
-    subscriber.accept("another string event");
-    subscriber.accept(3.14);
+    subscriber.on(SAID);
 
-    assertThat(subscriber.ofType(String.class))
-        .containsExactly("a string event", "another string event");
-    assertThat(subscriber.ofType(Integer.class)).containsExactly(7);
+    assertThat(snapshot).containsExactly(STARTED);
   }
 
   @Test
-  void of_type_returns_empty_list_when_nothing_matches() {
+  void of_type_filters_and_casts_to_the_requested_variant() {
     RecordingSubscriber subscriber = new RecordingSubscriber();
-    subscriber.accept("only a string");
 
-    assertThat(subscriber.ofType(Integer.class)).isEmpty();
+    subscriber.on(STARTED);
+    subscriber.on(SAID);
+    subscriber.on(MORE);
+
+    assertThat(subscriber.ofType(AgentEvent.TextDelta.class))
+        .extracting(AgentEvent.TextDelta::text)
+        .containsExactly("hello", " there");
+  }
+
+  @Test
+  void of_type_returns_an_empty_list_when_nothing_matches() {
+    RecordingSubscriber subscriber = new RecordingSubscriber();
+    subscriber.on(STARTED);
+
+    assertThat(subscriber.all()).isNotEmpty();
+    assertThat(subscriber.ofType(AgentEvent.ToolCallCompleted.class)).isEmpty();
   }
 }
