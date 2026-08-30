@@ -15,60 +15,109 @@
  */
 package org.jwcarman.nessy.engine;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
-@DisplayName("Claims held for the duration of a turn")
+@DisplayName("A turn's scratch space")
 class ClaimsTest {
 
+  private static final AgentId HOUSE = AgentId.of("house-12");
+
+  private InMemorySubstrate substrate;
   private Claims claims;
 
   @BeforeEach
   void setUp() {
-    claims = new Claims(new InMemorySubstrate(Clock.systemUTC()));
+    substrate = new InMemorySubstrate(Clock.systemUTC());
+    claims = new Claims(substrate);
+  }
+
+  private static byte[] bytes(String value) {
+    return value.getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static String text(byte[] value) {
+    return new String(value, StandardCharsets.UTF_8);
   }
 
   @Test
-  void what_goes_in_comes_back_out() {
-    String id = claims.put("agent-a", "turn-1", "{\"path\":\"/etc/hosts\"}".getBytes(UTF_8));
+  void what_goes_in_comes_back() {
+    claims.put(HOUSE, "turn-1", "asked", bytes("the question"));
 
-    assertThat(claims.get("agent-a", "turn-1", id)).isPresent();
-    assertThat(new String(claims.get("agent-a", "turn-1", id).orElseThrow(), UTF_8))
-        .contains("/etc/hosts");
+    assertThat(claims.get(HOUSE, "turn-1", "asked"))
+        .isPresent()
+        .get()
+        .extracting(ClaimsTest::text)
+        .isEqualTo("the question");
   }
 
   @Test
-  void a_turns_claims_are_deleted_together() {
-    String first = claims.put("agent-a", "turn-1", "one".getBytes(UTF_8));
-    String second = claims.put("agent-a", "turn-1", "two".getBytes(UTF_8));
-    String other = claims.put("agent-a", "turn-2", "keep me".getBytes(UTF_8));
+  @DisplayName("claiming the same key twice overwrites, because a re-driven turn does exactly that")
+  void a_claim_can_be_written_again() {
+    claims.put(HOUSE, "turn-1", "asked", bytes("first attempt"));
 
-    claims.deleteTurn("agent-a", "turn-1");
+    claims.put(HOUSE, "turn-1", "asked", bytes("after a crash"));
 
-    assertThat(claims.get("agent-a", "turn-1", first)).isEmpty();
-    assertThat(claims.get("agent-a", "turn-1", second)).isEmpty();
-    assertThat(claims.get("agent-a", "turn-2", other)).isPresent();
+    assertThat(claims.get(HOUSE, "turn-1", "asked"))
+        .isPresent()
+        .get()
+        .extracting(ClaimsTest::text)
+        .isEqualTo("after a crash");
   }
 
   @Test
-  void an_orphan_no_state_ever_referenced_is_swept_with_the_rest() {
-    // Written, then the process died before the phase referencing it was persisted. Nothing names
-    // it -- and it still goes, because the KIND is the owner.
-    claims.put("agent-a", "turn-1", "orphan".getBytes(UTF_8));
+  void a_batch_lands_whole() {
+    claims.putAll(HOUSE, "turn-1", Map.of("a", bytes("one"), "b", bytes("two")));
 
-    claims.deleteTurn("agent-a", "turn-1");
-
-    assertThat(claims.keysOf("agent-a", "turn-1")).isEmpty();
+    assertThat(claims.get(HOUSE, "turn-1", "a")).isPresent();
+    assertThat(claims.get(HOUSE, "turn-1", "b")).isPresent();
   }
 
   @Test
-  void a_missing_claim_is_absent_rather_than_an_error() {
-    assertThat(claims.get("agent-a", "turn-9", "nope")).isEmpty();
+  void one_turn_cannot_see_another_turn_s_claims() {
+    claims.put(HOUSE, "turn-1", "asked", bytes("mine"));
+
+    assertThat(claims.get(HOUSE, "turn-2", "asked")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("ending a turn sweeps everything under it, including what nothing referenced")
+  void deleting_a_turn_takes_orphans_too() {
+    claims.put(HOUSE, "turn-1", "asked", bytes("the question"));
+    claims.put(HOUSE, "turn-1", "result-c1", bytes("an answer"));
+    // Written just before a notional crash: in the kind, named by no state anywhere.
+    claims.put(HOUSE, "turn-1", "orphan", bytes("nobody remembers me"));
+
+    claims.deleteTurn(HOUSE, "turn-1");
+
+    assertThat(claims.get(HOUSE, "turn-1", "asked")).isEmpty();
+    assertThat(claims.get(HOUSE, "turn-1", "result-c1")).isEmpty();
+    assertThat(claims.get(HOUSE, "turn-1", "orphan")).isEmpty();
+    assertThat(substrate.keys(Claims.kindOf(HOUSE, "turn-1"), 100)).isEmpty();
+  }
+
+  @Test
+  void ending_a_turn_leaves_other_turns_alone() {
+    claims.put(HOUSE, "turn-1", "asked", bytes("mine"));
+    claims.put(HOUSE, "turn-2", "asked", bytes("theirs"));
+
+    claims.deleteTurn(HOUSE, "turn-1");
+
+    assertThat(claims.get(HOUSE, "turn-2", "asked")).isPresent();
+  }
+
+  @Test
+  void ending_a_turn_that_claimed_nothing_is_not_an_error() {
+    claims.deleteTurn(HOUSE, "turn-never-ran");
+
+    assertThat(claims.get(HOUSE, "turn-never-ran", "anything")).isEmpty();
   }
 }

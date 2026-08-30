@@ -29,7 +29,7 @@
 
   <artifactId>nessy-spi</artifactId>
   <name>Nessy SPI</name>
-  <description>Seams an outsider implements without ever knowing the machine: the model provider SPI and its supporting types (§10.10).</description>
+  <description>What an integrator implements: where state lives, and how payloads are encoded. Deliberately free of the message vocabulary, so it can be shared without dragging the API in.</description>
 
   <dependencies>
     <dependency>
@@ -49,6 +49,16 @@
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson2</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -59,10 +69,6 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <!-- JPMS module descriptor withdrawn (see CHANGELOG Unreleased):
-                   white-box tests fail on the module path in IDEs. The
-                   api/spi/internal boundary stands on package convention
-                   until revisited pre-1.0. -->
               <Automatic-Module-Name>org.jwcarman.nessy.spi</Automatic-Module-Name>
             </manifestEntries>
           </archive>

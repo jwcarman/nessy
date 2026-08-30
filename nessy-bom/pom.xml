@@ -46,62 +46,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-agent</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-engine</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-intent</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-testing</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-model-anthropic</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-model-openai</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-model-gemini</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-model-bedrock</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-model-discovery</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-tool-mcp</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-substrate-jdbc</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

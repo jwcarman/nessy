@@ -244,7 +244,7 @@ sequence of renames and interim shapes that produced it.
 - **`tell`/`ask`/`subscribe`, and the console.** `Agent#observe` is renamed
   `Agent#tell` — the caller-perspective, fire-and-forget verb; `drive()` is
   unchanged, the manual pump. `Agent#subscribe(TurnObserver)` returns a
-  `Subscription` (`nessy-api`, `AutoCloseable`, idempotent close, never
+  `AgentSubscription` (`nessy-api`, `AutoCloseable`, idempotent close, never
   throws) routing into a per-agent-id fanout the harness now carries
   internally (`TurnFanout`) — a subscriber sees `TextDelta`, `ThinkingDelta`,
   `RedactedThinking`, `ToolCallRequested`/`Completed`/`Progressed`,

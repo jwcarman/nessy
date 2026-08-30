@@ -15,67 +15,77 @@
  */
 package org.jwcarman.nessy.engine;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.Identifiers;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * Content the agent must keep for the duration of a turn and no longer.
+ * Content a turn must keep for its own duration and no longer.
  *
- * <p>Tool ARGUMENTS live here, always -- not above some size threshold. Uniformity makes the size
- * of the agent's state independent of what its tools do, and removes a branch and a number to tune.
- * They cannot live in Memory, because the fold WITHHOLDS an assistant message naming tool_use ids
- * until every one has a matching exchange: for exactly the window a call is in flight, Memory is
- * designed not to hand it back.
+ * <p>What a tool was asked and what it answered are CONTENT — the size of whatever the tool decided
+ * to hand back. Keeping them in a turn's document would make that document grow with what its tools
+ * do, which is the one thing the document's shape is for. They cannot live in the transcript
+ * either: an exchange is written whole, so for exactly the window a call is in flight the
+ * transcript is designed not to hold it.
  *
- * <p><b>The OWNER is the kind, not the key.</b> Every claim for one turn is written under {@code
+ * <p><b>The OWNER is the kind, not the key.</b> Everything for one turn lives under {@code
  * claim/{agentId}/{turnId}}, so ending a turn is "delete that kind" rather than "delete the claims
  * something remembered to write down". That matters for more than tidiness: a claim written just
- * before a crash -- after {@code put}, before the state referencing it was persisted -- is an
- * ORPHAN that no state names. Scoping by kind sweeps it anyway, because it is in the kind. Owning
- * by key would have leaked it until some future sweep noticed.
- *
- * <p>{@code Substrate} has no bulk delete-by-kind door today, so this lists and deletes. The list
- * is already scoped to one turn, so it is a handful of rows, not a scan. If a {@code
- * deleteKind(String)} door is ever added, this class is the only caller that changes -- and on JDBC
- * it collapses to one {@code DELETE ... WHERE kind = ?}.
+ * before a crash, before the state naming it was persisted, is an ORPHAN no key list contains.
+ * Scoping by kind sweeps it anyway, because it is in the kind.
  */
-public final class Claims {
+final class Claims {
 
   private final Substrate substrate;
 
-  public Claims(Substrate substrate) {
-    this.substrate = substrate;
+  Claims(Substrate substrate) {
+    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
   }
 
-  /** All of one turn's claims share this kind, which is what makes them deletable together. */
-  static String kindOf(String agentId, String turnId) {
-    return "claim/" + agentId + "/" + turnId;
+  static String kindOf(AgentId agentId, String turnId) {
+    return "claim/" + agentId.value() + "/" + turnId;
   }
 
-  public String put(String agentId, String turnId, byte[] value) {
-    String claimId = Identifiers.next();
-    substrate.write(kindOf(agentId, turnId), claimId, value, 0L);
-    return claimId;
-  }
-
-  public Optional<byte[]> get(String agentId, String turnId, String claimId) {
-    return substrate.read(kindOf(agentId, turnId), claimId).map(Substrate.Document::payload);
-  }
-
-  /** What this turn is holding. Exists for the tests and for a future abandoned-turn sweep. */
-  public List<String> keysOf(String agentId, String turnId) {
-    return substrate.keys(kindOf(agentId, turnId), 1000);
-  }
-
-  /** The turn ended, so its claims end -- including any orphan no state ever referenced. */
-  public void deleteTurn(String agentId, String turnId) {
+  /**
+   * Writes, overwriting whatever was there.
+   *
+   * <p>Overwriting matters: a turn that re-drives after a crash claims the same keys again, and a
+   * write that insisted the key was new would turn an ordinary recovery into a dead actor. Reading
+   * the version first is safe because a turn is the only writer for its own kind.
+   */
+  void put(AgentId agentId, String turnId, String key, byte[] value) {
     String kind = kindOf(agentId, turnId);
-    for (String claimId : substrate.keys(kind, 1000)) {
-      substrate
-          .read(kind, claimId)
-          .ifPresent(doc -> substrate.delete(kind, claimId, doc.version()));
-    }
+    long version = substrate.read(kind, key).map(Substrate.Document::version).orElse(0L);
+    substrate.write(kind, key, value, version);
+  }
+
+  /**
+   * Writes several at once, atomically.
+   *
+   * <p>One batch instead of N writes collapses the orphan window from N to one: either everything
+   * is there or nothing is, so recovery never finds three of five and no way to tell which two are
+   * missing.
+   *
+   * <p>Unlike {@link #put}, this expects the keys to be new — a batch is for the moment a set of
+   * facts first becomes known, not for rewriting.
+   */
+  void putAll(AgentId agentId, String turnId, Map<String, byte[]> values) {
+    String kind = kindOf(agentId, turnId);
+    List<Substrate.Op> ops = new ArrayList<>(values.size());
+    values.forEach((key, value) -> ops.add(new Substrate.Op.WriteDocument(kind, key, value, 0L)));
+    substrate.batch(ops);
+  }
+
+  Optional<byte[]> get(AgentId agentId, String turnId, String key) {
+    return substrate.read(kindOf(agentId, turnId), key).map(Substrate.Document::payload);
+  }
+
+  /** The turn ended, so its claims end — including any orphan no state ever referenced. */
+  void deleteTurn(AgentId agentId, String turnId) {
+    substrate.deleteKind(kindOf(agentId, turnId));
   }
 }

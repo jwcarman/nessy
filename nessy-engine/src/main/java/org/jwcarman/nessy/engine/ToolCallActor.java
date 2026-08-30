@@ -15,262 +15,169 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.time.Instant;
 import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolBinding;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * ONE tool call's entire life, as a behaviour. Ephemeral child of {@link AgentActor}.
+ * ONE tool call's whole life, as a sequencer: ask, then run.
  *
- * <p>Read {@link #create} top to bottom and the whole decision table is four lines, in the order a
- * human would ask them: has a human already answered? did they say no? does this tool even need a
- * human? otherwise, run it. There is no {@code AwaitingApproval | Running | Denied} enumeration, no
- * admission matrix, and no per-state re-fire rule — a behaviour that has moved on simply has no
- * case for a message that no longer applies.
+ * <p>It decides nothing itself. Each phase has its own actor, each of which calls its seam, holds
+ * its own deadline, reports back, and dies — so this reads as the four lines a person would ask
+ * them in, with no state machine and no admission matrix.
  *
- * <p><b>The first branch is what makes recovery trivial.</b> Because a human's decision is
- * persisted by the agent before anyone is told it was accepted, an actor respawned after a crash
- * finds the answer already in its own record and proceeds without asking again. That is the whole
- * of the "re-ask is safe because nobody was told" argument, replaced by "we do not have to re-ask".
+ * <p><b>Both phase actors always exist.</b> A tool nobody gates is approved by {@code
+ * Approver.always()}, and its approval actor stops almost immediately. That uniformity is what
+ * removes the branch here — there is no "does this need an approver" question — and it is what left
+ * deferral homeless when execution alone had no actor.
  */
-public final class ToolCallActor {
+final class ToolCallActor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ToolCallActor.class);
+  sealed interface Command {}
 
-  public sealed interface Command {}
+  /** From this call's own approval actor. */
+  record Answered(ApprovalResult result) implements Command {}
 
-  /** From the world, relayed by the agent: the human answered. */
-  public record Answer(boolean approved, String by, String note, Map<String, String> headers)
-      implements Command {}
+  /** From this call's own execution actor. */
+  record Ran(ToolResult result) implements Command {}
 
-  /** From this call's own {@link ApprovalActor}. */
-  public record Answered(boolean approved, String by, String note) implements Command {}
+  /** Relayed in from the world, by way of a reply token. */
+  record RelayApproval(ApprovalResult result) implements Command {}
 
-  /** From a tool worker: the command came back. */
-  public record Ran(ToolResult result) implements Command {}
+  /** Relayed in from the world, by way of a reply token. */
+  record RelayResult(ToolResult result) implements Command {}
 
   private ToolCallActor() {}
 
-  /** The name a call's actor is known by, so the agent can find it again to relay an answer. */
-  public static String nameFor(String callId) {
-    return "call-" + callId.replaceAll("[^A-Za-z0-9-]", "_");
-  }
-
-  public static Behavior<Command> create(
-      String agentId,
-      String turnId,
-      ToolCallRecord call,
-      ActorRef<AgentActor.NessyMessage> agent,
-      ActorRef<ToolWorker.RunTool> tools,
-      Duration approvalTerm,
-      Map<String, String> trace,
-      Clock clock,
-      Memories memories,
+  static Behavior<Command> create(
+      AgentType agentType,
+      AgentId agentId,
+      ToolCall call,
+      ToolBindings bindings,
+      Narrator narrator,
+      ReplyTokens tokens,
       Executor blocking,
-      Claims claims,
-      AgentTools toolset) {
-
+      ActorRef<TurnActor.Command> turn) {
     return Behaviors.setup(
         context -> {
-          if (call.decided() && call.decision().approved()) {
-            return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
-          }
-          if (call.decided()) {
-            settleAsDenied(
-                agentId,
-                turnId,
-                claims,
-                call,
-                agent,
-                trace,
-                memories,
-                blocking,
-                call.decision().by(),
-                call.decision().note(),
-                toolset);
+          ToolBinding<?> binding = bindings.binding(call.name()).orElse(null);
+          if (binding == null) {
+            // Nothing ran, and nothing can: the model named a tool this agent was never granted.
+            turn.tell(
+                new TurnActor.ToolSettled(
+                    call.id(),
+                    ToolResult.error("no such tool: " + call.name() + "; the call was not made")));
             return Behaviors.stopped();
           }
-          if (toolset.needsApproval(call.tool())) {
-            ActorRef<ApprovalActor.Command> approval =
-                context.spawn(
-                    ApprovalActor.create(call, approvalTerm, clock.instant(), context.getSelf()),
-                    "approval");
-            return awaitingApproval(
-                agentId, turnId, call, agent, tools, approval, trace, memories, blocking, claims,
-                toolset);
-          }
-          return run(agentId, turnId, call, agent, tools, context.getSelf(), trace);
+          String description = bindings.describe(binding, call.arguments());
+          narrator.narrate(
+              new AgentEvent.ToolCallRequested(
+                  Identifiers.next(), call.id(), call.name(), description));
+          ApprovalRequest request =
+              new ApprovalRequest(agentType, agentId, call, description, Instant.now());
+          ActorRef<ApprovalActor.Command> approval =
+              context.spawn(
+                  ApprovalActor.create(
+                      bindings, binding, request, narrator, blocking, context.getSelf()),
+                  "approval");
+          return awaitingApproval(
+              agentType, agentId, call, bindings, binding, narrator, tokens, blocking, turn,
+              approval);
         });
   }
 
-  /**
-   * A denial produces a transcript turn like any other outcome, and it must be written before the
-   * agent is told. This actor is on a dispatcher, so the claim lookup and the append go to the
-   * blocking executor and the agent is told from the completion -- telling an ActorRef from another
-   * thread is the one thing that is always safe.
-   *
-   * <p><b>The agent is told ONLY when the exchange was actually recorded.</b> Same shape, same
-   * reasoning as {@link ToolWorker}: a throwing {@code remember} means nothing committed, and
-   * telling {@code ToolCallSettled} anyway would settle a call whose exchange the fold can never
-   * pair an assistant turn against. So on that failure this says nothing back to the agent -- the
-   * call stays un-settled, and a respawn retries it, same as a worker's failed run.
-   *
-   * <p><b>Two failure modes this must not treat differently from {@link ToolWorker}.</b> A claim
-   * resolution failure is CAUGHT here, exactly like {@link ToolWorker#runAndRemember} -- the round
-   * must continue rather than the future failing silently out of {@code orElseThrow}, stalling this
-   * call in {@code WorkingTools} forever, on the watchman's most common path (a denial). And the
-   * submission to {@code blocking} is wrapped exactly the way {@link ToolWorker#create} wraps it: a
-   * rejected submission (the executor mid-shutdown) is logged, not left to propagate synchronously
-   * out of the message handler and kill this actor.
-   */
-  private static void settleAsDenied(
-      String agentId,
-      String turnId,
-      Claims claims,
-      ToolCallRecord call,
-      ActorRef<AgentActor.NessyMessage> agent,
-      Map<String, String> trace,
-      Memories memories,
-      Executor blocking,
-      String by,
-      String note,
-      AgentTools toolset) {
-    String outcome = "denied by " + by + ": " + note;
-    try {
-      CompletableFuture.runAsync(
-              () -> recordDenial(agentId, turnId, claims, call, memories, outcome, toolset),
-              blocking)
-          .whenComplete(
-              (done, failure) -> {
-                if (failure == null) {
-                  agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
-                } else {
-                  LOG.warn(
-                      "call {} not settled -- its exchange was never recorded: {}",
-                      call.id(),
-                      ToolWorker.describe(failure));
-                }
-              });
-    } catch (RuntimeException rejected) {
-      // The executor rejected submission outright (e.g. mid-shutdown): the same rule applies -- no
-      // commit happened, so no ToolCallSettled is told. Matches ToolWorker#create.
-      LOG.warn(
-          "call {} not settled -- could not even be submitted: {}",
-          call.id(),
-          ToolWorker.describe(rejected));
-    }
-  }
-
-  /**
-   * Runs on the virtual thread {@code blocking} hands us. A claim lookup that throws is CAUGHT and
-   * recorded as a {@link ToolResult#error}, exactly like {@link ToolWorker#runAndRemember} -- the
-   * round continues rather than the future failing out from under {@code whenComplete} with nothing
-   * ever told to the agent.
-   */
-  private static void recordDenial(
-      String agentId,
-      String turnId,
-      Claims claims,
-      ToolCallRecord call,
-      Memories memories,
-      String outcome,
-      AgentTools toolset) {
-    String arguments;
-    try {
-      arguments =
-          claims
-              .get(agentId, turnId, call.argumentsClaimId())
-              .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
-              .orElseThrow(
-                  () -> new IllegalStateException("no claim for " + call.argumentsClaimId()));
-    } catch (RuntimeException e) {
-      ToolResult result =
-          ToolResult.error("tool arguments could not be resolved: " + ToolWorker.describe(e));
-      ToolWorker.remember(memories, agentId, call, toolset.argumentsOf("{}"), result);
-      return;
-    }
-    ToolWorker.remember(
-        memories, agentId, call, toolset.argumentsOf(arguments), ToolResult.error(outcome));
-  }
-
-  /**
-   * The park. One small actor, no thread, and no row anywhere saying "awaiting approval" — the
-   * agent persists only that this call has no outcome yet, plus the decision once one arrives.
-   */
   private static Behavior<Command> awaitingApproval(
-      String agentId,
-      String turnId,
-      ToolCallRecord call,
-      ActorRef<AgentActor.NessyMessage> agent,
-      ActorRef<ToolWorker.RunTool> tools,
-      ActorRef<ApprovalActor.Command> approval,
-      Map<String, String> trace,
-      Memories memories,
+      AgentType agentType,
+      AgentId agentId,
+      ToolCall call,
+      ToolBindings bindings,
+      ToolBinding<?> binding,
+      Narrator narrator,
+      ReplyTokens tokens,
       Executor blocking,
-      Claims claims,
-      AgentTools toolset) {
+      ActorRef<TurnActor.Command> turn,
+      ActorRef<ApprovalActor.Command> approval) {
     return Behaviors.receive(Command.class)
         .onMessage(
-            Answer.class,
-            answer -> {
-              approval.tell(
-                  new ApprovalActor.Answer(answer.approved(), answer.by(), answer.note()));
+            RelayApproval.class,
+            relayed -> {
+              approval.tell(new ApprovalActor.Answer(relayed.result()));
               return Behaviors.same();
             })
         .onMessage(
             Answered.class,
             answered -> {
-              if (!answered.approved()) {
-                settleAsDenied(
-                    agentId,
-                    turnId,
-                    claims,
-                    call,
-                    agent,
-                    trace,
-                    memories,
-                    blocking,
-                    answered.by(),
-                    answered.note(),
-                    toolset);
-                return Behaviors.stopped();
-              }
-              return Behaviors.setup(
-                  context -> run(agentId, turnId, call, agent, tools, context.getSelf(), trace));
+              narrator.narrate(
+                  new AgentEvent.ApprovalDecided(
+                      Identifiers.next(), call.id(), call.name(), answered.result()));
+              return switch (answered.result()) {
+                case ApprovalResult.Denied denied ->
+                    settle(
+                        call,
+                        narrator,
+                        turn,
+                        ToolResult.error("denied: " + denied.reason() + "; the call was not made"));
+                case ApprovalResult.Approved approved ->
+                    Behaviors.setup(
+                        context -> {
+                          ActorRef<ExecutionActor.Command> execution =
+                              context.spawn(
+                                  ExecutionActor.create(
+                                      bindings,
+                                      binding,
+                                      call.arguments(),
+                                      toolContext(tokens, agentType, agentId, call),
+                                      blocking,
+                                      context.getSelf()),
+                                  "execution");
+                          return awaitingExecution(call, narrator, turn, execution);
+                        });
+              };
             })
         .build();
   }
 
-  private static Behavior<Command> run(
-      String agentId,
-      String turnId,
-      ToolCallRecord call,
-      ActorRef<AgentActor.NessyMessage> agent,
-      ActorRef<ToolWorker.RunTool> tools,
-      ActorRef<Command> self,
-      Map<String, String> trace) {
-    tools.tell(new ToolWorker.RunTool(agentId, turnId, call, call.argumentsClaimId(), self, trace));
+  private static Behavior<Command> awaitingExecution(
+      ToolCall call,
+      Narrator narrator,
+      ActorRef<TurnActor.Command> turn,
+      ActorRef<ExecutionActor.Command> execution) {
     return Behaviors.receive(Command.class)
         .onMessage(
-            Ran.class,
-            ran -> {
-              // The worker already wrote the result to the transcript; the agent only needs to
-              // know the call is done.
-              agent.tell(new AgentActor.ToolCallSettled(call.id(), trace));
-              return Behaviors.stopped();
+            RelayResult.class,
+            relayed -> {
+              execution.tell(new ExecutionActor.Answer(relayed.result()));
+              return Behaviors.same();
             })
-        // An answer for a call already running is a duplicate; ignoring it here is the whole of
-        // round 2's "is this event admissible for this state?" logic.
-        .onMessage(Answer.class, answer -> Behaviors.same())
+        .onMessage(Ran.class, ran -> settle(call, narrator, turn, ran.result()))
         .build();
+  }
+
+  /** One place a call ends, so it cannot be reported to the turn without also being narrated. */
+  private static Behavior<Command> settle(
+      ToolCall call, Narrator narrator, ActorRef<TurnActor.Command> turn, ToolResult result) {
+    narrator.narrate(
+        new AgentEvent.ToolCallCompleted(Identifiers.next(), call.id(), call.name(), result));
+    turn.tell(new TurnActor.ToolSettled(call.id(), result));
+    return Behaviors.stopped();
+  }
+
+  /** What a tool learns: where to send an answer if it decides to defer. */
+  private static ToolContext toolContext(
+      ReplyTokens tokens, AgentType agentType, AgentId agentId, ToolCall call) {
+    ReplyToken token = tokens.mint(agentType, agentId, call.id());
+    return () -> token;
   }
 }

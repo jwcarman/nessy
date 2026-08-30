@@ -19,21 +19,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Objects;
 
 /**
- * The model's request to run one tool.
+ * One request from the model to run a tool: which call, which tool, and with what.
  *
- * @param id provider-assigned; the tool result must quote it back
- * @param name the tool's registered name
- * @param arguments raw JSON, not yet bound to the tool's input record
+ * <p>The non-wire twin of {@code ToolCallBlock}, exactly as {@link ToolResult} is of {@code
+ * ToolResultBlock}. {@code id} is the model's own identifier for this call and is what the answer
+ * must be paired to — which is why a tool never authors it.
+ *
+ * @param id the model's identifier for this call
+ * @param name which tool
+ * @param arguments the raw arguments, as the model produced them, before binding to a tool's input
+ *     type
  */
 public record ToolCall(String id, String name, JsonNode arguments) {
 
   public ToolCall {
-    if (id == null || id.isBlank()) {
-      throw new IllegalArgumentException("tool call id must not be blank");
-    }
-    if (name == null || name.isBlank()) {
-      throw new IllegalArgumentException("tool name must not be blank");
-    }
+    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(name, "name must not be null");
     Objects.requireNonNull(arguments, "arguments must not be null");
   }
 }

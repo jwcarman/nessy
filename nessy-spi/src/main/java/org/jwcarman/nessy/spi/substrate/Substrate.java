@@ -73,6 +73,26 @@ public interface Substrate {
    * @throws NullPointerException if {@code kind} is null
    * @throws IllegalArgumentException if {@code limit} is less than 1
    */
+  /**
+   * Deletes EVERY key under {@code kind}, and reports how many went.
+   *
+   * <p>The bulk door that makes kind-scoped ownership cheap. A caller that owns a whole kind — one
+   * turn's claims, say — ends it in one statement rather than listing, reading, and deleting each
+   * key in turn. On a relational substrate this is {@code DELETE ... WHERE kind = ?}.
+   *
+   * <p><b>It is also what makes cleanup COMPLETE rather than best-effort.</b> Deleting by key can
+   * only remove what something remembered to write down; a payload written just before a crash,
+   * before the state naming it was persisted, is an orphan no key list contains. It is still in the
+   * kind, so this sweeps it.
+   *
+   * <p>Unconditional by design: there is no expected version, because the point is to remove
+   * whatever is there. Deleting a kind that holds nothing is not an error and returns zero.
+   *
+   * @param kind the kind to empty
+   * @return how many keys were removed
+   */
+  int deleteKind(String kind);
+
   List<String> keys(String kind, int limit);
 
   /**

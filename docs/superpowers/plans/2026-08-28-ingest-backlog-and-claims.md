@@ -903,7 +903,7 @@ git commit -m "docs: the backlog closes the refusal gap, measured"
 
 ## Self-Review
 
-**Spec coverage.** §2 shape → Tasks 2, 3. §2.1 backlog in durable state → Task 1. §3.1 backlog holds `O` → already done (`Backlog`). §3.2/3.3 reduction and factories → already done (`Coalescer`). §3.4 declared on the vocabulary → Task 7. §3.5 position preserved → covered by `CoalescerTest`. §4 drain and block concatenation → Task 3. §4.1 deterministic re-drain key → Task 3 Step 3. §4.2 idle is not a special case → Task 2 Step 3. §4a.1 results not in state → already true in the port; asserted in Task 8. §4a.2 always claim → Tasks 4, 5. §4a.3 owned by the turn → Task 6. §4a.4 three stores → the whole plan.
+**Spec coverage.** §2 shape → Tasks 2, 3. §2.1 backlog in durable state → Task 1. §3.1 backlog holds `O` → already done (`Backlog`). §3.2/3.3 reduction and factories → already done (`BacklogCoalescer`). §3.4 declared on the vocabulary → Task 7. §3.5 position preserved → covered by `CoalescerTest`. §4 drain and block concatenation → Task 3. §4.1 deterministic re-drain key → Task 3 Step 3. §4.2 idle is not a special case → Task 2 Step 3. §4a.1 results not in state → already true in the port; asserted in Task 8. §4a.2 always claim → Tasks 4, 5. §4a.3 owned by the turn → Task 6. §4a.4 three stores → the whole plan.
 
 **Gaps deliberately left, and why.** §6's out-of-scope items need no task. Open items 3–6 (no cap, no rejection signal, item size, schema evolution) are recorded as open in the spec and are not implemented. The abandoned-turn sweep referenced in §4a.3 has **no task**: it belongs with the stalled-turn work the actor spec lists as its own open item #2, and inventing half of it here would be worse than leaving it named.
 

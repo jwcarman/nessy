@@ -31,7 +31,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.agent.Coalescer;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.TokenEstimator;
 import org.jwcarman.nessy.engine.AgentActor;
 import org.jwcarman.nessy.engine.AgentState;
 import org.jwcarman.nessy.engine.BlockingWork;

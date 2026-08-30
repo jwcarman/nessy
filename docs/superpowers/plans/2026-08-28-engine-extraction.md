@@ -63,7 +63,7 @@ void theEngineModuleHasAnActorSystemAvailableToIt() {
 ### Task 2: The port's engine moves into `nessy-engine`
 
 **Files:**
-- Move from `nessy-examples/watchman-pekko/src/main/java/org/jwcarman/nessy/examples/watchman/pekko/` into `nessy-engine/src/main/java/org/jwcarman/nessy/engine/`: `AgentActor`, `AgentState`, `AgentRegistry`, `ApprovalActor`, `ToolCallActor`, `ToolWorker`, `ModelDesk`, `ModelWorker`, `Backlog`, `BacklogItem`, `Coalescer`, `Claims`, `Traces`, and their tests.
+- Move from `nessy-examples/watchman-pekko/src/main/java/org/jwcarman/nessy/examples/watchman/pekko/` into `nessy-engine/src/main/java/org/jwcarman/nessy/engine/`: `AgentActor`, `AgentState`, `AgentRegistry`, `ApprovalActor`, `ToolCallActor`, `ToolWorker`, `ModelDesk`, `ModelWorker`, `Backlog`, `BacklogItem`, `BacklogCoalescer`, `Claims`, `Traces`, and their tests.
 - Leave in the example: Spring configuration, HTTP controllers, the watchman's own tools, `WatchmanGuardian`, `soak.sh`.
 - Modify: `nessy-examples/watchman-pekko/pom.xml` to depend on `nessy-engine`.
 
@@ -71,7 +71,7 @@ void theEngineModuleHasAnActorSystemAvailableToIt() {
 - Consumes: Task 1's module.
 - Produces: `org.jwcarman.nessy.engine.*` types that Tasks 5-6 wire behind `HarnessFactory`.
 
-- [ ] **Step 1: Move the files** with `git mv` so history follows, and rewrite package declarations and imports. `Coalescer` and `Backlog` are user-facing vocabulary per the spec — but they move to `nessy-engine` in THIS task and are promoted to `nessy-api` in Task 4, so that this task is a pure move with no API change.
+- [ ] **Step 1: Move the files** with `git mv` so history follows, and rewrite package declarations and imports. `BacklogCoalescer` and `Backlog` are user-facing vocabulary per the spec — but they move to `nessy-engine` in THIS task and are promoted to `nessy-api` in Task 4, so that this task is a pure move with no API change.
 
 - [ ] **Step 2: Point the example at the module.** Add the `nessy-engine` dependency; remove the Pekko dependencies it now inherits transitively.
 
@@ -118,7 +118,7 @@ void harnessIsAnInterfaceSoAnEngineCanImplementIt() {
 
 **Files:**
 - Create: `nessy-api/src/main/java/org/jwcarman/nessy/api/harness/HarnessFactory.java`
-- Move to `nessy-api`: `Harness`, `HarnessConfig`, `HarnessCustomizer`, `ObservationRenderer`, `Coalescer`, `BacklogItem`
+- Move to `nessy-api`: `Harness`, `HarnessConfig`, `HarnessCustomizer`, `ObservationRenderer`, `BacklogCoalescer`, `BacklogItem`
 - Modify: `nessy-agent/host/Nessy.java` to delegate to a default factory
 
 **Interfaces:**

@@ -16,58 +16,84 @@
 package org.jwcarman.nessy.spi.model;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Something a provider emitted while streaming one turn.
+ * One thing a model said while it was saying it.
  *
- * <p>Distinct from {@code ConversationEvent} on purpose: a provider should be able to report what
- * the model did, and nothing else. Reusing the core event type would let a provider inject a user
- * message or an approval decision into the loop.
+ * <p>What a provider emits as tokens arrive. Assembled into an assistant message by whoever drains
+ * the stream — and narrated on the way past, which is the only reason this granularity exists: a
+ * chat interface paints words as they come.
+ *
+ * <p><b>{@code Stopped}, not {@code TurnEnded}.</b> A model call ending is not a turn ending: a
+ * turn is one observation processed to completion, and it may span several calls with tools in
+ * between. {@link StopReason#TOOL_USE} is the middle of a turn, never the end of one.
  */
 public sealed interface ModelEvent {
 
-  record TextChunk(String text) implements ModelEvent {}
+  /** A chunk of prose. */
+  record TextChunk(String text) implements ModelEvent {
+    public TextChunk {
+      Objects.requireNonNull(text, "text must not be null");
+    }
+  }
 
-  /** A chunk of the model's visible reasoning arrived from the stream. */
-  record ThinkingChunk(String text) implements ModelEvent {}
+  /** A chunk of visible reasoning. */
+  record ThinkingChunk(String text) implements ModelEvent {
+    public ThinkingChunk {
+      Objects.requireNonNull(text, "text must not be null");
+    }
+  }
 
-  /** The provider finished a thinking block and delivered its signature. */
+  /**
+   * The signature for the reasoning just streamed. Arrives after its chunks, which is why thinking
+   * is assembled rather than emitted block by block.
+   */
   record ThinkingSigned(String signature) implements ModelEvent {
-
     public ThinkingSigned {
       Objects.requireNonNull(signature, "signature must not be null");
     }
   }
 
-  /** A complete redacted-thinking block arrived; its contents are opaque by design. */
+  /** Reasoning the provider encrypted rather than showing. Whole, never chunked. */
   record RedactedThinkingEmitted(String data) implements ModelEvent {
-
     public RedactedThinkingEmitted {
       Objects.requireNonNull(data, "data must not be null");
     }
   }
 
-  /**
-   * Emitted once the provider has assembled a complete tool call.
-   *
-   * <p>{@code signature}: an opaque provider-issued continuity token, stored with the call and
-   * returned verbatim on replay; absent for providers that issue none.
-   */
-  record ToolUseEmitted(ToolCall call, String signature) implements ModelEvent {
+  /** A complete tool call. Emitted once its arguments have finished arriving. */
+  record ToolCallEmitted(ToolCall call, String signature) implements ModelEvent {
+    public ToolCallEmitted {
+      Objects.requireNonNull(call, "call must not be null");
+    }
 
-    /** Convenience for providers that issue no continuity token. */
-    public ToolUseEmitted(ToolCall call) {
+    public ToolCallEmitted(ToolCall call) {
       this(call, null);
     }
   }
 
-  record TurnEnded(StopReason reason, Usage usage) implements ModelEvent {
-
-    public TurnEnded {
+  /** The call is over, and this is why and what it cost. */
+  record Stopped(StopReason reason, Usage usage) implements ModelEvent {
+    public Stopped {
       Objects.requireNonNull(reason, "reason must not be null");
+      Objects.requireNonNull(usage, "usage must not be null");
+    }
+  }
+
+  /**
+   * A safety classifier declined.
+   *
+   * <p>Its own arm rather than a {@link StopReason}, for the same reason {@code ModelResult}
+   * splits: a refusal may carry no content at all, and a consumer reading content without checking
+   * first is the trap the split exists to close.
+   */
+  record Refused(String category, String explanation, Usage usage) implements ModelEvent {
+    public Refused {
+      Objects.requireNonNull(category, "category must not be null");
+      Objects.requireNonNull(explanation, "explanation must not be null");
       Objects.requireNonNull(usage, "usage must not be null");
     }
   }

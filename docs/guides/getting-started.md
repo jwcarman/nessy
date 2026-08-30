@@ -191,7 +191,7 @@ reason)` answers and the frozen question that was asked; `Failed(String
 reason)` — the turn ended in failure, narrated honestly rather than thrown.
 `ask` blocks the calling thread until one of the three settles;
 `agent.subscribe(TurnObserver)` underneath it is the lower-level door — a
-`Subscription` your code can hold onto for as long as it wants to keep
+`AgentSubscription` your code can hold onto for as long as it wants to keep
 watching an id's turns, closed to stop.
 
 ## The cli door

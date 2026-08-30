@@ -15,62 +15,32 @@
  */
 package org.jwcarman.nessy.spi.model;
 
-import java.util.Set;
+import org.jwcarman.nessy.api.model.ModelId;
 
 /**
- * A bound handle to one model at one vendor.
+ * A bound handle to one model at one vendor — what a turn actually talks to.
  *
- * <p>A flyweight over its {@link ModelProvider} gateway's shared client — cheap to create, safe to
- * share, the thing a harness actually consumes. Where the gateway answers for a whole vendor
- * lineup, a {@code Model} answers only for the one id it was bound to: {@link #capabilities()} is
- * WHERE a per-model answer belongs — this interface does not require every implementation to
- * already answer that precisely; a vendor whose lineup shares one capability set today may still
- * answer per-vendor here, as the four vendor implementations' own javadocs say.
+ * <p>Implemented by adapter modules and by nobody else, which is what makes it an SPI. An
+ * application never holds one: it names a model with a {@link ModelId} and a provider resolves it,
+ * so moving an agent from a cheap model to an expensive one stays a configuration change rather
+ * than a code change.
+ *
+ * <p><b>Failures are exceptions here, not results.</b> A rate limit, a timeout, a context overflow
+ * — the consumer of those is the callers code, not the model, so they throw. {@link ModelResult}
+ * carries only the outcomes the conversation itself has to account for: a reply, or a refusal.
+ *
+ * <p><b>It only streams.</b> There is no blocking door beside this one, because a second way to
+ * make the same call is a second thing that can behave differently — and because everything that
+ * consumes a model already wants the events on the way past: a chat interface paints them, a log
+ * records them, a metric counts them. Wanting only the finished message is {@code
+ * ModelReplies.drain(model.stream(request), event -> {})}, which is a line of code rather than an
+ * interface method every adapter has to be trusted to keep consistent.
  */
 public interface Model {
 
-  /**
-   * Starts one turn. The caller iterates the returned stream and must close it.
-   *
-   * <p>Blocking by design: on virtual threads that is cheaper and far more readable than a callback
-   * protocol.
-   */
+  /** Which model this is, at its vendor. */
+  ModelId id();
+
+  /** One call, as it happens. The caller drains it, and draining closes it. */
   ModelStream stream(ModelRequest request);
-
-  /**
-   * What this model is, in one place: its id, its provider, its context window, and what it can do.
-   *
-   * <p>The single method an implementation must answer. {@link #id()}, {@link #provider()} and
-   * {@link #capabilities()} read off it, so nothing has to be kept in step by hand.
-   */
-  ModelDescription describe();
-
-  /** What this model can actually do. See {@link Capability}. */
-  default Set<Capability> capabilities() {
-    return describe().capabilities();
-  }
-
-  /** This model's id at its vendor — {@code "claude-opus-5"} — for banners and logs. */
-  default String id() {
-    return describe().id();
-  }
-
-  /**
-   * The semconv {@code gen_ai.provider.name} value of the vendor this model is bound at: {@code
-   * anthropic}, {@code openai}, {@code x_ai}, {@code gcp.gemini}, {@code aws.bedrock}.
-   *
-   * <p>Telemetry, not a banner — unlike {@link ModelProvider#name()}, which is a human-readable
-   * label with a class-name default. This is one of the OpenTelemetry GenAI semantic conventions'
-   * pinned values, and it is asked of the MODEL rather than the gateway on purpose: the executor
-   * that opens the {@code chat} span holds a bound {@code Model} and never sees a {@link
-   * ModelProvider}, and one gateway class can serve several vendors — the OpenAI-compatible gateway
-   * answers {@code openai} for an OpenAI key and {@code x_ai} for an xAI one, which only the bound
-   * handle can know.
-   *
-   * <p>No default: every implementation answers, so a new vendor cannot quietly report someone
-   * else's name.
-   */
-  default String provider() {
-    return describe().provider();
-  }
 }

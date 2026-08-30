@@ -1669,7 +1669,7 @@ governs; the convergence plan sweeps the body text.
   agent's own declarations), declaration order within each. A throw
   anywhere stops the chain — the veto is the throw, unchanged.
 - **Conversation-local subscription is the one dynamic level**:
-  `conversation.events().subscribe(...)` returning `Subscription` —
+  `conversation.events().subscribe(...)` returning `AgentSubscription` —
   in-memory, per-handle, non-durable (UI/SSE attachment). The per-`tell`
   tap's fate (sugar over this, or deleted) is the implementer's proposal,
   reviewed.

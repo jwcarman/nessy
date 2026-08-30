@@ -4,7 +4,7 @@
 
 **Goal:** Land ask/tell, scoped subscriptions, and the Console per the front-ends spec.
 
-**Architecture:** Rename lands first (pure sweep); the harness grows an internal per-id observer fanout surfaced as `Agent.subscribe` → `Subscription`; `ask` composes tell+subscribe+drive into a `TurnOutcome`; the Console owns the terminal and `Nessy.cli()` becomes preset sugar over it.
+**Architecture:** Rename lands first (pure sweep); the harness grows an internal per-id observer fanout surfaced as `Agent.subscribe` → `AgentSubscription`; `ask` composes tell+subscribe+drive into a `TurnOutcome`; the Console owns the terminal and `Nessy.cli()` becomes preset sugar over it.
 
 **Tech Stack:** Existing reactor; no new dependencies.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - No new event types; `TurnObserver`'s existing vocabulary is the only stream.
-- `Subscription` is the only AutoCloseable on the API; close idempotent, never throws.
+- `AgentSubscription` is the only AutoCloseable on the API; close idempotent, never throws.
 - Fanout is worker-inclusive: a delivery folding later reaches that id's subscribers.
 - No suppressions, no star imports, no mocking libraries; S5778/S5841; sealed switches without default arms; prose test names.
 - Gates per task: warm scoped builds; final `./mvnw -q clean verify` once; javadoc gate via `./mvnw -q -B -P release -DskipTests -Dgpg.skip=true javadoc:jar` (never the full release verify locally); `python3 -m mkdocs build --strict` when site docs change; license:format + spotless:apply before commits.
@@ -29,7 +29,7 @@ Steps: mechanical sweep (git grep observe( on Agent surfaces — do NOT touch th
 
 ### Task 2: Subscriptions and the fanout
 
-**Files:** New `Subscription` (nessy-api, beside TurnObserver); `Agent.subscribe(TurnObserver)`; harness-internal per-id registry; wiring so BOTH the executor-side turn observer path and the DeliveryWorker fold path emit through the fanout for that id; `HarnessConfig` composes the configured global observer as one more subscriber, preserving existing behavior.
+**Files:** New `AgentSubscription` (nessy-api, beside TurnObserver); `Agent.subscribe(TurnObserver)`; harness-internal per-id registry; wiring so BOTH the executor-side turn observer path and the DeliveryWorker fold path emit through the fanout for that id; `HarnessConfig` composes the configured global observer as one more subscriber, preserving existing behavior.
 **Interfaces:** Produces `Subscription Agent.subscribe(TurnObserver)`; `interface Subscription extends AutoCloseable { void close(); }` (no throws). Existing `.turnObserver(...)` config keeps working unchanged.
 Key risks (review lens): thread-safety of the registry under concurrent subscribe/close/emit (CopyOnWrite semantics recommended); no emission reordering; close-during-emit safe; no leak of worker threads through subscriber exceptions (subscriber throw = isolate, never break the fold — decide + document).
 Tests: subscribe receives worker-driven turn events (durable path — park an approval, approve, subscriber sees the resumed turn); close is idempotent + stops delivery; two ids never cross; subscriber exception does not poison the fold; teardown discipline via HarnessTeardown.

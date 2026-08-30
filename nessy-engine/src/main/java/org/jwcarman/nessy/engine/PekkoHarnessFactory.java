@@ -15,244 +15,153 @@
  */
 package org.jwcarman.nessy.engine;
 
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
-import java.time.Duration;
-import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import org.apache.pekko.actor.typed.ActorRef;
+import java.util.function.Consumer;
 import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.actor.typed.Behavior;
-import org.apache.pekko.actor.typed.Props;
-import org.apache.pekko.actor.typed.SpawnProtocol;
-import org.apache.pekko.actor.typed.javadsl.AskPattern;
-import org.jwcarman.nessy.api.agent.AgentType;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.spi.codec.CodecPipeline;
+import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
+import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
+import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.HarnessFactory;
+import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * Builds harnesses on an {@code ActorSystem} the caller already owns.
+ * Builds harnesses on an actor system the caller already owns.
  *
- * <p>Everything shared is given here, once: the system, the store, the model provider, the tools.
- * Each {@link #create} call adds only what makes one kind of agent different from another
- * (engine-extraction spec §2.1).
+ * <p>Everything shared is given here, once: the system, where state lives, how models are reached,
+ * what runs blocking work. Each {@link #createHarness} call adds only what makes one kind of agent
+ * different from another — which is why {@link HarnessConfig} names no infrastructure at all.
  *
- * <p><b>The system is borrowed, never owned.</b> It must be built around {@link SpawnProtocol},
- * because Pekko refuses to create a top-level actor from outside a system that has a custom user
- * guardian — which is exactly why a harness handed an existing system can never BE that guardian
- * (spec §3.1). {@link Harness#shutdown()} stops the subtree this spawned and nothing else;
- * terminating the caller's system is not this class's business.
+ * <p><b>The system is borrowed, never owned.</b> Nothing here terminates it, and there is no
+ * shutdown to call: agents are cluster entities, so they belong to the cluster rather than to
+ * whoever asked for a harness.
  */
 public final class PekkoHarnessFactory implements HarnessFactory {
 
-  private static final Duration SPAWN_PATIENCE = Duration.ofSeconds(10);
-  private static final int MODEL_WORKERS = 4;
-  private static final int TOOL_WORKERS = 8;
-
-  private final ActorSystem<SpawnProtocol.Command> system;
+  private final ActorSystem<?> system;
   private final Substrate substrate;
   private final ModelProvider models;
-  private final String defaultModelId;
-  private final AgentModel prebuilt;
-  private final long prebuiltBudget;
-  private final AgentTools tools;
-  private final MeterRegistry meters;
-  private final Traces traces;
-  private final java.util.concurrent.atomic.AtomicInteger roots =
-      new java.util.concurrent.atomic.AtomicInteger();
-  private final Clock clock;
+  private final int maxTokens;
+  private final Set<Capability> capabilities;
   private final Executor blocking;
+  private final Clock clock;
+  private final ReplyTokens tokens;
+  private final Replies replies;
 
   /**
-   * @param system the caller's actor system — borrowed, never terminated
-   * @param substrate where documents and journals live
-   * @param models resolves a model by name
-   * @param defaultModelId the model an agent gets when its config names none
-   * @param tools what agents may call
-   * @param pipeline the transforms every stored payload passes through, installed on {@code system}
-   *     so the actor serializer applies exactly what {@code Substrate} does
+   * @param maxTokens the longest answer to allow. Infrastructure rather than per-agent-kind
+   *     configuration for now, because {@code HarnessConfig} has no slot for it — worth revisiting
+   *     when one kind of agent needs a different ceiling from another.
    */
   public PekkoHarnessFactory(
-      ActorSystem<SpawnProtocol.Command> system,
+      ActorSystem<?> system,
       Substrate substrate,
       ModelProvider models,
-      String defaultModelId,
-      AgentTools tools,
-      MeterRegistry meters,
-      Traces traces,
-      Clock clock,
+      int maxTokens,
+      Set<Capability> capabilities,
       Executor blocking,
-      CodecPipeline pipeline) {
+      Clock clock,
+      ReplyTokens tokens) {
     this.system = Objects.requireNonNull(system, "system must not be null");
     this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
     this.models = Objects.requireNonNull(models, "models must not be null");
-    this.defaultModelId = Objects.requireNonNull(defaultModelId, "defaultModelId must not be null");
-    this.prebuilt = null;
-    this.prebuiltBudget = 0;
-    this.tools = Objects.requireNonNull(tools, "tools must not be null");
-    this.meters = Objects.requireNonNull(meters, "meters must not be null");
-    this.traces = Objects.requireNonNull(traces, "traces must not be null");
-    this.clock = Objects.requireNonNull(clock, "clock must not be null");
-    this.blocking = Objects.requireNonNull(blocking, "blocking must not be null");
-    EngineCodecs.of(system).use(Objects.requireNonNull(pipeline, "pipeline must not be null"));
-  }
-
-  /**
-   * For a host that already has its model — a scripted one in a test, or anything that is not a
-   * {@code Model} behind a {@code ModelProvider}.
-   *
-   * <p>The budget must be given, because it is normally DERIVED from the model's own context window
-   * and a pre-built {@link AgentModel} cannot be asked. That is the trade: this door skips the
-   * capability and window checks the provider door performs, so production should not use it.
-   *
-   * @param budgetTokens how much context a turn may read
-   */
-  public PekkoHarnessFactory(
-      ActorSystem<SpawnProtocol.Command> system,
-      Substrate substrate,
-      AgentModel model,
-      long budgetTokens,
-      AgentTools tools,
-      MeterRegistry meters,
-      Traces traces,
-      Clock clock,
-      Executor blocking,
-      CodecPipeline pipeline) {
-    this.system = Objects.requireNonNull(system, "system must not be null");
-    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
-    this.models = null;
-    this.defaultModelId = null;
-    this.prebuilt = Objects.requireNonNull(model, "model must not be null");
-    if (budgetTokens < 1) {
-      throw new IllegalArgumentException("budgetTokens must be at least 1");
+    if (maxTokens < 1) {
+      throw new IllegalArgumentException("maxTokens must be at least 1");
     }
-    this.prebuiltBudget = budgetTokens;
-    this.tools = Objects.requireNonNull(tools, "tools must not be null");
-    this.meters = Objects.requireNonNull(meters, "meters must not be null");
-    this.traces = Objects.requireNonNull(traces, "traces must not be null");
-    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.maxTokens = maxTokens;
+    this.capabilities =
+        Set.copyOf(Objects.requireNonNull(capabilities, "capabilities must not be null"));
     this.blocking = Objects.requireNonNull(blocking, "blocking must not be null");
-    EngineCodecs.of(system).use(Objects.requireNonNull(pipeline, "pipeline must not be null"));
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.tokens = Objects.requireNonNull(tokens, "tokens must not be null");
+    this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens);
   }
 
-  /**
-   * The String door, and the real implementation.
-   *
-   * <p>Overridden rather than inherited because the engine is String-observation only for now —
-   * {@code AgentActor}, {@code Backlogs} and the renderer are all bound to {@code String} beneath
-   * the harness. Doing the work here keeps the types honest: nothing has to cast a {@code
-   * HarnessConfig<O>} it privately knows is a {@code HarnessConfig<String>}.
-   */
   @Override
-  public PekkoHarness create(HarnessCustomizer<String> customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
-    HarnessConfig<String> config = new HarnessConfig<>();
-    config.renderer(text -> List.of(new TextBlock(text)));
-    customizer.customize(config);
-
-    AgentModel agentModel;
-    long budget;
-    if (prebuilt != null) {
-      agentModel = prebuilt;
-      budget = prebuiltBudget;
-    } else {
-      Model model = resolve(config);
-      ModelDescription description = model.describe();
-      ModelSettings settings = new ModelSettings(config.maxTokens(), Set.of());
-      settings.requireSatisfiedBy(description);
-      budget = budgetFor(description, settings);
-      agentModel =
-          new ProviderAgentModel(model, meters, config.maxTokens(), config.systemPrompt(), tools);
-    }
-
-    Memories memories = new Memories(substrate, budget);
-    Claims claims = new Claims(substrate);
-
-    ActorRef<HarnessActor.Command> root =
-        spawnRoot(
-            config.type(),
-            HarnessActor.create(
-                new HarnessActor.Wiring(
-                    config.type(),
-                    agentModel,
-                    tools,
-                    memories,
-                    config.coalescer(),
-                    config.renderer(),
-                    traces,
-                    clock,
-                    blocking,
-                    MODEL_WORKERS,
-                    TOOL_WORKERS,
-                    config.approvalTerm(),
-                    claims)));
-
-    return new PekkoHarness(config.type(), root, system, traces);
-  }
-
-  /**
-   * Not yet supported: the engine below this door speaks {@code String}.
-   *
-   * <p>Generalising {@code AgentActor}, {@code Backlogs} and the renderer to {@code O} is its own
-   * change. Until then a typed observation is the caller's to render.
-   */
-  @Override
-  public <O> Harness<O> create(Class<O> observationType, HarnessCustomizer<O> customizer) {
+  public <O> Harness<O> createHarness(
+      Class<O> observationType, Consumer<HarnessConfig<O>> configurer) {
     Objects.requireNonNull(observationType, "observationType must not be null");
-    throw new UnsupportedOperationException(
-        "this engine takes String observations only; AgentActor, Backlogs and the renderer are"
-            + " bound to String beneath the harness. Use create(customizer). Asked for: "
-            + observationType.getName());
+    Objects.requireNonNull(configurer, "configurer must not be null");
+
+    EngineHarnessConfig<O> config = new EngineHarnessConfig<>();
+    configurer.accept(config);
+    AgentType type = config.agentType();
+
+    // The one moment O is statically known. Everything erasure would otherwise cost is paid here.
+    Codec<O> codec = substrate.codecs().create(observationType);
+    StateTypes.of(system).register(type, observationType);
+
+    Memory memory = new Transcripts(substrate, type);
+    Claims claims = new Claims(substrate);
+    Model model = models.model(config.modelId());
+    ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
+
+    ClusterSharding sharding = ClusterSharding.get(system);
+    EntityTypeKey<NarrationActor.Command> narrationKey =
+        EntityTypeKey.create(NarrationActor.Command.class, "narration-" + type.name());
+    sharding.init(Entity.of(narrationKey, context -> NarrationActor.create()));
+
+    Turns turns =
+        (agentId, turnId, input, agent) ->
+            TurnActor.create(
+                new TurnActor.Dependencies(
+                    type,
+                    memory,
+                    model,
+                    config.prompt(),
+                    maxTokens,
+                    bindings,
+                    capabilities,
+                    narratorFor(sharding, narrationKey, agentId),
+                    claims,
+                    tokens,
+                    blocking),
+                agentId,
+                turnId,
+                input,
+                agent);
+
+    AgentActor.Dependencies<O> deps =
+        new AgentActor.Dependencies<>(
+            type, codec, config.backlogCoalescer(), config.observationRenderer(), turns, clock);
+
+    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
+    sharding.init(
+        Entity.of(
+                agentKey,
+                context ->
+                    AgentActor.create(deps, AgentId.of(context.getEntityId()), context.getShard()))
+            .withStopMessage(new NessyMessage.Stop(Map.of())));
+
+    replies.serving(type.name(), agentKey);
+    return new ShardedHarness<>(type, agentKey, narrationKey, codec, system);
+  }
+
+  /** Where the outside world answers calls parked by any agent this factory serves. */
+  public Replies replies() {
+    return replies;
   }
 
   /**
-   * Spawns the engine's subtree top-level, through the caller's {@link SpawnProtocol}.
-   *
-   * <p>Blocking here is deliberate and bounded: a harness that returned before its tree existed
-   * would hand back something whose first {@code observe} raced the wiring.
+   * Narration is per agent, so the narrator is built per turn rather than closed over once. Cheap:
+   * an entity ref is a routing decision, not a lookup.
    */
-  private ActorRef<HarnessActor.Command> spawnRoot(
-      AgentType agentType, Behavior<HarnessActor.Command> behavior) {
-    // Local routing parents agents under the harness, so it needs one harness per type; sharding
-    // routes every harness to the same entity and needs no such rule.
-    if (!RoutingStrategy.isClustered(system)) {
-      LocalAgentTypes.of(system).reserve(agentType);
-    }
-    String name = "nessy-harness-" + agentType.name() + "-" + roots.incrementAndGet();
-    return AskPattern.<SpawnProtocol.Command, ActorRef<HarnessActor.Command>>ask(
-            system,
-            replyTo -> new SpawnProtocol.Spawn<>(behavior, name, Props.empty(), replyTo),
-            SPAWN_PATIENCE,
-            system.scheduler())
-        .toCompletableFuture()
-        .join();
-  }
-
-  private Model resolve(HarnessConfig<String> config) {
-    String id = config.modelName().orElse(defaultModelId);
-    Model model = models.model(id);
-    if (model == null) {
-      throw new IllegalArgumentException(
-          "no model named '%s' from provider %s".formatted(id, models.name()));
-    }
-    return model;
-  }
-
-  /**
-   * What a turn may read: the model's real window, less the answer it is allowed to write.
-   *
-   * <p>This is the number that used to be typed into a config file. Nobody could get it right,
-   * because only the model knows the window — which is why the budget was a promise nothing kept
-   * until {@code ModelDescription} existed.
-   */
-  private static long budgetFor(ModelDescription description, ModelSettings settings) {
-    return description.contextWindow() - settings.maxTokens();
+  private static Narrator narratorFor(
+      ClusterSharding sharding, EntityTypeKey<NarrationActor.Command> key, AgentId agentId) {
+    return (AgentEvent event) ->
+        sharding.entityRefFor(key, agentId.value()).tell(new NarrationActor.Narrate(event));
   }
 }

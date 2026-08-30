@@ -97,13 +97,13 @@ public interface Backlogs<O> {
 }
 ```
 
-`Backlogs` is the plural, agent-keyed service; `Backlog<O>` is the immutable value the `Coalescer`
+`Backlogs` is the plural, agent-keyed service; `Backlog<O>` is the immutable value the `BacklogCoalescer`
 folds over, internal to the implementation.
 
 **The name is ratified, and for a better reason than the one first recorded here.** An earlier draft
 defended `Backlog` merely as "already ratified, not worth renaming". James settled it properly on
 2026-08-28: **a backlog is a thing you GROOM.** Items are merged, superseded, deprioritised, dropped
-— which is exactly the vocabulary of `Coalescer`, where `merge` folds, `byKey` supersedes, returning
+— which is exactly the vocabulary of `BacklogCoalescer`, where `merge` folds, `byKey` supersedes, returning
 the backlog unchanged vetoes, and a `Cancel` clears. Every operation this type supports is a
 grooming operation.
 
@@ -121,7 +121,7 @@ The pair does not mirror `Memories`/`Memory`, where the per-agent facade is retu
 `forAgent(agentId)` and here the agent id is a parameter. That asymmetry stands: the singular of
 this concept is a snapshot, not a facade.
 
-`Backlog<O>` remains the immutable value the `Coalescer` folds over, now internal to the service
+`Backlog<O>` remains the immutable value the `BacklogCoalescer` folds over, now internal to the service
 rather than a component of the persisted document. `Coalescer<O>` is unchanged.
 
 **Because state does not reference the backlog, there is no cross-store invariant** — no ordering

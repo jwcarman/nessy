@@ -14,7 +14,7 @@ out to already exist:
 | what we designed | what was already there |
 |---|---|
 | `HarnessFactory.create(Class<O>, customizer)` | `Nessy.harness(Class<O>, HarnessCustomizer<O>)` |
-| agent-scoped turn subscription | `TurnEvent`, `TurnObserver`, `Subscription` |
+| agent-scoped turn subscription | `TurnEvent`, `TurnObserver`, `AgentSubscription` |
 | per-agent model selection by name | `ModelProvider.model(String id)` |
 
 That is the strongest evidence available that the surface is right and the engine is what needs
@@ -101,7 +101,7 @@ bisectable.
 
 1. **`nessy-engine` exists**, empty but wired into the reactor and the BOM.
 2. **The port's engine moves in** from `nessy-examples/watchman-pekko` — actors, `Backlog`,
-   `Coalescer`, `Claims`. The example keeps only its Spring wiring and its tools.
+   `BacklogCoalescer`, `Claims`. The example keeps only its Spring wiring and its tools.
 3. **`Harness` becomes an interface**; `nessy-agent`'s class becomes one implementation of it.
    `nessy-agent` still passes its own tests. Nothing else moves.
 4. **`HarnessFactory` and the config split** — infrastructure to the constructor, vocabulary to
@@ -211,7 +211,7 @@ To be paid once `nessy-agent` is deleted:
    The interim shape ducks this question; it must be answered, not inherited.
 4. **`AgentActor.userMessage` returns to package-private** (deferred from Task 2b, where a module
    boundary separated it from its white-box tests).
-5. **`Coalescer`, `BacklogItem`, `StalenessPolicy` move to `nessy-api`** — user-facing vocabulary
+5. **`BacklogCoalescer`, `BacklogItem`, `StalenessPolicy` move to `nessy-api`** — user-facing vocabulary
    currently sitting in the engine.
 6. **`LayeringTest` grows a case for `nessy-engine`**, so the boundary that is checked mechanically
    for api and spi is checked for the engine too.

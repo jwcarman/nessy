@@ -16,123 +16,120 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.agent.BacklogItem;
-import org.jwcarman.nessy.api.agent.Coalescer;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
+import org.jwcarman.nessy.api.backlog.BacklogItem;
 
-@DisplayName("The document an agent persists")
+@DisplayName("What an agent persists")
 class AgentStateTest {
 
-  @Test
-  void an_idle_agent_holds_no_turn() {
-    AgentState state = AgentState.idle();
+  private static final AgentType WATCHMAN = AgentType.of("watchman");
 
-    assertThat(state.phase()).isInstanceOf(Phase.Idle.class);
-    assertThat(state.turnId()).isNull();
+  private static BacklogItem<String> item(String id, String observation) {
+    return new BacklogItem<>(id, observation, Instant.EPOCH);
   }
 
-  @Test
-  void starting_a_turn_names_it() {
-    AgentState state = AgentState.idle().startingTurn("turn-1");
-
-    assertThat(state.turnId()).isEqualTo("turn-1");
+  /** Keeps everything, in arrival order. */
+  private static BacklogCoalescer<String> keepAll() {
+    return (waiting, arrival) -> {
+      List<BacklogItem<String>> all = new ArrayList<>(waiting);
+      all.add(arrival);
+      return all;
+    };
   }
 
-  @Test
-  void the_serialised_form_round_trips_through_the_state_serializer() {
-    AgentState before =
-        AgentState.idle().startingTurn("turn-1").withPhase(new Phase.CallingModel());
-
-    StateSerializer codec = new StateSerializer();
-    Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);
-
-    assertThat(after).isEqualTo(before);
+  /** Only the newest survives — the policy that would eat an in-flight observation. */
+  private static BacklogCoalescer<String> newestOnly() {
+    return (waiting, arrival) -> List.of(arrival);
   }
 
-  @Test
-  void a_working_tools_phase_carrying_real_tool_calls_round_trips_through_the_state_serializer() {
-    ToolCallRecord unsettled =
-        ToolCallRecord.asked(
-            "call-1",
-            "prune_images",
-            "{}",
-            "docker image prune -af",
-            Instant.parse("2026-08-24T12:00:00Z"));
-    ToolCallRecord decidedAndSettled =
-        ToolCallRecord.asked(
-                "call-2", "disk_usage", "{}", "df -h", Instant.parse("2026-08-24T12:00:00Z"))
-            .decidedBy(
-                new ToolCallRecord.Decision(
-                    true, "james", "go ahead", Instant.parse("2026-08-24T12:05:00Z")))
-            .settle();
-    AgentState before =
-        AgentState.idle()
-            .startingTurn("turn-1")
-            .withPhase(new Phase.WorkingTools(List.of(unsettled, decidedAndSettled)));
+  @Nested
+  class Ingesting {
 
-    StateSerializer codec = new StateSerializer();
-    Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);
+    @Test
+    void a_keeping_coalescer_accumulates() {
+      AgentState<String> state =
+          AgentState.<String>idle(WATCHMAN)
+              .ingesting(keepAll(), item("a", "one"))
+              .ingesting(keepAll(), item("b", "two"));
 
-    assertThat(after).isEqualTo(before);
+      assertThat(state.backlog())
+          .extracting(BacklogItem::observation)
+          .containsExactly("one", "two");
+    }
+
+    @Test
+    void a_superseding_coalescer_keeps_only_what_it_returns() {
+      AgentState<String> state =
+          AgentState.<String>idle(WATCHMAN)
+              .ingesting(newestOnly(), item("a", "one"))
+              .ingesting(newestOnly(), item("b", "two"));
+
+      assertThat(state.backlog()).extracting(BacklogItem::observation).containsExactly("two");
+    }
   }
 
-  @Test
-  void the_waiting_backlog_round_trips_through_the_state_serializer() {
-    AgentState before =
-        AgentState.idle()
-            .ingesting(
-                Coalescer.none(),
-                new BacklogItem<>(
-                    "entry-42", "the disk is full", Instant.parse("2026-08-28T12:00:00Z")))
-            .taking()
-            .startingTurn("turn-1")
-            .withPhase(new Phase.CallingModel());
+  @Nested
+  class Taking {
 
-    StateSerializer codec = new StateSerializer();
-    Object after = codec.fromBinary(codec.toBinary(before), StateSerializer.AGENT_STATE_V2);
+    @Test
+    void moves_the_head_into_flight_and_names_the_turn() {
+      AgentState<String> state =
+          AgentState.<String>idle(WATCHMAN)
+              .ingesting(keepAll(), item("a", "one"))
+              .ingesting(keepAll(), item("b", "two"))
+              .taking("turn-1");
 
-    assertThat(after).isEqualTo(before);
-    assertThat(((AgentState) after).current().observation()).isEqualTo("the disk is full");
+      assertThat(state.inFlight().observation()).isEqualTo("one");
+      assertThat(state.backlog()).extracting(BacklogItem::observation).containsExactly("two");
+      assertThat(state.turnId()).isEqualTo("turn-1");
+      assertThat(state.busy()).isTrue();
+    }
+
+    @Test
+    @DisplayName("the coalescer never sees the observation a turn is running on")
+    void an_in_flight_observation_is_out_of_the_coalescers_reach() {
+      AgentState<String> working =
+          AgentState.<String>idle(WATCHMAN).ingesting(keepAll(), item("a", "one")).taking("turn-1");
+
+      AgentState<String> after = working.ingesting(newestOnly(), item("b", "two"));
+
+      assertThat(after.inFlight().observation()).isEqualTo("one");
+      assertThat(after.backlog()).extracting(BacklogItem::observation).containsExactly("two");
+    }
+
+    @Test
+    void taking_from_an_empty_backlog_is_a_caller_bug() {
+      AgentState<String> idle = AgentState.idle(WATCHMAN);
+
+      assertThatThrownBy(() -> idle.taking("turn-1")).isInstanceOf(IllegalStateException.class);
+    }
   }
 
-  @Test
-  void a_coalescer_cannot_supersede_the_observation_a_turn_is_already_running_on() {
-    // A policy that merges EVERYTHING onto one key -- the most aggressive case there is.
-    Coalescer<String> supersedeEverything = Coalescer.byKey(text -> java.util.Optional.of("k"));
-    AgentState working =
-        AgentState.idle()
-            .ingesting(supersedeEverything, new BacklogItem<>("a", "first", Instant.EPOCH))
-            .taking()
-            .startingTurn("turn-1")
-            .withPhase(new Phase.CallingModel());
+  @Nested
+  class Finishing {
 
-    AgentState afterArrival =
-        working.ingesting(supersedeEverything, new BacklogItem<>("b", "second", Instant.EPOCH));
+    @Test
+    void clears_the_turn_and_the_in_flight_slot_but_not_the_backlog() {
+      AgentState<String> state =
+          AgentState.<String>idle(WATCHMAN)
+              .ingesting(keepAll(), item("a", "one"))
+              .ingesting(keepAll(), item("b", "two"))
+              .taking("turn-1")
+              .finished();
 
-    // Left in the backlog, "a" would have been merged away and the turn would have finished by
-    // discarding an item it never processed.
-    assertThat(afterArrival.current().id()).isEqualTo("a");
-    assertThat(afterArrival.current().observation()).isEqualTo("first");
-    assertThat(afterArrival.backlog()).hasSize(1);
-    assertThat(afterArrival.backlog().getFirst().observation()).isEqualTo("second");
-  }
-
-  @Test
-  void a_finished_turn_lets_go_of_what_it_was_working_on() {
-    AgentState working =
-        AgentState.idle()
-            .ingesting(Coalescer.none(), new BacklogItem<>("a", "first", Instant.EPOCH))
-            .ingesting(Coalescer.none(), new BacklogItem<>("b", "second", Instant.EPOCH))
-            .taking()
-            .startingTurn("turn-1");
-
-    assertThat(working.current().id()).isEqualTo("a");
-    assertThat(working.backlog()).hasSize(1);
-    assertThat(working.finishedTurn().inFlight()).isNull();
-    assertThat(working.finishedTurn().hasWork()).isTrue();
+      assertThat(state.inFlight()).isNull();
+      assertThat(state.busy()).isFalse();
+      assertThat(state.hasWork()).isTrue();
+      assertThat(state.backlog()).extracting(BacklogItem::observation).containsExactly("two");
+    }
   }
 }

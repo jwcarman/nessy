@@ -15,55 +15,42 @@
  */
 package org.jwcarman.nessy.engine;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import java.util.List;
-import java.util.Optional;
 
 /**
- * What one round is still waiting on: the phase, and nothing else.
+ * What a turn is waiting on, and nothing else.
  *
- * <p>Carved out of the old {@code TurnState} when the document that holds it grew a turn id — see
- * {@link AgentState}. The three variants and every helper move here unchanged.
+ * <p>Lives on the TURN's document rather than the agent's. That is the whole reason the agent's
+ * state stays flat: a turn advancing through a model call and eight tool calls rewrites this, not
+ * the backlog.
+ *
+ * <p>Wire names are a compatibility surface — a turn parked overnight is read back by name.
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "phase")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "phase")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = Phase.Idle.class, name = "idle"),
+  @JsonSubTypes.Type(value = Phase.Starting.class, name = "starting"),
   @JsonSubTypes.Type(value = Phase.CallingModel.class, name = "calling-model"),
   @JsonSubTypes.Type(value = Phase.WorkingTools.class, name = "working-tools")
 })
 public sealed interface Phase {
 
-  /** No round in flight. The steady state. */
-  record Idle() implements Phase {}
+  /** The turn exists and has claimed its input; nothing has been asked of the model yet. */
+  record Starting() implements Phase {}
 
   /** A model call is in flight. */
   record CallingModel() implements Phase {}
 
-  /** The model asked for tools. Each unsettled call has a live {@link ToolCallActor}. */
-  record WorkingTools(List<ToolCallRecord> calls) implements Phase {
+  /**
+   * The model asked for tools, and these are the calls not yet settled.
+   *
+   * <p>Ids only. What each call RETURNED is content, and content the size of whatever a tool
+   * decided to hand back — keeping it here would make a turn's document grow with what its tools
+   * do, which is the thing claims exist to prevent.
+   */
+  record WorkingTools(java.util.List<String> callIds) implements Phase {
     public WorkingTools {
-      calls = List.copyOf(calls);
-    }
-
-    @JsonIgnore
-    public boolean allSettled() {
-      return calls.stream().allMatch(ToolCallRecord::settled);
-    }
-
-    @JsonIgnore
-    public List<ToolCallRecord> unsettled() {
-      return calls.stream().filter(call -> !call.settled()).toList();
-    }
-
-    public Optional<ToolCallRecord> call(String callId) {
-      return calls.stream().filter(call -> call.id().equals(callId)).findFirst();
-    }
-
-    public WorkingTools replace(ToolCallRecord updated) {
-      return new WorkingTools(
-          calls.stream().map(call -> call.id().equals(updated.id()) ? updated : call).toList());
+      callIds = java.util.List.copyOf(callIds);
     }
   }
 }

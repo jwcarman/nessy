@@ -1,0 +1,33 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.api.block;
+
+import java.util.Objects;
+
+/**
+ * An image attached to a message, base64-encoded with its media type.
+ *
+ * <p>Legal in user content only. Never in assistant content — no provider we target lets a model
+ * emit an image as part of its turn — and, for now, not inside a tool result either: see {@link
+ * ToolResultContentBlock}.
+ */
+public record ImageBlock(String mediaType, String base64Data) implements UserContentBlock {
+
+  public ImageBlock {
+    Objects.requireNonNull(mediaType, "mediaType must not be null");
+    Objects.requireNonNull(base64Data, "base64Data must not be null");
+  }
+}

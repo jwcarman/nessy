@@ -93,6 +93,17 @@ public final class InMemorySubstrate extends SubstrateSupport implements Substra
   }
 
   @Override
+  public int deleteKind(String kind) {
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    synchronized (lock) {
+      List<DocKey> doomed =
+          documents.keySet().stream().filter(docKey -> docKey.kind().equals(kind)).toList();
+      doomed.forEach(documents::remove);
+      return doomed.size();
+    }
+  }
+
+  @Override
   public List<String> keys(String kind, int limit) {
     Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
     if (limit < 1) {

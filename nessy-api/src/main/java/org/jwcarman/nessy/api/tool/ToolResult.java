@@ -15,71 +15,67 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.message.ResultBlock;
-import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ToolResultContentBlock;
 
 /**
- * What a tool handed back, and whether it went wrong.
+ * What a tool call produced: it worked and gave you something, or it did not and told you why.
  *
- * <p>Content is a list of {@link ResultBlock} rather than a string because a tool can legitimately
- * return an image — MCP's {@code CallToolResult} content is an array, and Anthropic's {@code
- * tool_result} accepts image blocks. Flattening that to text loses the image silently, which is the
- * wrong answer for a screenshot tool or a chart renderer.
+ * <p>The two arms carry different things, which is why this is sealed rather than a flag. A success
+ * carries CONTENT — structured, and one day more than text. A failure carries an EXPLANATION, which
+ * is always prose, because the party that reads it is the model, deciding whether to try again.
  *
- * <p>It is {@code ResultBlock} and not {@code ContentBlock} because a thinking block, a tool-use
- * block, and a nested tool result are all illegal here for every provider. The narrower type makes
- * them unrepresentable instead of leaving a validation rule to be written, tested, and eventually
- * forgotten.
+ * <p><b>It says nothing about which call it answers.</b> {@code toolUseId} lives on {@code
+ * ToolResultBlock} and only the engine sets it, so a tool cannot echo the wrong id, answer a call
+ * it was not asked about, or answer two. That is the one thing a tool is not allowed to author.
  *
- * <p>Most tools return text, and {@link #ok(String)} / {@link #error(String)} keep that a
- * one-liner.
- *
- * @param content what the tool produced, never null, never containing null
- * @param isError whether this represents a failure the model should see and react to
+ * <p><b>Both a tool and the engine produce these.</b> A tool reports its own failure; the engine
+ * reports an unknown tool name, arguments that will not bind, a thrown exception, a denied
+ * approval, an expired deferral. Whether the tool's code actually RAN is deliberately not modelled
+ * as a third arm — nothing branches on it, and the only party that needs to know is the model,
+ * which reads prose. So the MESSAGE says it: "the call was not made" versus "it may have partially
+ * completed."
  */
-public record ToolResult(List<ResultBlock> content, boolean isError) {
+/** Wire names are a compatibility surface: a parked call's claimed result names them. */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = ToolResult.Success.class, name = "success"),
+  @JsonSubTypes.Type(value = ToolResult.Failure.class, name = "failure")
+})
+public sealed interface ToolResult {
 
-  public ToolResult {
-    Objects.requireNonNull(content, "content must not be null");
-    content = List.copyOf(content);
+  /** The call produced an answer. */
+  record Success(List<ToolResultContentBlock> content) implements ToolResult {
+    public Success {
+      Objects.requireNonNull(content, "content must not be null");
+      content = List.copyOf(content);
+    }
   }
 
-  /** A successful text result — the common case. */
-  public static ToolResult ok(String text) {
+  /** The call produced no answer, and this is why — in words the model can act on. */
+  record Failure(String message) implements ToolResult {
+    public Failure {
+      Objects.requireNonNull(message, "message must not be null");
+    }
+  }
+
+  /** Succeeded, with a text answer. */
+  static ToolResult ok(String text) {
     Objects.requireNonNull(text, "text must not be null");
-    return new ToolResult(List.of(new TextBlock(text)), false);
+    return new Success(List.of(new TextBlock(text)));
   }
 
-  /** A failed text result — the common case. */
-  public static ToolResult error(String text) {
-    Objects.requireNonNull(text, "text must not be null");
-    return new ToolResult(List.of(new TextBlock(text)), true);
+  /** Succeeded, with content. */
+  static ToolResult ok(List<ToolResultContentBlock> content) {
+    return new Success(content);
   }
 
-  /** A successful result carrying arbitrary legal content. */
-  public static ToolResult ok(List<ResultBlock> content) {
-    return new ToolResult(content, false);
-  }
-
-  /** A failed result carrying arbitrary legal content. */
-  public static ToolResult error(List<ResultBlock> content) {
-    return new ToolResult(content, true);
-  }
-
-  /**
-   * The text of this result, with any non-text content dropped.
-   *
-   * <p>For logs, span attributes, and assertions — the places that want a line of prose rather than
-   * a structure. <b>Not</b> for building a provider request: a provider must render the blocks, or
-   * an image a tool returned vanishes on its way to the model.
-   */
-  public String text() {
-    return content.stream()
-        .filter(TextBlock.class::isInstance)
-        .map(block -> ((TextBlock) block).text())
-        .collect(Collectors.joining("\n"));
+  /** Did not succeed. State whether the tool's code ran — the model uses that to judge a retry. */
+  static ToolResult error(String message) {
+    return new Failure(message);
   }
 }

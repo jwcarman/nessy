@@ -15,50 +15,55 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.ComputationCallback;
 
 /**
  * The outcome of something that might have to wait.
  *
- * <p>Two arms, no third (durable spec, two-armed ruling): {@link Ready} is the answer in hand;
- * {@link Deferred} says the answer arrives through a durable computation that does not exist yet.
- * Deferring is a pure RETURN now (deferral-by-callback spec §1) — a tool says what to do once the
- * id exists and the plumbing creates it, folds it, commits, and only then runs the callback.
- * Nothing a tool can do makes the id exist early, so "deferred without parking" and "answered after
- * deferring" are no longer writable.
+ * <p>Two arms, no third: {@link Ready} is the answer in hand; {@link Deferred} says the answer
+ * arrives later, through whatever the deferring party already told the world about.
+ *
+ * <p>Deferring carries no callback. The return address exists BEFORE the deferring party runs — it
+ * reads the handle from its context, tells the vendor, and returns — so there is nothing to run
+ * afterwards and no id that does not exist yet.
  *
  * @param <T> what the wait produces
  */
-public sealed interface Awaited<T> {
+public sealed interface Awaited<T> permits Awaited.Ready, Awaited.Deferred {
 
-  /** The wait finished in-process: {@code value} is the answer, in hand right now. */
-  record Ready<T>(T value) implements Awaited<T> {}
-
-  /**
-   * The wait outlives this process.
-   *
-   * @param callback what to run once the computation exists — the only thing that tells the world
-   *     where to answer
-   * @param term how long the tool wants; REQUIRED, because the deferring party always knows what it
-   *     wants and the harness never does (spec §5). The harness clips it to its own ceiling, and
-   *     only the clipped {@code deadline} is ever shown to the callback.
-   */
-  record Deferred<T>(ComputationCallback callback, Duration term) implements Awaited<T> {
-    public Deferred {
-      Objects.requireNonNull(callback, "callback must not be null");
-      Objects.requireNonNull(term, "term must not be null");
+  /** The wait finished in-process: {@code result} is the answer, in hand right now. */
+  record Ready<T>(T result) implements Awaited<T> {
+    public Ready {
+      Objects.requireNonNull(result, "result must not be null");
     }
   }
 
-  /** {@link Ready#Ready(Object)} wrapping {@code value}. */
-  static <T> Awaited<T> ready(T value) {
-    return new Ready<>(value);
+  /**
+   * The wait outlives this call.
+   *
+   * <p><b>A lease, not a promise.</b> {@code expiresAt} does not commit the deferring party to
+   * answering by then; it tells the engine when to stop waiting and release what it is holding for
+   * this call — the parked state, and the claim on the arguments. An answer arriving after it finds
+   * the call already settled and is rejected harmlessly.
+   *
+   * <p><b>Absolute, not a duration.</b> Three things follow. The engine stores the instant rather
+   * than a start time plus a term, so a restart recomputes nothing. "Relative to which moment" —
+   * the return, or the commit — stops being a question. And a time beyond the engine's ceiling is
+   * an impossible value that is REFUSED rather than silently shortened, so the deferring party
+   * always knows exactly what it was granted and can never promise a human something false.
+   */
+  record Deferred<T>(Instant expiresAt) implements Awaited<T> {
+    public Deferred {
+      Objects.requireNonNull(expiresAt, "expiresAt must not be null");
+    }
   }
 
-  /** {@link Deferred}: what to do once the id exists, and for how long it is wanted. */
-  static <T> Awaited<T> deferred(ComputationCallback callback, Duration term) {
-    return new Deferred<>(callback, term);
+  static <T> Awaited<T> ready(T result) {
+    return new Ready<>(result);
+  }
+
+  static <T> Awaited<T> deferred(Instant expiresAt) {
+    return new Deferred<>(expiresAt);
   }
 }

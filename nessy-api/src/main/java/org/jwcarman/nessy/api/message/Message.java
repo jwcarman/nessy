@@ -15,31 +15,25 @@
  */
 package org.jwcarman.nessy.api.message;
 
-import java.util.List;
-import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-/** One turn of the conversation, as a role and its content blocks. */
-public record Message(Role role, List<ContentBlock> content) {
-
-  public Message {
-    Objects.requireNonNull(role, "role must not be null");
-    content = List.copyOf(content);
-  }
-
-  public static Message user(String text) {
-    return new Message(Role.USER, List.of(new TextBlock(text)));
-  }
-
-  public static Message user(List<ContentBlock> content) {
-    return new Message(Role.USER, content);
-  }
-
-  public static Message assistant(List<ContentBlock> content) {
-    return new Message(Role.ASSISTANT, content);
-  }
-
-  /** Tool results go back as a user message — see {@link ToolResultBlock}. */
-  public static Message toolResults(List<ContentBlock> results) {
-    return new Message(Role.USER, results);
-  }
-}
+/**
+ * One turn of the conversation.
+ *
+ * <p>The role IS the type. There is no {@code Role} enum, because a second way to ask the same
+ * question is a second way to get a different answer — and because each role admits a different set
+ * of content, which a shared type could only check at runtime.
+ *
+ * <p>There is no system arm. Anthropic now accepts a system message inside the message list, as a
+ * cache-preserving operator channel, and adding an arm to a sealed interface later is a breaking
+ * change — so this is a decision deferred rather than one made.
+ */
+/** Wire names are a compatibility surface: a stored transcript names them. Never change one. */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "role")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = UserMessage.class, name = "user"),
+  @JsonSubTypes.Type(value = AssistantMessage.class, name = "assistant"),
+  @JsonSubTypes.Type(value = ToolResultMessage.class, name = "tool-result")
+})
+public sealed interface Message permits UserMessage, AssistantMessage, ToolResultMessage {}

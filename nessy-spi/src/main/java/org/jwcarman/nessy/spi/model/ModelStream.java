@@ -16,12 +16,13 @@
 package org.jwcarman.nessy.spi.model;
 
 /**
- * One turn's worth of streamed events.
+ * One model call, as it happens.
  *
- * <p>An {@code Iterable} rather than a publisher: on virtual threads, blocking iteration is the
- * cheap and readable option, and it maps directly onto what the Anthropic and OpenAI Java SDKs
- * already hand you. {@code close()} narrows {@link AutoCloseable} to drop the checked exception so
- * try-with-resources at the call site stays clean.
+ * <p>Blocking and iterable by design: on virtual threads that is cheaper and far more readable than
+ * a callback protocol, and a for-loop over arriving events is what the assembling code wants to be.
+ *
+ * <p>The caller closes it. A stream abandoned mid-flight holds a connection open, so closing is not
+ * hygiene — it is how a provider learns nobody is listening any more.
  */
 public interface ModelStream extends Iterable<ModelEvent>, AutoCloseable {
 

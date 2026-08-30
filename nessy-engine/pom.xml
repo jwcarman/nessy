@@ -29,17 +29,10 @@
 
   <artifactId>nessy-engine</artifactId>
   <name>Nessy Engine</name>
-  <description>The engine: agents as actors, turns as their children, tool invocations as theirs. The only module that knows Pekko exists.</description>
+  <description>The actor runtime behind a Harness: sharded agents, one turn at a time, tool calls with approval and execution phases.</description>
 
   <dependencyManagement>
     <dependencies>
-      <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-bom</artifactId>
-        <version>${opentelemetry.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
@@ -68,7 +61,6 @@
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
@@ -78,18 +70,13 @@
       <artifactId>jackson-datatype-jsr310</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-tracing</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-core</artifactId>
+      <groupId>com.fasterxml.uuid</groupId>
+      <artifactId>java-uuid-generator</artifactId>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
-
     <dependency>
       <groupId>org.apache.pekko</groupId>
       <artifactId>pekko-actor-typed_2.13</artifactId>
@@ -102,21 +89,6 @@
       <groupId>org.apache.pekko</groupId>
       <artifactId>pekko-cluster-sharding-typed_2.13</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-stream_2.13</artifactId>
-    </dependency>
-
-    <!-- Journal and logging backends are the HOST's choice, never the engine's:
-         pekko-persistence-jdbc and pekko-slf4j stay with whoever deploys us.
-
-         pekko-serialization-jackson is deliberately absent. Its Scala module pins
-         jackson-databind to [2.21.0, 2.22.0) and this reactor is on 2.22.0, so adding it
-         fails every actor system at startup. That clash is a good forcing function rather
-         than a problem to route around: Nessy already owns its serialization through
-         Codec and a single pinned ObjectMapper, so a second serialization stack with its
-         own Jackson floor is exactly the dependency we do not want. A host that needs
-         Pekko-native message serialization brings it, and its own Jackson, itself. -->
 
     <dependency>
       <groupId>org.apache.pekko</groupId>
@@ -134,22 +106,13 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <!-- The engine emits spans through Micrometer's Tracer and never names OpenTelemetry.
-         These are test-only: a real tracer to assert against, which is the whole point of
-         MicrometerTracing. A host picks its own bridge. -->
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.opentelemetry</groupId>
-      <artifactId>opentelemetry-sdk-testing</artifactId>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -166,13 +129,6 @@
             </manifestEntries>
           </archive>
         </configuration>
-        <executions>
-          <execution>
-            <goals>
-              <goal>test-jar</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>

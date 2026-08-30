@@ -180,7 +180,7 @@ underneath persists it, not any cache in front of it.
 
 ## `subscribe` and `ask`
 
-`Agent#subscribe(TurnObserver)` returns a `Subscription` — the one
+`Agent#subscribe(TurnObserver)` returns a `AgentSubscription` — the one
 closeable in the API, because it is the only thing holding a routing entry
 open. It routes into a fanout the harness carries per agent id, alongside
 the harness's own configured `turnObserver`: both a `subscribe`d observer
@@ -188,7 +188,7 @@ and the global one see every event a bound id's turns narrate —
 `TextDelta`, `ThinkingDelta`, `RedactedThinking`, the `ToolCall*` trio,
 `AssistantSaid`, and `TurnEnded` — exactly once each, whether the turn
 settles synchronously inside `tell`/`drive` or a worker-driven delivery
-folds it days later. Close the `Subscription` to stop listening; dropping
+folds it days later. Close the `AgentSubscription` to stop listening; dropping
 it unclosed leaks one routing entry, never a thread.
 
 `Agent#ask(O)` is a pattern over exactly that door, not new machinery:

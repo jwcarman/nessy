@@ -1,0 +1,176 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.engine;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+import java.time.Clock;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentSubscription;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.HarnessFactory;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.model.ModelResult;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+
+/**
+ * The engine through the door an application actually uses.
+ *
+ * <p>Nothing here mentions an actor, a shard, a persistence id, or a codec. If this passes, the API
+ * is implemented rather than merely implementable — which is a different claim from anything the
+ * other tests make, since they all reach past the front door to wire sharding by hand.
+ */
+@DisplayName("A harness, used the way an application would")
+class HarnessTest {
+
+  private static final AgentType WATCHMAN = AgentType.of("watchman");
+  private static final AgentId HOUSE = AgentId.of("house-12");
+
+  private static ActorTestKit testKit;
+  private static Harness<HouseEvent> harness;
+
+  @BeforeAll
+  static void wireEverything() {
+    testKit = ClusterOfOne.start();
+
+    ModelProvider models =
+        id ->
+            new Model() {
+              @Override
+              public ModelId id() {
+                return id;
+              }
+
+              @Override
+              public org.jwcarman.nessy.spi.model.ModelStream stream(ModelRequest request) {
+                return Scripts.saying(
+                    new ModelResult.Replied(
+                        new AssistantMessage(
+                            List.of(
+                                new TextBlock(
+                                    "noted: " + request.context().lines().getLast().text()))),
+                        StopReason.END_TURN,
+                        new Usage(10, 5)));
+              }
+            };
+
+    HarnessFactory factory =
+        new PekkoHarnessFactory(
+            testKit.system(),
+            new InMemorySubstrate(Clock.systemUTC()),
+            models,
+            4096,
+            java.util.Set.of(),
+            Runnable::run,
+            Clock.systemUTC(),
+            ReplyTokens.ephemeral());
+
+    harness =
+        factory.createHarness(
+            HouseEvent.class,
+            config ->
+                config
+                    .type(WATCHMAN)
+                    .systemPrompt("You watch the house.")
+                    .model(ModelId.of("claude-opus-5"))
+                    .renderer(HouseEvents.RENDERER));
+  }
+
+  @AfterAll
+  static void stop() {
+    testKit.shutdownTestKit();
+  }
+
+  @Test
+  void a_harness_knows_what_kind_of_agent_it_serves() {
+    assertThat(harness.type()).isEqualTo(WATCHMAN);
+  }
+
+  @Test
+  @DisplayName("tell an agent something, and watch it work")
+  void an_observation_is_narrated_from_start_to_finish() {
+    List<AgentEvent> heard = new CopyOnWriteArrayList<>();
+    AgentSubscription subscription = harness.subscribe(HOUSE, heard::add);
+
+    harness.observe(HOUSE, new HouseEvent("kitchen", "door opened"));
+
+    await()
+        .atMost(15, SECONDS)
+        .untilAsserted(
+            () -> {
+              assertThat(heard).isNotEmpty();
+              assertThat(heard)
+                  .extracting(event -> event.getClass().getSimpleName())
+                  .containsSubsequence("TurnStarted", "AssistantSaid", "TurnEnded");
+            });
+
+    AgentEvent.AssistantSaid said =
+        heard.stream()
+            .filter(AgentEvent.AssistantSaid.class::isInstance)
+            .map(AgentEvent.AssistantSaid.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(said.message().content())
+        .containsExactly(new TextBlock("noted: kitchen: door opened"));
+
+    subscription.close();
+  }
+
+  @Test
+  @DisplayName("the closing line reports how the turn ended and what it cost")
+  void a_turn_ends_with_a_result_and_a_bill() {
+    List<AgentEvent> heard = new CopyOnWriteArrayList<>();
+    AgentSubscription subscription = harness.subscribe(AgentId.of("house-13"), heard::add);
+
+    harness.observe(AgentId.of("house-13"), new HouseEvent("hall", "motion"));
+
+    await()
+        .atMost(15, SECONDS)
+        .untilAsserted(
+            () ->
+                assertThat(heard).filteredOn(AgentEvent.TurnEnded.class::isInstance).isNotEmpty());
+
+    AgentEvent.TurnEnded ended =
+        heard.stream()
+            .filter(AgentEvent.TurnEnded.class::isInstance)
+            .map(AgentEvent.TurnEnded.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(ended.outcome()).isInstanceOf(org.jwcarman.nessy.api.TurnResult.Completed.class);
+    assertThat(ended.usage()).isEqualTo(new Usage(10, 5));
+
+    subscription.close();
+  }
+}
