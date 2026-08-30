@@ -67,13 +67,6 @@ public interface Substrate {
   void delete(String kind, String key, long expectedVersion);
 
   /**
-   * Document keys under {@code kind}, in ascending lexicographic order, at most {@code limit}
-   * results (spec §4.4).
-   *
-   * @throws NullPointerException if {@code kind} is null
-   * @throws IllegalArgumentException if {@code limit} is less than 1
-   */
-  /**
    * Deletes EVERY key under {@code kind}, and reports how many went.
    *
    * <p>The bulk door that makes kind-scoped ownership cheap. A caller that owns a whole kind — one
@@ -93,6 +86,13 @@ public interface Substrate {
    */
   int deleteKind(String kind);
 
+  /**
+   * Document keys under {@code kind}, in ascending lexicographic order, at most {@code limit}
+   * results (spec §4.4).
+   *
+   * @throws NullPointerException if {@code kind} is null
+   * @throws IllegalArgumentException if {@code limit} is less than 1
+   */
   List<String> keys(String kind, int limit);
 
   /**

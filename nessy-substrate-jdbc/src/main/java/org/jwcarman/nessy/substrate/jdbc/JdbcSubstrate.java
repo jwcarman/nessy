@@ -89,6 +89,7 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
           + "WHERE kind = ? AND key = ? AND version = ?";
   private static final String DELETE_DOCUMENT_SQL =
       "DELETE FROM nessy_document WHERE kind = ? AND key = ? AND version = ?";
+  private static final String DELETE_KIND_SQL = "DELETE FROM nessy_document WHERE kind = ?";
   private static final String SELECT_KEYS_SQL =
       "SELECT key FROM nessy_document WHERE kind = ? ORDER BY key LIMIT ?";
   private static final String INSERT_JOURNAL_SQL =
@@ -294,6 +295,20 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
         connection -> {
           deleteDocument(connection, kind, key, expectedVersion);
           return null;
+        });
+  }
+
+  @Override
+  public int deleteKind(String kind) {
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    // One statement, no version check and no key list: the point is to remove whatever is
+    // there, including the orphan a crash left behind that no key list would have named.
+    return inTransaction(
+        connection -> {
+          try (PreparedStatement delete = connection.prepareStatement(DELETE_KIND_SQL)) {
+            delete.setString(1, kind);
+            return delete.executeUpdate();
+          }
         });
   }
 

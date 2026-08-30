@@ -59,6 +59,7 @@
     <module>nessy-spi</module>
     <module>nessy-engine</module>
     <module>nessy-testing</module>
+    <module>nessy-substrate-jdbc</module>
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
     <module>nessy-spike-pekko-cluster</module>
