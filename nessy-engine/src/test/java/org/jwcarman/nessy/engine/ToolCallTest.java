@@ -231,6 +231,28 @@ class ToolCallTest {
             });
   }
 
+  /**
+   * The second thing a person types, after a first turn that used a tool.
+   *
+   * <p>This is the shape a REPL is made of and the one nothing in this suite covered: every other
+   * observation here is a FIRST one to a fresh agent.
+   */
+  @Test
+  @DisplayName("an agent that has run a tool can still be told something else")
+  void a_second_observation_after_a_tool_call_gets_its_own_turn() {
+    narrated.clear();
+    observe("house-77", new HouseEvent("kitchen", "door opened"));
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(turnsEnded()).isEqualTo(1));
+
+    observe("house-77", new HouseEvent("hall", "motion"));
+
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(turnsEnded()).isEqualTo(2));
+  }
+
+  private static long turnsEnded() {
+    return narrated.stream().filter(AgentEvent.TurnEnded.class::isInstance).count();
+  }
+
   @Test
   @DisplayName("the engine narrates the whole story of the call")
   void narration_tells_the_turn_and_the_call() {

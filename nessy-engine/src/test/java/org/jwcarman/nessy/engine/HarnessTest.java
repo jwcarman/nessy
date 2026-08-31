@@ -148,6 +148,41 @@ class HarnessTest {
     subscription.close();
   }
 
+  /**
+   * A CONVERSATION, which is what every REPL and chat window actually is.
+   *
+   * <p>Until this existed, every observation in this suite was a FIRST one to a fresh agent — six
+   * of them across four files, not one of which ever came back a second time. A green build
+   * therefore said nothing at all about the second thing a person types, which is the shape of
+   * literally every real session.
+   */
+  @Test
+  @DisplayName("a second observation to the same agent gets its own turn")
+  void an_agent_answers_more_than_once() {
+    AgentId talkative = AgentId.of("house-14");
+    List<AgentEvent> heard = new CopyOnWriteArrayList<>();
+    AgentSubscription subscription = harness.subscribe(talkative, heard::add);
+
+    harness.observe(talkative, new HouseEvent("kitchen", "door opened"));
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(endings(heard)).hasSize(1));
+
+    harness.observe(talkative, new HouseEvent("hall", "motion"));
+
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(endings(heard)).hasSize(2));
+    assertThat(heard)
+        .filteredOn(AgentEvent.Answered.class::isInstance)
+        .extracting(event -> ((AgentEvent.Answered) event).message().content())
+        .containsExactly(
+            List.of(new TextBlock("noted: kitchen: door opened")),
+            List.of(new TextBlock("noted: hall: motion")));
+
+    subscription.close();
+  }
+
+  private static List<AgentEvent> endings(List<AgentEvent> heard) {
+    return heard.stream().filter(AgentEvent.TurnEnded.class::isInstance).toList();
+  }
+
   @Test
   @DisplayName("the closing line reports how the turn ended and what it cost")
   void a_turn_ends_with_a_result_and_a_bill() {

@@ -18,11 +18,13 @@ package org.jwcarman.nessy.engine;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.ActorContext;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
+import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.apache.pekko.persistence.typed.PersistenceId;
 import org.apache.pekko.persistence.typed.state.javadsl.CommandHandler;
 import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
@@ -274,14 +276,48 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
   }
 
   /**
-   * The shard has confirmed the passivation this agent asked for.
+   * The shard has confirmed the passivation this agent asked for — which does NOT mean the agent is
+   * still idle.
    *
-   * <p>Safe by construction rather than by check: an agent only asks while idle, and anything
-   * arriving in the meantime cancels the request by making it busy again — sharding re-delivers to
-   * a fresh instance, which recovers from its own document.
+   * <p>An observation can be delivered in the window between asking and being told, so this can
+   * arrive with a turn already claimed or a backlog already taken. Stopping then kills the turn
+   * actor, which is a CHILD; the model call it left running completes into a dead ref and nobody is
+   * left to end the turn. That is the hang: the claim outlives every actor that could honour it.
+   *
+   * <p><b>Refusing to stop is not the fix</b>, however tempting. Measured against Pekko: an entity
+   * that ignores its stop message is stranded for good — the shard buffers every later message and
+   * delivers none of them, and the region logs {@code entities ... not stopped}. Stopping is
+   * mandatory.
+   *
+   * <p>So it stops, but not silently: it first posts a {@link NessyMessage.Wake} to its OWN entity
+   * id through the shard, the one address that outlives this incarnation. The shard holds it until
+   * this actor is gone and hands it to the successor, whose {@link #onWake} finds a claimed turn
+   * with no actor running it and starts one — the same recovery a crash would get. Without it, that
+   * recovery exists but nothing ever triggers it.
    */
   private Effect<AgentState<O>> onStop(AgentState<O> state, NessyMessage.Stop message) {
+    if ((state.busy() || state.hasWork()) && !shuttingDown()) {
+      ClusterSharding.get(context.getSystem())
+          .entityRefFor(EntityTypeKey.create(NessyMessage.class, agentType.name()), agentId.value())
+          .tell(new NessyMessage.Wake(message.headers()));
+    }
     return Effect().none().thenStop();
+  }
+
+  /**
+   * Whether this node is on its way out, as opposed to merely unloading an idle agent.
+   *
+   * <p>Pekko sends the SAME stop message for both, so without this the revival above fires during
+   * shutdown and hand-off: the shard re-creates the agent it is trying to drain, the region never
+   * finishes handing off, and the process hangs on the way out instead of on the way in. Measured —
+   * two tests wedged for the full ten-second hand-off timeout.
+   *
+   * <p>Nothing is lost by staying quiet here. The turn stays claimed in durable state, and whatever
+   * picks this agent up next — this node after a restart, or another node taking the shard — finds
+   * the claim with no actor running it and starts one, which is the same recovery a crash gets.
+   */
+  private boolean shuttingDown() {
+    return CoordinatedShutdown.get(context.getSystem()).getShutdownReason().isPresent();
   }
 
   /**
