@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.memory;
+package org.jwcarman.nessy.memory.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -64,7 +65,7 @@ class PipelineMemoryTest {
   @Test
   void recalls_through_the_stages_in_order() {
     Memory memory =
-        Memory.pipeline(new Remembering(), p -> p.stage(adding("first")).stage(adding("second")));
+        MemoryPipeline.of(new Remembering(), p -> p.stage(adding("first")).stage(adding("second")));
     memory.remember(AGENT, UserMessage.of("hello"));
 
     Context context = memory.recall(AGENT);
@@ -80,7 +81,7 @@ class PipelineMemoryTest {
   @DisplayName("what a stage adds is never remembered")
   void stage_output_does_not_reach_the_bootstrap() {
     Remembering bootstrap = new Remembering();
-    Memory memory = Memory.pipeline(bootstrap, p -> p.stage(adding("background")));
+    Memory memory = MemoryPipeline.of(bootstrap, p -> p.stage(adding("background")));
     memory.remember(AGENT, UserMessage.of("hello"));
 
     memory.recall(AGENT);
@@ -94,7 +95,7 @@ class PipelineMemoryTest {
   @DisplayName("no stages is the bootstrap, unchanged")
   void an_empty_pipeline_changes_nothing() {
     Remembering bootstrap = new Remembering();
-    Memory memory = Memory.pipeline(bootstrap, p -> {});
+    Memory memory = MemoryPipeline.of(bootstrap, p -> {});
     memory.remember(AGENT, UserMessage.of("hello"));
 
     assertThat(memory.recall(AGENT)).isEqualTo(bootstrap.recall(AGENT));
@@ -107,7 +108,7 @@ class PipelineMemoryTest {
   @Test
   void a_stage_that_throws_propagates() {
     Memory memory =
-        Memory.pipeline(
+        MemoryPipeline.of(
             new Remembering(),
             p ->
                 p.stage(
@@ -123,7 +124,7 @@ class PipelineMemoryTest {
   @Test
   void remembering_goes_straight_through() {
     Remembering bootstrap = new Remembering();
-    Memory memory = Memory.pipeline(bootstrap, p -> p.stage(adding("background")));
+    Memory memory = MemoryPipeline.of(bootstrap, p -> p.stage(adding("background")));
 
     memory.remember(AGENT, UserMessage.of("said"));
 

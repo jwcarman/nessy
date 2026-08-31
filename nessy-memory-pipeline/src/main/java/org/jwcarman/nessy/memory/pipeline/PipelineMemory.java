@@ -13,18 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.memory;
+package org.jwcarman.nessy.memory.pipeline;
 
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.HistoryMessage;
 
 /**
  * A memory that recalls through stages.
  *
- * <p>Package-private: the only way to make one is {@code Memory.pipeline}, so this never becomes a
- * name anyone has to know.
+ * <p>Package-private: the only way to make one is {@link MemoryPipeline#of}, so this never becomes
+ * a name anyone has to know.
  *
  * <p>{@code remember} delegates untouched. Only the recall side is shaped, which is what keeps the
  * record and the view from disagreeing — they are the same object, so there is no second store to

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.memory;
+package org.jwcarman.nessy.memory.pipeline;
 
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.message.Context;
