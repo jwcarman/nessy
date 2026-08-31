@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
@@ -79,7 +80,7 @@ class ModelDiscoveryTest {
       var selection = ModelDiscovery.select(Map.of("ALPHA_KEY", "k"), List.of(ALPHA));
 
       assertThat(selection.providerName()).isEqualTo("alpha");
-      assertThat(selection.model().id()).isEqualTo("alpha-default");
+      assertThat(selection.model().id().value()).isEqualTo("alpha-default");
     }
 
     @Test
@@ -95,7 +96,7 @@ class ModelDiscoveryTest {
     void from_env_returns_the_bound_model_directly() {
       var model = ModelDiscovery.fromEnv(Map.of("ALPHA_KEY", "k"), List.of(ALPHA));
 
-      assertThat(model.id()).isEqualTo("alpha-default");
+      assertThat(model.id().value()).isEqualTo("alpha-default");
     }
   }
 
@@ -123,7 +124,7 @@ class ModelDiscoveryTest {
       var selection = ModelDiscovery.select(env, List.of(ALPHA, BETA));
 
       assertThat(selection.providerName()).isEqualTo("beta");
-      assertThat(selection.model().id()).isEqualTo("beta-default");
+      assertThat(selection.model().id().value()).isEqualTo("beta-default");
     }
 
     @Test
@@ -309,7 +310,7 @@ class ModelDiscoveryTest {
     void comes_from_the_winners_default_when_nessy_model_is_unset() {
       var selection = ModelDiscovery.select(Map.of("ALPHA_KEY", "k"), List.of(ALPHA));
 
-      assertThat(selection.model().id()).isEqualTo("alpha-default");
+      assertThat(selection.model().id().value()).isEqualTo("alpha-default");
     }
 
     @Test
@@ -318,7 +319,7 @@ class ModelDiscoveryTest {
           ModelDiscovery.select(
               Map.of("ALPHA_KEY", "k", "NESSY_MODEL", "alpha-large"), List.of(ALPHA));
 
-      assertThat(selection.model().id()).isEqualTo("alpha-large");
+      assertThat(selection.model().id().value()).isEqualTo("alpha-large");
     }
 
     @Test
@@ -326,17 +327,20 @@ class ModelDiscoveryTest {
       var selection =
           ModelDiscovery.select(Map.of("ALPHA_KEY", "k", "NESSY_MODEL", "   "), List.of(ALPHA));
 
-      assertThat(selection.model().id()).isEqualTo("alpha-default");
+      assertThat(selection.model().id().value()).isEqualTo("alpha-default");
     }
   }
 
   @Nested
   class Selection_record {
 
+    private static final Model ALPHA_MODEL =
+        ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow().model(ModelId.of("m"));
+
     @Test
     void rejects_a_null_provider() {
       var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
-      var model = provider.model("m");
+      var model = provider.model(ModelId.of("m"));
 
       assertThatThrownBy(() -> new ModelDiscovery.Selection(null, model, "alpha"))
           .isInstanceOf(NullPointerException.class);
@@ -353,7 +357,7 @@ class ModelDiscoveryTest {
     @Test
     void rejects_a_null_provider_name() {
       var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
-      var model = provider.model("m");
+      var model = provider.model(ModelId.of("m"));
 
       assertThatThrownBy(() -> new ModelDiscovery.Selection(provider, model, null))
           .isInstanceOf(NullPointerException.class);
@@ -368,10 +372,10 @@ class ModelDiscoveryTest {
     void closing_a_selection_closes_the_gateway_it_came_from() {
       var closed = new AtomicBoolean();
       var provider =
-          new ModelProvider() {
+          new CloseableProvider() {
 
             @Override
-            public Model model(String id) {
+            public Model model(ModelId id) {
               throw new UnsupportedOperationException("not needed here");
             }
 
@@ -380,20 +384,30 @@ class ModelDiscoveryTest {
               closed.set(true);
             }
           };
-      var model = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow().model("m");
+      var model = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow().model(ModelId.of("m"));
 
       new ModelDiscovery.Selection(provider, model, "alpha").close();
 
       assertThat(closed).isTrue();
     }
 
-    /** The default is a no-op, so a gateway holding nothing needs no close of its own. */
+    /**
+     * A gateway that holds nothing to release does not have to be closeable at all: {@link
+     * ModelProvider} only promises to hand back models, so closing one that never opted in is a
+     * silent no-op rather than a failure.
+     */
     @Test
     void a_gateway_that_holds_nothing_closes_silently() {
-      var provider = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow();
-      var selection = new ModelDiscovery.Selection(provider, provider.model("m"), "alpha");
+      ModelProvider holdsNothing = id -> ALPHA_MODEL;
+      var selection = new ModelDiscovery.Selection(holdsNothing, ALPHA_MODEL, "alpha");
 
       assertThatCode(selection::close).doesNotThrowAnyException();
+    }
+
+    /** Both halves of the closeable test above need a type that is a provider AND closeable. */
+    private interface CloseableProvider extends ModelProvider, AutoCloseable {
+      @Override
+      void close();
     }
   }
 
@@ -405,7 +419,7 @@ class ModelDiscoveryTest {
       var selection = ModelDiscovery.select(Map.of(RegisteredFakeBootstrap.ENV_VAR, "k"));
 
       assertThat(selection.providerName()).isEqualTo("registered");
-      assertThat(selection.model().id()).isEqualTo("registered-default");
+      assertThat(selection.model().id().value()).isEqualTo("registered-default");
     }
 
     @Test
@@ -421,7 +435,7 @@ class ModelDiscoveryTest {
     void from_env_through_the_service_loader_finds_the_registration() {
       var model = ModelDiscovery.fromEnv(Map.of(RegisteredFakeBootstrap.ENV_VAR, "k"));
 
-      assertThat(model.id()).isEqualTo("registered-default");
+      assertThat(model.id().value()).isEqualTo("registered-default");
     }
 
     @Test

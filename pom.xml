@@ -64,6 +64,7 @@
     <module>nessy-model-openai</module>
     <module>nessy-model-gemini</module>
     <module>nessy-model-bedrock</module>
+    <module>nessy-model-discovery</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-spring-boot-starter</module>
@@ -71,9 +72,6 @@
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
     <module>nessy-spike-pekko-cluster</module>
-    <!-- CUTOVER 2026-08-30: re-added one at a time as each is ported to the new api/spi.
-         Order: substrate-jdbc, tool-mcp, testing, the four model adapters, discovery,
-         spring-boot-starter, examples. nessy-intent awaits a ruling on typed intent. -->
   </modules>
 
   <properties>

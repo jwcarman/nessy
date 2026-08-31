@@ -20,9 +20,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProviderBootstrap;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -108,16 +107,17 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     return lastProvider;
   }
 
-  record FakeProvider(String providerName, AtomicBoolean closed) implements ModelProvider {
+  /**
+   * Closeable, like every real adapter: discovery builds a gateway per candidate and only one can
+   * win, so the losers have to be released by whoever built them — and {@code closed} is how a test
+   * asks whether that happened.
+   */
+  record FakeProvider(String providerName, AtomicBoolean closed)
+      implements ModelProvider, AutoCloseable {
 
     @Override
-    public Model model(String id) {
+    public Model model(ModelId id) {
       return new FakeModel(id);
-    }
-
-    @Override
-    public String name() {
-      return providerName;
     }
 
     @Override
@@ -130,25 +130,12 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     }
   }
 
-  private record FakeModel(String id) implements Model {
-    @Override
-    public ModelDescription describe() {
-      return new ModelDescription(id, "test", 128_000, Set.of());
-    }
+  /** Carries its id and nothing else: no discovery test ever streams. */
+  private record FakeModel(ModelId id) implements Model {
 
     @Override
     public ModelStream stream(ModelRequest request) {
       throw new UnsupportedOperationException("discovery tests never stream");
-    }
-
-    @Override
-    public Set<Capability> capabilities() {
-      return Set.of();
-    }
-
-    @Override
-    public String provider() {
-      return "test";
     }
   }
 }

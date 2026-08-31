@@ -144,7 +144,9 @@ public final class ModelDiscovery {
     var modelId =
         override != null && !override.isBlank() ? override : chosen.bootstrap().defaultModelId();
     return new Selection(
-        chosen.provider(), chosen.provider().model(modelId), chosen.bootstrap().name());
+        chosen.provider(),
+        chosen.provider().model(org.jwcarman.nessy.api.model.ModelId.of(modelId)),
+        chosen.bootstrap().name());
   }
 
   /**
@@ -165,10 +167,26 @@ public final class ModelDiscovery {
   private static void closeAll(List<Candidate> candidates, RuntimeException failure) {
     for (var candidate : candidates) {
       try {
-        candidate.provider().close();
-      } catch (RuntimeException e) {
+        release(candidate.provider());
+      } catch (Exception e) {
         failure.addSuppressed(e);
       }
+    }
+  }
+
+  /**
+   * Releases a gateway, if it holds anything to release.
+   *
+   * <p>{@link ModelProvider} is not itself closeable — asking for a model is all the SPI promises —
+   * but every adapter in this repository wraps a vendor HTTP client and implements {@link
+   * AutoCloseable} to let it go. Discovery builds several gateways and keeps one, so the losers
+   * would leak their connection pools if nobody looked. Testing the instance rather than widening
+   * the SPI keeps a decision about resource ownership out of an interface that has no opinion on
+   * it.
+   */
+  private static void release(ModelProvider provider) throws Exception {
+    if (provider instanceof AutoCloseable closeable) {
+      closeable.close();
     }
   }
 
@@ -178,8 +196,8 @@ public final class ModelDiscovery {
    */
   private static void closeQuietly(Candidate candidate) {
     try {
-      candidate.provider().close();
-    } catch (RuntimeException e) {
+      release(candidate.provider());
+    } catch (Exception e) {
       LOG.warn(
           "the '{}' provider was not chosen and threw while being closed; ignored",
           candidate.bootstrap().name(),
@@ -294,10 +312,21 @@ public final class ModelDiscovery {
       Objects.requireNonNull(providerName, "providerName must not be null");
     }
 
-    /** Closes the gateway this selection came from; idempotent, as every gateway's close is. */
+    /**
+     * Closes the gateway this selection came from; idempotent, as every gateway's close is.
+     *
+     * <p>Declares no checked exception, though {@link AutoCloseable#close()} allows one: a
+     * selection is held in try-with-resources by ordinary application code, and making every such
+     * block catch {@code Exception} would be a tax paid by everyone for a failure no caller can do
+     * anything about. A gateway that cannot let go of its client is a bug, so it surfaces as one.
+     */
     @Override
     public void close() {
-      provider.close();
+      try {
+        release(provider);
+      } catch (Exception e) {
+        throw new IllegalStateException("the '" + providerName + "' gateway failed to close", e);
+      }
     }
   }
 }
