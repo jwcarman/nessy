@@ -49,12 +49,22 @@ class ReplyTokensTest {
     assertThat(where.callId()).isEqualTo("c1");
   }
 
+  /**
+   * A LONG call id, not the {@code "c1"} the tests beside this one use.
+   *
+   * <p>This is the only test that asserts a string is ABSENT from the token, and a token is random
+   * base64url — so a two-character needle turns up inside one by pure chance every few runs, and
+   * the test fails having found nothing wrong. The needle has to be long enough that a collision is
+   * not a thing that happens.
+   */
+  private static final String LONG_CALL_ID = "call-9f3a2d7c41b8";
+
   @Test
   @DisplayName("a holder cannot read what is inside it")
   void the_coordinates_do_not_appear_in_the_token() {
-    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, LONG_CALL_ID);
 
-    assertThat(token.value()).doesNotContain("watchman", "house-12", "c1");
+    assertThat(token.value()).doesNotContain("watchman", "house-12", LONG_CALL_ID);
   }
 
   @Test
