@@ -262,6 +262,11 @@ class SubstrateIntentStoreTest {
     }
 
     @Override
+    public int deleteKind(String kind) {
+      return delegate.deleteKind(kind);
+    }
+
+    @Override
     public Optional<Document> read(String kind, String key) {
       return delegate.read(kind, key);
     }

@@ -64,6 +64,7 @@
     <module>nessy-model-openai</module>
     <module>nessy-model-gemini</module>
     <module>nessy-model-bedrock</module>
+    <module>nessy-intent</module>
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
     <module>nessy-spike-pekko-cluster</module>

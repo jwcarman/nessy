@@ -15,54 +15,51 @@
  */
 package org.jwcarman.nessy.intent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.authorization.Enricher;
-import org.jwcarman.nessy.api.tool.authorization.Key;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 
 /**
- * Reads the {@link IntentStore} this enricher was built over and deposits its latest declaration
- * under {@link #declared(Class)} — the claim a rule may read back. Absent a declaration, the draft
- * passes through untouched: a missing claim is not this enricher's failure to report, only a rule's
- * own choice to weigh.
+ * Reads the {@link IntentStore} this enricher was built over and records its latest declaration as
+ * a fact on the request — the claim a policy may read back. Absent a declaration, the request
+ * passes through untouched: a missing claim is not this enricher's failure to report, only a
+ * policy's own choice to weigh.
  *
- * <p>Typed, now that facts are (approval-lifecycle spec §1.2): the key names {@code vocabulary}
- * concretely, so the deposit renders through the pinned mapper and the read decodes back to it.
+ * <p><b>Gather and judge stay separate</b>, which is the whole point of a distinct type here even
+ * though {@link ApprovalRequest#fact(String, JsonNode)} would let any approver do both. An enricher
+ * never denies; it only makes a fact available, so several of them can run in any order before
+ * anything decides.
+ *
+ * <p>Facts are addressed by NAME rather than by a typed key, so this class and {@link IntentPolicy}
+ * agree by convention rather than by construction. {@link #DECLARED} is that convention, and both
+ * sides read it from here rather than spelling the string twice.
  *
  * @param <T> the declared-intent vocabulary
  */
-public final class IntentEnricher<T> implements Enricher {
-
-  private final IntentStore<T> store;
-  private final Class<T> vocabulary;
-
-  public IntentEnricher(IntentStore<T> store, Class<T> vocabulary) {
-    this.store = Objects.requireNonNull(store, "store must not be null");
-    this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
-  }
+public final class IntentEnricher<T> {
 
   /**
-   * The key a declaration of {@code vocabulary} lives under — value-equal wherever it is built, so
-   * an enricher in one module and a rule in another address the same fact by construction.
-   *
-   * @param vocabulary the declared-intent vocabulary
-   * @param <T> the declared-intent vocabulary
-   * @return the key
+   * The fact name a declaration lives under. Namespaced, as {@link ApprovalRequest} asks: this
+   * module is not the application's own code, and two modules annotating one question must not
+   * collide.
    */
-  public static <T> Key<T> declared(Class<T> vocabulary) {
-    Objects.requireNonNull(vocabulary, "vocabulary must not be null");
-    return new Key<>(vocabulary, "intent.declared");
+  public static final String DECLARED = "intent.declared";
+
+  private final IntentStore<T> store;
+  private final ObjectMapper mapper;
+
+  public IntentEnricher(IntentStore<T> store, ObjectMapper mapper) {
+    this.store = Objects.requireNonNull(store, "store must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
-  @Override
-  public void enrich(ApprovalRequest.Draft draft) {
+  /** Records the latest declaration on {@code request}, or leaves it untouched if there is none. */
+  public ApprovalRequest enrich(ApprovalRequest request) {
+    Objects.requireNonNull(request, "request must not be null");
     Optional<T> declared = store.latest();
-    declared.ifPresent(intent -> draft.deposit(declared(vocabulary), intent));
-  }
-
-  @Override
-  public Optional<String> displayName() {
-    return Optional.of("intent");
+    declared.ifPresent(intent -> request.fact(DECLARED, mapper.valueToTree(intent)));
+    return request;
   }
 }

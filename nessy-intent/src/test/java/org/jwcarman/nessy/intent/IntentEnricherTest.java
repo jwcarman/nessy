@@ -20,10 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.Map;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentEnricherTest {
@@ -32,11 +34,12 @@ class IntentEnricherTest {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-  private static ApprovalRequest.Draft freshDraft() {
+  private static ApprovalRequest freshRequest() {
     var call =
         new ToolCall(
             "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
-    return ApprovalRequest.draft("ops", "agent-a", call, Map.of(), MAPPER);
+    return new ApprovalRequest(
+        AgentType.of("ops"), AgentId.of("agent-a"), call, "restart prod-eu", Instant.EPOCH);
   }
 
   private static SubstrateIntentStore<Intent> freshStore() {
@@ -44,34 +47,52 @@ class IntentEnricherTest {
   }
 
   @Test
-  void itIsNamedIntentForTheAuthorizationReport() {
-    var enricher = new IntentEnricher<>(freshStore(), Intent.class);
-
-    assertThat(enricher.displayName()).contains("intent");
-  }
-
-  @Test
-  void itDepositsTheLatestDeclarationWhenOneWasRecorded() {
+  void it_records_the_latest_declaration_when_one_was_made() {
     var store = freshStore();
     store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
-    var enricher = new IntentEnricher<>(store, Intent.class);
-    var draft = freshDraft();
+    var enricher = new IntentEnricher<>(store, MAPPER);
+    var request = freshRequest();
 
-    enricher.enrich(draft);
+    enricher.enrich(request);
 
-    assertThat(draft.freeze().facts().get(IntentEnricher.declared(Intent.class)))
-        .contains(new Intent("restart prod-eu to clear the stuck deploy"));
+    // Read back through the same mapper that wrote it. Facts are JSON on the way through, so the
+    // decode is the reader's job now rather than a typed key's.
+    assertThat(request.fact(IntentEnricher.DECLARED))
+        .hasValueSatisfying(
+            fact ->
+                assertThat(MAPPER.convertValue(fact, Intent.class))
+                    .isEqualTo(new Intent("restart prod-eu to clear the stuck deploy")));
   }
 
   @Test
-  void itLeavesTheDraftUntouchedWhenNoDeclarationWasEverRecorded() {
-    var enricher = new IntentEnricher<>(freshStore(), Intent.class);
-    var draft = freshDraft();
+  void it_records_only_the_latest_declaration() {
+    var store = freshStore();
+    store.declare(new Intent("first"));
+    store.declare(new Intent("second"));
+    var request = freshRequest();
 
-    enricher.enrich(draft);
+    new IntentEnricher<>(store, MAPPER).enrich(request);
 
-    ApprovalRequest request = draft.freeze();
-    assertThat(request.facts().names()).isEmpty();
-    assertThat(request.facts().get(IntentEnricher.declared(Intent.class))).isEmpty();
+    assertThat(request.fact(IntentEnricher.DECLARED))
+        .hasValueSatisfying(
+            fact ->
+                assertThat(MAPPER.convertValue(fact, Intent.class).declaration())
+                    .isEqualTo("second"));
+  }
+
+  @Test
+  void it_leaves_the_request_untouched_when_no_declaration_was_ever_made() {
+    var enricher = new IntentEnricher<>(freshStore(), MAPPER);
+    var request = freshRequest();
+
+    enricher.enrich(request);
+
+    assertThat(request.facts().isEmpty()).isTrue();
+    assertThat(request.fact(IntentEnricher.DECLARED)).isEmpty();
+  }
+
+  @Test
+  void it_namespaces_its_fact_so_two_modules_cannot_collide() {
+    assertThat(IntentEnricher.DECLARED).isEqualTo("intent.declared");
   }
 }

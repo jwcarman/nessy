@@ -22,7 +22,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.tool.Schemas;
 
 class AnthropicSchemasTest {
 
@@ -159,10 +161,44 @@ class AnthropicSchemasTest {
     assertThat(inputSchema._additionalProperties()).doesNotContainKey("$defs");
   }
 
-  // REMOVED IN THE CUTOVER (2026-08-30): two tests that pinned Schemas.of's normalization of a
-  // sealed hierarchy's anyOf into the oneOf this adapter reads. Schemas.of has no counterpart in
-  // the new api, so there is nothing left to normalize and nothing honest to assert — a
-  // hand-built schema would only prove that the fixture I wrote matches the fixture I wrote.
-  // Restore these the day a schema-generation door returns to the API.
+  @Test
+  void a_sealed_vocabularys_oneOf_branches_survive_adaptation() {
+    ObjectNode schema = Schemas.of(Vocabulary.class);
+    StubTool spec = new StubTool("restart_or_shutdown", "Restarts or shuts down a host", schema);
 
+    var inputSchema = AnthropicSchemas.toInputSchema(spec.inputSchema());
+
+    var additionalProperties = inputSchema._additionalProperties();
+    assertThat(additionalProperties).containsKey("oneOf");
+    JsonNode oneOf = additionalProperties.get("oneOf").convert(JsonNode.class);
+    assertThat(oneOf).hasSize(2);
+
+    var typeConsts = new ArrayList<String>();
+    oneOf.forEach(branch -> typeConsts.add(branch.at("/properties/type/const").asText()));
+    assertThat(typeConsts).containsExactlyInAnyOrder("Restart", "Shutdown");
+  }
+
+  /**
+   * The reviewer's case: an annotated sealed ABSTRACT CLASS reaches {@code Schemas.of}'s plain
+   * (non-sealed-interface) generation branch, where victools still emits {@code anyOf} straight
+   * from the Jackson annotations. Without {@code Schemas.of}'s normalization, this adapter — which
+   * only ever looks for {@code oneOf} — would silently produce zero branches (an empty schema
+   * handed to the model) instead of failing loudly; this pins that it does not.
+   */
+  @Test
+  void a_sealed_abstract_classs_oneOf_branches_survive_adaptation_too() {
+    ObjectNode schema = Schemas.of(ClassVocabulary.class);
+    StubTool spec = new StubTool("restart_or_shutdown", "Restarts or shuts down a host", schema);
+
+    var inputSchema = AnthropicSchemas.toInputSchema(spec.inputSchema());
+
+    var additionalProperties = inputSchema._additionalProperties();
+    assertThat(additionalProperties).containsKey("oneOf");
+    JsonNode oneOf = additionalProperties.get("oneOf").convert(JsonNode.class);
+    assertThat(oneOf).hasSize(2);
+
+    var typeConsts = new ArrayList<String>();
+    oneOf.forEach(branch -> typeConsts.add(branch.at("/properties/type/const").asText()));
+    assertThat(typeConsts).containsExactlyInAnyOrder("ClassRestart", "ClassShutdown");
+  }
 }

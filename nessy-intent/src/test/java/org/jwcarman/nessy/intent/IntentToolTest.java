@@ -21,15 +21,11 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.tool.ComputationId;
-import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolContext;
-import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -39,11 +35,12 @@ class IntentToolTest {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
+  /**
+   * A context that offers only a reply token, which is the whole of {@link ToolContext} now — this
+   * tool never defers, so it never reaches for it.
+   */
   private static ToolContext freshContext() {
-    var call =
-        new ToolCall(
-            "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("declaration", "x"));
-    return new ToolContext(call, ToolEventListener.noop(), ComputationId.of("execution-id"));
+    return () -> new ReplyToken("unused-by-a-tool-that-never-defers");
   }
 
   @Nested
@@ -69,12 +66,15 @@ class IntentToolTest {
     }
 
     @Test
-    void itRequiresOnlyImmediateCompletion() {
+    void itAnswersImmediatelyRatherThanDeferring() {
       var tool =
           IntentTool.freeform(
               new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
 
-      assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
+      // What CompletionPolicy.IMMEDIATE used to declare, the return type now shows: recording a
+      // claim is local work, so this tool can only ever come back Ready.
+      assertThat(tool.execute(new Intent("something"), freshContext()))
+          .isInstanceOf(Awaited.Ready.class);
     }
 
     @Test
@@ -136,7 +136,7 @@ class IntentToolTest {
               new SubstrateIntentStore<>(
                   new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER));
 
-      var schema = tool.spec().inputSchema();
+      var schema = tool.inputSchema();
 
       assertThat(schema.has("oneOf")).isTrue();
       assertThat(schema.get("oneOf")).hasSize(2);

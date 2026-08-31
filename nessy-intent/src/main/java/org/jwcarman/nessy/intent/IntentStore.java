@@ -16,12 +16,16 @@
 package org.jwcarman.nessy.intent;
 
 import java.util.Optional;
-import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.api.memory.Memory;
 
 /**
- * The claim channel's own stash: pre-scoped, like {@link Memory} — no id parameter anywhere
- * (agent-as-scope §3.5). One store answers for exactly one scope; the wiring that builds a scope is
- * the one place that decides which store instance that is.
+ * The claim channel's own stash: pre-scoped — no id parameter anywhere. One store answers for
+ * exactly one scope; the wiring that builds a scope is the one place that decides which store
+ * instance that is.
+ *
+ * <p>{@link Memory} no longer keeps it company in that: memory became id-keyed, because ONE memory
+ * serves every agent of a type. A store here still answers for one agent, which is why {@link
+ * SubstrateIntentStore} takes its {@code agentId} at construction rather than per call.
  *
  * @param <T> the declared-intent vocabulary this store holds — the freeform {@code Intent} record,
  *     or an organization's own sealed vocabulary (vocabulary amendment §3)

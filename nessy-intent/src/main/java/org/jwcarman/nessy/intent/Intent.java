@@ -18,7 +18,7 @@ package org.jwcarman.nessy.intent;
 /**
  * The model's own untrusted claim of what it is about to do and why (authorization design §7): a
  * declaration, recorded before the model calls any other tool, that a policy may read back through
- * {@code IntentEnricher#declared} — never a grant of authority on its own, only a claim an enricher
+ * {@link IntentEnricher#DECLARED} — never a grant of authority on its own, only a claim an enricher
  * deposits and a policy may weigh alongside everything else it gathers.
  *
  * @param declaration what the model says it is about to do and why, never blank

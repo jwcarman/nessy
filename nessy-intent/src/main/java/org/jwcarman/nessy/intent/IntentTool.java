@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.intent;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.Schemas;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -27,10 +29,10 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * IntentStore} so a later {@link IntentEnricher} can deposit it for a policy to read.
  *
  * <p>Generic over the vocabulary itself (vocabulary amendment §3, "One generic kit carries both"):
- * {@link #inputType()} returns the vocabulary class as-is, so a sealed vocabulary rides {@link
- * org.jwcarman.nessy.api.tool.Schemas}' {@code oneOf} schema and the tool executor's Jackson
- * binding with zero extra code. The freeform tier is the pre-built {@code T = Intent} instance
- * returned by {@link #freeform(IntentStore)}.
+ * {@link #inputType()} returns the vocabulary class as-is and {@link #inputSchema()} runs it
+ * through {@link Schemas}, so a sealed vocabulary rides that {@code oneOf} schema and the tool
+ * executor's Jackson binding with zero extra code. The freeform tier is the pre-built {@code T =
+ * Intent} instance returned by {@link #freeform(IntentStore)}.
  *
  * <p>A named public class, not {@link Tool#of} — users reference {@code IntentTool} directly to
  * wire the same store into both this tool's grant and the {@link IntentEnricher} of the tool whose
@@ -72,6 +74,11 @@ public final class IntentTool<T> implements Tool<T> {
   @Override
   public Class<T> inputType() {
     return vocabulary;
+  }
+
+  @Override
+  public ObjectNode inputSchema() {
+    return Schemas.of(vocabulary);
   }
 
   @Override
