@@ -23,10 +23,10 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
  * An approver that answers from a script, like {@link ScriptedModel}; when the script runs out it
@@ -70,7 +70,7 @@ public final class ScriptedApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context) {
     Objects.requireNonNull(request, "request must not be null");
     requests.add(request);
     ApprovalResult next = answers.poll();

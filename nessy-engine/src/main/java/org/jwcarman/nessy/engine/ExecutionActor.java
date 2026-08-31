@@ -24,8 +24,8 @@ import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolBinding;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -59,14 +59,14 @@ final class ExecutionActor {
       ToolBindings bindings,
       ToolBinding<?> binding,
       JsonNode arguments,
-      ReplyToken replyAddress,
+      ToolContext toolContext,
       Executor blocking,
       ActorRef<ToolCallActor.Command> replyTo) {
     return Behaviors.setup(
         context -> {
           CompletableFuture<Awaited<ToolResult>> ran =
               CompletableFuture.supplyAsync(
-                  () -> bindings.run(binding, arguments, replyAddress), blocking);
+                  () -> bindings.run(binding, arguments, toolContext), blocking);
           context.pipeToSelf(
               ran,
               (answer, failure) -> {

@@ -67,7 +67,7 @@ final class ApprovalActor {
       ToolBindings bindings,
       ToolBinding<?> binding,
       ApprovalRequest request,
-      org.jwcarman.nessy.api.tool.ReplyToken replyAddress,
+      org.jwcarman.nessy.api.tool.ApprovalContext approvalContext,
       Narrator narrator,
       Executor blocking,
       ActorRef<ToolCallActor.Command> replyTo) {
@@ -77,7 +77,7 @@ final class ApprovalActor {
           // pattern match below stops being checked.
           CompletableFuture<Awaited<ApprovalResult>> asked =
               CompletableFuture.supplyAsync(
-                  () -> bindings.approve(binding, request, replyAddress), blocking);
+                  () -> bindings.approve(binding, request, approvalContext), blocking);
           context.pipeToSelf(
               asked,
               (answer, failure) -> {

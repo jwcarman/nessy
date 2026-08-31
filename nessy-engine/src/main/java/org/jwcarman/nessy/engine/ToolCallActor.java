@@ -23,11 +23,13 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -90,13 +92,15 @@ final class ToolCallActor {
           // a person, and the tool may hand it to the outside world. Both settle the same call, so
           // both get the same token rather than two that mean the same thing.
           ReplyToken replyAddress = tokens.mint(agentType, agentId, call.id());
+          ApprovalContext approvalContext = () -> replyAddress;
+          ToolContext toolContext = () -> replyAddress;
           ActorRef<ApprovalActor.Command> approval =
               context.spawn(
                   ApprovalActor.create(
                       bindings,
                       binding,
                       request,
-                      replyAddress,
+                      approvalContext,
                       narrator,
                       blocking,
                       context.getSelf()),
@@ -108,7 +112,7 @@ final class ToolCallActor {
               bindings,
               binding,
               narrator,
-              replyAddress,
+              toolContext,
               blocking,
               turn,
               approval);
@@ -122,7 +126,7 @@ final class ToolCallActor {
       ToolBindings bindings,
       ToolBinding<?> binding,
       Narrator narrator,
-      ReplyToken replyAddress,
+      ToolContext toolContext,
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
       ActorRef<ApprovalActor.Command> approval) {
@@ -155,7 +159,7 @@ final class ToolCallActor {
                                       bindings,
                                       binding,
                                       call.arguments(),
-                                      replyAddress,
+                                      toolContext,
                                       blocking,
                                       context.getSelf()),
                                   "execution");

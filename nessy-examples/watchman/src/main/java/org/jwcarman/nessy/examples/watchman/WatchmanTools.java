@@ -24,9 +24,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.engine.AgentTools;
-import org.jwcarman.nessy.engine.ToolCallActor;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * The four tools this port carries, and everything the rest of the system needs to know about them.
@@ -107,71 +108,60 @@ public final class WatchmanTools {
   }
 
   /**
-   * The watchman's tools as the engine's {@link AgentTools}, bound to the runner that executes
-   * them. The engine never learns that these happen to be shell commands.
+   * The watchman's tools, as {@link Tool}s bound to the runner that executes them. The engine never
+   * learns that these happen to be shell commands.
+   *
+   * <p>Every tool takes NO arguments — the read-only ones report everything, and the two acting
+   * ones have exactly one thing they do — so each binds {@link JsonNode} and ignores it. That
+   * keeps this example about composition rather than JSON-schema plumbing.
    */
-  public static AgentTools boundTo(CommandRunner runner) {
-    return new AgentTools() {
+  public static List<Tool<JsonNode>> boundTo(CommandRunner runner) {
+    return SPECS.values().stream().map(spec -> toTool(spec, runner)).toList();
+  }
+
+  private static Tool<JsonNode> toTool(Spec spec, CommandRunner runner) {
+    return new Tool<>() {
       @Override
-      public java.util.List<org.jwcarman.nessy.api.tool.ToolSpec> specs() {
-        return WatchmanTools.specs();
+      public String name() {
+        return spec.name();
       }
 
       @Override
-      public boolean needsApproval(String tool) {
-        return WatchmanTools.needsApproval(tool);
+      public String description() {
+        return spec.description();
       }
 
       @Override
-      public String action(String tool, String argumentsJson) {
-        return WatchmanTools.action(tool, argumentsJson);
+      public Class<JsonNode> inputType() {
+        return JsonNode.class;
       }
 
       @Override
-      public String run(String tool, String argumentsJson) {
-        return WatchmanTools.run(runner, tool, argumentsJson);
+      public ObjectNode inputSchema() {
+        return emptyObjectSchema();
       }
 
       @Override
-      public com.fasterxml.jackson.databind.JsonNode argumentsOf(String argumentsJson) {
-        return WatchmanTools.argumentsOf(argumentsJson);
+      public Awaited<ToolResult> execute(JsonNode input, ReplyToken replyTo) {
+        // Blocking by design; the engine runs this on its blocking executor.
+        List<String> argv = spec.argv().apply(input == null ? JSON.createObjectNode() : input);
+        CommandRunner.Output output = runner.run(argv, spec.timeout());
+        String rendered = spec.render().apply(output, argv);
+        return Awaited.ready(
+            output.succeeded() ? ToolResult.ok(rendered) : ToolResult.error(rendered));
       }
     };
   }
 
-  public static boolean needsApproval(String tool) {
-    return spec(tool).map(Spec::needsApproval).orElse(false);
-  }
-
   /** The command line a human is shown, and the one that runs. Never a shell string. */
-  public static String action(String tool, String argumentsJson) {
+  public static String describe(String tool, JsonNode arguments) {
     return spec(tool)
-        .map(spec -> String.join(" ", spec.argv().apply(parse(argumentsJson))))
+        .map(spec -> String.join(" ", spec.argv().apply(arguments)))
         .orElse("(unknown tool " + tool + ")");
   }
 
-  /** Runs one call. Blocking by design; the caller guarantees a virtual thread. */
-  public static String run(CommandRunner runner, String tool, String argumentsJson) {
-    Spec spec = SPECS.get(tool);
-    if (spec == null) {
-      return "no such tool: " + tool;
-    }
-    List<String> argv = spec.argv().apply(parse(argumentsJson));
-    return spec.render().apply(runner.run(argv, spec.timeout()), argv);
-  }
-
-  /**
-   * The tools, as Nessy's own {@link ToolSpec}. The provider turns these into whatever the wire
-   * wants, so this port no longer assembles OpenAI JSON by hand.
-   *
-   * <p>Every tool here takes no arguments: the read-only ones report everything, and the two acting
-   * ones have exactly one thing they do. That keeps the port about the actor composition rather
-   * than about JSON-schema plumbing.
-   */
-  public static List<ToolSpec> specs() {
-    return SPECS.values().stream()
-        .map(spec -> new ToolSpec(spec.name(), spec.description(), emptyObjectSchema()))
-        .toList();
+  public static boolean needsApproval(String tool) {
+    return spec(tool).map(Spec::needsApproval).orElse(false);
   }
 
   private static ObjectNode emptyObjectSchema() {
@@ -180,11 +170,6 @@ public final class WatchmanTools {
     schema.putObject("properties");
     schema.putArray("required");
     return schema;
-  }
-
-  /** The model's arguments, as a node -- what a Remembrance.ToolExchange carries. */
-  public static JsonNode argumentsOf(String argumentsJson) {
-    return parse(argumentsJson);
   }
 
   private static JsonNode parse(String argumentsJson) {

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -31,7 +32,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 class RecordingApproverTest {
 
   /** These approvers are asked in isolation, so nothing ever answers at this address. */
-  private static final ReplyToken NOWHERE = new ReplyToken("nowhere");
+  private static final ApprovalContext NOWHERE = () -> new ReplyToken("nowhere");
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());

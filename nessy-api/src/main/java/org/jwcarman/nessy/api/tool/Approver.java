@@ -31,9 +31,9 @@ public interface Approver {
    * projection.
    *
    * @param request what is being asked
-   * @param replyTo where a person's answer goes if this approver defers
+   * @param context what else this decision offers — today, where a person's answer goes
    */
-  Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo);
+  Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context);
 
   /**
    * The approver that always says yes — for a tool nobody gates.
@@ -42,6 +42,6 @@ public interface Approver {
    * than a branch on whether a gate is present.
    */
   static Approver always() {
-    return (request, replyTo) -> Awaited.ready(ApprovalResult.approved());
+    return (request, context) -> Awaited.ready(ApprovalResult.approved());
   }
 }

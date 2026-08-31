@@ -45,10 +45,10 @@ public final class IntentPolicy {
   public static Approver requireDeclared(IntentEnricher<?> enricher, Approver next) {
     Objects.requireNonNull(enricher, "enricher must not be null");
     Objects.requireNonNull(next, "next must not be null");
-    return (request, replyTo) -> {
+    return (request, context) -> {
       ApprovalRequest enriched = enricher.enrich(request);
       return enriched.fact(IntentEnricher.DECLARED).isPresent()
-          ? next.approve(enriched, replyTo)
+          ? next.approve(enriched, context)
           : Awaited.ready(
               ApprovalResult.denied(
                   "no intent declared — declare your intent with the declare-intent tool before"

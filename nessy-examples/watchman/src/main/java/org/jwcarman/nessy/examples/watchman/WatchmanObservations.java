@@ -15,11 +15,12 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import org.jwcarman.nessy.api.agent.Coalescer;
-import org.jwcarman.nessy.api.agent.ObservationRenderer;
-import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.ObservationRenderer;
+import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
+import org.jwcarman.nessy.api.backlog.BacklogItem;
+import org.jwcarman.nessy.api.message.UserMessage;
 
 /**
  * The watchman's observation vocabulary, such as it is: a String, because this port has exactly one
@@ -29,16 +30,35 @@ import org.jwcarman.nessy.api.message.TextBlock;
  */
 public final class WatchmanObservations {
 
-  private static final String ROUNDS = "rounds";
+  private static final String TICK = "Do your rounds.";
 
-  /** Anything ending in "Do your rounds." is a tick, and ticks supersede one another. */
-  public static final Coalescer<String> COALESCER =
-      Coalescer.byKey(
-          text -> text.endsWith("Do your rounds.") ? Optional.of(ROUNDS) : Optional.empty());
+  /**
+   * Anything ending in "Do your rounds." is a tick, and ticks supersede one another: a backlog that
+   * already holds one drops it in favour of the newer one, so a watchman that was busy for an hour
+   * does twenty minutes of catching up rather than twenty rounds.
+   *
+   * <p>Written out rather than composed from a key helper, because the coalescer is now a plain
+   * function over the waiting list — which is more code here and one less concept to learn.
+   */
+  public static final BacklogCoalescer<String> COALESCER =
+      (waiting, arriving) -> {
+        if (!isTick(arriving)) {
+          List<BacklogItem<String>> kept = new ArrayList<>(waiting);
+          kept.add(arriving);
+          return kept;
+        }
+        List<BacklogItem<String>> kept = new ArrayList<>(waiting.size() + 1);
+        waiting.stream().filter(item -> !isTick(item)).forEach(kept::add);
+        kept.add(arriving);
+        return kept;
+      };
 
-  /** The watchman's only observation kind is already text, so rendering it is a single block. */
-  public static final ObservationRenderer<String> RENDERER =
-      observation -> List.of(new TextBlock(observation));
+  /** The watchman's only observation kind is already text, so rendering it is one message. */
+  public static final ObservationRenderer<String> RENDERER = UserMessage::of;
 
   private WatchmanObservations() {}
+
+  private static boolean isTick(BacklogItem<String> item) {
+    return item.observation().endsWith(TICK);
+  }
 }

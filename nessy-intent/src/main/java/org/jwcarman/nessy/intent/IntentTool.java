@@ -18,9 +18,9 @@ package org.jwcarman.nessy.intent;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Schemas;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -82,7 +82,7 @@ public final class IntentTool<T> implements Tool<T> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(T input, ReplyToken replyTo) {
+  public Awaited<ToolResult> execute(T input, ToolContext context) {
     store.declare(input);
     return Awaited.ready(ToolResult.ok("intent recorded"));
   }

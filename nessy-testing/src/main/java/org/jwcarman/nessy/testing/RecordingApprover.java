@@ -19,10 +19,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
  * A thin wrapper around any {@link Approver}, recording every (request, answer) pair it produced,
@@ -47,9 +47,9 @@ public final class RecordingApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context) {
     Objects.requireNonNull(request, "request must not be null");
-    Awaited<ApprovalResult> result = delegate.approve(request, replyTo);
+    Awaited<ApprovalResult> result = delegate.approve(request, context);
     answers.add(new Answer(request, result));
     return result;
   }

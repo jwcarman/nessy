@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -40,6 +41,7 @@ import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -78,8 +80,8 @@ class McpToolboxTest {
    * Where an answer would go if the tool deferred. An MCP {@code tools/call} is a single round trip
    * and never defers, so nothing reads it.
    */
-  private static ReplyToken contextFor(JsonNode arguments) {
-    return new ReplyToken("unused-by-a-tool-that-never-defers");
+  private static ToolContext contextFor(JsonNode arguments) {
+    return () -> new ReplyToken("unused-by-a-tool-that-never-defers");
   }
 
   /**
@@ -266,7 +268,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi there");
         ToolDescriber<JsonNode> describer = args -> tool.name() + " " + args;
-        Approver deny = (request, replyTo) -> Awaited.ready(ApprovalResult.denied("pinned"));
+        Approver deny = (request, context) -> Awaited.ready(ApprovalResult.denied("pinned"));
 
         ToolBinding<JsonNode> binding = new ToolBinding<>(tool, deny, describer);
 
@@ -277,7 +279,9 @@ class McpToolboxTest {
         assertThat(
                 binding
                     .approver()
-                    .approve(approvalRequestFor(arguments), new ReplyToken("nowhere")))
+                    .approve(
+                        approvalRequestFor(arguments),
+                        ((ApprovalContext) () -> new ReplyToken("nowhere"))))
             .isEqualTo(Awaited.ready(ApprovalResult.denied("pinned")));
       }
     }
@@ -301,7 +305,7 @@ class McpToolboxTest {
           McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"));
       Tool<JsonNode> tool = fixture.tool("echo");
       JsonNode arguments = echoArguments("hi");
-      ReplyToken context = contextFor(arguments);
+      ToolContext context = contextFor(arguments);
       fixture.close();
 
       assertThatThrownBy(() -> tool.execute(arguments, context))

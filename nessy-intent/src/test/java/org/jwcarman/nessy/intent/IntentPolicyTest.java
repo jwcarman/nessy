@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -36,7 +37,7 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 class IntentPolicyTest {
 
   /** Nothing in these tests answers a deferred question, so the address is never read. */
-  private static final ReplyToken NOWHERE = new ReplyToken("nowhere");
+  private static final ApprovalContext NOWHERE = () -> new ReplyToken("nowhere");
 
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
@@ -83,7 +84,7 @@ class IntentPolicyTest {
     var store = freshStore();
     store.declare(new Intent("declared, but still not allowed"));
     Approver alwaysDenies =
-        (request, replyTo) -> Awaited.ready(ApprovalResult.denied("policy says no"));
+        (request, context) -> Awaited.ready(ApprovalResult.denied("policy says no"));
     var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), alwaysDenies);
 
     Awaited<ApprovalResult> result = policy.approve(freshRequest(), NOWHERE);
@@ -96,7 +97,7 @@ class IntentPolicyTest {
   void the_guarded_approver_never_runs_when_nothing_was_declared() {
     var calls = new AtomicInteger();
     Approver counting =
-        (request, replyTo) -> {
+        (request, context) -> {
           calls.incrementAndGet();
           return Awaited.ready(ApprovalResult.approved());
         };
@@ -112,7 +113,7 @@ class IntentPolicyTest {
     var store = freshStore();
     store.declare(new Intent("restart prod-eu"));
     Approver reader =
-        (request, replyTo) ->
+        (request, context) ->
             Awaited.ready(
                 request.fact(IntentEnricher.DECLARED).isPresent()
                     ? ApprovalResult.approved()

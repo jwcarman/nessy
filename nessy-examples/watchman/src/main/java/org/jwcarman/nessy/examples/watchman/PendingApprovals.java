@@ -15,112 +15,142 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import javax.sql.DataSource;
-import org.jwcarman.nessy.engine.AgentState;
-import org.jwcarman.nessy.engine.Phase;
-import org.jwcarman.nessy.engine.StateSerializer;
-import org.jwcarman.nessy.engine.ToolCallRecord;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentSubscriber;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
- * The approvals page's read side.
+ * The approvals page's read side: what is waiting on a person, and where to answer it.
  *
- * <p><b>The choice, and why.</b> Three options were open. <i>Ask the actors</i> — scatter-gather
- * across every live agent; correct, but it makes the page's latency a function of actor health and
- * it can only see agents that are in memory. <i>Write a projection</i> — a table the agent updates
- * when a call parks; fast to read, and a second write that can drift from the state it describes.
- * <i>Read the write model</i>, which is what this does.
+ * <p><b>The choice, and why it changed.</b> This used to read the write model — scan {@code
+ * durable_state}, deserialise each agent, and ask which of its calls were parked. That worked
+ * because the agent persisted everything the page needed. It no longer does: an agent persists its
+ * backlog and which turn is running, a turn persists its phase, and the actor waiting on a human is
+ * ephemeral. "What is pending" stopped being a pure function of anything on disk.
  *
- * <p>It works here because of a property the design already had: the agent persists everything the
- * page needs — what was asked, the exact command line, when it was asked, and whether a human has
- * answered — so "what is pending?" is a pure function of state that is already on disk. There is no
- * second write, so there is nothing to drift. And it reuses {@link StateSerializer}, so the page
- * and the agent literally cannot disagree about the format.
+ * <p>So this is the projection the old design deliberately rejected — with the difference that it
+ * is now fed by {@link AgentEvent} rather than by a second write the application makes by hand.
+ * Nothing here reaches into the engine: an approver records where an answer goes, {@link
+ * AgentEvent.ApprovalRequested} says what was asked, and {@link AgentEvent.ApprovalDecided} clears
+ * it. That is all public API.
  *
- * <p><b>What it costs.</b> A full scan of {@code durable_state} plus a deserialise per row, with no
- * index on "has a pending approval" because that predicate lives in Java rather than in SQL. For
- * one watchman on one box that is free. For a thousand agents it is not, and the answer then is a
- * real projection — at which point the drift problem comes back and has to be managed.
+ * <p><b>It survives a restart</b>, which is the part that looks like it should not. A recovered
+ * turn re-runs the calls it never settled, which spawns the approval again, which narrates {@link
+ * AgentEvent.ApprovalRequested} again — so a page that came up empty fills itself back in as the
+ * agents recover, rather than needing its own durable copy.
  *
- * <p>It also required two fields to be persisted that the pure actor design would not have needed:
- * {@code askedAt} and {@code decision}. The read side reached back into the write model, which is
- * worth noticing as a general force rather than an accident of this page.
+ * <p><b>What it costs.</b> The projection is per-process and in memory: it holds what THIS
+ * application has heard. Two instances serving the same page would each see only their own
+ * subscriptions, and the answer then is a shared store — at which point the drift the old design
+ * feared comes back and has to be managed.
  */
-public final class PendingApprovals {
+public final class PendingApprovals implements AgentSubscriber {
 
   /** One waiting approval, as the page needs it. */
   public record Row(
-      String agentId, String callId, String tool, String action, Instant askedAt, String dwell) {}
+      String agentId,
+      String callId,
+      String tool,
+      String action,
+      Instant askedAt,
+      Instant expiresAt,
+      String dwell) {}
 
-  private static final String QUERY =
-      "SELECT persistence_id, state_payload FROM durable_state"
-          + " WHERE persistence_id LIKE 'Watchman|%'";
+  private record Waiting(
+      String agentId, String callId, String tool, String action, Instant askedAt,
+      Instant expiresAt, ReplyToken replyTo) {}
 
-  private final DataSource dataSource;
-  private final StateSerializer codec = new StateSerializer();
-  private final java.time.Clock clock;
+  private final Map<String, Waiting> byCallId = new ConcurrentHashMap<>();
+  private final Map<String, ReplyToken> addresses = new ConcurrentHashMap<>();
+  private final Clock clock;
+  private final String agentId;
 
-  public PendingApprovals(DataSource dataSource, java.time.Clock clock) {
-    this.dataSource = dataSource;
-    this.clock = clock;
+  public PendingApprovals(Clock clock, String agentId) {
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
   }
 
-  /** Everything waiting on a human, longest wait first. */
-  public List<Row> pending() {
-    List<Row> rows = new ArrayList<>();
-    try (Connection connection = dataSource.getConnection();
-        PreparedStatement statement = connection.prepareStatement(QUERY);
-        ResultSet results = statement.executeQuery()) {
-      while (results.next()) {
-        String agentId = agentId(results.getString(1));
-        Object state = codec.fromBinary(results.getBytes(2), StateSerializer.AGENT_STATE_V2);
-        if (state instanceof AgentState agent
-            && agent.phase() instanceof Phase.WorkingTools working) {
-          working.calls().stream()
-              .filter(call -> WatchmanTools.needsApproval(call.tool()))
-              .filter(call -> !call.decided() && !call.settled())
-              .forEach(call -> rows.add(row(agentId, call)));
-        }
+  /**
+   * Where an answer for {@code callId} goes, recorded by the approver at the moment it decided a
+   * person was needed.
+   *
+   * <p>Separate from {@link #on(AgentEvent)} because the two arrive by different routes and neither
+   * waits for the other: the approver knows the address, the narration knows the question, and a
+   * row is only offered once both have landed.
+   */
+  public void awaiting(String callId, ReplyToken replyTo) {
+    addresses.put(callId, replyTo);
+  }
+
+  @Override
+  public void on(AgentEvent event) {
+    switch (event) {
+      case AgentEvent.ApprovalRequested asked ->
+          addresses.computeIfPresent(
+              asked.callId(),
+              (callId, replyTo) -> {
+                byCallId.put(
+                    callId,
+                    new Waiting(
+                        agentId,
+                        callId,
+                        asked.toolName(),
+                        asked.description(),
+                        clock.instant(),
+                        asked.expiresAt(),
+                        replyTo));
+                return replyTo;
+              });
+      case AgentEvent.ApprovalDecided decided -> forget(decided.callId());
+      default -> {
+        // Every other event is somebody else's business.
       }
-    } catch (SQLException e) {
-      throw new IllegalStateException("could not read pending approvals", e);
     }
-    rows.sort((a, b) -> a.askedAt().compareTo(b.askedAt()));
-    return List.copyOf(rows);
   }
 
-  private Row row(String agentId, ToolCallRecord call) {
-    return new Row(
-        agentId,
-        call.id(),
-        call.tool(),
-        call.action(),
-        call.askedAt(),
-        dwell(Duration.between(call.askedAt(), clock.instant())));
+  /** Everything still waiting, oldest first. */
+  public List<Row> pending() {
+    Instant now = clock.instant();
+    return byCallId.values().stream()
+        .sorted(Comparator.comparing(Waiting::askedAt))
+        .map(
+            waiting ->
+                new Row(
+                    waiting.agentId(),
+                    waiting.callId(),
+                    waiting.tool(),
+                    waiting.action(),
+                    waiting.askedAt(),
+                    waiting.expiresAt(),
+                    dwell(Duration.between(waiting.askedAt(), now))))
+        .toList();
   }
 
-  private static String agentId(String persistenceId) {
-    return persistenceId.substring(persistenceId.indexOf('|') + 1);
+  /** Where to send an answer for {@code callId}, if it is still waiting for one. */
+  public Optional<ReplyToken> addressOf(String callId) {
+    return Optional.ofNullable(byCallId.get(callId)).map(Waiting::replyTo);
   }
 
-  /** How long, in the coarsest unit that is still true. Days matter here; seconds do not. */
-  static String dwell(Duration waited) {
-    if (waited.isNegative()) {
-      return "0m";
+  /** Drops a call, answered or expired. Idempotent: a second answer finds nothing to forget. */
+  public void forget(String callId) {
+    byCallId.remove(callId);
+    addresses.remove(callId);
+  }
+
+  private static String dwell(Duration waited) {
+    long minutes = Math.max(0, waited.toMinutes());
+    if (minutes < 60) {
+      return minutes + "m";
     }
-    if (waited.toDays() > 0) {
-      return waited.toDays() + "d " + waited.toHoursPart() + "h";
-    }
-    if (waited.toHours() > 0) {
-      return waited.toHours() + "h " + waited.toMinutesPart() + "m";
-    }
-    return waited.toMinutes() + "m";
+    return (minutes / 60) + "h " + (minutes % 60) + "m";
   }
 }
