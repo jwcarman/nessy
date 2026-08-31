@@ -8,3 +8,7 @@
 [ 6376709ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
 [ 6376712ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/api/login/ping:0
 [ 6377650ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6761127ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6761132ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/api/login/ping:0
+[ 6762346ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6764000ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280

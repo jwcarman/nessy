@@ -63,6 +63,10 @@ public final class Traces {
   /**
    * This context, flattened to something a message can carry. Empty when nothing is being traced.
    *
+   * <p>{@code what} names the message being sent, because a span called "send" tells a reader
+   * nothing. It is the message TYPE and never an id — the protocol is sealed, so the cardinality is
+   * bounded by the compiler.
+   *
    * <p>A PRODUCER observation, briefly opened and closed, is what fills the carrier: the tracing
    * bridge's sender handler injects on start. Pairing it with the CONSUMER observation {@link
    * #inSpan} opens is what makes the gap between them queue latency — the thing an actor system
@@ -72,12 +76,16 @@ public final class Traces {
    * duration of its handler, so "current" is already correct at any send site inside an actor —
    * which keeps parentage ambient instead of threading an envelope through by hand.
    */
-  public Map<String, String> capture() {
+  public Map<String, String> capture(String what) {
     Map<String, String> headers = new HashMap<>();
     SenderContext<Map<String, String>> sending =
         new SenderContext<>((carrier, key, value) -> carrier.put(key, value), Kind.PRODUCER);
     sending.setCarrier(headers);
-    Observation.createNotStarted("nessy.send", () -> sending, registry).observe(() -> {});
+    Observation.createNotStarted("send " + what, () -> sending, registry)
+        .lowCardinalityKeyValue("messaging.system", "pekko")
+        .lowCardinalityKeyValue("messaging.operation.name", "send")
+        .lowCardinalityKeyValue("messaging.destination.name", what)
+        .observe(() -> {});
     return Map.copyOf(headers);
   }
 

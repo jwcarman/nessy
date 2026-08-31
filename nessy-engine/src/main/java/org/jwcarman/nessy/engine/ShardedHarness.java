@@ -87,7 +87,7 @@ final class ShardedHarness<O> implements Harness<O> {
     // the resulting turn does a child of whatever caused it, instead of a root of its own.
     sharding
         .entityRefFor(agents, agentId.value())
-        .tell(new NessyMessage.Observe(codec.encode(observation), traces.capture()));
+        .tell(new NessyMessage.Observe(codec.encode(observation), traces.capture("Observe")));
   }
 
   /**

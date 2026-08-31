@@ -85,7 +85,20 @@ final class ApprovalActor {
                       traces.inSpan(
                           "approval " + request.call().name(),
                           carried,
-                          () -> bindings.approve(binding, request, approvalContext)),
+                          () -> {
+                            traces.tag("gen_ai.tool.name", request.call().name());
+                            traces.tag("gen_ai.agent.name", request.agentType().name());
+                            traces.detail("gen_ai.agent.id", request.agentId().value());
+                            traces.detail("gen_ai.tool.call.id", request.call().id());
+                            traces.detail("nessy.approval.action", request.description());
+                            Awaited<ApprovalResult> answer =
+                                bindings.approve(binding, request, approvalContext);
+                            // Says WHAT HAPPENED, which is the thing a bare "approval containers"
+                            // span could not: an ungated tool answers instantly and a gated one
+                            // hands the question to a person, and those look identical without it.
+                            traces.tag("nessy.approval.answer", describe(answer));
+                            return answer;
+                          }),
                   blocking);
           context.pipeToSelf(
               asked,
@@ -154,6 +167,15 @@ final class ApprovalActor {
       ActorRef<ToolCallActor.Command> replyTo, ApprovalResult result) {
     replyTo.tell(new ToolCallActor.Answered(result));
     return Behaviors.stopped();
+  }
+
+  /** What the approver did: allowed it, refused it, or handed it to a person. */
+  private static String describe(Awaited<ApprovalResult> answer) {
+    return switch (answer) {
+      case Awaited.Deferred<ApprovalResult> deferred -> "asked-a-person";
+      case Awaited.Ready<ApprovalResult> ready ->
+          ready.result() instanceof ApprovalResult.Approved ? "approved" : "denied";
+    };
   }
 
   private static String describe(Throwable failure) {
