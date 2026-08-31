@@ -52,10 +52,13 @@ public final class Replies {
   private final ReplyTokens tokens;
   private final Map<String, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
 
-  Replies(ActorSystem<?> system, Duration patience, ReplyTokens tokens) {
+  private final Traces traces;
+
+  Replies(ActorSystem<?> system, Duration patience, ReplyTokens tokens, Traces traces) {
     this.system = system;
     this.patience = patience;
     this.tokens = tokens;
+    this.traces = traces;
   }
 
   /** Called by the factory as each kind of agent gains a harness. */
@@ -69,7 +72,8 @@ public final class Replies {
     ReplyTokens.Coordinates where = tokens.read(token);
     return ask(
         where,
-        replyTo -> new NessyMessage.AnswerToolCall(where.callId(), result, replyTo, Map.of()));
+        replyTo ->
+            new NessyMessage.AnswerToolCall(where.callId(), result, replyTo, traces.capture()));
   }
 
   /** A person's decision on a call that was waiting for one. */
@@ -78,7 +82,8 @@ public final class Replies {
     ReplyTokens.Coordinates where = tokens.read(token);
     return ask(
         where,
-        replyTo -> new NessyMessage.AnswerApproval(where.callId(), result, replyTo, Map.of()));
+        replyTo ->
+            new NessyMessage.AnswerApproval(where.callId(), result, replyTo, traces.capture()));
   }
 
   private CompletionStage<NessyMessage.Ack> ask(

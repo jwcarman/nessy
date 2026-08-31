@@ -18,9 +18,13 @@ package org.jwcarman.nessy.spring.boot;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextRegistry;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.contextpropagation.ObservationAwareSpanThreadLocalAccessor;
+import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -43,6 +47,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.engine.Replies;
 import org.jwcarman.nessy.engine.ReplyTokens;
+import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -197,6 +202,45 @@ public class NessyAutoConfiguration {
         ContextSnapshotFactory.builder().build()::captureAll);
   }
 
+  /**
+   * How the engine carries trace context across a mailbox.
+   *
+   * <p>Falls back to a no-op when nothing is tracing, and SAYS SO — a silent fallback is how
+   * tracing died once already: opentelemetry-api left the runtime classpath, no Tracer bean was
+   * created, every span became a no-op, and the application kept running and the tests kept
+   * passing.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public Traces nessyTraces(
+      ObjectProvider<Tracer> tracers,
+      ObjectProvider<Propagator> propagators,
+      ObjectProvider<ObservationRegistry> observationRegistries) {
+    Tracer tracer = tracers.getIfAvailable();
+    Propagator propagator = propagators.getIfAvailable();
+    if (tracer == null || propagator == null) {
+      org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
+          .warn(
+              "NESSY TRACING IS DISABLED: tracer={}, propagator={}. Spans will not be linked across"
+                  + " actors, so a turn arrives as several unrelated traces. Expected only when"
+                  + " running without an observability stack.",
+              tracer == null ? "absent" : tracer.getClass().getName(),
+              propagator == null ? "absent" : propagator.getClass().getName());
+      return Traces.noop();
+    }
+    // Registers the accessor that lets a RAW span cross a thread hop. Spring registers one for
+    // Observations, and the engine's actor spans are not Observations — so without this the
+    // context-propagating executor captures nothing, and every model and tool call opens a root
+    // span instead of nesting under the turn that asked for it. Measured, not assumed: turn spans
+    // nested and chat spans did not, until this line existed.
+    ContextRegistry.getInstance()
+        .registerThreadLocalAccessor(
+            new ObservationAwareSpanThreadLocalAccessor(
+                observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP), tracer));
+    return new Traces(
+        tracer, propagator, observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP));
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public PekkoHarnessFactory nessyHarnessFactory(
@@ -208,7 +252,8 @@ public class NessyAutoConfiguration {
       NessyProperties properties,
       @Qualifier("nessyBlockingExecutor") Executor blocking,
       Clock clock,
-      ReplyTokens tokens) {
+      ReplyTokens tokens,
+      Traces traces) {
     // Every model this factory resolves is observed, so a chat span lasts exactly as long as the
     // provider did and carries the tokens THAT call reported. An application with no registry gets
     // its own provider back untouched.
@@ -223,7 +268,8 @@ public class NessyAutoConfiguration {
         properties.capabilities(),
         blocking,
         clock,
-        tokens);
+        tokens,
+        traces);
   }
 
   /** The door an application answers a parked call through. */

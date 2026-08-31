@@ -63,7 +63,7 @@ class TurnRecoveryTest {
     StateTypes.of(testKit.system()).register(WATCHMAN, HouseEvent.class);
 
     Turns diesImmediately =
-        (agentId, turnId, input, agent) -> {
+        (agentId, turnId, input, agent, carried) -> {
           turnsStarted.incrementAndGet();
           return Behaviors.stopped();
         };
@@ -75,7 +75,8 @@ class TurnRecoveryTest {
             HouseEvents.KEEP_ALL,
             HouseEvents.RENDERER,
             diesImmediately,
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            Traces.noop());
 
     ClusterSharding.get(testKit.system())
         .init(

@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine;
 
+import io.micrometer.tracing.Span;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
@@ -61,6 +62,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
   private final ObservationRenderer<O> renderer;
   private final Turns turns;
   private final Clock clock;
+  private final Traces traces;
 
   /** The turn in flight, if any. Rebuilt on recovery, never persisted: it is an address. */
   private org.apache.pekko.actor.typed.ActorRef<TurnActor.Command> turn;
@@ -81,6 +83,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     this.renderer = deps.renderer();
     this.turns = deps.turns();
     this.clock = deps.clock();
+    this.traces = deps.traces();
     this.shard = shard;
   }
 
@@ -94,7 +97,8 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       BacklogCoalescer<O> coalescer,
       ObservationRenderer<O> renderer,
       Turns turns,
-      Clock clock) {}
+      Clock clock,
+      Traces traces) {}
 
   public static <O> Behavior<NessyMessage> create(
       Dependencies<O> deps, AgentId agentId, ActorRef<ClusterSharding.ShardCommand> shard) {
@@ -109,8 +113,43 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     return AgentState.idle(agentType);
   }
 
+  /**
+   * Every message handled inside a CONSUMER span parented to whatever the sender carried.
+   *
+   * <p>CONSUMER because the mailbox is a queue: paired with the send, the gap between them is queue
+   * latency, which is exactly the thing an actor system makes easy to have and hard to see.
+   *
+   * <p><b>This is what makes the trace a tree.</b> Everything the handler does — including handing
+   * work to the blocking executor, which the starter wraps to carry context across — happens inside
+   * this scope, so a model or tool span opened out there finds this span as its parent instead of
+   * becoming a root of its own.
+   */
   @Override
   public CommandHandler<NessyMessage, AgentState<O>> commandHandler() {
+    CommandHandler<NessyMessage, AgentState<O>> handler = traced();
+    return (state, message) ->
+        traces.inSpan(
+            "agent receive " + message.getClass().getSimpleName(),
+            Span.Kind.CONSUMER,
+            message.headers(),
+            () -> {
+              describe(message);
+              return handler.apply(state, message);
+            });
+  }
+
+  /** What this actor knows about itself, written onto the receive span. */
+  private void describe(NessyMessage message) {
+    traces.tag("messaging.system", "pekko");
+    traces.tag("nessy.agent.id", agentId.value());
+    traces.tag("nessy.agent.type", agentType.name());
+    traces.tag("nessy.message.type", message.getClass().getSimpleName());
+    // Locally this renders "pekko://nessy"; clustered it becomes "pekko://nessy@host:port", so the
+    // same attribute answers "which box" the day this is multi-node.
+    traces.tag("nessy.node.address", context.getSystem().address().toString());
+  }
+
+  private CommandHandler<NessyMessage, AgentState<O>> traced() {
     return newCommandHandlerBuilder()
         .forAnyState()
         .onCommand(NessyMessage.Observe.class, this::onObserve)
@@ -158,7 +197,9 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       // claim outlived the actor that made it. Without this the agent is stranded for good -- it
       // will never start a turn (it thinks one is running) and never finish one (nothing is).
       if (context.getChild(turnName(state.turnId())).isEmpty()) {
-        startTurn(state);
+        // A respawn after a crash: this Wake is the message that revived the turn, so the turn's
+        // work hangs off the wake rather than off the observation that started it days ago.
+        startTurn(state, traces.capture());
       }
       return Effect().none();
     }
@@ -166,7 +207,10 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       return Effect().none();
     }
     String turnId = Identifiers.next();
-    return Effect().persist(state.taking(turnId)).thenRun(this::startTurn);
+    // Captured HERE, inside the receive span, and closed over. By the time thenRun fires the
+    // scope is gone and a capture would come back empty.
+    Map<String, String> here = traces.capture();
+    return Effect().persist(state.taking(turnId)).thenRun(taken -> startTurn(taken, here));
   }
 
   private Effect<AgentState<O>> onInspect(AgentState<O> state, NessyMessage.Inspect message) {
@@ -174,14 +218,15 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     return Effect().none();
   }
 
-  private void startTurn(AgentState<O> taken) {
+  private void startTurn(AgentState<O> taken, Map<String, String> carried) {
     turn =
         context.spawn(
             turns.turn(
                 agentId,
                 taken.turnId(),
                 renderer.render(taken.inFlight().observation()),
-                context.getSelf()),
+                context.getSelf(),
+                carried),
             turnName(taken.turnId()));
   }
 

@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.engine;
 
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.transport.ReceiverContext;
 import io.micrometer.tracing.Link;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
@@ -62,9 +65,31 @@ public final class Traces {
   private final Tracer tracer;
   private final Propagator propagator;
 
+  /** Absent means spans only — used by the no-op and by anything not running Observations. */
+  private final ObservationRegistry registry;
+
+  /**
+   * Tracing switched off: spans are never opened and {@link #capture()} is always empty.
+   *
+   * <p>An engine with no observability stack still runs — it just says nothing. Micrometer's own
+   * NOOP implementations do exactly that, so there is no branch anywhere else.
+   */
+  public static Traces noop() {
+    return new Traces(Tracer.NOOP, Propagator.NOOP);
+  }
+
   public Traces(Tracer tracer, Propagator propagator) {
+    this(tracer, propagator, null);
+  }
+
+  /**
+   * With an {@link ObservationRegistry}, which is what makes a receive observable ACROSS a thread
+   * hop rather than only within one actor.
+   */
+  public Traces(Tracer tracer, Propagator propagator, ObservationRegistry registry) {
     this.tracer = tracer;
     this.propagator = propagator;
+    this.registry = registry;
   }
 
   /**
@@ -91,8 +116,38 @@ public final class Traces {
    * <p>{@link Propagator#extract} returns a builder already parented to the carried context, so
    * everything else — the name, the kind, the tags — is ours to decide.
    */
+  /**
+   * Run {@code work} in a new OBSERVATION whose parent is whatever {@code carried} names.
+   *
+   * <p><b>An Observation, not a bare span, and that distinction is the whole trace tree.</b>
+   * Micrometer's context-propagation carries the current OBSERVATION across a thread hop — that is
+   * what {@code ObservationThreadLocalAccessor} exists for — and it cannot see a span opened
+   * straight through {@code tracer.withSpan}. Measured: with a raw span the actor tree nested
+   * perfectly and every model and tool call still opened a root of its own, because the wrapped
+   * executor found nothing to carry.
+   *
+   * <p>{@link ReceiverContext} is how the remote parent gets in. Micrometer's receiver handler
+   * extracts it from the carrier, so the W3C headers a Pekko message brought become this
+   * observation's parent without this class doing the extraction itself.
+   */
   public <T> T inSpan(String name, Span.Kind kind, Map<String, String> carried, Supplier<T> work) {
-    return inScope(kinded(extract(carried).name(name), kind).start(), work);
+    if (registry == null) {
+      return inScope(kinded(extract(carried).name(name), kind).start(), work);
+    }
+    ReceiverContext<Map<String, String>> received =
+        new ReceiverContext<>((carrier, key) -> carrier.get(key), kindOf(kind));
+    received.setCarrier(carried == null ? Map.of() : carried);
+    return Observation.createNotStarted(name, () -> received, registry).observe(work);
+  }
+
+  private static io.micrometer.observation.transport.Kind kindOf(Span.Kind kind) {
+    if (kind == Span.Kind.CONSUMER) {
+      return io.micrometer.observation.transport.Kind.CONSUMER;
+    }
+    if (kind == Span.Kind.SERVER) {
+      return io.micrometer.observation.transport.Kind.SERVER;
+    }
+    return io.micrometer.observation.transport.Kind.CONSUMER;
   }
 
   public void inSpan(String name, Span.Kind kind, Map<String, String> carried, Runnable work) {

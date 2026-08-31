@@ -100,10 +100,12 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       Narrator narrator,
       Claims claims,
       ReplyTokens tokens,
-      Executor blocking) {}
+      Executor blocking,
+      Traces traces) {}
 
   private final ActorContext<Command> context;
   private final Dependencies deps;
+  private final Map<String, String> carried;
   private final AgentId agentId;
   private final String turnId;
   private final UserMessage input;
@@ -139,12 +141,14 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       AgentId agentId,
       String turnId,
       UserMessage input,
-      ActorRef<NessyMessage> agent) {
+      ActorRef<NessyMessage> agent,
+      Map<String, String> carried) {
     // The agent type goes in the TYPE half, never glued to the id: Pekko reserves "|" as its own
     // separator inside a PersistenceId, and an entity id containing one is rejected outright.
     super(PersistenceId.of("turn-" + deps.agentType().name(), agentId.value()));
     this.context = context;
     this.deps = deps;
+    this.carried = carried;
     this.agentId = agentId;
     this.turnId = turnId;
     this.input = input;
@@ -156,7 +160,8 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       AgentId agentId,
       String turnId,
       UserMessage input,
-      ActorRef<NessyMessage> agent) {
+      ActorRef<NessyMessage> agent,
+      Map<String, String> carried) {
     Objects.requireNonNull(deps, "deps must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(turnId, "turnId must not be null");
@@ -165,7 +170,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     return Behaviors.setup(
         context -> {
           context.getSelf().tell(new Begin());
-          return new TurnActor(context, deps, agentId, turnId, input, agent);
+          return new TurnActor(context, deps, agentId, turnId, input, agent, carried);
         });
   }
 
@@ -174,8 +179,31 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     return TurnState.idle();
   }
 
+  /**
+   * Every command handled inside a span parented to the message that started this turn.
+   *
+   * <p><b>This is the hop that makes the tree.</b> A turn is a child ACTOR, and its commands are
+   * not {@link NessyMessage} — they carry no headers of their own — so the context is captured once
+   * when the turn is spawned and re-entered on every command. Everything the handler then does,
+   * including handing the model call or a tool to the blocking executor, happens inside this scope;
+   * a context-propagating executor carries it the rest of the way.
+   */
   @Override
   public CommandHandler<Command, TurnState> commandHandler() {
+    CommandHandler<Command, TurnState> handler = traced();
+    return (state, command) ->
+        deps.traces()
+            .inSpan(
+                "turn " + command.getClass().getSimpleName(),
+                carried,
+                () -> {
+                  deps.traces().tag("nessy.agent.id", agentId.value());
+                  deps.traces().tag("nessy.turn.id", turnId);
+                  return handler.apply(state, command);
+                });
+  }
+
+  private CommandHandler<Command, TurnState> traced() {
     return newCommandHandlerBuilder()
         .forAnyState()
         .onCommand(Begin.class, this::onBegin)
@@ -215,7 +243,27 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
         .thenRun(persisted -> callModel());
   }
 
+  /**
+   * Asks the model, INSIDE a scope re-entered from the turn's own context.
+   *
+   * <p>Re-entered rather than inherited, because every caller of this reaches it through a {@code
+   * thenRun} — which Pekko runs after persistence commits, on whatever thread it likes, and always
+   * after the command's scope has closed. A submit made out there captures nothing, and the chat
+   * span it produces becomes a root instead of a child. Measured: the actor tree nested correctly
+   * and every model call still opened its own trace, until this scope existed.
+   */
   private void callModel() {
+    deps.traces()
+        .inSpan(
+            "turn call model",
+            carried,
+            () -> {
+              callModelInScope();
+              return null;
+            });
+  }
+
+  private void callModelInScope() {
     ModelRequest request =
         new ModelRequest(
             deps.memory().recall(agentId),

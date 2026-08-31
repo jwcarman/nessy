@@ -169,11 +169,12 @@ class ToolCallTest {
             Narrator.to(narrated::add),
             new Claims(new InMemorySubstrate(Clock.systemUTC())),
             ReplyTokens.ephemeral(),
-            Runnable::run);
+            Runnable::run,
+            Traces.noop());
 
     Turns turns =
-        (agentId, turnId, input, agent) ->
-            TurnActor.create(turnDeps, agentId, turnId, input, agent);
+        (agentId, turnId, input, agent, carried) ->
+            TurnActor.create(turnDeps, agentId, turnId, input, agent, java.util.Map.of());
 
     AgentActor.Dependencies<HouseEvent> deps =
         new AgentActor.Dependencies<>(
@@ -182,7 +183,8 @@ class ToolCallTest {
             HouseEvents.KEEP_ALL,
             HouseEvents.RENDERER,
             turns,
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            Traces.noop());
 
     ClusterSharding.get(testKit.system())
         .init(

@@ -189,7 +189,8 @@ class TurnResumeTest {
             Narrator.silent(),
             claims,
             ReplyTokens.ephemeral(),
-            Runnable::run);
+            Runnable::run,
+            Traces.noop());
   }
 
   @AfterAll
@@ -203,7 +204,9 @@ class TurnResumeTest {
     TestProbe<NessyMessage> agent = testKit.createTestProbe();
 
     ActorRef<TurnActor.Command> first =
-        testKit.spawn(TurnActor.create(deps, HOUSE, TURN, UserMessage.of("go"), agent.ref()));
+        testKit.spawn(
+            TurnActor.create(
+                deps, HOUSE, TURN, UserMessage.of("go"), agent.ref(), java.util.Map.of()));
 
     // The quick tool answers and is claimed; the slow one parks. Stable, not racy.
     await()
@@ -219,7 +222,8 @@ class TurnResumeTest {
     // The process dies with the turn half answered.
     testKit.stop(first);
 
-    testKit.spawn(TurnActor.create(deps, HOUSE, TURN, UserMessage.of("go"), agent.ref()));
+    testKit.spawn(
+        TurnActor.create(deps, HOUSE, TURN, UserMessage.of("go"), agent.ref(), java.util.Map.of()));
 
     await()
         .atMost(15, SECONDS)

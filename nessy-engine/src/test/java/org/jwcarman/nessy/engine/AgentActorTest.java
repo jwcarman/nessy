@@ -59,7 +59,7 @@ class AgentActorTest {
 
     // A turn that starts and then does nothing, ever. It never reports back, so the agent stays
     // busy and whatever else arrives has to queue.
-    Turns stalled = (agentId, turnId, input, agent) -> Behaviors.empty();
+    Turns stalled = (agentId, turnId, input, agent, carried) -> Behaviors.empty();
 
     AgentActor.Dependencies<HouseEvent> deps =
         new AgentActor.Dependencies<>(
@@ -68,7 +68,8 @@ class AgentActorTest {
             HouseEvents.KEEP_ALL,
             HouseEvents.RENDERER,
             stalled,
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            Traces.noop());
 
     ClusterSharding.get(testKit.system())
         .init(

@@ -59,6 +59,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Executor blocking;
   private final Clock clock;
   private final ReplyTokens tokens;
+  private final Traces traces;
   private final Replies replies;
 
   /**
@@ -75,6 +76,21 @@ public final class PekkoHarnessFactory implements HarnessFactory {
       Executor blocking,
       Clock clock,
       ReplyTokens tokens) {
+    this(
+        system, substrate, models, maxTokens, capabilities, blocking, clock, tokens, Traces.noop());
+  }
+
+  /** With tracing. Everything an agent does lands under the span that caused it. */
+  public PekkoHarnessFactory(
+      ActorSystem<?> system,
+      Substrate substrate,
+      ModelProvider models,
+      int maxTokens,
+      Set<Capability> capabilities,
+      Executor blocking,
+      Clock clock,
+      ReplyTokens tokens,
+      Traces traces) {
     this.system = Objects.requireNonNull(system, "system must not be null");
     this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
     this.models = Objects.requireNonNull(models, "models must not be null");
@@ -87,7 +103,8 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.blocking = Objects.requireNonNull(blocking, "blocking must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.tokens = Objects.requireNonNull(tokens, "tokens must not be null");
-    this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens);
+    this.traces = Objects.requireNonNull(traces, "traces must not be null");
+    this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces);
   }
 
   @Override
@@ -115,7 +132,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     sharding.init(Entity.of(narrationKey, context -> NarrationActor.create()));
 
     Turns turns =
-        (agentId, turnId, input, agent) ->
+        (agentId, turnId, input, agent, carried) ->
             TurnActor.create(
                 new TurnActor.Dependencies(
                     type,
@@ -128,15 +145,25 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                     narratorFor(sharding, narrationKey, agentId),
                     claims,
                     tokens,
-                    blocking),
+                    blocking,
+                    traces),
                 agentId,
                 turnId,
                 input,
-                agent);
+                agent,
+                // Captured on the AGENT's thread while its receive span was open, and handed
+                // through — so the turn, and everything it does, hangs off the message that asked.
+                carried);
 
     AgentActor.Dependencies<O> deps =
         new AgentActor.Dependencies<>(
-            type, codec, config.backlogCoalescer(), config.observationRenderer(), turns, clock);
+            type,
+            codec,
+            config.backlogCoalescer(),
+            config.observationRenderer(),
+            turns,
+            clock,
+            traces);
 
     EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
     sharding.init(
@@ -147,7 +174,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             .withStopMessage(new NessyMessage.Stop(Map.of())));
 
     replies.serving(type.name(), agentKey);
-    return new ShardedHarness<>(type, agentKey, narrationKey, codec, system);
+    return new ShardedHarness<>(type, agentKey, narrationKey, codec, system, traces);
   }
 
   /** Where the outside world answers calls parked by any agent this factory serves. */

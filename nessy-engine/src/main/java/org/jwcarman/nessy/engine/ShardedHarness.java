@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.util.Map;
 import java.util.Objects;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.ActorSystem;
@@ -56,18 +55,21 @@ final class ShardedHarness<O> implements Harness<O> {
   private final Codec<O> codec;
   private final ClusterSharding sharding;
   private final ActorSystem<?> system;
+  private final Traces traces;
 
   ShardedHarness(
       AgentType type,
       EntityTypeKey<NessyMessage> agents,
       EntityTypeKey<NarrationActor.Command> narration,
       Codec<O> codec,
-      ActorSystem<?> system) {
+      ActorSystem<?> system,
+      Traces traces) {
     this.type = type;
     this.agents = agents;
     this.narration = narration;
     this.codec = codec;
     this.system = system;
+    this.traces = traces;
     this.sharding = ClusterSharding.get(system);
   }
 
@@ -80,9 +82,12 @@ final class ShardedHarness<O> implements Harness<O> {
   public void observe(AgentId agentId, O observation) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(observation, "observation must not be null");
+    // The trace starts wherever the caller is — a cron tick, an HTTP request, a queue consumer —
+    // and this is where it crosses into the actor system. Capturing here is what makes everything
+    // the resulting turn does a child of whatever caused it, instead of a root of its own.
     sharding
         .entityRefFor(agents, agentId.value())
-        .tell(new NessyMessage.Observe(codec.encode(observation), Map.of()));
+        .tell(new NessyMessage.Observe(codec.encode(observation), traces.capture()));
   }
 
   /**

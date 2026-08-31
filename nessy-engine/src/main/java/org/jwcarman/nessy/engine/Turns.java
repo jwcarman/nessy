@@ -33,6 +33,16 @@ import org.jwcarman.nessy.api.message.UserMessage;
 @FunctionalInterface
 public interface Turns {
 
+  /**
+   * @param carried the trace context of the message that asked for this turn, captured on the
+   *     agent's own thread while its receive span was still open. A turn spawns from a {@code
+   *     thenRun} — after persistence commits, after that scope has closed — so capturing at the
+   *     spawn would come back empty and orphan everything the turn goes on to do.
+   */
   Behavior<TurnActor.Command> turn(
-      AgentId agentId, String turnId, UserMessage input, ActorRef<NessyMessage> agent);
+      AgentId agentId,
+      String turnId,
+      UserMessage input,
+      ActorRef<NessyMessage> agent,
+      java.util.Map<String, String> carried);
 }

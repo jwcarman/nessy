@@ -70,7 +70,8 @@ class PassivationTest {
             HouseEvents.KEEP_ALL,
             HouseEvents.RENDERER,
             turns,
-            Clock.systemUTC());
+            Clock.systemUTC(),
+            Traces.noop());
     return testKit.spawn(AgentActor.create(deps, agentId, shard));
   }
 
@@ -84,7 +85,10 @@ class PassivationTest {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
     // A turn that starts and never finishes: the agent is busy for good.
     ActorRef<NessyMessage> agent =
-        agentWith((id, turnId, input, a) -> Behaviors.empty(), AgentId.of("busy-1"), shard.ref());
+        agentWith(
+            (id, turnId, input, a, carried) -> Behaviors.empty(),
+            AgentId.of("busy-1"),
+            shard.ref());
 
     observe(agent, new HouseEvent("kitchen", "door opened"));
 
@@ -97,7 +101,7 @@ class PassivationTest {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
     ActorRef<NessyMessage> agent =
         agentWith(
-            (id, turnId, input, a) -> {
+            (id, turnId, input, a, carried) -> {
               a.tell(new NessyMessage.TurnFinished(turnId, Map.of()));
               return Behaviors.empty();
             },
@@ -118,7 +122,10 @@ class PassivationTest {
   void a_backlog_keeps_it_awake() {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
     ActorRef<NessyMessage> agent =
-        agentWith((id, turnId, input, a) -> Behaviors.empty(), AgentId.of("busy-2"), shard.ref());
+        agentWith(
+            (id, turnId, input, a, carried) -> Behaviors.empty(),
+            AgentId.of("busy-2"),
+            shard.ref());
 
     observe(agent, new HouseEvent("kitchen", "one"));
     observe(agent, new HouseEvent("kitchen", "two"));

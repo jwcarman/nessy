@@ -157,6 +157,10 @@
       <groupId>io.micrometer</groupId>
       <artifactId>context-propagation</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing</artifactId>
+    </dependency>
 
     <!-- Optional, the way a starter carries a feature it does not force: an application with no
          database never sees these, and the approvals projection simply is not wired. -->
