@@ -34,7 +34,7 @@ import org.jwcarman.nessy.api.tool.Tool;
  * against that snapshot. Two servers make two toolboxes and two namespaces — a name collision
  * between them is the application's business, made visible by the grant list itself, since nothing
  * here pre-authorizes anything: every tool this toolbox opens still needs its own {@link
- * org.jwcarman.nessy.api.tool.ToolGrant}.
+ * org.jwcarman.nessy.api.tool.ToolBinding}.
  *
  * <p>{@link #close()} closes the underlying client session. A tool obtained before that point keeps
  * working as a plain Java reference, but calling {@link Tool#execute} on it afterward fails loud —

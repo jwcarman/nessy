@@ -27,7 +27,6 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
  * One MCP server tool, wearing a nessy {@link Tool} face.
@@ -65,7 +64,7 @@ final class McpTool implements Tool<JsonNode> {
   }
 
   /**
-   * The server's description, verbatim — {@code null} becomes {@code ""} since {@link ToolSpec}
+   * The server's description, verbatim — {@code null} becomes {@code ""} since {@link Tool}
    * requires non-null.
    */
   @Override
@@ -79,11 +78,14 @@ final class McpTool implements Tool<JsonNode> {
     return JsonNode.class;
   }
 
-  /** Overridden with the server's advertised {@code inputSchema}, not one derived from a record. */
+  /**
+   * The server's advertised {@code inputSchema}, never one derived from a record — this is the
+   * whole reason an MCP tool cannot go through {@code Schemas.of}: only the server knows the shape
+   * it will honor.
+   */
   @Override
-  public ToolSpec spec() {
-    ObjectNode schema = mapper.valueToTree(tool.inputSchema());
-    return new ToolSpec(name(), description(), schema);
+  public ObjectNode inputSchema() {
+    return mapper.valueToTree(tool.inputSchema());
   }
 
   @Override
@@ -91,8 +93,8 @@ final class McpTool implements Tool<JsonNode> {
     Map<String, Object> arguments = mapper.convertValue(input, ARGUMENTS_TYPE);
     McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(name(), arguments);
     // A transport/protocol failure that keeps the call from completing at all propagates as a
-    // RuntimeException here, uncaught: ToolInvoker/GatedToolCallExecutor's existing fail-closed
-    // handling turns it into an error ToolResult without this tool having to know that.
+    // RuntimeException here, uncaught: the engine's own fail-closed handling turns it into an
+    // error ToolResult without this tool having to know that.
     McpSchema.CallToolResult result = client.callTool(request);
     return Awaited.ready(toToolResult(result));
   }
