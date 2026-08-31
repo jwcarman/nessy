@@ -15,12 +15,18 @@
  */
 package org.jwcarman.nessy.console;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import com.typesafe.config.ConfigFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.MemberStatus;
@@ -33,6 +39,8 @@ import org.jwcarman.nessy.engine.ReplyTokens;
 import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A terminal agent, from one call in a {@code main}.
@@ -63,8 +71,13 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  */
 public final class Repl {
 
+  private static final Logger LOG = LoggerFactory.getLogger(Repl.class);
+
   /** Long enough for a slow machine, short enough that a wedged join is not mistaken for a hang. */
   private static final Duration JOIN_TIMEOUT = Duration.ofSeconds(30);
+
+  /** How long to wait for the actor system to stop before leaving anyway. */
+  private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 
   private Repl() {}
 
@@ -99,16 +112,20 @@ public final class Repl {
     // Closed in reverse: the engine stops before the gateway it was calling, and the selection owns
     // the vendor's HTTP client, so letting it go is what releases the connection pool.
     try (ModelDiscovery.Selection selection = chosen;
+        ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
         TerminatingSystem system =
             new TerminatingSystem(
                 ActorSystem.create(Behaviors.empty(), "nessy", ConfigFactory.load()))) {
-      Harness<String> harness = harness(system.get(), selection, config);
+      Harness<String> harness = harness(system.get(), selection, blocking, config);
       new ReplLoop(harness, config.agentId(), config, io).run();
     }
   }
 
   private static Harness<String> harness(
-      ActorSystem<Void> system, ModelDiscovery.Selection selection, ReplConfig config) {
+      ActorSystem<Void> system,
+      ModelDiscovery.Selection selection,
+      Executor blocking,
+      ReplConfig config) {
     Clock clock = Clock.systemUTC();
     PekkoHarnessFactory factory =
         new PekkoHarnessFactory(
@@ -117,7 +134,7 @@ public final class Repl {
             selection.provider(),
             config.maxTokens(),
             Set.of(),
-            Executors.newVirtualThreadPerTaskExecutor(),
+            blocking,
             clock,
             // Ephemeral, and correct here: a token only has to outlive the process that minted it,
             // and this process IS the conversation.
@@ -149,9 +166,27 @@ public final class Repl {
       awaitUp(cluster);
     }
 
+    /**
+     * Stops the system and WAITS for it, which is the difference between a prompt that comes back
+     * and one that appears to hang.
+     *
+     * <p>{@code terminate()} is a request, not an act: it returns immediately while Pekko runs
+     * coordinated shutdown on non-daemon threads. Without waiting, control returns to a main that
+     * has nothing left to do, and the JVM then sits until those threads finish on their own — which
+     * looks exactly like the program having frozen after saying goodbye.
+     */
     @Override
     public void close() {
       get.terminate();
+      try {
+        get.getWhenTerminated().toCompletableFuture().get(SHUTDOWN_TIMEOUT.toSeconds(), SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } catch (ExecutionException | TimeoutException e) {
+        // Shutting down is the last thing this process does. A system that will not stop is worth
+        // one line on the way out, never an exception thrown at a person who has already left.
+        LOG.debug("the actor system did not stop within {}", SHUTDOWN_TIMEOUT, e);
+      }
     }
 
     private static void awaitUp(Cluster cluster) {

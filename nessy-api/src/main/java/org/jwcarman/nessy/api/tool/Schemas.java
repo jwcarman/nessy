@@ -54,6 +54,12 @@ public final class Schemas {
   private static final String DEFS = "$defs";
   private static final String SCHEMA_KEYWORD = "$schema";
 
+  private static final String PROPERTIES = "properties";
+
+  private static final String TYPE = "type";
+
+  private static final String OBJECT = "object";
+
   private static final SchemaGenerator GENERATOR = generator();
 
   private Schemas() {}
@@ -62,7 +68,26 @@ public final class Schemas {
     if (inputType.isInterface() && inputType.isSealed()) {
       return sealedInterfaceSchema(inputType);
     }
-    return normalizeAnyOfToOneOf(GENERATOR.generateSchema(inputType));
+    return withProperties(normalizeAnyOfToOneOf(GENERATOR.generateSchema(inputType)));
+  }
+
+  /**
+   * Gives an object schema an empty {@code properties} when it has none.
+   *
+   * <p>A record with no components generates {@code {"type":"object"}}, which is valid JSON Schema
+   * and is REJECTED on the wire: the OpenAI function-calling shape requires {@code
+   * parameters.properties} to be present, and a request carrying a tool without it fails with
+   * {@code invalid_type ... path: function.parameters.properties}. Measured against LM Studio,
+   * 2026-08-31.
+   *
+   * <p>A no-argument tool is an ordinary thing to want — "what time is it", "list the containers" —
+   * so this belongs here rather than in every tool that happens to take nothing.
+   */
+  private static ObjectNode withProperties(ObjectNode schema) {
+    if (OBJECT.equals(schema.path(TYPE).asText()) && !schema.has(PROPERTIES)) {
+      schema.putObject(PROPERTIES);
+    }
+    return schema;
   }
 
   /**

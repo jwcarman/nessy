@@ -39,33 +39,53 @@ interface ConsoleIo {
   /** Makes anything written so far visible, which matters when a prompt has no newline. */
   void flush();
 
-  /** The real one. */
+  /**
+   * The real one, and there is exactly ONE.
+   *
+   * <p>Shared rather than built per caller because {@code System.in} is a single stream and a
+   * {@link BufferedReader} reads ahead of what it hands back. Two readers over it do not take turns
+   * — the first to read swallows everything buffered, and the second sees end of input. That is not
+   * a theoretical race: the loop reads a line, the approver asks a question, and the approver gets
+   * EOF and denies, because the loop's reader had already drained the pipe.
+   */
   static ConsoleIo standard() {
-    BufferedReader in =
-        new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-    PrintStream out = System.out;
-    return new ConsoleIo() {
+    return Standard.INSTANCE;
+  }
 
-      @Override
-      public String readLine() {
-        try {
-          return in.readLine();
-        } catch (IOException e) {
-          // Nothing a REPL can do about a broken stdin, and nothing a caller wants to catch:
-          // the loop is over either way.
-          throw new UncheckedIOException("could not read from the console", e);
+  /** Holder, so the one reader is created on first use rather than at class-load. */
+  final class Standard {
+
+    private static final ConsoleIo INSTANCE = create();
+
+    private Standard() {}
+
+    private static ConsoleIo create() {
+      BufferedReader in =
+          new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+      PrintStream out = System.out;
+      return new ConsoleIo() {
+
+        @Override
+        public String readLine() {
+          try {
+            return in.readLine();
+          } catch (IOException e) {
+            // Nothing a REPL can do about a broken stdin, and nothing a caller wants to catch:
+            // the loop is over either way.
+            throw new UncheckedIOException("could not read from the console", e);
+          }
         }
-      }
 
-      @Override
-      public void write(String text) {
-        out.print(text);
-      }
+        @Override
+        public void write(String text) {
+          out.print(text);
+        }
 
-      @Override
-      public void flush() {
-        out.flush();
-      }
-    };
+        @Override
+        public void flush() {
+          out.flush();
+        }
+      };
+    }
   }
 }

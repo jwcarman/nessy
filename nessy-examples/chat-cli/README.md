@@ -24,10 +24,23 @@ system's cluster of one, the in-memory substrate and reply tokens, and the loop
 that streams an answer as it arrives. What is left here is the only part that is
 about THIS program: what it is for, and what it can do.
 
-- **A tool worth having.** `days_until` counts days to a date: something a model
-  is bad at and a tool is trivially good at, so watching it get reached for is
-  watching tool use earn its keep.
-- **Streaming.** Deltas print as they arrive.
+- **Tools worth having.** `today` and `days_until` cover what a model cannot
+  know and cannot compute: it has a training cutoff and a confident prior about
+  what year it is, so asked about Christmas shopping it will name the wrong year
+  and reason from it. The date is in the system prompt too — a tool only helps
+  if the model thinks to call it.
+- **A tool a person has to allow.** `send_email` is gated by
+  `ConsoleApprover`, which asks right there at the prompt:
+
+  ```
+    ⚠ Send an email to jim@example.com, subject "Dinner"
+      allow? [y/N]
+  ```
+
+  It answers on the spot rather than parking the question, because the person
+  is at the keyboard with the agent's output still on screen. Anything but
+  `y`/`yes` is a no, and end of input is a no — silence is not consent.
+- **Streaming.** The answer is typed out as the model writes it.
 
 Nothing survives the process — state lives exactly as long as the terminal it is
 typed into. Point `chat-web` at a database to see the other half.

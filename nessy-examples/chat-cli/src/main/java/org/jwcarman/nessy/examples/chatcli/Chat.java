@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.examples.chatcli;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 
 /**
@@ -31,15 +34,30 @@ import org.jwcarman.nessy.console.Repl;
  */
 public final class Chat {
 
-  private static final String SYSTEM_PROMPT =
-      """
-      You are a concise, friendly assistant living in someone's terminal. Keep answers short \
-      unless asked for more. When a question turns on today's date or on counting days, use the \
-      days_until tool rather than working it out yourself.""";
+  /**
+   * Says the date outright, and ALSO grants a tool for it.
+   *
+   * <p>Belt and braces on purpose. A model has a training cutoff and a strong prior about what year
+   * it is: asked to help with Christmas shopping it will name whichever year it learned about and
+   * reason confidently from that wrong anchor, never calling a tool to check — a tool only helps if
+   * the model thinks to use it. Saying it here costs one line and cannot be skipped; the {@code
+   * today} tool covers the case where a conversation outlives the prompt that started it.
+   */
+  private static String systemPrompt(LocalDate today) {
+    return """
+        You are a concise, friendly assistant living in someone's terminal. Keep answers short \
+        unless asked for more.
+
+        Today is %s. When a question turns on the current date or on counting days, use the \
+        today and days_until tools rather than working it out yourself — and never assume the \
+        year."""
+        .formatted(today);
+  }
 
   private Chat() {}
 
   public static void main(String[] args) {
+    Clock clock = Clock.systemDefaultZone();
     Repl.run(
         config ->
             config
@@ -47,7 +65,19 @@ public final class Chat {
                 .prompt("> ")
                 .exitOn("/quit", "quit", "exit")
                 .farewell("bye.")
-                .systemPrompt(SYSTEM_PROMPT)
-                .tool(new DaysUntilTool()));
+                .systemPrompt(systemPrompt(LocalDate.now(clock)))
+                .tool(new TodayTool(clock))
+                .tool(new DaysUntilTool())
+                // The only thing here that reaches outside the process, so the only thing a
+                // person is asked about. The describer writes the sentence they consent to.
+                .tool(
+                    new SendEmailTool(),
+                    binding ->
+                        binding
+                            .approver(ConsoleApprover.atTheTerminal())
+                            .describer(
+                                input ->
+                                    "Send an email to %s, subject \"%s\""
+                                        .formatted(input.to(), input.subject()))));
   }
 }

@@ -35,7 +35,22 @@ public interface Tool<I> {
 
   Class<I> inputType();
 
-  ObjectNode inputSchema();
+  /**
+   * The shape of this tool's arguments, as the model is offered them.
+   *
+   * <p>Generated from {@link #inputType()} by default, because a tool that has already declared a
+   * Java type has already said what its arguments are, and writing the same thing again in JSON is
+   * how the two drift apart. Annotate the input's components with {@code @JsonPropertyDescription}
+   * to tell the model what each one means — that is worth doing, and it is the only part a
+   * generator cannot infer.
+   *
+   * <p>Override when the schema is not derivable from a Java type: an MCP tool's shape is known
+   * only to the server it came from, and a tool whose arguments need constraints a record cannot
+   * express (an enum of allowed values, a numeric range) says so here.
+   */
+  default ObjectNode inputSchema() {
+    return Schemas.of(inputType());
+  }
 
   String name();
 

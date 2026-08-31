@@ -28,10 +28,61 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class SchemasTest {
+
+  @Nested
+  @DisplayName("A tool that takes no arguments")
+  class ANoArgumentInputType {
+
+    record Nothing() {}
+
+    /**
+     * Victools generates {@code {"type":"object"}} for a record with no components, which is valid
+     * JSON Schema and is REJECTED on the wire: the OpenAI function-calling shape requires {@code
+     * parameters.properties} to be present. Measured against LM Studio 2026-08-31, which answers
+     * {@code invalid_type ... path: function.parameters.properties}.
+     *
+     * <p>A no-argument tool is an ordinary thing to want — "what time is it", "list the containers"
+     * — so a schema that cannot be sent is a bug here, not in every such tool.
+     */
+    @Test
+    @DisplayName("still carries a properties object, because the wire requires one")
+    void has_an_empty_properties_object() {
+      ObjectNode schema = Schemas.of(Nothing.class);
+
+      assertThat(schema.get("type").asText()).isEqualTo("object");
+      assertThat(schema.has("properties")).isTrue();
+      assertThat(schema.get("properties").isObject()).isTrue();
+      assertThat(schema.get("properties")).isEmpty();
+    }
+  }
+
+  @Nested
+  @DisplayName("An ordinary input type")
+  class APlainRecord {
+
+    record Dated(@JsonPropertyDescription("ISO-8601, e.g. 2026-12-25") String date) {}
+
+    @Test
+    void keeps_the_properties_it_generated() {
+      ObjectNode schema = Schemas.of(Dated.class);
+
+      assertThat(schema.get("properties").get("date").get("type").asText()).isEqualTo("string");
+    }
+
+    /** The one thing a generator cannot infer, and the part a model actually reads. */
+    @Test
+    void carries_the_description_written_on_the_component() {
+      ObjectNode schema = Schemas.of(Dated.class);
+
+      assertThat(schema.get("properties").get("date").get("description").asText())
+          .isEqualTo("ISO-8601, e.g. 2026-12-25");
+    }
+  }
 
   record ReadFile(
       @JsonPropertyDescription("Path relative to the workspace root") String path,

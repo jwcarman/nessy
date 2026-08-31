@@ -13,11 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.examples.chatweb;
+package org.jwcarman.nessy.examples.chatcli;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -27,22 +25,18 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * The gated tool: sends mail, or would.
  *
  * <p>It sends nothing — an example that could actually mail a stranger is an example nobody can run
- * safely — but it is the right SHAPE for the thing approval exists to protect: outward-facing,
- * irreversible, and worth a person's second look. The sent list is what the page reads back to show
- * that an approved call really did run.
+ * safely — but it is the right SHAPE for what approval exists to protect: outward-facing,
+ * irreversible, and worth a second look. Everything else this program can do is a calculation.
  *
- * <p>The tool itself knows nothing about approval. Gating is a decision made where the tool is
- * granted, not a property the tool declares, which is why the same class would be ungated in an
- * application whose policy said so.
+ * <p>The tool knows nothing about approval. Gating is decided where the tool is GRANTED, which is
+ * why the same class would be ungated in an application whose policy said so.
  */
-public final class SendEmailTool implements Tool<SendEmailTool.Input> {
+final class SendEmailTool implements Tool<SendEmailTool.Input> {
 
-  public record Input(
+  record Input(
       @JsonPropertyDescription("Recipient address") String to,
       @JsonPropertyDescription("Subject line") String subject,
       @JsonPropertyDescription("Message body") String body) {}
-
-  private final List<Input> sent = new CopyOnWriteArrayList<>();
 
   @Override
   public Class<Input> inputType() {
@@ -56,18 +50,11 @@ public final class SendEmailTool implements Tool<SendEmailTool.Input> {
 
   @Override
   public String description() {
-    return "Sends an email. A person must approve every send, so say what you intend to send and"
-        + " expect to wait.";
+    return "Sends an email. A person must approve every send, so say what you intend to send.";
   }
 
   @Override
   public Awaited<ToolResult> execute(Input input, ToolContext context) {
-    sent.add(input);
     return Awaited.ready(ToolResult.ok("sent to " + input.to()));
-  }
-
-  /** What this tool has actually done, newest last. */
-  public List<Input> sent() {
-    return List.copyOf(sent);
   }
 }

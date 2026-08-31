@@ -15,8 +15,7 @@
  */
 package org.jwcarman.nessy.examples.chatcli;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.jwcarman.nessy.api.Awaited;
@@ -36,24 +35,11 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  */
 final class DaysUntilTool implements Tool<DaysUntilTool.Input> {
 
-  record Input(String date) {}
-
-  private static final ObjectMapper JSON = new ObjectMapper();
+  record Input(@JsonPropertyDescription("The target date, as ISO-8601: 2026-12-25") String date) {}
 
   @Override
   public Class<Input> inputType() {
     return Input.class;
-  }
-
-  @Override
-  public ObjectNode inputSchema() {
-    ObjectNode schema = JSON.createObjectNode();
-    schema.put("type", "object");
-    ObjectNode date = schema.putObject("properties").putObject("date");
-    date.put("type", "string");
-    date.put("description", "The target date, as ISO-8601: 2026-12-25");
-    schema.putArray("required").add("date");
-    return schema;
   }
 
   @Override

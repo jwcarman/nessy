@@ -103,7 +103,11 @@ final class ReplLoop {
     return AgentSubscriber.of(
         events ->
             events
-                .onTextDelta(delta -> io.write(delta.text()))
+                // Flushed per delta, which is what makes this actually stream. print() only
+                // reaches the terminal when what it wrote contains a newline, so without this a
+                // paragraph arrives in one lump at the end — the answer appears finished rather
+                // than being written, which is the whole difference a person can see.
+                .onTextDelta(delta -> writeNow(delta.text()))
                 .onToolCallRequested(
                     call ->
                         io.write(
@@ -118,6 +122,12 @@ final class ReplLoop {
                 // offer(), not put(): if nobody is waiting the notice is worth dropping, and
                 // blocking an engine thread on a REPL that moved on never is.
                 .onTurnEnded(finished::offer));
+  }
+
+  /** Written and made visible immediately: a REPL's output is watched, not collected. */
+  private void writeNow(String text) {
+    io.write(text);
+    io.flush();
   }
 
   private void awaitTurn() {
