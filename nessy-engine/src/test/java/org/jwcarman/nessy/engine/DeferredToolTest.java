@@ -37,10 +37,10 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -125,7 +125,7 @@ class DeferredToolTest {
               public org.jwcarman.nessy.spi.model.ModelStream stream(ModelRequest request) {
                 boolean answered =
                     request.context().messages().stream()
-                        .anyMatch(ToolResultMessage.class::isInstance);
+                        .anyMatch(ExchangeMessage.class::isInstance);
                 if (answered) {
                   return Scripts.saying(
                       new ModelResult.Answered(
@@ -136,12 +136,8 @@ class DeferredToolTest {
                 ObjectNode arguments = JsonNodeFactory.instance.objectNode();
                 arguments.put("what", "sweep the hall");
                 return Scripts.saying(
-                    new ModelResult.Answered(
-                        new AnswerMessage(
-                            List.of(
-                                (AssistantContentBlock)
-                                    new ToolCallBlock(new ToolCall("c1", "start_job", arguments)))),
-                        StopReason.TOOL_USE,
+                    new ModelResult.Asked(
+                        List.of(new ToolCallBlock(new ToolCall("c1", "start_job", arguments))),
                         new Usage(1, 1)));
               }
             };

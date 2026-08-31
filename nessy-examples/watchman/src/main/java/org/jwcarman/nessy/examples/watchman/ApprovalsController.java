@@ -25,14 +25,15 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AmbientMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -123,19 +124,20 @@ public class ApprovalsController {
    */
   private static List<Note> notes(Context context) {
     List<Note> notes = new ArrayList<>();
-    for (Message message : context.messages()) {
+    for (ContextMessage message : context.messages()) {
       switch (message) {
         case UserMessage user ->
             text(user.content()).ifPresent(t -> notes.add(new Note("user", t)));
-        case AssistantMessage assistant -> {
-          text(assistant.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
-          assistant.content().stream()
-              .filter(ToolCallBlock.class::isInstance)
-              .map(ToolCallBlock.class::cast)
-              .forEach(callBlock -> notes.add(new Note("calls", callBlock.call().name())));
+        case AnswerMessage answer ->
+            text(answer.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
+        case ExchangeMessage exchange -> {
+          commentary(exchange.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
+          exchange.calls().forEach(call -> notes.add(new Note("calls", call.call().name())));
+          exchange.results().forEach(block -> notes.add(new Note("result", resultText(block))));
         }
-        case ToolResultMessage results ->
-            results.blocks().forEach(block -> notes.add(new Note("result", resultText(block))));
+        case AmbientMessage ignored -> {
+          // Background the model was shown; nobody said it, so it is not a note.
+        }
       }
     }
     return notes;
@@ -143,6 +145,16 @@ public class ApprovalsController {
 
   /** One line of the transcript: who or what it came from, and what it said. */
   public record Note(String role, String text) {}
+
+  /** What the model said while working — its own commentary, not an answer. */
+  private static Optional<String> commentary(List<? extends Block> blocks) {
+    String joined =
+        blocks.stream()
+            .filter(CommentaryBlock.class::isInstance)
+            .map(block -> ((CommentaryBlock) block).text())
+            .collect(Collectors.joining());
+    return joined.isBlank() ? Optional.empty() : Optional.of(joined);
+  }
 
   private static Optional<String> text(List<? extends Block> blocks) {
     String joined =

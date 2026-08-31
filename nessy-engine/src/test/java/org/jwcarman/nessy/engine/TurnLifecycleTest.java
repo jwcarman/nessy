@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -67,7 +68,7 @@ class TurnLifecycleTest {
   @BeforeAll
   static void startCluster() {
     testKit = ClusterOfOne.start();
-    memory = new Transcripts(new InMemorySubstrate(Clock.systemUTC()), WATCHMAN);
+    memory = TranscriptMemory.eternal(new InMemorySubstrate(Clock.systemUTC()), WATCHMAN);
     StateTypes.of(testKit.system()).register(WATCHMAN, HouseEvent.class);
 
     Model saysHello =

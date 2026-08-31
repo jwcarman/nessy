@@ -18,12 +18,14 @@ package org.jwcarman.nessy.engine;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.AnswerContentBlock;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
+import org.jwcarman.nessy.api.block.ExchangeContentBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.model.ModelResult;
+import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
@@ -42,21 +44,27 @@ final class Scripts {
   static ModelStream saying(ModelResult result) {
     List<ModelEvent> events = new ArrayList<>();
     switch (result) {
-      case ModelResult.Answered replied -> {
-        for (AssistantContentBlock block : replied.message().content()) {
+      case ModelResult.Answered answered -> {
+        for (AnswerContentBlock block : answered.message().content()) {
           switch (block) {
             case TextBlock text -> events.add(new ModelEvent.TextChunk(text.text()));
-            case ThinkingBlock thinking -> {
-              events.add(new ModelEvent.ReasoningChunk(thinking.text()));
-              events.add(new ModelEvent.ThinkingSigned(thinking.signature()));
-            }
-            case RedactedThinkingBlock redacted ->
-                events.add(new ModelEvent.RedactedThinkingEmitted(redacted.data()));
-            case ToolCallBlock call ->
-                events.add(new ModelEvent.ToolCallEmitted(call.call(), call.signature()));
+            case ProviderBlock state ->
+                events.add(new ModelEvent.ProviderStateEmitted(state.provider(), state.data()));
           }
         }
-        events.add(new ModelEvent.Stopped(replied.stopReason(), replied.usage()));
+        events.add(new ModelEvent.Stopped(answered.stopReason(), answered.usage()));
+      }
+      case ModelResult.Asked asked -> {
+        for (ExchangeContentBlock block : asked.content()) {
+          switch (block) {
+            case CommentaryBlock commentary ->
+                events.add(new ModelEvent.TextChunk(commentary.text()));
+            case ProviderBlock state ->
+                events.add(new ModelEvent.ProviderStateEmitted(state.provider(), state.data()));
+            case ToolCallBlock call -> events.add(new ModelEvent.ToolCallEmitted(call.call()));
+          }
+        }
+        events.add(new ModelEvent.Stopped(StopReason.TOOL_USE, asked.usage()));
       }
       case ModelResult.Refused refused ->
           events.add(

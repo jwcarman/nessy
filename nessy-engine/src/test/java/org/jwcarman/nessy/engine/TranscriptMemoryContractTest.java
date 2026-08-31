@@ -18,20 +18,22 @@ package org.jwcarman.nessy.engine;
 import java.time.Clock;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.testing.MemoryContractTest;
 
 /**
- * Certifies {@link Transcripts} against {@link MemoryContractTest} — the conformance suite every
- * {@link Memory} owes.
+ * Certifies {@link TranscriptMemory} against {@link MemoryContractTest} — the conformance suite
+ * every {@link Memory} owes.
  *
- * <p>{@code TranscriptsTest} covers what is particular to this implementation (substrate keys,
+ * <p>{@code TranscriptMemoryTest} covers what is particular to this implementation (substrate keys,
  * codecs, versioning); this covers what any Memory must do regardless of how it stores things.
  */
-class TranscriptsContractTest extends MemoryContractTest {
+class TranscriptMemoryContractTest extends MemoryContractTest {
 
   @Override
   protected Memory freshMemory() {
-    return new Transcripts(new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
+    return TranscriptMemory.eternal(
+        new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
   }
 }

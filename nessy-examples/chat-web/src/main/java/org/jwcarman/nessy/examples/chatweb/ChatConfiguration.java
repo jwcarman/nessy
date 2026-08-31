@@ -25,8 +25,8 @@ import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
-import org.jwcarman.nessy.engine.Transcripts;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -116,6 +116,8 @@ public class ChatConfiguration {
   /** The transcript the page renders, read through the same door the engine writes it with. */
   @Bean
   public Memory memory(Substrate substrate) {
-    return new Transcripts(substrate, TYPE);
+    // Eternal here on purpose: a browser chat is short, and losing the start of it would be
+    // more surprising than a long context. A long-lived agent wants TranscriptMemory.recent.
+    return TranscriptMemory.eternal(substrate, TYPE);
   }
 }

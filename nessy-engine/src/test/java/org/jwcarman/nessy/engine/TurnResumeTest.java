@@ -36,11 +36,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
@@ -52,6 +52,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -136,7 +137,7 @@ class TurnResumeTest {
       @Override
       public org.jwcarman.nessy.spi.model.ModelStream stream(ModelRequest request) {
         boolean answered =
-            request.context().messages().stream().anyMatch(ToolResultMessage.class::isInstance);
+            request.context().messages().stream().anyMatch(ExchangeMessage.class::isInstance);
         if (answered) {
           return Scripts.saying(
               new ModelResult.Answered(
@@ -147,14 +148,10 @@ class TurnResumeTest {
         ObjectNode arguments = JsonNodeFactory.instance.objectNode();
         arguments.put("what", "something");
         return Scripts.saying(
-            new ModelResult.Answered(
-                new AnswerMessage(
-                    List.of(
-                        (AssistantContentBlock)
-                            new ToolCallBlock(new ToolCall("c1", "quick", arguments)),
-                        (AssistantContentBlock)
-                            new ToolCallBlock(new ToolCall("c2", "slow", arguments)))),
-                StopReason.TOOL_USE,
+            new ModelResult.Asked(
+                List.of(
+                    new ToolCallBlock(new ToolCall("c1", "quick", arguments)),
+                    new ToolCallBlock(new ToolCall("c2", "slow", arguments))),
                 new Usage(1, 1)));
       }
     };
@@ -164,7 +161,7 @@ class TurnResumeTest {
   static void wire() {
     testKit = ClusterOfOne.start();
     InMemorySubstrate substrate = new InMemorySubstrate(Clock.systemUTC());
-    memory = new Transcripts(substrate, WATCHMAN);
+    memory = TranscriptMemory.eternal(substrate, WATCHMAN);
     claims = new Claims(substrate);
     deps =
         new TurnActor.Dependencies(

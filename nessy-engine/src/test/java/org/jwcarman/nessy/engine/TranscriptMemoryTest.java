@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
@@ -26,39 +25,38 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 @DisplayName("What an agent remembers")
-class TranscriptsTest {
+class TranscriptMemoryTest {
 
   private static final AgentId HOUSE = AgentId.of("house-12");
-  private Transcripts transcripts;
+  private TranscriptMemory transcripts;
 
   @BeforeEach
   void setUp() {
     transcripts =
-        new Transcripts(new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
+        TranscriptMemory.eternal(
+            new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
   }
 
-  private static AnswerMessage calling(String callId) {
-    return new AnswerMessage(
+  /** An exchange: the call, and the answer that settled it. */
+  private static ExchangeMessage exchange(String callId) {
+    return new ExchangeMessage(
         List.of(
-            (AssistantContentBlock)
-                new ToolCallBlock(
-                    new ToolCall(callId, "read_file", JsonNodeFactory.instance.objectNode()))));
-  }
-
-  private static ToolResultMessage answering(String callId) {
-    return new ToolResultMessage(List.of(ToolResultBlock.of(callId, ToolResult.ok("done"))));
+            new ToolCallBlock(
+                new ToolCall(callId, "read_file", JsonNodeFactory.instance.objectNode()))),
+        List.of(ToolResultBlock.of(callId, ToolResult.ok("done"))));
   }
 
   @Test
@@ -92,30 +90,11 @@ class TranscriptsTest {
   @DisplayName("an exchange is written whole, so recall is always a valid Context")
   void a_tool_exchange_is_remembered_as_a_pair() {
     transcripts.remember(HOUSE, UserMessage.of("go"));
-    transcripts.remember(HOUSE, calling("c1"), answering("c1"));
+    transcripts.remember(HOUSE, exchange("c1"));
 
     Context context = transcripts.recall(HOUSE);
 
-    assertThat(context.messages()).hasSize(3);
-    assertThat(context.messages().get(2)).isInstanceOf(ToolResultMessage.class);
-  }
-
-  @Test
-  void an_assistant_turn_with_unanswered_calls_is_refused_on_its_own() {
-    AnswerMessage asking = calling("c1");
-
-    assertThatThrownBy(() -> transcripts.remember(HOUSE, asking))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("must be remembered with the message answering it");
-  }
-
-  @Test
-  void results_that_do_not_match_the_calls_are_refused() {
-    AnswerMessage asking = calling("c1");
-    ToolResultMessage wrong = answering("c2");
-
-    assertThatThrownBy(() -> transcripts.remember(HOUSE, asking, wrong))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("answer exactly the calls asked");
+    assertThat(context.messages()).hasSize(2);
+    assertThat(context.messages().get(1)).isInstanceOf(ExchangeMessage.class);
   }
 }

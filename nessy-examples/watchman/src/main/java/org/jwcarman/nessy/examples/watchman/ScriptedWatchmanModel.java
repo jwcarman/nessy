@@ -20,8 +20,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
@@ -68,7 +68,7 @@ public final class ScriptedWatchmanModel implements Model {
       events.add(new ModelEvent.TextChunk("Checking the disks."));
       events.add(
           new ModelEvent.ToolCallEmitted(
-              new ToolCall("call-1", "disk_usage", JsonNodeFactory.instance.objectNode()), null));
+              new ToolCall("call-1", "disk_usage", JsonNodeFactory.instance.objectNode())));
       events.add(new ModelEvent.Stopped(StopReason.TOOL_USE, USAGE));
     }
     return new ModelStream() {
@@ -88,8 +88,8 @@ public final class ScriptedWatchmanModel implements Model {
    * Whether this round has already had a tool answered — the cue to wrap up rather than call again.
    */
   private static boolean answeredAlready(ModelRequest request) {
-    List<Message> messages = request.context().messages();
-    return messages.stream().anyMatch(ToolResultMessage.class::isInstance);
+    List<ContextMessage> messages = request.context().messages();
+    return messages.stream().anyMatch(ExchangeMessage.class::isInstance);
   }
 
   private static void sleep(Duration duration) {

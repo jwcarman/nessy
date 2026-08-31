@@ -145,7 +145,8 @@ public class WatchmanConfiguration {
   @Bean
   public org.jwcarman.nessy.api.memory.Memory memory(
       org.jwcarman.nessy.spi.substrate.Substrate substrate) {
-    return new org.jwcarman.nessy.engine.Transcripts(substrate, AgentType.of("watchman"));
+    return org.jwcarman.nessy.spi.memory.TranscriptMemory.eternal(
+        substrate, AgentType.of("watchman"));
   }
 
   @Bean

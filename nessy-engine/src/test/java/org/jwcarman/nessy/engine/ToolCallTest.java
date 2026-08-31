@@ -37,12 +37,12 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -55,6 +55,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -126,17 +127,13 @@ class ToolCallTest {
       @Override
       public org.jwcarman.nessy.spi.model.ModelStream stream(ModelRequest request) {
         boolean toolAlreadyAnswered =
-            request.context().messages().stream().anyMatch(ToolResultMessage.class::isInstance);
+            request.context().messages().stream().anyMatch(ExchangeMessage.class::isInstance);
         if (!toolAlreadyAnswered) {
           ObjectNode arguments = JsonNodeFactory.instance.objectNode();
           arguments.put("text", "the kitchen");
           return Scripts.saying(
-              new ModelResult.Answered(
-                  new AnswerMessage(
-                      List.of(
-                          (AssistantContentBlock)
-                              new ToolCallBlock(new ToolCall("c1", "look_up", arguments)))),
-                  StopReason.TOOL_USE,
+              new ModelResult.Asked(
+                  List.of(new ToolCallBlock(new ToolCall("c1", "look_up", arguments))),
                   new Usage(1, 1)));
         }
         String heard = request.context().messages().size() + " messages seen";
@@ -151,7 +148,7 @@ class ToolCallTest {
 
   private static void start(Approver approver) {
     testKit = ClusterOfOne.start();
-    memory = new Transcripts(new InMemorySubstrate(Clock.systemUTC()), WATCHMAN);
+    memory = TranscriptMemory.eternal(new InMemorySubstrate(Clock.systemUTC()), WATCHMAN);
     StateTypes.of(testKit.system()).register(WATCHMAN, HouseEvent.class);
 
     ToolBinding<Query> binding =
@@ -223,13 +220,14 @@ class ToolCallTest {
         .untilAsserted(
             () -> {
               Context context = memory.recall(AgentId.of("house-12"));
-              assertThat(context.messages()).hasSize(4);
-              assertThat(context.messages().get(1)).isInstanceOf(AnswerMessage.class);
-              assertThat(context.messages().get(2)).isInstanceOf(ToolResultMessage.class);
-              ToolResultMessage results = (ToolResultMessage) context.messages().get(2);
-              assertThat(results.blocks()).hasSize(1);
-              assertThat(results.blocks().getFirst().toolUseId()).isEqualTo("c1");
-              assertThat(results.blocks().getFirst().isError()).isFalse();
+              // Three messages, not four: the exchange the model asked for and the answers it got
+              // are one thing in the transcript, which is what makes a half-exchange impossible.
+              assertThat(context.messages()).hasSize(3);
+              assertThat(context.messages().get(1)).isInstanceOf(ExchangeMessage.class);
+              ExchangeMessage exchange = (ExchangeMessage) context.messages().get(1);
+              assertThat(exchange.results()).hasSize(1);
+              assertThat(exchange.results().getFirst().toolUseId()).isEqualTo("c1");
+              assertThat(exchange.results().getFirst().isError()).isFalse();
             });
   }
 
@@ -247,9 +245,12 @@ class ToolCallTest {
               assertThat(narrated).last().isInstanceOf(AgentEvent.TurnEnded.class);
               assertThat(narrated)
                   .extracting(event -> event.getClass().getSimpleName())
+                  // Answered fires ONCE, at the end. The asking turn is narrated by
+                  // ToolCallRequested, which is the fact a watcher can act on; Answered now means
+                  // what its name and its AnswerMessage say, rather than firing for a turn that
+                  // answered nothing.
                   .containsSubsequence(
                       "TurnStarted",
-                      "Answered",
                       "ToolCallRequested",
                       "ApprovalDecided",
                       "ToolCallCompleted",
@@ -276,9 +277,9 @@ class ToolCallTest {
         .untilAsserted(
             () -> {
               Context context = memory.recall(AgentId.of("house-13"));
-              assertThat(context.messages()).hasSize(4);
-              ToolResultMessage results = (ToolResultMessage) context.messages().get(2);
-              assertThat(results.blocks().getFirst().content())
+              assertThat(context.messages()).hasSize(3);
+              ExchangeMessage exchange = (ExchangeMessage) context.messages().get(1);
+              assertThat(exchange.results().getFirst().content())
                   .containsExactly(new TextBlock("found it for the kitchen"));
             });
   }
