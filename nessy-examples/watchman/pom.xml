@@ -122,6 +122,10 @@
          owns the transcript directly; this port no longer has one of its own. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -131,11 +135,6 @@
       <version>${project.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-agent</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
          that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider

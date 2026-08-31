@@ -25,8 +25,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -112,8 +112,8 @@ public final class WatchmanTools {
    * learns that these happen to be shell commands.
    *
    * <p>Every tool takes NO arguments — the read-only ones report everything, and the two acting
-   * ones have exactly one thing they do — so each binds {@link JsonNode} and ignores it. That
-   * keeps this example about composition rather than JSON-schema plumbing.
+   * ones have exactly one thing they do — so each binds {@link JsonNode} and ignores it. That keeps
+   * this example about composition rather than JSON-schema plumbing.
    */
   public static List<Tool<JsonNode>> boundTo(CommandRunner runner) {
     return SPECS.values().stream().map(spec -> toTool(spec, runner)).toList();
@@ -142,7 +142,7 @@ public final class WatchmanTools {
       }
 
       @Override
-      public Awaited<ToolResult> execute(JsonNode input, ReplyToken replyTo) {
+      public Awaited<ToolResult> execute(JsonNode input, ToolContext context) {
         // Blocking by design; the engine runs this on its blocking executor.
         List<String> argv = spec.argv().apply(input == null ? JSON.createObjectNode() : input);
         CommandRunner.Output output = runner.run(argv, spec.timeout());

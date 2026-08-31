@@ -19,58 +19,73 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.agent.BacklogItem;
-import org.jwcarman.nessy.api.agent.ObservationRenderer;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.engine.AgentActor;
+import org.jwcarman.nessy.api.backlog.BacklogItem;
+import org.jwcarman.nessy.api.message.UserMessage;
 
-@DisplayName("The watchman's own observation vocabulary")
+/** The one policy this application has about its own observations: ticks supersede one another. */
 class WatchmanObservationsTest {
 
-  @Nested
-  @DisplayName("How the watchman's own observations pile up")
-  class Coalescing {
+  private static final String TICK = "It is 03:00. Do your rounds.";
 
-    @Test
-    void twenty_cron_ticks_waiting_behind_a_turn_become_one() {
-      List<BacklogItem<String>> backlog = List.of();
-      for (int i = 0; i < 20; i++) {
-        backlog =
-            WatchmanObservations.COALESCER.ingest(
-                backlog,
-                new BacklogItem<>("t" + i, "It is 12:0" + i + ". Do your rounds.", Instant.EPOCH));
-      }
-
-      assertThat(backlog.size()).isEqualTo(1);
-      assertThat(backlog.stream().map(BacklogItem::observation))
-          .containsExactly("It is 12:019. Do your rounds.");
-    }
+  private static BacklogItem<String> item(String id, String observation) {
+    return new BacklogItem<>(id, observation, Instant.EPOCH);
   }
 
-  @Nested
-  @DisplayName("How a drained observation becomes what the model reads")
-  class Rendering {
+  @Test
+  void a_tick_arriving_on_an_empty_backlog_is_simply_kept() {
+    List<BacklogItem<String>> kept =
+        WatchmanObservations.COALESCER.coalesce(List.of(), item("a", TICK));
 
-    @Test
-    void a_renderer_change_reaches_an_observation_already_sitting_in_the_backlog() {
-      // Waiting under WatchmanObservations.RENDERER -- the renderer that will "change" below did
-      // not exist yet when this observation arrived. The item lives in the agent's state, so this
-      // is the same value the actor would hand its renderer.
-      BacklogItem<String> queued = new BacklogItem<>("e1", "disk at 91%", Instant.EPOCH);
+    assertThat(kept).extracting(BacklogItem::id).containsExactly("a");
+  }
 
-      ObservationRenderer<String> shouting =
-          observation -> List.of(new TextBlock(observation.toUpperCase(java.util.Locale.ROOT)));
+  @Test
+  void a_newer_tick_supersedes_a_waiting_one() {
+    List<BacklogItem<String>> waiting = List.of(item("old", TICK));
 
-      // The SAME queued entry, drained through AgentActor.userMessage -- the exact call
-      // AgentActor#startTurnIfWork makes -- with two different renderers. The output tracks
-      // whichever renderer is supplied at drain, not anything captured at ingest.
-      assertThat(AgentActor.userMessage(WatchmanObservations.RENDERER, queued).message().content())
-          .containsExactly(new TextBlock("disk at 91%"));
-      assertThat(AgentActor.userMessage(shouting, queued).message().content())
-          .containsExactly(new TextBlock("DISK AT 91%"));
-    }
+    List<BacklogItem<String>> kept =
+        WatchmanObservations.COALESCER.coalesce(waiting, item("new", TICK));
+
+    // A watchman busy for an hour does one round of catching up, not twenty.
+    assertThat(kept).extracting(BacklogItem::id).containsExactly("new");
+  }
+
+  @Test
+  void many_waiting_ticks_all_collapse_into_the_newest() {
+    List<BacklogItem<String>> waiting =
+        List.of(item("one", TICK), item("two", TICK), item("three", TICK));
+
+    List<BacklogItem<String>> kept =
+        WatchmanObservations.COALESCER.coalesce(waiting, item("four", TICK));
+
+    assertThat(kept).extracting(BacklogItem::id).containsExactly("four");
+  }
+
+  @Test
+  void anything_that_is_not_a_tick_is_kept_alongside() {
+    List<BacklogItem<String>> waiting = List.of(item("tick", TICK));
+
+    List<BacklogItem<String>> kept =
+        WatchmanObservations.COALESCER.coalesce(waiting, item("news", "The disk filled up."));
+
+    // Only ticks supersede: a real event must never be swallowed by the next cron beat.
+    assertThat(kept).extracting(BacklogItem::id).containsExactly("tick", "news");
+  }
+
+  @Test
+  void a_tick_does_not_supersede_a_waiting_real_event() {
+    List<BacklogItem<String>> waiting = List.of(item("news", "The disk filled up."));
+
+    List<BacklogItem<String>> kept =
+        WatchmanObservations.COALESCER.coalesce(waiting, item("tick", TICK));
+
+    assertThat(kept).extracting(BacklogItem::id).containsExactly("news", "tick");
+  }
+
+  @Test
+  void an_observation_renders_as_one_user_message() {
+    assertThat(WatchmanObservations.RENDERER.render("The disk filled up."))
+        .isEqualTo(UserMessage.of("The disk filled up."));
   }
 }

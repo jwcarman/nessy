@@ -15,29 +15,36 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import org.jwcarman.nessy.api.Identifiers;
-import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.Role;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.engine.AgentModel;
-import org.jwcarman.nessy.engine.ModelReply;
+import org.jwcarman.nessy.spi.model.Model;
+import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelStream;
 
-/** A watchman round with no tokens and no network. Deterministic on the context it is given. */
-public final class ScriptedWatchmanModel implements AgentModel {
+/**
+ * A watchman round with no tokens and no network. Deterministic on the context it is given.
+ *
+ * <p>Streams, because that is the only thing a {@link Model} does now — so the application
+ * exercises the same fold in a scripted run as it does against a real provider, rather than a
+ * shortcut that skips it.
+ */
+public final class ScriptedWatchmanModel implements Model {
 
-  private static final ObjectMapper JSON = new ObjectMapper();
+  private static final ModelId ID = ModelId.of("scripted-watchman");
 
-  // Plausible, non-zero on purpose: a script that always reports Usage.zero() would let a chat
-  // span's token attributes go missing without any test noticing.
-  private static final Usage USAGE = new Usage(606, 142, 0, 0);
+  // Plausible, non-zero on purpose: a script that always reported zero would let token accounting
+  // go missing without any test noticing.
+  private static final Usage USAGE = new Usage(606, 142);
 
   private final Duration latency;
 
@@ -46,61 +53,43 @@ public final class ScriptedWatchmanModel implements AgentModel {
   }
 
   @Override
-  public ModelReply reply(Context context) {
+  public ModelId id() {
+    return ID;
+  }
+
+  @Override
+  public ModelStream stream(ModelRequest request) {
     sleep(latency);
-
-    List<Message> messages = context.messages();
-    int lastUser = lastPlainUser(messages);
-    boolean answeredThisRound =
-        messages.subList(lastUser + 1, messages.size()).stream()
-            .anyMatch(ScriptedWatchmanModel::carriesToolResults);
-
-    if (answeredThisRound) {
-      return new ModelReply.Said(
-          Message.assistant(
-              List.of(
-                  new TextBlock(
-                      "Rounds complete. Disk is filling and there are unused images to reclaim."))),
-          USAGE);
+    List<ModelEvent> events = new ArrayList<>();
+    if (answeredAlready(request)) {
+      events.add(new ModelEvent.TextChunk("Rounds complete. Nothing needs your attention."));
+      events.add(new ModelEvent.Stopped(StopReason.END_TURN, USAGE));
+    } else {
+      events.add(new ModelEvent.TextChunk("Checking the disks."));
+      events.add(
+          new ModelEvent.ToolCallEmitted(
+              new ToolCall("call-1", "disk_usage", JsonNodeFactory.instance.objectNode()), null));
+      events.add(new ModelEvent.Stopped(StopReason.TOOL_USE, USAGE));
     }
-
-    // Unique per CALL, never derived from the context -- which is a property real models have and
-    // which this fake briefly did not. Deriving ids from what is visible looks fine until the
-    // context is budget-clipped: the count drops back, an id gets reissued, and Memory's
-    // idempotence-by-key silently swallows the second use because a Remembrance key is unique for
-    // the life of the agent, not for the life of the prompt. The round then hangs forever waiting
-    // for a result that was never recorded.
-    String suffix = "-" + Identifiers.next();
-    List<ToolCall> calls =
-        List.of(
-            new ToolCall("call-disk" + suffix, "disk_usage", JSON.createObjectNode()),
-            new ToolCall("call-containers" + suffix, "containers", JSON.createObjectNode()),
-            new ToolCall("call-prune" + suffix, "prune_images", JSON.createObjectNode()));
-
-    List<ContentBlock> blocks =
-        List.of(
-            new TextBlock("Looking at the box."),
-            new ToolUseBlock(calls.get(0), null),
-            new ToolUseBlock(calls.get(1), null),
-            new ToolUseBlock(calls.get(2), null));
-    return new ModelReply.AskedForTools(Message.assistant(blocks), calls, USAGE);
-  }
-
-  /** A user message that is a person talking, not a batch of tool results. */
-  private static int lastPlainUser(List<Message> messages) {
-    int last = -1;
-    for (int i = 0; i < messages.size(); i++) {
-      Message message = messages.get(i);
-      if (message.role() == Role.USER && !carriesToolResults(message)) {
-        last = i;
+    return new ModelStream() {
+      @Override
+      public Iterator<ModelEvent> iterator() {
+        return events.iterator();
       }
-    }
-    return last;
+
+      @Override
+      public void close() {
+        // Nothing to release: the script is already in memory.
+      }
+    };
   }
 
-  private static boolean carriesToolResults(Message message) {
-    return message.content().stream()
-        .anyMatch(org.jwcarman.nessy.api.message.ToolResultBlock.class::isInstance);
+  /**
+   * Whether this round has already had a tool answered — the cue to wrap up rather than call again.
+   */
+  private static boolean answeredAlready(ModelRequest request) {
+    List<Message> messages = request.context().messages();
+    return messages.stream().anyMatch(ToolResultMessage.class::isInstance);
   }
 
   private static void sleep(Duration duration) {
@@ -108,7 +97,6 @@ public final class ScriptedWatchmanModel implements AgentModel {
       Thread.sleep(duration.toMillis());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new IllegalStateException("interrupted in the scripted model", e);
     }
   }
 }

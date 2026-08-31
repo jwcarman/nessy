@@ -17,16 +17,50 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 @DisplayName("The watchman's tools")
 class WatchmanToolsTest {
 
+  private static final JsonNode NO_ARGUMENTS = JsonNodeFactory.instance.objectNode();
+
+  /** A tool never defers here, so nothing reads the address. */
+  private static final ToolContext NOWHERE = () -> new ReplyToken("nowhere");
+
   private final CommandRunner runner = new FakeRunner();
+
+  private static Map<String, Tool<JsonNode>> toolsOf(CommandRunner runner) {
+    return WatchmanTools.boundTo(runner).stream()
+        .collect(java.util.stream.Collectors.toMap(Tool::name, Function.identity()));
+  }
+
+  private static String textOf(Awaited<ToolResult> awaited) {
+    ToolResult result = ((Awaited.Ready<ToolResult>) awaited).result();
+    return switch (result) {
+      case ToolResult.Success success ->
+          success.content().stream()
+              .map(block -> ((TextBlock) block).text())
+              .collect(java.util.stream.Collectors.joining("\n"));
+      case ToolResult.Failure failure -> failure.message();
+    };
+  }
+
+  private String run(CommandRunner runner, String tool) {
+    return textOf(toolsOf(runner).get(tool).execute(NO_ARGUMENTS, NOWHERE));
+  }
 
   @Nested
   @DisplayName("Reporting what it found")
@@ -34,14 +68,12 @@ class WatchmanToolsTest {
 
     @Test
     void disk_usage_reports_one_line_per_filesystem() {
-      String report = WatchmanTools.run(runner, "disk_usage", "{}");
-
-      assertThat(report).isEqualTo("/ 91% used, 9G free");
+      assertThat(run(runner, "disk_usage")).isEqualTo("/ 91% used, 9G free");
     }
 
     @Test
     void containers_flags_the_ones_that_need_attention() {
-      String report = WatchmanTools.run(runner, "containers", "{}");
+      String report = run(runner, "containers");
 
       assertThat(report)
           .contains("grafana running")
@@ -64,23 +96,29 @@ class WatchmanToolsTest {
 
     @Test
     void the_action_a_human_is_shown_is_the_line_that_will_run() {
-      assertThat(WatchmanTools.action("prune_images", "{}")).isEqualTo("docker image prune -af");
+      assertThat(WatchmanTools.describe("prune_images", NO_ARGUMENTS))
+          .isEqualTo("docker image prune -af");
     }
   }
 
   @Nested
-  @DisplayName("The schemas the model is given")
-  class TheSchemasTheModelIsGiven {
+  @DisplayName("What the model is offered")
+  class WhatTheModelIsOffered {
 
     @Test
-    void every_tool_is_offered_with_a_description() {
-      var specs = WatchmanTools.specs();
-      List<String> names = specs.stream().map(org.jwcarman.nessy.api.tool.ToolSpec::name).toList();
+    void every_tool_is_offered_with_a_description_and_a_schema() {
+      List<Tool<JsonNode>> tools = WatchmanTools.boundTo(runner);
 
-      assertThat(names).isNotEmpty();
-      assertThat(names)
+      assertThat(tools).isNotEmpty();
+      assertThat(tools)
+          .extracting(Tool::name)
           .containsExactlyInAnyOrder("disk_usage", "containers", "prune_images", "long_job");
-      specs.forEach(spec -> assertThat(spec.description()).isNotBlank());
+      tools.forEach(
+          tool -> {
+            assertThat(tool.description()).isNotBlank();
+            // Every watchman tool takes no arguments, and says so rather than saying nothing.
+            assertThat(tool.inputSchema().get("type").asText()).isEqualTo("object");
+          });
     }
   }
 
@@ -89,27 +127,17 @@ class WatchmanToolsTest {
   class AToolTheHostCannotRun {
 
     @Test
-    void an_unknown_tool_answers_the_model_instead_of_throwing() {
-      String report = WatchmanTools.run(runner, "reboot_everything", "{}");
-
-      assertThat(report).isEqualTo("no such tool: reboot_everything");
-    }
-
-    @Test
-    void a_command_that_fails_becomes_a_message_the_model_can_read() {
+    void a_command_that_fails_becomes_a_failure_the_model_can_read() {
       CommandRunner broken =
           (argv, timeout) -> new CommandRunner.Output(1, "", "docker: no such host");
 
-      String report = WatchmanTools.run(broken, "containers", "{}");
+      Awaited<ToolResult> answer = toolsOf(broken).get("containers").execute(NO_ARGUMENTS, NOWHERE);
 
-      assertThat(report).isEqualTo("docker failed: docker: no such host");
+      // A failed command is a Failure now, not a success carrying an error string — the model is
+      // told plainly that nothing happened.
+      assertThat(((Awaited.Ready<ToolResult>) answer).result())
+          .isInstanceOf(ToolResult.Failure.class);
+      assertThat(textOf(answer)).isEqualTo("docker failed: docker: no such host");
     }
-  }
-
-  @Test
-  void dwell_is_reported_in_the_coarsest_unit_that_is_still_true() {
-    assertThat(PendingApprovals.dwell(Duration.ofMinutes(20))).isEqualTo("20m");
-    assertThat(PendingApprovals.dwell(Duration.ofHours(5).plusMinutes(3))).isEqualTo("5h 3m");
-    assertThat(PendingApprovals.dwell(Duration.ofDays(2).plusHours(7))).isEqualTo("2d 7h");
   }
 }

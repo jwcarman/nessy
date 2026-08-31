@@ -15,9 +15,8 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.time.Clock;
-import org.jwcarman.nessy.engine.AgentActor;
-import org.jwcarman.nessy.engine.Traces;
+import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.spring.boot.PendingApprovalsListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -28,56 +27,46 @@ import org.springframework.stereotype.Component;
 /**
  * The clock that drives the application: every half hour, tell the watchman to do its rounds.
  *
- * <p>{@code tell} is a post, not a call — it returns as soon as the message is in the agent's
- * mailbox, so a round that takes twenty minutes cannot make the next cron tick late.
+ * <p>{@link Harness#observe} is a post, not a call — it returns as soon as the observation is
+ * durably the agent's problem, so a round that takes twenty minutes cannot make the next tick late.
+ * Twenty ticks queued behind a long round collapse to one, because {@code WatchmanObservations}
+ * coalesces them: a watchman that was busy for an hour does one round of catching up, not twenty.
  *
- * <p>The trace starts HERE. {@link Traces#capture} flattens the cron tick's span context into the
- * message, and every actor that handles it re-opens that context as its parent. Without this the
- * round's spans would be a handful of orphans, because nothing propagates a thread-local across a
- * mailbox.
+ * <p><b>The first tick is also the recovery.</b> A sharded agent sleeps until something addresses
+ * it, and a turn left unfinished by the last shutdown is re-driven by the agent's own recovery once
+ * it wakes. So the tick on startup is not just an eager round — it is what gets unfinished work
+ * moving again. Without it, that work would wait for the next half-hour boundary.
  */
 @Component
 public class WatchmanRounds {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
 
-  private final WatchmanActorSystem actors;
-  private final StartupSweep sweep;
-  private final Traces traces;
-  private final Clock clock;
+  private static final String TICK = "Do your rounds.";
 
-  WatchmanRounds(WatchmanActorSystem actors, StartupSweep sweep, Traces traces, Clock clock) {
-    this.actors = actors;
-    this.sweep = sweep;
-    this.traces = traces;
-    this.clock = clock;
+  private final Harness<String> harness;
+  private final PendingApprovalsListener listener;
+
+  WatchmanRounds(Harness<String> harness, PendingApprovalsListener listener) {
+    this.harness = harness;
+    this.listener = listener;
   }
 
   /**
-   * The driver obligation, run once the context is up: any round left unfinished by the last
-   * shutdown gets its actor back, and that actor's own recovery re-fires whatever it owed.
+   * Starts listening, then knocks once.
+   *
+   * <p>Subscribing BEFORE the first tick matters: the projection only hears what it is present for,
+   * and the first round is the one most likely to propose something that needs a person.
    */
   @EventListener(ApplicationReadyEvent.class)
-  public void recoverUnfinishedRounds() {
-    sweep
-        .unfinishedAgents()
-        .forEach(agentId -> actors.tell(agentId, new AgentActor.Wake(actors.here())));
+  public void started() {
+    harness.subscribe(WatchmanConfiguration.AGENT, listener);
+    LOG.info("[watchman] listening, and doing a first round");
+    round();
   }
 
-  /** One round. Scheduled in the application; called directly by the tests. */
-  @Scheduled(cron = "${watchman.cron:0 */30 * * * *}")
-  public void doRounds() {
-    traces.inSpan(
-        "watchman round",
-        java.util.Map.of(),
-        () -> {
-          String observation = "It is " + clock.instant() + ". Do your rounds.";
-          LOG.info("[watchman] telling the watchman: {}", observation);
-          // The agent itself writes this into the transcript once it drains -- see
-          // AgentActor#startTurnIfWork. A durable backlog holds it until then, coalescing any
-          // tick still queued per WatchmanObservations#COALESCER: "do your rounds" is not
-          // cumulative.
-          actors.tell(Watchman.AGENT_ID, new AgentActor.Observe(observation, traces.capture()));
-        });
+  @Scheduled(fixedRateString = "PT30M")
+  public void round() {
+    harness.observe(WatchmanConfiguration.AGENT, TICK);
   }
 }
