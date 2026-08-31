@@ -1,29 +1,36 @@
 # Nessy Example: Chat CLI
 
 The smallest complete Nessy application: a conversation in a terminal, with
-one tool. No Spring, no database, no HTTP — four Java files, of which one is
-the agent, one is the tool, and one is the assembly a real deployment would
-never write by hand.
+one tool. No Spring, no database, no HTTP — two Java files, one of which is
+the tool.
 
-That last one is the point. `Runtime.java` builds the engine explicitly —
-actor system, cluster of one, substrate, reply tokens — so you can see what
-the Spring Boot starter is doing for the `chat-web` sibling, and that it is
-nothing magic.
+It used to be four, and one of those was eighty lines of engine assembly. That
+moved into `nessy-console`, where it is library code rather than an example of
+what an application should not have to write.
 
 ## What it shows
 
-- **A harness with a tool.** `days_until` counts days to a date: something a
-  model is bad at and a tool is trivially good at, so watching the model
-  reach for it is watching tool use earn its keep.
-- **Streaming.** Deltas print as they arrive.
-- **The asynchrony under a synchronous-looking loop.** `harness.observe` is
-  a post, not a call. The REPL blocks on `TurnEnded` because a *person* is
-  waiting; an unattended application simply would not.
+`Chat.java` is 53 lines, and this is all of it:
 
-Nothing here survives the process. The durable-state store is Pekko's
-in-memory one, which is the honest shape for a REPL: the conversation lives
-exactly as long as the terminal it is typed into. Point `chat-web` at a
-database to see the other half.
+```java
+Repl.run(config -> config
+    .banner("nessy chat — Ctrl-D or /quit to leave")
+    .systemPrompt(SYSTEM_PROMPT)
+    .tool(new DaysUntilTool()));
+```
+
+`nessy-console` owns everything else — discovering the model, forming the actor
+system's cluster of one, the in-memory substrate and reply tokens, and the loop
+that streams an answer as it arrives. What is left here is the only part that is
+about THIS program: what it is for, and what it can do.
+
+- **A tool worth having.** `days_until` counts days to a date: something a model
+  is bad at and a tool is trivially good at, so watching it get reached for is
+  watching tool use earn its keep.
+- **Streaming.** Deltas print as they arrive.
+
+Nothing survives the process — state lives exactly as long as the terminal it is
+typed into. Point `chat-web` at a database to see the other half.
 
 ## Run it
 
