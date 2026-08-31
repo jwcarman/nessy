@@ -134,6 +134,13 @@
     </dependency>
     <!-- The projection's only persistence tool. spring-jdbc rather than a JPA provider: one table,
          four statements, no session. -->
+    <!-- Optional, the way a starter carries a feature it does not force: an application with no
+         database never sees these, and the approvals projection simply is not wired. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jdbc</artifactId>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>

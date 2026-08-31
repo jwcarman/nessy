@@ -34,6 +34,13 @@ spring:
 server:
   shutdown: graceful
 
+nessy:
+  # A FIXED key, so a token minted before a restart can still be read after one. Without this the
+  # starter warns and falls back to an ephemeral key, and every parked approval becomes
+  # unanswerable the moment the process bounces.
+  reply-keys:
+    - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
+
 watchman:
   cron: ${WATCHMAN_CRON:0 */30 * * * *}
   approval-term: 3d

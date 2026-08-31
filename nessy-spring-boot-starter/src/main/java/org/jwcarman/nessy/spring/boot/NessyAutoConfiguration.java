@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -42,11 +44,14 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -63,7 +68,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * mystery at the first turn. When a discovery seam returns, a {@code @ConditionalOnMissingBean}
  * provider bean goes back here and nothing else changes.
  */
-@Configuration(proxyBeanMethods = false)
+// AFTER Boot's own JDBC auto-configuration. Ordering is not cosmetic here: the approvals
+// projection is @ConditionalOnBean(JdbcTemplate), and a condition evaluated before Boot has
+// registered that bean quietly decides there is no database — an application with Postgres right
+// there then fails because its own controller cannot find the repository.
+@AutoConfiguration(after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class})
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 
@@ -132,8 +141,16 @@ public class NessyAutoConfiguration {
    */
   @Bean(destroyMethod = "terminate")
   @ConditionalOnMissingBean
-  public ActorSystem<Void> nessyActorSystem() {
-    ActorSystem<Void> system = ActorSystem.create(Behaviors.empty(), "nessy");
+  public ActorSystem<Void> nessyActorSystem(ObjectProvider<Config> configs) {
+    // An application contributes Pekko config as a bean — credentials for a persistence plugin,
+    // say — so it can build them from the same properties Spring already read rather than
+    // repeating them in a second file. What it supplies wins; reference.conf is the fallback.
+    Config config =
+        configs.stream()
+            .reduce(Config::withFallback)
+            .orElseGet(ConfigFactory::empty)
+            .withFallback(ConfigFactory.load());
+    ActorSystem<Void> system = ActorSystem.create(Behaviors.empty(), "nessy", config);
     if (system.settings().config().getStringList("pekko.cluster.seed-nodes").isEmpty()) {
       Cluster cluster = Cluster.get(system);
       cluster.manager().tell(Join.create(cluster.selfMember().address()));
@@ -175,7 +192,7 @@ public class NessyAutoConfiguration {
       Substrate substrate,
       ModelProvider models,
       NessyProperties properties,
-      Executor blocking,
+      @Qualifier("nessyBlockingExecutor") Executor blocking,
       Clock clock,
       ReplyTokens tokens) {
     return new PekkoHarnessFactory(

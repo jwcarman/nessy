@@ -16,7 +16,12 @@
 package org.jwcarman.nessy.examples.watchman;
 
 import java.security.Principal;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.engine.Replies;
@@ -32,48 +37,80 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
- * The page. Two routes, no API, no JSON: a thing a person looks at every couple of days on a LAN.
+ * The page. A few routes, no API, no JSON: a thing a person looks at every couple of days on a LAN.
  *
  * <p><b>The two buttons are the interesting part, and they are async on purpose.</b> {@link
- * Replies#approve} returns a {@link CompletableFuture} the engine completes only after it has
- * accepted the decision, and returning that future from the handler is what makes Spring hold the
- * response open until then.
+ * Replies#approve} returns a future the engine completes only once it has accepted the decision,
+ * and returning that future from the handler is what makes Spring hold the response open until
+ * then.
  *
- * <p>Getting this wrong is easy and quiet: fire the answer off, return {@code "redirect:/"}
- * immediately, and the operator sees a green page for a decision that was still only a message in a
- * mailbox. Lose power in that instant and the denial is gone while the human believes it landed.
+ * <p>Getting this wrong is easy and quiet: fire the answer off, redirect immediately, and the
+ * operator sees a green page for a decision that was still only a message in a mailbox. Lose power
+ * in that instant and the denial is gone while the human believes it landed.
  *
  * <p>The read side comes from somewhere else entirely: the projection is written as the agent
- * narrates. So a click here is not "update the row", it is "answer the question", and the page
- * catches up when it is next rendered.
+ * narrates. A click here is not "update the row", it is "answer the question", and the page catches
+ * up when it is next rendered.
  */
 @Controller
 public class ApprovalsController {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApprovalsController.class);
 
+  /** One waiting approval, as the page shows it. */
+  public record Row(String agentId, String callId, String action, Instant askedAt, String dwell) {}
+
   private final PendingApprovalsRepository approvals;
   private final Replies replies;
+  private final Memory memory;
+  private final Clock clock;
 
-  ApprovalsController(PendingApprovalsRepository approvals, Replies replies) {
+  ApprovalsController(
+      PendingApprovalsRepository approvals, Replies replies, Memory memory, Clock clock) {
     this.approvals = approvals;
     this.replies = replies;
+    this.memory = memory;
+    this.clock = clock;
   }
 
   @GetMapping("/")
   public String pending(Model model) {
-    model.addAttribute("pending", approvals.pending());
-    return "approvals";
+    Instant now = clock.instant();
+    List<Row> rows =
+        approvals.pending().stream()
+            .map(
+                row ->
+                    new Row(
+                        row.agentId(),
+                        row.callId(),
+                        row.action(),
+                        row.askedAt(),
+                        dwell(Duration.between(row.askedAt(), now))))
+            .toList();
+    model.addAttribute("rows", rows);
+    return "index";
   }
 
-  @PostMapping("/approvals/{callId}/approve")
-  public CompletableFuture<String> approve(@PathVariable String callId, Principal who) {
+  @GetMapping("/transcript")
+  public String transcript(Model model) {
+    model.addAttribute("notes", memory.recall(WatchmanConfiguration.AGENT).lines());
+    return "transcript";
+  }
+
+  @PostMapping("/approve/{agentId}/{callId}")
+  public CompletableFuture<String> approve(
+      @PathVariable("agentId") String agentId,
+      @PathVariable("callId") String callId,
+      Principal who) {
     return answer(callId, ApprovalResult.approved(), who);
   }
 
-  @PostMapping("/approvals/{callId}/deny")
+  @PostMapping("/deny/{agentId}/{callId}")
   public CompletableFuture<String> deny(
-      @PathVariable String callId, @RequestParam(defaultValue = "") String note, Principal who) {
+      @PathVariable("agentId") String agentId,
+      @PathVariable("callId") String callId,
+      @RequestParam(name = "note", defaultValue = "") String note,
+      Principal who) {
     return answer(callId, ApprovalResult.denied(note.isBlank() ? "denied" : note), who);
   }
 
@@ -81,8 +118,8 @@ public class ApprovalsController {
    * Answers one question, if it is still waiting.
    *
    * <p>A row that is already answered is not an error: two people can have the page open, and the
-   * second click should redirect to a page that shows what the first one decided rather than to a
-   * stack trace.
+   * second click should land on a page showing what the first one decided rather than a stack
+   * trace.
    */
   private CompletableFuture<String> answer(String callId, ApprovalResult result, Principal who) {
     PendingApproval row = approvals.byCallId(callId).orElse(null);
@@ -95,6 +132,19 @@ public class ApprovalsController {
         .approve(new ReplyToken(row.replyToken()), result)
         .toCompletableFuture()
         .thenApply(ack -> "redirect:/");
+  }
+
+  /** The coarsest unit that is still true — a page shows "3h 12m", never "192 minutes". */
+  static String dwell(Duration waited) {
+    long minutes = Math.max(0, waited.toMinutes());
+    if (minutes < 60) {
+      return minutes + "m";
+    }
+    long hours = minutes / 60;
+    if (hours < 24) {
+      return hours + "h " + (minutes % 60) + "m";
+    }
+    return (hours / 24) + "d " + (hours % 24) + "h";
   }
 
   private static String name(Principal who) {

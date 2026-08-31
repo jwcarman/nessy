@@ -135,6 +135,13 @@ public class WatchmanConfiguration {
     };
   }
 
+  /** The transcript the page renders, read through the same door the engine writes it with. */
+  @Bean
+  public org.jwcarman.nessy.api.memory.Memory memory(
+      org.jwcarman.nessy.spi.substrate.Substrate substrate) {
+    return new org.jwcarman.nessy.engine.Transcripts(substrate, AgentType.of("watchman"));
+  }
+
   @Bean
   public PendingApprovalsListener approvalsListener(
       PendingApprovalsRepository repository, Clock clock) {

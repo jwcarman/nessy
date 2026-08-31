@@ -48,7 +48,9 @@ public class PendingApprovalsRepository {
   private static final String INSERT =
       "INSERT INTO nessy_pending_approvals (call_id, agent_type, agent_id, tool, action, asked_at,"
           + " expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-          + " ON CONFLICT (call_id) DO NOTHING";
+          + " ON CONFLICT (call_id) DO UPDATE SET reply_token = EXCLUDED.reply_token,"
+          + " expires_at = EXCLUDED.expires_at"
+          + " WHERE nessy_pending_approvals.answer IS NULL";
 
   private static final String ANSWER =
       "UPDATE nessy_pending_approvals SET answer = ?, note = ?, answered_at = ?"
@@ -71,8 +73,18 @@ public class PendingApprovalsRepository {
   }
 
   /**
-   * Records a question. Idempotent by call id, which matters: a recovered turn re-runs the calls it
-   * never settled, so the same question is asked again and must not become a second row.
+   * Records a question, and REFRESHES the address if it is asked again.
+   *
+   * <p>Idempotent by call id, which matters: a recovered turn re-runs the calls it never settled,
+   * so the same question is asked again and must not become a second row.
+   *
+   * <p>But not "do nothing", which is the trap. Re-asking mints a NEW reply token, and a row that
+   * kept the old one would show a button that cannot work — the engine rejects the stale address
+   * with "not a reply token issued by this engine", and the approval is unanswerable for as long as
+   * it stands. Measured, not imagined: it is what a restart did.
+   *
+   * <p>Only while unanswered. A row someone already decided is history, and a late re-ask must not
+   * reopen it.
    */
   public void asked(PendingApproval row) {
     jdbc.update(
