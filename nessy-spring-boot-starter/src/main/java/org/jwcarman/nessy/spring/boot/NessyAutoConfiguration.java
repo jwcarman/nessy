@@ -17,6 +17,10 @@ package org.jwcarman.nessy.spring.boot;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -178,11 +182,19 @@ public class NessyAutoConfiguration {
   /**
    * Where blocking tool work runs. Virtual threads, because a tool that shells out or calls a slow
    * HTTP service should not consume a platform thread while it waits.
+   *
+   * <p><b>Context-propagating, and that is what makes a trace a tree.</b> Every tool call and every
+   * model call crosses this executor, and a thread-local scope does not follow {@code
+   * executor.execute} — so without this wrapper each of them opens a span with no parent, and one
+   * round arrives in Tempo as five unrelated traces instead of one. The wrapper captures whatever
+   * context the submitting actor holds and restores it on the worker thread, so the spans nest.
    */
   @Bean(destroyMethod = "shutdown")
   @ConditionalOnMissingBean(name = "nessyBlockingExecutor")
   public java.util.concurrent.ExecutorService nessyBlockingExecutor() {
-    return Executors.newVirtualThreadPerTaskExecutor();
+    return ContextExecutorService.wrap(
+        Executors.newVirtualThreadPerTaskExecutor(),
+        ContextSnapshotFactory.builder().build()::captureAll);
   }
 
   @Bean
@@ -191,14 +203,22 @@ public class NessyAutoConfiguration {
       ActorSystem<Void> system,
       Substrate substrate,
       ModelProvider models,
+      ObjectProvider<ObservationRegistry> registries,
+      ObjectProvider<MeterRegistry> meterRegistries,
       NessyProperties properties,
       @Qualifier("nessyBlockingExecutor") Executor blocking,
       Clock clock,
       ReplyTokens tokens) {
+    // Every model this factory resolves is observed, so a chat span lasts exactly as long as the
+    // provider did and carries the tokens THAT call reported. An application with no registry gets
+    // its own provider back untouched.
+    ObservationRegistry registry = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
+    MeterRegistry meters = meterRegistries.getIfAvailable();
+    boolean observing = !ObservationRegistry.NOOP.equals(registry) && meters != null;
     return new PekkoHarnessFactory(
         system,
         substrate,
-        models,
+        observing ? Observed.models(models, properties.provider(), registry, meters) : models,
         properties.maxTokens(),
         properties.capabilities(),
         blocking,
@@ -227,7 +247,9 @@ public class NessyAutoConfiguration {
       PekkoHarnessFactory factory,
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
-      ObjectProvider<ObservationRenderer<String>> renderers) {
+      ObjectProvider<ObservationRenderer<String>> renderers,
+      ObjectProvider<ObservationRegistry> registries) {
+    ObservationRegistry registry = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     List<Tool<?>> declared = tools.orderedStream().toList();
     String systemPrompt = properties.resolveSystemPrompt();
     ObservationRenderer<String> renderer = renderers.getIfAvailable(() -> UserMessage::of);
@@ -239,7 +261,7 @@ public class NessyAutoConfiguration {
               .systemPrompt(systemPrompt)
               .renderer(renderer);
           config.model(ModelId.of(requireModel(properties)));
-          declared.forEach(tool -> grant(config, tool));
+          declared.forEach(tool -> grant(config, tool, registry));
         });
   }
 
@@ -268,8 +290,9 @@ public class NessyAutoConfiguration {
    * HarnessConfig#tool} gets the concrete input type it needs to tie a tool to its describer — and
    * no cast is needed to get it.
    */
-  private static <I> void grant(HarnessConfig<String> config, Tool<I> tool) {
-    config.tool(tool);
+  private static <I> void grant(
+      HarnessConfig<String> config, Tool<I> tool, ObservationRegistry registry) {
+    config.tool(ObservationRegistry.NOOP.equals(registry) ? tool : Observed.tool(tool, registry));
   }
 
   /**

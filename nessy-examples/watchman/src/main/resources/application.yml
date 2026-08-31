@@ -35,6 +35,9 @@ server:
   shutdown: graceful
 
 nessy:
+  # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. This is configured
+  # rather than discovered because a Model no longer reports its own vendor.
+  provider: openai
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every parked approval becomes
   # unanswerable the moment the process bounces.

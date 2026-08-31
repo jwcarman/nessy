@@ -80,6 +80,8 @@ public final class AnthropicStream implements ModelStream {
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
     private long inputTokens;
+    private long cacheReadInputTokens;
+    private long cacheWriteInputTokens;
     private boolean turnEnded;
 
     private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
@@ -179,7 +181,10 @@ public final class AnthropicStream implements ModelStream {
      * @param cacheWrite the vendor's {@code cache_creation_input_tokens}
      */
     private void readUsage(long uncachedInputTokens, long cacheRead, long cacheWrite) {
+      // Anthropic's own input_tokens EXCLUDES both cache counts, so the whole is the sum.
       inputTokens = uncachedInputTokens + cacheRead + cacheWrite;
+      cacheReadInputTokens = cacheRead;
+      cacheWriteInputTokens = cacheWrite;
     }
 
     /**
@@ -245,7 +250,12 @@ public final class AnthropicStream implements ModelStream {
               .stopReason()
               .orElseThrow(
                   () -> new IllegalStateException("message_delta event is missing stop_reason"));
-      var usage = new Usage(inputTokens, event.usage().outputTokens());
+      var usage =
+          new Usage(
+              inputTokens,
+              event.usage().outputTokens(),
+              cacheReadInputTokens,
+              cacheWriteInputTokens);
       // A refusal is its own event now, not a stop reason: StopReason names only the three ways a
       // turn that HAPPENED can end, and a refused turn did not happen. Anthropic reports it in the
       // same field as the others, so this is where the two shapes part company.

@@ -251,10 +251,13 @@ final class BedrockStream implements ModelStream {
         // Usage carries two numbers now: the cache read/write split is summed into the input
         // total — which is what semconv asks gen_ai.usage.input_tokens to mean — rather than
         // reported beside it. Bedrock's own inputTokens excludes both, so the sum stays.
+        // Bedrock's inputTokens excludes both cache counts, so the whole is the sum.
         usage =
             new Usage(
                 orZero(tokenUsage.inputTokens()) + cacheRead + cacheWrite,
-                orZero(tokenUsage.outputTokens()));
+                orZero(tokenUsage.outputTokens()),
+                cacheRead,
+                cacheWrite);
       }
     }
 

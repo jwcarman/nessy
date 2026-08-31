@@ -283,7 +283,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(17, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(17, 5, 7, 0)));
     }
 
     @Test
@@ -302,7 +302,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(35, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(35, 5, 0, 25)));
     }
 
     /**
@@ -329,7 +329,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
     }
 
     @Test

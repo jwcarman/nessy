@@ -179,7 +179,7 @@ class GeminiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 4, 0)));
     }
 
     @Test

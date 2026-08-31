@@ -146,7 +146,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(14, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(14, 5, 4, 0)));
     }
 
     /**
@@ -167,7 +167,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
     }
 
     @Test

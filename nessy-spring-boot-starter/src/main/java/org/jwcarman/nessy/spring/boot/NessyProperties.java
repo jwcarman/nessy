@@ -38,6 +38,11 @@ import org.springframework.util.FileCopyUtils;
  *     exclusive with {@link #systemPrompt}
  * @param model which model the agents talk to, resolved against the application's {@code
  *     ModelProvider}
+ * @param provider the semconv {@code gen_ai.provider.name} for the vendor behind the ModelProvider
+ *     — {@code openai}, {@code anthropic}, {@code gcp.gemini}, {@code aws.bedrock}. Configured
+ *     rather than discovered, because a Model no longer reports its own vendor and only the
+ *     application that built the provider knows which one it is. Each adapter publishes the right
+ *     value as its own {@code PROVIDER} constant.
  * @param maxTokens the longest answer to allow
  * @param capabilities what the application would LIKE its provider to use; an adapter that cannot
  *     oblige simply does not
@@ -52,12 +57,14 @@ public record NessyProperties(
     String systemPrompt,
     Resource systemPromptFile,
     String model,
+    String provider,
     Integer maxTokens,
     Set<Capability> capabilities,
     java.util.List<String> replyKeys) {
 
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
+    provider = provider == null || provider.isBlank() ? "unknown" : provider;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
     capabilities =
         capabilities == null || capabilities.isEmpty()

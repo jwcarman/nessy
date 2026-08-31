@@ -260,12 +260,19 @@ final class GeminiStream implements ModelStream {
      * for. Summing here would double-count (2026-08-26 per-vendor token-semantics audit).
      */
     private void translateUsage(GenerateContentResponseUsageMetadata metadata) {
-      // Usage carries two numbers now. Gemini's promptTokenCount already INCLUDES the cached
-      // content it read back, which is what semconv asks gen_ai.usage.input_tokens to mean, so
-      // this stays a pass-through and never sums.
+      // A PASS-THROUGH, never a sum: Gemini's promptTokenCount is ALREADY the whole prompt, with
+      // cachedContentTokenCount a subset of it. This is the opposite of Anthropic and Bedrock,
+      // whose own input counts exclude the cache and must be summed — the single thing an adapter
+      // has to get right here, because getting it backwards makes a cache look like a discount.
+      //
+      // Cache writes are zero because an explicit CachedContent is created by a separate API call
+      // whose cost never appears on a generateContent response.
       usage =
           new Usage(
-              metadata.promptTokenCount().orElse(0), metadata.candidatesTokenCount().orElse(0));
+              metadata.promptTokenCount().orElse(0),
+              metadata.candidatesTokenCount().orElse(0),
+              metadata.cachedContentTokenCount().orElse(0),
+              0);
     }
 
     /**

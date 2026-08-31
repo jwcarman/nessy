@@ -41,6 +41,13 @@
         <scope>import</scope>
       </dependency>
       <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-tracing-bom</artifactId>
+        <version>${micrometer-tracing.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <groupId>org.apache.pekko</groupId>
         <artifactId>pekko-bom_2.13</artifactId>
         <version>${pekko.version}</version>
@@ -76,6 +83,13 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <!-- Optional: an engine with no Tracer still runs, it just says nothing. Tracing is
+         instrumentation, never a requirement. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing</artifactId>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>

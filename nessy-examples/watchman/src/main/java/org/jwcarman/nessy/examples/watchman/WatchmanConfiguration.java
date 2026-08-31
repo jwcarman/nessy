@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spring.boot.Observed;
 import org.jwcarman.nessy.spring.boot.PendingApprovalsListener;
 import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -91,7 +92,8 @@ public class WatchmanConfiguration {
       PekkoHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
-      Approver humanApprover) {
+      Approver humanApprover,
+      io.micrometer.observation.ObservationRegistry observations) {
     List<Tool<com.fasterxml.jackson.databind.JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.createHarness(
         String.class,
@@ -104,16 +106,20 @@ public class WatchmanConfiguration {
               .coalescer(WatchmanObservations.COALESCER);
           tools.forEach(
               tool -> {
+                // Wrapped here rather than by the starter: this application grants its own tools,
+                // so it observes its own. Shell commands are the slow part of a round, and a span
+                // per call is what makes a twenty-minute round explicable.
+                var observed = Observed.tool(tool, observations);
                 if (WatchmanTools.needsApproval(tool.name())) {
                   config.tool(
-                      tool,
+                      observed,
                       binding ->
                           binding
-                              .approver(humanApprover)
+                              .approver(Observed.approver(humanApprover, observations))
                               .describer(args -> WatchmanTools.describe(tool.name(), args)));
                 } else {
                   config.tool(
-                      tool,
+                      observed,
                       binding ->
                           binding.describer(args -> WatchmanTools.describe(tool.name(), args)));
                 }
