@@ -36,16 +36,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.block.ToolResultContentBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.AmbientMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -96,8 +97,9 @@ public final class AnthropicRequests {
 
     var builder = MessageCreateParams.builder().model(modelId).maxTokens(request.maxTokens());
 
-    if (!request.systemPrompt().isBlank()) {
-      builder.systemOfTextBlockParams(List.of(systemBlock(request.systemPrompt(), marker)));
+    List<TextBlockParam> system = systemBlocks(request, marker);
+    if (!system.isEmpty()) {
+      builder.systemOfTextBlockParams(system);
     }
 
     addMessages(builder, request.context().messages(), marker);
@@ -141,6 +143,41 @@ public final class AnthropicRequests {
     return Optional.empty();
   }
 
+  /**
+   * The standing instruction, then whatever background the context carries.
+   *
+   * <p>Anthropic has a top-level {@code system} field, so ambient content goes there rather than
+   * into the conversation — background is not a turn, and putting it in the message list would make
+   * the model answer it instead of the question. Another vendor's adapter is free to decide
+   * differently; that is the point of deciding here.
+   */
+  private static List<TextBlockParam> systemBlocks(
+      ModelRequest request, Optional<CacheControlEphemeral> marker) {
+    var blocks = new ArrayList<TextBlockParam>();
+    if (!request.systemPrompt().isBlank()) {
+      blocks.add(systemBlock(request.systemPrompt(), marker));
+    }
+    for (ContextMessage message : request.context().messages()) {
+      if (message instanceof AmbientMessage ambient) {
+        String text = textOf(ambient.content());
+        if (!text.isBlank()) {
+          blocks.add(TextBlockParam.builder().text(text).build());
+        }
+      }
+    }
+    return blocks;
+  }
+
+  private static String textOf(List<? extends Block> content) {
+    var text = new StringBuilder();
+    for (Block block : content) {
+      if (block instanceof TextBlock(String value)) {
+        text.append(value);
+      }
+    }
+    return text.toString();
+  }
+
   private static TextBlockParam systemBlock(
       String systemPrompt, Optional<CacheControlEphemeral> marker) {
     return TextBlockParam.builder().text(systemPrompt).cacheControl(marker).build();
@@ -174,10 +211,10 @@ public final class AnthropicRequests {
    */
   private static void addMessages(
       MessageCreateParams.Builder builder,
-      List<Message> messages,
+      List<ContextMessage> messages,
       Optional<CacheControlEphemeral> marker) {
     List<DraftedMessage> drafts =
-        messages.stream().map(AnthropicRequests::draft).flatMap(Optional::stream).toList();
+        messages.stream().map(AnthropicRequests::draft).flatMap(List::stream).toList();
     Set<Integer> marked = marker.isPresent() ? conversationBreakpoints(drafts) : Set.of();
 
     List<MessageParam> params = new ArrayList<>(drafts.size());
@@ -226,8 +263,8 @@ public final class AnthropicRequests {
    */
   private static boolean mayCarryCacheControl(Block block) {
     return switch (block) {
-      case TextBlock _, ImageBlock _, ToolCallBlock _, ToolResultBlock _ -> true;
-      case ThinkingBlock _, RedactedThinkingBlock _ -> false;
+      case TextBlock _, CommentaryBlock _, ImageBlock _, ToolCallBlock _, ToolResultBlock _ -> true;
+      case ProviderBlock _ -> false;
     };
   }
 
@@ -260,15 +297,36 @@ public final class AnthropicRequests {
    * was cut off before it was signed settles as an assistant message containing only that one
    * block, which {@link #toContentBlockParam} drops, leaving nothing behind.
    */
-  private static Optional<DraftedMessage> draft(Message message) {
-    // Role is no longer carried on the message; the arm IS the role. Tool results go up as a
-    // USER message, which is Anthropic's encoding for them — the model said the call, the
-    // caller says the answer.
-    var role =
-        message instanceof AssistantMessage ? MessageParam.Role.ASSISTANT : MessageParam.Role.USER;
+  /**
+   * One of our messages becomes as many of Anthropic's as its wire needs.
+   *
+   * <p>An exchange becomes TWO: the assistant turn carrying {@code tool_use}, then a user turn
+   * carrying the results — which is Anthropic's encoding, the model said the call and the caller
+   * says the answer. It is one value on our side precisely so nothing between here and the
+   * transcript can separate them; separating them for the wire is this adapter's job.
+   *
+   * <p>Ambient content produces nothing here: it went into the system field.
+   */
+  private static List<DraftedMessage> draft(ContextMessage message) {
+    return switch (message) {
+      case UserMessage user -> draftOf(MessageParam.Role.USER, user.content()).stream().toList();
+      case AnswerMessage answer ->
+          draftOf(MessageParam.Role.ASSISTANT, answer.content()).stream().toList();
+      case AmbientMessage ignored -> List.of();
+      case ExchangeMessage exchange ->
+          java.util.stream.Stream.of(
+                  draftOf(MessageParam.Role.ASSISTANT, exchange.content()),
+                  draftOf(MessageParam.Role.USER, exchange.results()))
+              .flatMap(Optional::stream)
+              .toList();
+    };
+  }
+
+  private static Optional<DraftedMessage> draftOf(
+      MessageParam.Role role, List<? extends Block> content) {
     var source = new ArrayList<Block>();
     var blocks = new ArrayList<ContentBlockParam>();
-    for (Block block : contentOf(message)) {
+    for (Block block : content) {
       toContentBlockParam(block, Optional.empty())
           .ifPresent(
               param -> {
@@ -282,12 +340,30 @@ public final class AnthropicRequests {
     return Optional.of(new DraftedMessage(role, List.copyOf(source), List.copyOf(blocks)));
   }
 
-  /** The blocks of a message, whichever arm it is. */
-  private static List<? extends Block> contentOf(Message message) {
-    return switch (message) {
-      case UserMessage user -> user.content();
-      case AssistantMessage assistant -> assistant.content();
-      case ToolResultMessage results -> results.blocks();
+  /**
+   * State this provider issued, rebuilt into the block it came from.
+   *
+   * <p>The payload is Anthropic's own shape, kept whole rather than picked apart, so nothing here
+   * has to know what a signature means. A block another provider issued is skipped: a transcript
+   * outlives a model choice, and a rival's opaque state means nothing on this wire.
+   */
+  private static Optional<ContentBlockParam> ours(String provider, JsonNode data) {
+    if (!AnthropicModelProvider.PROVIDER.equals(provider)) {
+      return Optional.empty();
+    }
+    return switch (data.path("type").asText()) {
+      case "thinking" ->
+          Optional.of(
+              ContentBlockParam.ofThinking(
+                  ThinkingBlockParam.builder()
+                      .thinking(data.path("thinking").asText())
+                      .signature(data.path("signature").asText())
+                      .build()));
+      case "redacted_thinking" ->
+          Optional.of(
+              ContentBlockParam.ofRedactedThinking(
+                  RedactedThinkingBlockParam.builder().data(data.path("data").asText()).build()));
+      default -> Optional.empty();
     };
   }
 
@@ -326,17 +402,14 @@ public final class AnthropicRequests {
                               .build())
                       .cacheControl(cacheControl)
                       .build()));
-      case ThinkingBlock(String text, String signature) ->
-          signature.isEmpty()
+      case CommentaryBlock(String text) ->
+          text.isEmpty()
               ? Optional.empty()
               : Optional.of(
-                  ContentBlockParam.ofThinking(
-                      ThinkingBlockParam.builder().thinking(text).signature(signature).build()));
-      case RedactedThinkingBlock(String data) ->
-          Optional.of(
-              ContentBlockParam.ofRedactedThinking(
-                  RedactedThinkingBlockParam.builder().data(data).build()));
-      case ToolCallBlock(ToolCall call, _) ->
+                  ContentBlockParam.ofText(
+                      TextBlockParam.builder().text(text).cacheControl(cacheControl).build()));
+      case ProviderBlock(String provider, JsonNode data) -> ours(provider, data);
+      case ToolCallBlock(ToolCall call) ->
           Optional.of(
               ContentBlockParam.ofToolUse(
                   ToolUseBlockParam.builder()

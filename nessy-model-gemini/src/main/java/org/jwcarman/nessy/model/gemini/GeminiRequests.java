@@ -32,15 +32,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.block.ToolResultContentBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.AmbientMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -104,8 +105,8 @@ public final class GeminiRequests {
   public static List<Content> toContents(ModelRequest request) {
     Map<String, String> callNamesById = collectCallNames(request.context().messages());
     List<Content> contents = new ArrayList<>();
-    for (Message message : request.context().messages()) {
-      toContent(message, callNamesById).ifPresent(contents::add);
+    for (ContextMessage message : request.context().messages()) {
+      contents.addAll(toContents(message, callNamesById));
     }
     return contents;
   }
@@ -120,8 +121,22 @@ public final class GeminiRequests {
    */
   public static GenerateContentConfig toConfig(ModelRequest request) {
     var builder = GenerateContentConfig.builder().maxOutputTokens(request.maxTokens());
+    // The standing instruction, then whatever background the context carries. Gemini has a
+    // systemInstruction, so that is where ambient content belongs rather than in the conversation.
+    List<Part> instruction = new ArrayList<>();
     if (!request.systemPrompt().isBlank()) {
-      builder.systemInstruction(Content.fromParts(Part.fromText(request.systemPrompt())));
+      instruction.add(Part.fromText(request.systemPrompt()));
+    }
+    for (ContextMessage message : request.context().messages()) {
+      if (message instanceof AmbientMessage ambient) {
+        String text = flattenText(ambient.content());
+        if (!text.isBlank()) {
+          instruction.add(Part.fromText(text));
+        }
+      }
+    }
+    if (!instruction.isEmpty()) {
+      builder.systemInstruction(Content.fromParts(instruction.toArray(new Part[0])));
     }
     if (!request.tools().isEmpty()) {
       var declarations =
@@ -146,14 +161,14 @@ public final class GeminiRequests {
         .build();
   }
 
-  private static Map<String, String> collectCallNames(List<Message> messages) {
+  private static Map<String, String> collectCallNames(List<ContextMessage> messages) {
     Map<String, String> names = new HashMap<>();
-    for (Message message : messages) {
-      if (!(message instanceof AssistantMessage assistant)) {
+    for (ContextMessage message : messages) {
+      if (!(message instanceof ExchangeMessage exchange)) {
         continue;
       }
-      for (Block block : assistant.content()) {
-        if (block instanceof ToolCallBlock(ToolCall call, _)) {
+      for (Block block : exchange.content()) {
+        if (block instanceof ToolCallBlock(ToolCall call)) {
           names.put(call.id(), call.name());
         }
       }
@@ -161,13 +176,26 @@ public final class GeminiRequests {
     return names;
   }
 
-  private static Optional<Content> toContent(Message message, Map<String, String> callNamesById) {
-    // Role is no longer carried on the message; the arm IS the role. Tool results go up as USER
-    // content, which is Gemini's encoding for a function response.
+  /**
+   * One of our messages becomes as many of Gemini's as its wire needs.
+   *
+   * <p>An exchange becomes two: the model turn carrying the function calls, then a user turn
+   * carrying the responses — Gemini's encoding, and not ours to impose anywhere but here.
+   *
+   * <p>Ambient content produces nothing: it goes to {@code systemInstruction}.
+   */
+  private static List<Content> toContents(
+      ContextMessage message, Map<String, String> callNamesById) {
     return switch (message) {
-      case UserMessage user -> toUserContent(user.content(), callNamesById);
-      case ToolResultMessage results -> toUserContent(results.blocks(), callNamesById);
-      case AssistantMessage assistant -> toModelContent(assistant.content());
+      case UserMessage user -> toUserContent(user.content(), callNamesById).stream().toList();
+      case AnswerMessage answer -> toModelContent(answer.content()).stream().toList();
+      case AmbientMessage ignored -> List.of();
+      case ExchangeMessage exchange ->
+          java.util.stream.Stream.of(
+                  toModelContent(exchange.content()),
+                  toUserContent(exchange.results(), callNamesById))
+              .flatMap(Optional::stream)
+              .toList();
     };
   }
 
@@ -229,9 +257,12 @@ public final class GeminiRequests {
   }
 
   private static Optional<Content> toModelContent(List<? extends Block> content) {
+    // Gemini ties a thought signature to a specific function call, so the state blocks are indexed
+    // by the call they belong to before the parts are built.
+    Map<String, String> signatures = signaturesByCallId(content);
     List<Part> parts = new ArrayList<>();
     for (Block block : content) {
-      toModelPart(block).ifPresent(parts::add);
+      toModelPart(block, signatures).ifPresent(parts::add);
     }
     if (parts.isEmpty()) {
       return Optional.empty();
@@ -239,13 +270,30 @@ public final class GeminiRequests {
     return Optional.of(Content.builder().role("model").parts(parts).build());
   }
 
-  private static Optional<Part> toModelPart(Block block) {
+  /**
+   * Every signature this provider issued, by the call it vouches for.
+   *
+   * <p>A block another provider issued is skipped — a transcript outlives a model choice, and a
+   * rival's opaque state means nothing here.
+   */
+  private static Map<String, String> signaturesByCallId(List<? extends Block> content) {
+    Map<String, String> signatures = new java.util.HashMap<>();
+    for (Block block : content) {
+      if (block instanceof ProviderBlock(String provider, JsonNode data)
+          && GeminiModelProvider.PROVIDER.equals(provider)) {
+        signatures.put(data.path("callId").asText(), data.path("thoughtSignature").asText());
+      }
+    }
+    return signatures;
+  }
+
+  private static Optional<Part> toModelPart(Block block, Map<String, String> signatures) {
     return switch (block) {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
-      case ToolCallBlock(ToolCall call, String signature) ->
-          Optional.of(toFunctionCallPart(call, signature));
-      case ThinkingBlock _ -> Optional.empty();
-      case RedactedThinkingBlock _ -> Optional.empty();
+      case CommentaryBlock(String text) -> Optional.of(Part.fromText(text));
+      case ToolCallBlock(ToolCall call) ->
+          Optional.of(toFunctionCallPart(call, signatures.get(call.id())));
+      case ProviderBlock _ -> Optional.empty();
       default ->
           throw new IllegalArgumentException(
               "unsupported content block in an assistant message: " + block);
@@ -291,4 +339,14 @@ public final class GeminiRequests {
 
   /** Named so {@code convertValue}'s target type is self-documenting at the call site. */
   private static final class ArgumentsMapType extends TypeReference<Map<String, Object>> {}
+
+  private static String flattenText(List<? extends Block> content) {
+    var text = new StringBuilder();
+    for (Block block : content) {
+      if (block instanceof TextBlock(String value)) {
+        text.append(value);
+      }
+    }
+    return text.toString();
+  }
 }

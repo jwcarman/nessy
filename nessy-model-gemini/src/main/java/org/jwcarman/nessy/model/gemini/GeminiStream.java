@@ -17,6 +17,8 @@ package org.jwcarman.nessy.model.gemini;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
 import com.google.genai.types.FinishReason;
@@ -32,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.Optional;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -227,12 +228,20 @@ final class GeminiStream implements ModelStream {
       Map<String, Object> args = call.args().orElse(Map.of());
       JsonNode arguments = MAPPER.valueToTree(args);
       ToolCall toolCall = new ToolCall(id, name, arguments);
-      Optional<String> signature =
-          part.thoughtSignature().map(bytes -> Base64.getEncoder().encodeToString(bytes));
-      pending.add(
-          signature
-              .map(sig -> new ModelEvent.ToolCallEmitted(toolCall, sig))
-              .orElseGet(() -> new ModelEvent.ToolCallEmitted(toolCall)));
+      // The signature is state Gemini wants back, tied to THIS call — so it travels as provider
+      // state naming the call, rather than riding on a tool-call event every other vendor shares.
+      part.thoughtSignature()
+          .map(bytes -> Base64.getEncoder().encodeToString(bytes))
+          .ifPresent(signature -> pending.add(thoughtSignature(id, signature)));
+      pending.add(new ModelEvent.ToolCallEmitted(toolCall));
+    }
+
+    /** Gemini's own shape, kept whole: this adapter is the only thing that reads it back. */
+    private static ModelEvent thoughtSignature(String callId, String signature) {
+      ObjectNode payload = JsonNodeFactory.instance.objectNode();
+      payload.put("callId", callId);
+      payload.put("thoughtSignature", signature);
+      return new ModelEvent.ProviderStateEmitted(GeminiModelProvider.PROVIDER, payload);
     }
 
     /**

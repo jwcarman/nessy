@@ -24,6 +24,8 @@ import com.anthropic.models.messages.RawMessageDeltaEvent;
 import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -203,13 +205,37 @@ public final class AnthropicStream implements ModelStream {
      * doesn't model is content it drops, not an error — and are not logged, since this is a
      * per-token hot path.
      */
+    /** Thinking text accumulated until its signature arrives, which is what makes it replayable. */
+    private final StringBuilder reasoning = new StringBuilder();
+
+    private static ModelEvent providerState(ObjectNode payload) {
+      return new ModelEvent.ProviderStateEmitted(AnthropicModelProvider.PROVIDER, payload);
+    }
+
+    /** Anthropic's own shape, kept whole: this adapter is the only thing that reads it back. */
+    private static ObjectNode signed(String thinking, String signature) {
+      ObjectNode payload = JsonNodeFactory.instance.objectNode();
+      payload.put("type", "thinking");
+      payload.put("thinking", thinking);
+      payload.put("signature", signature);
+      return payload;
+    }
+
+    private static ObjectNode redacted(String data) {
+      ObjectNode payload = JsonNodeFactory.instance.objectNode();
+      payload.put("type", "redacted_thinking");
+      payload.put("data", data);
+      return payload;
+    }
+
     private void translateContentBlockStart(RawContentBlockStartEvent start) {
       var block = start.contentBlock();
       if (block.isToolUse()) {
         var toolUse = block.asToolUse();
         toolUsesByIndex.put(start.index(), new PendingToolUse(toolUse.id(), toolUse.name()));
       } else if (block.isRedactedThinking()) {
-        pending.add(new ModelEvent.RedactedThinkingEmitted(block.asRedactedThinking().data()));
+        // Encrypted reasoning: opaque by definition, and handed straight back next turn.
+        pending.add(providerState(redacted(block.asRedactedThinking().data())));
       }
     }
 
@@ -228,9 +254,15 @@ public final class AnthropicStream implements ModelStream {
       if (delta.isText()) {
         pending.add(new ModelEvent.TextChunk(delta.asText().text()));
       } else if (delta.isThinking()) {
-        pending.add(new ModelEvent.ThinkingChunk(delta.asThinking().thinking()));
+        // Narrated as it arrives AND accumulated: Anthropic needs the text back beside the
+        // signature that vouches for it, so this adapter keeps it rather than the engine.
+        String text = delta.asThinking().thinking();
+        reasoning.append(text);
+        pending.add(new ModelEvent.ReasoningChunk(text));
       } else if (delta.isSignature()) {
-        pending.add(new ModelEvent.ThinkingSigned(delta.asSignature().signature()));
+        // The signature closes the reasoning it vouches for; both travel as one opaque payload.
+        pending.add(providerState(signed(reasoning.toString(), delta.asSignature().signature())));
+        reasoning.setLength(0);
       } else if (delta.isInputJson()) {
         var toolUse = toolUsesByIndex.get(event.index());
         if (toolUse != null) {
@@ -242,7 +274,7 @@ public final class AnthropicStream implements ModelStream {
     private void translateContentBlockStop(RawContentBlockStopEvent event) {
       var toolUse = toolUsesByIndex.remove(event.index());
       if (toolUse != null) {
-        pending.add(new ModelEvent.ToolCallEmitted(toolUse.toToolCall(), null));
+        pending.add(new ModelEvent.ToolCallEmitted(toolUse.toToolCall()));
       }
     }
 

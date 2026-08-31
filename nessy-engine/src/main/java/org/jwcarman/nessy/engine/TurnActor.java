@@ -112,7 +112,16 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   private final ActorRef<NessyMessage> agent;
 
   /**
-   * In flight, never persisted: the content of the exchange being assembled.
+   * The content of the exchange being assembled — a CACHE of the claim, not its home.
+   *
+   * <p>The durable copy is written to {@code claims} under {@link #ASKED_KEY} the moment the model
+   * asks, and recovery reads it back from there: this field is empty after a crash until {@code
+   * resumeTools} restores it. It exists so that naming a tool while narrating does not become a
+   * store read per settled call, and it is safe to cache because the value is written once, never
+   * mutated, and cleared only when the exchange is written to the transcript.
+   *
+   * <p>It is NOT part of {@code TurnState}. What Pekko persists is the phase; what the exchange
+   * itself is lives in the claim, which is the store built for a turn's working material.
    *
    * <p>Content rather than a message, because an {@link ExchangeMessage} cannot be built until its
    * results exist — which is the whole reason the calls are running.

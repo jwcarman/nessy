@@ -21,10 +21,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -85,14 +85,28 @@ public final class BedrockRequests {
             .modelId(modelId)
             .inferenceConfig(b -> b.maxTokens(request.maxTokens()));
 
+    // The standing instruction, then whatever background the context carries: Bedrock has a
+    // system field, so that is where ambient content belongs rather than in the conversation.
+    List<SystemContentBlock> system = new ArrayList<>();
     if (!request.systemPrompt().isBlank()) {
-      builder.system(SystemContentBlock.fromText(request.systemPrompt()));
+      system.add(SystemContentBlock.fromText(request.systemPrompt()));
+    }
+    for (org.jwcarman.nessy.api.message.ContextMessage message : request.context().messages()) {
+      if (message instanceof org.jwcarman.nessy.api.message.AmbientMessage ambient) {
+        String text = flattenText(ambient.content());
+        if (!text.isBlank()) {
+          system.add(SystemContentBlock.fromText(text));
+        }
+      }
+    }
+    if (!system.isEmpty()) {
+      builder.system(system);
     }
 
     builder.messages(
         request.context().messages().stream()
-            .map(BedrockRequests::toMessage)
-            .flatMap(Optional::stream)
+            .map(BedrockRequests::toMessages)
+            .flatMap(List::stream)
             .toList());
 
     if (!request.tools().isEmpty()) {
@@ -148,24 +162,31 @@ public final class BedrockRequests {
    * GeminiRequests.toModelContent} document: a resumed session whose thinking was cut off before it
    * was signed settles as an assistant message containing only that one dropped block.
    */
-  /** The blocks of a message, whichever arm it is. */
-  private static List<? extends Block> contentOf(org.jwcarman.nessy.api.message.Message message) {
+  /**
+   * One of our messages becomes as many of Bedrock's as its wire needs.
+   *
+   * <p>An exchange becomes two: the assistant turn carrying the tool uses, then a user turn
+   * carrying the results. Ambient content produces nothing here — it goes to the system field.
+   */
+  private static List<software.amazon.awssdk.services.bedrockruntime.model.Message> toMessages(
+      org.jwcarman.nessy.api.message.ContextMessage message) {
     return switch (message) {
-      case org.jwcarman.nessy.api.message.UserMessage user -> user.content();
-      case org.jwcarman.nessy.api.message.AssistantMessage assistant -> assistant.content();
-      case org.jwcarman.nessy.api.message.ToolResultMessage results -> results.blocks();
+      case org.jwcarman.nessy.api.message.UserMessage user ->
+          toMessage(ConversationRole.USER, user.content()).stream().toList();
+      case org.jwcarman.nessy.api.message.AnswerMessage answer ->
+          toMessage(ConversationRole.ASSISTANT, answer.content()).stream().toList();
+      case org.jwcarman.nessy.api.message.AmbientMessage ignored -> List.of();
+      case org.jwcarman.nessy.api.message.ExchangeMessage exchange ->
+          java.util.stream.Stream.of(
+                  toMessage(ConversationRole.ASSISTANT, exchange.content()),
+                  toMessage(ConversationRole.USER, exchange.results()))
+              .flatMap(Optional::stream)
+              .toList();
     };
   }
 
   private static Optional<software.amazon.awssdk.services.bedrockruntime.model.Message> toMessage(
-      org.jwcarman.nessy.api.message.Message message) {
-    // Role is no longer carried on the message; the arm IS the role. Tool results go up as a
-    // USER message, which is Bedrock's encoding for them.
-    var role =
-        message instanceof org.jwcarman.nessy.api.message.AssistantMessage
-            ? ConversationRole.ASSISTANT
-            : ConversationRole.USER;
-    List<? extends Block> content = contentOf(message);
+      ConversationRole role, List<? extends Block> content) {
     var blocks =
         new ArrayList<software.amazon.awssdk.services.bedrockruntime.model.ContentBlock>(
             content.size());
@@ -198,7 +219,7 @@ public final class BedrockRequests {
               ? Optional.empty()
               : Optional.of(
                   software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromText(text));
-      case ToolCallBlock(ToolCall call, _) ->
+      case ToolCallBlock(ToolCall call) ->
           Optional.of(
               software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromToolUse(
                   software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock.builder()
@@ -214,8 +235,14 @@ public final class BedrockRequests {
                       .content(ToolResultContentBlock.fromText(flatten(result)))
                       .status(result.isError() ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS)
                       .build()));
-      case ThinkingBlock _ -> Optional.empty();
-      case RedactedThinkingBlock _ -> Optional.empty();
+      case CommentaryBlock(String text) ->
+          text.isEmpty()
+              ? Optional.empty()
+              : Optional.of(
+                  software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromText(text));
+      // Bedrock's reasoning blocks are not carried on this path yet: state issued by another
+      // provider means nothing here, and this adapter issues none of its own.
+      case ProviderBlock _ -> Optional.empty();
       case ImageBlock _ ->
           throw new IllegalArgumentException("unsupported content block: " + block);
     };
@@ -261,5 +288,15 @@ public final class BedrockRequests {
   /** Named so the object-schema copy below reads as intentional, not a cast of convenience. */
   private static Document toDocument(ObjectNode schema) {
     return toDocument((JsonNode) schema);
+  }
+
+  private static String flattenText(List<? extends Block> content) {
+    var text = new StringBuilder();
+    for (Block block : content) {
+      if (block instanceof TextBlock(String value)) {
+        text.append(value);
+      }
+    }
+    return text.toString();
   }
 }
