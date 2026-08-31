@@ -266,7 +266,7 @@ class BedrockModelProviderTest {
         assertThat(collected)
             .containsExactly(
                 new ModelEvent.TextChunk("hello"),
-                new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+                new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
       }
     }
 

@@ -134,7 +134,7 @@ class BedrockStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
     }
 
     @Test
@@ -177,7 +177,7 @@ class BedrockStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 
@@ -339,7 +339,7 @@ class BedrockStreamTest {
   class UsageTolerance {
 
     @Test
-    void a_stream_that_never_delivers_a_metadata_event_tolerates_and_yields_zero_usage() {
+    void a_stream_that_never_delivers_a_metadata_event_reports_no_cost_rather_than_no_tokens() {
       var chunks = List.of(textDelta(0, "hi"), messageStop("end_turn"));
 
       var modelEvents = drain(chunks);
@@ -347,7 +347,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 

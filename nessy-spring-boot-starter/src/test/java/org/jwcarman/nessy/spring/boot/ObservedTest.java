@@ -122,6 +122,78 @@ class ObservedTest {
         .isEqualTo("a-model");
   }
 
+  /**
+   * The whole reason a count is nullable: a provider that keeps no cache books must not appear on
+   * the cache histogram at all. Recording zero would drag every cache-hit rate towards zero for a
+   * provider that never claimed to have a cache — a measurement invented by the instrumentation.
+   */
+  @Test
+  void a_count_the_provider_did_not_report_is_not_recorded_at_all() {
+    Model observed =
+        Observed.model(
+            // LM Studio's shape: prompt and completion tokens, no prompt_tokens_details.
+            saying(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(606, 142))),
+            "openai",
+            observations,
+            meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    assertThat(tokenCount("input")).isEqualTo(1);
+    assertThat(tokenCount("output")).isEqualTo(1);
+    assertThat(meters.find(TOKENS).tag("gen_ai.token.type", "cache_read").summary()).isNull();
+    assertThat(meters.find(TOKENS).tag("gen_ai.token.type", "cache_write").summary()).isNull();
+  }
+
+  /**
+   * A REPORTED zero is a measurement and is still recorded: a missing series and a genuine zero
+   * look identical on a graph, so "is the cache working" cannot be answered by a series that
+   * appears only once caching has happened.
+   */
+  @Test
+  void a_reported_zero_is_recorded_like_any_other_number() {
+    Model observed =
+        Observed.model(
+            saying(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(606, 142, 0, 0))),
+            "anthropic",
+            observations,
+            meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    assertThat(tokenCount("cache_read")).isEqualTo(1);
+    assertThat(meters.get(TOKENS).tag("gen_ai.token.type", "cache_read").summary().totalAmount())
+        .isZero();
+  }
+
+  @Test
+  void a_stream_that_never_reported_its_cost_records_no_tokens_at_all() {
+    Model observed =
+        Observed.model(
+            saying(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported())),
+            "openai",
+            observations,
+            meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    assertThat(meters.find(TOKENS).summaries()).isEmpty();
+    // The call still happened, and is still timed.
+    assertThat(meters.get("gen_ai.client.operation.duration").timer().count()).isEqualTo(1);
+  }
+
+  private static final String TOKENS = "gen_ai.client.token.usage";
+
+  private long tokenCount(String type) {
+    return meters.get(TOKENS).tag("gen_ai.token.type", type).summary().count();
+  }
+
   @Test
   void a_refusal_is_recorded_with_semconvs_own_finish_reason() {
     Model observed =

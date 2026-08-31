@@ -123,7 +123,9 @@ final class GeminiStream implements ModelStream {
 
     private final Iterator<GenerateContentResponse> raw;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
-    private Usage usage = new Usage(0, 0);
+    // Nothing reported YET, which is not the same as a call that cost nothing: a stream
+    // whose usage event never arrives must not close claiming it was free.
+    private Usage usage = Usage.unreported();
     private StopReason stopReason;
 
     /** The vendor's own finish reason when it refused, or null when it did not. */
@@ -265,14 +267,17 @@ final class GeminiStream implements ModelStream {
       // whose own input counts exclude the cache and must be summed — the single thing an adapter
       // has to get right here, because getting it backwards makes a cache look like a discount.
       //
-      // Cache writes are zero because an explicit CachedContent is created by a separate API call
-      // whose cost never appears on a generateContent response.
+      // Absent counts stay ABSENT rather than becoming zero — including the cache write, which is
+      // not a zero cost but a cost that lives somewhere else entirely: an explicit CachedContent
+      // is created by a separate API call whose price never appears on a generateContent response.
+      // Reporting nothing is the true statement; reporting zero would say this response wrote to a
+      // cache for free.
       usage =
           new Usage(
-              metadata.promptTokenCount().orElse(0),
-              metadata.candidatesTokenCount().orElse(0),
-              metadata.cachedContentTokenCount().orElse(0),
-              0);
+              metadata.promptTokenCount().orElse(null),
+              metadata.candidatesTokenCount().orElse(null),
+              metadata.cachedContentTokenCount().orElse(null),
+              null);
     }
 
     /**

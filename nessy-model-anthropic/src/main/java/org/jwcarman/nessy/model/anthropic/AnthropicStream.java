@@ -79,9 +79,9 @@ public final class AnthropicStream implements ModelStream {
     private final Iterator<RawMessageStreamEvent> events;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
-    private long inputTokens;
-    private long cacheReadInputTokens;
-    private long cacheWriteInputTokens;
+    private int inputTokens;
+    private int cacheReadInputTokens;
+    private int cacheWriteInputTokens;
     private boolean turnEnded;
 
     private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
@@ -139,10 +139,13 @@ public final class AnthropicStream implements ModelStream {
     private void translate(RawMessageStreamEvent event) {
       if (event.isMessageStart()) {
         var usage = event.asMessageStart().message().usage();
+        // Absent cache counts are ZERO here rather than null, unlike the OpenAI wire: Anthropic
+        // supports prompt caching and reports these fields, so their absence is the vendor saying
+        // nothing was cached — and the sum below needs a number anyway.
         readUsage(
-            usage.inputTokens(),
-            usage.cacheReadInputTokens().orElse(0L),
-            usage.cacheCreationInputTokens().orElse(0L));
+            Math.toIntExact(usage.inputTokens()),
+            Math.toIntExact(usage.cacheReadInputTokens().orElse(0L)),
+            Math.toIntExact(usage.cacheCreationInputTokens().orElse(0L)));
       } else if (event.isContentBlockStart()) {
         translateContentBlockStart(event.asContentBlockStart());
       } else if (event.isContentBlockDelta()) {
@@ -180,7 +183,7 @@ public final class AnthropicStream implements ModelStream {
      * @param cacheRead the vendor's {@code cache_read_input_tokens}
      * @param cacheWrite the vendor's {@code cache_creation_input_tokens}
      */
-    private void readUsage(long uncachedInputTokens, long cacheRead, long cacheWrite) {
+    private void readUsage(int uncachedInputTokens, int cacheRead, int cacheWrite) {
       // Anthropic's own input_tokens EXCLUDES both cache counts, so the whole is the sum.
       inputTokens = uncachedInputTokens + cacheRead + cacheWrite;
       cacheReadInputTokens = cacheRead;
@@ -253,7 +256,7 @@ public final class AnthropicStream implements ModelStream {
       var usage =
           new Usage(
               inputTokens,
-              event.usage().outputTokens(),
+              Math.toIntExact(event.usage().outputTokens()),
               cacheReadInputTokens,
               cacheWriteInputTokens);
       // A refusal is its own event now, not a stop reason: StopReason names only the three ways a

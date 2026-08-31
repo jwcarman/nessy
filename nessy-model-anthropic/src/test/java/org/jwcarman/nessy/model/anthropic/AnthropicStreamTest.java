@@ -234,7 +234,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
     }
   }
 
@@ -260,7 +260,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("see "),
               new ModelEvent.TextChunk("here"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(4, 2)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(4, 2, 0, 0)));
     }
   }
 
@@ -348,7 +348,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
     }
   }
 
@@ -373,7 +373,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.ThinkingChunk("Let me think"),
               new ModelEvent.ThinkingSigned("sig-123"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(20, 8)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(20, 8, 0, 0)));
     }
   }
 
@@ -395,7 +395,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.RedactedThinkingEmitted("opaque-data"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(6, 2)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(6, 2, 0, 0)));
     }
   }
 
@@ -434,7 +434,7 @@ class AnthropicStreamTest {
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
       assertThat(modelEvents.get(2))
-          .isEqualTo(new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(15, 12)));
+          .isEqualTo(new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(15, 12, 0, 0)));
     }
 
     @Test
@@ -530,7 +530,7 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(5, 3)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(5, 3, 0, 0)));
     }
 
     @Test
@@ -567,7 +567,7 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(37, 9)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(37, 9, 0, 0)));
     }
   }
 

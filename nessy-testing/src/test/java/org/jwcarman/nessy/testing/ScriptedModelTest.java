@@ -58,7 +58,7 @@ class ScriptedModelTest {
     assertThat(events)
         .containsExactly(
             new ModelEvent.TextChunk("Hello"),
-            new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+            new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
   }
 
   @Test
@@ -72,7 +72,7 @@ class ScriptedModelTest {
     assertThat(drain(model.stream(request())))
         .containsExactly(
             new ModelEvent.TextChunk("Done"),
-            new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+            new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
   }
 
   @Test
@@ -146,7 +146,7 @@ class ScriptedModelTest {
             new ModelEvent.ThinkingSigned("sig-123"),
             new ModelEvent.RedactedThinkingEmitted("opaque-data"),
             new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), null),
-            new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(0, 0)));
+            new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 
   @Test
@@ -159,7 +159,7 @@ class ScriptedModelTest {
     assertThat(drain(model.stream(request())))
         .containsExactly(
             new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), "sig-123"),
-            new ModelEvent.Stopped(StopReason.TOOL_USE, new Usage(0, 0)));
+            new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 
   @Test
@@ -184,7 +184,8 @@ class ScriptedModelTest {
     ScriptedModel model = ScriptedModel.script(s -> s.refuse("safety", "not answering that"));
 
     assertThat(drain(model.stream(request())))
-        .containsExactly(new ModelEvent.Refused("safety", "not answering that", new Usage(0, 0)));
+        .containsExactly(
+            new ModelEvent.Refused("safety", "not answering that", Usage.unreported()));
   }
 
   @Test

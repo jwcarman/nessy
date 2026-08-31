@@ -179,7 +179,7 @@ class GeminiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 4, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 4, null)));
     }
 
     @Test
@@ -205,7 +205,7 @@ class GeminiStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 
@@ -222,7 +222,7 @@ class GeminiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("the answer"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 
@@ -429,7 +429,7 @@ class GeminiStreamTest {
   class UsageTolerance {
 
     @Test
-    void a_stream_that_never_delivers_a_usage_chunk_tolerates_and_yields_zero_usage() {
+    void a_stream_that_never_delivers_a_usage_chunk_reports_no_cost_rather_than_no_tokens() {
       var chunks = List.of(textChunk("hi"), finishChunk("STOP"));
 
       var modelEvents = drain(chunks);
@@ -437,7 +437,7 @@ class GeminiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 

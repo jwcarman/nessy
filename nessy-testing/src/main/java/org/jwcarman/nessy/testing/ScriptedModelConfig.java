@@ -32,7 +32,12 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
  */
 public final class ScriptedModelConfig {
 
-  private static final Usage NOTHING = new Usage(0, 0);
+  /**
+   * What a turn scripted without a usage reports: nothing, rather than a call that cost nothing. A
+   * script that did not mention tokens has not claimed the turn was free, and saying so keeps every
+   * engine test that ends a turn this way exercising the unreported path.
+   */
+  private static final Usage NOTHING = Usage.unreported();
 
   private final List<List<ModelEvent>> turns = new ArrayList<>();
   private List<ModelEvent> current = new ArrayList<>();

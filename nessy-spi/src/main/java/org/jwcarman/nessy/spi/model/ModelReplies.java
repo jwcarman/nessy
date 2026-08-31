@@ -87,7 +87,7 @@ public final class ModelReplies {
       // exception: whatever arrived is real, and losing it because the closing event went missing
       // would be worse than reporting it as complete.
       flush(blocks, prose);
-      result = replied(blocks, StopReason.END_TURN, new Usage(0, 0));
+      result = replied(blocks, StopReason.END_TURN, Usage.unreported());
     }
     return result;
   }

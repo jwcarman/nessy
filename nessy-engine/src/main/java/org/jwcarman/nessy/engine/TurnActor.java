@@ -131,9 +131,17 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   private static final String ASKED_KEY = "asked";
 
   /** Summed across every model call this turn made, so the closing line can report it. */
-  private long inputTokens;
+  private int inputTokens;
 
-  private long outputTokens;
+  private int outputTokens;
+
+  /**
+   * Whether ANY model call this turn reported what it cost.
+   *
+   * <p>Without this the closing line reports zero for a turn whose provider never said — an
+   * invented number that reads on a graph as a free turn rather than an unmeasured one.
+   */
+  private boolean counted;
 
   private TurnActor(
       ActorContext<Command> context,
@@ -412,9 +420,16 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     return finish(new TurnResult.Failed(command.reason()));
   }
 
-  private void count(long input, long output) {
-    inputTokens += input;
-    outputTokens += output;
+  /** Adds what one model call reported, skipping whichever halves it did not report. */
+  private void count(Integer input, Integer output) {
+    if (input != null) {
+      inputTokens += input;
+      counted = true;
+    }
+    if (output != null) {
+      outputTokens += output;
+      counted = true;
+    }
   }
 
   /** The closing line, then the agent is told it may start another. */
@@ -457,7 +472,9 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     deps.narrator()
         .narrate(
             new AgentEvent.TurnEnded(
-                Identifiers.next(), result, new Usage(inputTokens, outputTokens)));
+                Identifiers.next(),
+                result,
+                counted ? new Usage(inputTokens, outputTokens) : Usage.unreported()));
     return Effect()
         .none()
         // The turn's own context, so the agent's next round hangs off the round that finished

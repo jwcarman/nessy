@@ -218,14 +218,16 @@ class OpenAiStreamTest {
 
       var modelEvents = drain(chunks);
 
+      // A pass-through: the vendor's promptTokens ALREADY counts the 4 cached ones, so 10 stays 10.
+      // Cache WRITES have no field on this wire, so they stay unreported rather than becoming zero.
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5, 4, null)));
     }
 
     @Test
-    void usage_without_prompt_tokens_details_yields_zero_cached_tokens() {
+    void usage_without_prompt_tokens_details_leaves_the_cache_counts_unreported() {
       var chunks = List.of(textChunk("Hello"), finishChunk("stop"), usageChunk(10, 5));
 
       var modelEvents = drain(chunks);
@@ -245,7 +247,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("trailing"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
 
     @Test
@@ -321,7 +323,7 @@ class OpenAiStreamTest {
       var modelEvents = drain(List.of(chunkWithTwoChoices, finishChunk("stop")));
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 
@@ -502,7 +504,7 @@ class OpenAiStreamTest {
   class UsageTolerance {
 
     @Test
-    void a_stream_that_never_delivers_a_usage_chunk_tolerates_and_yields_zero_usage() {
+    void a_stream_that_never_delivers_a_usage_chunk_reports_no_cost_rather_than_no_tokens() {
       var chunks = List.of(textChunk("hi"), finishChunk("stop"));
 
       var modelEvents = drain(chunks);
@@ -510,7 +512,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
   }
 

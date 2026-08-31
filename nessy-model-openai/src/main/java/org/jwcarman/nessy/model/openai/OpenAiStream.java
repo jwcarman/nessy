@@ -96,7 +96,9 @@ public final class OpenAiStream implements ModelStream {
     private final Iterator<ChatCompletionChunk> chunks;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final TreeMap<Long, PendingToolCall> toolCallsByIndex = new TreeMap<>();
-    private Usage usage = new Usage(0, 0);
+    // Nothing reported YET, which is not the same as a call that cost nothing: a stream
+    // whose usage event never arrives must not close claiming it was free.
+    private Usage usage = Usage.unreported();
     private StopReason stopReason;
 
     /** Set instead of {@link #stopReason} when the vendor filtered the turn away. */
@@ -249,10 +251,28 @@ public final class OpenAiStream implements ModelStream {
      * summing here would double-count (2026-08-26 per-vendor token-semantics audit).
      */
     private void translateUsage(CompletionUsage completionUsage) {
-      // Usage carries two numbers now, so the cached-prompt read count is no longer reported
-      // beside the input total — only folded into it, which it already was: the vendor's
-      // promptTokens INCLUDES cached tokens, so this stays a pass-through and never sums.
-      usage = new Usage(completionUsage.promptTokens(), completionUsage.completionTokens());
+      // A pass-through, never a sum: the vendor's promptTokens ALREADY includes cached tokens,
+      // which is the shape semconv asks for. Summing here would double-count them.
+      //
+      // Absent details mean absent, not zero. LM Studio speaks this wire and sends no
+      // prompt_tokens_details at all, and writing zero there would put a provider that keeps no
+      // cache books on the same graph line as one whose cache never hits.
+      // toIntExact rather than a cast: a count that genuinely did not fit should fail loudly
+      // instead of wrapping into a negative token total that no graph would ever explain.
+      Integer cacheRead =
+          completionUsage
+              .promptTokensDetails()
+              .flatMap(CompletionUsage.PromptTokensDetails::cachedTokens)
+              .map(Math::toIntExact)
+              .orElse(null);
+      // No cache-WRITE count exists on this wire: OpenAI caches prompts automatically and bills
+      // no premium for the write, so there is nothing to report and null says exactly that.
+      usage =
+          new Usage(
+              Math.toIntExact(completionUsage.promptTokens()),
+              Math.toIntExact(completionUsage.completionTokens()),
+              cacheRead,
+              null);
     }
 
     // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with

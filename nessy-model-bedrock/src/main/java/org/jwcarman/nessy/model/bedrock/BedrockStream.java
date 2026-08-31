@@ -109,7 +109,9 @@ final class BedrockStream implements ModelStream {
     private final Iterator<ConverseStreamOutput> raw;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Integer, PendingToolUse> toolUsesByIndex = new HashMap<>();
-    private Usage usage = new Usage(0, 0);
+    // Nothing reported YET, which is not the same as a call that cost nothing: a stream whose
+    // metadata event never arrives must not close claiming it was free.
+    private Usage usage = Usage.unreported();
     private StopReason stopReason;
 
     /** The vendor's own stop reason when it refused, or null when it did not. */
@@ -246,12 +248,14 @@ final class BedrockStream implements ModelStream {
     public void visitMetadata(ConverseStreamMetadataEvent event) {
       TokenUsage tokenUsage = event.usage();
       if (tokenUsage != null) {
-        long cacheRead = orZero(tokenUsage.cacheReadInputTokens());
-        long cacheWrite = orZero(tokenUsage.cacheWriteInputTokens());
-        // Usage carries two numbers now: the cache read/write split is summed into the input
-        // total — which is what semconv asks gen_ai.usage.input_tokens to mean — rather than
-        // reported beside it. Bedrock's own inputTokens excludes both, so the sum stays.
-        // Bedrock's inputTokens excludes both cache counts, so the whole is the sum.
+        int cacheRead = orZero(tokenUsage.cacheReadInputTokens());
+        int cacheWrite = orZero(tokenUsage.cacheWriteInputTokens());
+        // Bedrock's own inputTokens EXCLUDES both cache counts, so the whole is the sum — which
+        // is what semconv asks gen_ai.usage.input_tokens to mean.
+        //
+        // Absent cache counts stay ZERO here rather than becoming null, unlike the OpenAI wire:
+        // Bedrock supports prompt caching and reports these fields, so their absence on a
+        // response is the vendor saying nothing was cached — and a sum needs a number anyway.
         usage =
             new Usage(
                 orZero(tokenUsage.inputTokens()) + cacheRead + cacheWrite,
@@ -261,7 +265,7 @@ final class BedrockStream implements ModelStream {
       }
     }
 
-    private static long orZero(Integer value) {
+    private static int orZero(Integer value) {
       return value == null ? 0 : value;
     }
 
