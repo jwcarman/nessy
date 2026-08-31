@@ -89,7 +89,8 @@ final class ShardedHarness<O> implements Harness<O> {
         .entityRefFor(agents, agentId.value())
         .tell(
             new NessyMessage.Observe(
-                codec.encode(observation), traces.capture("agent", "Observe")));
+                codec.encode(observation),
+                traces.capture(type.name(), agentId.value(), "Observe")));
   }
 
   /**

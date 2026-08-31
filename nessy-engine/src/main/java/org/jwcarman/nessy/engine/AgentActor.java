@@ -179,7 +179,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     // Captured inside the handler: the nudge below runs from thenRun, after the scope has closed,
     // and a Wake sent with empty headers starts a NEW trace — which is why an entire round used to
     // hang under "agent receive Wake" instead of under the observation that caused it.
-    Map<String, String> here = traces.capture("agent", "Wake");
+    Map<String, String> here = traces.capture(agentType.name(), agentId.value(), "Wake");
     return Effect()
         .persist(state.ingesting(coalescer, arrival))
         .thenRun(persisted -> nudge(persisted, here));
@@ -194,7 +194,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       return Effect().none();
     }
     turn = null;
-    Map<String, String> here = traces.capture("agent", "Wake");
+    Map<String, String> here = traces.capture(agentType.name(), agentId.value(), "Wake");
     return Effect().persist(state.finished()).thenRun(persisted -> nudge(persisted, here));
   }
 
@@ -212,7 +212,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       if (context.getChild(turnName(state.turnId())).isEmpty()) {
         // A respawn after a crash: this Wake is the message that revived the turn, so the turn's
         // work hangs off the wake rather than off the observation that started it days ago.
-        startTurn(state, traces.capture("turn", "Begin"));
+        startTurn(state, traces.capture(agentType.name(), agentId.value(), "Begin"));
       }
       return Effect().none();
     }
@@ -222,7 +222,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     String turnId = Identifiers.next();
     // Captured HERE, inside the receive span, and closed over. By the time thenRun fires the
     // scope is gone and a capture would come back empty.
-    Map<String, String> here = traces.capture("turn", "Begin");
+    Map<String, String> here = traces.capture(agentType.name(), agentId.value(), "Begin");
     return Effect().persist(state.taking(turnId)).thenRun(taken -> startTurn(taken, here));
   }
 

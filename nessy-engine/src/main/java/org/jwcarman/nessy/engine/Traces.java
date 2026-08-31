@@ -63,9 +63,12 @@ public final class Traces {
   /**
    * This context, flattened to something a message can carry. Empty when nothing is being traced.
    *
-   * <p>{@code actor} is the destination and {@code what} the message, because a span called "send"
-   * tells a reader nothing. It is the message TYPE and never an id — the protocol is sealed, so the
-   * cardinality is bounded by the compiler.
+   * <p>{@code destination} is the agent TYPE and {@code partition} the agent id, which is how
+   * semconv models a partitioned queue and happens to describe a sharded entity exactly. Naming the
+   * actor KIND here instead — "agent", "turn" — was worse than useless: a constant on every send in
+   * the system, distinguishing nothing, while the question anyone actually asks is which agent. It
+   * is the message TYPE and never an id — the protocol is sealed, so the cardinality is bounded by
+   * the compiler.
    *
    * <p>A PRODUCER observation, briefly opened and closed, is what fills the carrier: the tracing
    * bridge's sender handler injects on start. Pairing it with the CONSUMER observation {@link
@@ -76,7 +79,7 @@ public final class Traces {
    * duration of its handler, so "current" is already correct at any send site inside an actor —
    * which keeps parentage ambient instead of threading an envelope through by hand.
    */
-  public Map<String, String> capture(String actor, String what) {
+  public Map<String, String> capture(String destination, String partition, String what) {
     Map<String, String> headers = new HashMap<>();
     SenderContext<Map<String, String>> sending =
         new SenderContext<>((carrier, key, value) -> carrier.put(key, value), Kind.PRODUCER);
@@ -84,11 +87,14 @@ public final class Traces {
     // Destination is WHO it goes to, per messaging semconv; the message type is its own key.
     // "send Observe" said what was sent and never to whom, which in a system of four actor kinds
     // is the half that matters.
-    Observation.createNotStarted("send " + actor + " " + what, () -> sending, registry)
+    Observation.createNotStarted("send " + destination + " " + what, () -> sending, registry)
         .lowCardinalityKeyValue("messaging.system", "pekko")
         .lowCardinalityKeyValue("messaging.operation.name", "send")
-        .lowCardinalityKeyValue("messaging.destination.name", actor)
+        .lowCardinalityKeyValue("messaging.destination.name", destination)
         .lowCardinalityKeyValue("messaging.message.type", what)
+        // WHICH agent, which is the question the destination alone cannot answer. Unbounded, so
+        // span-only: agents are sharded entities precisely so there can be thousands of them.
+        .highCardinalityKeyValue("messaging.destination.partition.id", partition)
         .observe(() -> {});
     return Map.copyOf(headers);
   }

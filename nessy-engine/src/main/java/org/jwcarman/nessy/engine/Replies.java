@@ -74,7 +74,10 @@ public final class Replies {
         where,
         replyTo ->
             new NessyMessage.AnswerToolCall(
-                where.callId(), result, replyTo, traces.capture("agent", "Answer")));
+                where.callId(),
+                result,
+                replyTo,
+                traces.capture(where.agentType(), where.agentId(), "Answer")));
   }
 
   /** A person's decision on a call that was waiting for one. */
@@ -85,7 +88,10 @@ public final class Replies {
         where,
         replyTo ->
             new NessyMessage.AnswerApproval(
-                where.callId(), result, replyTo, traces.capture("agent", "Answer")));
+                where.callId(),
+                result,
+                replyTo,
+                traces.capture(where.agentType(), where.agentId(), "Answer")));
   }
 
   private CompletionStage<NessyMessage.Ack> ask(
