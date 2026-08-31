@@ -31,9 +31,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.api.block.ImageBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -267,7 +265,7 @@ class GeminiRequestsTest {
 
     @Test
     void a_thinking_block_is_dropped_leaving_its_siblings_in_order() {
-      var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
+      var thinking = providerState("thinking", "reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn =
@@ -284,7 +282,7 @@ class GeminiRequestsTest {
 
     @Test
     void a_redacted_thinking_block_is_dropped_leaving_its_siblings_in_order() {
-      var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
+      var redacted = redactedState("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var contents =
           GeminiRequests.toContents(request(List.of(new AnswerMessage(List.of(redacted, text)))));
@@ -302,7 +300,7 @@ class GeminiRequestsTest {
      */
     @Test
     void an_assistant_message_of_only_a_thinking_block_produces_no_content() {
-      var thinking = new ThinkingBlock("cut off before signing", "");
+      var thinking = providerState("thinking", "cut off before signing", "");
       var contents =
           GeminiRequests.toContents(request(List.of(new AnswerMessage(List.of(thinking)))));
 
@@ -320,10 +318,7 @@ class GeminiRequestsTest {
       var result = ToolResultBlock.of("call-1", ToolResult.ok("42"));
       var contents =
           GeminiRequests.toContents(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))));
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))));
 
       var responseContent = contents.get(1);
       assertThat(responseContent.role()).contains("user");
@@ -341,10 +336,7 @@ class GeminiRequestsTest {
       var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
       var contents =
           GeminiRequests.toContents(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))));
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))));
 
       var functionResponse =
           contents.get(1).parts().orElseThrow().get(0).functionResponse().orElseThrow();
@@ -363,8 +355,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AnswerMessage(List.of(firstUse, secondUse)),
-                      new ToolResultMessage(List.of(first, second)))));
+                      new ExchangeMessage(List.of(firstUse, secondUse), List.of(first, second)))));
 
       var parts = contents.get(1).parts().orElseThrow();
       assertThat(parts).hasSize(2);
@@ -388,8 +379,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AnswerMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)),
+                      new ExchangeMessage(List.of(toolUse), List.of(result)),
                       new UserMessage(List.of(text)))));
 
       // Two contents rather than one, because a tool result is its own message arm now instead

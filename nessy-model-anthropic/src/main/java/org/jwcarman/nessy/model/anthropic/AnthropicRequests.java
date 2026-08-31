@@ -352,13 +352,20 @@ public final class AnthropicRequests {
       return Optional.empty();
     }
     return switch (data.path("type").asText()) {
-      case "thinking" ->
-          Optional.of(
-              ContentBlockParam.ofThinking(
-                  ThinkingBlockParam.builder()
-                      .thinking(data.path("thinking").asText())
-                      .signature(data.path("signature").asText())
-                      .build()));
+      case "thinking" -> {
+        // Unsigned reasoning is dropped: Anthropic will not trust a thinking block it did not
+        // sign, so replaying one fails the call. A turn cut off before its signature arrived
+        // leaves exactly this, and the block is worth less than the request.
+        String signature = data.path("signature").asText();
+        yield signature.isEmpty()
+            ? Optional.empty()
+            : Optional.of(
+                ContentBlockParam.ofThinking(
+                    ThinkingBlockParam.builder()
+                        .thinking(data.path("thinking").asText())
+                        .signature(signature)
+                        .build()));
+      }
       case "redacted_thinking" ->
           Optional.of(
               ContentBlockParam.ofRedactedThinking(

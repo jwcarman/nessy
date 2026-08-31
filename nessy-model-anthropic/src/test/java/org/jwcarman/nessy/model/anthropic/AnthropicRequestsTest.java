@@ -25,6 +25,7 @@ import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import com.anthropic.models.messages.TextBlockParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Optional;
@@ -33,10 +34,10 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -51,6 +52,21 @@ import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AnthropicRequestsTest {
+  /** Anthropic's own opaque payload, as its stream would have emitted it. */
+  private static ProviderBlock providerState(String type, String thinking, String signature) {
+    ObjectNode payload = JsonNodeFactory.instance.objectNode();
+    payload.put("type", type);
+    payload.put("thinking", thinking);
+    payload.put("signature", signature);
+    return new ProviderBlock("anthropic", payload);
+  }
+
+  private static ProviderBlock redactedState(String data) {
+    ObjectNode payload = JsonNodeFactory.instance.objectNode();
+    payload.put("type", "redacted_thinking");
+    payload.put("data", data);
+    return new ProviderBlock("anthropic", payload);
+  }
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final ThinkingConfig THINKING_DISABLED = new ThinkingConfig(false, 0);
@@ -205,7 +221,7 @@ class AnthropicRequestsTest {
 
     @Test
     void a_signed_thinking_block_round_trips_with_its_signature() {
-      var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
+      var thinking = providerState("thinking", "reasoning about the answer", "sig-123");
       var params =
           AnthropicRequests.toParams(
               request(List.of(new AnswerMessage(List.of(thinking)))),
@@ -221,7 +237,7 @@ class AnthropicRequestsTest {
 
     @Test
     void an_unsigned_thinking_block_is_dropped_on_replay() {
-      var unsigned = new ThinkingBlock("reasoning that predates signing", "");
+      var unsigned = providerState("thinking", "reasoning that predates signing", "");
       var text = new TextBlock("the visible answer");
       var params =
           AnthropicRequests.toParams(
@@ -243,7 +259,7 @@ class AnthropicRequestsTest {
      */
     @Test
     void an_assistant_message_of_only_an_unsigned_thinking_block_produces_no_message_param() {
-      var unsigned = new ThinkingBlock("cut off before signing", "");
+      var unsigned = providerState("thinking", "cut off before signing", "");
       var params =
           AnthropicRequests.toParams(
               request(List.of(new AnswerMessage(List.of(unsigned)))),
@@ -255,13 +271,13 @@ class AnthropicRequestsTest {
 
     @Test
     void a_mixed_message_keeps_its_surviving_blocks_in_order() {
-      var unsigned = new ThinkingBlock("cut off before signing", "");
+      var unsigned = providerState("thinking", "cut off before signing", "");
       var toolUse =
           new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var text = new TextBlock("the visible answer");
+      var said = new CommentaryBlock("the visible answer");
       var assistantMessage =
           new ExchangeMessage(
-              List.of(unsigned, toolUse, text),
+              List.of(unsigned, toolUse, said),
               List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
@@ -319,7 +335,7 @@ class AnthropicRequestsTest {
 
     @Test
     void round_trip_their_opaque_data() {
-      var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
+      var redacted = redactedState("opaque-encrypted-payload");
       var params =
           AnthropicRequests.toParams(
               request(List.of(new AnswerMessage(List.of(redacted)))),
@@ -342,9 +358,7 @@ class AnthropicRequestsTest {
       var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
       var params =
           AnthropicRequests.toParams(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -363,9 +377,7 @@ class AnthropicRequestsTest {
       var result = ToolResultBlock.of("call-2", ToolResult.ok("42"));
       var params =
           AnthropicRequests.toParams(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -518,7 +530,8 @@ class AnthropicRequestsTest {
               i ->
                   i % 2 == 0
                       ? UserMessage.of("message number " + i)
-                      : (Message) new AnswerMessage(List.of(new TextBlock("message number " + i))))
+                      : (ContextMessage)
+                          new AnswerMessage(List.of(new TextBlock("message number " + i))))
           .toList();
     }
 
@@ -575,10 +588,10 @@ class AnthropicRequestsTest {
     @Test
     void a_thinking_block_never_carries_a_breakpoint_so_the_marker_falls_back_to_the_text() {
       var messages =
-          List.<Message>of(
+          List.<ContextMessage>of(
               UserMessage.of("hello"),
               new AnswerMessage(
-                  List.of(new TextBlock("answer"), new ThinkingBlock("hmm", "signed"))));
+                  List.of(new TextBlock("answer"), providerState("thinking", "hmm", "signed"))));
 
       var params =
           AnthropicRequests.toParams(
@@ -649,7 +662,8 @@ class AnthropicRequestsTest {
               i ->
                   i % 2 == 0
                       ? UserMessage.of("message number " + i)
-                      : (Message) new AnswerMessage(List.of(new TextBlock("message number " + i))))
+                      : (ContextMessage)
+                          new AnswerMessage(List.of(new TextBlock("message number " + i))))
           .toList();
     }
 

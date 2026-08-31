@@ -29,9 +29,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.api.block.ImageBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -259,7 +257,7 @@ class BedrockRequestsTest {
 
     @Test
     void a_thinking_block_is_dropped_leaving_its_siblings_in_order() {
-      var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
+      var thinking = providerState("thinking", "reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn =
@@ -276,7 +274,7 @@ class BedrockRequestsTest {
 
     @Test
     void a_redacted_thinking_block_is_dropped_leaving_its_siblings_in_order() {
-      var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
+      var redacted = redactedState("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var built =
           BedrockRequests.toRequest(
@@ -296,7 +294,7 @@ class BedrockRequestsTest {
      */
     @Test
     void an_assistant_message_of_only_a_thinking_block_produces_no_message() {
-      var thinking = new ThinkingBlock("cut off before signing", "");
+      var thinking = providerState("thinking", "cut off before signing", "");
       var built =
           BedrockRequests.toRequest(
               request(List.of(new AnswerMessage(List.of(thinking)))), MODEL_ID);
@@ -315,10 +313,7 @@ class BedrockRequestsTest {
       var result = ToolResultBlock.of("call-1", ToolResult.ok("42"));
       var built =
           BedrockRequests.toRequest(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
-              MODEL_ID);
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))), MODEL_ID);
 
       var responseContent = built.messages().get(1).content();
       assertThat(built.messages().get(1).roleAsString()).isEqualTo("user");
@@ -337,10 +332,7 @@ class BedrockRequestsTest {
       var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
       var built =
           BedrockRequests.toRequest(
-              request(
-                  List.of(
-                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
-              MODEL_ID);
+              request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))), MODEL_ID);
 
       var toolResult = built.messages().get(1).content().get(0).toolResult();
       assertThat(toolResult.status()).isEqualTo(ToolResultStatus.ERROR);
@@ -357,8 +349,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AnswerMessage(List.of(firstUse, secondUse)),
-                      new ToolResultMessage(List.of(first, second)))),
+                      new ExchangeMessage(List.of(firstUse, secondUse), List.of(first, second)))),
               MODEL_ID);
 
       var content = built.messages().get(1).content();
@@ -381,8 +372,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AnswerMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)),
+                      new ExchangeMessage(List.of(toolUse), List.of(result)),
                       new UserMessage(List.of(text)))),
               MODEL_ID);
 

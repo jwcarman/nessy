@@ -34,6 +34,7 @@ import com.anthropic.models.messages.ThinkingDelta;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +48,21 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 class AnthropicStreamTest {
+  /** What this adapter builds when a signature closes the reasoning it vouches for. */
+  private static ObjectNode signedPayload(String thinking, String signature) {
+    ObjectNode payload = JsonNodeFactory.instance.objectNode();
+    payload.put("type", "thinking");
+    payload.put("thinking", thinking);
+    payload.put("signature", signature);
+    return payload;
+  }
+
+  private static ObjectNode redactedPayload(String data) {
+    ObjectNode payload = JsonNodeFactory.instance.objectNode();
+    payload.put("type", "redacted_thinking");
+    payload.put("data", data);
+    return payload;
+  }
 
   private static List<ModelEvent> drain(List<RawMessageStreamEvent> events) {
     var stream = new AnthropicStream(fakeStream(events, () -> {}));
@@ -372,7 +388,8 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.ReasoningChunk("Let me think"),
-              new ModelEvent.ThinkingSigned("sig-123"),
+              new ModelEvent.ProviderStateEmitted(
+                  "anthropic", signedPayload("Let me think", "sig-123")),
               new ModelEvent.Stopped(StopReason.END_TURN, new Usage(20, 8, 0, 0)));
     }
   }
@@ -394,7 +411,7 @@ class AnthropicStreamTest {
 
       assertThat(modelEvents)
           .containsExactly(
-              new ModelEvent.RedactedThinkingEmitted("opaque-data"),
+              new ModelEvent.ProviderStateEmitted("anthropic", redactedPayload("opaque-data")),
               new ModelEvent.Stopped(StopReason.END_TURN, new Usage(6, 2, 0, 0)));
     }
   }
