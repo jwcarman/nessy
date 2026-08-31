@@ -18,14 +18,15 @@ package org.jwcarman.nessy.spi.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -58,9 +59,14 @@ class ModelRepliesTest {
     };
   }
 
-  private static ModelResult.Replied replied(ModelResult result) {
-    assertThat(result).isInstanceOf(ModelResult.Replied.class);
-    return (ModelResult.Replied) result;
+  private static ModelResult.Answered answered(ModelResult result) {
+    assertThat(result).isInstanceOf(ModelResult.Answered.class);
+    return (ModelResult.Answered) result;
+  }
+
+  private static ModelResult.Asked asked(ModelResult result) {
+    assertThat(result).isInstanceOf(ModelResult.Asked.class);
+    return (ModelResult.Asked) result;
   }
 
   @Test
@@ -75,42 +81,51 @@ class ModelRepliesTest {
                 new ModelEvent.Stopped(StopReason.END_TURN, COST)),
             event -> {});
 
-    assertThat(replied(result).message().content()).containsExactly(new TextBlock("Hello, world!"));
+    assertThat(answered(result).message().content())
+        .containsExactly(new TextBlock("Hello, world!"));
   }
 
   @Test
-  @DisplayName("reasoning waits for its signature, which arrives after the text")
-  void thinking_is_assembled_and_signed() {
+  @DisplayName("provider state is kept, whatever it happens to be")
+  void provider_state_reaches_the_message() {
+    ObjectNode signed = JsonNodeFactory.instance.objectNode();
+    signed.put("thinking", "let me think");
+    signed.put("signature", "sig-1");
+
     ModelResult result =
         ModelReplies.drain(
             saying(
-                new ModelEvent.ThinkingChunk("let me "),
-                new ModelEvent.ThinkingChunk("think"),
-                new ModelEvent.ThinkingSigned("sig-1"),
+                new ModelEvent.ReasoningChunk("let me "),
+                new ModelEvent.ReasoningChunk("think"),
+                new ModelEvent.ProviderStateEmitted("anthropic", signed),
                 new ModelEvent.TextChunk("done"),
                 new ModelEvent.Stopped(StopReason.END_TURN, COST)),
             event -> {});
 
-    assertThat(replied(result).message().content())
-        .containsExactly(new ThinkingBlock("let me think", "sig-1"), new TextBlock("done"));
+    assertThat(answered(result).message().content())
+        .containsExactly(new ProviderBlock("anthropic", signed), new TextBlock("done"));
   }
 
   @Test
-  @DisplayName("unsigned reasoning is dropped: it would fail on replay")
-  void reasoning_without_a_signature_does_not_reach_the_message() {
+  @DisplayName("reasoning text is narrated and never stored")
+  void reasoning_does_not_reach_the_message() {
+    List<ModelEvent> watched = new java.util.ArrayList<>();
+
     ModelResult result =
         ModelReplies.drain(
             saying(
-                new ModelEvent.ThinkingChunk("half a thought"),
+                new ModelEvent.ReasoningChunk("half a thought"),
                 new ModelEvent.TextChunk("anyway"),
                 new ModelEvent.Stopped(StopReason.END_TURN, COST)),
-            event -> {});
+            watched::add);
 
-    assertThat(replied(result).message().content()).containsExactly(new TextBlock("anyway"));
+    assertThat(answered(result).message().content()).containsExactly(new TextBlock("anyway"));
+    assertThat(watched).anyMatch(ModelEvent.ReasoningChunk.class::isInstance);
   }
 
   @Test
-  void prose_before_a_tool_call_is_flushed_ahead_of_it() {
+  @DisplayName("prose said on the way to a call is commentary, not an answer")
+  void prose_before_a_tool_call_becomes_commentary() {
     ToolCall call = new ToolCall("c1", "look_up", JsonNodeFactory.instance.objectNode());
 
     ModelResult result =
@@ -121,22 +136,8 @@ class ModelRepliesTest {
                 new ModelEvent.Stopped(StopReason.TOOL_USE, COST)),
             event -> {});
 
-    assertThat(replied(result).message().content())
-        .containsExactly(new TextBlock("let me check"), new ToolCallBlock(call));
-    assertThat(replied(result).stopReason()).isEqualTo(StopReason.TOOL_USE);
-  }
-
-  @Test
-  void redacted_reasoning_passes_through_whole() {
-    ModelResult result =
-        ModelReplies.drain(
-            saying(
-                new ModelEvent.RedactedThinkingEmitted("opaque"),
-                new ModelEvent.Stopped(StopReason.END_TURN, COST)),
-            event -> {});
-
-    assertThat(replied(result).message().content())
-        .containsExactly(new RedactedThinkingBlock("opaque"));
+    assertThat(asked(result).content())
+        .containsExactly(new CommentaryBlock("let me check"), new ToolCallBlock(call));
   }
 
   @Test
@@ -154,7 +155,7 @@ class ModelRepliesTest {
     ModelResult result =
         ModelReplies.drain(saying(new ModelEvent.TextChunk("partial")), event -> {});
 
-    assertThat(replied(result).message().content()).containsExactly(new TextBlock("partial"));
+    assertThat(answered(result).message().content()).containsExactly(new TextBlock("partial"));
   }
 
   @Test

@@ -17,15 +17,19 @@ package org.jwcarman.nessy.api.model;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.block.ExchangeContentBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AssistantMessage;
 
 /**
  * What one model call produced.
  *
- * <p>Sealed because the arms carry genuinely different things. A {@link Replied} has a message and
- * a stop reason. A {@link Refused} has neither — a safety classifier declined, so there may be no
- * content at all — and carries a category and an explanation nothing else does.
+ * <p>Sealed because the arms carry genuinely different things. {@link Answered} has a message and a
+ * stop reason. {@link Asked} has neither a message nor an ending — the model wants tools run, the
+ * results do not exist yet, and the turn is only half over. {@link Refused} has no content at all:
+ * a safety classifier declined, and it carries a category and explanation nothing else does.
  *
  * <p>That split exists to close a real trap: a refusal arrives as HTTP 200, and the provider's own
  * guidance is to check why the turn stopped BEFORE reading its content. A single record with a
@@ -38,7 +42,8 @@ import org.jwcarman.nessy.api.message.AssistantMessage;
 /** Wire names are a compatibility surface. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = ModelResult.Replied.class, name = "replied"),
+  @JsonSubTypes.Type(value = ModelResult.Answered.class, name = "answered"),
+  @JsonSubTypes.Type(value = ModelResult.Asked.class, name = "asked"),
   @JsonSubTypes.Type(value = ModelResult.Refused.class, name = "refused")
 })
 public sealed interface ModelResult {
@@ -46,13 +51,40 @@ public sealed interface ModelResult {
   /** What the call cost, whichever way it went. A refusal is billed too. */
   Usage usage();
 
-  /** The model answered. */
-  record Replied(AssistantMessage message, StopReason stopReason, Usage usage)
+  /**
+   * The model answered.
+   *
+   * <p>The stop reason still matters: an answer that ran out of room is not the same as one that
+   * finished.
+   */
+  record Answered(AssistantMessage message, StopReason stopReason, Usage usage)
       implements ModelResult {
-    public Replied {
+    public Answered {
       Objects.requireNonNull(message, "message must not be null");
       Objects.requireNonNull(stopReason, "stopReason must not be null");
       Objects.requireNonNull(usage, "usage must not be null");
+    }
+  }
+
+  /**
+   * The model wants tools run before it will continue.
+   *
+   * <p>Content without answers: the calls it made, whatever it said while making them, and any
+   * provider state that must travel with them. Pairing results into an {@link
+   * org.jwcarman.nessy.api.message.ExchangeMessage} is the engine's job, and until that is done
+   * there is no message to be had — which is why this arm carries content instead of one.
+   *
+   * <p>No {@code StopReason}: this IS the stop reason. Carrying one as well would permit a result
+   * claiming {@code END_TURN} while holding tool calls, a state nothing could act on.
+   */
+  record Asked(List<ExchangeContentBlock> content, Usage usage) implements ModelResult {
+    public Asked {
+      Objects.requireNonNull(content, "content must not be null");
+      Objects.requireNonNull(usage, "usage must not be null");
+      content = List.copyOf(content);
+      if (content.stream().noneMatch(ToolCallBlock.class::isInstance)) {
+        throw new IllegalArgumentException("asked for nothing: no tool calls");
+      }
     }
   }
 

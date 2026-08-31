@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.model;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Objects;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
@@ -40,38 +41,43 @@ public sealed interface ModelEvent {
     }
   }
 
-  /** A chunk of visible reasoning. */
-  record ThinkingChunk(String text) implements ModelEvent {
-    public ThinkingChunk {
+  /**
+   * A chunk of reasoning the model is showing as it thinks.
+   *
+   * <p>Narration and nothing else: it is streamed to whoever is watching and never stored. Every
+   * vendor that shows reasoning has some version of this, and none of them require it back — what
+   * they require back is {@link ProviderStateEmitted}, which is a different thing that happens to
+   * arrive nearby.
+   */
+  record ReasoningChunk(String text) implements ModelEvent {
+    public ReasoningChunk {
       Objects.requireNonNull(text, "text must not be null");
     }
   }
 
   /**
-   * The signature for the reasoning just streamed. Arrives after its chunks, which is why thinking
-   * is assembled rather than emitted block by block.
+   * The provider handed us something to give back.
+   *
+   * <p>A signature over reasoning it wants to trust on replay, an encrypted blob it will not show
+   * us, a continuity token tied to a call — every vendor invents its own, and this models the
+   * PATTERN rather than any one of them. The payload is built by the adapter that will have to read
+   * it again, and by nobody else.
+   *
+   * @param provider whose state this is, so a transcript replayed against a different vendor can
+   *     skip what was never theirs
+   * @param data whatever that provider needs; opaque here
    */
-  record ThinkingSigned(String signature) implements ModelEvent {
-    public ThinkingSigned {
-      Objects.requireNonNull(signature, "signature must not be null");
-    }
-  }
-
-  /** Reasoning the provider encrypted rather than showing. Whole, never chunked. */
-  record RedactedThinkingEmitted(String data) implements ModelEvent {
-    public RedactedThinkingEmitted {
+  record ProviderStateEmitted(String provider, JsonNode data) implements ModelEvent {
+    public ProviderStateEmitted {
+      Objects.requireNonNull(provider, "provider must not be null");
       Objects.requireNonNull(data, "data must not be null");
     }
   }
 
   /** A complete tool call. Emitted once its arguments have finished arriving. */
-  record ToolCallEmitted(ToolCall call, String signature) implements ModelEvent {
+  record ToolCallEmitted(ToolCall call) implements ModelEvent {
     public ToolCallEmitted {
       Objects.requireNonNull(call, "call must not be null");
-    }
-
-    public ToolCallEmitted(ToolCall call) {
-      this(call, null);
     }
   }
 

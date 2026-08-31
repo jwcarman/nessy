@@ -19,9 +19,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.block.AssistantContentBlock;
-import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
+import org.jwcarman.nessy.api.block.ExchangeContentBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
@@ -50,31 +51,42 @@ public final class ModelReplies {
    *
    * <p>Closes the stream. A provider needs to know when nobody is listening.
    */
+  /**
+   * Folds a stream into one result.
+   *
+   * <p><b>Where text becomes commentary.</b> A chunk of prose cannot be classified as it arrives —
+   * whether the model was talking on its way to a tool call or answering the question is only
+   * settled when it stops. So prose is accumulated, and the stop reason decides: {@code TOOL_USE}
+   * means everything it said was commentary, anything else means it was an answer. One place, no
+   * vendor involved.
+   *
+   * <p>Reasoning text is watched and dropped: it reaches whoever is listening as it streams and is
+   * never stored. What IS stored is {@code ProviderStateEmitted} — the opaque thing a provider
+   * wants back — which is a different fact that happens to arrive nearby.
+   */
   public static ModelResult drain(ModelStream stream, Consumer<ModelEvent> watcher) {
-    List<AssistantContentBlock> blocks = new ArrayList<>();
+    List<ExchangeContentBlock> asked = new ArrayList<>();
+    List<ProviderBlock> state = new ArrayList<>();
     StringBuilder prose = new StringBuilder();
-    StringBuilder reasoning = new StringBuilder();
     ModelResult result = null;
     try (ModelStream events = stream) {
       for (ModelEvent event : events) {
         watcher.accept(event);
         switch (event) {
           case ModelEvent.TextChunk chunk -> prose.append(chunk.text());
-          case ModelEvent.ThinkingChunk chunk -> reasoning.append(chunk.text());
-          case ModelEvent.ThinkingSigned signed -> {
-            blocks.add(new ThinkingBlock(reasoning.toString(), signed.signature()));
-            reasoning.setLength(0);
+          case ModelEvent.ReasoningChunk ignored -> {
+            // Narration only: watched above, never kept.
           }
-          case ModelEvent.RedactedThinkingEmitted redacted ->
-              blocks.add(new RedactedThinkingBlock(redacted.data()));
+          case ModelEvent.ProviderStateEmitted emitted ->
+              state.add(new ProviderBlock(emitted.provider(), emitted.data()));
           case ModelEvent.ToolCallEmitted emitted -> {
-            flush(blocks, prose);
-            blocks.add(new ToolCallBlock(emitted.call(), emitted.signature()));
+            flushCommentary(asked, prose);
+            asked.addAll(state);
+            state.clear();
+            asked.add(new ToolCallBlock(emitted.call()));
           }
-          case ModelEvent.Stopped stopped -> {
-            flush(blocks, prose);
-            result = replied(blocks, stopped.reason(), stopped.usage());
-          }
+          case ModelEvent.Stopped stopped ->
+              result = settle(asked, state, prose, stopped.reason(), stopped.usage());
           case ModelEvent.Refused refused ->
               result =
                   new ModelResult.Refused(
@@ -86,21 +98,34 @@ public final class ModelReplies {
       // A stream that ended without saying why. Treated as a finished answer rather than an
       // exception: whatever arrived is real, and losing it because the closing event went missing
       // would be worse than reporting it as complete.
-      flush(blocks, prose);
-      result = replied(blocks, StopReason.END_TURN, Usage.unreported());
+      result = settle(asked, state, prose, StopReason.END_TURN, Usage.unreported());
     }
     return result;
   }
 
-  private static ModelResult replied(
-      List<AssistantContentBlock> blocks, StopReason reason, Usage usage) {
-    return new ModelResult.Replied(new AssistantMessage(List.copyOf(blocks)), reason, usage);
+  /** The one place the stop reason decides what the model was doing. */
+  private static ModelResult settle(
+      List<ExchangeContentBlock> asked,
+      List<ProviderBlock> state,
+      StringBuilder prose,
+      StopReason reason,
+      Usage usage) {
+    if (reason == StopReason.TOOL_USE) {
+      flushCommentary(asked, prose);
+      asked.addAll(state);
+      return new ModelResult.Asked(List.copyOf(asked), usage);
+    }
+    List<AssistantContentBlock> answer = new ArrayList<>(state);
+    if (!prose.isEmpty()) {
+      answer.add(new TextBlock(prose.toString()));
+    }
+    return new ModelResult.Answered(new AssistantMessage(answer), reason, usage);
   }
 
-  /** Reasoning left unsigned is dropped: a thinking block without its signature fails on replay. */
-  private static void flush(List<AssistantContentBlock> blocks, StringBuilder prose) {
+  /** Prose said on the way to a call is commentary; empty prose adds nothing. */
+  private static void flushCommentary(List<ExchangeContentBlock> blocks, StringBuilder prose) {
     if (!prose.isEmpty()) {
-      blocks.add(new TextBlock(prose.toString()));
+      blocks.add(new CommentaryBlock(prose.toString()));
       prose.setLength(0);
     }
   }

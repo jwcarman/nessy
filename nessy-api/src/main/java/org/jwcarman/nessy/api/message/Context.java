@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -55,89 +56,20 @@ import org.jwcarman.nessy.api.block.UserContentBlock;
  * compose redaction from {@link #map}/{@link #drop}, reach for a custom memory implementation for
  * summarization, and treat reordering as inexpressible on purpose, because order is meaning.
  */
-public record Context(List<Message> messages) {
+public record Context(List<ContextMessage> messages) {
 
   public Context {
     Objects.requireNonNull(messages, "messages must not be null");
     messages = List.copyOf(messages);
-    int i = 0;
-    while (i < messages.size()) {
-      i = validatePairingFrom(messages, i);
-    }
   }
 
-  public static Context of(List<Message> messages) {
+  public static Context of(List<ContextMessage> messages) {
     return new Context(messages);
   }
 
   /** The empty context — no messages, trivially valid. */
   public static Context empty() {
     return Context.of(List.of());
-  }
-
-  /**
-   * Validates the pairing invariant starting at index {@code i} and returns the index of the next
-   * unvalidated message — {@code i + 1} for a plain message, {@code i + 2} once a message carrying
-   * tool calls and its answering message both check out.
-   */
-  private static int validatePairingFrom(List<Message> messages, int i) {
-    Message message = messages.get(i);
-    List<String> callIds = toolCallIdsOf(message);
-    if (callIds.isEmpty()) {
-      if (message instanceof ToolResultMessage) {
-        throw new IllegalArgumentException("tool results answering no call: index " + i);
-      }
-      return i + 1;
-    }
-    requireAnsweredBy(messages, i, callIds);
-    return i + 2;
-  }
-
-  private static void requireAnsweredBy(List<Message> messages, int i, List<String> callIds) {
-    if (i + 1 >= messages.size()) {
-      throw new IllegalArgumentException("unanswered tool call: " + callIds.getFirst());
-    }
-    if (!(messages.get(i + 1) instanceof ToolResultMessage answer)) {
-      throw new IllegalArgumentException("unanswered tool call: " + callIds.getFirst());
-    }
-    List<String> resultIds = answer.blocks().stream().map(ToolResultBlock::toolUseId).toList();
-    for (String callId : callIds) {
-      if (!resultIds.contains(callId)) {
-        throw new IllegalArgumentException("unanswered tool call: " + callId);
-      }
-    }
-    for (String resultId : resultIds) {
-      if (!callIds.contains(resultId)) {
-        throw new IllegalArgumentException("tool result for an unknown id: " + resultId);
-      }
-    }
-  }
-
-  private static List<String> toolCallIdsOf(Message message) {
-    if (!(message instanceof AssistantMessage assistant)) {
-      return List.of();
-    }
-    return assistant.content().stream()
-        .filter(ToolCallBlock.class::isInstance)
-        .map(block -> ((ToolCallBlock) block).id())
-        .toList();
-  }
-
-  /**
-   * The largest index {@code cut <= messages.size() - keepRecentMessages} at which {@code
-   * messages.get(cut)} is a genuine user turn — never a spot between an assistant's tool calls and
-   * the message carrying their results. Walks downward from the limit (clamped to {@code
-   * messages.size() - 1} so a {@code keepRecentMessages} of {@code 0} still indexes a real
-   * message); {@code 0} when no index qualifies, which tells the caller nothing is safe to cut.
-   */
-  public int pairSafeCut(int keepRecentMessages) {
-    int limit = Math.min(messages.size() - keepRecentMessages, messages.size() - 1);
-    for (int cut = limit; cut > 0; cut--) {
-      if (isGenuineUserTurn(messages.get(cut))) {
-        return cut;
-      }
-    }
-    return 0;
   }
 
   /**
@@ -157,27 +89,13 @@ public record Context(List<Message> messages) {
    * is legal — an empty {@code Context} is a valid one — but no provider will accept an empty
    * message list, so that is the caller's problem, not this method's.
    */
-  public Context drop(Predicate<Message> predicate) {
+  public Context drop(Predicate<ContextMessage> predicate) {
     Objects.requireNonNull(predicate, "predicate must not be null");
-    List<Message> kept = new ArrayList<>(messages.size());
-    int i = 0;
-    while (i < messages.size()) {
-      Message current = messages.get(i);
-      if (!toolCallIdsOf(current).isEmpty()) {
-        // Validated by construction: a message carrying tool calls is always immediately followed
-        // by its answering message.
-        Message results = messages.get(i + 1);
-        if (!predicate.test(current) && !predicate.test(results)) {
-          kept.add(current);
-          kept.add(results);
-        }
-        i += 2;
-        continue;
+    List<ContextMessage> kept = new ArrayList<>(messages.size());
+    for (ContextMessage message : messages) {
+      if (!predicate.test(message)) {
+        kept.add(message);
       }
-      if (!predicate.test(current)) {
-        kept.add(current);
-      }
-      i++;
     }
     return new Context(kept);
   }
@@ -191,11 +109,11 @@ public record Context(List<Message> messages) {
    *
    * @throws NullPointerException if {@code rewriter} is null, or if it returns a null message
    */
-  public Context map(UnaryOperator<Message> rewriter) {
+  public Context map(UnaryOperator<ContextMessage> rewriter) {
     Objects.requireNonNull(rewriter, "rewriter must not be null");
-    List<Message> rewritten = new ArrayList<>(messages.size());
-    for (Message message : messages) {
-      Message result = rewriter.apply(message);
+    List<ContextMessage> rewritten = new ArrayList<>(messages.size());
+    for (ContextMessage message : messages) {
+      ContextMessage result = rewriter.apply(message);
       Objects.requireNonNull(result, "rewriter must not return a null message");
       rewritten.add(result);
     }
@@ -218,7 +136,7 @@ public record Context(List<Message> messages) {
     if (blocks.isEmpty()) {
       throw new IllegalArgumentException("blocks must not be empty");
     }
-    List<Message> appended = new ArrayList<>(messages.size() + 1);
+    List<ContextMessage> appended = new ArrayList<>(messages.size() + 1);
     appended.addAll(messages);
     appended.add(new UserMessage(List.copyOf(blocks)));
     return new Context(appended);
@@ -246,21 +164,18 @@ public record Context(List<Message> messages) {
   }
 
   /**
-   * The nearest pair-safe boundary that leaves at least the last {@code n} messages intact. When no
-   * pair-safe boundary exists short of the whole context, {@code this} is returned unchanged —
-   * there is nothing safe to cut, so nothing is cut.
-   *
    * @param n how many of the most recent messages must survive; at least 0
    */
   public Context keepRecent(int n) {
     if (n < 0) {
       throw new IllegalArgumentException("n must be at least 0");
     }
-    int cut = pairSafeCut(n);
-    if (cut == 0) {
+    if (n >= messages.size()) {
       return this;
     }
-    return new Context(messages.subList(cut, messages.size()));
+    // A plain cut: an ExchangeMessage carries its own results, so there is no pair to land
+    // between.
+    return new Context(messages.subList(messages.size() - n, messages.size()));
   }
 
   /** One line of the transcript this context renders as: who said it, and what they said. */
@@ -277,7 +192,7 @@ public record Context(List<Message> messages) {
    */
   public List<Line> lines() {
     List<Line> lines = new ArrayList<>();
-    for (Message message : messages) {
+    for (ContextMessage message : messages) {
       String text = textOf(message);
       if (!text.isEmpty()) {
         lines.add(new Line(roleOf(message), text));
@@ -286,40 +201,58 @@ public record Context(List<Message> messages) {
     return lines;
   }
 
-  private static String roleOf(Message message) {
-    return message instanceof AssistantMessage ? "assistant" : "user";
+  /** Who a line came from. Background is nobody's speech, so it never becomes one. */
+  private static String roleOf(ContextMessage message) {
+    return message instanceof AssistantMessage || message instanceof ExchangeMessage
+        ? "assistant"
+        : "user";
   }
 
-  private static String textOf(Message message) {
+  /**
+   * The visible text of one message.
+   *
+   * <p>An {@link ExchangeMessage} contributes its commentary — the model saying what it is about to
+   * do, which a reader watched arrive and expects to still be there. An {@link AmbientMessage}
+   * contributes nothing: it is background assembled for the model, not something anyone said.
+   */
+  private static String textOf(ContextMessage message) {
     StringBuilder text = new StringBuilder();
-    if (message instanceof UserMessage user) {
-      user.content().stream()
-          .filter(TextBlock.class::isInstance)
-          .forEach(block -> text.append(((TextBlock) block).text()));
-    } else if (message instanceof AssistantMessage assistant) {
-      assistant.content().stream()
-          .filter(TextBlock.class::isInstance)
-          .forEach(block -> text.append(((TextBlock) block).text()));
+    switch (message) {
+      case UserMessage user ->
+          user.content().stream()
+              .filter(TextBlock.class::isInstance)
+              .forEach(block -> text.append(((TextBlock) block).text()));
+      case AssistantMessage assistant ->
+          assistant.content().stream()
+              .filter(TextBlock.class::isInstance)
+              .forEach(block -> text.append(((TextBlock) block).text()));
+      case ExchangeMessage asking ->
+          asking.content().stream()
+              .filter(CommentaryBlock.class::isInstance)
+              .forEach(block -> text.append(((CommentaryBlock) block).text()));
+      case AmbientMessage ignored -> {
+        // Background is not speech.
+      }
     }
     return text.toString();
   }
 
-  private static Message elideToolResultContent(Message message) {
-    if (!(message instanceof ToolResultMessage results) || results.blocks().isEmpty()) {
+  /**
+   * Replaces a settled exchange's result content with a placeholder, keeping the exchange itself.
+   *
+   * <p>The calls stay, their ids stay, and the answers become {@code [elided]} — a shape the
+   * provider still accepts, because the pairing is intact by construction rather than by care.
+   */
+  private static ContextMessage elideToolResultContent(ContextMessage message) {
+    if (!(message instanceof ExchangeMessage asking) || asking.results().isEmpty()) {
       return message;
     }
-    List<ToolResultBlock> elided = new ArrayList<>(results.blocks().size());
-    for (ToolResultBlock block : results.blocks()) {
+    List<ToolResultBlock> elided = new ArrayList<>(asking.results().size());
+    for (ToolResultBlock block : asking.results()) {
       elided.add(
           new ToolResultBlock(
               block.toolUseId(), List.of(new TextBlock("[elided]")), block.isError()));
     }
-    return new ToolResultMessage(elided);
-  }
-
-  private static boolean isGenuineUserTurn(Message message) {
-    return message instanceof UserMessage user
-        && !user.content().isEmpty()
-        && user.content().stream().allMatch(TextBlock.class::isInstance);
+    return new ExchangeMessage(asking.content(), elided);
   }
 }

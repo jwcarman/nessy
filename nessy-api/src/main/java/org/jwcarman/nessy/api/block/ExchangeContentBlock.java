@@ -15,20 +15,12 @@
  */
 package org.jwcarman.nessy.api.block;
 
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.annotation.Nulls;
-import java.util.Objects;
-
 /**
- * The model's visible reasoning, with the signature the provider needs to trust it on replay. A
- * stored payload with no {@code signature} key decodes as unsigned ({@code ""}), never {@code
- * null}.
+ * What the assistant may say while using tools, rather than answering.
+ *
+ * <p>No {@link TextBlock}: text in a working turn is {@link CommentaryBlock}, and admitting both
+ * would be two ways to say one thing. No answer belongs here either — a turn that is asking for
+ * something has not answered yet.
  */
-public record ThinkingBlock(String text, @JsonSetter(nulls = Nulls.AS_EMPTY) String signature)
-    implements AssistantContentBlock {
-
-  public ThinkingBlock {
-    Objects.requireNonNull(text, "text must not be null");
-    Objects.requireNonNull(signature, "signature must not be null");
-  }
-}
+public sealed interface ExchangeContentBlock extends Block
+    permits CommentaryBlock, ToolCallBlock, ProviderBlock {}

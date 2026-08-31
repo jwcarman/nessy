@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.api.block;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -29,28 +28,15 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * what crosses the wire, exactly as {@code ToolResult} pairs with {@link ToolResultBlock}. The wire
  * discriminator stays {@code tool-use} regardless, because stored transcripts name that value.
  *
- * <p>{@code signature}: an opaque provider-issued continuity token, stored with the block and
- * returned verbatim on replay; absent for providers that issue none. Its sibling {@link
- * ThinkingBlock} uses the opposite convention — {@code signature} there is non-null and empty
- * ({@code ""}) means unsigned, an artifact of how Anthropic streams thinking deltas — the two
- * conventions must never be normalized to each other.
- *
  * <p><b>Equality:</b> the signature participates in record equality, deliberately. The block is
  * constructed once, at stream time, and persisted; at-least-once re-drives replay the SAME stored
  * value, so signature-in-equals cannot break the transcript's no-stutter dedup or the fold's
  * idempotency.
  */
-public record ToolCallBlock(
-    @JsonUnwrapped ToolCall call, @JsonInclude(JsonInclude.Include.NON_NULL) String signature)
-    implements AssistantContentBlock {
+public record ToolCallBlock(@JsonUnwrapped ToolCall call) implements ExchangeContentBlock {
 
   public ToolCallBlock {
     Objects.requireNonNull(call, "call must not be null");
-  }
-
-  /** Convenience for providers that issue no continuity token. */
-  public ToolCallBlock(ToolCall call) {
-    this(call, null);
   }
 
   /** The id this call must be answered under. */

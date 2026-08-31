@@ -27,9 +27,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * wire, so it is not a block; {@link ToolResultBlock} is what the engine builds from one, and is.
  *
  * <p>Carries a {@code "type"} discriminator naming the record on the wire: {@code text}, {@code
- * image}, {@code thinking}, {@code redacted-thinking}, {@code tool-use}, {@code tool-result}. The
- * values are a compatibility surface and must never change — note that {@code tool-use} is kept
- * even though the type is now {@link ToolCallBlock}, because stored transcripts name the old value.
+ * image}, {@code commentary}, {@code provider}, {@code tool-use}, {@code tool-result}. The values
+ * are a compatibility surface and must never change — note that {@code tool-use} is kept even
+ * though the type is now {@link ToolCallBlock}, because stored transcripts name the old value.
  *
  * <p><b>Why the permits clause lists the markers rather than the records.</b> A direct subtype of a
  * sealed type must itself be permitted, and the three markers extend this interface so they inherit
@@ -41,10 +41,15 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = TextBlock.class, name = "text"),
   @JsonSubTypes.Type(value = ImageBlock.class, name = "image"),
-  @JsonSubTypes.Type(value = ThinkingBlock.class, name = "thinking"),
-  @JsonSubTypes.Type(value = RedactedThinkingBlock.class, name = "redacted-thinking"),
+  @JsonSubTypes.Type(value = CommentaryBlock.class, name = "commentary"),
+  @JsonSubTypes.Type(value = ProviderBlock.class, name = "provider"),
   @JsonSubTypes.Type(value = ToolCallBlock.class, name = "tool-use"),
   @JsonSubTypes.Type(value = ToolResultBlock.class, name = "tool-result")
 })
 public sealed interface Block
-    permits UserContentBlock, AssistantContentBlock, ToolResultContentBlock, ToolResultBlock {}
+    permits UserContentBlock,
+        AssistantContentBlock,
+        ExchangeContentBlock,
+        AmbientContentBlock,
+        ToolResultContentBlock,
+        ToolResultBlock {}

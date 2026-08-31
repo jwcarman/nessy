@@ -21,7 +21,7 @@ import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.UserContentBlock;
 
 /** Everything the world says to the model that is not a tool answering a call. */
-public record UserMessage(List<UserContentBlock> content) implements Message {
+public record UserMessage(List<UserContentBlock> content) implements ContextMessage {
 
   public UserMessage {
     Objects.requireNonNull(content, "content must not be null");

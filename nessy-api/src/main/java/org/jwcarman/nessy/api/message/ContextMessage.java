@@ -19,21 +19,25 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * One turn of the conversation.
+ * One thing in a {@link Context} — everything the model is shown.
  *
- * <p>The role IS the type. There is no {@code Role} enum, because a second way to ask the same
- * question is a second way to get a different answer — and because each role admits a different set
- * of content, which a shared type could only check at runtime.
+ * <p><b>The role IS the type.</b> There is no {@code Role} enum, because a second way to ask the
+ * same question is a second way to get a different answer — and because each role admits a
+ * different set of content, which a shared type could only check at runtime. That is why an {@link
+ * Asking} takes tool calls and no plain text, and an {@link AssistantMessage} takes text and no
+ * calls.
  *
- * <p>There is no system arm. Anthropic now accepts a system message inside the message list, as a
- * cache-preserving operator channel, and adding an arm to a sealed interface later is a breaking
- * change — so this is a decision deferred rather than one made.
+ * <p>Most of these are turns of a conversation. {@link AmbientMessage} is not: it is background
+ * assembled for one call and thrown away. Nothing can remember one, because every {@code
+ * Memory.remember} overload names a concrete arm and none of them names that one.
  */
 /** Wire names are a compatibility surface: a stored transcript names them. Never change one. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "role")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = UserMessage.class, name = "user"),
   @JsonSubTypes.Type(value = AssistantMessage.class, name = "assistant"),
-  @JsonSubTypes.Type(value = ToolResultMessage.class, name = "tool-result")
+  @JsonSubTypes.Type(value = ExchangeMessage.class, name = "asking"),
+  @JsonSubTypes.Type(value = AmbientMessage.class, name = "ambient")
 })
-public sealed interface Message permits UserMessage, AssistantMessage, ToolResultMessage {}
+public sealed interface ContextMessage
+    permits UserMessage, ExchangeMessage, AssistantMessage, AmbientMessage {}

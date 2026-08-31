@@ -16,11 +16,14 @@
 package org.jwcarman.nessy.api.block;
 
 /**
- * Content permitted in an {@code AssistantMessage}.
+ * What the assistant may say when it is answering.
  *
- * <p>The assistant is the only role whose content set is unusual — reasoning and tool calls are
- * things only a model produces — which is why this marker earns its keep where a plain content
- * marker would not.
+ * <p>No {@link ToolCallBlock}: an answer asks for nothing, and a turn that is still asking has not
+ * answered. That much is ours to decide.
+ *
+ * <p>{@link ProviderBlock} IS admitted, and that is not ours to decide. A vendor may attach opaque
+ * state to a final turn and expect it back — whether reasoning survives an answer is a question
+ * about that vendor's protocol, not about our grammar, so the door stays open and each adapter
+ * chooses.
  */
-public sealed interface AssistantContentBlock extends Block
-    permits TextBlock, ThinkingBlock, RedactedThinkingBlock, ToolCallBlock {}
+public sealed interface AssistantContentBlock extends Block permits TextBlock, ProviderBlock {}

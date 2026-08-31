@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.block.AssistantContentBlock;
  * superset of the wire shape that every adapter has to remember to strip. They belong on the model
  * call's result instead.
  */
-public record AssistantMessage(List<AssistantContentBlock> content) implements Message {
+public record AssistantMessage(List<AssistantContentBlock> content) implements ContextMessage {
 
   public AssistantMessage {
     Objects.requireNonNull(content, "content must not be null");

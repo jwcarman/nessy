@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ContextMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 
 /**
@@ -77,8 +77,8 @@ class BlockDiscriminatorTest {
         .containsExactlyInAnyOrder(
             TextBlock.class,
             ImageBlock.class,
-            ThinkingBlock.class,
-            RedactedThinkingBlock.class,
+            CommentaryBlock.class,
+            ProviderBlock.class,
             ToolCallBlock.class,
             ToolResultBlock.class);
   }
@@ -86,7 +86,12 @@ class BlockDiscriminatorTest {
   @Test
   void the_markers_declare_no_names_of_their_own() {
     List<Class<?>> markers =
-        List.of(UserContentBlock.class, AssistantContentBlock.class, ToolResultContentBlock.class);
+        List.of(
+            UserContentBlock.class,
+            AssistantContentBlock.class,
+            ExchangeContentBlock.class,
+            AmbientContentBlock.class,
+            ToolResultContentBlock.class);
 
     assertThat(markers).isNotEmpty();
     assertThat(markers)
@@ -99,7 +104,7 @@ class BlockDiscriminatorTest {
 
   @Test
   void a_message_names_its_role_rather_than_its_type() throws Exception {
-    String json = MAPPER.writeValueAsString((Message) UserMessage.of("hi"));
+    String json = MAPPER.writeValueAsString((ContextMessage) UserMessage.of("hi"));
 
     assertThat(json).contains("\"role\":\"user\"");
   }

@@ -17,14 +17,20 @@ package org.jwcarman.nessy.api.block;
 
 import java.util.Objects;
 
-/** Prose. Legal everywhere: from either side of the conversation, and inside a tool result. */
-public record TextBlock(String text)
-    implements UserContentBlock,
-        AssistantContentBlock,
-        AmbientContentBlock,
-        ToolResultContentBlock {
+/**
+ * The model talking while it works — "I'll look that up for you".
+ *
+ * <p>Distinct from {@link TextBlock}, which is an answer. The difference is not decoration: a
+ * reader wants the answer, and progress talk is colour that a transcript may show quietly or not at
+ * all. Splitting them means nothing has to infer which it is by checking whether the message
+ * happened to make tool calls.
+ *
+ * <p>Which one a given piece of text becomes is decided in exactly one place — when the turn stops,
+ * where the stop reason says whether the model was working or answering.
+ */
+public record CommentaryBlock(String text) implements ExchangeContentBlock {
 
-  public TextBlock {
+  public CommentaryBlock {
     Objects.requireNonNull(text, "text must not be null");
   }
 }

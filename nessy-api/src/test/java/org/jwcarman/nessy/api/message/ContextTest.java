@@ -20,10 +20,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
-import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
+import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -44,97 +43,17 @@ class ContextTest {
     return new AssistantMessage(List.of(new TextBlock(text)));
   }
 
-  private static AssistantMessage assistantCalling(String... callIds) {
-    List<AssistantContentBlock> blocks =
+  /** An exchange that called {@code callIds} and got an answer for each. */
+  private static ExchangeMessage exchange(String... callIds) {
+    List<ExchangeContentBlock> blocks =
         java.util.Arrays.stream(callIds)
-            .map(id -> (AssistantContentBlock) new ToolCallBlock(call(id)))
+            .map(id -> (ExchangeContentBlock) new ToolCallBlock(call(id)))
             .toList();
-    return new AssistantMessage(blocks);
-  }
-
-  private static ToolResultMessage answering(String... callIds) {
-    return new ToolResultMessage(
+    return new ExchangeMessage(
+        blocks,
         java.util.Arrays.stream(callIds)
             .map(id -> ToolResultBlock.of(id, ToolResult.ok("ok")))
             .toList());
-  }
-
-  @Nested
-  class Validity {
-
-    @Test
-    void a_plain_conversation_is_valid() {
-      Context context = Context.of(List.of(user("hi"), assistantText("hello")));
-
-      assertThat(context.messages()).hasSize(2);
-    }
-
-    @Test
-    void empty_is_legal_and_has_no_messages() {
-      assertThat(Context.empty().messages()).isEmpty();
-    }
-
-    @Test
-    void a_completed_tool_exchange_is_valid() {
-      Context context =
-          Context.of(
-              List.of(user("go"), assistantCalling("a"), answering("a"), assistantText("done")));
-
-      assertThat(context.messages()).hasSize(4);
-    }
-
-    @Test
-    void parallel_calls_answered_together_are_valid() {
-      Context context =
-          Context.of(List.of(user("go"), assistantCalling("a", "b"), answering("a", "b")));
-
-      assertThat(context.messages()).hasSize(3);
-    }
-
-    @Test
-    void a_trailing_unanswered_call_is_refused() {
-      List<Message> messages = List.of(user("go"), assistantCalling("a"));
-
-      assertThatThrownBy(() -> Context.of(messages))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unanswered tool call: a");
-    }
-
-    @Test
-    void a_call_answered_by_something_other_than_results_is_refused() {
-      List<Message> messages = List.of(assistantCalling("a"), user("never mind"));
-
-      assertThatThrownBy(() -> Context.of(messages))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unanswered tool call: a");
-    }
-
-    @Test
-    void a_partially_answered_set_of_calls_is_refused() {
-      List<Message> messages = List.of(assistantCalling("a", "b"), answering("a"));
-
-      assertThatThrownBy(() -> Context.of(messages))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unanswered tool call: b");
-    }
-
-    @Test
-    void an_answer_naming_an_unknown_call_is_refused() {
-      List<Message> messages = List.of(assistantCalling("a"), answering("a", "z"));
-
-      assertThatThrownBy(() -> Context.of(messages))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unknown id: z");
-    }
-
-    @Test
-    void results_answering_nothing_are_refused() {
-      List<Message> messages = List.of(user("hi"), answering("a"));
-
-      assertThatThrownBy(() -> Context.of(messages))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("answering no call");
-    }
   }
 
   @Nested
@@ -151,27 +70,23 @@ class ContextTest {
       assertThat(result.messages()).hasSize(2);
     }
 
+    /**
+     * There is no way to drop half an exchange, because there are no halves: the calls and their
+     * answers are one value. This used to take two tests and a two-at-a-time walk through the list
+     * to guarantee.
+     */
     @Test
-    void dropping_the_calling_half_takes_the_answering_half_too() {
-      Context context = Context.of(List.of(user("go"), assistantCalling("a"), answering("a")));
+    void dropping_an_exchange_takes_its_answers_with_it() {
+      Context context = Context.of(List.of(user("go"), exchange("a")));
 
-      Context result = context.drop(AssistantMessage.class::isInstance);
-
-      assertThat(result.messages()).containsExactly(user("go"));
-    }
-
-    @Test
-    void dropping_the_answering_half_takes_the_calling_half_too() {
-      Context context = Context.of(List.of(user("go"), assistantCalling("a"), answering("a")));
-
-      Context result = context.drop(ToolResultMessage.class::isInstance);
+      Context result = context.drop(ExchangeMessage.class::isInstance);
 
       assertThat(result.messages()).containsExactly(user("go"));
     }
 
     @Test
     void dropping_everything_leaves_a_valid_empty_context() {
-      Context context = Context.of(List.of(user("go"), assistantCalling("a"), answering("a")));
+      Context context = Context.of(List.of(user("go"), exchange("a")));
 
       Context result = context.drop(m -> true);
 
@@ -189,17 +104,6 @@ class ContextTest {
       Context result = context.map(m -> m instanceof UserMessage ? user("rewritten") : m);
 
       assertThat(result.messages()).first().isEqualTo(user("rewritten"));
-    }
-
-    @Test
-    void a_rewrite_that_breaks_pairing_propagates_the_failure() {
-      Context context = Context.of(List.of(assistantCalling("a"), answering("a")));
-      UnaryOperator<Message> renamer =
-          m -> m instanceof ToolResultMessage ? answering("different") : m;
-
-      assertThatThrownBy(() -> context.map(renamer))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unanswered tool call: a");
     }
   }
 
@@ -231,15 +135,13 @@ class ContextTest {
 
     @Test
     void replaces_old_result_content_and_keeps_ids_and_error_flags() {
-      Context context =
-          Context.of(
-              List.of(assistantCalling("a"), answering("a"), user("later"), assistantText("done")));
+      Context context = Context.of(List.of(exchange("a"), user("later"), assistantText("done")));
 
       Context result = context.elideToolResults(2);
-      ToolResultMessage elided = (ToolResultMessage) result.messages().get(1);
+      ExchangeMessage elided = (ExchangeMessage) result.messages().getFirst();
 
-      assertThat(elided.blocks()).isNotEmpty();
-      assertThat(elided.blocks())
+      assertThat(elided.results()).isNotEmpty();
+      assertThat(elided.results())
           .allSatisfy(
               block -> {
                 assertThat(block.toolUseId()).isEqualTo("a");
@@ -249,7 +151,7 @@ class ContextTest {
 
     @Test
     void leaves_the_recent_window_verbatim() {
-      Context context = Context.of(List.of(assistantCalling("a"), answering("a")));
+      Context context = Context.of(List.of(exchange("a")));
 
       Context result = context.elideToolResults(2);
 
@@ -278,23 +180,17 @@ class ContextTest {
       assertThat(result.messages()).containsExactly(user("two"), assistantText("b"));
     }
 
+    /**
+     * Every boundary is safe now. Keeping none keeps none — where this once had to return the whole
+     * context untouched, because cutting anywhere risked landing between a call and its answer.
+     */
     @Test
-    void returns_itself_when_no_boundary_is_safe() {
-      Context context = Context.of(List.of(assistantCalling("a"), answering("a")));
+    void keeping_none_keeps_none() {
+      Context context = Context.of(List.of(exchange("a")));
 
       Context result = context.keepRecent(0);
 
-      assertThat(result.messages()).isEqualTo(context.messages());
-    }
-
-    @Test
-    void never_cuts_between_a_call_and_its_answer() {
-      Context context =
-          Context.of(List.of(user("one"), assistantCalling("a"), answering("a"), user("two")));
-
-      int cut = context.pairSafeCut(1);
-
-      assertThat(context.messages().get(cut)).isInstanceOf(UserMessage.class);
+      assertThat(result.messages()).isEmpty();
     }
   }
 
@@ -311,7 +207,7 @@ class ContextTest {
 
     @Test
     void a_message_with_no_prose_contributes_nothing() {
-      Context context = Context.of(List.of(assistantCalling("a"), answering("a")));
+      Context context = Context.of(List.of(exchange("a")));
 
       assertThat(context.lines()).isEmpty();
     }

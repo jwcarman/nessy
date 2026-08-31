@@ -15,12 +15,10 @@
  */
 package org.jwcarman.nessy.api.block;
 
-import java.util.Objects;
-
-/** Reasoning the provider flagged and encrypted rather than showing. Opaque; replayed verbatim. */
-public record RedactedThinkingBlock(String data) implements AssistantContentBlock {
-
-  public RedactedThinkingBlock {
-    Objects.requireNonNull(data, "data must not be null");
-  }
-}
+/**
+ * What background handed to the model may carry.
+ *
+ * <p>Text only, for now, exactly as {@link ToolResultContentBlock} is — narrow until something
+ * needs more, since widening a permits clause is easier than explaining an unused arm.
+ */
+public sealed interface AmbientContentBlock extends Block permits TextBlock {}
