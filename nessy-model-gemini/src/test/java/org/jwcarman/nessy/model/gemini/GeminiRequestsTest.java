@@ -30,17 +30,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.block.ImageBlock;
+import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ThinkingBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class GeminiRequestsTest {
@@ -49,16 +51,17 @@ class GeminiRequestsTest {
 
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of(), null);
+        Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of());
   }
 
-  private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
+  private static ModelRequest request(
+      List<Message> messages, List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
     return new ModelRequest(
-        Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of(), null);
+        Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of());
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of(), null);
+    return new ModelRequest(Context.of(List.of()), systemPrompt, 1024, List.of(), Set.of());
   }
 
   @Nested
@@ -105,7 +108,7 @@ class GeminiRequestsTest {
 
     @Test
     void become_a_user_content_with_a_text_part() {
-      var contents = GeminiRequests.toContents(request(List.of(Message.user("hello there"))));
+      var contents = GeminiRequests.toContents(request(List.of(UserMessage.of("hello there"))));
 
       assertThat(contents).hasSize(1);
       var content = contents.get(0);
@@ -120,7 +123,7 @@ class GeminiRequestsTest {
       var first = new TextBlock("first ");
       var second = new TextBlock("second");
       var contents =
-          GeminiRequests.toContents(request(List.of(Message.user(List.of(first, second)))));
+          GeminiRequests.toContents(request(List.of(new UserMessage(List.of(first, second)))));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts).hasSize(2);
@@ -135,7 +138,7 @@ class GeminiRequestsTest {
     @Test
     void an_image_block_fails_loudly() {
       var image = new ImageBlock("image/png", "aGVsbG8=");
-      var request = request(List.of(Message.user(List.of(image))));
+      var request = request(List.of(new UserMessage(List.of(image))));
 
       assertThatThrownBy(() -> GeminiRequests.toContents(request))
           .isInstanceOf(IllegalArgumentException.class)
@@ -151,7 +154,7 @@ class GeminiRequestsTest {
       var first = new TextBlock("hello ");
       var second = new TextBlock("world");
       var contents =
-          GeminiRequests.toContents(request(List.of(Message.assistant(List.of(first, second)))));
+          GeminiRequests.toContents(request(List.of(new AssistantMessage(List.of(first, second)))));
 
       assertThat(contents).hasSize(1);
       var content = contents.get(0);
@@ -174,9 +177,10 @@ class GeminiRequestsTest {
 
     @Test
     void becomes_a_function_call_part_with_name_and_args() {
-      var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
-      var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
+      var toolUse = new ToolCallBlock(call("call-1", "read_file", "path", "README.md"));
+      var assistantTurn = new AssistantMessage(List.of(toolUse));
+      var toolResultTurn =
+          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var modelContent = contents.get(0);
@@ -190,14 +194,14 @@ class GeminiRequestsTest {
     @Test
     void a_multi_tool_turn_preserves_call_order_alongside_the_text() {
       var text = new TextBlock("running two tools");
-      var first = new ToolUseBlock(call("call-1", "read_file", "path", "a.txt"));
-      var second = new ToolUseBlock(call("call-2", "read_file", "path", "b.txt"));
-      var assistantTurn = Message.assistant(List.of(text, first, second));
+      var first = new ToolCallBlock(call("call-1", "read_file", "path", "a.txt"));
+      var second = new ToolCallBlock(call("call-2", "read_file", "path", "b.txt"));
+      var assistantTurn = new AssistantMessage(List.of(text, first, second));
       var toolResultTurn =
-          Message.toolResults(
+          new ToolResultMessage(
               List.of(
-                  ToolResultBlock.of("call-1", "ok", false),
-                  ToolResultBlock.of("call-2", "ok", false)));
+                  ToolResultBlock.of("call-1", ToolResult.ok("ok")),
+                  ToolResultBlock.of("call-2", ToolResult.ok("ok"))));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -216,9 +220,11 @@ class GeminiRequestsTest {
       byte[] rawSignature = "opaque-continuity-token".getBytes(StandardCharsets.UTF_8);
       String encoded = Base64.getEncoder().encodeToString(rawSignature);
       var toolUse =
-          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), encoded);
-      var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
+          new ToolCallBlock(
+              new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), encoded);
+      var assistantTurn = new AssistantMessage(List.of(toolUse));
+      var toolResultTurn =
+          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -229,9 +235,10 @@ class GeminiRequestsTest {
     void an_unsigned_tool_use_block_replays_google_s_skip_validation_sentinel() {
       byte[] sentinel = "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
       var toolUse =
-          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
+          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var assistantTurn = new AssistantMessage(List.of(toolUse));
+      var toolResultTurn =
+          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -242,10 +249,11 @@ class GeminiRequestsTest {
     void a_signature_that_is_not_valid_base64_replays_as_unsigned_instead_of_throwing() {
       byte[] sentinel = "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
       var toolUse =
-          new ToolUseBlock(
+          new ToolCallBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "not-base64!!");
-      var assistantTurn = Message.assistant(List.of(toolUse));
-      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
+      var assistantTurn = new AssistantMessage(List.of(toolUse));
+      var toolResultTurn =
+          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
 
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
@@ -261,9 +269,10 @@ class GeminiRequestsTest {
     void a_thinking_block_is_dropped_leaving_its_siblings_in_order() {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
-      var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
-      var toolResultTurn = Message.toolResults(List.of(ToolResultBlock.of("call-1", "ok", false)));
+      var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var assistantTurn = new AssistantMessage(List.of(thinking, text, toolUse));
+      var toolResultTurn =
+          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
@@ -277,7 +286,8 @@ class GeminiRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var contents =
-          GeminiRequests.toContents(request(List.of(Message.assistant(List.of(redacted, text)))));
+          GeminiRequests.toContents(
+              request(List.of(new AssistantMessage(List.of(redacted, text)))));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts).hasSize(1);
@@ -294,7 +304,7 @@ class GeminiRequestsTest {
     void an_assistant_message_of_only_a_thinking_block_produces_no_content() {
       var thinking = new ThinkingBlock("cut off before signing", "");
       var contents =
-          GeminiRequests.toContents(request(List.of(Message.assistant(List.of(thinking)))));
+          GeminiRequests.toContents(request(List.of(new AssistantMessage(List.of(thinking)))));
 
       assertThat(contents).isEmpty();
     }
@@ -306,13 +316,14 @@ class GeminiRequestsTest {
     @Test
     void becomes_a_function_response_part_addressed_by_the_matching_call_s_name() {
       var toolUse =
-          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", "42", false);
+          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of("call-1", ToolResult.ok("42"));
       var contents =
           GeminiRequests.toContents(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      new AssistantMessage(List.of(toolUse)),
+                      new ToolResultMessage(List.of(result)))));
 
       var responseContent = contents.get(1);
       assertThat(responseContent.role()).contains("user");
@@ -326,13 +337,14 @@ class GeminiRequestsTest {
     @Test
     void an_error_result_carries_the_error_key_instead_of_output() {
       var toolUse =
-          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", "file not found", true);
+          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
       var contents =
           GeminiRequests.toContents(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
+                      new AssistantMessage(List.of(toolUse)),
+                      new ToolResultMessage(List.of(result)))));
 
       var functionResponse =
           contents.get(1).parts().orElseThrow().get(0).functionResponse().orElseThrow();
@@ -343,16 +355,16 @@ class GeminiRequestsTest {
 
     @Test
     void multiple_results_become_sibling_parts_on_one_content_in_order() {
-      var firstUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var secondUse = new ToolUseBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
-      var first = ToolResultBlock.of("call-1", "first", false);
-      var second = ToolResultBlock.of("call-2", "second", false);
+      var firstUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var secondUse = new ToolCallBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
+      var first = ToolResultBlock.of("call-1", ToolResult.ok("first"));
+      var second = ToolResultBlock.of("call-2", ToolResult.ok("second"));
       var contents =
           GeminiRequests.toContents(
               request(
                   List.of(
-                      Message.assistant(List.of(firstUse, secondUse)),
-                      Message.toolResults(List.of(first, second)))));
+                      new AssistantMessage(List.of(firstUse, secondUse)),
+                      new ToolResultMessage(List.of(first, second)))));
 
       var parts = contents.get(1).parts().orElseThrow();
       assertThat(parts).hasSize(2);
@@ -367,44 +379,59 @@ class GeminiRequestsTest {
   class MixedToolResultsAndOtherBlocks {
 
     @Test
-    void a_tool_result_followed_by_text_becomes_one_user_content_with_both_parts_in_order() {
+    void a_tool_result_and_a_following_text_become_two_user_contents_in_order() {
       var toolUse =
-          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", "13", false);
+          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of("call-1", ToolResult.ok("13"));
       var text = new TextBlock("try again");
       var contents =
           GeminiRequests.toContents(
               request(
                   List.of(
-                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))));
+                      new AssistantMessage(List.of(toolUse)),
+                      new ToolResultMessage(List.of(result)),
+                      new UserMessage(List.of(text)))));
 
-      var responseContent = contents.get(1);
-      assertThat(responseContent.role()).contains("user");
-      var parts = responseContent.parts().orElseThrow();
-      assertThat(parts).hasSize(2);
-      assertThat(parts.get(0).functionResponse().orElseThrow().name()).contains("read_file");
-      assertThat(parts.get(1).text()).contains("try again");
+      // Two contents rather than one, because a tool result is its own message arm now instead
+      // of a block sharing a user message with text. Both still go up as role "user", in order,
+      // which is what Gemini needs; only the grouping changed.
+      assertThat(contents).hasSize(3);
+
+      var response = contents.get(1);
+      assertThat(response.role()).contains("user");
+      var responseParts = response.parts().orElseThrow();
+      assertThat(responseParts).hasSize(1);
+      assertThat(responseParts.get(0).functionResponse().orElseThrow().name())
+          .contains("read_file");
+
+      var followUp = contents.get(2);
+      assertThat(followUp.role()).contains("user");
+      var followUpParts = followUp.parts().orElseThrow();
+      assertThat(followUpParts).hasSize(1);
+      assertThat(followUpParts.get(0).text()).contains("try again");
     }
 
     static Stream<Arguments> pure_content_messages() {
       return Stream.of(
-          Arguments.of(List.of(ToolResultBlock.of("call-1", "ok", false)), true),
-          Arguments.of(List.of(new TextBlock("hello there")), false));
+          Arguments.of(
+              new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok")))),
+              true),
+          Arguments.of(new UserMessage(List.of(new TextBlock("hello there"))), false));
     }
 
     @ParameterizedTest
     @MethodSource("pure_content_messages")
     void a_pure_content_message_is_pinned_unchanged(
-        List<ContentBlock> content, boolean expectFunctionResponse) {
+        Message message, boolean expectFunctionResponse) {
       List<Message> messages =
           expectFunctionResponse
               ? List.of(
-                  Message.assistant(
+                  new AssistantMessage(
                       List.of(
-                          new ToolUseBlock(
+                          new ToolCallBlock(
                               new ToolCall("call-1", "noop", MAPPER.createObjectNode())))),
-                  Message.user(content))
-              : List.of(Message.user(content));
+                  message)
+              : List.of(message);
 
       var contents = GeminiRequests.toContents(request(messages));
 
@@ -420,14 +447,14 @@ class GeminiRequestsTest {
   @Nested
   class Tools {
 
-    private static ToolSpec toolSpec(String name) {
+    private static StubTool toolSpec(String name) {
       ObjectNode schema = MAPPER.createObjectNode();
       schema.put("type", "object");
       var properties = schema.putObject("properties");
       properties.putObject("path").put("type", "string");
       properties.putObject("lineCount").put("type", "integer");
       schema.putArray("required").add("path");
-      return new ToolSpec(name, "does things called " + name, schema);
+      return new StubTool(name, "does things called " + name, schema);
     }
 
     @Test

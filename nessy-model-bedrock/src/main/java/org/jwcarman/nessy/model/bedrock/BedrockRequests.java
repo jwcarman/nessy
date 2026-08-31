@@ -20,17 +20,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.ImageBlock;
-import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.ResultBlock;
-import org.jwcarman.nessy.api.message.Role;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.ImageBlock;
+import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ThinkingBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +51,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ToolSpecification;
  * <p>{@link ThinkingBlock} and {@link RedactedThinkingBlock} are dropped outright, the same
  * precedent {@code GeminiRequests} and {@code OpenAiRequests} set: this v1 module does not
  * advertise {@link org.jwcarman.nessy.spi.model.Capability#THINKING}, so there is nothing on this
- * wire yet to round-trip them through. {@link ToolUseBlock#signature()} is likewise ignored on
+ * wire yet to round-trip them through. {@link ToolCallBlock#signature()} is likewise ignored on
  * replay — Bedrock's Converse API issues no per-call continuity token for this harness to trust
  * back, so there is nothing to thread onto the rebuilt {@code toolUse} block even when a stored
  * signature happens to be present (for instance, a history a different provider originated).
@@ -117,29 +114,21 @@ public final class BedrockRequests {
    * inconsistent and is deliberate: a prompt image is written by a developer and is a mistake worth
    * failing fast on, while a tool image arrives at runtime from a tool that may have had no idea
    * which provider it was feeding. Killing a whole turn over it is the worse of two bad outcomes —
-   * but it is never dropped in silence, because a model reasoning about a screenshot it was never
-   * shown produces confident nonsense.
+   *
+   * <p>Text only: our own ToolResultContentBlock permits nothing else, so there is no longer an
+   * image here to substitute a placeholder for.
    */
   private static String flatten(ToolResultBlock result) {
     var rendered = new ArrayList<String>(result.content().size());
-    for (ResultBlock block : result.content()) {
+    for (org.jwcarman.nessy.api.block.ToolResultContentBlock block : result.content()) {
       switch (block) {
         case TextBlock(String text) -> rendered.add(text);
-        case ImageBlock(String mediaType, String data) -> {
-          LOG.warn(
-              "tool result {} carried a {} image ({} base64 chars) that this provider does not"
-                  + " claim to support; substituting a placeholder",
-              result.toolUseId(),
-              mediaType,
-              data.length());
-          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
-        }
       }
     }
     return String.join("\n", rendered);
   }
 
-  private static Tool toTool(ToolSpec spec) {
+  private static Tool toTool(org.jwcarman.nessy.api.tool.Tool<?> spec) {
     return Tool.fromToolSpec(
         ToolSpecification.builder()
             .name(spec.name())
@@ -159,14 +148,28 @@ public final class BedrockRequests {
    * GeminiRequests.toModelContent} document: a resumed session whose thinking was cut off before it
    * was signed settles as an assistant message containing only that one dropped block.
    */
+  /** The blocks of a message, whichever arm it is. */
+  private static List<? extends Block> contentOf(org.jwcarman.nessy.api.message.Message message) {
+    return switch (message) {
+      case org.jwcarman.nessy.api.message.UserMessage user -> user.content();
+      case org.jwcarman.nessy.api.message.AssistantMessage assistant -> assistant.content();
+      case org.jwcarman.nessy.api.message.ToolResultMessage results -> results.blocks();
+    };
+  }
+
   private static Optional<software.amazon.awssdk.services.bedrockruntime.model.Message> toMessage(
       org.jwcarman.nessy.api.message.Message message) {
-    var role = message.role() == Role.USER ? ConversationRole.USER : ConversationRole.ASSISTANT;
-    List<ContentBlock> content = message.content();
+    // Role is no longer carried on the message; the arm IS the role. Tool results go up as a
+    // USER message, which is Bedrock's encoding for them.
+    var role =
+        message instanceof org.jwcarman.nessy.api.message.AssistantMessage
+            ? ConversationRole.ASSISTANT
+            : ConversationRole.USER;
+    List<? extends Block> content = contentOf(message);
     var blocks =
         new ArrayList<software.amazon.awssdk.services.bedrockruntime.model.ContentBlock>(
             content.size());
-    for (ContentBlock block : content) {
+    for (Block block : content) {
       toContentBlock(block).ifPresent(blocks::add);
     }
     if (blocks.isEmpty()) {
@@ -180,7 +183,7 @@ public final class BedrockRequests {
   }
 
   /**
-   * Maps one wire-neutral {@link ContentBlock} to its SDK form, or nothing at all.
+   * Maps one wire-neutral {@link Block} to its SDK form, or nothing at all.
    *
    * <p>A blank {@link TextBlock} is dropped: Bedrock rejects an empty text block, the same reason
    * {@code AnthropicRequests} drops one. {@link ThinkingBlock} and {@link RedactedThinkingBlock}
@@ -188,14 +191,14 @@ public final class BedrockRequests {
    * loudly since this module claims no {@code IMAGE_INPUT} capability.
    */
   private static Optional<software.amazon.awssdk.services.bedrockruntime.model.ContentBlock>
-      toContentBlock(ContentBlock block) {
+      toContentBlock(Block block) {
     return switch (block) {
       case TextBlock(String text) ->
           text.isEmpty()
               ? Optional.empty()
               : Optional.of(
                   software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromText(text));
-      case ToolUseBlock(ToolCall call, _) ->
+      case ToolCallBlock(ToolCall call, _) ->
           Optional.of(
               software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromToolUse(
                   software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock.builder()
@@ -221,9 +224,10 @@ public final class BedrockRequests {
   /**
    * Recursively converts a Jackson {@link JsonNode} into the AWS SDK's own {@link Document} tree.
    * The AWS SDK for Java v2 has no built-in Jackson bridge for {@code Document} — {@link
-   * ToolUseBlock}'s {@code input} and {@link ToolInputSchema}'s {@code json} both take a {@code
-   * Document}, and {@link ToolSpec#inputSchema()} / {@link ToolCall#arguments()} are both plain
-   * Jackson nodes — so this method is the one place that bridges the two tree shapes.
+   * ToolCallBlock}'s {@code input} and {@link ToolInputSchema}'s {@code json} both take a {@code
+   * Document}, and {@link org.jwcarman.nessy.api.tool.Tool<?>#inputSchema()} / {@link
+   * ToolCall#arguments()} are both plain Jackson nodes — so this method is the one place that
+   * bridges the two tree shapes.
    *
    * <p>Numbers convert via {@link Document#fromNumber(String)} on the node's own text
    * representation rather than through a narrower {@code Number} accessor: it preserves the literal

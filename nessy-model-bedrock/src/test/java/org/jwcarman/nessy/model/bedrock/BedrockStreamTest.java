@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStart;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
@@ -134,7 +134,7 @@ class BedrockStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(10, 5)));
     }
 
     @Test
@@ -146,7 +146,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(14, 5, 4, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(14, 5)));
     }
 
     /**
@@ -167,7 +167,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(1000, 5, 900, 0)));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1000, 5)));
     }
 
     @Test
@@ -177,7 +177,7 @@ class BedrockStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
     }
   }
 
@@ -197,8 +197,8 @@ class BedrockStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(modelEvents).hasSize(2);
-      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolUseEmitted.class);
-      var toolUseEmitted = (ModelEvent.ToolUseEmitted) modelEvents.get(0);
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
+      var toolUseEmitted = (ModelEvent.ToolCallEmitted) modelEvents.get(0);
       assertThat(toolUseEmitted.call().id()).isEqualTo("call-1");
       assertThat(toolUseEmitted.call().name()).isEqualTo("get_weather");
       assertThat(toolUseEmitted.call().arguments().get("location").asText()).isEqualTo("NYC");
@@ -212,7 +212,7 @@ class BedrockStreamTest {
 
       var modelEvents = drain(chunks);
 
-      var call = ((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call();
+      var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(call.arguments().isObject()).isTrue();
       assertThat(call.arguments().size()).isZero();
     }
@@ -232,8 +232,8 @@ class BedrockStreamTest {
       var modelEvents = drain(chunks);
 
       assertThat(modelEvents).hasSize(3);
-      assertThat(((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call().id()).isEqualTo("call-1");
-      assertThat(((ModelEvent.ToolUseEmitted) modelEvents.get(1)).call().id()).isEqualTo("call-2");
+      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call().id()).isEqualTo("call-1");
+      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call().id()).isEqualTo("call-2");
     }
 
     @Test
@@ -246,7 +246,7 @@ class BedrockStreamTest {
 
       var modelEvents = drain(chunks);
 
-      var turnEnded = (ModelEvent.TurnEnded) modelEvents.get(modelEvents.size() - 1);
+      var turnEnded = (ModelEvent.Stopped) modelEvents.get(modelEvents.size() - 1);
       assertThat(turnEnded.reason()).isEqualTo(StopReason.TOOL_USE);
     }
 
@@ -272,37 +272,38 @@ class BedrockStreamTest {
     @Test
     void end_turn_maps_to_end_turn() {
       var modelEvents = drain(List.of(messageStop("end_turn")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.END_TURN);
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason()).isEqualTo(StopReason.END_TURN);
     }
 
     @Test
     void stop_sequence_maps_to_end_turn() {
       var modelEvents = drain(List.of(messageStop("stop_sequence")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.END_TURN);
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason()).isEqualTo(StopReason.END_TURN);
     }
 
     @Test
     void max_tokens_maps_to_max_tokens() {
       var modelEvents = drain(List.of(messageStop("max_tokens")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 
     @Test
     void model_context_window_exceeded_maps_to_max_tokens() {
       var modelEvents = drain(List.of(messageStop("model_context_window_exceeded")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
+      assertThat(((ModelEvent.Stopped) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"guardrail_intervened", "content_filtered"})
-    void guardrail_and_content_filtered_map_to_refusal(String stopReason) {
+    void guardrail_and_content_filtered_become_refused_events(String stopReason) {
       var modelEvents = drain(List.of(messageStop(stopReason)));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.REFUSAL);
+      // StopReason names only the three ways a turn that HAPPENED can end, so these are their own
+      // event — and each keeps the vendor's own reason rather than one flattened category, so a
+      // guardrail can still be told apart from a content filter.
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.Refused.class);
+      assertThat(((ModelEvent.Refused) modelEvents.get(0)).category()).isEqualTo(stopReason);
     }
 
     @ParameterizedTest
@@ -346,7 +347,7 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+              new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
     }
   }
 

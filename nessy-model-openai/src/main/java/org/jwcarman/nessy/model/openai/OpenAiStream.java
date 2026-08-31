@@ -27,8 +27,8 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.TreeMap;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -52,7 +52,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * that carried {@code finish_reason} — though some OpenAI-compatible servers (Azure, vLLM) instead
  * put usage directly on the same chunk that carries {@code finish_reason}; both shapes fold
  * correctly since usage is read independently of the choices loop. This class waits for the SDK
- * stream to actually end before emitting {@link ModelEvent.TurnEnded}, folding in whatever usage
+ * stream to actually end before emitting {@link ModelEvent.Stopped}, folding in whatever usage
  * arrived by then. Some OpenAI-compatible servers never send usage at all; that is tolerated and
  * yields {@link Usage#zero()} rather than a failure.
  *
@@ -96,8 +96,12 @@ public final class OpenAiStream implements ModelStream {
     private final Iterator<ChatCompletionChunk> chunks;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final TreeMap<Long, PendingToolCall> toolCallsByIndex = new TreeMap<>();
-    private Usage usage = Usage.zero();
+    private Usage usage = new Usage(0, 0);
     private StopReason stopReason;
+
+    /** Set instead of {@link #stopReason} when the vendor filtered the turn away. */
+    private boolean refused;
+
     private boolean finishSeen;
     private boolean turnEndedEmitted;
 
@@ -128,8 +132,8 @@ public final class OpenAiStream implements ModelStream {
      * underlying chunks run out without one ever having been seen, the turn ended without a stop
      * reason — silently returning "no more events" here would let the harness treat that as a
      * normal, successful end of turn, so it fails loudly instead. Once a stream ends having seen a
-     * {@code finish_reason}, {@link ModelEvent.TurnEnded} is queued exactly once, folding in
-     * whatever usage arrived (possibly none, per the class javadoc).
+     * {@code finish_reason}, {@link ModelEvent.Stopped} is queued exactly once, folding in whatever
+     * usage arrived (possibly none, per the class javadoc).
      */
     private void fill() {
       while (pending.isEmpty() && chunks.hasNext()) {
@@ -149,7 +153,13 @@ public final class OpenAiStream implements ModelStream {
                   + toolCallsByIndex.keySet());
         }
         if (!turnEndedEmitted) {
-          pending.add(new ModelEvent.TurnEnded(stopReason, usage));
+          // A filtered turn is its own event, not a stop reason: StopReason names only the three
+          // ways a turn that HAPPENED can end, and a filtered turn did not happen.
+          pending.add(
+              refused
+                  ? new ModelEvent.Refused(
+                      "content_filter", "the provider filtered this response", usage)
+                  : new ModelEvent.Stopped(stopReason, usage));
           turnEndedEmitted = true;
         }
       }
@@ -218,12 +228,13 @@ public final class OpenAiStream implements ModelStream {
     private void translateFinish(ChatCompletionChunk.Choice.FinishReason finishReason) {
       toolCallsByIndex
           .values()
-          .forEach(call -> pending.add(new ModelEvent.ToolUseEmitted(call.toToolCall())));
+          .forEach(call -> pending.add(new ModelEvent.ToolCallEmitted(call.toToolCall())));
       toolCallsByIndex.clear();
       // A second finish_reason (e.g. a malformed or replayed stream) simply overwrites stopReason
       // rather than erroring — last-wins is deliberate, not an oversight; only a genuinely novel
       // finish_reason value is worth failing loudly over, and mapFinishReason already does that.
-      stopReason = mapFinishReason(finishReason);
+      refused = "content_filter".equals(finishReason.asString());
+      stopReason = refused ? null : mapFinishReason(finishReason);
       finishSeen = true;
     }
 
@@ -238,19 +249,10 @@ public final class OpenAiStream implements ModelStream {
      * summing here would double-count (2026-08-26 per-vendor token-semantics audit).
      */
     private void translateUsage(CompletionUsage completionUsage) {
-      long cacheReadInputTokens =
-          completionUsage
-              .promptTokensDetails()
-              .flatMap(CompletionUsage.PromptTokensDetails::cachedTokens)
-              .orElse(0L);
-      usage =
-          new Usage(
-              completionUsage.promptTokens(),
-              completionUsage.completionTokens(),
-              cacheReadInputTokens,
-              // OpenAI's prompt caching is automatic and never billed as a write: the completion
-              // usage reports cached prompt tokens READ and nothing else. Zero is honest.
-              0);
+      // Usage carries two numbers now, so the cached-prompt read count is no longer reported
+      // beside the input total — only folded into it, which it already was: the vendor's
+      // promptTokens INCLUDES cached tokens, so this stays a pass-through and never sums.
+      usage = new Usage(completionUsage.promptTokens(), completionUsage.completionTokens());
     }
 
     // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with
@@ -259,6 +261,8 @@ public final class OpenAiStream implements ModelStream {
     // itself (rather than the SDK's own Known/Value enums) means a genuinely novel value fails
     // with our IllegalStateException instead of the SDK's own exception type, which is the
     // contract this method exists to keep.
+    // "content_filter" is handled before this method is reached: it becomes a ModelEvent.Refused
+    // rather than a stop reason, so it is deliberately absent from the switch below.
     private static StopReason mapFinishReason(ChatCompletionChunk.Choice.FinishReason reason) {
       return switch (reason.asString()) {
         case "stop" -> StopReason.END_TURN;
@@ -267,7 +271,6 @@ public final class OpenAiStream implements ModelStream {
         // TOOL_USE (rather than leaving it unmapped) keeps this harness working against servers
         // that still emit it.
         case "tool_calls", "function_call" -> StopReason.TOOL_USE;
-        case "content_filter" -> StopReason.REFUSAL;
         default ->
             throw new IllegalStateException(
                 "Unrecognized OpenAI finish_reason: " + reason.asString());

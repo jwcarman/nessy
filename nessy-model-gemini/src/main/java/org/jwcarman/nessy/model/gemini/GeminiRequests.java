@@ -31,18 +31,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ThinkingBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.block.ToolResultContentBlock;
+import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.ResultBlock;
-import org.jwcarman.nessy.api.message.Role;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +91,7 @@ public final class GeminiRequests {
    * "user"}) carrying one {@code functionResponse} part per result, mirroring how the model's own
    * (possibly several) function calls arrived together on one {@code "model"}-role {@code Content}.
    * Every {@link ToolResultBlock} needs the name of the tool it answers — a field {@code
-   * ToolResultBlock} itself does not carry — so this method first scans every {@link ToolUseBlock}
+   * ToolResultBlock} itself does not carry — so this method first scans every {@link ToolCallBlock}
    * in the whole context to build a call-id-to-name lookup before translating anything; {@link
    * org.jwcarman.nessy.api.message.Context}'s own pairing invariant guarantees every result's id is
    * in that map.
@@ -112,7 +112,8 @@ public final class GeminiRequests {
 
   /**
    * Assembles the {@link GenerateContentConfig}: system instruction, max output tokens, and
-   * function declarations built from each {@link ToolSpec}'s JSON schema.
+   * function declarations built from each {@link org.jwcarman.nessy.api.tool.Tool<?>}'s JSON
+   * schema.
    *
    * <p>A blank {@code systemPrompt} omits {@code systemInstruction} entirely, the same "absent is
    * the correct encoding of no system prompt" precedent {@code OpenAiRequests} follows.
@@ -136,7 +137,8 @@ public final class GeminiRequests {
    * {@code parameters} field, which this module never populates), and Jackson serializes a plain
    * {@code ObjectNode} through that {@code Object}-typed setter without any further conversion.
    */
-  private static FunctionDeclaration toFunctionDeclaration(ToolSpec spec) {
+  private static FunctionDeclaration toFunctionDeclaration(
+      org.jwcarman.nessy.api.tool.Tool<?> spec) {
     return FunctionDeclaration.builder()
         .name(spec.name())
         .description(spec.description())
@@ -147,11 +149,11 @@ public final class GeminiRequests {
   private static Map<String, String> collectCallNames(List<Message> messages) {
     Map<String, String> names = new HashMap<>();
     for (Message message : messages) {
-      if (message.role() != Role.ASSISTANT) {
+      if (!(message instanceof AssistantMessage assistant)) {
         continue;
       }
-      for (ContentBlock block : message.content()) {
-        if (block instanceof ToolUseBlock(ToolCall call, _)) {
+      for (Block block : assistant.content()) {
+        if (block instanceof ToolCallBlock(ToolCall call, _)) {
           names.put(call.id(), call.name());
         }
       }
@@ -160,9 +162,12 @@ public final class GeminiRequests {
   }
 
   private static Optional<Content> toContent(Message message, Map<String, String> callNamesById) {
-    return switch (message.role()) {
-      case USER -> toUserContent(message.content(), callNamesById);
-      case ASSISTANT -> toModelContent(message.content());
+    // Role is no longer carried on the message; the arm IS the role. Tool results go up as USER
+    // content, which is Gemini's encoding for a function response.
+    return switch (message) {
+      case UserMessage user -> toUserContent(user.content(), callNamesById);
+      case ToolResultMessage results -> toUserContent(results.blocks(), callNamesById);
+      case AssistantMessage assistant -> toModelContent(assistant.content());
     };
   }
 
@@ -175,12 +180,12 @@ public final class GeminiRequests {
    * function they answer.
    */
   private static Optional<Content> toUserContent(
-      List<ContentBlock> content, Map<String, String> callNamesById) {
+      List<? extends Block> content, Map<String, String> callNamesById) {
     var parts = content.stream().map(block -> toUserPart(block, callNamesById)).toList();
     return Optional.of(Content.builder().role("user").parts(parts).build());
   }
 
-  private static Part toUserPart(ContentBlock block, Map<String, String> callNamesById) {
+  private static Part toUserPart(Block block, Map<String, String> callNamesById) {
     return switch (block) {
       case TextBlock(String text) -> Part.fromText(text);
       case ToolResultBlock result -> toFunctionResponsePart(result, callNamesById);
@@ -197,22 +202,14 @@ public final class GeminiRequests {
    * response map takes {@code Object}, so handing it the block list would have COMPILED and then
    * serialised a list of records onto the wire. Rendering is explicit here for that reason.
    *
-   * <p>An image is replaced by a visible placeholder and logged, never dropped in silence.
+   * <p>Text only: ToolResultContentBlock permits nothing else, so there is no longer an image to
+   * substitute a placeholder for.
    */
   private static String flatten(ToolResultBlock result) {
     var rendered = new ArrayList<String>(result.content().size());
-    for (ResultBlock block : result.content()) {
+    for (ToolResultContentBlock block : result.content()) {
       switch (block) {
         case TextBlock(String text) -> rendered.add(text);
-        case ImageBlock(String mediaType, String data) -> {
-          LOGGER.warn(
-              "tool result {} carried a {} image ({} base64 chars) that this wire cannot send;"
-                  + " substituting a placeholder",
-              result.toolUseId(),
-              mediaType,
-              data.length());
-          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
-        }
       }
     }
     return String.join("\n", rendered);
@@ -231,9 +228,9 @@ public final class GeminiRequests {
     return Part.fromFunctionResponse(name, response);
   }
 
-  private static Optional<Content> toModelContent(List<ContentBlock> content) {
+  private static Optional<Content> toModelContent(List<? extends Block> content) {
     List<Part> parts = new ArrayList<>();
-    for (ContentBlock block : content) {
+    for (Block block : content) {
       toModelPart(block).ifPresent(parts::add);
     }
     if (parts.isEmpty()) {
@@ -242,10 +239,10 @@ public final class GeminiRequests {
     return Optional.of(Content.builder().role("model").parts(parts).build());
   }
 
-  private static Optional<Part> toModelPart(ContentBlock block) {
+  private static Optional<Part> toModelPart(Block block) {
     return switch (block) {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
-      case ToolUseBlock(ToolCall call, String signature) ->
+      case ToolCallBlock(ToolCall call, String signature) ->
           Optional.of(toFunctionCallPart(call, signature));
       case ThinkingBlock _ -> Optional.empty();
       case RedactedThinkingBlock _ -> Optional.empty();

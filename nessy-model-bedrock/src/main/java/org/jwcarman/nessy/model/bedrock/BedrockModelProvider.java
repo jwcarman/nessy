@@ -17,9 +17,9 @@ package org.jwcarman.nessy.model.bedrock;
 
 import java.util.Objects;
 import java.util.Set;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -65,7 +65,7 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
  * here — see that method's javadoc. The two paths are not independent alternatives for who does the
  * closing, only for who does the building.
  */
-public final class BedrockModelProvider implements ModelProvider {
+public final class BedrockModelProvider implements ModelProvider, AutoCloseable {
 
   /**
    * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
@@ -105,14 +105,12 @@ public final class BedrockModelProvider implements ModelProvider {
   }
 
   @Override
-  public Model model(String id) {
-    if (id == null || id.isBlank()) {
-      throw new IllegalArgumentException("id must not be blank");
-    }
+  public Model model(ModelId id) {
+    Objects.requireNonNull(id, "id must not be null");
     return new BedrockModel(id);
   }
 
-  @Override
+  /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
     return "Bedrock";
   }
@@ -122,36 +120,23 @@ public final class BedrockModelProvider implements ModelProvider {
     client.close();
   }
 
-  /**
-   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
-   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
-   * disturbing the gateway.
-   */
+  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
   private final class BedrockModel implements Model {
 
-    private final String id;
+    private final ModelId id;
 
-    private BedrockModel(String id) {
+    private BedrockModel(ModelId id) {
       this.id = id;
     }
 
     @Override
-    public ModelStream stream(ModelRequest request) {
-      return client.converseStream(BedrockRequests.toRequest(request, id));
+    public ModelId id() {
+      return id;
     }
 
-    /**
-     * What this model is. The context window is a per-provider constant for now — the
-     * Claude-on-Bedrock floor.
-     *
-     * <p>A per-model figure belongs here the day one is available; a wrong window is caught at
-     *
-     * <p>resolution rather than mid-turn, which is the point of reporting it at all.
-     */
     @Override
-    public ModelDescription describe() {
-
-      return new ModelDescription(id, PROVIDER, 200_000, CAPABILITIES);
+    public ModelStream stream(ModelRequest request) {
+      return client.converseStream(BedrockRequests.toRequest(request, id.value()));
     }
   }
 }

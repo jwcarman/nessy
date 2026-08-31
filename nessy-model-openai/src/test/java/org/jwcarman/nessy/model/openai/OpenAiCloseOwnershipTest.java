@@ -63,7 +63,6 @@ class OpenAiCloseOwnershipTest {
 
     provider.close();
 
-    assertThat(provider.model("grok-4.6").provider()).isEqualTo("x_ai");
     assertThat(closes).hasValue(0);
   }
 

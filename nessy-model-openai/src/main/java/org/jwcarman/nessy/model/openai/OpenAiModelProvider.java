@@ -21,11 +21,9 @@ import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIRetryableException;
 import com.openai.errors.RateLimitException;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Predicate;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelDescription;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -38,38 +36,24 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * {@link OpenAiStream}); this class is the one place that owns the client and actually talks to the
  * network.
  */
-public final class OpenAiModelProvider implements ModelProvider {
+public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
 
   /**
-   * The OpenTelemetry GenAI semantic conventions' pinned value for OpenAI itself — the default this
-   * gateway reports as every bound {@link Model}'s {@link Model#provider()}.
+   * The OpenTelemetry GenAI semantic conventions' default value for this vendor (agentic-o11y spec
+   * §1.1). No longer reported through the SPI — {@code Model} describes nothing now — but still the
+   * default this gateway carries.
    *
-   * <p>Unlike the other vendor gateways, this one is SHARED: {@code XaiModelProviderBootstrap}
-   * builds this very class against {@code https://api.x.ai/v1}, and semconv has a separate {@code
-   * x_ai} value for that. So the provider name is a field given at construction by whichever
-   * bootstrap built the gateway, not a constant — an xAI turn must not be reported as an OpenAI one
-   * (agentic-o11y spec §1.1). Any OpenAI-compatible endpoint reached through {@link
-   * OpenAiProviderConfig#baseUrl(String)} without a bootstrap of its own still answers {@code
-   * openai}, which is the honest default: nothing else is known about it.
+   * <p>Unlike the other vendor gateways, this one is SHARED: an xAI deployment builds this very
+   * class against {@code https://api.x.ai/v1}, and semconv has a separate {@code x_ai} value for
+   * that. So the provider name is a field given at construction rather than a constant — an xAI
+   * turn must not be reported as an OpenAI one. Any OpenAI-compatible endpoint reached through
+   * {@link OpenAiProviderConfig#baseUrl(String)} still answers {@code openai}, which is the honest
+   * default: nothing else is known about it.
    */
   static final String PROVIDER = "openai";
 
   /**
-   * {@link Capability#THINKING} and {@link Capability#PROMPT_CACHING} are deliberately absent.
-   *
-   * <p>Thinking: Chat Completions has no assistant content type for opaque or extended-reasoning
-   * payloads, and OpenAI's reasoning models (the {@code o*}/{@code gpt-5} "thinking" family) do not
-   * surface their reasoning as deltas on this wire the way Anthropic's extended thinking does — see
-   * {@link OpenAiStream}'s javadoc. Prompt caching: OpenAI's automatic prompt caching has no
-   * request-side cache-control field to set (unlike Anthropic's explicit {@code cache_control}
-   * blocks) — it is applied server-side, transparently, based on prefix matching, so there is
-   * nothing for {@link OpenAiRequests} to opt into.
-   */
-  private static final Set<Capability> CAPABILITIES =
-      Set.of(Capability.PARALLEL_TOOL_CALLS, Capability.IMAGE_INPUT);
-
-  /**
-   * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModel} should retry.
+   * Which failures a caller wrapping this gateway in a retry should retry.
    *
    * <p>Grounded in the SDK's own retry classification: {@code
    * com.openai.core.http.RetryingHttpClient} retries a raw {@link java.io.IOException} or {@link
@@ -152,10 +136,8 @@ public final class OpenAiModelProvider implements ModelProvider {
   }
 
   @Override
-  public Model model(String id) {
-    if (id == null || id.isBlank()) {
-      throw new IllegalArgumentException("id must not be blank");
-    }
+  public Model model(ModelId id) {
+    Objects.requireNonNull(id, "id must not be null");
     return new OpenAiModel(id);
   }
 
@@ -171,43 +153,29 @@ public final class OpenAiModelProvider implements ModelProvider {
     }
   }
 
-  @Override
+  /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
     return "OpenAI";
   }
 
-  /**
-   * A flyweight bound handle: pins one model id over the shared {@link #client}. Capability tables
-   * are per-vendor today ({@link #CAPABILITIES}); a future change could make this per-model without
-   * disturbing the gateway.
-   */
+  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
   private final class OpenAiModel implements Model {
 
-    private final String id;
+    private final ModelId id;
 
-    private OpenAiModel(String id) {
+    private OpenAiModel(ModelId id) {
       this.id = id;
     }
 
     @Override
-    public ModelStream stream(ModelRequest request) {
-      var params = OpenAiRequests.toParams(request, id);
-      return new OpenAiStream(client.chat().completions().createStreaming(params));
+    public ModelId id() {
+      return id;
     }
 
-    /**
-     * What this model is. The context window is a per-provider constant for now — the GPT-4o class
-     * floor; an OpenAI-COMPATIBLE endpoint (LM Studio, vLLM) may differ wildly and this is a guess
-     * until the endpoint is asked.
-     *
-     * <p>A per-model figure belongs here the day one is available; a wrong window is caught at
-     *
-     * <p>resolution rather than mid-turn, which is the point of reporting it at all.
-     */
     @Override
-    public ModelDescription describe() {
-
-      return new ModelDescription(id, provider, 128_000, CAPABILITIES);
+    public ModelStream stream(ModelRequest request) {
+      var params = OpenAiRequests.toParams(request, id.value());
+      return new OpenAiStream(client.chat().completions().createStreaming(params));
     }
   }
 }

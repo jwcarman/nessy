@@ -17,37 +17,37 @@ package org.jwcarman.nessy.model.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
- * {@code gen_ai.provider.name} for this gateway (agentic-o11y spec §1.1), which is the one case
- * where the answer cannot be a constant on the class: {@link OpenAiModelProvider} serves every
- * OpenAI-compatible vendor, and {@link XaiModelProviderBootstrap} builds this very class against
- * {@code api.x.ai}. Semconv has a separate {@code x_ai} value, so the vendor identity is stamped by
- * whichever bootstrap read the key that named it — otherwise every xAI turn would be reported, and
- * billed in a dashboard, as an OpenAI one.
+ * {@code gen_ai.provider.name} for this vendor (agentic-o11y spec §1.1). One of the OpenTelemetry
+ * GenAI semantic conventions' pinned strings, so it is a compatibility surface with whatever
+ * dashboard groups by vendor.
+ *
+ * <p>This gateway is SHARED with xAI, which reaches the same Chat Completions wire at {@code
+ * api.x.ai} and has its own {@code x_ai} semconv value — so the vendor identity is a field given at
+ * construction rather than a constant, otherwise every xAI turn would be reported, and billed in a
+ * dashboard, as an OpenAI one.
+ *
+ * <p>The xAI half of that is UNTESTED at present: it was pinned through {@code
+ * XaiModelProviderBootstrap}, and ServiceLoader discovery has no counterpart in the new SPI. When a
+ * discovery seam returns, so should a test that an xAI-built gateway reports {@code x_ai}.
  */
 class OpenAiProviderNameTest {
 
   @Test
-  void a_plainly_built_gateway_reports_the_semconv_value_for_openai() {
-    Model model = new OpenAiProviderConfig().apiKey("sk-test").build().model("gpt-5");
-
-    assertThat(model.provider()).isEqualTo("openai");
+  void the_semconv_default_for_this_gateway_is_openai() {
     assertThat(OpenAiModelProvider.PROVIDER).isEqualTo("openai");
   }
 
   @Test
-  void a_gateway_the_xai_bootstrap_built_reports_the_semconv_value_for_x_ai() {
-    ModelProvider provider =
-        new XaiModelProviderBootstrap()
-            .bootstrap(Map.of("XAI_API_KEY", "fake-xai-key"))
-            .orElseThrow();
+  void a_bound_model_answers_to_the_id_it_was_resolved_by() {
+    ModelId id = ModelId.of("gpt-5");
 
-    assertThat(provider.model("grok-4").provider()).isEqualTo("x_ai");
-    assertThat(XaiModelProviderBootstrap.PROVIDER).isEqualTo("x_ai");
+    Model model = new OpenAiProviderConfig().apiKey("sk-test").build().model(id);
+
+    assertThat(model.id()).isEqualTo(id);
   }
 }

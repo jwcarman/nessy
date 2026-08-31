@@ -25,8 +25,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -56,7 +56,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.TokenUsage;
  * arrive on {@code start}, its JSON input streams as string fragments on successive {@code delta}
  * events (accumulated per {@code contentBlockIndex}, the OpenAI/Gemini/Anthropic precedent for
  * fragmentary tool arguments), and the accumulated JSON is parsed once the block closes. Bedrock
- * issues no per-call continuity token, so every {@link ModelEvent.ToolUseEmitted} uses the
+ * issues no per-call continuity token, so every {@link ModelEvent.ToolCallEmitted} uses the
  * no-signature convenience constructor.
  *
  * <p>{@code image}, {@code reasoningContent}, and {@code citation} content-block variants are this
@@ -109,8 +109,12 @@ final class BedrockStream implements ModelStream {
     private final Iterator<ConverseStreamOutput> raw;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Integer, PendingToolUse> toolUsesByIndex = new HashMap<>();
-    private Usage usage = Usage.zero();
+    private Usage usage = new Usage(0, 0);
     private StopReason stopReason;
+
+    /** The vendor's own stop reason when it refused, or null when it did not. */
+    private String refusedAs;
+
     private boolean finishSeen;
     private boolean turnEndedEmitted;
 
@@ -157,7 +161,14 @@ final class BedrockStream implements ModelStream {
                   + toolUsesByIndex.keySet());
         }
         if (!turnEndedEmitted) {
-          pending.add(new ModelEvent.TurnEnded(stopReason, usage));
+          // A refused turn is its own event, not a stop reason: StopReason names only the three
+          // ways a turn that HAPPENED can end. Bedrock distinguishes a guardrail from a content
+          // filter, so the vendor's own value is carried through as the category.
+          pending.add(
+              refusedAs != null
+                  ? new ModelEvent.Refused(
+                      refusedAs, "the provider stopped this response: " + refusedAs, usage)
+                  : new ModelEvent.Stopped(stopReason, usage));
           turnEndedEmitted = true;
         }
       }
@@ -199,13 +210,22 @@ final class BedrockStream implements ModelStream {
     public void visitContentBlockStop(ContentBlockStopEvent event) {
       var toolUse = toolUsesByIndex.remove(event.contentBlockIndex());
       if (toolUse != null) {
-        pending.add(new ModelEvent.ToolUseEmitted(toolUse.toToolCall()));
+        pending.add(new ModelEvent.ToolCallEmitted(toolUse.toToolCall()));
       }
     }
 
     @Override
     public void visitMessageStop(MessageStopEvent event) {
-      stopReason = mapStopReason(event.stopReason());
+      var reason = event.stopReason();
+      if (reason
+              == software.amazon.awssdk.services.bedrockruntime.model.StopReason
+                  .GUARDRAIL_INTERVENED
+          || reason
+              == software.amazon.awssdk.services.bedrockruntime.model.StopReason.CONTENT_FILTERED) {
+        refusedAs = reason.toString();
+      } else {
+        stopReason = mapStopReason(reason);
+      }
       finishSeen = true;
     }
 
@@ -228,12 +248,13 @@ final class BedrockStream implements ModelStream {
       if (tokenUsage != null) {
         long cacheRead = orZero(tokenUsage.cacheReadInputTokens());
         long cacheWrite = orZero(tokenUsage.cacheWriteInputTokens());
+        // Usage carries two numbers now: the cache read/write split is summed into the input
+        // total — which is what semconv asks gen_ai.usage.input_tokens to mean — rather than
+        // reported beside it. Bedrock's own inputTokens excludes both, so the sum stays.
         usage =
             new Usage(
                 orZero(tokenUsage.inputTokens()) + cacheRead + cacheWrite,
-                orZero(tokenUsage.outputTokens()),
-                cacheRead,
-                cacheWrite);
+                orZero(tokenUsage.outputTokens()));
       }
     }
 
@@ -255,6 +276,9 @@ final class BedrockStream implements ModelStream {
     // two flavors of "the model was stopped by a safety mechanism", mirroring how
     // AnthropicStream maps "refusal" and GeminiStream maps SAFETY/RECITATION/PROHIBITED_CONTENT.
     //
+    // GUARDRAIL_INTERVENED and CONTENT_FILTERED are handled before this method is reached: they
+    // become a ModelEvent.Refused rather than a stop reason, so they are deliberately absent below.
+    //
     // "malformed_model_output" and "malformed_tool_use" are genuinely novel to this mapping —
     // the model produced output Bedrock itself could not parse — and fall through to the
     // throwing default rather than being silently coerced into an existing StopReason.
@@ -264,7 +288,6 @@ final class BedrockStream implements ModelStream {
         case END_TURN, STOP_SEQUENCE -> StopReason.END_TURN;
         case TOOL_USE -> StopReason.TOOL_USE;
         case MAX_TOKENS, MODEL_CONTEXT_WINDOW_EXCEEDED -> StopReason.MAX_TOKENS;
-        case GUARDRAIL_INTERVENED, CONTENT_FILTERED -> StopReason.REFUSAL;
         default -> throw new IllegalStateException("Unrecognized Bedrock stopReason: " + reason);
       };
     }

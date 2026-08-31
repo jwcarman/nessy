@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
@@ -129,8 +129,8 @@ class OpenAiModelProviderTest {
       var capturedParams = new ChatCompletionCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new OpenAiProviderConfig().client(client).build();
-      var model = provider.model("gpt-4o");
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var model = provider.model(ModelId.of("gpt-4o"));
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
 
       var stream = model.stream(request);
 
@@ -285,17 +285,9 @@ class OpenAiModelProviderTest {
     }
   }
 
-  @Nested
-  class Capabilities {
-
-    @Test
-    void advertise_parallel_tool_calls_and_image_input_but_not_thinking_or_caching() {
-      OpenAiModelProvider provider = new OpenAiProviderConfig().apiKey("sk-test").build();
-
-      assertThat(provider.model("gpt-4o").capabilities())
-          .containsExactlyInAnyOrder(Capability.PARALLEL_TOOL_CALLS, Capability.IMAGE_INPUT);
-    }
-  }
+  // REMOVED IN THE CUTOVER (2026-08-30): pinned the capability set this vendor advertised through
+  // Model#capabilities(), which the new SPI does not have — a request STATES what it would like
+  // via ModelRequest#requested() and an adapter that cannot oblige simply does not.
 
   @Nested
   class Name {
@@ -323,14 +315,14 @@ class OpenAiModelProviderTest {
       var client = fakeClient(capturedParams, emptyStreamResponse());
       var provider = new OpenAiProviderConfig().client(client).build();
 
-      Model gpt4o = provider.model("gpt-4o");
-      Model gpt4oMini = provider.model("gpt-4o-mini");
+      Model gpt4o = provider.model(ModelId.of("gpt-4o"));
+      Model gpt4oMini = provider.model(ModelId.of("gpt-4o-mini"));
 
-      assertThat(gpt4o.id()).isEqualTo("gpt-4o");
-      assertThat(gpt4oMini.id()).isEqualTo("gpt-4o-mini");
+      assertThat(gpt4o.id()).isEqualTo(ModelId.of("gpt-4o"));
+      assertThat(gpt4oMini.id()).isEqualTo(ModelId.of("gpt-4o-mini"));
       assertThat(gpt4o).isNotSameAs(gpt4oMini);
 
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
       gpt4o.stream(request);
       assertThat(capturedParams[0].model().asString()).isEqualTo("gpt-4o");
       gpt4oMini.stream(request);
@@ -341,14 +333,15 @@ class OpenAiModelProviderTest {
     void a_blank_model_id_is_rejected() {
       var provider = new OpenAiProviderConfig().apiKey("sk-test").build();
 
-      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+      // The check moved INTO ModelId, so a blank never reaches a provider at all.
+      assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_model_id_is_rejected() {
       var provider = new OpenAiProviderConfig().apiKey("sk-test").build();
 
-      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(NullPointerException.class);
     }
   }
 

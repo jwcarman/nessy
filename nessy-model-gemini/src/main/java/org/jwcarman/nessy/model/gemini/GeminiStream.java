@@ -33,8 +33,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -55,7 +55,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * Developer API (as opposed to Vertex AI's opt-in {@code streamFunctionCallArguments}, which this
  * module never requests) never streams a function call's arguments incrementally: each {@code
  * functionCall} {@link Part} that arrives is already complete, so it translates straight to a
- * {@link ModelEvent.ToolUseEmitted} the moment it is seen — no accumulation state needed.
+ * {@link ModelEvent.ToolCallEmitted} the moment it is seen — no accumulation state needed.
  *
  * <p>Gemini's {@code finishReason} has no dedicated "the model called a tool" value — a turn that
  * calls a function still reports {@code STOP}, the same reason as an ordinary text turn. This class
@@ -65,8 +65,8 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>{@code usageMetadata} arrives on every chunk carrying the running cumulative totals for the
  * turn so far (confirmed against the SDK's own streaming examples), not a per-chunk delta — this
  * class simply keeps the latest one, so by the time the stream ends the figure folded into {@link
- * ModelEvent.TurnEnded} is already the turn's final total, honestly zeroed via {@link Usage#zero()}
- * if no chunk ever carried one.
+ * ModelEvent.Stopped} is already the turn's final total, honestly zeroed if no chunk ever carried
+ * one.
  *
  * <p>{@code thought}-flagged {@link Part}s (Gemini's thinking/thought-summary output) are silently
  * skipped: {@link GeminiModelProvider} does not advertise {@link
@@ -75,6 +75,25 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * error.
  */
 final class GeminiStream implements ModelStream {
+
+  /**
+   * The finish reasons that mean the provider STOPPED the turn rather than the model finishing one.
+   * Each becomes a {@link ModelEvent.Refused} carrying this very value as its category, so a caller
+   * can tell a safety block from a recitation block without this adapter inventing a taxonomy of
+   * its own.
+   */
+  private static final java.util.Set<String> REFUSALS =
+      java.util.Set.of(
+          "SAFETY",
+          "RECITATION",
+          "LANGUAGE",
+          "BLOCKLIST",
+          "PROHIBITED_CONTENT",
+          "SPII",
+          "IMAGE_SAFETY",
+          "IMAGE_PROHIBITED_CONTENT",
+          "IMAGE_RECITATION",
+          "IMAGE_OTHER");
 
   private final Iterable<GenerateContentResponse> chunks;
   private final Runnable onClose;
@@ -104,8 +123,12 @@ final class GeminiStream implements ModelStream {
 
     private final Iterator<GenerateContentResponse> raw;
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
-    private Usage usage = Usage.zero();
+    private Usage usage = new Usage(0, 0);
     private StopReason stopReason;
+
+    /** The vendor's own finish reason when it refused, or null when it did not. */
+    private String refusedAs;
+
     private boolean finishSeen;
     private boolean turnEndedEmitted;
     private boolean sawToolCall;
@@ -148,7 +171,14 @@ final class GeminiStream implements ModelStream {
           throw new IllegalStateException("stream ended without a finishReason");
         }
         if (!turnEndedEmitted) {
-          pending.add(new ModelEvent.TurnEnded(stopReason, usage));
+          // A refused turn is its own event, not a stop reason: StopReason names only the three
+          // ways a turn that HAPPENED can end. Gemini has a whole family of refusal reasons, so
+          // the vendor's own value is carried through as the category rather than flattened.
+          pending.add(
+              refusedAs != null
+                  ? new ModelEvent.Refused(
+                      refusedAs, "the provider stopped this response: " + refusedAs, usage)
+                  : new ModelEvent.Stopped(stopReason, usage));
           turnEndedEmitted = true;
         }
       }
@@ -199,8 +229,8 @@ final class GeminiStream implements ModelStream {
           part.thoughtSignature().map(bytes -> Base64.getEncoder().encodeToString(bytes));
       pending.add(
           signature
-              .map(sig -> new ModelEvent.ToolUseEmitted(toolCall, sig))
-              .orElseGet(() -> new ModelEvent.ToolUseEmitted(toolCall)));
+              .map(sig -> new ModelEvent.ToolCallEmitted(toolCall, sig))
+              .orElseGet(() -> new ModelEvent.ToolCallEmitted(toolCall)));
     }
 
     /**
@@ -211,7 +241,13 @@ final class GeminiStream implements ModelStream {
     }
 
     private void translateFinish(FinishReason reason) {
-      stopReason = sawToolCall ? StopReason.TOOL_USE : mapFinishReason(reason);
+      if (!sawToolCall && REFUSALS.contains(reason.toString())) {
+        // A refusal still FINISHES the stream — it just finishes it a different way, so
+        // finishSeen must be set here too or the fold reports a stream that never ended.
+        refusedAs = reason.toString();
+      } else {
+        stopReason = sawToolCall ? StopReason.TOOL_USE : mapFinishReason(reason);
+      }
       finishSeen = true;
     }
 
@@ -224,15 +260,12 @@ final class GeminiStream implements ModelStream {
      * for. Summing here would double-count (2026-08-26 per-vendor token-semantics audit).
      */
     private void translateUsage(GenerateContentResponseUsageMetadata metadata) {
+      // Usage carries two numbers now. Gemini's promptTokenCount already INCLUDES the cached
+      // content it read back, which is what semconv asks gen_ai.usage.input_tokens to mean, so
+      // this stays a pass-through and never sums.
       usage =
           new Usage(
-              metadata.promptTokenCount().orElse(0),
-              metadata.candidatesTokenCount().orElse(0),
-              metadata.cachedContentTokenCount().orElse(0),
-              // Gemini's usage metadata reports cached content read back, never tokens written to
-              // the cache: an explicit CachedContent is created by a separate API call whose cost
-              // never appears on a generateContent response. Zero is the honest value here.
-              0);
+              metadata.promptTokenCount().orElse(0), metadata.candidatesTokenCount().orElse(0));
     }
 
     /**
@@ -246,17 +279,6 @@ final class GeminiStream implements ModelStream {
       return switch (reason.toString()) {
         case "STOP" -> StopReason.END_TURN;
         case "MAX_TOKENS" -> StopReason.MAX_TOKENS;
-        case "SAFETY",
-            "RECITATION",
-            "LANGUAGE",
-            "BLOCKLIST",
-            "PROHIBITED_CONTENT",
-            "SPII",
-            "IMAGE_SAFETY",
-            "IMAGE_PROHIBITED_CONTENT",
-            "IMAGE_RECITATION",
-            "IMAGE_OTHER" ->
-            StopReason.REFUSAL;
         default -> throw new IllegalStateException("Unrecognized Gemini finishReason: " + reason);
       };
     }

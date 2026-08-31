@@ -25,10 +25,10 @@ import java.util.Set;
 import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -46,10 +46,10 @@ class BedrockModelProviderTest {
     };
   }
 
-  private static final String MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+  private static final ModelId MODEL_ID = ModelId.of("us.anthropic.claude-haiku-4-5-20251001-v1:0");
 
   private static ModelRequest request() {
-    return new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+    return new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
   }
 
   private static ConverseStreamOutput textDelta(String text) {
@@ -180,13 +180,8 @@ class BedrockModelProviderTest {
   @Nested
   class Capabilities {
 
-    @Test
-    void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
-      try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
-        assertThat(provider.model(MODEL_ID).capabilities())
-            .containsExactly(Capability.PARALLEL_TOOL_CALLS);
-      }
-    }
+    // REMOVED IN THE CUTOVER (2026-08-30): pinned the capability set advertised through
+    // Model#capabilities(), which the new SPI does not have.
   }
 
   @Nested
@@ -215,14 +210,14 @@ class BedrockModelProviderTest {
       var provider = new BedrockModelProvider(fakeClient(capturedArgs, response));
 
       Model haiku = provider.model(MODEL_ID);
-      Model opus = provider.model("us.anthropic.claude-opus-5-20260101-v1:0");
+      Model opus = provider.model(ModelId.of("us.anthropic.claude-opus-5-20260101-v1:0"));
 
       assertThat(haiku.id()).isEqualTo(MODEL_ID);
-      assertThat(opus.id()).isEqualTo("us.anthropic.claude-opus-5-20260101-v1:0");
+      assertThat(opus.id()).isEqualTo(ModelId.of("us.anthropic.claude-opus-5-20260101-v1:0"));
       assertThat(haiku).isNotSameAs(opus);
 
       haiku.stream(request());
-      assertThat(((ConverseStreamRequest) capturedArgs[0]).modelId()).isEqualTo(MODEL_ID);
+      assertThat(((ConverseStreamRequest) capturedArgs[0]).modelId()).isEqualTo(MODEL_ID.value());
       opus.stream(request());
       assertThat(((ConverseStreamRequest) capturedArgs[0]).modelId())
           .isEqualTo("us.anthropic.claude-opus-5-20260101-v1:0");
@@ -232,14 +227,15 @@ class BedrockModelProviderTest {
     void a_blank_model_id_is_rejected() {
       var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
 
-      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> provider.model(ModelId.of("  ")))
+          .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_model_id_is_rejected() {
       var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
 
-      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(NullPointerException.class);
     }
   }
 
@@ -270,7 +266,7 @@ class BedrockModelProviderTest {
         assertThat(collected)
             .containsExactly(
                 new ModelEvent.TextChunk("hello"),
-                new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+                new ModelEvent.Stopped(StopReason.END_TURN, new Usage(0, 0)));
       }
     }
 

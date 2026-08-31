@@ -26,7 +26,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
@@ -49,8 +49,8 @@ class GeminiModelProviderTest {
       var capturedArgs = new Object[3];
       var response = new GeminiStream(List.of(), () -> {});
       var provider = new GeminiModelProvider(fakeClient(capturedArgs, response));
-      var model = provider.model("gemini-2.5-flash");
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var model = provider.model(ModelId.of("gemini-2.5-flash"));
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
 
       var stream = model.stream(request);
 
@@ -176,13 +176,9 @@ class GeminiModelProviderTest {
   @Nested
   class Capabilities {
 
-    @Test
-    void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
-      var provider = new GeminiProviderConfig().apiKey("test-key").build();
-
-      assertThat(provider.model("gemini-2.5-flash").capabilities())
-          .containsExactly(Capability.PARALLEL_TOOL_CALLS);
-    }
+    // REMOVED IN THE CUTOVER (2026-08-30): pinned the capability set advertised through
+    // Model#capabilities(), which the new SPI does not have — a request STATES what it would like
+    // and an adapter that cannot oblige simply does not.
   }
 
   @Nested
@@ -210,14 +206,14 @@ class GeminiModelProviderTest {
       var response = new GeminiStream(List.of(), () -> {});
       var provider = new GeminiModelProvider(fakeClient(capturedArgs, response));
 
-      Model flash = provider.model("gemini-2.5-flash");
-      Model pro = provider.model("gemini-2.5-pro");
+      Model flash = provider.model(ModelId.of("gemini-2.5-flash"));
+      Model pro = provider.model(ModelId.of("gemini-2.5-pro"));
 
-      assertThat(flash.id()).isEqualTo("gemini-2.5-flash");
-      assertThat(pro.id()).isEqualTo("gemini-2.5-pro");
+      assertThat(flash.id()).isEqualTo(ModelId.of("gemini-2.5-flash"));
+      assertThat(pro.id()).isEqualTo(ModelId.of("gemini-2.5-pro"));
       assertThat(flash).isNotSameAs(pro);
 
-      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of(), null);
+      var request = new ModelRequest(Context.of(List.of()), "sys", 1024, List.of(), Set.of());
       flash.stream(request);
       assertThat(capturedArgs[0]).isEqualTo("gemini-2.5-flash");
       pro.stream(request);
@@ -228,14 +224,15 @@ class GeminiModelProviderTest {
     void a_blank_model_id_is_rejected() {
       var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
-      assertThatThrownBy(() -> provider.model("  ")).isInstanceOf(IllegalArgumentException.class);
+      // The check moved INTO ModelId, so a blank never reaches a provider at all.
+      assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_model_id_is_rejected() {
       var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
-      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> provider.model(null)).isInstanceOf(NullPointerException.class);
     }
   }
 }

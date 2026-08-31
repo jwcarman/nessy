@@ -18,6 +18,7 @@ package org.jwcarman.nessy.model.bedrock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Model;
 
 /**
@@ -28,12 +29,16 @@ import org.jwcarman.nessy.spi.model.Model;
 class BedrockProviderNameTest {
 
   @Test
-  void every_bound_model_reports_the_semconv_value_for_bedrock() {
-    Model model =
-        new BedrockModelProvider(request -> null)
-            .model("us.anthropic.claude-haiku-4-5-20251001-v1:0");
-
-    assertThat(model.provider()).isEqualTo("aws.bedrock");
+  void the_semconv_value_for_this_vendor_is_pinned() {
     assertThat(BedrockModelProvider.PROVIDER).isEqualTo("aws.bedrock");
+  }
+
+  @Test
+  void a_bound_model_answers_to_the_id_it_was_resolved_by() {
+    ModelId id = ModelId.of("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+
+    Model model = new BedrockModelProvider(request -> null).model(id);
+
+    assertThat(model.id()).isEqualTo(id);
   }
 }

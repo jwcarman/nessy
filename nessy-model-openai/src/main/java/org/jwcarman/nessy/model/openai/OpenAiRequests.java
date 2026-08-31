@@ -35,14 +35,16 @@ import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.ImageBlock;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.block.ToolResultContentBlock;
+import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ResultBlock;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,10 +98,14 @@ public final class OpenAiRequests {
   }
 
   private static List<ChatCompletionMessageParam> toMessageParams(Message message) {
-    return switch (message.role()) {
-      case USER -> toUserRoleMessageParams(message.content());
-      case ASSISTANT ->
-          toAssistantMessageParam(message.content()).map(List::of).orElseGet(List::of);
+    // Role is no longer carried on the message; the arm IS the role. A tool-result message is its
+    // own arm now rather than a user message that happens to hold tool results, which is why the
+    // mixed case below no longer needs to sort them apart.
+    return switch (message) {
+      case UserMessage user -> toUserRoleMessageParams(user.content());
+      case ToolResultMessage results -> toUserRoleMessageParams(results.blocks());
+      case AssistantMessage assistant ->
+          toAssistantMessageParam(assistant.content()).map(List::of).orElseGet(List::of);
     };
   }
 
@@ -112,7 +118,7 @@ public final class OpenAiRequests {
    * preserving their original relative order; if none remain, no user message is emitted.
    */
   private static List<ChatCompletionMessageParam> toUserRoleMessageParams(
-      List<ContentBlock> content) {
+      List<? extends Block> content) {
     var toolMessages =
         content.stream()
             .filter(ToolResultBlock.class::isInstance)
@@ -128,7 +134,7 @@ public final class OpenAiRequests {
     return messages;
   }
 
-  private static ChatCompletionUserMessageParam toUserMessageParam(List<ContentBlock> content) {
+  private static ChatCompletionUserMessageParam toUserMessageParam(List<? extends Block> content) {
     var builder = ChatCompletionUserMessageParam.builder();
     if (content.stream().anyMatch(ImageBlock.class::isInstance)) {
       var parts = content.stream().map(OpenAiRequests::toContentPart).toList();
@@ -139,7 +145,7 @@ public final class OpenAiRequests {
     return builder.build();
   }
 
-  private static ChatCompletionContentPart toContentPart(ContentBlock block) {
+  private static ChatCompletionContentPart toContentPart(Block block) {
     return switch (block) {
       case TextBlock(String text) ->
           ChatCompletionContentPart.ofText(
@@ -170,18 +176,9 @@ public final class OpenAiRequests {
    */
   private static String flatten(ToolResultBlock result) {
     var rendered = new ArrayList<String>(result.content().size());
-    for (ResultBlock block : result.content()) {
+    for (ToolResultContentBlock block : result.content()) {
       switch (block) {
         case TextBlock(String text) -> rendered.add(text);
-        case ImageBlock(String mediaType, String data) -> {
-          LOG.warn(
-              "tool result {} carried a {} image ({} base64 chars) that this wire cannot send;"
-                  + " substituting a placeholder",
-              result.toolUseId(),
-              mediaType,
-              data.length());
-          rendered.add("[image omitted: %s, not supported by this provider]".formatted(mediaType));
-        }
       }
     }
     return String.join("\n", rendered);
@@ -208,7 +205,7 @@ public final class OpenAiRequests {
    * carry no information for the model to see.
    */
   private static Optional<ChatCompletionMessageParam> toAssistantMessageParam(
-      List<ContentBlock> content) {
+      List<? extends Block> content) {
     var builder = ChatCompletionAssistantMessageParam.builder();
     var text = concatenateText(content);
     if (!text.isEmpty()) {
@@ -216,8 +213,8 @@ public final class OpenAiRequests {
     }
     var toolCalls =
         content.stream()
-            .filter(ToolUseBlock.class::isInstance)
-            .map(ToolUseBlock.class::cast)
+            .filter(ToolCallBlock.class::isInstance)
+            .map(ToolCallBlock.class::cast)
             .map(OpenAiRequests::toToolCall)
             .toList();
     if (text.isEmpty() && toolCalls.isEmpty()) {
@@ -227,9 +224,9 @@ public final class OpenAiRequests {
     return Optional.of(ChatCompletionMessageParam.ofAssistant(builder.build()));
   }
 
-  private static String concatenateText(List<ContentBlock> content) {
+  private static String concatenateText(List<? extends Block> content) {
     var builder = new StringBuilder();
-    for (ContentBlock block : content) {
+    for (Block block : content) {
       if (block instanceof TextBlock(String text)) {
         builder.append(text);
       }
@@ -237,7 +234,7 @@ public final class OpenAiRequests {
     return builder.toString();
   }
 
-  private static ChatCompletionMessageFunctionToolCall toToolCall(ToolUseBlock toolUse) {
+  private static ChatCompletionMessageFunctionToolCall toToolCall(ToolCallBlock toolUse) {
     var call = toolUse.call();
     return ChatCompletionMessageFunctionToolCall.builder()
         .id(call.id())
@@ -250,13 +247,13 @@ public final class OpenAiRequests {
   }
 
   /**
-   * Converts a {@link ToolSpec} to a Chat Completions function tool.
+   * Converts a {@link org.jwcarman.nessy.api.tool.Tool} to a Chat Completions function tool.
    *
    * <p>{@code strict: true} is deliberately never set here. Strict mode imposes its own rules on
    * the schema (every property required, unions expressed as nullable types) that {@code
-   * ToolSpec.inputSchema()} was not built to satisfy; wiring it up is a later, deliberate feature.
+   * Tool.inputSchema()} was not built to satisfy; wiring it up is a later, deliberate feature.
    */
-  private static ChatCompletionTool toFunctionTool(ToolSpec spec) {
+  private static ChatCompletionTool toFunctionTool(org.jwcarman.nessy.api.tool.Tool<?> spec) {
     return ChatCompletionTool.ofFunction(
         ChatCompletionFunctionTool.builder()
             .function(
