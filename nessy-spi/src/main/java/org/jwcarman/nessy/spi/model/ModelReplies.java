@@ -18,13 +18,13 @@ package org.jwcarman.nessy.spi.model;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
+import org.jwcarman.nessy.api.block.AnswerContentBlock;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
@@ -115,11 +115,11 @@ public final class ModelReplies {
       asked.addAll(state);
       return new ModelResult.Asked(List.copyOf(asked), usage);
     }
-    List<AssistantContentBlock> answer = new ArrayList<>(state);
+    List<AnswerContentBlock> answer = new ArrayList<>(state);
     if (!prose.isEmpty()) {
       answer.add(new TextBlock(prose.toString()));
     }
-    return new ModelResult.Answered(new AssistantMessage(answer), reason, usage);
+    return new ModelResult.Answered(new AnswerMessage(answer), reason, usage);
   }
 
   /** Prose said on the way to a call is commentary; empty prose adds nothing. */

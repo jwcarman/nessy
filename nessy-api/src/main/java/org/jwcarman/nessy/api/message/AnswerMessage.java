@@ -17,19 +17,25 @@ package org.jwcarman.nessy.api.message;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.block.AssistantContentBlock;
+import org.jwcarman.nessy.api.block.AnswerContentBlock;
 
 /**
- * What the model said.
+ * The assistant's answer: what it says when no homework remains.
+ *
+ * <p>Not called an assistant message, though every vendor sends it under {@code role: assistant}:
+ * so is an {@link ExchangeMessage}, and naming one of two assistant turns for the speaker invites
+ * the reader to believe the other one is somebody else's.
+ *
+ * <p>What the model said.
  *
  * <p><b>Content only.</b> Why a turn ended and what it cost are facts about the CALL, not content
  * of the message: they are never sent back on replay, so putting them here would make this type a
  * superset of the wire shape that every adapter has to remember to strip. They belong on the model
  * call's result instead.
  */
-public record AssistantMessage(List<AssistantContentBlock> content) implements ContextMessage {
+public record AnswerMessage(List<AnswerContentBlock> content) implements HistoryMessage {
 
-  public AssistantMessage {
+  public AnswerMessage {
     Objects.requireNonNull(content, "content must not be null");
     content = List.copyOf(content);
   }

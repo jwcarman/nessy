@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -41,7 +41,7 @@ class AgentSubscriberTest {
         new AgentEvent.ApprovalRequested("6", "c1", "read_file", "read /etc/hosts", Instant.EPOCH),
         new AgentEvent.ApprovalDecided("7", "c1", "read_file", ApprovalResult.approved()),
         new AgentEvent.ToolCallCompleted("8", "c1", "read_file", ToolResult.ok("done")),
-        new AgentEvent.AssistantSaid("9", new AssistantMessage(List.of())),
+        new AgentEvent.AssistantSaid("9", new AnswerMessage(List.of())),
         new AgentEvent.TurnEnded("10", new TurnResult.Completed(), NOTHING));
   }
 

@@ -19,7 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.Objects;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -195,7 +195,7 @@ public sealed interface AgentEvent {
    * <p>Fires once per model reply, so a turn that used tools emits SEVERAL: the reply asking for
    * tools is still the model saying something. A watcher wanting prose alone filters for text.
    */
-  record AssistantSaid(String id, AssistantMessage message) implements AgentEvent {
+  record AssistantSaid(String id, AnswerMessage message) implements AgentEvent {
     public AssistantSaid {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(message, "message must not be null");

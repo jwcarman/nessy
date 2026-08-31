@@ -31,12 +31,12 @@ import org.jwcarman.nessy.api.block.UserContentBlock;
  * accept, because the tool-pairing invariant is enforced on the way in rather than hoped for on the
  * way out.
  *
- * <p>The pairing invariant: for every {@link AssistantMessage} containing {@link ToolCallBlock}s,
- * the message immediately following it must be a {@link ToolResultMessage} answering exactly that
- * set of ids — every id answered, no unknown ids, and nothing in between. A {@link
- * ToolResultMessage} may appear only as such an answer. A trailing assistant message with
- * unanswered call ids is rejected: a {@code Context} is wire-bound, so an open tail belongs in the
- * agent's own state, never here.
+ * <p>The pairing invariant: for every {@link AnswerMessage} containing {@link ToolCallBlock}s, the
+ * message immediately following it must be a {@link ToolResultMessage} answering exactly that set
+ * of ids — every id answered, no unknown ids, and nothing in between. A {@link ToolResultMessage}
+ * may appear only as such an answer. A trailing assistant message with unanswered call ids is
+ * rejected: a {@code Context} is wire-bound, so an open tail belongs in the agent's own state,
+ * never here.
  *
  * <p><b>What the type system took over.</b> Two checks this class used to perform are now
  * unwritable rather than validated: a tool result outside an answering message (a {@link
@@ -203,7 +203,7 @@ public record Context(List<ContextMessage> messages) {
 
   /** Who a line came from. Background is nobody's speech, so it never becomes one. */
   private static String roleOf(ContextMessage message) {
-    return message instanceof AssistantMessage || message instanceof ExchangeMessage
+    return message instanceof AnswerMessage || message instanceof ExchangeMessage
         ? "assistant"
         : "user";
   }
@@ -222,7 +222,7 @@ public record Context(List<ContextMessage> messages) {
           user.content().stream()
               .filter(TextBlock.class::isInstance)
               .forEach(block -> text.append(((TextBlock) block).text()));
-      case AssistantMessage assistant ->
+      case AnswerMessage assistant ->
           assistant.content().stream()
               .filter(TextBlock.class::isInstance)
               .forEach(block -> text.append(((TextBlock) block).text()));

@@ -16,10 +16,8 @@
 package org.jwcarman.nessy.api.memory;
 
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.message.AssistantMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ExchangeMessage;
-import org.jwcarman.nessy.api.message.UserMessage;
+import org.jwcarman.nessy.api.message.HistoryMessage;
 
 /**
  * What an agent remembers of its own conversation.
@@ -40,22 +38,16 @@ public interface Memory {
    */
   Context recall(AgentId agentId);
 
-  /** Something happened, and the agent was told about it. */
-  void remember(AgentId agentId, UserMessage message);
-
-  /** The assistant answered. An answer carries no tool calls, so there is nothing to pair. */
-  void remember(AgentId agentId, AssistantMessage message);
-
   /**
-   * The assistant asked for something, and it was answered.
+   * Records something that happened.
    *
-   * <p>One argument, where there were two: an {@link ExchangeMessage} holds its own results and
-   * validates them at construction, so the invariant this method used to police no longer has a way
-   * to be broken.
+   * <p>One method, because {@link HistoryMessage} already says which messages may be remembered.
+   * Background is not one of them, so it has no way in — rather than a rule somewhere saying it
+   * must not.
    *
-   * <p><b>The trade this makes.</b> The exchange is not durable until its tools finish, so a crash
-   * in that window loses it and the model is called again. That is deliberate — a repeated model
-   * call is cheaper than a transcript persisted in a state nothing can read.
+   * <p><b>The trade an exchange makes.</b> It is not durable until its tools finish, so a crash in
+   * that window loses it and the model is called again. Deliberate: a repeated model call is
+   * cheaper than a transcript persisted in a state nothing can read.
    */
-  void remember(AgentId agentId, ExchangeMessage asking);
+  void remember(AgentId agentId, HistoryMessage message);
 }

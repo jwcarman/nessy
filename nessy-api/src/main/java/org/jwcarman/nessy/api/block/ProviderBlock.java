@@ -37,7 +37,7 @@ import java.util.Objects;
  * @param data whatever that provider put there; never inspected here
  */
 public record ProviderBlock(String provider, JsonNode data)
-    implements ExchangeContentBlock, AssistantContentBlock {
+    implements ExchangeContentBlock, AnswerContentBlock {
 
   public ProviderBlock {
     Objects.requireNonNull(provider, "provider must not be null");

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 
 /**
  * What one model call produced.
@@ -57,7 +57,7 @@ public sealed interface ModelResult {
    * <p>The stop reason still matters: an answer that ran out of room is not the same as one that
    * finished.
    */
-  record Answered(AssistantMessage message, StopReason stopReason, Usage usage)
+  record Answered(AnswerMessage message, StopReason stopReason, Usage usage)
       implements ModelResult {
     public Answered {
       Objects.requireNonNull(message, "message must not be null");

@@ -88,7 +88,7 @@ class BlockDiscriminatorTest {
     List<Class<?>> markers =
         List.of(
             UserContentBlock.class,
-            AssistantContentBlock.class,
+            AnswerContentBlock.class,
             ExchangeContentBlock.class,
             AmbientContentBlock.class,
             ToolResultContentBlock.class);

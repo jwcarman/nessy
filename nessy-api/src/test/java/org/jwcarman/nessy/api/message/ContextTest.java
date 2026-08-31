@@ -39,8 +39,8 @@ class ContextTest {
     return UserMessage.of(text);
   }
 
-  private static AssistantMessage assistantText(String text) {
-    return new AssistantMessage(List.of(new TextBlock(text)));
+  private static AnswerMessage assistantText(String text) {
+    return new AnswerMessage(List.of(new TextBlock(text)));
   }
 
   /** An exchange that called {@code callIds} and got an answer for each. */

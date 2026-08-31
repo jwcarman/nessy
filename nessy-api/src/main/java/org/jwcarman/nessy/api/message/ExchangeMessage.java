@@ -44,7 +44,7 @@ import org.jwcarman.nessy.api.block.ToolResultBlock;
  * @param results one result per call, answering exactly those calls
  */
 public record ExchangeMessage(List<ExchangeContentBlock> content, List<ToolResultBlock> results)
-    implements ContextMessage {
+    implements HistoryMessage {
 
   public ExchangeMessage {
     Objects.requireNonNull(content, "content must not be null");

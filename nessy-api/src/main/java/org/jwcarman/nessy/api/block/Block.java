@@ -48,7 +48,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 })
 public sealed interface Block
     permits UserContentBlock,
-        AssistantContentBlock,
+        AnswerContentBlock,
         ExchangeContentBlock,
         AmbientContentBlock,
         ToolResultContentBlock,

@@ -26,4 +26,4 @@ package org.jwcarman.nessy.api.block;
  * about that vendor's protocol, not about our grammar, so the door stays open and each adapter
  * chooses.
  */
-public sealed interface AssistantContentBlock extends Block permits TextBlock, ProviderBlock {}
+public sealed interface AnswerContentBlock extends Block permits TextBlock, ProviderBlock {}

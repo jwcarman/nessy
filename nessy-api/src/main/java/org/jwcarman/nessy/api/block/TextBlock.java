@@ -19,10 +19,7 @@ import java.util.Objects;
 
 /** Prose. Legal everywhere: from either side of the conversation, and inside a tool result. */
 public record TextBlock(String text)
-    implements UserContentBlock,
-        AssistantContentBlock,
-        AmbientContentBlock,
-        ToolResultContentBlock {
+    implements UserContentBlock, AnswerContentBlock, AmbientContentBlock, ToolResultContentBlock {
 
   public TextBlock {
     Objects.requireNonNull(text, "text must not be null");
