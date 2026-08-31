@@ -57,6 +57,16 @@
       <artifactId>nessy-console</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-notebook</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-plan</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Discovery picks the provider; the adapters on the classpath are what it can pick FROM.
          Three of them, so one command runs against any of four vendors (xAI rides in the OpenAI
          module, being that wire at a different URL). Bedrock is deliberately not discoverable:

@@ -19,13 +19,17 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBindingConfig;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * What {@link Repl#run(ReplCustomizer)} hands a customizer: a CONFIG, not a builder (design of
@@ -55,6 +59,18 @@ public final class ReplConfig {
   private AgentType type = AgentType.of("chat");
   private AgentId agentId = AgentId.of("cli");
   private int maxTokens = 4096;
+
+  /**
+   * In memory by default, because nothing a REPL writes has any reason to outlive the terminal.
+   *
+   * <p>Constructed HERE rather than inside {@link Repl} so a caller who needs to reach it — to open
+   * a notebook or a plan over the same store — can build one and hand it in, instead of asking this
+   * object what it happens to be holding.
+   */
+  private Substrate substrate = new InMemorySubstrate();
+
+  /** Null until set, which is how {@link Repl} knows to leave the harness on its own default. */
+  private Memory memory;
 
   ReplConfig() {}
 
@@ -126,6 +142,38 @@ public final class ReplConfig {
     return this;
   }
 
+  /**
+   * Where this REPL keeps what it writes. Defaults to a fresh in-memory store.
+   *
+   * <p>Set this when something ELSE needs the same store — a {@code Notebook}, a plan — so that
+   * what the agent remembers and what its tools read live in one place:
+   *
+   * <pre>{@code
+   * Substrate substrate = new InMemorySubstrate();
+   * Notebook notebook = new SubstrateNotebook(substrate, type);
+   * Repl.run(config -> config.substrate(substrate).tool(NotebookTools.remember(notebook)));
+   * }</pre>
+   *
+   * <p>A durable substrate will work, and is the wrong shape for a console application: see {@link
+   * Repl} on why nothing here is meant to survive the process.
+   */
+  public ReplConfig substrate(Substrate substrate) {
+    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
+    return this;
+  }
+
+  /**
+   * What the agent remembers, and what it is shown.
+   *
+   * <p>Left unset, the harness picks its own default — a recent-history transcript, which is enough
+   * for a conversation someone is typing. Set this to put stages in front of the model, such as a
+   * notebook index or a plan.
+   */
+  public ReplConfig memory(Memory memory) {
+    this.memory = Objects.requireNonNull(memory, "memory must not be null");
+    return this;
+  }
+
   /** Grants one tool, ungated and described by its input's {@code toString()}. */
   public <I> ReplConfig tool(Tool<I> tool) {
     Objects.requireNonNull(tool, "tool must not be null");
@@ -182,6 +230,15 @@ public final class ReplConfig {
 
   int maxTokens() {
     return maxTokens;
+  }
+
+  Substrate substrate() {
+    return substrate;
+  }
+
+  /** Empty when the caller said nothing, so the harness keeps its own default. */
+  Optional<Memory> memory() {
+    return Optional.ofNullable(memory);
   }
 
   List<Consumer<HarnessConfig<String>>> tools() {

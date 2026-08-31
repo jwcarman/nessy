@@ -17,8 +17,19 @@ package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
+import org.jwcarman.nessy.memory.notebook.Notebook;
+import org.jwcarman.nessy.memory.notebook.NotebookTools;
+import org.jwcarman.nessy.memory.notebook.SubstrateNotebook;
+import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
+import org.jwcarman.nessy.memory.plan.PlanStore;
+import org.jwcarman.nessy.memory.plan.PlanTools;
+import org.jwcarman.nessy.memory.plan.SubstratePlanStore;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * A conversation in a terminal, with one tool.
@@ -33,6 +44,18 @@ import org.jwcarman.nessy.console.Repl;
  * banner says which one won. See the README.
  */
 public final class Chat {
+
+  /** Named here, not left to default, because the notebook and the plan are opened under it. */
+  private static final AgentType TYPE = AgentType.of("chat");
+
+  /**
+   * How much conversation to carry, as characters rather than tokens.
+   *
+   * <p>Generous for a terminal: a person types slowly enough that reaching this takes a long
+   * sitting, and the alternative — an eternal transcript — eventually sends a model more than it
+   * can read.
+   */
+  private static final int TRANSCRIPT_BUDGET = 100_000;
 
   /**
    * Says the date outright.
@@ -53,7 +76,14 @@ public final class Chat {
         unless asked for more.
 
         Today is %s. When a question turns on counting days, use the days_until tool rather \
-        than working it out yourself — and never assume the year."""
+        than working it out yourself — and never assume the year.
+
+        When you are told something worth keeping — a preference, a name, a standing fact — \
+        remember it as a note. Your notes appear as an index every time; read one in full with \
+        the recall tool when it is relevant.
+
+        For work that takes several steps, write a plan with the update_plan tool and keep it \
+        current as you go. The plan you are holding appears in every message."""
         .formatted(today);
   }
 
@@ -61,6 +91,12 @@ public final class Chat {
 
   public static void main(String[] args) {
     Clock clock = Clock.systemDefaultZone();
+    // Built here rather than left to the REPL, because the notebook and the plan are opened over
+    // it: what the agent remembers and what its tools read have to be one store, and an
+    // application that cannot name that store cannot give the agent either.
+    Substrate substrate = new InMemorySubstrate();
+    Notebook notebook = new SubstrateNotebook(substrate, TYPE);
+    PlanStore plans = new SubstratePlanStore(substrate, TYPE);
     Repl.run(
         config ->
             config
@@ -70,7 +106,24 @@ public final class Chat {
                 .prompt("> ")
                 .farewell("bye.")
                 .systemPrompt(systemPrompt(LocalDate.now(clock)))
+                .agent(TYPE)
+                .substrate(substrate)
+                // The transcript, plus two stages of background: the notebook's index and the
+                // current plan. Both are ambient, so they are rebuilt every call and never written
+                // to the transcript — the model sees the notes and the plan as they stand NOW, and
+                // the record stays a record of what was actually said.
+                .memory(
+                    MemoryPipeline.of(
+                        TranscriptMemory.recent(substrate, TYPE, TRANSCRIPT_BUDGET),
+                        pipeline ->
+                            pipeline
+                                .stage(NotebookTools.index(notebook))
+                                .stage(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
+                .tool(NotebookTools.remember(notebook))
+                .tool(NotebookTools.recall(notebook))
+                .tool(NotebookTools.forget(notebook))
+                .tool(PlanTools.updatePlan(plans))
                 // The only thing here that reaches outside the process, so the only thing a
                 // person is asked about. The describer writes the sentence they consent to.
                 .tool(

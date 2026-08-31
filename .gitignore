@@ -14,3 +14,7 @@ site/
 # Agent worktrees — never committed
 .claude/worktrees/
 .worktrees/
+
+# Browser debris from Playwright MCP runs: console logs and page snapshots
+# written into the working tree while driving a real browser. Never source.
+.playwright-mcp/

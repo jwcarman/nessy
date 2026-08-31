@@ -38,7 +38,6 @@ import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.engine.ReplyTokens;
 import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +56,11 @@ import org.slf4j.LoggerFactory;
  * <p>Everything an engine needs is assembled here so an application does not have to: the model
  * comes from {@link ModelDiscovery}, which reads whichever credentials are in the environment; the
  * actor system forms a cluster of one; and state lives in memory.
+ *
+ * <p>Every one of those is a DEFAULT, not a fixture. Anything an application may need to hold a
+ * reference to — the substrate above all, since a notebook or a plan is opened over one — it can
+ * build itself and hand to {@link ReplConfig}. An easy button that is the only thing able to create
+ * a component is not an easy button; it is a wall.
  *
  * <p><b>Nothing survives the process, deliberately.</b> A conversation typed into a terminal has no
  * reason to outlive the terminal, so the substrate is in memory, agent and turn state go to Pekko's
@@ -130,7 +134,7 @@ public final class Repl {
     PekkoHarnessFactory factory =
         new PekkoHarnessFactory(
             system,
-            new InMemorySubstrate(clock),
+            config.substrate(),
             selection.provider(),
             config.maxTokens(),
             Set.of(),
@@ -148,6 +152,9 @@ public final class Repl {
               .systemPrompt(config.systemPrompt())
               .model(selection.model().id())
               .renderer(UserMessage::of);
+          // Only when the caller said something: unset, the harness keeps its own default, and
+          // setting it to that default here would just be a longer way of saying nothing.
+          config.memory().ifPresent(harness::memory);
           config.tools().forEach(grant -> grant.accept(harness));
         });
   }
