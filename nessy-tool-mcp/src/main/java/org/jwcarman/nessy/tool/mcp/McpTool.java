@@ -24,8 +24,8 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -89,7 +89,7 @@ final class McpTool implements Tool<JsonNode> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(JsonNode input, ToolContext context) {
+  public Awaited<ToolResult> execute(JsonNode input, ReplyToken replyTo) {
     Map<String, Object> arguments = mapper.convertValue(input, ARGUMENTS_TYPE);
     McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(name(), arguments);
     // A transport/protocol failure that keeps the call from completing at all propagates as a

@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
  * An approver that answers from a script, like {@link ScriptedModel}; when the script runs out it
@@ -69,7 +70,7 @@ public final class ScriptedApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo) {
     Objects.requireNonNull(request, "request must not be null");
     requests.add(request);
     ApprovalResult next = answers.poll();

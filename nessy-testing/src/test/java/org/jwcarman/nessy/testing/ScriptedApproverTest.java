@@ -26,9 +26,13 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ScriptedApproverTest {
+
+  /** These approvers are asked in isolation, so nothing ever answers at this address. */
+  private static final ReplyToken NOWHERE = new ReplyToken("nowhere");
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -43,9 +47,9 @@ class ScriptedApproverTest {
     ScriptedApprover approver =
         ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.denied("no"));
 
-    Awaited<ApprovalResult> first = approver.approve(asking("first"));
-    Awaited<ApprovalResult> second = approver.approve(asking("second"));
-    Awaited<ApprovalResult> third = approver.approve(asking("third"));
+    Awaited<ApprovalResult> first = approver.approve(asking("first"), NOWHERE);
+    Awaited<ApprovalResult> second = approver.approve(asking("second"), NOWHERE);
+    Awaited<ApprovalResult> third = approver.approve(asking("third"), NOWHERE);
 
     assertThat(first).isEqualTo(Awaited.ready(ApprovalResult.approved()));
     assertThat(second).isEqualTo(Awaited.ready(ApprovalResult.denied("no")));
@@ -56,7 +60,7 @@ class ScriptedApproverTest {
   void an_empty_script_defers_immediately() {
     ScriptedApprover approver = ScriptedApprover.deferring();
 
-    Awaited<ApprovalResult> result = approver.approve(asking("only"));
+    Awaited<ApprovalResult> result = approver.approve(asking("only"), NOWHERE);
 
     assertThat(result).isInstanceOf(Awaited.Deferred.class);
   }
@@ -65,7 +69,7 @@ class ScriptedApproverTest {
   void a_deferral_leases_a_time_in_the_future() {
     ScriptedApprover approver = ScriptedApprover.deferring();
 
-    Awaited<ApprovalResult> result = approver.approve(asking("only"));
+    Awaited<ApprovalResult> result = approver.approve(asking("only"), NOWHERE);
 
     assertThat(result)
         .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Awaited.Deferred.class))
@@ -77,8 +81,8 @@ class ScriptedApproverTest {
     ScriptedApprover approver =
         ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.approved());
 
-    approver.approve(asking("first"));
-    approver.approve(asking("second"));
+    approver.approve(asking("first"), NOWHERE);
+    approver.approve(asking("second"), NOWHERE);
 
     assertThat(approver.requests())
         .extracting(ApprovalRequest::description)
@@ -89,10 +93,10 @@ class ScriptedApproverTest {
   void requests_is_a_snapshot_rather_than_a_live_view() {
     ScriptedApprover approver =
         ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.approved());
-    approver.approve(asking("first"));
+    approver.approve(asking("first"), NOWHERE);
     List<ApprovalRequest> snapshot = approver.requests();
 
-    approver.approve(asking("second"));
+    approver.approve(asking("second"), NOWHERE);
 
     assertThat(snapshot).extracting(ApprovalRequest::description).containsExactly("first");
   }

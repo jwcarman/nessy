@@ -45,8 +45,17 @@ public interface Tool<I> {
    * Runs, or says it will answer later.
    *
    * <p>{@link Awaited.Deferred} hands the wait back to the engine: the tool has already told the
-   * outside world where to answer, using the handle on {@link ToolContext}, and states how long the
-   * question should stand.
+   * outside world where to answer, using {@code replyTo}, and states how long the question should
+   * stand.
+   *
+   * <p>{@code replyTo} is an ADDRESS, and holding it is the power to settle this call — which is
+   * why it arrives beside the input rather than inside it. Nothing that merely describes the work
+   * carries it, so a tool that logs or stores its own input cannot leak the authority to answer for
+   * itself.
+   *
+   * @param input the call's arguments, already bound to {@link #inputType()}
+   * @param replyTo where an answer goes if this tool defers; available before it runs, so a tool
+   *     can hand it to the outside world and only then return {@link Awaited.Deferred}
    */
-  Awaited<ToolResult> execute(I input, ToolContext context);
+  Awaited<ToolResult> execute(I input, ReplyToken replyTo);
 }

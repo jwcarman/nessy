@@ -25,9 +25,13 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class RecordingApproverTest {
+
+  /** These approvers are asked in isolation, so nothing ever answers at this address. */
+  private static final ReplyToken NOWHERE = new ReplyToken("nowhere");
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
@@ -43,7 +47,7 @@ class RecordingApproverTest {
     RecordingApprover approver = new RecordingApprover(delegate);
     ApprovalRequest request = asking("restart prod-eu");
 
-    Awaited<ApprovalResult> result = approver.approve(request);
+    Awaited<ApprovalResult> result = approver.approve(request, NOWHERE);
 
     assertThat(approver.answers()).containsExactly(new RecordingApprover.Answer(request, result));
   }
@@ -54,8 +58,8 @@ class RecordingApproverTest {
         new RecordingApprover(
             ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.denied("no")));
 
-    approver.approve(asking("first"));
-    approver.approve(asking("second"));
+    approver.approve(asking("first"), NOWHERE);
+    approver.approve(asking("second"), NOWHERE);
 
     assertThat(approver.requests())
         .extracting(ApprovalRequest::description)
@@ -66,7 +70,7 @@ class RecordingApproverTest {
   void a_delegate_that_defers_is_recorded_as_having_deferred() {
     RecordingApprover approver = new RecordingApprover(ScriptedApprover.deferring());
 
-    approver.approve(asking("only"));
+    approver.approve(asking("only"), NOWHERE);
 
     assertThat(approver.answers()).isNotEmpty();
     assertThat(approver.answers())

@@ -25,7 +25,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -35,12 +34,9 @@ class IntentToolTest {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-  /**
-   * A context that offers only a reply token, which is the whole of {@link ToolContext} now — this
-   * tool never defers, so it never reaches for it.
-   */
-  private static ToolContext freshContext() {
-    return () -> new ReplyToken("unused-by-a-tool-that-never-defers");
+  /** Where an answer would go if this tool deferred. It never does, so nothing reads it. */
+  private static ReplyToken freshContext() {
+    return new ReplyToken("unused-by-a-tool-that-never-defers");
   }
 
   @Nested

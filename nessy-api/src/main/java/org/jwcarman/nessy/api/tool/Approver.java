@@ -18,7 +18,22 @@ package org.jwcarman.nessy.api.tool;
 import org.jwcarman.nessy.api.Awaited;
 
 public interface Approver {
-  Awaited<ApprovalResult> approve(ApprovalRequest request);
+  /**
+   * Decides, or says a person will.
+   *
+   * <p>An approver is the thing that knows a human is needed and where that question belongs — a
+   * queue, a page, a pager. {@code replyTo} is how it says where the answer comes back, handed down
+   * because only the engine can mint an address it will honour.
+   *
+   * <p>Beside the request rather than inside it, deliberately: {@link ApprovalRequest} describes
+   * the question and is exactly what an approvals page stores and renders, while {@code replyTo} is
+   * the authority to settle the call. Keeping them apart is what stops a credential ending up in a
+   * projection.
+   *
+   * @param request what is being asked
+   * @param replyTo where a person's answer goes if this approver defers
+   */
+  Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo);
 
   /**
    * The approver that always says yes — for a tool nobody gates.
@@ -27,6 +42,6 @@ public interface Approver {
    * than a branch on whether a gate is present.
    */
   static Approver always() {
-    return request -> Awaited.ready(ApprovalResult.approved());
+    return (request, replyTo) -> Awaited.ready(ApprovalResult.approved());
   }
 }

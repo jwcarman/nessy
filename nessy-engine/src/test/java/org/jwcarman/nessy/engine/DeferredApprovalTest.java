@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
@@ -46,6 +47,7 @@ import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -64,7 +66,7 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * was nowhere for a late answer to arrive. The execution actor is that somewhere.
  */
 @DisplayName("A tool that defers")
-class DeferredToolTest {
+class DeferredApprovalTest {
 
   record Job(String what) {}
 
@@ -74,11 +76,13 @@ class DeferredToolTest {
   private static ActorTestKit testKit;
   private static Harness<HouseEvent> harness;
   private static Replies replies;
+  private static final AtomicBoolean ran = new AtomicBoolean();
+  private static final AtomicReference<String> asked = new AtomicReference<>();
 
   /** What the tool was told to answer on. */
   private static final AtomicReference<ReplyToken> handed = new AtomicReference<>();
 
-  private static Tool<Job> defersForever() {
+  private static Tool<Job> sweepTool() {
     return new Tool<>() {
       @Override
       public Class<Job> inputType() {
@@ -102,10 +106,8 @@ class DeferredToolTest {
 
       @Override
       public Awaited<ToolResult> execute(Job input, ReplyToken replyTo) {
-        // Exactly what a real deferring tool does: hand the token to whoever will answer, then say
-        // it will be a while.
-        handed.set(replyTo);
-        return Awaited.deferred(Instant.now().plus(1, ChronoUnit.HOURS));
+        ran.set(true);
+        return Awaited.ready(ToolResult.ok("swept"));
       }
     };
   }
@@ -166,7 +168,17 @@ class DeferredToolTest {
                     .systemPrompt("You watch the house.")
                     .model(ModelId.of("scripted"))
                     .renderer(HouseEvents.RENDERER)
-                    .tool(defersForever()));
+                    .tool(
+                        sweepTool(),
+                        binding ->
+                            binding.approver(
+                                (request, replyTo) -> {
+                                  // What an approver that needs a person does: keep the address
+                                  // the answer will come back to, then say a human is on it.
+                                  handed.set(replyTo);
+                                  asked.set(request.description());
+                                  return Awaited.deferred(Instant.now().plus(1, ChronoUnit.HOURS));
+                                })));
   }
 
   @AfterAll
@@ -175,24 +187,38 @@ class DeferredToolTest {
   }
 
   @Test
-  @DisplayName("the turn waits, then finishes when the world answers")
-  void a_deferred_call_is_completed_from_outside() throws Exception {
+  @DisplayName("the turn waits on a person, then finishes when they answer")
+  void a_deferred_approval_is_answered_from_outside() throws Exception {
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
     harness.subscribe(HOUSE, heard::add);
 
     harness.observe(HOUSE, new HouseEvent("hall", "dust"));
 
-    // The tool has been handed somewhere to answer, and nothing has finished.
+    // The approver has been handed somewhere to answer. Nothing has run, and nothing has
+    // finished: the tool must not execute while a person is still being waited on.
     await().atMost(15, SECONDS).untilAsserted(() -> assertThat(handed.get()).isNotNull());
+    assertThat(ran).isFalse();
     assertThat(heard).noneMatch(AgentEvent.TurnEnded.class::isInstance);
 
+    // The question reached a watcher too, so a page could render it.
+    await()
+        .atMost(15, SECONDS)
+        .untilAsserted(
+            () ->
+                assertThat(heard)
+                    .filteredOn(AgentEvent.ApprovalRequested.class::isInstance)
+                    .isNotEmpty());
+    assertThat(asked.get()).isNotBlank();
+
+    // A person says yes, addressed only by the token the approver was handed.
     NessyMessage.Ack ack =
         replies
-            .answer(handed.get(), ToolResult.ok("job finished"))
+            .approve(handed.get(), ApprovalResult.approved())
             .toCompletableFuture()
             .get(10, java.util.concurrent.TimeUnit.SECONDS);
 
     assertThat(ack.accepted()).isTrue();
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(ran).isTrue());
     await()
         .atMost(15, SECONDS)
         .untilAsserted(

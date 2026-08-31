@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -87,13 +86,31 @@ final class ToolCallActor {
                   Identifiers.next(), call.id(), call.name(), description));
           ApprovalRequest request =
               new ApprovalRequest(agentType, agentId, call, description, Instant.now());
+          // One address for this call, minted before anyone is asked: the approver may hand it to
+          // a person, and the tool may hand it to the outside world. Both settle the same call, so
+          // both get the same token rather than two that mean the same thing.
+          ReplyToken replyAddress = tokens.mint(agentType, agentId, call.id());
           ActorRef<ApprovalActor.Command> approval =
               context.spawn(
                   ApprovalActor.create(
-                      bindings, binding, request, narrator, blocking, context.getSelf()),
+                      bindings,
+                      binding,
+                      request,
+                      replyAddress,
+                      narrator,
+                      blocking,
+                      context.getSelf()),
                   "approval");
           return awaitingApproval(
-              agentType, agentId, call, bindings, binding, narrator, tokens, blocking, turn,
+              agentType,
+              agentId,
+              call,
+              bindings,
+              binding,
+              narrator,
+              replyAddress,
+              blocking,
+              turn,
               approval);
         });
   }
@@ -105,7 +122,7 @@ final class ToolCallActor {
       ToolBindings bindings,
       ToolBinding<?> binding,
       Narrator narrator,
-      ReplyTokens tokens,
+      ReplyToken replyAddress,
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
       ActorRef<ApprovalActor.Command> approval) {
@@ -138,7 +155,7 @@ final class ToolCallActor {
                                       bindings,
                                       binding,
                                       call.arguments(),
-                                      toolContext(tokens, agentType, agentId, call),
+                                      replyAddress,
                                       blocking,
                                       context.getSelf()),
                                   "execution");
@@ -172,12 +189,5 @@ final class ToolCallActor {
         new AgentEvent.ToolCallCompleted(Identifiers.next(), call.id(), call.name(), result));
     turn.tell(new TurnActor.ToolSettled(call.id(), result));
     return Behaviors.stopped();
-  }
-
-  /** What a tool learns: where to send an answer if it decides to defer. */
-  private static ToolContext toolContext(
-      ReplyTokens tokens, AgentType agentType, AgentId agentId, ToolCall call) {
-    ReplyToken token = tokens.mint(agentType, agentId, call.id());
-    return () -> token;
   }
 }

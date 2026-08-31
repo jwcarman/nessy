@@ -17,8 +17,8 @@ package org.jwcarman.nessy.model.openai;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -35,7 +35,7 @@ record StubTool(String name, String description, ObjectNode inputSchema)
   }
 
   @Override
-  public Awaited<ToolResult> execute(ObjectNode input, ToolContext context) {
+  public Awaited<ToolResult> execute(ObjectNode input, ReplyToken replyTo) {
     throw new UnsupportedOperationException("a declared-only tool is never executed");
   }
 }

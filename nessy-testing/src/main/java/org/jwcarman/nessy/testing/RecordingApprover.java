@@ -22,6 +22,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
  * A thin wrapper around any {@link Approver}, recording every (request, answer) pair it produced,
@@ -46,9 +47,9 @@ public final class RecordingApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request, ReplyToken replyTo) {
     Objects.requireNonNull(request, "request must not be null");
-    Awaited<ApprovalResult> result = delegate.approve(request);
+    Awaited<ApprovalResult> result = delegate.approve(request, replyTo);
     answers.add(new Answer(request, result));
     return result;
   }
