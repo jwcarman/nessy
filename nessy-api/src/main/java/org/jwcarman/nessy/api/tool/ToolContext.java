@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+
 /**
  * What a running tool is told about the call it is serving, beyond its own arguments.
  *
@@ -23,7 +26,6 @@ package org.jwcarman.nessy.api.tool;
  * deadline adds a default method here and nothing already compiled stops working. That is not
  * hypothetical — this type has carried more before and was narrowed back.
  */
-@FunctionalInterface
 public interface ToolContext {
 
   /**
@@ -37,4 +39,18 @@ public interface ToolContext {
    * answer for itself.
    */
   ReplyToken replyToken();
+
+  /** What kind of agent this is — the namespace every agent id lives in. */
+  AgentType agentType();
+
+  /**
+   * Which agent this call is being made for.
+   *
+   * <p>A tool is granted to a KIND of agent and shared by every agent of that kind, so a tool that
+   * keeps anything per agent — notes, a scratchpad, a per-tenant connection — cannot close over the
+   * id and has to be told. {@code ApprovalRequest} has carried this pair from the start: an
+   * approver knows whose call it is deciding, and it would be strange for the tool actually doing
+   * the work to know less.
+   */
+  AgentId agentId();
 }

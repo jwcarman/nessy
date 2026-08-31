@@ -25,6 +25,10 @@ import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.memory.notebook.Notebook;
+import org.jwcarman.nessy.memory.notebook.NotebookTools;
+import org.jwcarman.nessy.memory.notebook.SubstrateNotebook;
+import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -53,6 +57,10 @@ public class ChatConfiguration {
       """
       You are a helpful assistant in a chat window. Keep answers short unless asked for more.
 
+      When the user tells you something worth keeping — a preference, a name, a standing fact — \
+      remember it as a note. Your notes appear as an index in every conversation; read one in \
+      full with the recall tool when it is relevant.
+
       When a question turns on today's date or on counting days, use the days_until tool rather \
       than working it out yourself.
 
@@ -71,6 +79,12 @@ public class ChatConfiguration {
     return new SendEmailTool();
   }
 
+  /** Where the agent keeps what it has been told worth keeping. */
+  @Bean
+  public Notebook notebook(Substrate substrate) {
+    return new SubstrateNotebook(substrate, TYPE);
+  }
+
   /**
    * The harness, declared here rather than taken from the starter because this application gates a
    * tool — and an approver is a decision about THIS application's policy, which the starter cannot
@@ -78,7 +92,12 @@ public class ChatConfiguration {
    */
   @Bean
   public Harness<String> harness(
-      PekkoHarnessFactory factory, ChatProperties properties, SendEmailTool email, Approver desk) {
+      PekkoHarnessFactory factory,
+      ChatProperties properties,
+      SendEmailTool email,
+      Approver desk,
+      Memory memory,
+      Notebook notebook) {
     return factory.createHarness(
         String.class,
         config ->
@@ -87,7 +106,11 @@ public class ChatConfiguration {
                 .systemPrompt(SYSTEM_PROMPT)
                 .model(ModelId.of(properties.getModelId()))
                 .renderer(UserMessage::of)
+                .memory(memory)
                 .tool(new DaysUntilTool())
+                .tool(NotebookTools.remember(notebook))
+                .tool(NotebookTools.recall(notebook))
+                .tool(NotebookTools.forget(notebook))
                 .tool(
                     email,
                     binding ->
@@ -113,11 +136,21 @@ public class ChatConfiguration {
     };
   }
 
-  /** The transcript the page renders, read through the same door the engine writes it with. */
+  /**
+   * What the agent remembers, and what it is shown.
+   *
+   * <p>The transcript, plus one stage that puts the notebook's index in front of the model. The
+   * index is background — an {@code AmbientMessage} — so it is rebuilt on every call and never
+   * written to the transcript: the model always sees the notes as they stand now, and the record
+   * stays a record of what happened.
+   *
+   * <p>Eternal on purpose: a browser chat is short, and losing the start of it would be more
+   * surprising than a long context. A long-lived agent wants {@code TranscriptMemory.recent}.
+   */
   @Bean
-  public Memory memory(Substrate substrate) {
-    // Eternal here on purpose: a browser chat is short, and losing the start of it would be
-    // more surprising than a long context. A long-lived agent wants TranscriptMemory.recent.
-    return TranscriptMemory.eternal(substrate, TYPE);
+  public Memory memory(Substrate substrate, Notebook notebook) {
+    return MemoryPipeline.of(
+        TranscriptMemory.eternal(substrate, TYPE),
+        pipeline -> pipeline.stage(NotebookTools.index(notebook)));
   }
 }

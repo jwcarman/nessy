@@ -48,6 +48,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 /** What wrapping a collaborator measures, and when it measures it. */
 class ObservedTest {
 
+  /** What the engine tells a running tool; nothing here reads it. */
+  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
+      implements ToolContext {}
+
   private MeterRegistry meters;
   private ObservationRegistry observations;
 
@@ -221,7 +225,9 @@ class ObservedTest {
   void a_tool_records_whether_the_model_can_act_on_the_answer() {
     Tool<String> failing = tool(input -> Awaited.ready(ToolResult.error("the disk is gone")));
 
-    Observed.tool(failing, observations).execute("x", () -> new ReplyToken("nowhere"));
+    Observed.tool(failing, observations)
+        .execute(
+            "x", new Call(AgentType.of("observed"), AgentId.of("one"), new ReplyToken("nowhere")));
 
     assertThat(
             meters
@@ -236,7 +242,9 @@ class ObservedTest {
   void a_deferring_tool_is_recorded_as_deferred_rather_than_as_a_success() {
     Tool<String> defers = tool(input -> Awaited.deferred(Instant.now().plusSeconds(3600)));
 
-    Observed.tool(defers, observations).execute("x", () -> new ReplyToken("nowhere"));
+    Observed.tool(defers, observations)
+        .execute(
+            "x", new Call(AgentType.of("observed"), AgentId.of("one"), new ReplyToken("nowhere")));
 
     // A deferral is neither a success nor a failure: nothing has happened yet.
     assertThat(

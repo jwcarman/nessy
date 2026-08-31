@@ -81,8 +81,15 @@ class McpToolboxTest {
    * and never defers, so nothing reads it.
    */
   private static ToolContext contextFor(JsonNode arguments) {
-    return () -> new ReplyToken("unused-by-a-tool-that-never-defers");
+    return new Call(
+        AgentType.of("mcp-test"),
+        AgentId.of("one"),
+        new ReplyToken("unused-by-a-tool-that-never-defers"));
   }
+
+  /** An MCP tool keeps nothing per agent, but a context is no longer a single method. */
+  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
+      implements ToolContext {}
 
   /**
    * The text of a successful result. ToolResult is sealed now — Success carries content blocks and

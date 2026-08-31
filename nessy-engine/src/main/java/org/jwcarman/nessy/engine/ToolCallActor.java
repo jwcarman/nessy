@@ -111,7 +111,7 @@ final class ToolCallActor {
           // both get the same token rather than two that mean the same thing.
           ReplyToken replyAddress = tokens.mint(agentType, agentId, call.id());
           ApprovalContext approvalContext = () -> replyAddress;
-          ToolContext toolContext = () -> replyAddress;
+          ToolContext toolContext = new CallContext(agentType, agentId, replyAddress);
           ActorRef<ApprovalActor.Command> approval =
               context.spawn(
                   ApprovalActor.create(
@@ -246,4 +246,8 @@ final class ToolCallActor {
     turn.tell(new TurnActor.ToolSettled(call.id(), result));
     return Behaviors.stopped();
   }
+
+  /** What a running tool is told: whose call this is, and where an answer goes. */
+  private record CallContext(AgentType agentType, AgentId agentId, ReplyToken replyToken)
+      implements ToolContext {}
 }

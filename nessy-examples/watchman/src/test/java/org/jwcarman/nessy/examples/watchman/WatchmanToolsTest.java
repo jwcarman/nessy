@@ -25,6 +25,8 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -37,8 +39,12 @@ class WatchmanToolsTest {
 
   private static final JsonNode NO_ARGUMENTS = JsonNodeFactory.instance.objectNode();
 
-  /** A tool never defers here, so nothing reads the address. */
-  private static final ToolContext NOWHERE = () -> new ReplyToken("nowhere");
+  /** What the engine tells a running tool. These tools read none of it. */
+  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
+      implements ToolContext {}
+
+  private static final ToolContext NOWHERE =
+      new Call(AgentType.of("watchman"), AgentId.of("house"), new ReplyToken("nowhere"));
 
   private final CommandRunner runner = new FakeRunner();
 

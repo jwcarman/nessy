@@ -23,6 +23,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -35,9 +37,19 @@ class IntentToolTest {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-  /** Where an answer would go if this tool deferred. It never does, so nothing reads it. */
+  /**
+   * What the engine tells a running tool. This one never defers and keeps nothing per agent, so it
+   * reads none of it — but a context is no longer a single method, because a tool that DOES keep
+   * something per agent has to be told which agent it is serving.
+   */
+  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
+      implements ToolContext {}
+
   private static ToolContext freshContext() {
-    return () -> new ReplyToken("unused-by-a-tool-that-never-defers");
+    return new Call(
+        AgentType.of("intent-test"),
+        AgentId.of("one"),
+        new ReplyToken("unused-by-a-tool-that-never-defers"));
   }
 
   @Nested

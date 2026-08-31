@@ -67,6 +67,7 @@
     <module>nessy-model-discovery</module>
     <module>nessy-console</module>
     <module>nessy-memory-pipeline</module>
+    <module>nessy-memory-notebook</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-spring-boot-starter</module>
