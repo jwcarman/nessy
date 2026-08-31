@@ -67,11 +67,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * public API, never a different way of reaching it. An application that wants a different
  * substrate, actor system, or harness declares one and this backs off entirely.
  *
- * <p><b>The application supplies the {@link ModelProvider}.</b> The starter used to discover one
- * through {@code ModelDiscovery}, and that seam has no counterpart yet — so rather than guess, this
- * requires a provider bean and fails at startup if none exists, which is a better failure than a
- * mystery at the first turn. When a discovery seam returns, a {@code @ConditionalOnMissingBean}
- * provider bean goes back here and nothing else changes.
+ * <p><b>The application supplies the {@link ModelProvider}, as a bean.</b> This requires one and
+ * fails at startup when none exists, which is a better failure than a mystery at the first turn.
+ *
+ * <p>{@code nessy-model-discovery} exists and would build a provider from whatever credentials are
+ * in the environment, and this starter deliberately does not use it (ruled 2026-08-31). Declaring a
+ * bean IS how a Spring application says which collaborator it wants; a starter that instead went
+ * looking at the process environment would be a second, quieter way to answer the same question,
+ * and the answer would depend on the shell it was launched from. An application that WANTS
+ * environment-driven selection has the ordinary way to say so — call {@code ModelDiscovery} in its
+ * own {@code @Bean} method — and then the choice is written down where a reader can find it.
  */
 // AFTER Boot's own JDBC auto-configuration. Ordering is not cosmetic here: the approvals
 // projection is @ConditionalOnBean(JdbcTemplate), and a condition evaluated before Boot has
