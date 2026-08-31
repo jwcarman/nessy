@@ -44,6 +44,20 @@
 
   <modules>
     <module>watchman</module>
+    <module>chat-cli</module>
+    <module>chat-web</module>
     <!-- THROWAWAY SPIKE: the watchman ported onto the actor design, to compare side by side. -->
   </modules>
+  <dependencies>
+    <!-- Every example is an application, and an application picks its own SLF4J provider. The root
+         pom scopes logback to `test` for the libraries; here it has to be on the runtime classpath,
+         because Boot 4's logging starter no longer carries one and a Nessy app that cannot log is
+         one whose engine fails silently. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+
 </project>

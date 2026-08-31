@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: chat-web
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  shutdown: graceful
+
+nessy:
+  type: chat
+  # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. Configured rather than
+  # discovered because a Model no longer reports its own vendor.
+  provider: openai
+  # A FIXED key, so a token minted before a restart can still be read after one. Without this the
+  # starter warns and falls back to an ephemeral key, and every waiting approval becomes
+  # unanswerable the moment the process bounces. A DEMO key: generate your own for anything real.
+  reply-keys:
+    - ${CHAT_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
+
+chat:
+  model-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
+  model-api-key: ${CHAT_MODEL_API_KEY:not-needed}
+  model-id: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
+
+logging:
+  level:
+    org.apache.pekko: WARN
