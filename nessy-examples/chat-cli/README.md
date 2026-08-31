@@ -24,11 +24,13 @@ system's cluster of one, the in-memory substrate and reply tokens, and the loop
 that streams an answer as it arrives. What is left here is the only part that is
 about THIS program: what it is for, and what it can do.
 
-- **Tools worth having.** `today` and `days_until` cover what a model cannot
-  know and cannot compute: it has a training cutoff and a confident prior about
-  what year it is, so asked about Christmas shopping it will name the wrong year
-  and reason from it. The date is in the system prompt too — a tool only helps
-  if the model thinks to call it.
+- **A tool worth having.** `days_until` counts days to a date: something a model
+  is bad at and a tool is trivially good at.
+- **A fact a tool could not fix.** The date is in the system prompt. There was a
+  `today` tool here first and it did not help: asked about Christmas shopping,
+  the model named the wrong year and reasoned from it *without calling anything
+  to check*. A tool only works if the model volunteers to use it, and that is
+  precisely the failure where it does not.
 - **A tool a person has to allow.** `send_email` is gated by
   `ConsoleApprover`, which asks right there at the prompt:
 

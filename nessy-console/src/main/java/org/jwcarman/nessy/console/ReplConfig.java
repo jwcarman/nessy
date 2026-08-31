@@ -37,7 +37,12 @@ import org.jwcarman.nessy.api.tool.ToolBindingConfig;
  */
 public final class ReplConfig {
 
-  private static final List<String> DEFAULT_EXIT_WORDS = List.of("exit", "quit");
+  /**
+   * Both the bare words and their slash forms, because a person who has used any other REPL will
+   * type {@code /exit} — and a leave word that is merely ALMOST right is worse than none: it goes
+   * to the model, which says a warm goodbye and leaves you exactly where you were.
+   */
+  private static final List<String> DEFAULT_EXIT_WORDS = List.of("exit", "quit", "/exit", "/quit");
 
   /** Applied to the harness in the order the caller granted them. */
   private final List<Consumer<HarnessConfig<String>>> tools = new ArrayList<>();
@@ -84,7 +89,8 @@ public final class ReplConfig {
       throw new IllegalArgumentException(
           "exitOn needs at least one word; a loop with no way out is a trap");
     }
-    this.exitWords = new LinkedHashSet<>(List.of(words));
+    this.exitWords =
+        new LinkedHashSet<>(List.of(words).stream().map(ReplConfig::normalize).toList());
     return this;
   }
 
@@ -149,8 +155,13 @@ public final class ReplConfig {
     return prompt;
   }
 
-  Set<String> exitWords() {
-    return Set.copyOf(exitWords);
+  /** Whether this line means "I am done", ignoring case and surrounding space. */
+  boolean isExit(String line) {
+    return exitWords.contains(normalize(line));
+  }
+
+  private static String normalize(String word) {
+    return word.strip().toLowerCase(java.util.Locale.ROOT);
   }
 
   String farewell() {

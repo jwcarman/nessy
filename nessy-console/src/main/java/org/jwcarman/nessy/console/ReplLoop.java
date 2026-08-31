@@ -77,7 +77,7 @@ final class ReplLoop {
       io.write(System.lineSeparator() + config.prompt());
       io.flush();
       String line = io.readLine();
-      if (line == null || config.exitWords().contains(line.strip())) {
+      if (line == null || config.isExit(line)) {
         break;
       }
       if (line.isBlank()) {

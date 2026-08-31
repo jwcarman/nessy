@@ -113,6 +113,23 @@ class ReplLoopTest {
   @DisplayName("leaving")
   class Leaving {
 
+    /**
+     * A leave word that is merely ALMOST right is worse than none: it reaches the model, which says
+     * a warm goodbye, and the person is exactly where they were. Every form someone might
+     * reasonably type has to work.
+     */
+    @Test
+    @DisplayName("every form of leaving works, slash or not, in any case")
+    void the_obvious_ways_to_say_it_all_work() {
+      for (String word : List.of("quit", "exit", "/quit", "/exit", "EXIT", "  /Quit  ")) {
+        FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+
+        run(harness, new FakeConsole(word), config());
+
+        assertThat(harness.observed()).as("'%s' should have left", word).isEmpty();
+      }
+    }
+
     @Test
     void an_exit_word_ends_the_loop_without_reaching_the_agent() {
       FakeHarness harness = new FakeHarness();
@@ -128,6 +145,16 @@ class ReplLoopTest {
       FakeHarness harness = new FakeHarness();
 
       run(harness, new FakeConsole(), config().exitOn("stop"));
+
+      assertThat(harness.observed()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a configured word is matched the same forgiving way")
+    void a_configured_word_ignores_case_too() {
+      FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+
+      run(harness, new FakeConsole("STOP"), config().exitOn("stop"));
 
       assertThat(harness.observed()).isEmpty();
     }
