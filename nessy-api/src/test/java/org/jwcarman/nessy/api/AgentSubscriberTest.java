@@ -35,13 +35,12 @@ class AgentSubscriberTest {
     return List.of(
         new AgentEvent.TurnStarted("1"),
         new AgentEvent.TextDelta("2", "hi"),
-        new AgentEvent.ThinkingDelta("3", "hmm"),
-        new AgentEvent.RedactedThinking("4", "opaque"),
+        new AgentEvent.ReasoningDelta("3", "hmm"),
         new AgentEvent.ToolCallRequested("5", "c1", "read_file", "read /etc/hosts"),
         new AgentEvent.ApprovalRequested("6", "c1", "read_file", "read /etc/hosts", Instant.EPOCH),
         new AgentEvent.ApprovalDecided("7", "c1", "read_file", ApprovalResult.approved()),
         new AgentEvent.ToolCallCompleted("8", "c1", "read_file", ToolResult.ok("done")),
-        new AgentEvent.AssistantSaid("9", new AnswerMessage(List.of())),
+        new AgentEvent.Answered("9", new AnswerMessage(List.of())),
         new AgentEvent.TurnEnded("10", new TurnResult.Completed(), NOTHING));
   }
 
@@ -127,7 +126,7 @@ class AgentSubscriberTest {
 
       everyVariant().forEach(subscriber::on);
 
-      assertThat(everyVariant()).hasSize(10);
+      assertThat(everyVariant()).hasSize(9);
     }
   }
 

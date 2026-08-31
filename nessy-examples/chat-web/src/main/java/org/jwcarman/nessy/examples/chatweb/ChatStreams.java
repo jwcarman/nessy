@@ -110,7 +110,7 @@ public class ChatStreams {
       switch (event) {
         case AgentEvent.TurnStarted started -> emit(listeners, "busy", Map.of());
         case AgentEvent.TextDelta delta -> emit(listeners, "delta", Map.of("text", delta.text()));
-        case AgentEvent.ThinkingDelta thinking ->
+        case AgentEvent.ReasoningDelta thinking ->
             emit(listeners, "thinking", Map.of("text", thinking.text()));
         case AgentEvent.ToolCallRequested call ->
             emit(

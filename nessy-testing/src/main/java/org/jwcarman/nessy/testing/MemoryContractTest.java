@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
@@ -25,9 +24,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -80,44 +78,26 @@ public abstract class MemoryContractTest {
     assertThat(memory.recall(TWO).messages()).isEmpty();
   }
 
+  /**
+   * An exchange goes in and comes back whole — as one message, because that is what it is.
+   *
+   * <p>Two tests used to live beside this one, policing that a calling turn could not be remembered
+   * alone and that answers had to match their calls. Neither can be written any more: {@code
+   * ExchangeMessage} refuses to exist in those states, so a store has nothing left to get wrong and
+   * the rule is tested where it is enforced.
+   */
   @Test
-  void aToolCallingTurnIsRememberedWithItsAnswers() {
+  void anExchangeIsRememberedWhole() {
     Memory memory = freshMemory();
     ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
-    ToolResultMessage answers =
-        new ToolResultMessage(List.of(ToolResultBlock.of("c1", ToolResult.ok("42"))));
+    ExchangeMessage exchange =
+        new ExchangeMessage(
+            List.of(new ToolCallBlock(call)),
+            List.of(ToolResultBlock.of("c1", ToolResult.ok("42"))));
 
-    memory.remember(ONE, turn, answers);
+    memory.remember(ONE, exchange);
 
-    // Context's own validating constructor enforces the pairing invariant — an unanswered tool
-    // call, or a stray answer, throws while building the Context recall() returns. A successful
-    // recall() here IS the proof that the exchange was stored whole.
-    List<Message> messages = memory.recall(ONE).messages();
-    assertThat(messages).hasSize(2);
-    assertThat(messages.getFirst()).isEqualTo(turn);
-    assertThat(messages.getLast()).isEqualTo(answers);
-  }
-
-  @Test
-  void aToolCallingTurnCannotBeRememberedAlone() {
-    Memory memory = freshMemory();
-    ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
-
-    assertThatThrownBy(() -> memory.remember(ONE, turn))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void answersMustMatchTheCallsTheyAnswer() {
-    Memory memory = freshMemory();
-    ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
-    AssistantMessage turn = new AssistantMessage(List.of(new ToolCallBlock(call, null)));
-    ToolResultMessage wrong =
-        new ToolResultMessage(List.of(ToolResultBlock.of("other", ToolResult.ok("42"))));
-
-    assertThatThrownBy(() -> memory.remember(ONE, turn, wrong))
-        .isInstanceOf(IllegalArgumentException.class);
+    List<ContextMessage> messages = memory.recall(ONE).messages();
+    assertThat(messages).containsExactly(exchange);
   }
 }

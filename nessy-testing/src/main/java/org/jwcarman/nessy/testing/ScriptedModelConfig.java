@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.testing;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,28 +50,25 @@ public final class ScriptedModelConfig {
     return this;
   }
 
-  public ScriptedModelConfig thinking(String text) {
-    current.add(new ModelEvent.ThinkingChunk(text));
+  /** Reasoning shown as it is produced. Narrated to whoever is watching, and never stored. */
+  public ScriptedModelConfig reasoning(String text) {
+    current.add(new ModelEvent.ReasoningChunk(text));
     return this;
   }
 
-  public ScriptedModelConfig thinkingSigned(String signature) {
-    current.add(new ModelEvent.ThinkingSigned(signature));
-    return this;
-  }
-
-  public ScriptedModelConfig redactedThinking(String data) {
-    current.add(new ModelEvent.RedactedThinkingEmitted(data));
+  /**
+   * State a provider wants handed back.
+   *
+   * <p>The payload is whatever that provider's adapter would build; a script asserting on replay
+   * supplies the same shape it expects to read.
+   */
+  public ScriptedModelConfig providerState(String provider, JsonNode data) {
+    current.add(new ModelEvent.ProviderStateEmitted(provider, data));
     return this;
   }
 
   public ScriptedModelConfig toolCall(String id, String name, ObjectNode arguments) {
-    return toolCall(id, name, arguments, null);
-  }
-
-  public ScriptedModelConfig toolCall(
-      String id, String name, ObjectNode arguments, String signature) {
-    current.add(new ModelEvent.ToolCallEmitted(new ToolCall(id, name, arguments), signature));
+    current.add(new ModelEvent.ToolCallEmitted(new ToolCall(id, name, arguments)));
     return this;
   }
 

@@ -34,10 +34,10 @@ import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -50,13 +50,13 @@ class BedrockRequestsTest {
 
   private static final String MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-  private static ModelRequest request(List<Message> messages) {
+  private static ModelRequest request(List<ContextMessage> messages) {
     return new ModelRequest(
         Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of());
   }
 
   private static ModelRequest request(
-      List<Message> messages, List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
+      List<ContextMessage> messages, List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
     return new ModelRequest(
         Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of());
   }
@@ -155,7 +155,7 @@ class BedrockRequestsTest {
       var second = new TextBlock("world");
       var built =
           BedrockRequests.toRequest(
-              request(List.of(new AssistantMessage(List.of(first, second)))), MODEL_ID);
+              request(List.of(new AnswerMessage(List.of(first, second)))), MODEL_ID);
 
       assertThat(built.messages()).hasSize(1);
       var message = built.messages().get(0);
@@ -178,11 +178,10 @@ class BedrockRequestsTest {
     @Test
     void becomes_a_tool_use_block_with_id_name_and_input() {
       var toolUse = new ToolCallBlock(call("call-1", "read_file", "path", "README.md"));
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var built =
-          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(1);
@@ -197,14 +196,13 @@ class BedrockRequestsTest {
       var text = new TextBlock("running two tools");
       var first = new ToolCallBlock(call("call-1", "read_file", "path", "a.txt"));
       var second = new ToolCallBlock(call("call-2", "read_file", "path", "b.txt"));
-      var assistantTurn = new AssistantMessage(List.of(text, first, second));
-      var toolResultTurn =
-          new ToolResultMessage(
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(text, first, second),
               List.of(
                   ToolResultBlock.of("call-1", ToolResult.ok("ok")),
                   ToolResultBlock.of("call-2", ToolResult.ok("ok"))));
-      var built =
-          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(3);
@@ -220,11 +218,10 @@ class BedrockRequestsTest {
       arguments.put("ratio", 3.5);
       arguments.put("verbose", true);
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var built =
-          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var input = built.messages().get(0).content().get(0).toolUse().input().asMap();
       // Node equality on document kind, not just string form: a wrong implementation that
@@ -244,14 +241,13 @@ class BedrockRequestsTest {
       var toolUse =
           new ToolCallBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "some-signature");
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
 
       // No exception, and the rebuilt block carries the call unchanged — Bedrock's ToolCallBlock
       // has no signature-shaped field for GeminiRequests' equivalent to replay onto.
-      var built =
-          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var block = built.messages().get(0).content().get(0).toolUse();
       assertThat(block.toolUseId()).isEqualTo("call-1");
@@ -266,11 +262,11 @@ class BedrockRequestsTest {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var assistantTurn = new AssistantMessage(List.of(thinking, text, toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var built =
-          BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)), MODEL_ID);
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(thinking, text, toolUse),
+              List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(2);
@@ -284,7 +280,7 @@ class BedrockRequestsTest {
       var text = new TextBlock("the visible answer");
       var built =
           BedrockRequests.toRequest(
-              request(List.of(new AssistantMessage(List.of(redacted, text)))), MODEL_ID);
+              request(List.of(new AnswerMessage(List.of(redacted, text)))), MODEL_ID);
 
       var content = built.messages().get(0).content();
       assertThat(content).hasSize(1);
@@ -303,7 +299,7 @@ class BedrockRequestsTest {
       var thinking = new ThinkingBlock("cut off before signing", "");
       var built =
           BedrockRequests.toRequest(
-              request(List.of(new AssistantMessage(List.of(thinking)))), MODEL_ID);
+              request(List.of(new AnswerMessage(List.of(thinking)))), MODEL_ID);
 
       assertThat(built.messages()).isEmpty();
     }
@@ -321,8 +317,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))),
+                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
               MODEL_ID);
 
       var responseContent = built.messages().get(1).content();
@@ -344,8 +339,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))),
+                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
               MODEL_ID);
 
       var toolResult = built.messages().get(1).content().get(0).toolResult();
@@ -363,7 +357,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AssistantMessage(List.of(firstUse, secondUse)),
+                      new AnswerMessage(List.of(firstUse, secondUse)),
                       new ToolResultMessage(List.of(first, second)))),
               MODEL_ID);
 
@@ -387,7 +381,7 @@ class BedrockRequestsTest {
           BedrockRequests.toRequest(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
+                      new AnswerMessage(List.of(toolUse)),
                       new ToolResultMessage(List.of(result)),
                       new UserMessage(List.of(text)))),
               MODEL_ID);
@@ -419,10 +413,10 @@ class BedrockRequestsTest {
     @ParameterizedTest
     @MethodSource("pure_content_messages")
     void a_pure_content_message_is_pinned_unchanged(Message message, boolean expectToolResult) {
-      List<Message> messages =
+      List<ContextMessage> messages =
           expectToolResult
               ? List.of(
-                  new AssistantMessage(
+                  new AnswerMessage(
                       List.of(
                           new ToolCallBlock(
                               new ToolCall("call-1", "noop", MAPPER.createObjectNode())))),

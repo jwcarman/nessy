@@ -42,12 +42,12 @@ final class Scripts {
   static ModelStream saying(ModelResult result) {
     List<ModelEvent> events = new ArrayList<>();
     switch (result) {
-      case ModelResult.Replied replied -> {
+      case ModelResult.Answered replied -> {
         for (AssistantContentBlock block : replied.message().content()) {
           switch (block) {
             case TextBlock text -> events.add(new ModelEvent.TextChunk(text.text()));
             case ThinkingBlock thinking -> {
-              events.add(new ModelEvent.ThinkingChunk(thinking.text()));
+              events.add(new ModelEvent.ReasoningChunk(thinking.text()));
               events.add(new ModelEvent.ThinkingSigned(thinking.signature()));
             }
             case RedactedThinkingBlock redacted ->

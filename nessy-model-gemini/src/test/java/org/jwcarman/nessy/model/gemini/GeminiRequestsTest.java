@@ -36,10 +36,10 @@ import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -49,13 +49,13 @@ class GeminiRequestsTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private static ModelRequest request(List<Message> messages) {
+  private static ModelRequest request(List<ContextMessage> messages) {
     return new ModelRequest(
         Context.of(messages), "you are a helpful assistant", 1024, List.of(), Set.of());
   }
 
   private static ModelRequest request(
-      List<Message> messages, List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
+      List<ContextMessage> messages, List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
     return new ModelRequest(
         Context.of(messages), "you are a helpful assistant", 1024, tools, Set.of());
   }
@@ -154,7 +154,7 @@ class GeminiRequestsTest {
       var first = new TextBlock("hello ");
       var second = new TextBlock("world");
       var contents =
-          GeminiRequests.toContents(request(List.of(new AssistantMessage(List.of(first, second)))));
+          GeminiRequests.toContents(request(List.of(new AnswerMessage(List.of(first, second)))));
 
       assertThat(contents).hasSize(1);
       var content = contents.get(0);
@@ -178,10 +178,10 @@ class GeminiRequestsTest {
     @Test
     void becomes_a_function_call_part_with_name_and_args() {
       var toolUse = new ToolCallBlock(call("call-1", "read_file", "path", "README.md"));
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var modelContent = contents.get(0);
       var parts = modelContent.parts().orElseThrow();
@@ -196,13 +196,13 @@ class GeminiRequestsTest {
       var text = new TextBlock("running two tools");
       var first = new ToolCallBlock(call("call-1", "read_file", "path", "a.txt"));
       var second = new ToolCallBlock(call("call-2", "read_file", "path", "b.txt"));
-      var assistantTurn = new AssistantMessage(List.of(text, first, second));
-      var toolResultTurn =
-          new ToolResultMessage(
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(text, first, second),
               List.of(
                   ToolResultBlock.of("call-1", ToolResult.ok("ok")),
                   ToolResultBlock.of("call-2", ToolResult.ok("ok"))));
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts).hasSize(3);
@@ -222,10 +222,10 @@ class GeminiRequestsTest {
       var toolUse =
           new ToolCallBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), encoded);
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(rawSignature);
@@ -236,10 +236,10 @@ class GeminiRequestsTest {
       byte[] sentinel = "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
       var toolUse =
           new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(sentinel);
@@ -251,11 +251,11 @@ class GeminiRequestsTest {
       var toolUse =
           new ToolCallBlock(
               new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "not-base64!!");
-      var assistantTurn = new AssistantMessage(List.of(toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
 
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(sentinel);
@@ -270,10 +270,11 @@ class GeminiRequestsTest {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var assistantTurn = new AssistantMessage(List.of(thinking, text, toolUse));
-      var toolResultTurn =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
-      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(thinking, text, toolUse),
+              List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts).hasSize(2);
@@ -286,8 +287,7 @@ class GeminiRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var text = new TextBlock("the visible answer");
       var contents =
-          GeminiRequests.toContents(
-              request(List.of(new AssistantMessage(List.of(redacted, text)))));
+          GeminiRequests.toContents(request(List.of(new AnswerMessage(List.of(redacted, text)))));
 
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts).hasSize(1);
@@ -304,7 +304,7 @@ class GeminiRequestsTest {
     void an_assistant_message_of_only_a_thinking_block_produces_no_content() {
       var thinking = new ThinkingBlock("cut off before signing", "");
       var contents =
-          GeminiRequests.toContents(request(List.of(new AssistantMessage(List.of(thinking)))));
+          GeminiRequests.toContents(request(List.of(new AnswerMessage(List.of(thinking)))));
 
       assertThat(contents).isEmpty();
     }
@@ -322,7 +322,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
+                      new AnswerMessage(List.of(toolUse)),
                       new ToolResultMessage(List.of(result)))));
 
       var responseContent = contents.get(1);
@@ -343,7 +343,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
+                      new AnswerMessage(List.of(toolUse)),
                       new ToolResultMessage(List.of(result)))));
 
       var functionResponse =
@@ -363,7 +363,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AssistantMessage(List.of(firstUse, secondUse)),
+                      new AnswerMessage(List.of(firstUse, secondUse)),
                       new ToolResultMessage(List.of(first, second)))));
 
       var parts = contents.get(1).parts().orElseThrow();
@@ -388,7 +388,7 @@ class GeminiRequestsTest {
           GeminiRequests.toContents(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
+                      new AnswerMessage(List.of(toolUse)),
                       new ToolResultMessage(List.of(result)),
                       new UserMessage(List.of(text)))));
 
@@ -423,10 +423,10 @@ class GeminiRequestsTest {
     @MethodSource("pure_content_messages")
     void a_pure_content_message_is_pinned_unchanged(
         Message message, boolean expectFunctionResponse) {
-      List<Message> messages =
+      List<ContextMessage> messages =
           expectFunctionResponse
               ? List.of(
-                  new AssistantMessage(
+                  new AnswerMessage(
                       List.of(
                           new ToolCallBlock(
                               new ToolCall("call-1", "noop", MAPPER.createObjectNode())))),

@@ -129,36 +129,48 @@ class ScriptedModelTest {
   }
 
   @Test
-  void replays_thinking_and_tool_use_events_in_a_single_turn() {
+  void replays_reasoning_provider_state_and_tool_use_in_a_single_turn() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
+    ObjectNode state = JsonNodeFactory.instance.objectNode();
+    state.put("type", "thinking");
+    state.put("signature", "sig-123");
     ScriptedModel model =
         ScriptedModel.script(
             s ->
-                s.thinking("pondering")
-                    .thinkingSigned("sig-123")
-                    .redactedThinking("opaque-data")
+                s.reasoning("pondering")
+                    .providerState("anthropic", state)
                     .toolCall("c1", "read_file", args)
                     .endWithToolCalls());
 
     assertThat(drain(model.stream(request())))
         .containsExactly(
-            new ModelEvent.ThinkingChunk("pondering"),
-            new ModelEvent.ThinkingSigned("sig-123"),
-            new ModelEvent.RedactedThinkingEmitted("opaque-data"),
-            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), null),
+            new ModelEvent.ReasoningChunk("pondering"),
+            new ModelEvent.ProviderStateEmitted("anthropic", state),
+            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args)),
             new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 
+  /**
+   * A signature no longer rides on the call. It is provider state naming the call it vouches for,
+   * which is what lets one vendor's continuity token stay that vendor's business.
+   */
   @Test
-  void replays_a_signed_tool_use_event() {
+  void replays_provider_state_beside_the_call_it_belongs_to() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
+    ObjectNode state = JsonNodeFactory.instance.objectNode();
+    state.put("callId", "c1");
+    state.put("thoughtSignature", "sig-123");
     ScriptedModel model =
         ScriptedModel.script(
-            s -> s.toolCall("c1", "read_file", args, "sig-123").endWithToolCalls());
+            s ->
+                s.providerState("gcp.gemini", state)
+                    .toolCall("c1", "read_file", args)
+                    .endWithToolCalls());
 
     assertThat(drain(model.stream(request())))
         .containsExactly(
-            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args), "sig-123"),
+            new ModelEvent.ProviderStateEmitted("gcp.gemini", state),
+            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args)),
             new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 

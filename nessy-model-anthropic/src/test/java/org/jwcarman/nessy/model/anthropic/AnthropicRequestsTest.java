@@ -39,10 +39,10 @@ import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ThinkingBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -55,12 +55,12 @@ class AnthropicRequestsTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final ThinkingConfig THINKING_DISABLED = new ThinkingConfig(false, 0);
 
-  private static ModelRequest request(List<Message> messages, Set<Capability> requested) {
+  private static ModelRequest request(List<ContextMessage> messages, Set<Capability> requested) {
     return new ModelRequest(
         Context.of(messages), "you are a helpful assistant", 1024, List.of(), requested);
   }
 
-  private static ModelRequest request(List<Message> messages) {
+  private static ModelRequest request(List<ContextMessage> messages) {
     return request(messages, Set.of());
   }
 
@@ -208,7 +208,7 @@ class AnthropicRequestsTest {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(new AssistantMessage(List.of(thinking)))),
+              request(List.of(new AnswerMessage(List.of(thinking)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -225,7 +225,7 @@ class AnthropicRequestsTest {
       var text = new TextBlock("the visible answer");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(new AssistantMessage(List.of(unsigned, text)))),
+              request(List.of(new AnswerMessage(List.of(unsigned, text)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -246,7 +246,7 @@ class AnthropicRequestsTest {
       var unsigned = new ThinkingBlock("cut off before signing", "");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(new AssistantMessage(List.of(unsigned)))),
+              request(List.of(new AnswerMessage(List.of(unsigned)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -259,14 +259,13 @@ class AnthropicRequestsTest {
       var toolUse =
           new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
       var text = new TextBlock("the visible answer");
-      var assistantMessage = new AssistantMessage(List.of(unsigned, toolUse, text));
-      var toolResultMessage =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var assistantMessage =
+          new ExchangeMessage(
+              List.of(unsigned, toolUse, text),
+              List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)),
-              "claude-sonnet",
-              THINKING_DISABLED);
+              request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(2);
@@ -283,14 +282,12 @@ class AnthropicRequestsTest {
       ObjectNode arguments = MAPPER.createObjectNode();
       arguments.put("path", "README.md");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
-      var assistantMessage = new AssistantMessage(List.of(toolUse));
-      var toolResultMessage =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var assistantMessage =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)),
-              "claude-sonnet",
-              THINKING_DISABLED);
+              request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.isToolUse()).isTrue();
@@ -305,14 +302,12 @@ class AnthropicRequestsTest {
       // here) must not blow up toInput — it simply carries no additional properties across.
       var arguments = MAPPER.createArrayNode().add("unexpected");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
-      var assistantMessage = new AssistantMessage(List.of(toolUse));
-      var toolResultMessage =
-          new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+      var assistantMessage =
+          new ExchangeMessage(
+              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(assistantMessage, toolResultMessage)),
-              "claude-sonnet",
-              THINKING_DISABLED);
+              request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.asToolUse().input()._additionalProperties()).isEmpty();
@@ -327,7 +322,7 @@ class AnthropicRequestsTest {
       var redacted = new RedactedThinkingBlock("opaque-encrypted-payload");
       var params =
           AnthropicRequests.toParams(
-              request(List.of(new AssistantMessage(List.of(redacted)))),
+              request(List.of(new AnswerMessage(List.of(redacted)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -349,8 +344,7 @@ class AnthropicRequestsTest {
           AnthropicRequests.toParams(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))),
+                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -371,8 +365,7 @@ class AnthropicRequestsTest {
           AnthropicRequests.toParams(
               request(
                   List.of(
-                      new AssistantMessage(List.of(toolUse)),
-                      new ToolResultMessage(List.of(result)))),
+                      new AnswerMessage(List.of(toolUse)), new ToolResultMessage(List.of(result)))),
               "claude-sonnet",
               THINKING_DISABLED);
 
@@ -519,14 +512,13 @@ class AnthropicRequestsTest {
 
     private static final int LOOKBACK = 20;
 
-    private static List<Message> conversation(int messages) {
+    private static List<ContextMessage> conversation(int messages) {
       return IntStream.range(0, messages)
           .mapToObj(
               i ->
                   i % 2 == 0
                       ? UserMessage.of("message number " + i)
-                      : (Message)
-                          new AssistantMessage(List.of(new TextBlock("message number " + i))))
+                      : (Message) new AnswerMessage(List.of(new TextBlock("message number " + i))))
           .toList();
     }
 
@@ -544,7 +536,7 @@ class AnthropicRequestsTest {
     }
 
     private static ModelRequest cachedRequest(
-        List<Message> messages, java.util.List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
+        List<ContextMessage> messages, java.util.List<org.jwcarman.nessy.api.tool.Tool<?>> tools) {
       return new ModelRequest(
           Context.of(messages), "sys", 1024, tools, Set.of(Capability.PROMPT_CACHING));
     }
@@ -585,7 +577,7 @@ class AnthropicRequestsTest {
       var messages =
           List.<Message>of(
               UserMessage.of("hello"),
-              new AssistantMessage(
+              new AnswerMessage(
                   List.of(new TextBlock("answer"), new ThinkingBlock("hmm", "signed"))));
 
       var params =
@@ -651,14 +643,13 @@ class AnthropicRequestsTest {
           requested);
     }
 
-    private static List<Message> conversation(int messages) {
+    private static List<ContextMessage> conversation(int messages) {
       return IntStream.range(0, messages)
           .mapToObj(
               i ->
                   i % 2 == 0
                       ? UserMessage.of("message number " + i)
-                      : (Message)
-                          new AssistantMessage(List.of(new TextBlock("message number " + i))))
+                      : (Message) new AnswerMessage(List.of(new TextBlock("message number " + i))))
           .toList();
     }
 

@@ -315,7 +315,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       case ModelEvent.TextChunk chunk ->
           deps.narrator().narrate(new AgentEvent.TextDelta(Identifiers.next(), chunk.text()));
       case ModelEvent.ReasoningChunk chunk ->
-          deps.narrator().narrate(new AgentEvent.ThinkingDelta(Identifiers.next(), chunk.text()));
+          deps.narrator().narrate(new AgentEvent.ReasoningDelta(Identifiers.next(), chunk.text()));
       default -> {
         // Assembled into the message, or narrated by whoever owns the fact.
       }
@@ -336,7 +336,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     }
     if (command.result() instanceof ModelResult.Answered answered) {
       count(answered.usage().inputTokens(), answered.usage().outputTokens());
-      deps.narrator().narrate(new AgentEvent.AssistantSaid(Identifiers.next(), answered.message()));
+      deps.narrator().narrate(new AgentEvent.Answered(Identifiers.next(), answered.message()));
       deps.memory().remember(agentId, answered.message());
       return finish(
           answered.stopReason() == StopReason.MAX_TOKENS

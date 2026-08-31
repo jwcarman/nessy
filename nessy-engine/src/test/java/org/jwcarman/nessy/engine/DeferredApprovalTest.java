@@ -41,8 +41,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -131,16 +130,16 @@ class DeferredApprovalTest {
                         .anyMatch(ToolResultMessage.class::isInstance);
                 if (answered) {
                   return Scripts.saying(
-                      new ModelResult.Replied(
-                          new AssistantMessage(List.of(new TextBlock("all done"))),
+                      new ModelResult.Answered(
+                          new AnswerMessage(List.of(new TextBlock("all done"))),
                           StopReason.END_TURN,
                           new Usage(1, 1)));
                 }
                 ObjectNode arguments = JsonNodeFactory.instance.objectNode();
                 arguments.put("what", "sweep the hall");
                 return Scripts.saying(
-                    new ModelResult.Replied(
-                        new AssistantMessage(
+                    new ModelResult.Answered(
+                        new AnswerMessage(
                             List.of(
                                 (AssistantContentBlock)
                                     new ToolCallBlock(new ToolCall("c1", "start_job", arguments)))),

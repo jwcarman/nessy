@@ -92,9 +92,9 @@ public final class Approvals {
     TurnObserver observer =
         TurnObserver.observe(
             o ->
-                o.onAssistantSaid(
+                o.onAnswered(
                     said -> {
-                      // the first segment's AssistantSaid carries the tool-use turn, no text yet
+                      // the first segment's Answered carries the tool-use turn, no text yet
                       // (blank); only the post-grant segment's text is the reply worth awaiting.
                       String text = textOf(said.message());
                       if (!text.isBlank()) {
@@ -155,7 +155,7 @@ public final class Approvals {
                     .turnObserver(
                         TurnObserver.observe(
                             o ->
-                                o.onAssistantSaid(
+                                o.onAnswered(
                                     said ->
                                         System.out.println("says: " + said.message().content())))));
     var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));

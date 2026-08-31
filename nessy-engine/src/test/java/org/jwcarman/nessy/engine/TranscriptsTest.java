@@ -30,9 +30,8 @@ import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -50,8 +49,8 @@ class TranscriptsTest {
         new Transcripts(new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
   }
 
-  private static AssistantMessage calling(String callId) {
-    return new AssistantMessage(
+  private static AnswerMessage calling(String callId) {
+    return new AnswerMessage(
         List.of(
             (AssistantContentBlock)
                 new ToolCallBlock(
@@ -71,13 +70,13 @@ class TranscriptsTest {
   @DisplayName("messages come back as themselves, in order")
   void messages_round_trip_polymorphically() {
     transcripts.remember(HOUSE, UserMessage.of("hi"));
-    transcripts.remember(HOUSE, new AssistantMessage(List.of(new TextBlock("hello"))));
+    transcripts.remember(HOUSE, new AnswerMessage(List.of(new TextBlock("hello"))));
 
     Context context = transcripts.recall(HOUSE);
 
     assertThat(context.messages()).hasSize(2);
     assertThat(context.messages().get(0)).isInstanceOf(UserMessage.class);
-    assertThat(context.messages().get(1)).isInstanceOf(AssistantMessage.class);
+    assertThat(context.messages().get(1)).isInstanceOf(AnswerMessage.class);
     assertThat(context.lines())
         .containsExactly(new Context.Line("user", "hi"), new Context.Line("assistant", "hello"));
   }
@@ -103,7 +102,7 @@ class TranscriptsTest {
 
   @Test
   void an_assistant_turn_with_unanswered_calls_is_refused_on_its_own() {
-    AssistantMessage asking = calling("c1");
+    AnswerMessage asking = calling("c1");
 
     assertThatThrownBy(() -> transcripts.remember(HOUSE, asking))
         .isInstanceOf(IllegalArgumentException.class)
@@ -112,7 +111,7 @@ class TranscriptsTest {
 
   @Test
   void results_that_do_not_match_the_calls_are_refused() {
-    AssistantMessage asking = calling("c1");
+    AnswerMessage asking = calling("c1");
     ToolResultMessage wrong = answering("c2");
 
     assertThatThrownBy(() -> transcripts.remember(HOUSE, asking, wrong))

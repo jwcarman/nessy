@@ -137,10 +137,10 @@ class StreamingNarrationTest {
         .extracting(event -> ((AgentEvent.TextDelta) event).text())
         .containsExactly("all ", "is ", "well");
 
-    AgentEvent.AssistantSaid said =
+    AgentEvent.Answered said =
         heard.stream()
-            .filter(AgentEvent.AssistantSaid.class::isInstance)
-            .map(AgentEvent.AssistantSaid.class::cast)
+            .filter(AgentEvent.Answered.class::isInstance)
+            .map(AgentEvent.Answered.class::cast)
             .findFirst()
             .orElseThrow();
     assertThat(said.message().content()).containsExactly(new TextBlock("all is well"));
@@ -156,12 +156,9 @@ class StreamingNarrationTest {
     await()
         .atMost(15, SECONDS)
         .untilAsserted(
-            () ->
-                assertThat(heard)
-                    .filteredOn(AgentEvent.AssistantSaid.class::isInstance)
-                    .isNotEmpty());
+            () -> assertThat(heard).filteredOn(AgentEvent.Answered.class::isInstance).isNotEmpty());
 
     List<String> order = heard.stream().map(event -> event.getClass().getSimpleName()).toList();
-    assertThat(order).containsSubsequence("TextDelta", "TextDelta", "TextDelta", "AssistantSaid");
+    assertThat(order).containsSubsequence("TextDelta", "TextDelta", "TextDelta", "Answered");
   }
 }

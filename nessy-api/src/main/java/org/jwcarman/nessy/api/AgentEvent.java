@@ -58,13 +58,12 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
   @JsonSubTypes.Type(value = AgentEvent.TextDelta.class, name = "text-delta"),
-  @JsonSubTypes.Type(value = AgentEvent.ThinkingDelta.class, name = "thinking-delta"),
-  @JsonSubTypes.Type(value = AgentEvent.RedactedThinking.class, name = "redacted-thinking"),
+  @JsonSubTypes.Type(value = AgentEvent.ReasoningDelta.class, name = "reasoning-delta"),
   @JsonSubTypes.Type(value = AgentEvent.ToolCallRequested.class, name = "tool-call-requested"),
   @JsonSubTypes.Type(value = AgentEvent.ApprovalRequested.class, name = "approval-requested"),
   @JsonSubTypes.Type(value = AgentEvent.ApprovalDecided.class, name = "approval-decided"),
   @JsonSubTypes.Type(value = AgentEvent.ToolCallCompleted.class, name = "tool-call-completed"),
-  @JsonSubTypes.Type(value = AgentEvent.AssistantSaid.class, name = "assistant-said"),
+  @JsonSubTypes.Type(value = AgentEvent.Answered.class, name = "answered"),
   @JsonSubTypes.Type(value = AgentEvent.TurnEnded.class, name = "turn-ended")
 })
 public sealed interface AgentEvent {
@@ -98,18 +97,10 @@ public sealed interface AgentEvent {
   }
 
   /** A chunk of the model's visible reasoning arrived from the stream. */
-  record ThinkingDelta(String id, String text) implements AgentEvent {
-    public ThinkingDelta {
+  record ReasoningDelta(String id, String text) implements AgentEvent {
+    public ReasoningDelta {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(text, "text must not be null");
-    }
-  }
-
-  /** A complete redacted-thinking block arrived; its contents are opaque by design. */
-  record RedactedThinking(String id, String data) implements AgentEvent {
-    public RedactedThinking {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(data, "data must not be null");
     }
   }
 
@@ -195,8 +186,8 @@ public sealed interface AgentEvent {
    * <p>Fires once per model reply, so a turn that used tools emits SEVERAL: the reply asking for
    * tools is still the model saying something. A watcher wanting prose alone filters for text.
    */
-  record AssistantSaid(String id, AnswerMessage message) implements AgentEvent {
-    public AssistantSaid {
+  record Answered(String id, AnswerMessage message) implements AgentEvent {
+    public Answered {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(message, "message must not be null");
     }

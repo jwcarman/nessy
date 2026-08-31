@@ -34,7 +34,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -76,8 +76,8 @@ class HarnessTest {
               @Override
               public org.jwcarman.nessy.spi.model.ModelStream stream(ModelRequest request) {
                 return Scripts.saying(
-                    new ModelResult.Replied(
-                        new AssistantMessage(
+                    new ModelResult.Answered(
+                        new AnswerMessage(
                             List.of(
                                 new TextBlock(
                                     "noted: " + request.context().lines().getLast().text()))),
@@ -133,13 +133,13 @@ class HarnessTest {
               assertThat(heard).isNotEmpty();
               assertThat(heard)
                   .extracting(event -> event.getClass().getSimpleName())
-                  .containsSubsequence("TurnStarted", "AssistantSaid", "TurnEnded");
+                  .containsSubsequence("TurnStarted", "Answered", "TurnEnded");
             });
 
-    AgentEvent.AssistantSaid said =
+    AgentEvent.Answered said =
         heard.stream()
-            .filter(AgentEvent.AssistantSaid.class::isInstance)
-            .map(AgentEvent.AssistantSaid.class::cast)
+            .filter(AgentEvent.Answered.class::isInstance)
+            .map(AgentEvent.Answered.class::cast)
             .findFirst()
             .orElseThrow();
     assertThat(said.message().content())

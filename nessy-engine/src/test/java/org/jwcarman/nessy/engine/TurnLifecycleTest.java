@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
@@ -82,8 +82,8 @@ class TurnLifecycleTest {
             // Echoes what it was given, so the test can prove the context reached it.
             String heard = request.context().lines().getLast().text();
             return Scripts.saying(
-                new ModelResult.Replied(
-                    new AssistantMessage(List.of(new TextBlock("heard: " + heard))),
+                new ModelResult.Answered(
+                    new AnswerMessage(List.of(new TextBlock("heard: " + heard))),
                     StopReason.END_TURN,
                     new Usage(1, 1)));
           }

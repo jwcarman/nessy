@@ -46,13 +46,12 @@ public abstract class AgentSubscriberAdapter implements AgentSubscriber {
     switch (event) {
       case AgentEvent.TurnStarted e -> onTurnStarted(e);
       case AgentEvent.TextDelta e -> onTextDelta(e);
-      case AgentEvent.ThinkingDelta e -> onThinkingDelta(e);
-      case AgentEvent.RedactedThinking e -> onRedactedThinking(e);
+      case AgentEvent.ReasoningDelta e -> onReasoningDelta(e);
       case AgentEvent.ToolCallRequested e -> onToolCallRequested(e);
       case AgentEvent.ApprovalRequested e -> onApprovalRequested(e);
       case AgentEvent.ApprovalDecided e -> onApprovalDecided(e);
       case AgentEvent.ToolCallCompleted e -> onToolCallCompleted(e);
-      case AgentEvent.AssistantSaid e -> onAssistantSaid(e);
+      case AgentEvent.Answered e -> onAnswered(e);
       case AgentEvent.TurnEnded e -> onTurnEnded(e);
     }
   }
@@ -64,10 +63,7 @@ public abstract class AgentSubscriberAdapter implements AgentSubscriber {
   protected void onTextDelta(AgentEvent.TextDelta event) {}
 
   /** A chunk of the model's visible reasoning arrived from the stream. */
-  protected void onThinkingDelta(AgentEvent.ThinkingDelta event) {}
-
-  /** A complete redacted-thinking block arrived. */
-  protected void onRedactedThinking(AgentEvent.RedactedThinking event) {}
+  protected void onReasoningDelta(AgentEvent.ReasoningDelta event) {}
 
   /** The model asked for a tool. */
   protected void onToolCallRequested(AgentEvent.ToolCallRequested event) {}
@@ -82,7 +78,7 @@ public abstract class AgentSubscriberAdapter implements AgentSubscriber {
   protected void onToolCallCompleted(AgentEvent.ToolCallCompleted event) {}
 
   /** A settled assistant message. */
-  protected void onAssistantSaid(AgentEvent.AssistantSaid event) {}
+  protected void onAnswered(AgentEvent.Answered event) {}
 
   /** The turn ended. */
   protected void onTurnEnded(AgentEvent.TurnEnded event) {}

@@ -40,13 +40,12 @@ public final class AgentSubscriberConfig {
 
   private Consumer<AgentEvent.TurnStarted> onTurnStarted = event -> {};
   private Consumer<AgentEvent.TextDelta> onTextDelta = event -> {};
-  private Consumer<AgentEvent.ThinkingDelta> onThinkingDelta = event -> {};
-  private Consumer<AgentEvent.RedactedThinking> onRedactedThinking = event -> {};
+  private Consumer<AgentEvent.ReasoningDelta> onReasoningDelta = event -> {};
   private Consumer<AgentEvent.ToolCallRequested> onToolCallRequested = event -> {};
   private Consumer<AgentEvent.ApprovalRequested> onApprovalRequested = event -> {};
   private Consumer<AgentEvent.ApprovalDecided> onApprovalDecided = event -> {};
   private Consumer<AgentEvent.ToolCallCompleted> onToolCallCompleted = event -> {};
-  private Consumer<AgentEvent.AssistantSaid> onAssistantSaid = event -> {};
+  private Consumer<AgentEvent.Answered> onAnswered = event -> {};
   private Consumer<AgentEvent.TurnEnded> onTurnEnded = event -> {};
 
   AgentSubscriberConfig() {}
@@ -63,15 +62,9 @@ public final class AgentSubscriberConfig {
     return this;
   }
 
-  /** Adds a consumer for ThinkingDelta; registering twice chains rather than replaces. */
-  public AgentSubscriberConfig onThinkingDelta(Consumer<AgentEvent.ThinkingDelta> consumer) {
-    onThinkingDelta = onThinkingDelta.andThen(require(consumer));
-    return this;
-  }
-
-  /** Adds a consumer for RedactedThinking; registering twice chains rather than replaces. */
-  public AgentSubscriberConfig onRedactedThinking(Consumer<AgentEvent.RedactedThinking> consumer) {
-    onRedactedThinking = onRedactedThinking.andThen(require(consumer));
+  /** Adds a consumer for ReasoningDelta; registering twice chains rather than replaces. */
+  public AgentSubscriberConfig onReasoningDelta(Consumer<AgentEvent.ReasoningDelta> consumer) {
+    onReasoningDelta = onReasoningDelta.andThen(require(consumer));
     return this;
   }
 
@@ -102,9 +95,9 @@ public final class AgentSubscriberConfig {
     return this;
   }
 
-  /** Adds a consumer for AssistantSaid; registering twice chains rather than replaces. */
-  public AgentSubscriberConfig onAssistantSaid(Consumer<AgentEvent.AssistantSaid> consumer) {
-    onAssistantSaid = onAssistantSaid.andThen(require(consumer));
+  /** Adds a consumer for Answered; registering twice chains rather than replaces. */
+  public AgentSubscriberConfig onAnswered(Consumer<AgentEvent.Answered> consumer) {
+    onAnswered = onAnswered.andThen(require(consumer));
     return this;
   }
 
@@ -122,13 +115,12 @@ public final class AgentSubscriberConfig {
   AgentSubscriber build() {
     Consumer<AgentEvent.TurnStarted> turnStarted = onTurnStarted;
     Consumer<AgentEvent.TextDelta> textDelta = onTextDelta;
-    Consumer<AgentEvent.ThinkingDelta> thinkingDelta = onThinkingDelta;
-    Consumer<AgentEvent.RedactedThinking> redactedThinking = onRedactedThinking;
+    Consumer<AgentEvent.ReasoningDelta> thinkingDelta = onReasoningDelta;
     Consumer<AgentEvent.ToolCallRequested> toolCallRequested = onToolCallRequested;
     Consumer<AgentEvent.ApprovalRequested> approvalRequested = onApprovalRequested;
     Consumer<AgentEvent.ApprovalDecided> approvalDecided = onApprovalDecided;
     Consumer<AgentEvent.ToolCallCompleted> toolCallCompleted = onToolCallCompleted;
-    Consumer<AgentEvent.AssistantSaid> assistantSaid = onAssistantSaid;
+    Consumer<AgentEvent.Answered> assistantSaid = onAnswered;
     Consumer<AgentEvent.TurnEnded> turnEnded = onTurnEnded;
     return new AgentSubscriberAdapter() {
 
@@ -143,13 +135,8 @@ public final class AgentSubscriberConfig {
       }
 
       @Override
-      protected void onThinkingDelta(AgentEvent.ThinkingDelta event) {
+      protected void onReasoningDelta(AgentEvent.ReasoningDelta event) {
         thinkingDelta.accept(event);
-      }
-
-      @Override
-      protected void onRedactedThinking(AgentEvent.RedactedThinking event) {
-        redactedThinking.accept(event);
       }
 
       @Override
@@ -173,7 +160,7 @@ public final class AgentSubscriberConfig {
       }
 
       @Override
-      protected void onAssistantSaid(AgentEvent.AssistantSaid event) {
+      protected void onAnswered(AgentEvent.Answered event) {
         assistantSaid.accept(event);
       }
 

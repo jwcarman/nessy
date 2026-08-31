@@ -371,7 +371,7 @@ class AnthropicStreamTest {
 
       assertThat(modelEvents)
           .containsExactly(
-              new ModelEvent.ThinkingChunk("Let me think"),
+              new ModelEvent.ReasoningChunk("Let me think"),
               new ModelEvent.ThinkingSigned("sig-123"),
               new ModelEvent.Stopped(StopReason.END_TURN, new Usage(20, 8, 0, 0)));
     }

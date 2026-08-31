@@ -41,9 +41,8 @@ import org.jwcarman.nessy.api.block.AssistantContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -132,8 +131,8 @@ class ToolCallTest {
           ObjectNode arguments = JsonNodeFactory.instance.objectNode();
           arguments.put("text", "the kitchen");
           return Scripts.saying(
-              new ModelResult.Replied(
-                  new AssistantMessage(
+              new ModelResult.Answered(
+                  new AnswerMessage(
                       List.of(
                           (AssistantContentBlock)
                               new ToolCallBlock(new ToolCall("c1", "look_up", arguments)))),
@@ -142,8 +141,8 @@ class ToolCallTest {
         }
         String heard = request.context().messages().size() + " messages seen";
         return Scripts.saying(
-            new ModelResult.Replied(
-                new AssistantMessage(List.of(new TextBlock(heard))),
+            new ModelResult.Answered(
+                new AnswerMessage(List.of(new TextBlock(heard))),
                 StopReason.END_TURN,
                 new Usage(1, 1)));
       }
@@ -225,7 +224,7 @@ class ToolCallTest {
             () -> {
               Context context = memory.recall(AgentId.of("house-12"));
               assertThat(context.messages()).hasSize(4);
-              assertThat(context.messages().get(1)).isInstanceOf(AssistantMessage.class);
+              assertThat(context.messages().get(1)).isInstanceOf(AnswerMessage.class);
               assertThat(context.messages().get(2)).isInstanceOf(ToolResultMessage.class);
               ToolResultMessage results = (ToolResultMessage) context.messages().get(2);
               assertThat(results.blocks()).hasSize(1);
@@ -250,11 +249,11 @@ class ToolCallTest {
                   .extracting(event -> event.getClass().getSimpleName())
                   .containsSubsequence(
                       "TurnStarted",
-                      "AssistantSaid",
+                      "Answered",
                       "ToolCallRequested",
                       "ApprovalDecided",
                       "ToolCallCompleted",
-                      "AssistantSaid",
+                      "Answered",
                       "TurnEnded");
             });
   }
