@@ -29,6 +29,9 @@ import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.memory.notebook.SubstrateNotebook;
 import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
+import org.jwcarman.nessy.memory.plan.PlanStore;
+import org.jwcarman.nessy.memory.plan.PlanTools;
+import org.jwcarman.nessy.memory.plan.SubstratePlanStore;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -61,6 +64,9 @@ public class ChatConfiguration {
       remember it as a note. Your notes appear as an index in every conversation; read one in \
       full with the recall tool when it is relevant.
 
+      For work that takes several steps, write a plan with the update_plan tool and keep it \
+      current as you go. The plan you are holding appears in every message.
+
       When a question turns on today's date or on counting days, use the days_until tool rather \
       than working it out yourself.
 
@@ -85,6 +91,12 @@ public class ChatConfiguration {
     return new SubstrateNotebook(substrate, TYPE);
   }
 
+  /** Where the agent keeps the multi-step work it has committed to. */
+  @Bean
+  public PlanStore planStore(Substrate substrate) {
+    return new SubstratePlanStore(substrate, TYPE);
+  }
+
   /**
    * The harness, declared here rather than taken from the starter because this application gates a
    * tool — and an approver is a decision about THIS application's policy, which the starter cannot
@@ -97,7 +109,8 @@ public class ChatConfiguration {
       SendEmailTool email,
       Approver desk,
       Memory memory,
-      Notebook notebook) {
+      Notebook notebook,
+      PlanStore plans) {
     return factory.createHarness(
         String.class,
         config ->
@@ -111,6 +124,7 @@ public class ChatConfiguration {
                 .tool(NotebookTools.remember(notebook))
                 .tool(NotebookTools.recall(notebook))
                 .tool(NotebookTools.forget(notebook))
+                .tool(PlanTools.updatePlan(plans))
                 .tool(
                     email,
                     binding ->
@@ -139,18 +153,22 @@ public class ChatConfiguration {
   /**
    * What the agent remembers, and what it is shown.
    *
-   * <p>The transcript, plus one stage that puts the notebook's index in front of the model. The
-   * index is background — an {@code AmbientMessage} — so it is rebuilt on every call and never
-   * written to the transcript: the model always sees the notes as they stand now, and the record
+   * <p>The transcript, plus two stages: the notebook's index and the current plan. Both are
+   * background — {@code AmbientMessage}s — so they are rebuilt on every call and never written to
+   * the transcript: the model always sees the notes and the plan as they stand now, and the record
    * stays a record of what happened.
+   *
+   * <p>The index carries hooks only, because bodies are large and the model can ask. The plan
+   * carries every task, because a task list is small and a plan you can only see the headings of is
+   * not a plan you can stick to.
    *
    * <p>Eternal on purpose: a browser chat is short, and losing the start of it would be more
    * surprising than a long context. A long-lived agent wants {@code TranscriptMemory.recent}.
    */
   @Bean
-  public Memory memory(Substrate substrate, Notebook notebook) {
+  public Memory memory(Substrate substrate, Notebook notebook, PlanStore plans) {
     return MemoryPipeline.of(
         TranscriptMemory.eternal(substrate, TYPE),
-        pipeline -> pipeline.stage(NotebookTools.index(notebook)));
+        pipeline -> pipeline.stage(NotebookTools.index(notebook)).stage(PlanTools.plan(plans)));
   }
 }
