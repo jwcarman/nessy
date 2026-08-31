@@ -1,0 +1,232 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.console;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.TurnResult;
+import org.jwcarman.nessy.api.model.Usage;
+
+@DisplayName("A terminal conversation")
+class ReplLoopTest {
+
+  private static final AgentId AGENT = AgentId.of("cli");
+
+  private static AgentEvent said(String text) {
+    return new AgentEvent.TextDelta("e", text);
+  }
+
+  private static AgentEvent ended() {
+    return new AgentEvent.TurnEnded("e", new TurnResult.Completed(), Usage.unreported());
+  }
+
+  private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
+    new ReplLoop(harness, AGENT, config, console).run();
+  }
+
+  private static ReplConfig config() {
+    return new ReplConfig();
+  }
+
+  @Test
+  void what_is_typed_reaches_the_agent() {
+    FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+    FakeConsole console = new FakeConsole("hello there", "quit");
+
+    run(harness, console, config());
+
+    assertThat(harness.observed()).containsExactly("hello there");
+  }
+
+  @Test
+  void what_the_agent_says_is_printed_as_it_arrives() {
+    FakeHarness harness = new FakeHarness(List.of(said("Hel"), said("lo."), ended()));
+    FakeConsole console = new FakeConsole("hi", "quit");
+
+    run(harness, console, config());
+
+    assertThat(console.written()).contains("Hello.");
+  }
+
+  /**
+   * The one thing that makes this a REPL rather than a fire-and-forget: a person is not asked to
+   * type over a reply still being written. A turn that never ends would hang here, which is why the
+   * fake always ends one.
+   */
+  @Test
+  @DisplayName("the next prompt waits for the turn to end")
+  void the_prompt_does_not_return_until_the_turn_ends() {
+    FakeHarness harness =
+        new FakeHarness(List.of(said("first"), ended()), List.of(said("second"), ended()));
+    FakeConsole console = new FakeConsole("one", "two", "quit");
+
+    run(harness, console, config());
+
+    assertThat(harness.observed()).containsExactly("one", "two");
+    assertThat(console.written().indexOf("first")).isLessThan(console.written().indexOf("second"));
+  }
+
+  @Test
+  @DisplayName("it starts listening before it says anything")
+  void it_subscribes_so_the_first_answer_is_not_missed() {
+    FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+
+    run(harness, new FakeConsole("quit"), config());
+
+    assertThat(harness.wasListenedTo()).isTrue();
+  }
+
+  /**
+   * An unclosed subscription leaves a routing entry behind, and an engine narrating into a REPL
+   * that has left is how a clean exit turns into a warning about dropped messages.
+   */
+  @Test
+  @DisplayName("and stops listening on the way out")
+  void it_closes_its_subscription() {
+    FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+
+    run(harness, new FakeConsole("quit"), config());
+
+    assertThat(harness.isListenedTo()).isFalse();
+  }
+
+  @Nested
+  @DisplayName("leaving")
+  class Leaving {
+
+    @Test
+    void an_exit_word_ends_the_loop_without_reaching_the_agent() {
+      FakeHarness harness = new FakeHarness();
+
+      run(harness, new FakeConsole("quit", "this is never read"), config());
+
+      assertThat(harness.observed()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("end of input ends it too, whatever the exit words say")
+    void end_of_input_ends_the_loop() {
+      FakeHarness harness = new FakeHarness();
+
+      run(harness, new FakeConsole(), config().exitOn("stop"));
+
+      assertThat(harness.observed()).isEmpty();
+    }
+
+    @Test
+    void a_configured_word_replaces_the_defaults() {
+      FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+      FakeConsole console = new FakeConsole("stop");
+
+      run(harness, console, config().exitOn("stop"));
+
+      assertThat(harness.observed()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a default word stops being one once others are named")
+    void quit_is_just_a_line_when_the_exit_words_are_replaced() {
+      FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+      FakeConsole console = new FakeConsole("quit", "stop");
+
+      run(harness, console, config().exitOn("stop"));
+
+      assertThat(harness.observed()).containsExactly("quit");
+    }
+
+    @Test
+    void the_farewell_is_printed_on_the_way_out() {
+      FakeConsole console = new FakeConsole("quit");
+
+      run(new FakeHarness(), console, config().farewell("bye."));
+
+      // Last, because it is the last thing a person sees.
+      assertThat(console.written()).endsWith("bye." + System.lineSeparator());
+    }
+
+    @Test
+    @DisplayName("an unset farewell prints nothing")
+    void is_absent_by_default() {
+      FakeConsole console = new FakeConsole("quit");
+
+      run(new FakeHarness(), console, config());
+
+      assertThat(console.written()).doesNotContain("bye");
+    }
+  }
+
+  @Nested
+  class Blank_lines {
+
+    @Test
+    @DisplayName("a blank line prompts again rather than asking the model about nothing")
+    void a_blank_line_is_not_an_observation() {
+      FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+      FakeConsole console = new FakeConsole("", "   ", "something", "quit");
+
+      run(harness, console, config());
+
+      assertThat(harness.observed()).containsExactly("something");
+    }
+  }
+
+  @Nested
+  class The_banner {
+
+    @Test
+    void is_printed_once_before_the_first_prompt() {
+      FakeConsole console = new FakeConsole("quit");
+
+      run(new FakeHarness(), console, config().banner("nessy chat"));
+
+      assertThat(console.written().indexOf("nessy chat"))
+          .isLessThan(console.written().indexOf("> "));
+    }
+
+    @Test
+    @DisplayName("an unset banner prints nothing at all")
+    void is_absent_by_default() {
+      FakeConsole console = new FakeConsole("quit");
+
+      run(new FakeHarness(), console, config());
+
+      assertThat(console.written().strip()).isEqualTo(">");
+    }
+  }
+
+  @Test
+  @DisplayName("a tool call says so, because a silent pause looks like a hang")
+  void tool_calls_are_announced() {
+    FakeHarness harness =
+        new FakeHarness(
+            List.of(
+                new AgentEvent.ToolCallRequested("e", "c1", "days_until", "counting days"),
+                new AgentEvent.ToolCallCompleted(
+                    "e", "c1", "days_until", org.jwcarman.nessy.api.tool.ToolResult.ok("116 days")),
+                ended()));
+    FakeConsole console = new FakeConsole("when is christmas", "quit");
+
+    run(harness, console, config());
+
+    assertThat(console.written()).contains("calling days_until").contains("days_until answered");
+  }
+}

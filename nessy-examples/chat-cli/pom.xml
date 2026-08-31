@@ -54,17 +54,13 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-engine</artifactId>
+      <artifactId>nessy-console</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <!-- Discovery picks the provider; the adapters on the classpath are what it can pick FROM.
          Three of them, so one command runs against any of four vendors (xAI rides in the OpenAI
          module, being that wire at a different URL). Bedrock is deliberately not discoverable:
          ambient AWS credentials mean someone once deployed something, not that they chose it. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-discovery</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>
@@ -81,17 +77,6 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- The engine keeps agent and turn state in Pekko's durable-state store, and there is no
-         default. A CLI demo has nowhere to put a database, so it uses the in-memory one: state
-         lives for exactly as long as the process, which is the honest shape for a REPL. -->
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_2.13</artifactId>
-    </dependency>
   </dependencies>
 
   <build>

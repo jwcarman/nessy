@@ -65,6 +65,7 @@
     <module>nessy-model-gemini</module>
     <module>nessy-model-bedrock</module>
     <module>nessy-model-discovery</module>
+    <module>nessy-console</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-spring-boot-starter</module>
