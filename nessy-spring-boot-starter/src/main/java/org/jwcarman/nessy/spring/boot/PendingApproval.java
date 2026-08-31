@@ -19,48 +19,44 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * One row of the pending-approvals projection (watchman spec §1.3): an approval that parked, and —
- * once the desk has answered and the fold has published the fact — how it was answered.
+ * One row of the pending-approvals projection: an approval waiting on a person, and — once someone
+ * has answered — how they answered.
  *
- * <p>A row, not a truth. The phase is the ledger; this is a queryable shadow of it, kept so that a
- * page can ask "what is waiting?", which is a question no door in Nessy answers: the desk answers
- * by id or coordinates, the Continuum client has no read door, and the phase is per agent.
+ * <p>A row, not a truth. It is a queryable shadow kept so a page can ask "what is waiting?", which
+ * is a question no door in Nessy answers: a harness observes and subscribes, and what a turn
+ * persists is its phase, not the question an approver parked on.
  *
- * @param computationId the parked approval's computation id — the row's key, and what {@code
- *     ApprovalDesk#approve(ComputationId, String, String)} takes
- * @param agentType the recipe the parked call belongs to
- * @param agentId the scope the parked call belongs to
- * @param toolCallId the tool call's id within its turn — the second half of the desk's coordinate
- *     door
- * @param action the {@code ActionContributor}'s rendered line: what will actually happen if this is
- *     approved, frozen at enrichment
- * @param requestJson the whole frozen {@link org.jwcarman.nessy.api.tool.approval.ApprovalRequest}
- *     as JSON — the evidence the decision was made on
- * @param parkedAt when the projection SAW the park's fact — not when the call parked. Nothing in
- *     the fact or the transition carries a time, so this is the observer's own clock at the moment
- *     it wrote the row (see {@code PendingApprovals}'s own note). Usually milliseconds later; after
- *     a backlog or a re-delivery, longer. Empty only in the out-of-order case where the answer's
- *     fact arrived before the park's
- * @param answer {@code "approved"} or {@code "denied"}, or empty while it is still waiting
- * @param reference the answer's opaque pointer into whatever system produced it, if it carried one
+ * @param callId the tool call's id within its turn — the row's key, and what an answer settles
+ * @param agentType the kind of agent the parked call belongs to
+ * @param agentId the agent the parked call belongs to
+ * @param tool which tool was called
+ * @param action what will actually happen if this is approved, as the tool's describer rendered it
+ * @param askedAt when the projection SAW the question — not when the approver parked. Narration
+ *     carries no timestamp, so this is the observer's own clock at the moment it wrote the row
+ * @param expiresAt when the question stops standing, so a page can show urgency and stop offering a
+ *     button that would no longer be honoured
+ * @param replyToken where an answer goes. Stored deliberately: it is how a page answers a call
+ *     minutes or days after the process that asked has forgotten it. Sealed with the application's
+ *     own key, in the application's own table
+ * @param answer {@code "approved"} or {@code "denied"}, or empty while still waiting
  * @param note a denial's reason; empty for approvals and for rows still waiting
- * @param answeredAt when the answer's fact was applied, or empty while it is still waiting
+ * @param answeredAt when the answer was seen, or empty while still waiting
  */
 public record PendingApproval(
-    String computationId,
-    Optional<String> agentType,
-    Optional<String> agentId,
-    Optional<String> toolCallId,
-    Optional<String> action,
-    Optional<String> requestJson,
-    Optional<Instant> parkedAt,
+    String callId,
+    String agentType,
+    String agentId,
+    String tool,
+    String action,
+    Instant askedAt,
+    Instant expiresAt,
+    String replyToken,
     Optional<String> answer,
-    Optional<String> reference,
     Optional<String> note,
     Optional<Instant> answeredAt) {
 
-  /** Still waiting: nobody has answered, and the park's own facts did arrive. */
-  public boolean isPending() {
-    return answer.isEmpty() && requestJson.isPresent();
+  /** Whether this row is still waiting on a person. */
+  public boolean waiting() {
+    return answer.isEmpty();
   }
 }

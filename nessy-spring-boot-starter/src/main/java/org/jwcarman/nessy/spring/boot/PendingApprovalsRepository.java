@@ -26,34 +26,33 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
- * The read side of the pending-approvals projection (watchman spec §1.3): the two questions a page
- * asks.
+ * The read and write sides of the pending-approvals projection: the questions a page asks, and the
+ * rows {@link PendingApprovalsListener} writes as it hears them.
  *
- * <p>Read-only by construction. Answering an approval is {@code ApprovalDesk}'s job and nobody
- * else's — a row here changes because the fold published a fact, never because someone wrote to it.
+ * <p>Durable on purpose. An in-memory map would be simpler and would lose every waiting question on
+ * restart — and an approval that a human has not answered yet is exactly the thing most likely to
+ * outlive the process that asked it.
  */
 public class PendingApprovalsRepository {
 
   private static final String COLUMNS =
-      "computation_id, agent_type, agent_id, call_id, action, request_json::text AS request_json,"
-          + " parked_at, answer, reference, note, answered_at";
+      "call_id, agent_type, agent_id, tool, action, asked_at, expires_at, reply_token, answer,"
+          + " note, answered_at";
 
   private static final String PENDING =
-      "SELECT "
-          + COLUMNS
-          + " FROM nessy_pending_approvals"
-          + " WHERE answer IS NULL AND request_json IS NOT NULL"
-          + " ORDER BY parked_at ASC";
+      "SELECT " + COLUMNS + " FROM nessy_pending_approvals WHERE answer IS NULL ORDER BY asked_at";
 
-  private static final String RECENT =
-      "SELECT "
-          + COLUMNS
-          + " FROM nessy_pending_approvals"
-          + " WHERE answer IS NOT NULL"
-          + " ORDER BY answered_at DESC"
-          + " LIMIT ?";
+  private static final String BY_CALL =
+      "SELECT " + COLUMNS + " FROM nessy_pending_approvals WHERE call_id = ?";
 
-  private static final RowMapper<PendingApproval> ROWS = PendingApprovalsRepository::toApproval;
+  private static final String INSERT =
+      "INSERT INTO nessy_pending_approvals (call_id, agent_type, agent_id, tool, action, asked_at,"
+          + " expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+          + " ON CONFLICT (call_id) DO NOTHING";
+
+  private static final String ANSWER =
+      "UPDATE nessy_pending_approvals SET answer = ?, note = ?, answered_at = ?"
+          + " WHERE call_id = ? AND answer IS NULL";
 
   private final JdbcTemplate jdbc;
 
@@ -61,51 +60,55 @@ public class PendingApprovalsRepository {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
   }
 
-  /**
-   * Everything still waiting for an answer, longest wait first — the page's whole content.
-   *
-   * <p>A row is only pending once its park's own fact has landed. The stream does not promise
-   * commit order, so a row can exist carrying an answer and nothing else; it is not pending, it is
-   * a half-written answer, and the {@code request_json IS NOT NULL} filter keeps it off the page
-   * until the park catches up.
-   */
+  /** Everything still waiting on a person, oldest first. */
   public List<PendingApproval> pending() {
-    return jdbc.query(PENDING, ROWS);
+    return jdbc.query(PENDING, MAPPER);
+  }
+
+  /** One row by call id, answered or not. */
+  public Optional<PendingApproval> byCallId(String callId) {
+    return jdbc.query(BY_CALL, MAPPER, callId).stream().findFirst();
   }
 
   /**
-   * The last {@code limit} answered approvals, most recently answered first — the audit view.
-   *
-   * @param limit how many rows at most; must be positive
+   * Records a question. Idempotent by call id, which matters: a recovered turn re-runs the calls it
+   * never settled, so the same question is asked again and must not become a second row.
    */
-  public List<PendingApproval> recent(int limit) {
-    if (limit < 1) {
-      throw new IllegalArgumentException("limit must be at least 1");
-    }
-    return jdbc.query(RECENT, ROWS, limit);
+  public void asked(PendingApproval row) {
+    jdbc.update(
+        INSERT,
+        row.callId(),
+        row.agentType(),
+        row.agentId(),
+        row.tool(),
+        row.action(),
+        Timestamp.from(row.askedAt()),
+        Timestamp.from(row.expiresAt()),
+        row.replyToken());
   }
 
-  private static PendingApproval toApproval(ResultSet row, int rowNumber) throws SQLException {
+  /**
+   * Records an answer, if the row is still waiting. A second answer changes nothing — the engine
+   * settles a call once, and a late click on a stale page must not overwrite what was decided.
+   */
+  public void answered(String callId, String answer, String note, Instant when) {
+    jdbc.update(ANSWER, answer, note, Timestamp.from(when), callId);
+  }
+
+  private static final RowMapper<PendingApproval> MAPPER = PendingApprovalsRepository::map;
+
+  private static PendingApproval map(ResultSet row, int rowNumber) throws SQLException {
     return new PendingApproval(
-        row.getString("computation_id"),
-        text(row, "agent_type"),
-        text(row, "agent_id"),
-        text(row, "call_id"),
-        text(row, "action"),
-        text(row, "request_json"),
-        moment(row, "parked_at"),
-        text(row, "answer"),
-        text(row, "reference"),
-        text(row, "note"),
-        moment(row, "answered_at"));
-  }
-
-  private static Optional<String> text(ResultSet row, String column) throws SQLException {
-    return Optional.ofNullable(row.getString(column));
-  }
-
-  private static Optional<Instant> moment(ResultSet row, String column) throws SQLException {
-    Timestamp timestamp = row.getTimestamp(column);
-    return Optional.ofNullable(timestamp).map(Timestamp::toInstant);
+        row.getString("call_id"),
+        row.getString("agent_type"),
+        row.getString("agent_id"),
+        row.getString("tool"),
+        row.getString("action"),
+        row.getTimestamp("asked_at").toInstant(),
+        row.getTimestamp("expires_at").toInstant(),
+        row.getString("reply_token"),
+        Optional.ofNullable(row.getString("answer")),
+        Optional.ofNullable(row.getString("note")),
+        Optional.ofNullable(row.getTimestamp("answered_at")).map(Timestamp::toInstant));
   }
 }

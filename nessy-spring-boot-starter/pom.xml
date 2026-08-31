@@ -33,6 +33,13 @@
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>org.apache.pekko</groupId>
+        <artifactId>pekko-bom_2.13</artifactId>
+        <version>${pekko.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <!-- Spring Boot's BOM, imported HERE rather than in the parent, and imported LAST.
            Both halves of that are load-bearing:
 
@@ -113,13 +120,13 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-agent</artifactId>
-      <version>${project.version}</version>
+      <artifactId>nessy-engine</artifactId>
     </dependency>
+    <!-- The starter builds the ActorSystem the engine runs on, so it names Pekko directly rather
+         than relying on nessy-engine's own dependency leaking through. -->
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-discovery</artifactId>
-      <version>${project.version}</version>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-actor-typed_2.13</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -139,11 +146,6 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-substrate-jdbc</artifactId>
       <version>${project.version}</version>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.continuum</groupId>
-      <artifactId>continuum-jdbc</artifactId>
       <optional>true</optional>
     </dependency>
     <!-- Boot's @ConfigurationProperties metadata, for IDE completion of the nessy.* keys. -->
@@ -170,6 +172,11 @@
           <artifactId>mockito-junit-jupiter</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pekko</groupId>
+      <artifactId>pekko-persistence-testkit_2.13</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>

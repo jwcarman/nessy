@@ -66,6 +66,7 @@
     <module>nessy-model-bedrock</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
+    <module>nessy-spring-boot-starter</module>
     <!-- THROWAWAY SPIKE (2026-08-27). Nothing depends on it; it is never installed or deployed. -->
     <module>nessy-spike-pekko</module>
     <module>nessy-spike-pekko-cluster</module>
@@ -317,6 +318,16 @@
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-testing</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-engine</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-substrate-jdbc</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

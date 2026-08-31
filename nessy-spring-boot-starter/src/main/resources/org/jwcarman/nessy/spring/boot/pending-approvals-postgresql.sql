@@ -14,44 +14,44 @@
 -- limitations under the License.
 --
 
--- The pending-approvals projection (watchman spec §1.3).
+-- The pending-approvals projection.
 --
 -- Applied by the APPLICATION — Flyway, Liquibase, or by hand — exactly like
--- nessy-substrate-jdbc's nessy-postgresql.sql and continuum-jdbc's
--- continuum-postgresql.sql. The starter ships the file and reads the table; it
--- never creates it, because schema is a deployment decision and a library that
--- silently runs DDL is a library that surprises somebody at 3am.
+-- nessy-substrate-jdbc's nessy-postgresql.sql. The starter ships the file and
+-- reads the table; it never creates it, because schema is a deployment decision
+-- and a library that silently runs DDL is a library that surprises somebody at
+-- 3am.
 --
--- This table is a PROJECTION, not a source of truth. It is at-least-once, it is
--- rebuilt from the harness fact stream, and losing it loses nothing: the phase
--- is the ledger. Approve and deny go through ApprovalDesk; a row changes when
--- the fold's fact arrives, not when a page posts a form.
+-- This table is a PROJECTION, not a source of truth, and it is rebuilt from the
+-- agent event stream: a recovered turn re-runs the calls it never settled, which
+-- asks its approver again and narrates the question again. Losing this table
+-- loses nothing that will not come back as the agents recover.
 --
--- Every column but computation_id is nullable on purpose. Facts for one scope
--- are NOT guaranteed to arrive in commit order (see HarnessObserver's contract),
--- so an answer can land before the park it answers. Both directions upsert, and
--- neither ever overwrites the other's columns.
+-- reply_token is stored deliberately. It is how a page answers a call minutes or
+-- days after the process that asked it has forgotten, and it is sealed with the
+-- application's own key. Treat this table as holding credentials: an attacker who
+-- can read it can approve anything still waiting.
 
 CREATE TABLE IF NOT EXISTS nessy_pending_approvals (
-    computation_id TEXT PRIMARY KEY,
-    agent_type     TEXT,
-    agent_id       TEXT,
-    call_id        TEXT,
-    action         TEXT,
-    request_json   JSONB,
-    parked_at      TIMESTAMPTZ,
-    answer         TEXT,
-    reference      TEXT,
-    note           TEXT,
-    answered_at    TIMESTAMPTZ
+    call_id      TEXT PRIMARY KEY,
+    agent_type   TEXT        NOT NULL,
+    agent_id     TEXT        NOT NULL,
+    tool         TEXT        NOT NULL,
+    action       TEXT        NOT NULL,
+    asked_at     TIMESTAMPTZ NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    reply_token  TEXT        NOT NULL,
+    answer       TEXT,
+    note         TEXT,
+    answered_at  TIMESTAMPTZ
 );
 
--- What the page asks for on every load: the unanswered rows, oldest park first.
+-- What the page asks for on every load: the unanswered rows, oldest question first.
 CREATE INDEX IF NOT EXISTS nessy_pending_approvals_waiting
-    ON nessy_pending_approvals (parked_at)
+    ON nessy_pending_approvals (asked_at)
     WHERE answer IS NULL;
 
--- What /recent asks for: the answered rows, newest answer first.
+-- What a "recently decided" view asks for: newest answer first.
 CREATE INDEX IF NOT EXISTS nessy_pending_approvals_answered
     ON nessy_pending_approvals (answered_at DESC)
     WHERE answer IS NOT NULL;
