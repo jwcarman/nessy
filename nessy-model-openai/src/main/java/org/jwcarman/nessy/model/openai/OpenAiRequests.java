@@ -36,14 +36,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.block.ToolResultContentBlock;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.AmbientMessage;
+import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.slf4j.Logger;
@@ -81,7 +83,7 @@ public final class OpenAiRequests {
           ChatCompletionMessageParam.ofSystem(
               ChatCompletionSystemMessageParam.builder().content(request.systemPrompt()).build()));
     }
-    for (Message message : request.context().messages()) {
+    for (ContextMessage message : request.context().messages()) {
       messages.addAll(toMessageParams(message));
     }
 
@@ -97,16 +99,37 @@ public final class OpenAiRequests {
     return builder.build();
   }
 
-  private static List<ChatCompletionMessageParam> toMessageParams(Message message) {
-    // Role is no longer carried on the message; the arm IS the role. A tool-result message is its
-    // own arm now rather than a user message that happens to hold tool results, which is why the
-    // mixed case below no longer needs to sort them apart.
+  /**
+   * One of our messages becomes as many of theirs as the wire needs.
+   *
+   * <p>An {@link ExchangeMessage} is where that matters: it is one value here and two messages
+   * there — an assistant turn carrying the calls, then a {@code tool} message per result. Splitting
+   * it is this adapter's job precisely because the split is OpenAI's shape and not ours.
+   *
+   * <p>Background lands in a system message. That is a per-vendor choice: another adapter may put
+   * it somewhere else entirely, and neither has to agree with this one.
+   */
+  private static List<ChatCompletionMessageParam> toMessageParams(ContextMessage message) {
     return switch (message) {
       case UserMessage user -> toUserRoleMessageParams(user.content());
-      case ToolResultMessage results -> toUserRoleMessageParams(results.blocks());
-      case AssistantMessage assistant ->
-          toAssistantMessageParam(assistant.content()).map(List::of).orElseGet(List::of);
+      case AmbientMessage ambient ->
+          List.of(
+              ChatCompletionMessageParam.ofSystem(
+                  ChatCompletionSystemMessageParam.builder()
+                      .content(concatenateText(ambient.content()))
+                      .build()));
+      case ExchangeMessage exchange -> toExchangeParams(exchange);
+      case AnswerMessage answer ->
+          toAssistantMessageParam(answer.content()).map(List::of).orElseGet(List::of);
     };
+  }
+
+  /** The assistant turn that made the calls, then one {@code tool} message per result. */
+  private static List<ChatCompletionMessageParam> toExchangeParams(ExchangeMessage exchange) {
+    var messages = new ArrayList<ChatCompletionMessageParam>();
+    toAssistantMessageParam(exchange.content()).ifPresent(messages::add);
+    exchange.results().stream().map(OpenAiRequests::toToolMessageParam).forEach(messages::add);
+    return messages;
   }
 
   /**
@@ -224,10 +247,20 @@ public final class OpenAiRequests {
     return Optional.of(ChatCompletionMessageParam.ofAssistant(builder.build()));
   }
 
+  /**
+   * The text of a message, as this wire understands text.
+   *
+   * <p>Commentary counts. Our grammar tells apart what the model said on its way to a call from
+   * what it said when answering; OpenAI has one notion of assistant text, so both render here.
+   * Dropping commentary would quietly delete "I'll look that up" from the conversation the model is
+   * shown next turn.
+   */
   private static String concatenateText(List<? extends Block> content) {
     var builder = new StringBuilder();
     for (Block block : content) {
       if (block instanceof TextBlock(String text)) {
+        builder.append(text);
+      } else if (block instanceof CommentaryBlock(String text)) {
         builder.append(text);
       }
     }

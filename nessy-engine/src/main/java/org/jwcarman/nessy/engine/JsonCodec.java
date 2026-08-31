@@ -15,9 +15,11 @@
  */
 package org.jwcarman.nessy.engine;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import org.jwcarman.codec.spi.Codec;
 
 /**
@@ -53,6 +55,37 @@ final class JsonCodec {
           return mapper.readValue(bytes, type);
         } catch (IOException e) {
           throw new UncheckedIOException("could not read " + type.getSimpleName(), e);
+        }
+      }
+    };
+  }
+
+  /**
+   * A codec for a list of a polymorphic type.
+   *
+   * <p>Needed because what a turn holds mid-exchange is CONTENT — the blocks the model asked with —
+   * and not a message: the message cannot exist until its results do. Jackson needs the element
+   * type named to resolve the discriminator on the way back in, which a raw {@code List.class}
+   * would not carry.
+   */
+  static <T> Codec<List<T>> ofList(ObjectMapper mapper, Class<T> element) {
+    JavaType type = mapper.getTypeFactory().constructCollectionType(List.class, element);
+    return new Codec<>() {
+      @Override
+      public byte[] encode(List<T> value) {
+        try {
+          return mapper.writerFor(type).writeValueAsBytes(value);
+        } catch (IOException e) {
+          throw new UncheckedIOException("could not write a list of " + element.getSimpleName(), e);
+        }
+      }
+
+      @Override
+      public List<T> decode(byte[] bytes) {
+        try {
+          return mapper.readerFor(type).readValue(bytes);
+        } catch (IOException e) {
+          throw new UncheckedIOException("could not read a list of " + element.getSimpleName(), e);
         }
       }
     };

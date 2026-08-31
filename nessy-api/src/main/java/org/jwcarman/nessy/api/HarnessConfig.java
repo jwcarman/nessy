@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBindingConfig;
@@ -71,4 +72,16 @@ public interface HarnessConfig<O> {
    * render on its own.
    */
   HarnessConfig<O> renderer(ObservationRenderer<O> renderer);
+
+  /**
+   * What this kind of agent remembers, and what it shows the model.
+   *
+   * <p>Unset, the engine supplies a bounded default and says so loudly at startup: the newest
+   * history that fits a character budget, and nothing else — no summarization, no retrieval, and
+   * the oldest turns forgotten. It exists so an agent keeps working, not because it is good.
+   *
+   * <p>Anything else is an implementation of {@link Memory}: a bigger budget, a summarizing
+   * bootstrap, a pipeline that adds ambient state such as a notebook index.
+   */
+  HarnessConfig<O> memory(Memory memory);
 }

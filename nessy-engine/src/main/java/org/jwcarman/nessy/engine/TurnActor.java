@@ -34,11 +34,11 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnResult;
+import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AssistantMessage;
-import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -111,8 +111,13 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   private final UserMessage input;
   private final ActorRef<NessyMessage> agent;
 
-  /** In flight, never persisted: the exchange being assembled. */
-  private AssistantMessage asked;
+  /**
+   * In flight, never persisted: the content of the exchange being assembled.
+   *
+   * <p>Content rather than a message, because an {@link ExchangeMessage} cannot be built until its
+   * results exist — which is the whole reason the calls are running.
+   */
+  private List<ExchangeContentBlock> asked;
 
   private final Map<String, ToolResult> settled = new LinkedHashMap<>();
 
@@ -122,8 +127,8 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
    */
   private final Map<String, ActorRef<ToolCallActor.Command>> inFlightCalls = new LinkedHashMap<>();
 
-  private static final org.jwcarman.codec.spi.Codec<AssistantMessage> ASKED =
-      JsonCodec.of(EngineMapper.INSTANCE, AssistantMessage.class);
+  private static final org.jwcarman.codec.spi.Codec<List<ExchangeContentBlock>> ASKED =
+      JsonCodec.ofList(EngineMapper.INSTANCE, ExchangeContentBlock.class);
 
   private static final org.jwcarman.codec.spi.Codec<ToolResult> ANSWERED =
       JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class);
@@ -300,11 +305,8 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     switch (event) {
       case ModelEvent.TextChunk chunk ->
           deps.narrator().narrate(new AgentEvent.TextDelta(Identifiers.next(), chunk.text()));
-      case ModelEvent.ThinkingChunk chunk ->
+      case ModelEvent.ReasoningChunk chunk ->
           deps.narrator().narrate(new AgentEvent.ThinkingDelta(Identifiers.next(), chunk.text()));
-      case ModelEvent.RedactedThinkingEmitted redacted ->
-          deps.narrator()
-              .narrate(new AgentEvent.RedactedThinking(Identifiers.next(), redacted.data()));
       default -> {
         // Assembled into the message, or narrated by whoever owns the fact.
       }
@@ -323,18 +325,19 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       count(refused.usage().inputTokens(), refused.usage().outputTokens());
       return finish(new TurnResult.Refused(refused.category(), refused.explanation()));
     }
-    ModelResult.Replied replied = (ModelResult.Replied) command.result();
-    count(replied.usage().inputTokens(), replied.usage().outputTokens());
-    deps.narrator().narrate(new AgentEvent.AssistantSaid(Identifiers.next(), replied.message()));
-    List<ToolCall> calls = toolCallsIn(replied.message());
-    if (calls.isEmpty()) {
-      deps.memory().remember(agentId, replied.message());
+    if (command.result() instanceof ModelResult.Answered answered) {
+      count(answered.usage().inputTokens(), answered.usage().outputTokens());
+      deps.narrator().narrate(new AgentEvent.AssistantSaid(Identifiers.next(), answered.message()));
+      deps.memory().remember(agentId, answered.message());
       return finish(
-          replied.stopReason() == StopReason.MAX_TOKENS
+          answered.stopReason() == StopReason.MAX_TOKENS
               ? new TurnResult.Truncated()
               : new TurnResult.Completed());
     }
-    asked = replied.message();
+    ModelResult.Asked wants = (ModelResult.Asked) command.result();
+    count(wants.usage().inputTokens(), wants.usage().outputTokens());
+    List<ToolCall> calls = toolCallsIn(wants.content());
+    asked = wants.content();
     settled.clear();
     // Claimed before anything runs. The asking message is what pins the CALL IDS: without it a
     // recovered turn would have to ask the model again, get fresh ids, and re-run tools whose
@@ -411,7 +414,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   private void completeExchange(Phase.WorkingTools working) {
     List<ToolResultBlock> blocks =
         working.callIds().stream().map(id -> ToolResultBlock.of(id, settled.get(id))).toList();
-    deps.memory().remember(agentId, asked, new ToolResultMessage(blocks));
+    deps.memory().remember(agentId, new ExchangeMessage(asked, blocks));
     asked = null;
     settled.clear();
   }
@@ -528,8 +531,8 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
         .findFirst();
   }
 
-  private static List<ToolCall> toolCallsIn(AssistantMessage message) {
-    return message.content().stream()
+  private static List<ToolCall> toolCallsIn(List<ExchangeContentBlock> content) {
+    return content.stream()
         .filter(ToolCallBlock.class::isInstance)
         .map(block -> ((ToolCallBlock) block).call())
         .toList();

@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -50,6 +51,18 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * whoever asked for a harness.
  */
 public final class PekkoHarnessFactory implements HarnessFactory {
+
+  private static final org.slf4j.Logger LOG =
+      org.slf4j.LoggerFactory.getLogger(PekkoHarnessFactory.class);
+
+  /**
+   * The default memory's budget, in characters.
+   *
+   * <p>Arbitrary, and chosen to be SAFE rather than optimal: roughly 25k tokens, which leaves room
+   * for a system prompt, tool schemas and an answer inside every current model's window. An
+   * application that knows its own shape supplies its own memory.
+   */
+  private static final int DEFAULT_MEMORY_CHARACTERS = 100_000;
 
   private final ActorSystem<?> system;
   private final Substrate substrate;
@@ -121,7 +134,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     Codec<O> codec = substrate.codecs().create(observationType);
     StateTypes.of(system).register(type, observationType);
 
-    Memory memory = new Transcripts(substrate, type);
+    Memory memory = memoryFor(config, type);
     Claims claims = new Claims(substrate);
     Model model = models.model(config.modelId());
     ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
@@ -190,5 +203,27 @@ public final class PekkoHarnessFactory implements HarnessFactory {
       ClusterSharding sharding, EntityTypeKey<NarrationActor.Command> key, AgentId agentId) {
     return (AgentEvent event) ->
         sharding.entityRefFor(key, agentId.value()).tell(new NarrationActor.Narrate(event));
+  }
+
+  /**
+   * What the application asked for, or a default that keeps working.
+   *
+   * <p>The default is announced rather than assumed. It is chosen so an agent does not eventually
+   * stop — not because it is a good memory — and the difference matters enough to say out loud
+   * once, the same way an in-memory substrate does.
+   */
+  private <O> Memory memoryFor(EngineHarnessConfig<O> config, AgentType type) {
+    Memory supplied = config.memory();
+    if (supplied != null) {
+      return supplied;
+    }
+    LOG.warn(
+        "NESSY IS USING THE DEFAULT MEMORY for agent type '{}': the newest ~{} characters of"
+            + " history and nothing else — no summarization, no retrieval, and the oldest turns are"
+            + " simply forgotten. Supply one via HarnessConfig.memory for anything that is not a"
+            + " demo.",
+        type.name(),
+        DEFAULT_MEMORY_CHARACTERS);
+    return TranscriptMemory.recent(substrate, type, DEFAULT_MEMORY_CHARACTERS);
   }
 }

@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
+import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -47,6 +48,7 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
   private ModelId modelId;
   private BacklogCoalescer<O> coalescer = (waiting, arrival) -> append(waiting, arrival);
   private ObservationRenderer<O> renderer;
+  private Memory memory;
   private final List<ToolBinding<?>> bindings = new ArrayList<>();
 
   private static <O> List<org.jwcarman.nessy.api.backlog.BacklogItem<O>> append(
@@ -97,6 +99,12 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
   }
 
   @Override
+  public HarnessConfig<O> memory(Memory memory) {
+    this.memory = java.util.Objects.requireNonNull(memory, "memory must not be null");
+    return this;
+  }
+
+  @Override
   public HarnessConfig<O> renderer(ObservationRenderer<O> renderer) {
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     return this;
@@ -132,6 +140,11 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
 
   BacklogCoalescer<O> backlogCoalescer() {
     return coalescer;
+  }
+
+  /** What the application supplied, or null when it left the choice to us. */
+  Memory memory() {
+    return memory;
   }
 
   List<ToolBinding<?>> toolBindings() {
