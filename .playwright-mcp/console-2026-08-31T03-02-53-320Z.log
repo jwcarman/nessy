@@ -12,3 +12,11 @@
 [ 6761132ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/api/login/ping:0
 [ 6762346ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
 [ 6764000ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6997309ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6997313ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/api/login/ping:0
+[ 6998007ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 6999790ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 7189626ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 7189630ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:3000/api/login/ping:0
+[ 7190407ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280
+[ 7192661ms] [ERROR] WebSocket connection to 'ws://localhost:3000/api/live/ws' failed: Error during WebSocket handshake: net::ERR_CONNECTION_RESET @ http://localhost:3000/public/build/1591-react19.c8d5e532991b209273a0.js:280

@@ -197,6 +197,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
             .inSpan(
                 "turn " + command.getClass().getSimpleName(),
                 carried,
+                tagsFor(command),
                 () -> {
                   deps.traces().detail("nessy.agent.id", agentId.value());
                   deps.traces().detail("nessy.turn.id", turnId);
@@ -378,6 +379,10 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
    * correct but wasteful; parking them in claims is the outstanding piece.
    */
   private Effect<TurnState> onToolSettled(TurnState state, ToolSettled command) {
+    // Which tool, and whether the model can act on the answer. A span called "turn ToolSettled"
+    // with nothing on it says only that SOMETHING finished — useless in a turn that called three
+    // tools, which is the turn you are looking at a trace for.
+    describeSettlement(command);
     settled.put(command.callId(), command.result());
     inFlightCalls.remove(command.callId());
     deps.claims()
@@ -460,6 +465,50 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
         // fresh root, which is what made an entire trace appear under "agent receive Wake".
         .thenRun(ignored -> agent.tell(new NessyMessage.TurnFinished(turnId, carried)))
         .thenStop();
+  }
+
+  /**
+   * What a command's span should say about itself, known BEFORE it starts.
+   *
+   * <p>Up front because a low-cardinality key added after an observation starts never reaches the
+   * span — measured: writing these from inside the handler produced a span carrying nothing but
+   * agent and turn ids, while the high-cardinality keys written beside them arrived fine. They
+   * become metric tags, and a meter's tag set has to be known when the meter is created.
+   *
+   * <p>Which matters here because "turn ToolSettled" with nothing on it says only that SOMETHING
+   * finished, and the turn worth opening a trace for is the one that called three tools.
+   */
+  private Map<String, String> tagsFor(Command command) {
+    if (!(command instanceof ToolSettled settled)) {
+      return Map.of();
+    }
+    Map<String, String> tags = new java.util.HashMap<>();
+    nameOf(settled.callId()).ifPresent(name -> tags.put("gen_ai.tool.name", name));
+    tags.put(
+        "nessy.tool.outcome",
+        settled.result() instanceof ToolResult.Success ? "success" : "failure");
+    return Map.copyOf(tags);
+  }
+
+  /** The unbounded half: on the span, never on a meter. */
+  private void describeSettlement(ToolSettled command) {
+    deps.traces().detail("gen_ai.tool.call.id", command.callId());
+    if (command.result() instanceof ToolResult.Failure failure) {
+      // A failure the model was told about is a fact about the round; finding it should not mean
+      // reading the transcript.
+      deps.traces().detail("nessy.tool.failure", failure.message());
+    }
+  }
+
+  /** The tool a call id belongs to, from what the model asked for. */
+  private java.util.Optional<String> nameOf(String callId) {
+    if (asked == null) {
+      return java.util.Optional.empty();
+    }
+    return toolCallsIn(asked).stream()
+        .filter(call -> call.id().equals(callId))
+        .map(ToolCall::name)
+        .findFirst();
   }
 
   private static List<ToolCall> toolCallsIn(AssistantMessage message) {

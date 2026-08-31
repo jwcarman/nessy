@@ -63,9 +63,9 @@ public final class Traces {
   /**
    * This context, flattened to something a message can carry. Empty when nothing is being traced.
    *
-   * <p>{@code what} names the message being sent, because a span called "send" tells a reader
-   * nothing. It is the message TYPE and never an id — the protocol is sealed, so the cardinality is
-   * bounded by the compiler.
+   * <p>{@code actor} is the destination and {@code what} the message, because a span called "send"
+   * tells a reader nothing. It is the message TYPE and never an id — the protocol is sealed, so the
+   * cardinality is bounded by the compiler.
    *
    * <p>A PRODUCER observation, briefly opened and closed, is what fills the carrier: the tracing
    * bridge's sender handler injects on start. Pairing it with the CONSUMER observation {@link
@@ -76,15 +76,19 @@ public final class Traces {
    * duration of its handler, so "current" is already correct at any send site inside an actor —
    * which keeps parentage ambient instead of threading an envelope through by hand.
    */
-  public Map<String, String> capture(String what) {
+  public Map<String, String> capture(String actor, String what) {
     Map<String, String> headers = new HashMap<>();
     SenderContext<Map<String, String>> sending =
         new SenderContext<>((carrier, key, value) -> carrier.put(key, value), Kind.PRODUCER);
     sending.setCarrier(headers);
-    Observation.createNotStarted("send " + what, () -> sending, registry)
+    // Destination is WHO it goes to, per messaging semconv; the message type is its own key.
+    // "send Observe" said what was sent and never to whom, which in a system of four actor kinds
+    // is the half that matters.
+    Observation.createNotStarted("send " + actor + " " + what, () -> sending, registry)
         .lowCardinalityKeyValue("messaging.system", "pekko")
         .lowCardinalityKeyValue("messaging.operation.name", "send")
-        .lowCardinalityKeyValue("messaging.destination.name", what)
+        .lowCardinalityKeyValue("messaging.destination.name", actor)
+        .lowCardinalityKeyValue("messaging.message.type", what)
         .observe(() -> {});
     return Map.copyOf(headers);
   }
@@ -97,10 +101,25 @@ public final class Traces {
    * cluster node, because a {@code traceparent} is a string and a {@code Context} is not.
    */
   public <T> T inSpan(String name, Map<String, String> carried, Supplier<T> work) {
+    return inSpan(name, carried, Map.of(), work);
+  }
+
+  /**
+   * As {@link #inSpan(String, Map, Supplier)}, with low-cardinality keys known UP FRONT.
+   *
+   * <p>Up front is not a convenience. A low-cardinality key added after an observation has started
+   * never reaches the span — measured: keys written from inside a handler simply did not appear,
+   * while high-cardinality keys written from the same place did. These become metric tags, and a
+   * meter's tag set has to be known when the meter is created.
+   */
+  public <T> T inSpan(
+      String name, Map<String, String> carried, Map<String, String> tags, Supplier<T> work) {
     Map<String, String> headers = carried == null ? Map.of() : carried;
     ReceiverContext<Map<String, String>> received = new ReceiverContext<>(Map::get, Kind.CONSUMER);
     received.setCarrier(headers);
-    return Observation.createNotStarted(name, () -> received, registry).observe(work);
+    Observation observation = Observation.createNotStarted(name, () -> received, registry);
+    tags.forEach(observation::lowCardinalityKeyValue);
+    return observation.observe(work);
   }
 
   public void inSpan(String name, Map<String, String> carried, Runnable work) {
