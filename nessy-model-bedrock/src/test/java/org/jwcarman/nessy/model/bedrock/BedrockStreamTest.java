@@ -202,7 +202,9 @@ class BedrockStreamTest {
       assertThat(toolUseEmitted.call().id()).isEqualTo("call-1");
       assertThat(toolUseEmitted.call().name()).isEqualTo("get_weather");
       assertThat(toolUseEmitted.call().arguments().get("location").asText()).isEqualTo("NYC");
-      assertThat(toolUseEmitted.signature()).isNull();
+      // Nothing rides on the call any more: a continuity token, if this vendor had one, would be
+      // its own provider-state event.
+      assertThat(modelEvents).noneMatch(ModelEvent.ProviderStateEmitted.class::isInstance);
     }
 
     @Test

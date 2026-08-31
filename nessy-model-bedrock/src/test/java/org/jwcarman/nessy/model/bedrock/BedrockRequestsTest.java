@@ -22,13 +22,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
+import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -43,6 +41,21 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolResultStatus;
 
 class BedrockRequestsTest {
+  /** Opaque state from another provider: nothing here should read or replay it. */
+  private static ProviderBlock providerState(String type, String thinking, String signature) {
+    ObjectNode payload = MAPPER.createObjectNode();
+    payload.put("type", type);
+    payload.put("thinking", thinking);
+    payload.put("signature", signature);
+    return new ProviderBlock("anthropic", payload);
+  }
+
+  private static ProviderBlock redactedState(String data) {
+    ObjectNode payload = MAPPER.createObjectNode();
+    payload.put("type", "redacted_thinking");
+    payload.put("data", data);
+    return new ProviderBlock("anthropic", payload);
+  }
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -191,7 +204,7 @@ class BedrockRequestsTest {
 
     @Test
     void a_multi_tool_turn_preserves_call_order_alongside_the_text() {
-      var text = new TextBlock("running two tools");
+      var text = new CommentaryBlock("running two tools");
       var first = new ToolCallBlock(call("call-1", "read_file", "path", "a.txt"));
       var second = new ToolCallBlock(call("call-2", "read_file", "path", "b.txt"));
       var assistantTurn =
@@ -234,11 +247,12 @@ class BedrockRequestsTest {
       assertThat(input.get("verbose").asBoolean()).isTrue();
     }
 
+    /** Opaque state belongs to whoever issued it; this adapter issues none and reads none. */
     @Test
-    void a_tool_use_block_s_stored_signature_is_ignored_on_replay() {
+    void another_providers_state_is_ignored_on_replay() {
+      var foreign = providerState("thinking", "someone else's reasoning", "sig");
       var toolUse =
-          new ToolCallBlock(
-              new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "some-signature");
+          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
               List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
@@ -258,7 +272,7 @@ class BedrockRequestsTest {
     @Test
     void a_thinking_block_is_dropped_leaving_its_siblings_in_order() {
       var thinking = providerState("thinking", "reasoning about the answer", "sig-123");
-      var text = new TextBlock("the visible answer");
+      var text = new CommentaryBlock("the visible answer");
       var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
@@ -392,35 +406,33 @@ class BedrockRequestsTest {
       assertThat(followUp.content().get(0).text()).isEqualTo("try again");
     }
 
-    static Stream<Arguments> pure_content_messages() {
-      return Stream.of(
-          Arguments.of(
-              new ToolResultMessage(List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok")))),
-              true),
-          Arguments.of(new UserMessage(List.of(new TextBlock("hello there"))), false));
+    /**
+     * Results are no longer a message of their own, so the pair this compared has one member left.
+     * Each still lands as the right kind of block, which is what it was really pinning.
+     */
+    @Test
+    void a_user_message_lands_as_a_text_block() {
+      var built =
+          BedrockRequests.toRequest(
+              request(List.of(new UserMessage(List.of(new TextBlock("hello there"))))), MODEL_ID);
+
+      var last = built.messages().get(built.messages().size() - 1);
+      assertThat(last.roleAsString()).isEqualTo("user");
+      assertThat(last.content().get(0).text()).isNotNull();
     }
 
-    @ParameterizedTest
-    @MethodSource("pure_content_messages")
-    void a_pure_content_message_is_pinned_unchanged(Message message, boolean expectToolResult) {
-      List<ContextMessage> messages =
-          expectToolResult
-              ? List.of(
-                  new AnswerMessage(
-                      List.of(
-                          new ToolCallBlock(
-                              new ToolCall("call-1", "noop", MAPPER.createObjectNode())))),
-                  message)
-              : List.of(message);
+    @Test
+    void an_exchange_lands_its_results_as_a_tool_result_block() {
+      var call = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var exchange =
+          new ExchangeMessage(
+              List.of(call), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
 
-      var built = BedrockRequests.toRequest(request(messages), MODEL_ID);
+      var built = BedrockRequests.toRequest(request(List.of(exchange)), MODEL_ID);
 
-      var lastMessage = built.messages().get(built.messages().size() - 1);
-      assertThat(lastMessage.roleAsString()).isEqualTo("user");
-      var blocks = lastMessage.content();
-      assertThat(blocks).hasSize(1);
-      assertThat(blocks.get(0).toolResult() != null).isEqualTo(expectToolResult);
-      assertThat(blocks.get(0).text() != null).isEqualTo(!expectToolResult);
+      var last = built.messages().get(built.messages().size() - 1);
+      assertThat(last.roleAsString()).isEqualTo("user");
+      assertThat(last.content().get(0).toolResult()).isNotNull();
     }
   }
 

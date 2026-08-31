@@ -369,9 +369,14 @@ class GeminiStreamTest {
 
       var modelEvents = drain(chunks);
 
-      var toolUseEmitted = (ModelEvent.ToolCallEmitted) modelEvents.get(0);
-      assertThat(toolUseEmitted.signature())
+      // The signature is its own fact now, naming the call it vouches for, and it arrives BEFORE
+      // the call — so an assembler can attach it without looking ahead.
+      var state = (ModelEvent.ProviderStateEmitted) modelEvents.get(0);
+      assertThat(state.provider()).isEqualTo("gcp.gemini");
+      assertThat(state.data().path("callId").asText()).isEqualTo("call-1");
+      assertThat(state.data().path("thoughtSignature").asText())
           .isEqualTo(Base64.getEncoder().encodeToString(rawSignature));
+      assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
     }
 
     @Test
@@ -383,8 +388,9 @@ class GeminiStreamTest {
 
       var modelEvents = drain(chunks);
 
-      var toolUseEmitted = (ModelEvent.ToolCallEmitted) modelEvents.get(0);
-      assertThat(toolUseEmitted.signature()).isNull();
+      // No signature means no provider state at all: the call stands alone.
+      assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
+      assertThat(modelEvents).noneMatch(ModelEvent.ProviderStateEmitted.class::isInstance);
     }
   }
 
