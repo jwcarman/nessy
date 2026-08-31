@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.message;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import org.jwcarman.nessy.api.block.AmbientContentBlock;
 
 /**
@@ -26,13 +27,30 @@ import org.jwcarman.nessy.api.block.AmbientContentBlock;
  * one: it is assembled at recall, shown once, and thrown away — so it is a {@link ContextMessage}
  * but not a {@link Message}, and there is no door through which it could reach a transcript.
  *
- * <p><b>Where it lands is the provider's business.</b> Each vendor carries background differently —
- * a top-level system field, a developer message, a system instruction — so an adapter decides, and
- * this says only what the content is.
+ * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> Each vendor carries
+ * background differently — a top-level system field, a developer message, a system instruction —
+ * and each has its own idea of how to mark a section: Anthropic's own guidance asks for XML tags,
+ * another vendor may want a heading or nothing. So this says what the background IS and leaves the
+ * rendering to the adapter that knows the vendor.
  */
-public record AmbientMessage(List<AmbientContentBlock> content) implements ContextMessage {
+public record AmbientMessage(String kind, List<AmbientContentBlock> content)
+    implements ContextMessage {
+
+  /**
+   * What a kind may look like.
+   *
+   * <p>Lowercase kebab-case, and that is a SAFETY rule rather than a style one: an adapter may
+   * interpolate a kind into markup, and an unconstrained one could write structure into a prompt.
+   * Checked here, so no adapter has to escape anything.
+   */
+  private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9-]*");
 
   public AmbientMessage {
+    Objects.requireNonNull(kind, "kind must not be null");
+    if (!KIND.matcher(kind).matches()) {
+      throw new IllegalArgumentException(
+          "kind must be lowercase kebab-case starting with a letter: '" + kind + "'");
+    }
     Objects.requireNonNull(content, "content must not be null");
     if (content.isEmpty()) {
       throw new IllegalArgumentException(

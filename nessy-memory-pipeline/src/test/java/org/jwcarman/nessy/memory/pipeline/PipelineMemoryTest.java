@@ -58,7 +58,7 @@ class PipelineMemoryTest {
             java.util.stream.Stream.concat(
                     context.messages().stream(),
                     java.util.stream.Stream.<ContextMessage>of(
-                        new AmbientMessage(List.of(new TextBlock(text)))))
+                        new AmbientMessage("test", List.of(new TextBlock(text)))))
                 .toList());
   }
 
@@ -72,9 +72,9 @@ class PipelineMemoryTest {
 
     assertThat(context.messages()).hasSize(3);
     assertThat(context.messages().get(1))
-        .isEqualTo(new AmbientMessage(List.of(new TextBlock("first"))));
+        .isEqualTo(new AmbientMessage("test", List.of(new TextBlock("first"))));
     assertThat(context.messages().get(2))
-        .isEqualTo(new AmbientMessage(List.of(new TextBlock("second"))));
+        .isEqualTo(new AmbientMessage("test", List.of(new TextBlock("second"))));
   }
 
   @Test

@@ -42,6 +42,9 @@ import org.jwcarman.nessy.memory.pipeline.ContextTransformer;
  */
 public final class NotebookTools {
 
+  /** What this background is, so an adapter can label it the way its vendor likes. */
+  private static final String KIND = "notebook";
+
   private NotebookTools() {}
 
   /**
@@ -84,7 +87,7 @@ public final class NotebookTools {
       }
       List<ContextMessage> messages = new java.util.ArrayList<>(context.messages());
       messages.add(
-          new AmbientMessage(List.<AmbientContentBlock>of(new TextBlock(render(headings)))));
+          new AmbientMessage(KIND, List.<AmbientContentBlock>of(new TextBlock(render(headings)))));
       return Context.of(messages);
     };
   }
@@ -92,15 +95,14 @@ public final class NotebookTools {
   /**
    * What the model sees. Names and hooks only: the bodies are what {@code recall} is for.
    *
-   * <p><b>No delimiters.</b> The design this came from enriched a user message, where {@code
-   * <notebook>} tags marked where the ambient content began and ended inside somebody else's turn.
-   * It is an {@link AmbientMessage} now, and every adapter gives it a block of its own — so the
-   * structure is the structure, and markup would only re-encode it. What remains is a label, which
-   * a sentence does: the model needs to know what this list IS, especially once a second facility
-   * contributes background beside it.
+   * <p><b>No label here.</b> The design this came from wrote {@code <notebook>} tags into the text,
+   * because the index was appended to a user message and the tags marked where it began and ended.
+   * It is an {@link AmbientMessage} with a KIND now, so the label is structured data and each
+   * adapter renders it the way its vendor prefers — tags for one, a heading for another. Writing it
+   * here would take that choice away from them.
    */
   private static String render(List<Notebook.Heading> headings) {
-    StringBuilder text = new StringBuilder("Your notebook — notes you wrote, by name:\n");
+    StringBuilder text = new StringBuilder("Notes you wrote, by id:\n");
     for (Notebook.Heading heading : headings) {
       text.append("- ").append(heading.id()).append(" — ").append(heading.hook()).append('\n');
     }

@@ -131,7 +131,8 @@ public final class GeminiRequests {
       if (message instanceof AmbientMessage ambient) {
         String text = flattenText(ambient.content());
         if (!text.isBlank()) {
-          instruction.add(Part.fromText(text));
+          // Its own Part, headed by its kind: the part is the boundary, so the kind labels it.
+          instruction.add(Part.fromText("[%s]%n%s".formatted(ambient.kind(), text.strip())));
         }
       }
     }

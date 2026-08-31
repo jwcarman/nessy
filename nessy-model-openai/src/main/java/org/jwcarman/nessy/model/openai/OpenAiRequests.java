@@ -116,7 +116,12 @@ public final class OpenAiRequests {
           List.of(
               ChatCompletionMessageParam.ofSystem(
                   ChatCompletionSystemMessageParam.builder()
-                      .content(concatenateText(ambient.content()))
+                      // Its own system message, headed by its kind. A separate message is already
+                      // a boundary here, so the kind labels rather than delimits.
+                      .content(
+                          "[%s]%n%s"
+                              .formatted(
+                                  ambient.kind(), concatenateText(ambient.content()).strip()))
                       .build()));
       case ExchangeMessage exchange -> toExchangeParams(exchange);
       case AnswerMessage answer ->

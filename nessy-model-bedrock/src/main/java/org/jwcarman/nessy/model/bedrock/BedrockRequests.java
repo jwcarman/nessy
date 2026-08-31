@@ -95,7 +95,11 @@ public final class BedrockRequests {
       if (message instanceof org.jwcarman.nessy.api.message.AmbientMessage ambient) {
         String text = flattenText(ambient.content());
         if (!text.isBlank()) {
-          system.add(SystemContentBlock.fromText(text));
+          // Tagged like Anthropic's: Bedrock fronts those models among others, and the convention
+          // costs nothing on the ones that do not care.
+          system.add(
+              SystemContentBlock.fromText(
+                  "<%s>\n%s\n</%s>".formatted(ambient.kind(), text.strip(), ambient.kind())));
         }
       }
     }

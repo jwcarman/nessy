@@ -161,7 +161,13 @@ public final class AnthropicRequests {
       if (message instanceof AmbientMessage ambient) {
         String text = textOf(ambient.content());
         if (!text.isBlank()) {
-          blocks.add(TextBlockParam.builder().text(text).build());
+          // Wrapped in the ambient message's own kind. Anthropic's prompt guidance asks for XML
+          // tags to mark a section, and the kind is validated kebab-case, so it can be
+          // interpolated without escaping.
+          blocks.add(
+              TextBlockParam.builder()
+                  .text("<%s>\n%s\n</%s>".formatted(ambient.kind(), text.strip(), ambient.kind()))
+                  .build());
         }
       }
     }
