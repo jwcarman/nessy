@@ -70,14 +70,23 @@ final class ApprovalActor {
       org.jwcarman.nessy.api.tool.ApprovalContext approvalContext,
       Narrator narrator,
       Executor blocking,
-      ActorRef<ToolCallActor.Command> replyTo) {
+      ActorRef<ToolCallActor.Command> replyTo,
+      Traces traces,
+      java.util.Map<String, String> carried) {
     return Behaviors.setup(
         context -> {
           // Typed explicitly: left to inference the pipe's value collapses to Object and the
           // pattern match below stops being checked.
           CompletableFuture<Awaited<ApprovalResult>> asked =
               CompletableFuture.supplyAsync(
-                  () -> bindings.approve(binding, request, approvalContext), blocking);
+                  // Opened on the worker thread from carried headers, for the same reason the tool
+                  // span is: a captured scope does not survive the hop, and a header does.
+                  () ->
+                      traces.inSpan(
+                          "approval " + request.call().name(),
+                          carried,
+                          () -> bindings.approve(binding, request, approvalContext)),
+                  blocking);
           context.pipeToSelf(
               asked,
               (answer, failure) -> {

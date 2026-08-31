@@ -84,12 +84,12 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
-    <!-- Optional: an engine with no Tracer still runs, it just says nothing. Tracing is
-         instrumentation, never a requirement. -->
+    <!-- Observations, not tracing. The engine names no Tracer, no Propagator and no Span: which
+         bridge sits underneath — OpenTelemetry, Brave, none — is the application's business, and
+         an engine with no observability stack runs against a no-op registry. -->
     <dependency>
       <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-tracing</artifactId>
-      <optional>true</optional>
+      <artifactId>micrometer-observation</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.pekko</groupId>

@@ -188,6 +188,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
    * including handing the model call or a tool to the blocking executor, happens inside this scope;
    * a context-propagating executor carries it the rest of the way.
    */
+  /** Same reason as {@code AgentActor}: an interceptor does not enclose a persistent handler. */
   @Override
   public CommandHandler<Command, TurnState> commandHandler() {
     CommandHandler<Command, TurnState> handler = traced();
@@ -197,8 +198,8 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
                 "turn " + command.getClass().getSimpleName(),
                 carried,
                 () -> {
-                  deps.traces().tag("nessy.agent.id", agentId.value());
-                  deps.traces().tag("nessy.turn.id", turnId);
+                  deps.traces().detail("nessy.agent.id", agentId.value());
+                  deps.traces().detail("nessy.turn.id", turnId);
                   return handler.apply(state, command);
                 });
   }
@@ -347,7 +348,9 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
                 deps.narrator(),
                 deps.tokens(),
                 deps.blocking(),
-                context.getSelf()),
+                context.getSelf(),
+                deps.traces(),
+                carried),
             "call-" + call.id()));
   }
 

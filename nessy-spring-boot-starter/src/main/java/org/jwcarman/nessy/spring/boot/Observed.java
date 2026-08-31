@@ -225,8 +225,18 @@ public final class Observed {
           "gen_ai.usage.input_tokens", String.valueOf(usage.inputTokens()));
       observation.highCardinalityKeyValue(
           "gen_ai.usage.output_tokens", String.valueOf(usage.outputTokens()));
+      // Subsets of input_tokens, never siblings — see Usage. Written ALWAYS, including as zero:
+      // an attribute that appears only when caching happened cannot answer "is the cache working",
+      // because a missing key and a genuine zero look identical on a graph.
+      observation.highCardinalityKeyValue(
+          "gen_ai.usage.cache_read.input_tokens", String.valueOf(usage.cacheReadInputTokens()));
+      observation.highCardinalityKeyValue(
+          "gen_ai.usage.cache_write.input_tokens", String.valueOf(usage.cacheWriteInputTokens()));
       tokenSummary("input").record(usage.inputTokens());
       tokenSummary("output").record(usage.outputTokens());
+      // Its own token.type, so a cache hit rate is one query rather than arithmetic across metrics.
+      tokenSummary("cache_read").record(usage.cacheReadInputTokens());
+      tokenSummary("cache_write").record(usage.cacheWriteInputTokens());
     }
 
     private DistributionSummary tokenSummary(String type) {

@@ -18,13 +18,9 @@ package org.jwcarman.nessy.spring.boot;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import io.micrometer.context.ContextExecutorService;
-import io.micrometer.context.ContextRegistry;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
-import io.micrometer.tracing.Tracer;
-import io.micrometer.tracing.contextpropagation.ObservationAwareSpanThreadLocalAccessor;
-import io.micrometer.tracing.propagation.Propagator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -205,40 +201,14 @@ public class NessyAutoConfiguration {
   /**
    * How the engine carries trace context across a mailbox.
    *
-   * <p>Falls back to a no-op when nothing is tracing, and SAYS SO — a silent fallback is how
-   * tracing died once already: opentelemetry-api left the runtime classpath, no Tracer bean was
-   * created, every span became a no-op, and the application kept running and the tests kept
-   * passing.
+   * <p>Just the {@link ObservationRegistry}: whether anything is actually tracing is decided by the
+   * handlers Spring has registered on it, not by this bean. An application with no tracing gets a
+   * registry with no tracing handler and every observation is a timer and nothing more.
    */
   @Bean
   @ConditionalOnMissingBean
-  public Traces nessyTraces(
-      ObjectProvider<Tracer> tracers,
-      ObjectProvider<Propagator> propagators,
-      ObjectProvider<ObservationRegistry> observationRegistries) {
-    Tracer tracer = tracers.getIfAvailable();
-    Propagator propagator = propagators.getIfAvailable();
-    if (tracer == null || propagator == null) {
-      org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
-          .warn(
-              "NESSY TRACING IS DISABLED: tracer={}, propagator={}. Spans will not be linked across"
-                  + " actors, so a turn arrives as several unrelated traces. Expected only when"
-                  + " running without an observability stack.",
-              tracer == null ? "absent" : tracer.getClass().getName(),
-              propagator == null ? "absent" : propagator.getClass().getName());
-      return Traces.noop();
-    }
-    // Registers the accessor that lets a RAW span cross a thread hop. Spring registers one for
-    // Observations, and the engine's actor spans are not Observations — so without this the
-    // context-propagating executor captures nothing, and every model and tool call opens a root
-    // span instead of nesting under the turn that asked for it. Measured, not assumed: turn spans
-    // nested and chat spans did not, until this line existed.
-    ContextRegistry.getInstance()
-        .registerThreadLocalAccessor(
-            new ObservationAwareSpanThreadLocalAccessor(
-                observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP), tracer));
-    return new Traces(
-        tracer, propagator, observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP));
+  public Traces nessyTraces(ObjectProvider<ObservationRegistry> registries) {
+    return new Traces(registries.getIfAvailable(() -> ObservationRegistry.NOOP));
   }
 
   @Bean

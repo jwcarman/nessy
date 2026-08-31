@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
@@ -61,12 +62,23 @@ final class ExecutionActor {
       JsonNode arguments,
       ToolContext toolContext,
       Executor blocking,
-      ActorRef<ToolCallActor.Command> replyTo) {
+      ActorRef<ToolCallActor.Command> replyTo,
+      Traces traces,
+      Map<String, String> carried) {
     return Behaviors.setup(
         context -> {
           CompletableFuture<Awaited<ToolResult>> ran =
               CompletableFuture.supplyAsync(
-                  () -> bindings.run(binding, arguments, toolContext), blocking);
+                  // The span is opened HERE, on the worker thread, from headers carried into the
+                  // work — not inherited from the submitting thread. Nothing about this depends on
+                  // a thread-local surviving executor.execute, which is what makes it survive a
+                  // hop that a captured scope would not.
+                  () ->
+                      traces.inSpan(
+                          "tool " + binding.tool().name(),
+                          carried,
+                          () -> bindings.run(binding, arguments, toolContext)),
+                  blocking);
           context.pipeToSelf(
               ran,
               (answer, failure) -> {

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import io.micrometer.tracing.Span;
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
@@ -124,13 +123,20 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
    * this scope, so a model or tool span opened out there finds this span as its parent instead of
    * becoming a root of its own.
    */
+  /**
+   * Every message handled inside a CONSUMER span parented to whatever the sender carried.
+   *
+   * <p><b>Wrapped HERE and not by a {@code BehaviorInterceptor}</b>, which was tried and reverted.
+   * An interceptor's {@code aroundReceive} does not enclose a {@link DurableStateBehavior}'s
+   * command handler — the handler runs outside that scope — so a capture inside a handler came back
+   * empty and the whole tree collapsed to two spans. Measured, not reasoned about.
+   */
   @Override
   public CommandHandler<NessyMessage, AgentState<O>> commandHandler() {
     CommandHandler<NessyMessage, AgentState<O>> handler = traced();
     return (state, message) ->
         traces.inSpan(
             "agent receive " + message.getClass().getSimpleName(),
-            Span.Kind.CONSUMER,
             message.headers(),
             () -> {
               describe(message);
@@ -138,10 +144,10 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
             });
   }
 
-  /** What this actor knows about itself, written onto the receive span. */
-  private void describe(NessyMessage message) {
+  /** What this actor knows about itself, written onto the receive span the interceptor opened. */
+  void describe(NessyMessage message) {
     traces.tag("messaging.system", "pekko");
-    traces.tag("nessy.agent.id", agentId.value());
+    traces.detail("nessy.agent.id", agentId.value());
     traces.tag("nessy.agent.type", agentType.name());
     traces.tag("nessy.message.type", message.getClass().getSimpleName());
     // Locally this renders "pekko://nessy"; clustered it becomes "pekko://nessy@host:port", so the

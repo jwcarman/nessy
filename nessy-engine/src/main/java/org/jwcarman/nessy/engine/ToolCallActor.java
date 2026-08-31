@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
@@ -70,7 +71,24 @@ final class ToolCallActor {
       Narrator narrator,
       ReplyTokens tokens,
       Executor blocking,
-      ActorRef<TurnActor.Command> turn) {
+      ActorRef<TurnActor.Command> turn,
+      Traces traces,
+      Map<String, String> carried) {
+    return callBehavior(
+        agentType, agentId, call, bindings, narrator, tokens, blocking, turn, traces, carried);
+  }
+
+  private static Behavior<Command> callBehavior(
+      AgentType agentType,
+      AgentId agentId,
+      ToolCall call,
+      ToolBindings bindings,
+      Narrator narrator,
+      ReplyTokens tokens,
+      Executor blocking,
+      ActorRef<TurnActor.Command> turn,
+      Traces traces,
+      Map<String, String> carried) {
     return Behaviors.setup(
         context -> {
           ToolBinding<?> binding = bindings.binding(call.name()).orElse(null);
@@ -103,7 +121,9 @@ final class ToolCallActor {
                       approvalContext,
                       narrator,
                       blocking,
-                      context.getSelf()),
+                      context.getSelf(),
+                      traces,
+                      carried),
                   "approval");
           return awaitingApproval(
               agentType,
@@ -115,7 +135,9 @@ final class ToolCallActor {
               toolContext,
               blocking,
               turn,
-              approval);
+              approval,
+              traces,
+              carried);
         });
   }
 
@@ -129,7 +151,9 @@ final class ToolCallActor {
       ToolContext toolContext,
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
-      ActorRef<ApprovalActor.Command> approval) {
+      ActorRef<ApprovalActor.Command> approval,
+      Traces traces,
+      Map<String, String> carried) {
     return Behaviors.receive(Command.class)
         .onMessage(
             RelayApproval.class,
@@ -161,7 +185,9 @@ final class ToolCallActor {
                                       call.arguments(),
                                       toolContext,
                                       blocking,
-                                      context.getSelf()),
+                                      context.getSelf(),
+                                      traces,
+                                      carried),
                                   "execution");
                           return awaitingExecution(call, narrator, turn, execution);
                         });
