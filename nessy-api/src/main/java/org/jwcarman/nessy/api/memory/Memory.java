@@ -50,4 +50,29 @@ public interface Memory {
    * cheaper than a transcript persisted in a state nothing can read.
    */
   void remember(AgentId agentId, HistoryMessage message);
+
+  /**
+   * A memory that recalls through stages.
+   *
+   * <pre>{@code
+   * Memory.pipeline(
+   *     new Transcripts(substrate, TYPE),
+   *     pipeline -> pipeline.stage(NotebookTools.index(notebook)));
+   * }</pre>
+   *
+   * <p>{@code bootstrap} answers what the model should see before anything is added; the stages
+   * shape it on the way out. Remembering goes straight through, so the record and the view can
+   * never disagree.
+   *
+   * <p>A bootstrap that summarizes, snapshots, or reads from somewhere else entirely is an ordinary
+   * {@code Memory} — it answers the same question differently, which is what implementations are
+   * for.
+   */
+  static Memory pipeline(Memory bootstrap, MemoryPipelineCustomizer customizer) {
+    java.util.Objects.requireNonNull(bootstrap, "bootstrap must not be null");
+    java.util.Objects.requireNonNull(customizer, "customizer must not be null");
+    MemoryPipelineConfig config = new MemoryPipelineConfig();
+    customizer.customize(config);
+    return new PipelineMemory(bootstrap, config.stages());
+  }
 }
