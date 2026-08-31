@@ -455,7 +455,10 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
                 Identifiers.next(), result, new Usage(inputTokens, outputTokens)));
     return Effect()
         .none()
-        .thenRun(ignored -> agent.tell(new NessyMessage.TurnFinished(turnId, Map.of())))
+        // The turn's own context, so the agent's next round hangs off the round that finished
+        // rather than starting a trace of its own. Without it every round after the first was a
+        // fresh root, which is what made an entire trace appear under "agent receive Wake".
+        .thenRun(ignored -> agent.tell(new NessyMessage.TurnFinished(turnId, carried)))
         .thenStop();
   }
 

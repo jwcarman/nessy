@@ -176,7 +176,13 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
   private Effect<AgentState<O>> onObserve(AgentState<O> state, NessyMessage.Observe message) {
     BacklogItem<O> arrival =
         new BacklogItem<>(Identifiers.next(), codec.decode(message.observation()), clock.instant());
-    return Effect().persist(state.ingesting(coalescer, arrival)).thenRun(this::nudge);
+    // Captured inside the handler: the nudge below runs from thenRun, after the scope has closed,
+    // and a Wake sent with empty headers starts a NEW trace — which is why an entire round used to
+    // hang under "agent receive Wake" instead of under the observation that caused it.
+    Map<String, String> here = traces.capture();
+    return Effect()
+        .persist(state.ingesting(coalescer, arrival))
+        .thenRun(persisted -> nudge(persisted, here));
   }
 
   /** The turn is over. Its observation is done with, and the next one may start. */
@@ -188,7 +194,8 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
       return Effect().none();
     }
     turn = null;
-    return Effect().persist(state.finished()).thenRun(this::nudge);
+    Map<String, String> here = traces.capture();
+    return Effect().persist(state.finished()).thenRun(persisted -> nudge(persisted, here));
   }
 
   /**
@@ -297,8 +304,8 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
   }
 
   /** Ask ourselves whether there is now work to start; {@link #onWake} decides. */
-  private void nudge(AgentState<O> state) {
-    context.getSelf().tell(new NessyMessage.Wake(Map.of()));
+  private void nudge(AgentState<O> state, Map<String, String> carried) {
+    context.getSelf().tell(new NessyMessage.Wake(carried));
     passivateIfIdle(state);
   }
 }

@@ -164,6 +164,32 @@ final class ToolCallActor {
         .onMessage(
             Answered.class,
             answered -> {
+              // The DECISION, on a span of its own.
+              //
+              // The approval span above is the ASKING, and for anything a person answers it ends
+              // the moment the approver defers — seconds later, with no verdict on it, because the
+              // verdict does not exist yet. It arrives through an entirely different path, minutes
+              // or days afterwards. Without this the traces showed every question and not one
+              // answer.
+              //
+              // Linked to the round that asked rather than nested inside it: a span has a start and
+              // an end, and a question a human sat on for three days has no useful duration. No
+              // backend will hold a trace open that long and nobody wants to read it.
+              traces.inSpan(
+                  "approval decided " + call.name(),
+                  carried,
+                  () -> {
+                    traces.tag("gen_ai.tool.name", call.name());
+                    traces.tag(
+                        "nessy.approval.answer",
+                        answered.result() instanceof ApprovalResult.Approved
+                            ? "approved"
+                            : "denied");
+                    traces.detail("gen_ai.tool.call.id", call.id());
+                    if (answered.result() instanceof ApprovalResult.Denied denied) {
+                      traces.detail("nessy.approval.reason", denied.reason());
+                    }
+                  });
               narrator.narrate(
                   new AgentEvent.ApprovalDecided(
                       Identifiers.next(), call.id(), call.name(), answered.result()));

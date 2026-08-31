@@ -19,9 +19,21 @@ import java.security.Principal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.block.ToolCallBlock;
+import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.api.message.AssistantMessage;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolResultMessage;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.engine.Replies;
@@ -93,8 +105,61 @@ public class ApprovalsController {
 
   @GetMapping("/transcript")
   public String transcript(Model model) {
-    model.addAttribute("notes", memory.recall(WatchmanConfiguration.AGENT).lines());
+    model.addAttribute("notes", notes(memory.recall(WatchmanConfiguration.AGENT)));
     return "transcript";
+  }
+
+  /**
+   * The transcript as this page wants it, which is NOT {@code Context.lines()}.
+   *
+   * <p>{@code lines()} is the chat log and says so: tool calls and tool results are invisible there
+   * on purpose. That is right for a chat UI and wrong for a watchman, where the interesting part of
+   * a round is exactly what it decided to run — an assistant turn that only calls a tool has no
+   * text at all, so the page showed the observation, then the final answer, with the work between
+   * them simply missing.
+   *
+   * <p>So this reads the messages directly and renders the three kinds a person wants to see: what
+   * was said, what was called, and what came back.
+   */
+  private static List<Note> notes(Context context) {
+    List<Note> notes = new ArrayList<>();
+    for (Message message : context.messages()) {
+      switch (message) {
+        case UserMessage user ->
+            text(user.content()).ifPresent(t -> notes.add(new Note("user", t)));
+        case AssistantMessage assistant -> {
+          text(assistant.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
+          assistant.content().stream()
+              .filter(ToolCallBlock.class::isInstance)
+              .map(ToolCallBlock.class::cast)
+              .forEach(callBlock -> notes.add(new Note("calls", callBlock.call().name())));
+        }
+        case ToolResultMessage results ->
+            results.blocks().forEach(block -> notes.add(new Note("result", resultText(block))));
+      }
+    }
+    return notes;
+  }
+
+  /** One line of the transcript: who or what it came from, and what it said. */
+  public record Note(String role, String text) {}
+
+  private static Optional<String> text(List<? extends Block> blocks) {
+    String joined =
+        blocks.stream()
+            .filter(TextBlock.class::isInstance)
+            .map(block -> ((TextBlock) block).text())
+            .collect(Collectors.joining());
+    return joined.isBlank() ? Optional.empty() : Optional.of(joined);
+  }
+
+  private static String resultText(ToolResultBlock block) {
+    String body =
+        block.content().stream()
+            .filter(TextBlock.class::isInstance)
+            .map(b -> ((TextBlock) b).text())
+            .collect(Collectors.joining("\n"));
+    return block.isError() ? "failed: " + body : body;
   }
 
   @PostMapping("/approve/{agentId}/{callId}")
