@@ -28,9 +28,7 @@ import org.jwcarman.nessy.api.AgentSubscriber;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.message.UserMessage;
-import org.jwcarman.nessy.api.model.ModelId;
-import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 
 /**
  * A conversation in a terminal: type, watch the answer arrive a token at a time, type again.
@@ -45,6 +43,13 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * events. What makes a REPL out of that is the one thing here that waits: after posting a line this
  * blocks until it sees {@code TurnEnded}, so a person is never asked to type over a reply that is
  * still being written. An unattended application would simply not wait.
+ *
+ * <p><b>Which model it talks to is not decided here.</b> {@code ModelDiscovery} reads the
+ * environment and picks whichever provider has credentials, so the same command runs against
+ * Anthropic, OpenAI, Gemini, xAI, or a local runtime — see the README. That is the honest shape for
+ * a demo binary with no configuration file; an application that wants the choice written down
+ * declares a provider instead, which is what the Spring starter requires and this deliberately does
+ * not have.
  */
 public final class Chat {
 
@@ -60,14 +65,23 @@ public final class Chat {
   private Chat() {}
 
   public static void main(String[] args) throws IOException {
-    String baseUrl = env("OPENAI_BASE_URL", "http://localhost:1234/v1");
-    String apiKey = env("OPENAI_API_KEY", "not-needed");
-    String model = env("NESSY_MODEL", "qwen/qwen3.6-35b-a3b");
-
-    ModelProvider models =
-        OpenAiModelProvider.create(config -> config.apiKey(apiKey).baseUrl(baseUrl));
-
-    try (Runtime runtime = Runtime.start(models, 4096)) {
+    ModelDiscovery.Selection chosen;
+    try {
+      chosen = ModelDiscovery.select();
+    } catch (IllegalStateException nothingToTalkTo) {
+      // Discovery's own message names every provider it knows and the variables each reads, or
+      // says which two are ambiguous. That is the entire useful content of this failure, and a
+      // stack trace through a REPL's main would only bury it. Caught HERE, around the one call
+      // that raises it, so a later IllegalStateException from the engine still surfaces in full.
+      System.err.println(nothingToTalkTo.getMessage());
+      System.exit(2);
+      return;
+    }
+    // Closed in the reverse of this order: the engine stops before the gateway it was calling.
+    // The selection owns the vendor's HTTP client, so letting it go is what releases the
+    // connection pool rather than leaving it to the process exiting.
+    try (ModelDiscovery.Selection selection = chosen;
+        Runtime runtime = Runtime.start(selection.provider(), 4096)) {
       Harness<String> harness =
           runtime
               .factory()
@@ -77,7 +91,8 @@ public final class Chat {
                       config
                           .type(TYPE)
                           .systemPrompt(SYSTEM_PROMPT)
-                          .model(ModelId.of(model))
+                          // Whatever NESSY_MODEL named, or the winning provider's own default.
+                          .model(selection.model().id())
                           .renderer(UserMessage::of)
                           .tool(new DaysUntilTool()));
 
@@ -86,7 +101,8 @@ public final class Chat {
       BlockingQueue<AgentEvent.TurnEnded> finished = new ArrayBlockingQueue<>(1);
       harness.subscribe(AGENT, printing(finished));
 
-      System.out.printf("nessy chat — %s at %s%n", model, baseUrl);
+      System.out.printf(
+          "nessy chat — %s on %s%n", selection.model().id().value(), selection.providerName());
       System.out.println("Ctrl-D or /quit to leave.");
 
       BufferedReader in =
@@ -143,10 +159,5 @@ public final class Chat {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-  }
-
-  private static String env(String name, String fallback) {
-    String value = System.getenv(name);
-    return value == null || value.isBlank() ? fallback : value;
   }
 }

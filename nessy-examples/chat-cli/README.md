@@ -27,20 +27,36 @@ database to see the other half.
 
 ## Run it
 
-Defaults target [LM Studio](https://lmstudio.ai) on `localhost:1234`, so a
-local run costs nothing:
+Which model it talks to is not written down here. `ModelDiscovery` reads the
+environment and picks whichever provider has credentials, so the same command
+runs against any of them — and says which one it chose in the banner.
+
+Against [LM Studio](https://lmstudio.ai) or any other OpenAI-compatible local
+runtime, which costs nothing:
 
 ```bash
-./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
-```
-
-Any OpenAI-compatible endpoint works — it is three environment variables:
-
-```bash
-OPENAI_BASE_URL=https://api.openai.com/v1 \
-OPENAI_API_KEY=sk-… \
-NESSY_MODEL=gpt-4o-mini \
+OPENAI_API_KEY=not-needed \
+OPENAI_BASE_URL=http://localhost:1234/v1 \
+NESSY_MODEL=qwen/qwen3.6-35b-a3b \
   ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
+
+Against a real vendor, it is one variable:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+GEMINI_API_KEY=…    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+XAI_API_KEY=…       ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+OPENAI_API_KEY=…    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+`NESSY_MODEL` names a specific model instead of the winning provider's default.
+Set two providers' keys and discovery refuses to guess — it names both and asks
+for `NESSY_PROVIDER`, because a coin toss over which vendor gets billed is not
+a default anyone wants. Set none and it lists every variable it looked at.
+
+Bedrock is deliberately not discoverable: ambient AWS credentials mean someone
+once deployed something to AWS, not that they chose Bedrock for this. An
+application that wants it constructs it explicitly.
 
 `/quit` or Ctrl-D leaves.

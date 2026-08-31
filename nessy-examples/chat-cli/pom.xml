@@ -56,9 +56,28 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
     </dependency>
+    <!-- Discovery picks the provider; the adapters on the classpath are what it can pick FROM.
+         Three of them, so one command runs against any of four vendors (xAI rides in the OpenAI
+         module, being that wire at a different URL). Bedrock is deliberately not discoverable:
+         ambient AWS credentials mean someone once deployed something, not that they chose it. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-discovery</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-anthropic</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-gemini</artifactId>
       <version>${project.version}</version>
     </dependency>
 
