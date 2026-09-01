@@ -1,453 +1,177 @@
 # Observability
 
-Nessy exports two things: the live story of one turn (`TurnObserver`), and
-the numbers a soak needs — spans and counters over the OpenTelemetry GenAI
-semantic conventions, recorded through one Micrometer seam
-(`HarnessConfig.observationRegistry(ObservationRegistry)`). A third seam,
-`AuthorizationReport`, is neither a stream nor a listener; it reads a
-harness's grants back as a static report, because the report *is* the
-wiring. All three default to silence — a noop observer, `ObservationRegistry
-.NOOP`, an empty grant list — so watching costs nothing until something is
-plugged in.
+Three separate things, and it helps to keep them apart:
 
-## `TurnObserver` — the audience stream
+- **Narration** — what an agent is doing, for a person or a UI. Delivered as
+  it happens.
+- **Traces** — the span tree, for debugging one turn after the fact.
+- **Metrics** — counts and timings, for a dashboard.
 
-`TurnObserver` sees the live story of one turn: the model speaking and
-thinking, homework requested and decided, homework settled, the turn's
-close. No observer is handed to `tell`/`drive` directly — an observer
-reaches an id's turns by `Agent#subscribe`ing to the harness's internal
-per-id fanout, which is worker-inclusive: a subscriber registered before a
-park still sees the turn that resumes it, even though the resumption folds
-on the harness's own worker thread, not the one that called `tell`. The
-harness's own configured `turnObserver` rides the same fanout as one more
-subscriber. An unattended scope with no observer wired runs every turn
-against `TurnObserver.noop()` and loses nothing it needed.
+## Narration
+
+Subscribe to an agent and you get `AgentEvent`s as they happen:
 
 ```java
-public sealed interface TurnEvent {
-  record TextDelta(String text) implements TurnEvent {}
-  record ThinkingDelta(String text) implements TurnEvent {}
-  record RedactedThinking(String data) implements TurnEvent {}
-  record ToolCallRequested(ToolCall call) implements TurnEvent {}
-  record ToolCallDecided(ToolCall call, Approval approval) implements TurnEvent {}
-  record ToolCallCompleted(ToolCall call, ToolResult result) implements TurnEvent {}
-  record ToolCallProgressed(ToolCall call, String message) implements TurnEvent {}
-  record AssistantSaid(Message message) implements TurnEvent {}
-  record TurnEnded(String failureReason) implements TurnEvent {}
+try (AgentSubscription subscription = harness.subscribe(agentId, event -> {
+        switch (event) {
+            case AgentEvent.TextDelta delta -> System.out.print(delta.text());
+            case AgentEvent.ToolCallRequested call -> log.info("calling {}", call.toolName());
+            case AgentEvent.TurnEnded ended -> log.info("done: {}", ended.outcome());
+            default -> { }
+        }
+    })) {
+    harness.observe(agentId, "hello");
 }
 ```
 
-`AssistantSaid` is the settled sentence; the delta variants were only its
-preview. `TurnEnded.failureReason()` is `null` for a completed turn and
-carries the reason when the model call itself failed. A parked call is
-never narrated *here* — from the model's turn a park is indistinguishable
-from a slow call by design, and the resumption token it would carry is a
-capability that handing to every listener would turn into a shadow way to
-act on the call. `TurnEvent` narrates the model's turn, never that. The park
-does have a channel: `HarnessObserver` sees `ApprovalDeferred`, below.
-
-Three ways to build one:
-
-- A bare lambda, when one concern covers every event: `event -> log.info("{}", event)`.
-- `TurnObserver.observe(TurnObserverCustomizer)`, composing per-variant
-  consumers — the composition-friendly rung between a lambda and a
-  subclass:
-
-  ```java
-  TurnObserver observer =
-      TurnObserver.observe(
-          o ->
-              o.onTextDelta(delta -> terminal.print(delta.text()))
-                  .onToolCallCompleted(done -> statusBar.flash(done.call().name())));
-  ```
-
-  Registering the same variant twice chains rather than replaces, so two
-  independent concerns — a journal and a renderer — can both hear the same
-  events in registration order.
-- `TurnObserver.logging(Logger, prefix)` — the standard narrator: one
-  `says:` line per non-blank `AssistantSaid`, a line each for a tool
-  requested and completed, and the turn's closing line at `INFO`, with the
-  failure reason repeated at `WARN` when the turn failed. The `prefix`
-  overload takes a `Supplier<String>` for a tag not yet known when the
-  observer is built — a correlation id minted only once a drive returns.
-
-Throw semantics are asymmetric. A throwing observer aborts the call it
-narrates on the model path — the observer is the caller's own code, so its
-exception is the caller's exception. `ToolCallProgressed` is the exception
-to the exception: a misbehaving progress narrator is logged and dropped
-rather than propagated, so a bug in a status bar can't kill a tool call that
-was otherwise succeeding. Narration is at-least-once, matching the shell's
-own retry-on-stale-save discipline: a retried apply can narrate the same
-event twice, so an observer materializing per-event UI should dedupe by the
-event's natural key.
-
-### `RelayTurnObserver` in the CLI
-
-`Nessy.cli()` builds its own `RelayTurnObserver` internally — an
-`AtomicReference<TurnObserver>` that `converse(...)` points at a fresh
-`AwaitingReply` for the duration of each call, and drops events with
-nowhere to go the rest of the time. `AwaitingReply` itself is a `TurnObserver`
-that ignores everything except `AssistantSaid` (buffered as the pending
-reply) and `TurnEnded` (which completes or fails the future `converse`
-blocks on). There is no public seam today for a `Nessy.cli()` caller to also
-attach a streaming renderer alongside it — the relay is the CLI's own
-internal wiring, not yet an exposed extension point.
-
-### The harness's `turnObserver` seam
-
-`Nessy.harness(...)` takes a `TurnObserver` directly, wired once inside the
-customizer and shared by every scope the harness serves — `HarnessConfig`
-carries no per-call relay, since there is no caller thread parked on any one
-turn to hand it to:
-
-```java
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(claude)
-                .systemPrompt(prompt)
-                .turnObserver(TurnObserver.logging(logger, "ops")));
-```
-
-The default is `TurnObserver.noop()`.
-
-## The roster — OTel GenAI spans and counters
-
-Nessy has one fact stream per harness: both fold sites — `DefaultAgent`'s
-synchronous shell and `DeliveryWorker`'s durable one — publish
-`(agentId, event, transition)` through it, and everything interested
-subscribes. `HarnessConfig.observationRegistry(ObservationRegistry)` is the
-one seam: absent, the harness runs against `ObservationRegistry.NOOP` and
-the roster below is inert. Supplied, two things happen: a package-private
-`Observations` object subscribes to the stream and stamps the spans that are
-*functions of a fold* — the segment and the two waits — while the work-scoped
-spans are opened **around the work**, in the loop, by the executors, the fold
-sites and the memory decorator. That division is the whole point: a span
-measures work while the work happens; the stream watches facts that already
-did. All of them are Micrometer `Observation`s named per the OpenTelemetry
-GenAI semantic conventions
-(pinned here against the **2025 `gen_ai.*` attribute set** — GenAI semconv
-is still *development* status upstream and `gen_ai.system` became
-`gen_ai.provider.name` in that revision; the CHANGELOG names the exact
-attributes this build implements against). `nessy-agent` depends on
-`micrometer-observation` only — exporters, the OTel tracing bridge, and
-OTLP live in the application; see `nessy-examples/observed` for the whole
-wiring and how to point it at a collector.
-
-### Spans
-
-| Observation (contextual name) | `gen_ai.operation.name` | opens | closes | attributes |
-|---|---|---|---|---|
-| `invoke_agent {agentType}` | `invoke_agent` | a segment starts | the segment ends | `gen_ai.agent.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.id`, `gen_ai.conversation.id`; `nessy.turn.outcome` = complete / parked / failed |
-| `chat {model}` | `chat` | `Model.stream` is called | the stream closes | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.request.stream`=true, `gen_ai.request.max_tokens`, `gen_ai.response.finish_reasons`, `gen_ai.response.time_to_first_chunk`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`; `error.type` |
-| `execute_tool {tool}` | `execute_tool` | `tool.execute` is called | it returns | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`=function; `error.type`; `nessy.tool.deferred`; `nessy.tool.outcome` = returned / failed / deferred |
-| `search_memory` | `search_memory` | `Memory.recall` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`; `error.type` |
-| `create_memory` | `create_memory` | `Memory.remember` is called | it returns | `gen_ai.agent.name`, `gen_ai.memory.record.count`=1; `error.type` |
-| `nessy.approval.seek {tool}` | — | the ask begins | the approver answers or defers | `gen_ai.tool.name`, `gen_ai.agent.name`, `gen_ai.tool.call.id`, `nessy.approval.outcome` = approved / denied / deferred; `error.type` |
-| `nessy.fold` | — | a fold attempt begins | it commits, drops, or loses its CAS | `gen_ai.agent.name`, `gen_ai.agent.id`; `error.type` |
-| `nessy.approval.wait {tool}` | — | `ApprovalDeferred` applied | `ApprovalAnswered` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.approval.answer` |
-| `nessy.tool.wait {tool}` | — | `ToolDeferred` applied | `ToolFinished` applied | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
-
-`gen_ai.agent.id`, `gen_ai.conversation.id`, and `gen_ai.tool.call.id` are
-**high-cardinality** key-values in Micrometer's terms — they ride the span,
-never a meter.
-
-**A span is not a turn.** An `invoke_agent` span runs one *segment* — from
-`Observed` (or a delivery that resumes the scope) applied, to the next
-`Idle` or the next park (a phase with no call left `Running` or `Pending`).
-A turn that waits six hours on a human would otherwise hold an open span
-across a crash, a restart, and a redeploy — an OTel span that survives none
-of those is a lie. The wait spans carry the dwell between segments instead,
-and they are what a dashboard reads for "how long do humans take." In-flight
-spans die with the process; nothing reconstructs one after a restart — they
-are telemetry, and the phase in the store is the truth.
-
-**The idiom `"none"`.** Every outcome-bearing key (`nessy.turn.outcome`,
-`nessy.approval.answer`, `nessy.approval.outcome`, `nessy.tool.outcome`,
-`nessy.tool.deferred`, `gen_ai.response.finish_reasons`, `error.type`) is
-set at **start** to the
-placeholder `"none"` and overwritten once the outcome is known. Micrometer
-requires every observation sharing a name to carry the same set of
-low-cardinality keys — a `chat` that only sometimes carried
-`error.type` would be a meter with unstable tags, which a strict registry
-rejects outright and a real backend corrupts. A reader of these spans must
-treat `"none"` as "not yet known / not applicable," including on a span that
-finished successfully: `error.type=none` on a healthy `chat` is the
-documented shape, not a bug.
-
-**Two kinds of span, and only one can hold a scope.**
-
-*Work-scoped* spans cover work that begins and ends on one thread: `chat`,
-`execute_tool`, `nessy.approval.seek`, `nessy.fold`, `search_memory` and
-`create_memory`. Each opens a Micrometer **scope** and is *current* for its
-duration, so anything the work itself records — a JDBC statement under a
-fold, an HTTP call inside an approver, a provider SDK's own instrumentation
-— nests inside it. That property is the whole reason `nessy.fold` replaces a
-JDBC instrumentation library rather than needing one: the fold span's
-duration *is* the store write plus the reduce plus the remembrance, and a
-statement-level library added on top now attaches beneath it instead of
-producing a flood of roots.
-
-*Lifetime* spans cover something that outlives a thread, a stack, and
-possibly the process: the `invoke_agent` segment and the two waits. A wait
-may last three days and be answered in a different JVM, so no scope can span
-it. These are **hand-parented** off the scope's open segment, looked up by
-`AgentId`, and stamped by the fold.
-
-**Parent/child.** The segment is the parent of everything. `chat`,
-`execute_tool` and the memory spans hang off it (or, if some other span is
-already current, off that); wait spans are children of the segment that
-parked them; `nessy.approval.seek` is a child of the `execute_tool`-side ask
-that opened it. A tracing backend renders one trace per segment, and
-`gen_ai.conversation.id` stitches segments across parks.
-
-One honest exception: the **first** `nessy.fold` of a segment is a root span
-of its own. The segment does not exist until that fold's output reaches the
-fact stream, so there is nothing yet for it to hang off — and publishing the
-fact *inside* the fold's scope would invert the rule above, making the
-segment a child of a fold that stops immediately. Every later fold in the
-round is a child of the segment.
-
-**A retried fold is two spans.** A lost CAS propagates out of the attempt, so
-the losing fold closes with `error.type` and the retry opens a fresh
-`nessy.fold`. Contention is legible in the trace and not only in
-`nessy.state.stale_retries`.
-
-### Metrics
-
-Micrometer's default handlers derive a timer from every span above. Semconv
-defines a separate duration histogram per operation boundary, each with its
-own attribute set, and each observation is **named for its own metric** —
-the span name rides as the `contextualName` instead:
-
-| Observation name (the meter) | Contextual name (the span) |
+| Event | When |
 |---|---|
-| `gen_ai.client.operation.duration` | `chat {model}` |
-| `gen_ai.invoke_agent.duration` | `invoke_agent {agentType}` |
-| `gen_ai.execute_tool.duration` | `execute_tool {tool}` |
-| `search_memory` / `create_memory` | same (semconv defines no memory duration metric) |
-| `nessy.approval.seek` | `nessy.approval.seek {tool}` |
-| `nessy.fold` | same |
-| `nessy.approval.wait` / `nessy.tool.wait` | `nessy.approval.wait {tool}` / `nessy.tool.wait {tool}` |
+| `TurnStarted` | a turn began |
+| `TextDelta` | prose, as it streams |
+| `ReasoningDelta` | reasoning, as it streams |
+| `ToolCallRequested` | the model asked for a tool, with the describer's sentence |
+| `ApprovalRequested` | a call was actually put to a person, with its deadline |
+| `ApprovalDecided` | approved or denied |
+| `ToolCallCompleted` | a call answered, with its result |
+| `Answered` | the model's prose answer |
+| `TurnEnded` | how it ended, with what it cost |
 
-**Match on the meter name, not the span name.** An `ObservationHandler`
-reads `context.getName()`, which is the left column. A handler written
-against `"chat"` matches nothing.
+`ApprovalRequested` fires only when an approver **defers** — an ungated tool
+is approved on the spot, and an event for that would be noise claiming a
+person was asked.
 
-Three names rather than one is what semconv asks for, and it satisfies
-Micrometer's rule for free: a meter requires one stable low-cardinality key
-set per name, and semconv already partitions the attributes per metric.
+**Close the subscription.** An unclosed one leaks a routing entry.
 
-`gen_ai.client.token.usage` is application-side: an `ObservationRegistry`
-times observations, it cannot record a value histogram. The `chat` span carries
-the vendor's own token counts as key-values
-(`gen_ai.usage.input_tokens`/`output_tokens`); a ten-line
-`ObservationHandler` reads them on `onStop` and records the metric to its
-own `MeterRegistry` — `nessy-agent` never sees a `MeterRegistry` at all.
-`nessy-examples/observed` ships that handler.
+### Resuming
 
-### `schema_url`
-
-GenAI semconv is *development* status and its attributes move —
-`gen_ai.system` became `gen_ai.provider.name` inside a year. A Collector's
-schema processor can translate an old name forward, but only if the spans
-say which revision they were written against. That is the instrumentation
-scope's `schema_url`, and it is set on the OpenTelemetry `Tracer`:
+Every event carries a time-ordered id, so a listener that dropped off can
+resume from the last one it saw:
 
 ```java
-openTelemetry.tracerBuilder("org.jwcarman.nessy")
-    .setSchemaUrl("https://opentelemetry.io/schemas/1.44.0")
-    .build();
+harness.subscribe(agentId, subscriber, lastEventIdItSaw);
 ```
 
-That is the only place it can be set. Micrometer's `Observation` and
-`ObservationRegistry` have no notion of a schema URL — they have no notion of
-OpenTelemetry at all, which is what the one-seam ruling buys — and
-`micrometer-tracing-bridge-otel` wraps whatever `Tracer` it is handed, so
-every span inherits that tracer's scope. `nessy-agent` therefore cannot
-stamp it, and does not try: this belongs to the application, next to the
-exporters. Both example modules set it; under Spring Boot it means declaring
-your own `io.opentelemetry.api.trace.Tracer` bean, since Boot's own is
-`@ConditionalOnMissingBean` and carries no schema URL.
-
-Three counters. Each is recorded as a **span event on the scope's open
-`invoke_agent` segment** — the round it happened during — because an
-`ObservationRegistry` has no direct counter API and the obvious alternative,
-a zero-duration observation, is a parentless observation and therefore its
-own *trace*: one busy round used to fill the trace list with five of them.
-Find them in Tempo as events on the round's span, which already carries
-`gen_ai.agent.name`. A scope with **no** segment open falls back to the
-zero-duration observation, tagged `gen_ai.agent.name` — rare, and the one
-case that genuinely has no round to hang on:
-
-- `nessy.delivery.dropped` — a genuine delivery (an answered approval, a
-  completed tool result) that arrived against a phase that no longer wanted
-  it.
-- `nessy.state.stale_retries` — one per `StaleStateException`/
-  `ConflictException` retry the two fold sites absorb.
-- `nessy.effects.refired` — one per effect the recovery arm re-dispatched.
-
-A span event contributes to no timer, so while a round is open these three
-are readable as events rather than as meters. To have them as meters too,
-register an `ObservationHandler` whose `onEvent` records to your own
-`MeterRegistry` — the same division of labour `gen_ai.client.token.usage`
-already uses.
-
-### Telemetry never breaks a turn
-
-An `ObservationHandler` is arbitrary application code, running inline on
-whichever thread started, scoped, or stopped the span, and a turn must never
-fail because the thing describing it did. So every `start()`, `stop()`,
-`error()`, scope open and scope close is contained — the work-scoped spans
-at their own call sites, the three engine counters inside `Observations`,
-and the segment and wait spans by the fact stream's own per-subscriber
-isolation, since those are opened and closed from a `HarnessObserver`
-callback. `nessy.fold` matters most here: a throw out of its instrumentation
-would abort a fold, lose a tool's result, and give up on the very CAS
-contention the retry loop exists to converge past. A failed `start()` yields
-`Observation.NOOP`, so
-the `stop()` that follows is a harmless no-op; a throwing handler is logged
-once at `WARN` and dropped. Key-value writes are not wrapped, and need not
-be: they only mutate the observation's context and invoke no handler.
-This applies all the way down — an application handler that reads
-`gen_ai.usage.input_tokens` off a `chat` that failed before the model
-reported any usage throws `NullPointerException` inside `onStop`, and the
-turn still completes with its real outcome.
-
-### Known bound: a wait parked by one harness and answered by another
-
-Two harnesses sharing a type, a substrate and a Continuum are a supported
-shape (see the harness guide), and either may deliver what the other parked.
-The wait span, though, is an open `Observation` living in the parking
-harness's heap alone — so an answer folded by the *other* harness closes
-nothing: the first harness's `nessy.approval.wait` stays open until its
-process ends, and the second records a close for a wait it never opened,
-which is a no-op.
-
-Nothing is corrupted and no fold is affected; the dwell simply goes
-unrecorded, exactly as an in-flight span already dies with a restart. Fixing
-it would mean reconstructing spans from durable state, which is the thing
-the segment rule above exists to refuse. If you need the dwell of every parked call in a multi-harness
-deployment, read it from the approval desk's own records, not from the spans.
-
-## `HarnessObserver` — the fact stream's own subscriber
-
-Where `TurnObserver` narrates the model's turn, `HarnessObserver` narrates
-what the shell itself decided — exactly the fact applied and the whole
-transition it produced, including the next phase. It is the same stream the
-roster above subscribes to; the harness's own narrating adapter — the one
-that turns an applied fold into the `AssistantSaid`/`TurnEnded` turn events
-the CLI door has always shown — is always its first subscriber, and every
-caller-supplied one sits beside it and beside `Observations`, seeing every
-fact this harness produces:
+Over SSE that costs one line, because a browser sends `Last-Event-ID` on
+reconnect by itself:
 
 ```java
-public interface HarnessObserver {
-  void applied(AgentId id, AgentEvent event, Transition transition);
-  void ignored(AgentId id, AgentEvent event);
-  void renderFailed(AgentId id, Object observation, RuntimeException error);
-  void applyFailed(AgentId id, AgentEvent event, RuntimeException error);
-  void reFired(AgentId id, List<Effect> effects);
-  void observationRequeued(AgentId id, Object observation);
+@GetMapping("/{id}/events")
+public SseEmitter events(@PathVariable String id,
+                         @RequestHeader(name = "Last-Event-ID", required = false) String cursor) {
+    return streams.open(AgentId.of(id), cursor);
 }
 ```
 
-Every method leads with the `AgentId` the fact is about — one
-`HarnessObserver` instance serves every scope the harness runs, unlike the
-retired per-scope `AgentObserver` a factory used to stamp fresh per id.
+The cursor takes effect when the *subscription* is created. One subscription
+serves every tab watching an agent, so a tab joining an existing audience
+gets the live feed — what this fixes is the case that actually loses events:
+the last listener leaves, the subscription goes, and something comes back to
+find a gap.
 
-- **`applied`** — the normal case: one event folded, the resulting
-  transition (commits and effects included) handed over for whoever wants
-  to build metrics or a trajectory log from it.
-- **`ignored`** — a stale or duplicate completion, discarded before
-  anything was written.
-- **`renderFailed`** — a renderer threw; the observation is discarded and
-  the scope stays idle rather than wedging on a bad render.
-- **`applyFailed`** — applying a completion threw (a malformed delivery, a
-  phase-contract violation); the event is dropped and narrated, and the
-  scope's phase is unchanged.
-- **`reFired`** — the recovery arm re-dispatched a stalled phase's
-  outstanding effects.
-- **`observationRequeued`** — an observation lost the idle race and went
-  back to the backlog.
+### Narration has its own lifecycle
 
-**`HarnessConfig#harnessObserver(HarnessObserver)` is additive** — each call
-subscribes one more observer, in call order, and never replaces the default
-narrator. A harness built with no calls to it at all still narrates: the
-default narrating adapter is not something you opt into, it is something you
-cannot opt out of. `HarnessObserver.noop()` is for a caller-supplied
-observer that genuinely wants to see nothing (a placeholder in a test, say)
-— it does not silence the narrator, because nothing does.
+Narration for one agent is its own entity, and it decides for itself when to
+go: when the last subscriber leaves it starts a short countdown, cancelled
+the moment anyone subscribes again.
 
-Publishes for one agent id are **not** guaranteed to arrive in commit order:
-each fold site publishes after its CAS, not under it, so two concurrent folds
-on one scope can reach an observer either way round. An observer holding
-per-scope state must tolerate a close before its open. Every fact you are
-handed did commit; only the order is unguaranteed.
+That is not an optimisation, it is a bug fix. Pekko's default unloads an
+entity after two minutes without **messages**, and narration's whole state is
+a set of live subscribers — unloading it does not free state to be read back
+later, it destroys it, and every listener goes deaf with no error anywhere.
+Measured breaking a real session: somebody read a long answer and typed a
+reply, the turn that followed ran perfectly, finished, and published into an
+empty set while the terminal waited out its patience. **An agent is allowed
+to think for longer than its audience takes to type.**
 
-None of these events originate from a live wait. `DeliveryWorker` — a small
-scheduled pump pool per harness (`ComputationScheduler`), plus a drain pass
-`nudge()` submits to that same pool right after any completion commits — is
-what turns a pending Continuum delivery back into an `applied` (or
-`ignored`) fact on this same stream; the submitted drain runs asynchronously,
-not on the completing caller's own thread. A grant's dispatch and a durable
-tool's eventual result both surface here exactly like any other transition,
-with no separate "resumed from durable storage" event of its own — and,
-since the fact stream reform, a delivered fold now narrates through the same
-door a synchronous one always has, where before a worker-driven completion
-narrated nothing at all. See
-[Durable Computation](../concepts/durable-computation.md) for the pipeline
-underneath it.
+## Traces
 
-**Observers narrate; they never influence.** Nothing here can change what
-the shell does — no return value feeds back into the transition, and
-nothing about authorization runs through this seam either: a grant's
-approver, its enrichers, and its rendered action are never broadcast to a
-`HarnessObserver`, only their outcome shows up, folded into whichever
-`ToolResult` the applied transition already carries. A listener that could
-affect the flow would create ordering dependence between listeners and a
-shadow decision surface competing with the authorization ladder — every
-seam that is actually allowed to change behavior (memory, the state store,
-the backlog, both executors, the grants themselves) is its own interface,
-not this one.
-
-Every subscriber on the stream — the configured `HarnessObserver` and the
-o11y roster alike — is isolated: a throw is logged and dropped, never
-propagated into the fold. This is stricter than `TurnObserver`'s own
-throw-through contract above, because by the time a fact is published the
-fold has already committed; letting a bad subscriber's exception escape
-would corrupt an outcome that is already true in the store.
-
-## `AuthorizationReport` — the third leg, and it isn't a stream
-
-`TurnObserver` and `HarnessObserver` narrate what already happened. What
-*would* happen — which grants render an action, which enrichers run, which
-approver answers — is not a live event at all; it is read back once, statically,
-from the harness's own wiring:
+Supply an `ObservationRegistry` and the engine opens spans:
 
 ```java
-AuthorizationReport report = AuthorizationReport.of(grants);
-System.out.println(report.render());
+new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(models)
+        .traces(new Traces(observationRegistry)));
 ```
 
+The Spring Boot starter wires this from your registry automatically.
+
+Every message an agent handles is a span, parented to whatever the *sender*
+carried — so one trace covers a whole turn, including the model calls,
+approvals and tools it fanned out into. A verified run:
+
 ```
-restart_prod: action(restart-statement) → intent → risk → approver (RiskThresholdApprover)
-read-balance: allow()
+task watchmanRounds.round                    <- root
+  send watchman BacklogUpdated
+    agent receive WorkTaken
+    agent call model
+      chat qwen/qwen3.6-35b-a3b
+    agent receive ModelAsked
+    approval disk_usage
+    tool disk_usage
+      execute_tool disk_usage
+    agent receive ToolCompleted
+    agent receive ToolParked
+    ...
 ```
 
-`AuthorizationReport.of(...)` reads each grant's `tool()`, `approver()`,
-`enrichers()`, and `contributor().displayName()` by declaration — never by
-calling `actionOf`, `enrich`, or `approve` — so it cannot drift from the
-wiring it describes; there is no way for the report to say one thing while
-the executor does another. See [Authorization](../concepts/authorization.md#authorizationreport-the-report-is-the-wiring)
-for the full grammar of what a grant's story can say.
+23 spans, one trace, one root.
 
-## Where next
+**Context travels in headers, not in thread-locals.** Work handed to the
+blocking executor opens its span *there*, from headers carried into the
+work, because a captured scope does not survive the hop and a header does.
+This was measured rather than reasoned about: the actor tree nested
+correctly and every model call still opened its own root trace, until the
+scope was re-entered on the worker thread.
 
-- [Authorization](../concepts/authorization.md) — the trust gradient
-  `ToolCallDecided` and `AuthorizationReport` both describe.
-- [The harness guide](harness.md) — `Nessy.harness(...)`'s full
-  builder surface, `turnObserver`, `harnessObserver`, and
-  `observationRegistry` alongside it.
-- [Durable Computation](../concepts/durable-computation.md) — the shell,
-  the fold, and the events `HarnessObserver` narrates the outcome of.
+A message an agent sends *itself* on activation carries no headers, so
+`agent receive Recovered` is a root of its own. That is honest — nothing
+caused it.
+
+## Metrics
+
+The same registry produces timers per message type and per unit of work:
+
+```
+agent_receive_ModelAsked_milliseconds_count
+agent_receive_ApprovalGiven_milliseconds_count
+agent_call_model_milliseconds_sum
+...
+```
+
+Anything a span measures is also a timer, so "how long do approvals take"
+and "how often does the model get asked" are both already there.
+
+Spans carry the OpenTelemetry GenAI attributes — `gen_ai.tool.name`,
+`gen_ai.agent.name`, `gen_ai.tool.call.id` — pinned against the 2025
+`gen_ai.*` attribute set.
+
+**Low-cardinality tags must be known before the work starts.** A tag written
+from inside a handler never reaches the span: measured, a span carrying
+nothing but agent and turn ids while the high-cardinality details written
+beside it arrived fine. They become metric tags, and a meter's tag set has
+to be fixed when the meter is created.
+
+## What a span says about itself
+
+A span named `agent receive ToolCompleted` with nothing on it says only that
+*something* finished — useless in the turn that called three tools, which is
+the turn you opened a trace for. So the tool's name and whether the model
+can act on the answer go on before the handler runs.
+
+## Seeing it
+
+`nessy-examples/watchman` exports to OTLP:
+
+```bash
+docker run -d --name lgtm -p 3000:3000 -p 4318:4318 grafana/otel-lgtm
+export OTLP_TRACES_URL=http://localhost:4318/v1/traces
+```
+
+Then Grafana on `:3000` — Tempo for the trees, Prometheus for the timers.
+
+## See also
+
+- [The Harness](harness.md) — subscribing, and closing a subscription
+- [Durable Computation](../concepts/durable-computation.md) — why answers cross process boundaries
+- [Spring Boot](spring-boot.md) — wiring a registry

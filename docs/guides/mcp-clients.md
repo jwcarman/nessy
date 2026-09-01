@@ -13,18 +13,19 @@ blanket "trust this server":
 
 ```java
 McpToolbox toolbox = McpToolbox.connect(transport, mapper);
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(claude)
-                .systemPrompt(prompt)
-                .grants(
-                    ToolGrant.grant(toolbox.tool("search"), Approvers.allow()),
-                    ToolGrant.grant(toolbox.tool("purchase"), Approvers.defer())));
-harness.bind(AgentId.of("agent-1")).tell("find the cheapest flight and buy it");
+
+Harness<String> harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("traveller"))
+        .systemPrompt(prompt)
+        .model(ModelId.of("claude-opus-4"))
+        .renderer(UserMessage::of)
+        .tool(toolbox.tool("search"))
+        .tool(toolbox.tool("purchase"), binding -> binding.approver(desk)));
+
+harness.observe(AgentId.of("agent-1"), "find the cheapest flight and buy it");
 ```
 
-`Approvers.defer()` parks every call for someone else to answer — see
+An approver that defers parks every call for someone else to answer — see
 [Writing an approver](harness.md#writing-an-approver) for one that also
 tells a human it's waiting.
 
@@ -41,7 +42,7 @@ in-flight or future call on those tools loud, not silently.
 `toolbox.tool(name)` fails loud — `NoSuchElementException` naming every tool
 the server actually advertised — rather than handing back `null` for a typo.
 `toolbox.tools()` returns every tool the server advertised, in `tools/list`
-order, for callers that want the whole set; there is still one `ToolGrant`
+order, for callers that want the whole set; there is still one binding
 per tool, because a tool carries zero authority content on its own.
 
 `McpToolbox` is `AutoCloseable`; closing it closes the underlying MCP
@@ -53,14 +54,16 @@ swallowing the closed session.
 
 An MCP tool is governed exactly like a hand-written one, because nothing
 about authorization lives on the `Tool` interface itself — a granted MCP
-tool rides the same `ToolGrant.grant(tool, contributor, approver)` rungs as
+tool is granted and gated exactly the same way as
 any first-party tool, `ActionContributor` included:
 
 ```java
 ActionContributor<JsonNode, String> PURCHASE_ACTION =
     ActionContributor.named("purchase", in -> "purchase " + in.get("item").asText());
 
-ToolGrant.grant(toolbox.tool("purchase"), PURCHASE_ACTION, Approvers.defer());
+config.tool(toolbox.tool("purchase"), binding -> binding
+        .approver(desk)
+        .describer(arguments -> "purchase " + arguments.path("flight").asText()));
 ```
 
 `McpTool#execute` is always a single request/response round trip — never a
@@ -95,27 +98,18 @@ researching public GitHub repositories — a convenient real server to import
 against, since it needs no credential of its own:
 
 ```java
-var pending = new LinkedBlockingQueue<ComputationId>();
-Approver parkAndQueue =
-    context -> {
-      ApprovalOutcome outcome = context.defer();
-      pending.add(((ApprovalOutcome.Deferred) outcome).id());
-      return outcome;
-    };
+McpToolbox toolbox = McpToolbox.connect(transport, mapper);
 
-McpToolbox toolbox =
-    McpToolbox.connect(
-        HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(claude)
-                .systemPrompt(prompt)
-                .grants(
-                    ToolGrant.grant(toolbox.tool("read_wiki_structure"), Approvers.allow()),
-                    ToolGrant.grant(toolbox.tool("read_wiki_contents"), Approvers.allow()),
-                    ToolGrant.grant(toolbox.tool("ask_question"), parkAndQueue)));
-harness.bind(AgentId.of("researcher")).tell("what does jwcarman/nessy's harness module do?");
+Harness<String> harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("researcher"))
+        .systemPrompt(prompt)
+        .model(ModelId.of("claude-opus-4"))
+        .renderer(UserMessage::of)
+        .tool(toolbox.tool("read_wiki_structure"))
+        .tool(toolbox.tool("read_wiki_contents"))
+        .tool(toolbox.tool("ask_question"), binding -> binding.approver(desk)));
+
+harness.observe(AgentId.of("researcher"), "what does jwcarman/nessy's harness module do?");
 ```
 
 `read_wiki_structure` and `read_wiki_contents` are free — the agent can look

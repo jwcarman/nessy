@@ -20,7 +20,7 @@ public interface Model {
 ```
 
 `.model(id)` binds a cheap, immutable handle to one model id, sharing the
-gateway's client. `Model` is what `Nessy.harness(h -> h.model(...))`
+gateway's client. `ModelId` is what `config.model(...)`
 consumes — the harness never sees the gateway itself. `capabilities()`
 lives on the handle, not the gateway, because it is a per-model fact, not a
 vendor-wide guess: a lineup's thinking support, context size, and schema
@@ -51,8 +51,10 @@ var anthropic = AnthropicModelProvider.fromEnv();
 var fast = anthropic.model("claude-haiku-4-5");
 var strong = anthropic.model("claude-opus-5");
 
-var triageHarness = Nessy.harness(h -> h.model(fast).systemPrompt(triagePrompt));
-var reviewHarness = Nessy.harness(h -> h.model(strong).systemPrompt(reviewPrompt));
+var triage = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("triage")).model(fast).systemPrompt(triagePrompt).renderer(UserMessage::of));
+var review = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("review")).model(strong).systemPrompt(reviewPrompt).renderer(UserMessage::of));
 ```
 
 No model string threads through a `ModelRequest` — the request describes
@@ -189,7 +191,7 @@ by type, exactly like an OpenAI model. Without `NESSY_MODEL`, the winner's
 own default applies: Anthropic's `claude-haiku-4-5-20251001`, OpenAI's
 `gpt-4o-mini`, xAI's `grok-4.6`, Gemini's `gemini-3.6-flash`.
 
-`ApprovalPlayground` (`nessy-agent`'s test sources, an IDE-run tinker door)
+`ApprovalPlayground` (an IDE-run tinker door in the engine's test sources)
 is this in practice: one `main`, no `if` branch for which provider to
 import, because discovery already decided both the vendor and the model:
 
@@ -203,7 +205,11 @@ try {
     return;
 }
 
-var harness = Nessy.harness(h -> h.model(selection.model()).systemPrompt("You are a terse assistant."));
+var harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("assistant"))
+        .model(selection.modelId())
+        .systemPrompt("You are a terse assistant.")
+        .renderer(UserMessage::of));
 ```
 
 ### Writing your own provider
@@ -266,7 +272,11 @@ a model stream, with exponential backoff:
 ```java
 Model resilient = RetryingModel.wrap(claude, RetryPolicy.defaults(), AnthropicModelProvider.RETRYABLE);
 
-var harness = Nessy.harness(h -> h.model(resilient).systemPrompt(prompt));
+var harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("assistant"))
+        .model(resilient)
+        .systemPrompt(prompt)
+        .renderer(UserMessage::of));
 ```
 
 Only the initial `stream()` call is retried — once events flow, tokens have
@@ -499,7 +509,7 @@ ModelProvider provider =
 ## Running `ApprovalPlayground`
 
 `ApprovalPlayground` builds its model choice from `ModelDiscovery.select()`,
-and `nessy-agent`'s test classpath carries every keyed provider, so any of
+and the engine's test classpath carries every keyed provider, so any of
 the env setups above just works — set the key and run the class's `main`
 from an IDE (it carries no `@Test` methods, so surefire never picks it up):
 

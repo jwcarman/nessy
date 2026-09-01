@@ -12,24 +12,23 @@ server offering ten tools yields ten separate grant decisions, not one
 blanket "trust this server":
 
 ```java
-try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
-  var harness =
-      Nessy.harness(
-          h ->
-              h.type("researcher")
-                  .model(claude)
-                  .systemPrompt(prompt)
-                  .grants(
-                      ToolGrant.grant(toolbox.tool("search"), Approvers.allow()),
-                      ToolGrant.grant(toolbox.tool("purchase"), Approvers.defer())));
-}
+McpToolbox toolbox = McpToolbox.connect(transport, mapper);
+
+Harness<String> harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("traveller"))
+        .systemPrompt(prompt)
+        .model(ModelId.of("claude-opus-4"))
+        .renderer(UserMessage::of)
+        .tool(toolbox.tool("search"))
+        .tool(toolbox.tool("purchase"), binding -> binding.approver(desk)));
 ```
+
 
 `toolbox.tool(name)` fails noisy — `NoSuchElementException` naming every
 tool the server actually advertised — rather than handing back `null` for
 a typo. `toolbox.tools()` returns every tool the server advertised, in
 `tools/list` order, for callers that want to grant the whole set (still
-one `ToolGrant` per tool — `HarnessConfig#grants` has no bulk-grant form,
+one binding per tool — `HarnessConfig#tool` has no bulk-grant form,
 because a tool carries zero authority content on its own; every
 attachment states its approver or does not compile). Two servers make two
 toolboxes and two namespaces: a name collision between them is the

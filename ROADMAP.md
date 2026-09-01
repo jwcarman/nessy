@@ -112,10 +112,9 @@ shipped early, but *policy* is still per-tool and binary. These close the gap:
 ## Platform & developer experience
 
 - **DSL coherence** *(ruled)* — one construction idiom everywhere:
-  customizers over configs (`Nessy.harness(h -> ...)`,
-  `harness.agent(a -> ...)`), no `build()` in the public surface.
-- **Console maturity** — a parked-outcome hook on `ConsoleRepl` so apps stop
-  hand-rolling approval loops.
+  customizers over configs (`new PekkoHarnessFactory(engine -> ...)`,
+  `factory.createHarness(Type.class, config -> ...)`), no `build()` in the
+  public surface.
 - **Loop maturity** — re-parking shipped with subagents v2; parallel tool
   execution is the next loop milestone.
 - **Tool-input validation, two layers** — JSON Schema validation of raw

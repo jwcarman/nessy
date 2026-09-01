@@ -15,6 +15,63 @@ against any shipped version, because none exists. This section describes the
 framework's current shape, once, in its final vocabulary, rather than the
 sequence of renames and interim shapes that produced it.
 
+> **Note.** Much of the narrative below is HISTORY, not current shape. It
+> predates three removals: Continuum (2026-08-28), Substrate (2026-09-01),
+> and the collapse of the actor hierarchy (2026-09-01). Entries are left as
+> written because a changelog records what happened; the current shape is the
+> section immediately below, and the documentation site is the manual.
+
+### 2026-09-01 — one actor per agent
+
+- **Five actor types became one.** `TurnActor`, `ToolCallActor`,
+  `ApprovalActor` and `ExecutionActor` are gone, with `Turns`, `TurnState`
+  and `StateTypes`. An agent is one sharded durable actor that translates a
+  message into an `Input`, calls a pure `decide`, persists the result, and
+  runs the instructions. Every rule lives in a function that cannot do
+  anything; every effect lives in a shell that decides nothing.
+- **Slow work answers to a logical address.** A model call, a tool run and an
+  approver's answer are all addressed to the agent's entity id rather than to
+  an actor reference. The executor outlives actors; a reference does not. This
+  deletes the revival message a dying actor used to post to itself.
+- **Recovery is not a mode.** The agent feeds itself `Recovered` on every
+  activation, so the path that used to run only after a crash now runs
+  constantly. `CallState` has four arms — `Approving`, `Running`, `Parked`,
+  `Completed` — because recovery needs four answers, and a parked call is
+  left alone rather than re-asked. Re-asking mints a second reply token and
+  invalidates the one already in somebody's inbox.
+- **The backlog is a table.** `nessy_backlog`, ordered by the coalescer's own
+  output. The row id IS the turn id, because one observation is one turn, and
+  that is what makes a take idempotent across a crash. The observation type
+  stops at the store, so `AgentState`, `AgentActor` and `NessyMessage` are no
+  longer generic.
+- **The agent's persisted document is ~260 bytes**, measured against
+  PostgreSQL while running real tools, and it does not grow with what the
+  agent does.
+- **A reply token carries its turn**, so an answer arriving days later can be
+  claimed before the agent is told about it.
+
+### Fixed
+
+- **A denial reached the model as "no result was recorded."** Nothing wrote a
+  result for a refused call, so the transcript carried a placeholder and the
+  agent apologised for an error it had not had. Whoever produces a denial now
+  claims it, like every other result.
+- **The Boot starter shipped no DDL for `nessy_pending_approvals`.** Every
+  parked approval failed with "relation does not exist" and took the
+  narration actor down with it. The starter now ships its own
+  `nessy-schema.sql`, and declares H2 at runtime scope so the in-memory
+  default it promises actually works.
+- **SSE's `ready` event carried a null id**, which `SseEventBuilder` rejects
+  outright — every stream failed before a single event reached the browser.
+- **`Last-Event-ID` was written and read by nothing.** The ring buffer, the
+  cursor and the event ids all existed with no door into them.
+
+### Removed
+
+- `the-four-tiers.md` from the documentation site: the four tiers were the
+  Substrate x Continuum durability matrix, and with both subsystems gone the
+  page had no subject.
+
 > **Note.** Much of the narrative below predates the agent-as-scope rebuild
 > and was superseded on 2026-08-20 — `Nessy.harness`/`Agent#converse().tell()`,
 > `ParkToken`, planning, the notebook, and reflection among them. The design
