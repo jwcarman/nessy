@@ -49,6 +49,18 @@
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson2</artifactId>
     </dependency>
+    <!-- Spring JDBC as a LIBRARY: JdbcClient, ResourceDatabasePopulator and
+         EmbeddedDatabaseBuilder all work from a bare DataSource, with no ApplicationContext and no
+         Spring Boot, so a plain main() and a Boot application share one storage layer. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

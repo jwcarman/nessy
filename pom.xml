@@ -179,6 +179,21 @@
          on awaitility and logback-core) describe as the established convention. -->
     <spring-boot.version>4.1.1</spring-boot.version>
 
+    <!-- Spring Framework, taken as a LIBRARY, never as a framework: nessy-spi uses JdbcClient,
+         ResourceDatabasePopulator and EmbeddedDatabaseBuilder, all of which work from a bare
+         DataSource with no ApplicationContext and no Spring Boot. That is what lets a plain main()
+         (nessy-console) and a Boot application share one storage layer.
+
+         Pinned per-artifact below rather than by importing spring-framework-bom, for the reason
+         recorded above on spring-boot-dependencies: importing a BOM here re-versions the whole
+         reactor through artifacts this POM does not pin. spring-jdbc brings spring-core,
+         spring-beans and spring-tx transitively at its own line, which is self-consistent. -->
+    <spring-framework.version>7.0.9</spring-framework.version>
+    <!-- H2, in-memory, for tests only: "in memory" is a DataSource choice rather than a second
+         store implementation, so there is exactly one store per purpose and no fake that can lie
+         about what SQL does. -->
+    <h2.version>2.3.232</h2.version>
+
     <!-- Test groups the default build skips. Override to empty to run them:
          ./mvnw test -Dnessy.excludedGroups= -->
     <nessy.excludedGroups>live,container</nessy.excludedGroups>
@@ -261,6 +276,16 @@
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-jdbc</artifactId>
+        <version>${spring-framework.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <version>${h2.version}</version>
+      </dependency>
       <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-bom</artifactId>

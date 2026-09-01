@@ -41,6 +41,16 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
     </dependency>
+    <!-- TestDatabase builds an H2 DataSource and runs the real Schemas bootstrap against it, so a
+         test exercises the SAME initialization production does rather than a parallel one. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+    </dependency>
     <!-- MemoryContractTest is a main-scope class that imports only the annotation/assertion API,
          never the engine (mirrors nessy-tck's own convention, pom.xml's dependencyManagement
          comment on junit-jupiter-api): a third-party Memory extends it directly, so its own
