@@ -108,6 +108,23 @@ public sealed interface NessyMessage {
     }
   }
 
+  /**
+   * A parked call's deadline has passed, as noticed by the sweep.
+   *
+   * <p>Sent to the agent's LOGICAL address, so it reaches a passivated agent by reactivating it —
+   * which is the whole reason a deadline can be a row instead of a resident actor's timer.
+   *
+   * <p>Idempotent by contract: at-least-once delivery plus a periodic sweep means this can arrive
+   * twice, or for a call that settled a moment ago. An agent that does not recognise the call
+   * shrugs; it is never an error.
+   */
+  record Expired(String callId, Map<String, String> headers) implements NessyMessage {
+    public Expired {
+      Objects.requireNonNull(callId, "callId must not be null");
+      headers = Map.copyOf(headers);
+    }
+  }
+
   /** Bring this agent into memory so recovery can run, and start work if any is waiting. */
   record Wake(Map<String, String> headers) implements NessyMessage {
     public Wake {
