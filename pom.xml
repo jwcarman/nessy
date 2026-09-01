@@ -160,7 +160,7 @@
          plus the jackson2 backend explicitly rather than the `mcp` facade, which defaults
          to jackson3 (com.fasterxml.jackson.core's Jackson 2 line is what the rest of this
          repo, including ToolSpec's ObjectNode, is built on). -->
-    <mcp-sdk.version>2.0.0</mcp-sdk.version>
+    <mcp-sdk.version>2.0.1</mcp-sdk.version>
     <!-- Spring Boot, for nessy-spring-boot-starter (watchman spec §1). Current stable line on
          Maven Central as of this module's creation (2026-08-26); 4.2.0-M1 is a milestone, not a
          release. The version is pinned HERE, with every other version property, but the
