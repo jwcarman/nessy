@@ -136,17 +136,6 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     }
     acknowledge(state, message);
     Decision decision = AgentLogic.decide(state, inputOf(state, message));
-    System.out.println(
-        "PROBE "
-            + agentId.value()
-            + " msg="
-            + message.getClass().getSimpleName()
-            + " state="
-            + state
-            + " -> next="
-            + decision.next()
-            + " then="
-            + decision.then());
     Map<String, String> carried = message.headers();
     return Effect()
         .persist(decision.next())

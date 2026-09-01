@@ -161,12 +161,7 @@ final class Instructions {
     // finished one, and null while it is busy, because a turn in flight is nobody's to sweep.
     String finished = state.busy() ? null : state.turnId();
     run(
-        () -> {
-          var t = deps.backlog().take(agentId, finished);
-          System.out.println(
-              "PROBE take agent=" + agentId.value() + " finished=" + finished + " -> " + t);
-          return t;
-        },
+        () -> deps.backlog().take(agentId, finished),
         taken ->
             taken
                 .<NessyMessage>map(
