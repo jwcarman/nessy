@@ -90,6 +90,20 @@ public final class Chat {
         .formatted(today);
   }
 
+  /** How much of a body a person is shown before approving a send. */
+  private static final int SHOWN_BODY_CHARACTERS = 240;
+
+  /** Enough of the message to judge it, on one prompt, without scrolling the agent off screen. */
+  private static String trimmed(String body) {
+    if (body == null || body.isBlank()) {
+      return "(empty)";
+    }
+    String flattened = body.strip().replaceAll("\\s+", " ");
+    return flattened.length() <= SHOWN_BODY_CHARACTERS
+        ? flattened
+        : flattened.substring(0, SHOWN_BODY_CHARACTERS) + "… (" + body.length() + " chars)";
+  }
+
   private Chat() {}
 
   public static void main(String[] args) {
@@ -141,9 +155,14 @@ public final class Chat {
                     binding ->
                         binding
                             .approver(ConsoleApprover.atTheTerminal())
+                            // Recipient, subject AND the body — because the describer writes the
+                            // sentence a person consents to, and consenting to a message you have
+                            // not read is not consent. Trimmed rather than omitted: an essay at a
+                            // terminal prompt is its own way of not being read.
                             .describer(
                                 input ->
-                                    "Send an email to %s, subject \"%s\""
-                                        .formatted(input.to(), input.subject()))));
+                                    "Send an email to %s%n    subject: %s%n    body: %s"
+                                        .formatted(
+                                            input.to(), input.subject(), trimmed(input.body())))));
   }
 }

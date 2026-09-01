@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -91,10 +92,19 @@ public class ChatController {
     return ResponseEntity.accepted().build();
   }
 
-  /** The long-lived narration stream for one agent. */
+  /**
+   * The long-lived narration stream for one agent.
+   *
+   * <p>{@code Last-Event-ID} is sent by the browser on its own, without a line of JavaScript: an
+   * EventSource that loses its connection reconnects and reports the id of the last event it
+   * actually received. Passing it straight through is what turns a reconnect from a gap into a
+   * catch-up — every event carries its id, and Nessy's ids are UUIDv7, so one doubles as a cursor.
+   */
   @GetMapping("/{id}/events")
-  public SseEmitter events(@PathVariable("id") String id) {
-    return streams.open(AgentId.of(id));
+  public SseEmitter events(
+      @PathVariable("id") String id,
+      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+    return streams.open(AgentId.of(id), lastEventId);
   }
 
   /**

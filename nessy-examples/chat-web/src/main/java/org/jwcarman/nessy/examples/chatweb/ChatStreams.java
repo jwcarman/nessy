@@ -64,6 +64,19 @@ public class ChatStreams {
 
   /** Opens one browser's stream onto an agent, subscribing to that agent if nobody else was. */
   public SseEmitter open(AgentId agentId) {
+    return open(agentId, null);
+  }
+
+  /**
+   * Opens a stream, resuming from {@code lastEventId} when this is the first listener.
+   *
+   * <p>The cursor only takes effect when the subscription is CREATED. One subscription serves every
+   * tab watching an agent, so a browser joining an audience that already exists gets the live feed
+   * from now — there is no per-listener replay, because the events it missed were already delivered
+   * to the ones that were there. What this fixes is the case that actually loses events: the last
+   * tab closes, the subscription goes, and a browser comes back to find a gap.
+   */
+  public SseEmitter open(AgentId agentId, String lastEventId) {
     // No timeout: a chat page is open for as long as someone has the tab open, and a stream that
     // expires mid-thought looks exactly like the agent dying.
     SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
@@ -77,12 +90,13 @@ public class ChatStreams {
               }
               List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
               emitters.add(emitter);
-              return new Audience(emitters, harness.subscribe(agentId, subscriber(agentId)));
+              return new Audience(
+                  emitters, harness.subscribe(agentId, subscriber(agentId), lastEventId));
             });
     emitter.onCompletion(() -> close(agentId, emitter));
     emitter.onTimeout(() -> close(agentId, emitter));
     emitter.onError(failure -> close(agentId, emitter));
-    send(audience.emitters(), List.of(emitter), "ready", Map.of());
+    send(null, audience.emitters(), List.of(emitter), "ready", Map.of());
     return emitter;
   }
 
@@ -107,20 +121,27 @@ public class ChatStreams {
   private AgentSubscriber subscriber(AgentId agentId) {
     return event -> {
       List<SseEmitter> listeners = listeners(agentId);
+      // Stamped on every event so the browser records it and hands it back as Last-Event-ID when
+      // its connection drops. Nessy's event ids are UUIDv7 — time-ordered — which is what lets one
+      // double as a cursor.
+      String cursor = event.id();
       switch (event) {
-        case AgentEvent.TurnStarted started -> emit(listeners, "busy", Map.of());
-        case AgentEvent.TextDelta delta -> emit(listeners, "delta", Map.of("text", delta.text()));
+        case AgentEvent.TurnStarted started -> emit(cursor, listeners, "busy", Map.of());
+        case AgentEvent.TextDelta delta ->
+            emit(cursor, listeners, "delta", Map.of("text", delta.text()));
         case AgentEvent.ReasoningDelta thinking ->
-            emit(listeners, "thinking", Map.of("text", thinking.text()));
+            emit(cursor, listeners, "thinking", Map.of("text", thinking.text()));
         case AgentEvent.ToolCallRequested call ->
             emit(
+                cursor,
                 listeners,
                 "tool-requested",
                 Map.of("id", call.callId(), "name", call.toolName(), "what", call.description()));
         case AgentEvent.ApprovalRequested asked ->
-            emit(listeners, "approval", desk.card(asked.callId()));
+            emit(cursor, listeners, "approval", desk.card(asked.callId()));
         case AgentEvent.ApprovalDecided decided ->
             emit(
+                cursor,
                 listeners,
                 "tool-decided",
                 Map.of(
@@ -131,6 +152,7 @@ public class ChatStreams {
                         instanceof org.jwcarman.nessy.api.tool.ApprovalResult.Approved));
         case AgentEvent.ToolCallCompleted done ->
             emit(
+                cursor,
                 listeners,
                 "tool-completed",
                 Map.of(
@@ -138,7 +160,7 @@ public class ChatStreams {
                     done.callId(),
                     "error",
                     done.result() instanceof org.jwcarman.nessy.api.tool.ToolResult.Failure));
-        case AgentEvent.TurnEnded ended -> emit(listeners, "idle", Map.of());
+        case AgentEvent.TurnEnded ended -> emit(cursor, listeners, "idle", Map.of());
         default -> {
           // Everything else is narration this page has no use for.
         }
@@ -151,8 +173,9 @@ public class ChatStreams {
     return audience == null ? List.of() : audience.emitters();
   }
 
-  private void emit(List<SseEmitter> listeners, String name, Map<String, ?> payload) {
-    send(listeners, listeners, name, payload);
+  private void emit(
+      String cursor, List<SseEmitter> listeners, String name, Map<String, ?> payload) {
+    send(cursor, listeners, listeners, name, payload);
   }
 
   /**
@@ -163,10 +186,14 @@ public class ChatStreams {
    * this narration is not the response to the request that started the work.
    */
   private void send(
-      List<SseEmitter> all, List<SseEmitter> targets, String name, Map<String, ?> payload) {
+      String cursor,
+      List<SseEmitter> all,
+      List<SseEmitter> targets,
+      String name,
+      Map<String, ?> payload) {
     for (SseEmitter emitter : targets) {
       try {
-        emitter.send(SseEmitter.event().name(name).data(payload));
+        emitter.send(SseEmitter.event().id(cursor).name(name).data(payload));
       } catch (IOException | IllegalStateException gone) {
         LOG.debug("dropping a listener that went away", gone);
         all.remove(emitter);

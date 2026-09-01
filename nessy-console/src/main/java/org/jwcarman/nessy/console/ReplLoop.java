@@ -150,9 +150,15 @@ final class ReplLoop {
     try {
       AgentEvent.TurnEnded ended = finished.poll(PATIENCE.toMillis(), TimeUnit.MILLISECONDS);
       if (ended == null) {
+        // Not "still working": the other possibility is that the turn finished and the news never
+        // arrived, which is what a lost subscription looks like from here. Naming both is the
+        // difference between looking at the model and looking at the plumbing — measured, on a
+        // session that waited five minutes for an answer the model had already given.
         io.write(
             System.lineSeparator()
-                + "  [no answer yet; the agent may still be working]"
+                + "  [no answer after "
+                + PATIENCE.toMinutes()
+                + "m — still working, or the turn ended without reaching this listener]"
                 + System.lineSeparator());
       } else {
         io.write(System.lineSeparator());
