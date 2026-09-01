@@ -340,6 +340,15 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
    * <p>Nothing is lost by staying quiet here. The turn stays claimed in durable state, and whatever
    * picks this agent up next — this node after a restart, or another node taking the shard — finds
    * the claim with no actor running it and starts one, which is the same recovery a crash gets.
+   *
+   * <p><b>Reminders do not replace this, and it was tried.</b> A reminder is armed when a call
+   * PARKS — an approval waiting on a person, a tool waiting on the world — so a parked call now
+   * survives this actor dying. A turn killed during a MODEL CALL parked nothing, so nothing was
+   * armed, and deleting the revival above brought the original hang straight back: measured, turn
+   * two silent for over a minute while the provider answered a fresh request in half a second.
+   *
+   * <p>What would retire this is a deadline on the TURN rather than on its parked calls — claim
+   * expiry, per the 2026-08-28 actor-composition spec §8a. Until that exists, this stays.
    */
   private boolean shuttingDown() {
     return CoordinatedShutdown.get(context.getSystem()).getShutdownReason().isPresent();
