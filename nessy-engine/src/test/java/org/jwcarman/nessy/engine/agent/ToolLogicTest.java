@@ -82,10 +82,12 @@ class ToolLogicTest {
     void a_parked_call_arms_an_alarm_that_outlives_this_process() {
       Decision decision =
           AgentLogic.decide(
-              working(Map.of("a", new CallState.Running("send_email"))), new Input.ToolParked("a"));
+              working(Map.of("a", new CallState.Running("send_email"))),
+              new Input.ToolParked("a", java.time.Instant.EPOCH));
 
       assertThat(decision.next().working().calls()).containsEntry("a", new CallState.Parked());
-      assertThat(decision.then()).containsExactly(new Instruction.SetAlarm("a"));
+      assertThat(decision.then())
+          .containsExactly(new Instruction.SetAlarm("a", java.time.Instant.EPOCH));
     }
 
     @Test

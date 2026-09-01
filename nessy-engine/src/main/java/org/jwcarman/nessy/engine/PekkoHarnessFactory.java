@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.spi.codec.Codecs;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -79,6 +80,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Clock clock;
   private final ReplyTokens tokens;
   private final Traces traces;
+  private final Claims claims;
   private final Replies replies;
 
   /**
@@ -103,7 +105,9 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.tokens = config.replyTokens();
     this.traces = config.traces();
     this.dataSource = config.dataSource().orElseGet(PekkoHarnessFactory::ownDatabase);
-    this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces);
+    this.claims = new Claims(this.dataSource);
+    this.replies =
+        new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces, this.claims);
   }
 
   /**
@@ -135,12 +139,11 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     configurer.accept(config);
     AgentType type = config.agentType();
 
-    // The one moment O is statically known. Everything erasure would otherwise cost is paid here.
+    // The one moment O is statically known. It is handed to the BACKLOG STORE and goes no further:
+    // the store owns the codec, the renderer and the coalescer, so nothing above it is generic.
     Codec<O> codec = Codecs.factory().create(observationType);
-    StateTypes.of(system).register(type, observationType);
 
     Memory memory = memoryFor(config, type);
-    Claims claims = new Claims(dataSource);
     Reminders reminders = new Reminders(dataSource);
     Model model = models.model(config.modelId());
     ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
@@ -167,40 +170,36 @@ public final class PekkoHarnessFactory implements HarnessFactory {
         Entity.of(narrationKey, context -> NarrationActor.create(context.getShard()))
             .withSettings(ClusterShardingSettings.create(system).withNoPassivationStrategy()));
 
-    Turns turns =
-        (agentId, turnId, input, agent, carried) ->
-            TurnActor.create(
-                new TurnActor.Dependencies(
-                    type,
-                    memory,
-                    model,
-                    config.prompt(),
-                    maxTokens,
-                    bindings,
-                    capabilities,
-                    narratorFor(sharding, narrationKey, agentId),
-                    claims,
-                    reminders,
-                    tokens,
-                    blocking,
-                    traces),
-                agentId,
-                turnId,
-                input,
-                agent,
-                // Captured on the AGENT's thread while its receive span was open, and handed
-                // through — so the turn, and everything it does, hangs off the message that asked.
-                carried);
-
-    AgentActor.Dependencies<O> deps =
-        new AgentActor.Dependencies<>(
-            type,
+    BacklogStore<O> backlog =
+        new BacklogStore<>(
+            dataSource,
+            claims,
             codec,
-            config.backlogCoalescer(),
+            JsonCodec.of(EngineMapper.INSTANCE, UserMessage.class),
             config.observationRenderer(),
-            turns,
-            clock,
-            traces);
+            config.backlogCoalescer(),
+            clock);
+
+    Instructions instructions =
+        new Instructions(
+            system,
+            new Instructions.Dependencies(
+                type,
+                memory,
+                model,
+                config.prompt(),
+                maxTokens,
+                bindings,
+                capabilities,
+                agentId -> narratorFor(sharding, narrationKey, agentId),
+                claims,
+                reminders,
+                tokens,
+                blocking,
+                traces,
+                backlog));
+
+    AgentActor.Dependencies deps = new AgentActor.Dependencies(type, instructions, traces);
 
     EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
     sharding.init(
@@ -211,7 +210,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             .withStopMessage(new NessyMessage.Stop(Map.of())));
 
     replies.serving(type.name(), agentKey);
-    return new ShardedHarness<>(type, agentKey, narrationKey, codec, system, traces);
+    return new ShardedHarness<>(type, agentKey, narrationKey, backlog, system, traces);
   }
 
   /** Where the outside world answers calls parked by any agent this factory serves. */

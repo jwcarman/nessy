@@ -40,16 +40,22 @@ public final class AgentLogic {
       case Input.WorkTaken taken -> onWorkTaken(state, taken);
       case Input.Recovered ignored -> onRecovered(state);
       case Input.NoWork ignored -> Decision.of(state, new Instruction.Sleep());
-      case Input.ModelAnswered.Answered answered -> endTurn(state, resultOf(answered.stopReason()));
-      case Input.ModelAnswered.Asked asked -> onAsked(state, asked);
+      case Input.ModelAnswered.Answered answered ->
+          endTurn(
+              state.spending(answered.usage()),
+              resultOf(answered.stopReason()),
+              new Instruction.Remember.Answer());
+      case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
       case Input.ModelAnswered.Refused refused ->
-          endTurn(state, new TurnResult.Refused(refused.category(), refused.explanation()));
+          endTurn(
+              state.spending(refused.usage()),
+              new TurnResult.Refused(refused.category(), refused.explanation()));
       case Input.ModelFailed failed -> endTurn(state, new TurnResult.Failed(failed.reason()));
       case Input.ApprovalGiven given -> onApproval(state, given);
       case Input.ToolParked parked ->
           Decision.of(
               state.at(state.working().with(parked.callId(), new CallState.Parked())),
-              new Instruction.SetAlarm(parked.callId()));
+              new Instruction.SetAlarm(parked.callId(), parked.expiresAt()));
       case Input.ToolCompleted done ->
           settle(
               state,
@@ -69,10 +75,22 @@ public final class AgentLogic {
     return state.busy() ? Decision.nothing(state) : Decision.of(state, new Instruction.TakeWork());
   }
 
+  /**
+   * Starts a turn — unless one is already running.
+   *
+   * <p>The guard is not paranoia. Two takes can be in flight at once, because an agent asks for
+   * work on activation AND when told the backlog changed, and both instructions are issued before
+   * either answer comes back. The second take finds the row already marked taken and hands back the
+   * SAME one, exactly as it is meant to — so without this, one observation would start two turns.
+   */
   private static Decision onWorkTaken(AgentState state, Input.WorkTaken taken) {
+    if (state.busy()) {
+      return Decision.nothing(state);
+    }
     return Decision.of(
         state.taking(taken.turnId(), taken.observationClaim()),
         new Instruction.Narrate.TurnStarted(taken.turnId()),
+        new Instruction.Remember.Input(),
         new Instruction.CallModel());
   }
 
@@ -99,13 +117,12 @@ public final class AgentLogic {
    * and take again at the end, because an agent that finishes without asking for the next piece of
    * work is an agent that needs a nudge to notice work it already has.
    */
-  private static Decision endTurn(AgentState state, TurnResult result) {
-    return Decision.of(
-        state.finished(),
-        new Instruction.Remember(),
-        new Instruction.Narrate.TurnEnded(result),
-        new Instruction.Release(),
-        new Instruction.TakeWork());
+  private static Decision endTurn(AgentState state, TurnResult result, Instruction... remembering) {
+    List<Instruction> then = new ArrayList<>(List.of(remembering));
+    then.add(new Instruction.Narrate.TurnEnded(result, state.usage()));
+    then.add(new Instruction.Release());
+    then.add(new Instruction.TakeWork());
+    return new Decision(state.finished(), then);
   }
 
   /**
@@ -142,6 +159,7 @@ public final class AgentLogic {
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
     List<Instruction> then = new ArrayList<>(List.of(also));
     if (next.allSettled()) {
+      then.add(new Instruction.Remember.Exchange());
       then.add(new Instruction.CallModel());
       return new Decision(state.at(new Phase.CallingModel()), then);
     }

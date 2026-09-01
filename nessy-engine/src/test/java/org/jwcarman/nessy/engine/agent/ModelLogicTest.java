@@ -49,8 +49,8 @@ class ModelLogicTest {
       assertThat(decision.next().busy()).isFalse();
       assertThat(decision.then())
           .containsExactly(
-              new Instruction.Remember(),
-              new Instruction.Narrate.TurnEnded(new TurnResult.Completed()),
+              new Instruction.Remember.Answer(),
+              new Instruction.Narrate.TurnEnded(new TurnResult.Completed(), NOTHING_MEASURED),
               new Instruction.Release(),
               new Instruction.TakeWork());
     }
@@ -60,7 +60,8 @@ class ModelLogicTest {
       Decision decision = answered(StopReason.MAX_TOKENS);
 
       assertThat(decision.then())
-          .contains(new Instruction.Narrate.TurnEnded(new TurnResult.Truncated()));
+          .contains(
+              new Instruction.Narrate.TurnEnded(new TurnResult.Truncated(), NOTHING_MEASURED));
     }
 
     @Test
@@ -72,7 +73,7 @@ class ModelLogicTest {
     void remembering_happens_before_releasing_the_claims_it_is_written_from() {
       List<Instruction> then = answered(StopReason.END_TURN).then();
 
-      assertThat(then.indexOf(new Instruction.Remember()))
+      assertThat(then.indexOf(new Instruction.Remember.Answer()))
           .isLessThan(then.indexOf(new Instruction.Release()));
     }
   }
@@ -126,7 +127,7 @@ class ModelLogicTest {
       assertThat(decision.then())
           .contains(
               new Instruction.Narrate.TurnEnded(
-                  new TurnResult.Refused("safety", "not going to do that")));
+                  new TurnResult.Refused("safety", "not going to do that"), NOTHING_MEASURED));
     }
 
     @Test
@@ -135,7 +136,9 @@ class ModelLogicTest {
 
       assertThat(decision.next().busy()).isFalse();
       assertThat(decision.then())
-          .contains(new Instruction.Narrate.TurnEnded(new TurnResult.Failed("connection reset")));
+          .contains(
+              new Instruction.Narrate.TurnEnded(
+                  new TurnResult.Failed("connection reset"), Usage.unreported()));
     }
   }
 }

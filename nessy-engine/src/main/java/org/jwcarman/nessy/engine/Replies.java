@@ -24,6 +24,8 @@ import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -47,6 +49,10 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  */
 public final class Replies {
 
+  private static final Codec<ToolResult> RESULTS =
+      JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class);
+
+  private final Claims claims;
   private final ActorSystem<?> system;
   private final Duration patience;
   private final ReplyTokens tokens;
@@ -54,7 +60,9 @@ public final class Replies {
 
   private final Traces traces;
 
-  Replies(ActorSystem<?> system, Duration patience, ReplyTokens tokens, Traces traces) {
+  Replies(
+      ActorSystem<?> system, Duration patience, ReplyTokens tokens, Traces traces, Claims claims) {
+    this.claims = claims;
     this.system = system;
     this.patience = patience;
     this.tokens = tokens;
@@ -70,12 +78,19 @@ public final class Replies {
   public CompletionStage<NessyMessage.Ack> answer(ReplyToken token, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
+    // Claimed BEFORE the agent hears about it, exactly as an in-process tool's result is. A vendor
+    // answering on day three of a three-day term goes through the same door as one answering in two
+    // milliseconds, which is the whole reason the agent has one message for both.
+    claims.put(
+        AgentId.of(where.agentId()),
+        where.turnId(),
+        Instructions.resultKey(where.callId()),
+        RESULTS.encode(result));
     return ask(
         where,
         replyTo ->
-            new NessyMessage.AnswerToolCall(
+            new NessyMessage.ToolAnswered(
                 where.callId(),
-                result,
                 replyTo,
                 traces.capture(where.agentType(), where.agentId(), "Answer")));
   }
@@ -87,7 +102,7 @@ public final class Replies {
     return ask(
         where,
         replyTo ->
-            new NessyMessage.AnswerApproval(
+            new NessyMessage.ApprovalAnswered(
                 where.callId(),
                 result,
                 replyTo,

@@ -66,7 +66,9 @@ class IdleLogicTest {
 
       assertThat(decision.then())
           .containsExactly(
-              new Instruction.Narrate.TurnStarted("turn-7"), new Instruction.CallModel());
+              new Instruction.Narrate.TurnStarted("turn-7"),
+              new Instruction.Remember.Input(),
+              new Instruction.CallModel());
     }
 
     @Test

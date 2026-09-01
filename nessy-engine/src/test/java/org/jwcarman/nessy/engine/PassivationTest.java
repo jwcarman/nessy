@@ -19,35 +19,41 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
-import org.apache.pekko.actor.typed.ActorRef;
-import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
+import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
+import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.block.TextBlock;
+import org.jwcarman.nessy.api.message.AnswerMessage;
+import org.jwcarman.nessy.api.model.ModelResult;
+import org.jwcarman.nessy.api.model.StopReason;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 
 /**
  * When an agent asks to be unloaded, and when it must not.
  *
- * <p>The rule the phase actors' deadlines depend on. A turn actor is a child, so passivating
- * mid-turn kills it — and with it the timers holding an approval's term and a deferral's expiry.
- * Nothing else would fire them, so a parked call would quietly outlive its deadline. Staying
- * resident while a turn is in flight is what makes those timers sufficient and a sweeper
- * unnecessary.
+ * <p>The rule is narrower than it was, and deliberately so. It used to be load-bearing: a turn was
+ * a CHILD, so passivating mid-turn killed it along with the timers holding an approval's term and a
+ * deferral's expiry. Staying resident was what made those timers sufficient.
+ *
+ * <p>None of that is true now — deadlines are rows and answers arrive at a logical address — so
+ * this is ordinary economy rather than a correctness property. It is still worth asserting: an
+ * agent that unloaded mid-turn would be doing needless work to wake back up, and one that never
+ * unloaded would never free anything.
  */
 @DisplayName("An agent deciding whether to stay in memory")
 class PassivationTest {
-
-  private static final AgentType WATCHMAN = AgentType.of("watchman");
 
   private static ActorTestKit testKit;
 
@@ -61,37 +67,52 @@ class PassivationTest {
     testKit.shutdownTestKit();
   }
 
-  private static ActorRef<NessyMessage> agentWith(
-      Turns turns, AgentId agentId, ActorRef<ClusterSharding.ShardCommand> shard) {
-    AgentActor.Dependencies<HouseEvent> deps =
-        new AgentActor.Dependencies<>(
-            WATCHMAN,
-            HouseEvents.CODEC,
-            HouseEvents.KEEP_ALL,
-            HouseEvents.RENDERER,
-            turns,
-            Clock.systemUTC(),
-            Traces.noop());
-    return testKit.spawn(AgentActor.create(deps, agentId, shard));
+  /**
+   * An agent reachable at its entity address, with a TEST PROBE standing in for the shard.
+   *
+   * <p>Sharding-initialized rather than merely spawned, because the shell addresses everything it
+   * does — including the answer to its own request for work — to the LOGICAL address. A bare
+   * spawned actor is not at that address, so it would ask for work and never hear back.
+   *
+   * <p>Each test gets its own agent type, so each gets its own entity key and its own probe.
+   */
+  private static AgentId shardedAgent(
+      String name, Engines.Parts parts, TestProbe<ClusterSharding.ShardCommand> shard) {
+    AgentType type = AgentType.of(name);
+    EntityTypeKey<NessyMessage> key = EntityTypeKey.create(NessyMessage.class, type.name());
+    ClusterSharding.get(testKit.system())
+        .init(
+            Entity.of(
+                    key,
+                    context ->
+                        AgentActor.create(
+                            new AgentActor.Dependencies(type, parts.instructions(), Traces.noop()),
+                            AgentId.of(context.getEntityId()),
+                            shard.ref()))
+                .withStopMessage(new NessyMessage.Stop(Map.of())));
+    return AgentId.of(name + "-1");
   }
 
-  private static void observe(ActorRef<NessyMessage> agent, HouseEvent event) {
-    agent.tell(new NessyMessage.Observe(HouseEvents.CODEC.encode(event), Map.of()));
+  private static void wake(String typeName, AgentId agentId) {
+    ClusterSharding.get(testKit.system())
+        .entityRefFor(EntityTypeKey.create(NessyMessage.class, typeName), agentId.value())
+        .tell(new NessyMessage.BacklogUpdated(Map.of()));
   }
 
   @Test
   @DisplayName("it stays resident while a turn is in flight")
   void an_agent_working_a_turn_does_not_ask_to_be_unloaded() {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    // A turn that starts and never finishes: the agent is busy for good.
-    ActorRef<NessyMessage> agent =
-        agentWith(
-            (id, turnId, input, a, carried) -> Behaviors.empty(),
-            AgentId.of("busy-1"),
-            shard.ref());
+    Engines.Parts parts = Engines.of(testKit.system(), AgentType.of("busy"), Engines.stalled());
+    AgentId agentId = shardedAgent("busy", parts, shard);
 
-    observe(agent, new HouseEvent("kitchen", "door opened"));
+    parts.backlog().offer(agentId, new HouseEvent("kitchen", "door opened"));
+    wake("busy", agentId);
 
+    // It asks to be unloaded only once there is nothing to do, and there always is here.
+    await()
+        .atMost(10, SECONDS)
+        .untilAsserted(() -> assertThat(parts.narrated().all()).isNotEmpty());
     shard.expectNoMessage(Duration.ofSeconds(2));
   }
 
@@ -99,16 +120,20 @@ class PassivationTest {
   @DisplayName("it asks to be unloaded once there is nothing left to do")
   void an_idle_agent_asks_the_shard_to_passivate_it() {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    ActorRef<NessyMessage> agent =
-        agentWith(
-            (id, turnId, input, a, carried) -> {
-              a.tell(new NessyMessage.TurnFinished(turnId, Map.of()));
-              return Behaviors.empty();
-            },
-            AgentId.of("idle-1"),
-            shard.ref());
+    Engines.Parts parts =
+        Engines.of(
+            testKit.system(),
+            AgentType.of("idle"),
+            Engines.saying(
+                List.of(
+                    new ModelResult.Answered(
+                        new AnswerMessage(List.of(new TextBlock("all quiet"))),
+                        StopReason.END_TURN,
+                        Usage.unreported()))));
+    AgentId agentId = shardedAgent("idle", parts, shard);
 
-    observe(agent, new HouseEvent("hall", "motion"));
+    parts.backlog().offer(agentId, new HouseEvent("hall", "motion"));
+    wake("idle", agentId);
 
     await()
         .atMost(10, SECONDS)
@@ -119,17 +144,19 @@ class PassivationTest {
   }
 
   @Test
-  void a_backlog_keeps_it_awake() {
+  @DisplayName("an agent with nothing to do at all still asks, so a cold start frees itself")
+  void an_agent_that_never_had_work_asks_too() {
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    ActorRef<NessyMessage> agent =
-        agentWith(
-            (id, turnId, input, a, carried) -> Behaviors.empty(),
-            AgentId.of("busy-2"),
-            shard.ref());
+    Engines.Parts parts = Engines.of(testKit.system(), AgentType.of("never"), Engines.stalled());
+    AgentId agentId = shardedAgent("never", parts, shard);
 
-    observe(agent, new HouseEvent("kitchen", "one"));
-    observe(agent, new HouseEvent("kitchen", "two"));
+    wake("never", agentId);
 
-    shard.expectNoMessage(Duration.ofSeconds(2));
+    await()
+        .atMost(10, SECONDS)
+        .untilAsserted(
+            () ->
+                assertThat(shard.receiveMessage(Duration.ofSeconds(1)))
+                    .isInstanceOf(ClusterSharding.Passivate.class));
   }
 }

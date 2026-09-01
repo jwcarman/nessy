@@ -69,7 +69,15 @@ public final class ReplyTokens {
   private static final int TAG_BITS = 128;
 
   /** What a token names. */
-  record Coordinates(String agentType, String agentId, String callId) {}
+  /**
+   * Where an answer goes.
+   *
+   * <p>The TURN is part of the address, not decoration. An answer arriving three days later has to
+   * be claimed before the agent is told about it, and a claim is keyed by turn — so a token that
+   * named only the call would leave the one thing the writer needs to be looked up somewhere, from
+   * an agent that may not even be resident.
+   */
+  record Coordinates(String agentType, String agentId, String turnId, String callId) {}
 
   private final List<SecretKey> keys;
   private final SecureRandom random = new SecureRandom();
@@ -120,8 +128,8 @@ public final class ReplyTokens {
     }
   }
 
-  ReplyToken mint(AgentType agentType, AgentId agentId, String callId) {
-    byte[] plain = encode(new Coordinates(agentType.name(), agentId.value(), callId));
+  ReplyToken mint(AgentType agentType, AgentId agentId, String turnId, String callId) {
+    byte[] plain = encode(new Coordinates(agentType.name(), agentId.value(), turnId, callId));
     byte[] nonce = new byte[NONCE_BYTES];
     random.nextBytes(nonce);
     byte[] sealed = crypt(keys.getFirst(), Cipher.ENCRYPT_MODE, nonce, plain);

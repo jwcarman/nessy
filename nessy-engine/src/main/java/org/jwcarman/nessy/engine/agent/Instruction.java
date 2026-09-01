@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.agent;
 
 import org.jwcarman.nessy.api.TurnResult;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 
 /**
@@ -40,14 +41,31 @@ public sealed interface Instruction {
   /** Run one tool. */
   record RunTool(String callId, String toolName) implements Instruction {}
 
-  /** Write the exchange to memory. */
-  record Remember() implements Instruction {}
+  /**
+   * Write to the transcript. Three different writes, because they are three different moments.
+   *
+   * <p>An exchange goes in WHOLE — the asking message and the results answering it, in one write —
+   * so a transcript never holds half of one. That is what makes re-driving after a crash always
+   * safe: whatever the turn was doing, asking the model again from what IS recorded is a correct
+   * continuation.
+   */
+  sealed interface Remember extends Instruction {
+
+    /** The observation that started this turn, redeemed from its claim. */
+    record Input() implements Remember {}
+
+    /** What the model said, redeemed from its claim. */
+    record Answer() implements Remember {}
+
+    /** The asking message and every result, together. */
+    record Exchange() implements Remember {}
+  }
 
   /** Release everything this turn claimed. */
   record Release() implements Instruction {}
 
   /** Arm a durable deadline for one call, so it outlives the process that set it. */
-  record SetAlarm(String callId) implements Instruction {}
+  record SetAlarm(String callId, java.time.Instant expiresAt) implements Instruction {}
 
   /** Disarm it. */
   record CancelAlarm(String callId) implements Instruction {}
@@ -60,11 +78,13 @@ public sealed interface Instruction {
 
     record TurnStarted(String turnId) implements Narrate {}
 
-    record TurnEnded(TurnResult result) implements Narrate {}
+    record TurnEnded(TurnResult result, Usage usage) implements Narrate {}
 
     record ToolCallRequested(String callId, String toolName) implements Narrate {}
 
-    record ApprovalRequested(String callId) implements Narrate {}
+    // There is deliberately no ApprovalRequested here. An ungated tool is approved on the spot, so
+    // the only moment a person is actually being ASKED is when the approver defers — and that is
+    // known in the shell, along with the deadline the event has to carry.
 
     record ApprovalDecided(String callId, ApprovalResult result) implements Narrate {}
 

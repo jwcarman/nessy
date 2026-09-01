@@ -40,7 +40,7 @@ class ReplyTokensTest {
 
   @Test
   void names_the_call_it_was_minted_for() {
-    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     ReplyTokens.Coordinates where = tokens.read(token);
 
@@ -62,7 +62,7 @@ class ReplyTokensTest {
   @Test
   @DisplayName("a holder cannot read what is inside it")
   void the_coordinates_do_not_appear_in_the_token() {
-    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, LONG_CALL_ID);
+    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "turn-1", LONG_CALL_ID);
 
     assertThat(token.value()).doesNotContain("watchman", "house-12", LONG_CALL_ID);
   }
@@ -70,7 +70,7 @@ class ReplyTokensTest {
   @Test
   @DisplayName("editing one changes nothing except that it stops working")
   void a_tampered_token_is_refused() {
-    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken token = tokens.mint(WATCHMAN, HOUSE, "turn-1", "c1");
     char[] edited = token.value().toCharArray();
     edited[edited.length - 1] = edited[edited.length - 1] == 'A' ? 'B' : 'A';
     ReplyToken forged = ReplyToken.of(new String(edited));
@@ -80,7 +80,7 @@ class ReplyTokensTest {
 
   @Test
   void a_token_from_another_engine_is_refused() {
-    ReplyToken theirs = ReplyTokens.ephemeral().mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken theirs = ReplyTokens.ephemeral().mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     assertThatThrownBy(() -> tokens.read(theirs)).isInstanceOf(IllegalArgumentException.class);
   }
@@ -95,8 +95,8 @@ class ReplyTokensTest {
   @Test
   @DisplayName("two tokens for the same call differ: a nonce is never reused")
   void minting_twice_does_not_produce_the_same_token() {
-    ReplyToken first = tokens.mint(WATCHMAN, HOUSE, "c1");
-    ReplyToken second = tokens.mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken first = tokens.mint(WATCHMAN, HOUSE, "turn-1", "c1");
+    ReplyToken second = tokens.mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     assertThat(first).isNotEqualTo(second);
     assertThat(tokens.read(first)).isEqualTo(tokens.read(second));
@@ -113,7 +113,7 @@ class ReplyTokensTest {
   @Test
   @DisplayName("a token minted before a rotation is still understood after it")
   void an_older_key_still_reads_the_tokens_it_minted() {
-    ReplyToken beforeRotation = ReplyTokens.withKey(key(1)).mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken beforeRotation = ReplyTokens.withKey(key(1)).mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     ReplyTokens afterRotation = ReplyTokens.withKeys(key(2), key(1));
 
@@ -123,7 +123,7 @@ class ReplyTokensTest {
   @Test
   @DisplayName("dropping the outgoing key is what actually breaks outstanding tokens")
   void a_retired_key_stops_reading_its_own_tokens() {
-    ReplyToken beforeRotation = ReplyTokens.withKey(key(1)).mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken beforeRotation = ReplyTokens.withKey(key(1)).mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     ReplyTokens rotatedTooSoon = ReplyTokens.withKey(key(2));
 
@@ -134,7 +134,7 @@ class ReplyTokensTest {
   @Test
   void new_tokens_are_minted_with_the_newest_key() {
     ReplyTokens afterRotation = ReplyTokens.withKeys(key(2), key(1));
-    ReplyToken minted = afterRotation.mint(WATCHMAN, HOUSE, "c2");
+    ReplyToken minted = afterRotation.mint(WATCHMAN, HOUSE, "turn-1", "c2");
 
     assertThat(ReplyTokens.withKey(key(2)).read(minted).callId()).isEqualTo("c2");
   }
@@ -145,7 +145,7 @@ class ReplyTokensTest {
     for (int i = 0; i < key.length; i++) {
       key[i] = (byte) i;
     }
-    ReplyToken minted = ReplyTokens.withKey(key).mint(WATCHMAN, HOUSE, "c1");
+    ReplyToken minted = ReplyTokens.withKey(key).mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     assertThat(ReplyTokens.withKey(key).read(minted).callId()).isEqualTo("c1");
   }

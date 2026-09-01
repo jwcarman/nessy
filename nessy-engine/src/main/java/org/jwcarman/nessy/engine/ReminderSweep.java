@@ -55,13 +55,15 @@ final class ReminderSweep {
 
   private final Reminders reminders;
   private final Clock clock;
-  private final BiConsumer<Coordinates, NessyMessage.Expired> deliver;
+  private final BiConsumer<Coordinates, NessyMessage.DeadlinePassed> deliver;
 
   /** Which agent, and which of its calls — the coordinates a reply token already carries. */
   record Coordinates(String agentType, String agentId, String callId) {}
 
   ReminderSweep(
-      Reminders reminders, Clock clock, BiConsumer<Coordinates, NessyMessage.Expired> deliver) {
+      Reminders reminders,
+      Clock clock,
+      BiConsumer<Coordinates, NessyMessage.DeadlinePassed> deliver) {
     this.reminders = Objects.requireNonNull(reminders, "reminders must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.deliver = Objects.requireNonNull(deliver, "deliver must not be null");
@@ -76,7 +78,7 @@ final class ReminderSweep {
     List<Reminders.Reminder> due = reminders.due(clock.instant(), BATCH);
     for (Reminders.Reminder reminder : due) {
       Coordinates where = decode(reminder.payload());
-      deliver.accept(where, new NessyMessage.Expired(where.callId(), Map.of()));
+      deliver.accept(where, new NessyMessage.DeadlinePassed(where.callId(), Map.of()));
       // Forward, not gone: the agent deletes it when the call settles.
       reminders.remind(reminder.key(), clock.instant().plus(BACKOFF), reminder.payload());
     }

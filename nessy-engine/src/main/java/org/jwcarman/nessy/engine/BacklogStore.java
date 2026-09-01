@@ -54,9 +54,23 @@ public final class BacklogStore<O> {
    */
   static final String OBSERVATION_KEY = "observation";
 
+  /**
+   * One agent's rows, LOCKED for the duration of the enclosing transaction.
+   *
+   * <p>{@code FOR UPDATE} is not belt and braces. Two takes are routinely in flight at once — an
+   * agent asks for work on activation and again when told the backlog changed — and without the
+   * lock both read the same untaken row, both render it, and both write its claim. Measured: the
+   * second insert loses on the claim's primary key, the turn is reported failed, and an agent that
+   * was working perfectly well goes to sleep. With the lock the second take waits, sees the row
+   * already taken, and hands back the claim the first one wrote, which is the idempotent path this
+   * was designed around.
+   *
+   * <p>Portable: PostgreSQL and H2 both take a row lock here, and it is scoped to one agent's rows.
+   */
   private static final String WAITING =
       "SELECT item_id, received_at, observation, taken_claim FROM nessy_backlog"
-          + " WHERE agent_id = ? ORDER BY ordinal";
+          + " WHERE agent_id = ? ORDER BY ordinal FOR UPDATE";
+
   private static final String INSERT =
       "INSERT INTO nessy_backlog (agent_id, item_id, ordinal, received_at, observation)"
           + " VALUES (?, ?, ?, ?, ?)";

@@ -23,7 +23,6 @@ import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityRef;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
-import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscriber;
@@ -52,7 +51,7 @@ final class ShardedHarness<O> implements Harness<O> {
   private final AgentType type;
   private final EntityTypeKey<NessyMessage> agents;
   private final EntityTypeKey<NarrationActor.Command> narration;
-  private final Codec<O> codec;
+  private final BacklogStore<O> backlog;
   private final ClusterSharding sharding;
   private final ActorSystem<?> system;
   private final Traces traces;
@@ -61,13 +60,13 @@ final class ShardedHarness<O> implements Harness<O> {
       AgentType type,
       EntityTypeKey<NessyMessage> agents,
       EntityTypeKey<NarrationActor.Command> narration,
-      Codec<O> codec,
+      BacklogStore<O> backlog,
       ActorSystem<?> system,
       Traces traces) {
     this.type = type;
     this.agents = agents;
     this.narration = narration;
-    this.codec = codec;
+    this.backlog = backlog;
     this.system = system;
     this.traces = traces;
     this.sharding = ClusterSharding.get(system);
@@ -82,15 +81,17 @@ final class ShardedHarness<O> implements Harness<O> {
   public void observe(AgentId agentId, O observation) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(observation, "observation must not be null");
+    // COMMIT, then signal. Reversed, the agent could take before the row lands, find nothing, and
+    // go back to sleep with work sitting in the table.
+    backlog.offer(agentId, observation);
     // The trace starts wherever the caller is — a cron tick, an HTTP request, a queue consumer —
     // and this is where it crosses into the actor system. Capturing here is what makes everything
     // the resulting turn does a child of whatever caused it, instead of a root of its own.
     sharding
         .entityRefFor(agents, agentId.value())
         .tell(
-            new NessyMessage.Observe(
-                codec.encode(observation),
-                traces.capture(type.name(), agentId.value(), "Observe")));
+            new NessyMessage.BacklogUpdated(
+                traces.capture(type.name(), agentId.value(), "BacklogUpdated")));
   }
 
   /**

@@ -81,7 +81,7 @@ public sealed interface Input {
   record ApprovalGiven(String callId, String toolName, ApprovalResult result) implements Input {}
 
   /** The tool will answer later; someone holds a reply token. */
-  record ToolParked(String callId) implements Input {}
+  record ToolParked(String callId, java.time.Instant expiresAt) implements Input {}
 
   /** The tool answered, whoever asked and however long it took. Its result is in claims. */
   record ToolCompleted(String callId) implements Input {}
