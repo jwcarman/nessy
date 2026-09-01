@@ -21,6 +21,7 @@ import java.util.Objects;
 import org.apache.pekko.actor.CoordinatedShutdown;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
+import org.apache.pekko.actor.typed.DispatcherSelector;
 import org.apache.pekko.actor.typed.javadsl.ActorContext;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
@@ -54,6 +55,9 @@ import org.jwcarman.nessy.api.backlog.BacklogItem;
  * @param <O> the observation type
  */
 public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, AgentState<O>> {
+
+  /** Where turn actors run. Shipped in this module's own reference.conf. */
+  private static final String TURN_DISPATCHER = "nessy.turn-dispatcher";
 
   private final ActorContext<NessyMessage> context;
   private final AgentType agentType;
@@ -242,7 +246,11 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
                 renderer.render(taken.inFlight().observation()),
                 context.getSelf(),
                 carried),
-            turnName(taken.turnId()));
+            turnName(taken.turnId()),
+            // Not the default dispatcher: a turn writes claims and reads memory inside its own
+            // command handlers, and an application's Memory is arbitrary code. Blocking here must
+            // not starve sharding, gossip and narration, so turns get a pool of their own.
+            DispatcherSelector.fromConfig(TURN_DISPATCHER));
   }
 
   /**

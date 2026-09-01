@@ -288,16 +288,22 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   }
 
   private void callModelInScope() {
-    ModelRequest request =
-        new ModelRequest(
-            deps.memory().recall(agentId),
-            deps.systemPrompt(),
-            deps.maxTokens(),
-            deps.bindings().tools(),
-            deps.capabilities());
     context.pipeToSelf(
         CompletableFuture.supplyAsync(
-            () -> ModelReplies.drain(deps.model().stream(request), this::narrateChunk),
+            // recall() is INSIDE this hop, not before it. It reads the transcript — up to 500
+            // messages — and Memory is an application's own implementation, so it is arbitrary code
+            // that may do IO. Building the request out here put both on the actor's thread, three
+            // lines above the hop that exists for exactly this reason.
+            () ->
+                ModelReplies.drain(
+                    deps.model().stream(
+                        new ModelRequest(
+                            deps.memory().recall(agentId),
+                            deps.systemPrompt(),
+                            deps.maxTokens(),
+                            deps.bindings().tools(),
+                            deps.capabilities())),
+                    this::narrateChunk),
             deps.blocking()),
         (result, failure) ->
             failure == null ? new ModelAnswered(result) : new ModelFailed(describe(failure)));
