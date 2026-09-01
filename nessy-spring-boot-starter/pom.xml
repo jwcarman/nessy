@@ -177,12 +177,6 @@
          present, the starter wires the durable pair; without either, the in-memory stores. An
          application that wants durability declares these two itself, exactly as it declares its
          DataSource. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-substrate-jdbc</artifactId>
-      <version>${project.version}</version>
-      <optional>true</optional>
-    </dependency>
     <!-- Boot's @ConfigurationProperties metadata, for IDE completion of the nessy.* keys. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

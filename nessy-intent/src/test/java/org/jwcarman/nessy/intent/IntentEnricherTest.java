@@ -26,11 +26,11 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 class IntentEnricherTest {
 
-  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  /** A plainly-pinned mapper — tolerant reads, same as the stored format contract. */
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
@@ -42,8 +42,8 @@ class IntentEnricherTest {
         AgentType.of("ops"), AgentId.of("agent-a"), call, "restart prod-eu", Instant.EPOCH);
   }
 
-  private static SubstrateIntentStore<Intent> freshStore() {
-    return new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+  private static JdbcIntentStore<Intent> freshStore() {
+    return new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
   }
 
   @Test

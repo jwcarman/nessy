@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 class IntentPolicyTest {
 
@@ -50,8 +50,8 @@ class IntentPolicyTest {
         AgentType.of("ops"), AgentId.of("agent-a"), call, "restart prod-eu", Instant.EPOCH);
   }
 
-  private static SubstrateIntentStore<Intent> freshStore() {
-    return new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+  private static JdbcIntentStore<Intent> freshStore() {
+    return new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
   }
 
   @Test

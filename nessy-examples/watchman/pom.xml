@@ -32,7 +32,7 @@
   <name>Nessy Example: Watchman (Pekko port)</name>
   <description>The watchman on the actor runtime. NO LONGER A SPIKE: as of 2026-08-28 this is where
     Nessy's Pekko-based engine is being built, and the design here is the design of record rather
-    than a comparison. It depends on nessy-spi, nessy-agent, nessy-substrate-jdbc and
+    than a comparison. It depends on nessy-spi, nessy-agent and
     nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
     Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
     both counts.</description>
@@ -105,17 +105,12 @@
     <!-- THE TRANSCRIPT IS NESSY'S, NOT OURS. The soak measured the cost of embedding it in the
          durable state (14x growth in 64 minutes, every revision rewriting the whole document), and
          the fix is an append-only journal, which Nessy already has. nessy-spi's Substrate gives
-         `JournalStore<T>` with append-at-expected-seq and resumable reads; nessy-substrate-jdbc
+         its own purpose-built tables over a DataSource;
          puts it on the DataSource Spring already owns. Writing a second journal by hand would have
          been strictly worse. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-substrate-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Memory, and the Remembrance fold that pairs a tool_use with its result. SubstrateMemory

@@ -28,7 +28,7 @@ import org.jwcarman.codec.spi.TypeRef;
 
 /**
  * The {@code byte[] -> byte[]} transforms every stored payload passes through, in declaration
- * order, applied identically by the actor serializer and by {@code Substrate}.
+ * order, applied identically by the actor serializer and by every store.
  *
  * <p>One pipeline for both stores is the whole point. A chain that reached only one of them would
  * give you encrypted actor state beside plaintext memory — worse than choosing either consistently,
@@ -36,10 +36,10 @@ import org.jwcarman.codec.spi.TypeRef;
  *
  * <h2>Why the chain is written into the bytes</h2>
  *
- * <p>The two consumers have different metadata slots — Pekko has a serializer {@code manifest},
- * {@code Substrate} has a {@code kind} column — and <b>nothing is common to both</b>. Recording the
- * chain in each would mean two mechanisms that drift. So each payload carries its own short header
- * naming the transforms that produced it, and decoding reads that rather than assuming today's
+ * <p>The two consumers have different metadata slots — Pekko has a serializer {@code manifest}, a
+ * store row has its own key columns — and <b>nothing is common to both</b>. Recording the chain in
+ * each would mean two mechanisms that drift. So each payload carries its own short header naming
+ * the transforms that produced it, and decoding reads that rather than assuming today's
  * configuration produced yesterday's bytes.
  *
  * <p>Without it, two ordinary config edits corrupt data silently:

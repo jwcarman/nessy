@@ -35,6 +35,10 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
     </dependency>
@@ -53,6 +57,17 @@
     <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson2</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-testing</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

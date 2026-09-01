@@ -29,11 +29,11 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 class IntentToolTest {
 
-  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  /** A plainly-pinned mapper — tolerant reads, same as the stored format contract. */
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
@@ -59,7 +59,7 @@ class IntentToolTest {
     void itIsNamedDeclareIntent() {
       var tool =
           IntentTool.freeform(
-              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER));
 
       assertThat(tool.name()).isEqualTo("declare-intent");
     }
@@ -68,7 +68,7 @@ class IntentToolTest {
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
       var tool =
           IntentTool.freeform(
-              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER));
 
       assertThat(tool.description())
           .isEqualTo("Declare what you are about to do and why, before using any other tool.");
@@ -78,7 +78,7 @@ class IntentToolTest {
     void itAnswersImmediatelyRatherThanDeferring() {
       var tool =
           IntentTool.freeform(
-              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER));
 
       // What CompletionPolicy.IMMEDIATE used to declare, the return type now shows: recording a
       // claim is local work, so this tool can only ever come back Ready.
@@ -88,8 +88,7 @@ class IntentToolTest {
 
     @Test
     void executingDeclaresTheDeclarationIntoTheStore() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
       var tool = IntentTool.freeform(store);
 
       tool.execute(new Intent("restart prod-eu to clear the stuck deploy"), freshContext());
@@ -101,7 +100,7 @@ class IntentToolTest {
     void executingReturnsAnImmediatelyReadyOkResult() {
       var tool =
           IntentTool.freeform(
-              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER));
 
       Awaited<ToolResult> outcome = tool.execute(new Intent("restart prod-eu"), freshContext());
 
@@ -128,8 +127,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new SubstrateIntentStore<>(
-                  new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Vocabulary.class, MAPPER));
 
       assertThat(tool.description())
           .isEqualTo(
@@ -142,8 +140,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new SubstrateIntentStore<>(
-                  new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER));
+              new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Vocabulary.class, MAPPER));
 
       var schema = tool.inputSchema();
 
@@ -153,8 +150,7 @@ class IntentToolTest {
 
     @Test
     void executingBindsTheTypedDeclarationIntoTheStore() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Vocabulary.class, MAPPER);
       var tool = new IntentTool<>(Vocabulary.class, store);
 
       tool.execute(new Restart("prod-eu"), freshContext());

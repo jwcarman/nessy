@@ -23,21 +23,15 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
 import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.codec.spi.CodecFactory;
-import org.jwcarman.nessy.spi.substrate.DocumentStore;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
-class SubstrateIntentStoreTest {
+class JdbcIntentStoreTest {
 
-  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  /** A plainly-pinned mapper — tolerant reads, same as the stored format contract. */
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
@@ -46,16 +40,14 @@ class SubstrateIntentStoreTest {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
 
       store.declare(new Intent("first declaration"));
       store.declare(new Intent("second declaration"));
@@ -65,14 +57,12 @@ class SubstrateIntentStoreTest {
 
     @Test
     void aStoredDeclarationWithAnUnknownFieldStillReads() {
-      var substrate = new InMemorySubstrate();
-      substrate.write(
-          "intent",
+      var database = TestDatabase.fresh();
+      storeDeclaration(
+          database,
           "agent-a",
-          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}"
-              .getBytes(StandardCharsets.UTF_8),
-          0);
-      var store = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}");
+      var store = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
@@ -83,9 +73,9 @@ class SubstrateIntentStoreTest {
 
     @Test
     void shareTheDeclaration() {
-      var substrate = new InMemorySubstrate();
-      var writer = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
-      var reader = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var database = TestDatabase.fresh();
+      var writer = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
+      var reader = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
 
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -110,10 +100,10 @@ class SubstrateIntentStoreTest {
      */
     @Test
     void blindlyOverwritesAnIncumbentItsOwnCodecCannotDecode() {
-      var substrate = new InMemorySubstrate();
-      var plainStore = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var database = TestDatabase.fresh();
+      var plainStore = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
       var foreignStore =
-          new SubstrateIntentStore<>(substrate, "agent-a", ForeignVocabulary.class, MAPPER);
+          new JdbcIntentStore<>(database, "agent-a", ForeignVocabulary.class, MAPPER);
       plainStore.declare(new Intent("a plain declaration, no \"type\" discriminator at all"));
 
       foreignStore.declare(new Restart("prod-eu", "stuck deploy"));
@@ -138,8 +128,7 @@ class SubstrateIntentStoreTest {
 
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -148,8 +137,7 @@ class SubstrateIntentStoreTest {
 
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
-      var store =
-          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
+      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Diagnose("prod-eu"));
 
@@ -165,14 +153,12 @@ class SubstrateIntentStoreTest {
      */
     @Test
     void anAnnotatedVocabularySingleDiscriminatesRatherThanDoublingTheTypeKey() {
-      var substrate = new InMemorySubstrate();
-      var store = new SubstrateIntentStore<>(substrate, "agent-a", OpsIntent.class, MAPPER);
+      var database = TestDatabase.fresh();
+      var store = new JdbcIntentStore<>(database, "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
-      String rawJson =
-          new String(
-              substrate.read("intent", "agent-a").orElseThrow().payload(), StandardCharsets.UTF_8);
+      String rawJson = declarationIn(database, "agent-a");
       assertThat(rawJson.split("\"type\"", -1)).hasSize(2);
     }
   }
@@ -182,14 +168,12 @@ class SubstrateIntentStoreTest {
 
     @Test
     void retriesAndTheRetriedDeclarationStillWins() {
-      var substrate = new InMemorySubstrate();
-      var raced =
-          new SubstrateIntentStore<>(
-              new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class, MAPPER);
+      var database = TestDatabase.fresh();
+      var raced = new JdbcIntentStore<>(losesOneWrite(database), "agent-a", Intent.class, MAPPER);
 
       raced.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var readBack = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }
@@ -200,14 +184,14 @@ class SubstrateIntentStoreTest {
 
     @Test
     void isHonoredByBothWritesAndReads() {
-      var substrate = new InMemorySubstrate();
+      var database = TestDatabase.fresh();
       Codec<Intent> codec =
           new Jackson2CodecFactory(MAPPER).create(Intent.class).andThen(new MarkerBytesCodec());
-      var store = new SubstrateIntentStore<>(substrate, "agent-a", codec);
+      var store = new JdbcIntentStore<>(database, "agent-a", codec);
 
       store.declare(new Intent("restart prod-eu"));
 
-      byte[] rawPayload = substrate.read("intent", "agent-a").orElseThrow().payload();
+      byte[] rawPayload = declarationIn(database, "agent-a").getBytes(StandardCharsets.UTF_8);
       assertThat(MarkerBytesCodec.isMarked(rawPayload)).isTrue();
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
@@ -216,8 +200,8 @@ class SubstrateIntentStoreTest {
   /**
    * A trivial byte-transform codec: prepends a fixed marker to every encoded payload and strips it
    * back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#andThen(Codec)}, it proves
-   * a caller-supplied codec is actually honored by the recipe — the substrate's raw stored bytes
-   * carry the marker, and a read still round-trips through it. A local hand-rolled equivalent of
+   * a caller-supplied codec is actually honored by the recipe — the raw stored bytes carry the
+   * marker, and a read still round-trips through it. A local hand-rolled equivalent of
    * nessy-agent's own {@code MarkerBytesCodec} test support, which this module cannot depend on
    * (design authority: nessy-intent depends only on nessy-api and nessy-spi).
    */
@@ -244,74 +228,72 @@ class SubstrateIntentStoreTest {
     }
   }
 
+  /** Puts a declaration in the table directly, so a test can store a shape the store would not. */
+  private static void storeDeclaration(
+      javax.sql.DataSource dataSource, String agentId, String declaration) {
+    org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
+        .sql("INSERT INTO nessy_intent (agent_id, declaration, version) VALUES (?, ?, 1)")
+        .params(agentId, declaration)
+        .update();
+  }
+
+  /** The stored bytes for an agent, read past the store rather than through it. */
+  private static String declarationIn(javax.sql.DataSource dataSource, String agentId) {
+    return org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
+        .sql("SELECT declaration FROM nessy_intent WHERE agent_id = ?")
+        .params(agentId)
+        .query(String.class)
+        .single();
+  }
+
   /**
-   * Simulates one lost race on {@link #write}: the first call is preceded by a competitor's write
-   * landing first at the very {@code expectedVersion} the caller is targeting, so the delegate
-   * throws a genuine {@code ConflictException}; every later write goes straight through. A local
-   * hand-rolled equivalent of {@code RaceOnceOnWriteSubstrate} (nessy-agent's own test support),
-   * which this module cannot depend on (design authority: nessy-intent depends only on nessy-api
-   * and nessy-spi).
+   * A {@link javax.sql.DataSource} whose FIRST update reports that it changed nothing.
+   *
+   * <p>That is exactly what a lost compare-and-set looks like to the store: the row's version moved
+   * between the read and the write, so the conditional update matches no row. The store must read
+   * the version again and retry rather than assume it won — which is the behaviour under test, and
+   * which is otherwise only reachable by racing two threads and hoping.
    */
-  private static final class RaceOnceOnWriteSubstrate implements Substrate {
+  private static javax.sql.DataSource losesOneWrite(javax.sql.DataSource delegate) {
+    boolean[] lost = {false};
+    return (javax.sql.DataSource)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {javax.sql.DataSource.class},
+            (source, method, args) -> {
+              Object result = method.invoke(delegate, args);
+              return result instanceof java.sql.Connection connection
+                  ? proxyConnection(connection, lost)
+                  : result;
+            });
+  }
 
-    private final Substrate delegate;
-    private boolean raced;
+  private static java.sql.Connection proxyConnection(java.sql.Connection delegate, boolean[] lost) {
+    return (java.sql.Connection)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {java.sql.Connection.class},
+            (connection, method, args) -> {
+              Object result = method.invoke(delegate, args);
+              return result instanceof java.sql.PreparedStatement statement
+                  ? proxyStatement(statement, lost)
+                  : result;
+            });
+  }
 
-    private RaceOnceOnWriteSubstrate(Substrate delegate) {
-      this.delegate = Objects.requireNonNull(delegate);
-    }
-
-    @Override
-    public int deleteKind(String kind) {
-      return delegate.deleteKind(kind);
-    }
-
-    @Override
-    public Optional<Document> read(String kind, String key) {
-      return delegate.read(kind, key);
-    }
-
-    @Override
-    public void write(String kind, String key, byte[] payload, long expectedVersion) {
-      if (!raced) {
-        raced = true;
-        delegate.write(
-            kind,
-            key,
-            "{\"declaration\":\"a competing declaration\"}".getBytes(StandardCharsets.UTF_8),
-            expectedVersion);
-      }
-      delegate.write(kind, key, payload, expectedVersion);
-    }
-
-    @Override
-    public void delete(String kind, String key, long expectedVersion) {
-      delegate.delete(kind, key, expectedVersion);
-    }
-
-    @Override
-    public List<String> keys(String kind, int limit) {
-      return delegate.keys(kind, limit);
-    }
-
-    @Override
-    public void append(String kind, String key, long expectedSeq, byte[] payload) {
-      delegate.append(kind, key, expectedSeq, payload);
-    }
-
-    @Override
-    public List<Entry> entries(String kind, String key, long fromSeq) {
-      return delegate.entries(kind, key, fromSeq);
-    }
-
-    @Override
-    public long head(String kind, String key) {
-      return delegate.head(kind, key);
-    }
-
-    @Override
-    public CodecFactory codecs() {
-      return delegate.codecs();
-    }
+  private static java.sql.PreparedStatement proxyStatement(
+      java.sql.PreparedStatement delegate, boolean[] lost) {
+    return (java.sql.PreparedStatement)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {java.sql.PreparedStatement.class},
+            (statement, method, args) -> {
+              if ("executeUpdate".equals(method.getName()) && !lost[0]) {
+                lost[0] = true;
+                delegate.executeUpdate();
+                return 0;
+              }
+              return method.invoke(delegate, args);
+            });
   }
 }

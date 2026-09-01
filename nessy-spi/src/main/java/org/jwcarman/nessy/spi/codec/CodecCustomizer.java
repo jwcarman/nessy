@@ -20,8 +20,8 @@ package org.jwcarman.nessy.spi.codec;
  * every stored payload passes through.
  *
  * <p>Declared once, where the harness is built, and applied by BOTH the actor serializer and {@code
- * Substrate}. Encryption is a deployment-wide decision, not a per-agent one, which is why this is
- * not on {@code HarnessConfig}.
+ * store}. Encryption is a deployment-wide decision, not a per-agent one, which is why this is not
+ * on {@code HarnessConfig}.
  *
  * <p>Order of appending is order of application, and it is recorded in every payload — so adding a
  * transform later leaves existing data readable, and reordering does not quietly corrupt it.

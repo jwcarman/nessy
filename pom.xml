@@ -59,7 +59,6 @@
     <module>nessy-spi</module>
     <module>nessy-engine</module>
     <module>nessy-testing</module>
-    <module>nessy-substrate-jdbc</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
     <module>nessy-model-gemini</module>
@@ -351,11 +350,6 @@
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-engine</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-substrate-jdbc</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
