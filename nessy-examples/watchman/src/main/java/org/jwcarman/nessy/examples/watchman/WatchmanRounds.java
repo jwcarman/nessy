@@ -65,8 +65,20 @@ public class WatchmanRounds {
     round();
   }
 
-  @Scheduled(fixedRateString = "PT30M")
+  /**
+   * Knocks.
+   *
+   * <p>The interval is a property because a soak has to see several rounds in the minutes it runs,
+   * and half an hour is the right cadence only for the thing actually watching a house. It was
+   * hard-coded, and {@code soak.sh} exported a WATCHMAN_CRON that nothing had read since.
+   *
+   * <p>Logged, and with the words the soak greps for: a run that cannot count its own rounds cannot
+   * tell "nothing went wrong" from "nothing happened", which is the failure this soak exists to
+   * catch.
+   */
+  @Scheduled(fixedRateString = "${watchman.round-interval:PT30M}")
   public void round() {
+    LOG.info("[watchman] telling the watchman to do its rounds");
     harness.observe(WatchmanConfiguration.AGENT, TICK);
   }
 }

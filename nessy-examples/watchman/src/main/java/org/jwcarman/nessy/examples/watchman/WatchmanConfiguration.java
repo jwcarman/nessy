@@ -141,6 +141,23 @@ public class WatchmanConfiguration {
     };
   }
 
+  /**
+   * Applies Nessy's own DDL to the database this application supplied.
+   *
+   * <p>The engine initializes only a DataSource it CREATED; one an application hands it is never
+   * touched uninvited, which is why the shipped file is called {@code nessy-schema.sql} rather than
+   * {@code schema.sql} — Boot looks for the latter, so ours never runs by accident and this is the
+   * opt-in. A production deployment would more likely apply it through whatever runs its
+   * migrations; this is a soak, and one line is the honest version of that.
+   *
+   * <p>{@code InitializingBean} rather than a listener so it runs before anything reads a table.
+   */
+  @Bean
+  public org.springframework.beans.factory.InitializingBean nessySchema(
+      javax.sql.DataSource dataSource) {
+    return () -> org.jwcarman.nessy.spi.store.Schemas.initialize(dataSource);
+  }
+
   /** The transcript the page renders, read through the same door the engine writes it with. */
   @Bean
   public org.jwcarman.nessy.api.memory.Memory memory(javax.sql.DataSource dataSource) {

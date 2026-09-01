@@ -93,7 +93,8 @@ pkill -9 -f "watchman/target" 2>/dev/null
 while lsof -nP -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1; do sleep 1; done
 [ -f "$LOG" ] && mv "$LOG" "${LOG}.$(date +%Y%m%d-%H%M%S)"
 
-export WATCHMAN_CRON="0 */1 * * * *"
+# One round a minute, so a few minutes of soaking is a few rounds of evidence.
+export WATCHMAN_ROUND_INTERVAL="PT1M"
 export WATCHMAN_DB_URL="jdbc:postgresql://localhost:5432/watchman?currentSchema=${SCHEMA}"
 export WATCHMAN_DB_USER="watchman" WATCHMAN_DB_PASSWORD="watchman"
 export WATCHMAN_PASSWORD="${WATCHMAN_PASSWORD:-soak}"
@@ -118,27 +119,27 @@ echo
 # --- measure ----------------------------------------------------------------
 say "Measurements"
 ROUNDS=$(grep -c 'telling the watchman' "$LOG")
-REFUSED=$(grep -c 'REFUSED' "$LOG")
-PARKED=$(grep -c 'approval pending' "$LOG")
-UNSETTLED=$(grep -c 'not settled' "$LOG")
 STARTUP_ERR=$(grep -ci 'APPLICATION FAILED' "$LOG")
 STATE_BYTES=$(psql_q "SELECT coalesce(max(pg_column_size(state_payload)),0) FROM ${SCHEMA}.durable_state;")
 
-read -r ADJACENT DISTINCT TOTAL <<<"$(psql_q "SELECT convert_from(payload,'UTF8') FROM ${SCHEMA}.nessy_journal ORDER BY seq;" | python3 -c '
-import sys, json
-prev = None; adjacent = 0; keys = []
-for line in sys.stdin:
-    line = line.strip()
-    if not line: continue
-    try: entry = json.loads(line)
-    except Exception: continue
-    kind = entry.get("type")
-    if kind == "user-message":
-        keys.append(entry.get("key"))
-        if prev == "user-message": adjacent += 1
-    prev = kind
-print(adjacent, len(set(keys)), len(keys))
-')"
+# The transcript is one row per message, in order, so "two user turns in a row" is an adjacency
+# check over seq. A malformed context is the failure this catches: an assistant turn that called
+# tools must be followed by the message answering it, never by another user message.
+ADJACENT=$(psql_q "
+  SELECT count(*) FROM (
+    SELECT payload::json->>'role' AS role,
+           lag(payload::json->>'role') OVER (ORDER BY seq) AS previous
+    FROM ${SCHEMA}.nessy_transcript
+  ) pairs WHERE role = 'user' AND previous = 'user';")
+
+# A call whose result never got written. The engine writes a placeholder when it cannot find one,
+# so this string in the transcript means a result went missing rather than a tool answering badly.
+UNSETTLED=$(psql_q "SELECT count(*) FROM ${SCHEMA}.nessy_transcript WHERE payload LIKE '%no result was recorded%';")
+
+# What is still waiting to become a turn. A superseding coalescer keeps ONE tick, so a backlog that
+# grows means coalescing is not happening — the failure that used to fill a document with ticks.
+WAITING=$(psql_q "SELECT count(*) FROM ${SCHEMA}.nessy_backlog WHERE taken_claim IS NULL;")
+PARKED=$(psql_q "SELECT count(*) FROM ${SCHEMA}.nessy_pending_approvals;")
 
 FAILURES=0
 check() { # name expected actual explanation
@@ -146,19 +147,24 @@ check() { # name expected actual explanation
   else printf '  \033[31mFAIL\033[0m  %-34s %s (expected %s) -- %s\n' "$1" "$3" "$2" "$4"; FAILURES=$((FAILURES+1)); fi
 }
 
-check "observations refused"        0 "$REFUSED"     "an observation arriving mid-turn was destroyed"
 check "consecutive user-messages"   0 "$ADJACENT"    "malformed context: two user turns with no assistant between"
-check "user-message key collisions" "$TOTAL" "$DISTINCT" "idempotence-by-key silently swallowed an observation"
-check "calls left unsettled"        0 "$UNSETTLED"   "a call settled with no exchange recorded, or stalled"
+check "results left unrecorded"     0 "$UNSETTLED"   "a call completed with no result claimed -- the model is told nothing happened"
 check "startup failures"            0 "$STARTUP_ERR" "the application did not come up"
 
-# The one that stops this being vacuous. Without a park, nothing ever arrived
-# mid-turn, so "0 refusals" would be true of a system that does nothing at all.
+if [ "$WAITING" -le 1 ]; then
+  printf '  \033[32mPASS\033[0m  %-34s %s waiting\n' "backlog stays coalesced" "$WAITING"
+else
+  printf '  \033[31mFAIL\033[0m  %-34s %s waiting -- ticks are piling up instead of superseding\n' "backlog stays coalesced" "$WAITING"
+  FAILURES=$((FAILURES+1))
+fi
+
+# The one that stops this being vacuous. Without a park, nothing ever waited on a person, so every
+# other count here would be equally true of a system that did nothing at all.
 if [ "$PARKED" -gt 0 ]; then
   printf '  \033[32mPASS\033[0m  %-34s %s\n' "parked at least once" "$PARKED"
 else
-  printf '  \033[31mFAIL\033[0m  %-34s 0 -- THE RUN IS VACUOUS: nothing arrived mid-turn, so the\n' "parked at least once"
-  printf '        refusal count proves nothing. Re-run for longer, or make a gated tool likelier.\n'
+  printf '  \033[31mFAIL\033[0m  %-34s 0 -- THE RUN IS VACUOUS: nothing was ever put to a person,\n' "parked at least once"
+  printf '        so the other counts prove nothing. Re-run for longer, or make a gated tool likelier.\n'
   FAILURES=$((FAILURES+1))
 fi
 
@@ -166,15 +172,16 @@ if [ "$STATE_BYTES" -lt 2048 ]; then
   printf '  \033[32mPASS\033[0m  %-34s %s bytes\n' "agent state stays small" "$STATE_BYTES"
 else
   printf '  \033[31mFAIL\033[0m  %-34s %s bytes -- content is leaking into the persisted document;\n' "agent state stays small" "$STATE_BYTES"
-  printf '        tool arguments belong in claims and results belong in Memory.\n'
+  printf '        the backlog is a table, tool arguments belong in claims, results belong in Memory.\n'
   FAILURES=$((FAILURES+1))
 fi
 
 say "Context"
 echo "  rounds: ${ROUNDS}   log: ${LOG}"
-psql_q "SELECT '  backlog waiting: '||coalesce(json_array_length((convert_from(payload,'UTF8')::json)->'entries'),0)
-        FROM ${SCHEMA}.nessy_document WHERE kind LIKE '%backlog%';"
-psql_q "SELECT '  claims held: '||count(*) FROM ${SCHEMA}.nessy_document WHERE kind LIKE 'claim/%';"
+psql_q "SELECT '  backlog rows: '||count(*)||' ('||count(taken_claim)||' taken)' FROM ${SCHEMA}.nessy_backlog;"
+psql_q "SELECT '  claims held: '||count(*) FROM ${SCHEMA}.nessy_claim;"
+psql_q "SELECT '  alarms armed: '||count(*) FROM ${SCHEMA}.nessy_reminder;"
+psql_q "SELECT '  transcript rows: '||count(*) FROM ${SCHEMA}.nessy_transcript;"
 
 say "$([ "$FAILURES" -eq 0 ] && echo 'SOAK PASSED' || echo "SOAK FAILED (${FAILURES})")"
 echo "The watchman is still running as pid ${SOAK_PID}; kill it when you are done."

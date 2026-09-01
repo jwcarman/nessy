@@ -76,26 +76,13 @@ CREATE TABLE IF NOT EXISTS watchman.durable_state (
   PRIMARY KEY(persistence_id)
 );
 
--- Nessy's OWN substrate tables, verbatim from nessy-substrate-jdbc's nessy-postgresql.sql, in
--- this port's schema. The transcript lives in nessy_journal -- one row per turn, appended, never
--- rewritten -- which is what keeps durable_state flat forever.
-CREATE TABLE IF NOT EXISTS watchman.nessy_document (
-  kind        TEXT             NOT NULL,
-  key         TEXT COLLATE "C" NOT NULL,
-  payload     BYTEA            NOT NULL,
-  version     BIGINT           NOT NULL,
-  updated_at  TIMESTAMPTZ      NOT NULL,
-  PRIMARY KEY (kind, key)
-);
-
-CREATE TABLE IF NOT EXISTS watchman.nessy_journal (
-  kind         TEXT             NOT NULL,
-  key          TEXT COLLATE "C" NOT NULL,
-  seq          BIGINT           NOT NULL,
-  payload      BYTEA            NOT NULL,
-  appended_at  TIMESTAMPTZ      NOT NULL,
-  PRIMARY KEY (kind, key, seq)
-);
+-- Nessy's own tables are NOT here. The engine ships them as nessy-schema.sql at the root of each
+-- jar that needs one, and this application applies them itself at startup — the engine initializes
+-- only a DataSource it created, and this one is ours. See WatchmanConfiguration#nessySchema.
+--
+-- They used to be copied in by hand (nessy_document and nessy_journal, from the substrate). Copying
+-- DDL is how a schema drifts from the code that reads it: those two tables outlived the substrate
+-- by a day and were still being created here after nothing read them.
 
 CREATE INDEX IF NOT EXISTS state_tag_idx ON watchman.durable_state (tag);
 CREATE INDEX IF NOT EXISTS state_global_offset_idx ON watchman.durable_state (global_offset);
