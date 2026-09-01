@@ -33,6 +33,16 @@
 
   <dependencyManagement>
     <dependencies>
+    <!-- Spring JDBC as a LIBRARY: the engine owns its own bookkeeping (claims, reminders) and
+         builds it over a DataSource. JdbcClient needs no ApplicationContext and no Spring Boot. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+    </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>

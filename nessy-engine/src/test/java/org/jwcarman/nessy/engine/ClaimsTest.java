@@ -18,25 +18,41 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 
 @DisplayName("A turn's scratch space")
 class ClaimsTest {
 
   private static final AgentId HOUSE = AgentId.of("house-12");
 
-  private InMemorySubstrate substrate;
+  private EmbeddedDatabase database;
   private Claims claims;
 
   @BeforeEach
   void setUp() {
-    substrate = new InMemorySubstrate(Clock.systemUTC());
-    claims = new Claims(substrate);
+    database = TestDatabase.fresh();
+    claims = new Claims(database);
+  }
+
+  @AfterEach
+  void close() {
+    database.shutdown();
+  }
+
+  /** Rows left for a turn, asked of the table rather than of the store under test. */
+  private long rowsFor(AgentId agentId, String turnId) {
+    return JdbcClient.create(database)
+        .sql("SELECT count(*) FROM nessy_claim WHERE agent_id = ? AND turn_id = ?")
+        .params(agentId.value(), turnId)
+        .query(Long.class)
+        .single();
   }
 
   private static byte[] bytes(String value) {
@@ -92,7 +108,7 @@ class ClaimsTest {
     assertThat(claims.get(HOUSE, "turn-1", "asked")).isEmpty();
     assertThat(claims.get(HOUSE, "turn-1", "result-c1")).isEmpty();
     assertThat(claims.get(HOUSE, "turn-1", "orphan")).isEmpty();
-    assertThat(substrate.keys(Claims.kindOf(HOUSE, "turn-1"), 100)).isEmpty();
+    assertThat(rowsFor(HOUSE, "turn-1")).isZero();
   }
 
   @Test

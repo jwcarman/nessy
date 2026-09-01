@@ -17,55 +17,68 @@ package org.jwcarman.nessy.engine;
 
 import java.util.Objects;
 import java.util.Optional;
+import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * Content a turn must keep for its own duration and no longer.
  *
  * <p>What a tool was asked and what it answered are CONTENT — the size of whatever the tool decided
- * to hand back. Keeping them in a turn's document would make that document grow with what its tools
- * do, which is the one thing the document's shape is for. They cannot live in the transcript
+ * to hand back. Keeping them on a turn's own document would make that document grow with what its
+ * tools do, which is the one thing the document's shape is for. They cannot live in the transcript
  * either: an exchange is written whole, so for exactly the window a call is in flight the
  * transcript is designed not to hold it.
  *
- * <p><b>The OWNER is the kind, not the key.</b> Everything for one turn lives under {@code
- * claim/{agentId}/{turnId}}, so ending a turn is "delete that kind" rather than "delete the claims
- * something remembered to write down". That matters for more than tidiness: a claim written just
- * before a crash, before the state naming it was persisted, is an ORPHAN no key list contains.
- * Scoping by kind sweeps it anyway, because it is in the kind.
+ * <p><b>Engine-internal.</b> Nothing outside the engine reads a claim, so this is not an extension
+ * point and there is no interface to implement — the engine needs it, so the engine provides it.
+ * Hand the engine a {@link DataSource} and its bookkeeping is durable; hand it none and the engine
+ * makes an in-memory one.
+ *
+ * <p><b>Deleted by turn, not by key.</b> Ending a turn is one statement over {@code (agent_id,
+ * turn_id)}, which matters for more than tidiness: a claim written just before a crash, before the
+ * state naming it was persisted, is an ORPHAN no key list contains. Deleting by turn sweeps it
+ * anyway, because it is in the turn.
  */
 final class Claims {
 
-  private final Substrate substrate;
+  private static final String UPSERT_DELETE =
+      "DELETE FROM nessy_claim WHERE agent_id = ? AND turn_id = ? AND claim_key = ?";
+  private static final String INSERT =
+      "INSERT INTO nessy_claim (agent_id, turn_id, claim_key, payload) VALUES (?, ?, ?, ?)";
+  private static final String SELECT =
+      "SELECT payload FROM nessy_claim WHERE agent_id = ? AND turn_id = ? AND claim_key = ?";
+  private static final String DELETE_TURN =
+      "DELETE FROM nessy_claim WHERE agent_id = ? AND turn_id = ?";
 
-  Claims(Substrate substrate) {
-    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
-  }
+  private final JdbcClient jdbc;
 
-  static String kindOf(AgentId agentId, String turnId) {
-    return "claim/" + agentId.value() + "/" + turnId;
+  Claims(DataSource dataSource) {
+    this.jdbc =
+        JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
   }
 
   /**
    * Writes, overwriting whatever was there.
    *
    * <p>Overwriting matters: a turn that re-drives after a crash claims the same keys again, and a
-   * write that insisted the key was new would turn an ordinary recovery into a dead actor. Reading
-   * the version first is safe because a turn is the only writer for its own kind.
+   * write that insisted the key was new would turn an ordinary recovery into a dead actor.
+   *
+   * <p>Delete-then-insert rather than an upsert, because {@code ON CONFLICT} and {@code MERGE} are
+   * vendor syntax and one DDL and one set of statements have to serve every database we support. A
+   * turn is the only writer for its own claims, so there is no race for the two statements to lose.
    */
   void put(AgentId agentId, String turnId, String key, byte[] value) {
-    String kind = kindOf(agentId, turnId);
-    long version = substrate.read(kind, key).map(Substrate.Document::version).orElse(0L);
-    substrate.write(kind, key, value, version);
+    jdbc.sql(UPSERT_DELETE).params(agentId.value(), turnId, key).update();
+    jdbc.sql(INSERT).params(agentId.value(), turnId, key, value).update();
   }
 
   Optional<byte[]> get(AgentId agentId, String turnId, String key) {
-    return substrate.read(kindOf(agentId, turnId), key).map(Substrate.Document::payload);
+    return jdbc.sql(SELECT).params(agentId.value(), turnId, key).query(byte[].class).optional();
   }
 
   /** The turn ended, so its claims end — including any orphan no state ever referenced. */
   void deleteTurn(AgentId agentId, String turnId) {
-    substrate.deleteKind(kindOf(agentId, turnId));
+    jdbc.sql(DELETE_TURN).params(agentId.value(), turnId).update();
   }
 }

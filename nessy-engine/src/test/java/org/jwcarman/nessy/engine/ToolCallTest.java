@@ -59,6 +59,7 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * A turn that uses a tool: ask, approve, run, answer, ask again.
@@ -163,7 +164,7 @@ class ToolCallTest {
             new ToolBindings(List.of(binding), EngineMapper.INSTANCE),
             java.util.Set.<org.jwcarman.nessy.spi.model.Capability>of(),
             Narrator.to(narrated::add),
-            new Claims(new InMemorySubstrate(Clock.systemUTC())),
+            new Claims(TestDatabase.fresh()),
             ReplyTokens.ephemeral(),
             Runnable::run,
             Traces.noop());

@@ -56,6 +56,7 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * A turn that died while its tools were working, picked back up.
@@ -162,7 +163,7 @@ class TurnResumeTest {
     testKit = ClusterOfOne.start();
     InMemorySubstrate substrate = new InMemorySubstrate(Clock.systemUTC());
     memory = TranscriptMemory.eternal(substrate, WATCHMAN);
-    claims = new Claims(substrate);
+    claims = new Claims(TestDatabase.fresh());
     deps =
         new TurnActor.Dependencies(
             WATCHMAN,

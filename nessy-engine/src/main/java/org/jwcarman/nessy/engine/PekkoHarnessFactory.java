@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import javax.sql.DataSource;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
@@ -33,11 +34,16 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.memory.Memory;
+import org.jwcarman.nessy.spi.codec.Codecs;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 /**
  * Builds harnesses on an actor system the caller already owns.
@@ -66,6 +72,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
 
   private final ActorSystem<?> system;
   private final Substrate substrate;
+  private final DataSource dataSource;
   private final ModelProvider models;
   private final int maxTokens;
   private final Set<Capability> capabilities;
@@ -118,6 +125,29 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.tokens = Objects.requireNonNull(tokens, "tokens must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
     this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces);
+    this.dataSource = ownDatabase();
+  }
+
+  /**
+   * The engine's own database, for its own bookkeeping.
+   *
+   * <p>The engine needs claims and reminders, so the engine provides them: nothing outside reads
+   * either, so neither is an extension point and neither should be something an application has to
+   * wire. In memory here, and initialized because it is OURS — a {@link DataSource} an application
+   * supplies is never touched uninvited, which is the whole reason our DDL is named {@code
+   * nessy-schema.sql} rather than {@code schema.sql}.
+   *
+   * <p>Its lifetime is the JVM's: an H2 in-memory database with a unique name, holding what a turn
+   * needs while it runs and nothing that should outlive the process.
+   */
+  private static DataSource ownDatabase() {
+    EmbeddedDatabase database =
+        new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .generateUniqueName(true)
+            .build();
+    Schemas.initialize(database);
+    return database;
   }
 
   @Override
@@ -131,11 +161,11 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     AgentType type = config.agentType();
 
     // The one moment O is statically known. Everything erasure would otherwise cost is paid here.
-    Codec<O> codec = substrate.codecs().create(observationType);
+    Codec<O> codec = Codecs.factory().create(observationType);
     StateTypes.of(system).register(type, observationType);
 
     Memory memory = memoryFor(config, type);
-    Claims claims = new Claims(substrate);
+    Claims claims = new Claims(dataSource);
     Model model = models.model(config.modelId());
     ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
 

@@ -46,6 +46,7 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * An observation becoming a turn, and the turn ending.
@@ -100,7 +101,7 @@ class TurnLifecycleTest {
             new ToolBindings(List.of(), EngineMapper.INSTANCE),
             java.util.Set.<org.jwcarman.nessy.spi.model.Capability>of(),
             Narrator.silent(),
-            new Claims(new InMemorySubstrate(Clock.systemUTC())),
+            new Claims(TestDatabase.fresh()),
             ReplyTokens.ephemeral(),
             Runnable::run,
             Traces.noop());
