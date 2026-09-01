@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscriber;
 import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.TurnResult;
 
 /**
  * Read a line, post it, watch the answer arrive, prompt again.
@@ -85,6 +86,7 @@ final class ReplLoop {
       }
       // Anything left over from a turn nobody waited for must not end THIS one instantly.
       finished.clear();
+      spoke = false;
       harness.observe(agentId, line);
       awaitTurn();
     }
@@ -107,7 +109,11 @@ final class ReplLoop {
                 // reaches the terminal when what it wrote contains a newline, so without this a
                 // paragraph arrives in one lump at the end — the answer appears finished rather
                 // than being written, which is the whole difference a person can see.
-                .onTextDelta(delta -> writeNow(delta.text()))
+                .onTextDelta(
+                    delta -> {
+                      spoke = true;
+                      writeNow(delta.text());
+                    })
                 .onToolCallRequested(
                     call ->
                         io.write(
@@ -123,6 +129,16 @@ final class ReplLoop {
                 // blocking an engine thread on a REPL that moved on never is.
                 .onTurnEnded(finished::offer));
   }
+
+  /**
+   * Whether the model has said anything at all this turn.
+   *
+   * <p>A turn can end having produced no text: it can be refused, it can fail on a rate limit or a
+   * context overflow, or the model can simply stop after its tools. Without this the person sees an
+   * empty line and a fresh prompt, which is indistinguishable from an answer of nothing — and from
+   * a hang.
+   */
+  private volatile boolean spoke;
 
   /** Written and made visible immediately: a REPL's output is watched, not collected. */
   private void writeNow(String text) {
@@ -140,10 +156,37 @@ final class ReplLoop {
                 + System.lineSeparator());
       } else {
         io.write(System.lineSeparator());
+        report(ended.outcome());
       }
       io.flush();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+  }
+
+  /**
+   * Says what happened when the answer alone does not.
+   *
+   * <p>Only when the turn produced no text, except for a refusal or a failure — those are worth
+   * saying even if something was streamed first, because a half-written answer that then failed is
+   * the case most likely to be misread as a complete one.
+   */
+  private void report(TurnResult outcome) {
+    switch (outcome) {
+      case TurnResult.Refused refused ->
+          note("refused (" + refused.category() + "): " + refused.explanation());
+      case TurnResult.Failed failed -> note("failed: " + failed.reason());
+      case TurnResult.Truncated ignored ->
+          note("the answer was cut off at the token limit; ask for less, or raise maxTokens");
+      case TurnResult.Completed ignored -> {
+        if (!spoke) {
+          note("the model ended the turn without saying anything");
+        }
+      }
+    }
+  }
+
+  private void note(String what) {
+    io.write("  [" + what + "]" + System.lineSeparator());
   }
 }

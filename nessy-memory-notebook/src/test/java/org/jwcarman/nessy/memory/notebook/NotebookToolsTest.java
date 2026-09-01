@@ -82,7 +82,7 @@ class NotebookToolsTest {
       ToolResult result =
           run(
               NotebookTools.remember(notebook),
-              new NotebookTools.RememberNote(null, "Prefers terse answers", "Short answers."));
+              new NotebookTools.RememberNote("Prefers terse answers", "Short answers."));
 
       String id = notebook.headings(AGENT).getFirst().id();
       assertThat(result.toString()).contains(id);
@@ -90,29 +90,26 @@ class NotebookToolsTest {
     }
 
     /** The id is the whole difference between adding and overwriting, and the model states it. */
+    /** Two notes, because remember has exactly one job now and replacing is not it. */
     @Test
-    void passing_an_id_replaces_that_note_rather_than_adding_one() {
-      Notebook.Entry first = notebook.write(AGENT, "Prefers terse", "old");
+    void remembering_twice_files_two_notes() {
+      run(NotebookTools.remember(notebook), new NotebookTools.RememberNote("a hook", "one"));
+      run(NotebookTools.remember(notebook), new NotebookTools.RememberNote("a hook", "two"));
 
-      run(
-          NotebookTools.remember(notebook),
-          new NotebookTools.RememberNote(first.id(), "Prefers terse", "new"));
-
-      assertThat(notebook.headings(AGENT)).hasSize(1);
-      assertThat(notebook.find(AGENT, first.id()).orElseThrow().body()).isEqualTo("new");
+      assertThat(notebook.headings(AGENT)).hasSize(2);
     }
 
+    /**
+     * The tool no longer HAS a slot for an id, which is the point: inventing one used to be a legal
+     * move, and a ten-character random id is exactly the kind a model produces plausibly and
+     * wrongly.
+     */
     @Test
-    @DisplayName("an id naming nothing points the model back at its index")
-    void replacing_a_note_that_is_gone_is_an_error() {
-      ToolResult result =
-          run(
-              NotebookTools.remember(notebook),
-              new NotebookTools.RememberNote("nosuchid00", "hook", "body"));
-
-      assertThat(result).isInstanceOf(ToolResult.Failure.class);
-      assertThat(((ToolResult.Failure) result).message()).contains("notebook index");
-      assertThat(notebook.headings(AGENT)).isEmpty();
+    @DisplayName("revising is a different tool, so an id cannot be invented here")
+    void remember_takes_no_id_at_all() {
+      assertThat(NotebookTools.RememberNote.class.getRecordComponents())
+          .extracting(java.lang.reflect.RecordComponent::getName)
+          .containsExactly("hook", "body");
     }
 
     /**
@@ -123,10 +120,37 @@ class NotebookToolsTest {
     @DisplayName("a blank hook is a failed call, not a failed turn")
     void a_blank_hook_comes_back_as_an_error() {
       ToolResult result =
-          run(NotebookTools.remember(notebook), new NotebookTools.RememberNote(null, " ", "body"));
+          run(NotebookTools.remember(notebook), new NotebookTools.RememberNote(" ", "body"));
 
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
       assertThat(((ToolResult.Failure) result).message()).contains("hook");
+    }
+  }
+
+  @Nested
+  class Revising {
+
+    @Test
+    void replaces_the_note_in_place() {
+      Notebook.Entry first = notebook.write(AGENT, "Prefers terse", "old");
+
+      run(
+          NotebookTools.revise(notebook),
+          new NotebookTools.ReviseNote(first.id(), "Prefers terse", "new"));
+
+      assertThat(notebook.headings(AGENT)).hasSize(1);
+      assertThat(notebook.find(AGENT, first.id()).orElseThrow().body()).isEqualTo("new");
+    }
+
+    @Test
+    @DisplayName("an id naming nothing points the model back at its index")
+    void revising_a_note_that_is_gone_is_an_error() {
+      ToolResult result =
+          run(NotebookTools.revise(notebook), new NotebookTools.ReviseNote("nosuchid00", "h", "b"));
+
+      assertThat(result).isInstanceOf(ToolResult.Failure.class);
+      assertThat(((ToolResult.Failure) result).message()).contains("notebook index");
+      assertThat(notebook.headings(AGENT)).isEmpty();
     }
   }
 

@@ -55,13 +55,17 @@ public final class NotebookTools {
    * can see in its index.
    */
   public record RememberNote(
-      @JsonPropertyDescription(
-              "Leave this out to file a new note. To replace an existing note, pass its id exactly"
-                  + " as it appears in your notebook index.")
-          String id,
       @JsonPropertyDescription("One line saying what this note is about; shown in your index")
           String hook,
       @JsonPropertyDescription("The note itself") String body) {}
+
+  /** Replaces a note that already exists. The id comes from the index, never from invention. */
+  public record ReviseNote(
+      @JsonPropertyDescription("The id of the note to replace, exactly as it appears in your index")
+          String id,
+      @JsonPropertyDescription("One line saying what this note is about; shown in your index")
+          String hook,
+      @JsonPropertyDescription("The replacement text") String body) {}
 
   /** Reads one note back. */
   public record RecallNote(
@@ -112,23 +116,47 @@ public final class NotebookTools {
         .toString();
   }
 
+  /**
+   * Files a NEW note, always.
+   *
+   * <p>It used to take an optional id — absent to create, present to replace — and that was a
+   * mistake worth naming: it made inventing an id a legal move. Ids here are ten random characters
+   * from a no-vowel alphabet, so a model that half-remembers one produces something plausible and
+   * wrong, and then does it again. Observed in the wild: four turns burnt guessing at ids before
+   * landing on a real one.
+   *
+   * <p>Now the only way to name a note is to read one out of the index, which is in front of the
+   * model on every call. A mistyped id is still possible, but it is a mistake the model can see and
+   * correct rather than one the tool invited.
+   */
   public static Tool<RememberNote> remember(Notebook notebook) {
     Objects.requireNonNull(notebook, "notebook must not be null");
     return new NotebookTool<>(
         RememberNote.class,
         "remember",
-        "Save a durable note with a one-line hook. Filing a new note returns the id it was given;"
-            + " passing the id of an existing note replaces that note instead.",
+        "File a new note with a one-line hook. Returns the id it was given. To CHANGE a note that"
+            + " already exists, use revise with the id from your notebook index — never guess an"
+            + " id, and never use this tool to replace a note.",
         (agentId, note) -> {
-          if (note.id() == null || note.id().isBlank()) {
-            Notebook.Entry written = notebook.write(agentId, note.hook(), note.body());
-            return ToolResult.ok("Remembered as '" + written.id() + "'.");
-          }
-          return notebook
-              .revise(agentId, note.id(), note.hook(), note.body())
-              .map(revised -> ToolResult.ok("Replaced '" + revised.id() + "'."))
-              .orElseGet(() -> unknown(note.id()));
+          Notebook.Entry written = notebook.write(agentId, note.hook(), note.body());
+          return ToolResult.ok("Remembered as '" + written.id() + "'.");
         });
+  }
+
+  /** Replaces a note the model has an id for. */
+  public static Tool<ReviseNote> revise(Notebook notebook) {
+    Objects.requireNonNull(notebook, "notebook must not be null");
+    return new NotebookTool<>(
+        ReviseNote.class,
+        "revise",
+        "Replace a note that already exists, using its id exactly as it appears in your notebook"
+            + " index. If you do not have an id from the index, file a new note with remember"
+            + " instead.",
+        (agentId, note) ->
+            notebook
+                .revise(agentId, note.id(), note.hook(), note.body())
+                .map(revised -> ToolResult.ok("Replaced '" + revised.id() + "'."))
+                .orElseGet(() -> unknown(note.id())));
   }
 
   public static Tool<RecallNote> recall(Notebook notebook) {

@@ -36,7 +36,11 @@ class ReplLoopTest {
   }
 
   private static AgentEvent ended() {
-    return new AgentEvent.TurnEnded("e", new TurnResult.Completed(), Usage.unreported());
+    return endedWith(new TurnResult.Completed());
+  }
+
+  private static AgentEvent endedWith(TurnResult outcome) {
+    return new AgentEvent.TurnEnded("e", outcome, Usage.unreported());
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
@@ -255,5 +259,76 @@ class ReplLoopTest {
     run(harness, console, config());
 
     assertThat(console.written()).contains("calling days_until").contains("days_until answered");
+  }
+
+  /**
+   * What a turn that produced no answer looks like.
+   *
+   * <p>Observed in a real session: the model ended a turn saying nothing, the REPL printed an empty
+   * line, and the person typed "no answer?" — because a silent turn, a refused one and a failed one
+   * were all indistinguishable from a hang. TurnResult carries the answer; nothing was reading it.
+   */
+  @Nested
+  @DisplayName("when a turn ends without an answer")
+  class Reporting {
+
+    @Test
+    void a_silent_completion_says_so_rather_than_printing_nothing() {
+      FakeHarness harness = new FakeHarness(List.of(ended()));
+      FakeConsole console = new FakeConsole("hello", "/exit");
+
+      new ReplLoop(harness, AGENT, config(), console).run();
+
+      assertThat(console.written()).contains("ended the turn without saying anything");
+    }
+
+    @Test
+    void a_refusal_names_its_category_and_explanation() {
+      FakeHarness harness =
+          new FakeHarness(List.of(endedWith(new TurnResult.Refused("safety", "not that"))));
+      FakeConsole console = new FakeConsole("hello", "/exit");
+
+      new ReplLoop(harness, AGENT, config(), console).run();
+
+      assertThat(console.written()).contains("refused (safety): not that");
+    }
+
+    /** A rate limit, a timeout, a context overflow — all of these used to print nothing at all. */
+    @Test
+    void a_failure_names_its_reason() {
+      FakeHarness harness =
+          new FakeHarness(List.of(endedWith(new TurnResult.Failed("rate limited"))));
+      FakeConsole console = new FakeConsole("hello", "/exit");
+
+      new ReplLoop(harness, AGENT, config(), console).run();
+
+      assertThat(console.written()).contains("failed: rate limited");
+    }
+
+    /**
+     * Said even though text WAS streamed: a half-written answer that then hit the ceiling is the
+     * case most likely to be read as a complete one.
+     */
+    @Test
+    void a_truncated_answer_says_it_was_cut_off_even_though_it_spoke() {
+      FakeHarness harness =
+          new FakeHarness(List.of(said("as I was say"), endedWith(new TurnResult.Truncated())));
+      FakeConsole console = new FakeConsole("hello", "/exit");
+
+      new ReplLoop(harness, AGENT, config(), console).run();
+
+      assertThat(console.written()).contains("as I was say").contains("cut off");
+    }
+
+    @Test
+    @DisplayName("a turn that answered normally says nothing extra")
+    void a_completed_turn_that_spoke_is_left_alone() {
+      FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
+      FakeConsole console = new FakeConsole("hello", "/exit");
+
+      new ReplLoop(harness, AGENT, config(), console).run();
+
+      assertThat(console.written()).contains("hi").doesNotContain("without saying anything");
+    }
   }
 }

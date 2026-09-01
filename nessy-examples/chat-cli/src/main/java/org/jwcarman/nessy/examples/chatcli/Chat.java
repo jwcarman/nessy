@@ -82,7 +82,8 @@ public final class Chat {
 
         When you are told something worth keeping — a preference, a name, a standing fact — \
         remember it as a note. Your notes appear as an index every time; read one in full with \
-        the recall tool when it is relevant.
+        the recall tool when it is relevant, and change one with revise using the id from that \
+        index. Never invent an id.
 
         For work that takes several steps, write a plan with the update_plan tool and keep it \
         current as you go. The plan you are holding appears in every message."""
@@ -129,6 +130,7 @@ public final class Chat {
                                 .stage(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
                 .tool(NotebookTools.remember(notebook))
+                .tool(NotebookTools.revise(notebook))
                 .tool(NotebookTools.recall(notebook))
                 .tool(NotebookTools.forget(notebook))
                 .tool(PlanTools.updatePlan(plans))
