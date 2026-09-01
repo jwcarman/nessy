@@ -21,7 +21,6 @@ import com.typesafe.config.ConfigFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -36,7 +35,6 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.engine.ReplyTokens;
-import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.model.discovery.ModelDiscovery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,17 +131,18 @@ public final class Repl {
     Clock clock = Clock.systemUTC();
     PekkoHarnessFactory factory =
         new PekkoHarnessFactory(
-            system,
-            config.substrate(),
-            selection.provider(),
-            config.maxTokens(),
-            Set.of(),
-            blocking,
-            clock,
-            // Ephemeral, and correct here: a token only has to outlive the process that minted it,
-            // and this process IS the conversation.
-            ReplyTokens.ephemeral(),
-            Traces.noop());
+            engine ->
+                engine
+                    .system(system)
+                    .models(selection.provider())
+                    .dataSource(config.dataSource())
+                    .maxTokens(config.maxTokens())
+                    .blocking(blocking)
+                    .clock(clock)
+                    // Ephemeral, and correct here: a token only has to outlive the process that
+                    // minted it, and this process IS the conversation.
+                    .replyTokens(ReplyTokens.ephemeral()));
+
     return factory.createHarness(
         String.class,
         harness -> {

@@ -42,7 +42,7 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * Words painted as they arrive.
@@ -95,14 +95,16 @@ class StreamingNarrationTest {
 
     harness =
         new PekkoHarnessFactory(
-                testKit.system(),
-                new InMemorySubstrate(Clock.systemUTC()),
-                models,
-                4096,
-                java.util.Set.of(),
-                Runnable::run,
-                Clock.systemUTC(),
-                ReplyTokens.ephemeral())
+                engine ->
+                    engine
+                        .system(testKit.system())
+                        .models(models)
+                        .dataSource(TestDatabase.fresh())
+                        .maxTokens(4096)
+                        .capabilities(java.util.Set.of())
+                        .blocking(Runnable::run)
+                        .clock(Clock.systemUTC())
+                        .replyTokens(ReplyTokens.ephemeral()))
             .createHarness(
                 HouseEvent.class,
                 config ->

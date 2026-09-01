@@ -40,7 +40,6 @@ import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
@@ -71,7 +70,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private static final int DEFAULT_MEMORY_CHARACTERS = 100_000;
 
   private final ActorSystem<?> system;
-  private final Substrate substrate;
   private final DataSource dataSource;
   private final ModelProvider models;
   private final int maxTokens;
@@ -83,62 +81,38 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Replies replies;
 
   /**
-   * @param maxTokens the longest answer to allow. Infrastructure rather than per-agent-kind
-   *     configuration for now, because {@code HarnessConfig} has no slot for it — worth revisiting
-   *     when one kind of agent needs a different ceiling from another.
+   * Builds an engine from {@code customizer}'s settings.
+   *
+   * <pre>{@code
+   * new PekkoHarnessFactory(engine -> engine.system(system).models(models).dataSource(ds));
+   * }</pre>
+   *
+   * @throws IllegalStateException if a required setting was not supplied
    */
-  public PekkoHarnessFactory(
-      ActorSystem<?> system,
-      Substrate substrate,
-      ModelProvider models,
-      int maxTokens,
-      Set<Capability> capabilities,
-      Executor blocking,
-      Clock clock,
-      ReplyTokens tokens) {
-    this(
-        system, substrate, models, maxTokens, capabilities, blocking, clock, tokens, Traces.noop());
-  }
-
-  /** With tracing. Everything an agent does lands under the span that caused it. */
-  public PekkoHarnessFactory(
-      ActorSystem<?> system,
-      Substrate substrate,
-      ModelProvider models,
-      int maxTokens,
-      Set<Capability> capabilities,
-      Executor blocking,
-      Clock clock,
-      ReplyTokens tokens,
-      Traces traces) {
-    this.system = Objects.requireNonNull(system, "system must not be null");
-    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
-    this.models = Objects.requireNonNull(models, "models must not be null");
-    if (maxTokens < 1) {
-      throw new IllegalArgumentException("maxTokens must be at least 1");
-    }
-    this.maxTokens = maxTokens;
-    this.capabilities =
-        Set.copyOf(Objects.requireNonNull(capabilities, "capabilities must not be null"));
-    this.blocking = Objects.requireNonNull(blocking, "blocking must not be null");
-    this.clock = Objects.requireNonNull(clock, "clock must not be null");
-    this.tokens = Objects.requireNonNull(tokens, "tokens must not be null");
-    this.traces = Objects.requireNonNull(traces, "traces must not be null");
+  public PekkoHarnessFactory(Consumer<EngineConfig> customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    EngineConfig config = new EngineConfig();
+    customizer.accept(config);
+    this.system = config.system();
+    this.models = config.models();
+    this.maxTokens = config.maxTokens();
+    this.capabilities = config.capabilities();
+    this.blocking = config.blocking();
+    this.clock = config.clock();
+    this.tokens = config.replyTokens();
+    this.traces = config.traces();
+    this.dataSource = config.dataSource().orElseGet(PekkoHarnessFactory::ownDatabase);
     this.replies = new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces);
-    this.dataSource = ownDatabase();
   }
 
   /**
-   * The engine's own database, for its own bookkeeping.
+   * The engine's own database, when an application supplied none.
    *
    * <p>The engine needs claims and reminders, so the engine provides them: nothing outside reads
    * either, so neither is an extension point and neither should be something an application has to
    * wire. In memory here, and initialized because it is OURS — a {@link DataSource} an application
    * supplies is never touched uninvited, which is the whole reason our DDL is named {@code
    * nessy-schema.sql} rather than {@code schema.sql}.
-   *
-   * <p>Its lifetime is the JVM's: an H2 in-memory database with a unique name, holding what a turn
-   * needs while it runs and nothing that should outlive the process.
    */
   private static DataSource ownDatabase() {
     EmbeddedDatabase database =
@@ -240,7 +214,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    *
    * <p>The default is announced rather than assumed. It is chosen so an agent does not eventually
    * stop — not because it is a good memory — and the difference matters enough to say out loud
-   * once, the same way an in-memory substrate does.
+   * once, the same way an in-memory database does.
    */
   private <O> Memory memoryFor(EngineHarnessConfig<O> config, AgentType type) {
     Memory supplied = config.memory();
@@ -254,6 +228,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             + " demo.",
         type.name(),
         DEFAULT_MEMORY_CHARACTERS);
-    return TranscriptMemory.recent(substrate, type, DEFAULT_MEMORY_CHARACTERS);
+    return TranscriptMemory.recent(dataSource, type, DEFAULT_MEMORY_CHARACTERS);
   }
 }

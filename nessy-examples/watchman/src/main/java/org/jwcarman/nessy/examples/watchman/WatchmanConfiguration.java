@@ -143,10 +143,9 @@ public class WatchmanConfiguration {
 
   /** The transcript the page renders, read through the same door the engine writes it with. */
   @Bean
-  public org.jwcarman.nessy.api.memory.Memory memory(
-      org.jwcarman.nessy.spi.substrate.Substrate substrate) {
+  public org.jwcarman.nessy.api.memory.Memory memory(javax.sql.DataSource dataSource) {
     return org.jwcarman.nessy.spi.memory.TranscriptMemory.eternal(
-        substrate, AgentType.of("watchman"));
+        dataSource, AgentType.of("watchman"));
   }
 
   @Bean

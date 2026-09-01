@@ -22,14 +22,16 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBindingConfig;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.store.Schemas;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 /**
  * What {@link Repl#run(ReplCustomizer)} hands a customizer: a CONFIG, not a builder (design of
@@ -67,7 +69,7 @@ public final class ReplConfig {
    * a notebook or a plan over the same store — can build one and hand it in, instead of asking this
    * object what it happens to be holding.
    */
-  private Substrate substrate = new InMemorySubstrate();
+  private DataSource dataSource = ownDatabase();
 
   /** Null until set, which is how {@link Repl} knows to leave the harness on its own default. */
   private Memory memory;
@@ -143,22 +145,22 @@ public final class ReplConfig {
   }
 
   /**
-   * Where this REPL keeps what it writes. Defaults to a fresh in-memory store.
+   * Where this REPL keeps what it writes. Defaults to a fresh in-memory H2 database.
    *
    * <p>Set this when something ELSE needs the same store — a {@code Notebook}, a plan — so that
    * what the agent remembers and what its tools read live in one place:
    *
    * <pre>{@code
-   * Substrate substrate = new InMemorySubstrate();
-   * Notebook notebook = new SubstrateNotebook(substrate, type);
-   * Repl.run(config -> config.substrate(substrate).tool(NotebookTools.remember(notebook)));
+   * DataSource database = ...;
+   * Notebook notebook = new JdbcNotebook(database, type);
+   * Repl.run(config -> config.dataSource(database).tool(NotebookTools.remember(notebook)));
    * }</pre>
    *
-   * <p>A durable substrate will work, and is the wrong shape for a console application: see {@link
+   * <p>A durable database will work, and is the wrong shape for a console application: see {@link
    * Repl} on why nothing here is meant to survive the process.
    */
-  public ReplConfig substrate(Substrate substrate) {
-    this.substrate = Objects.requireNonNull(substrate, "substrate must not be null");
+  public ReplConfig dataSource(DataSource dataSource) {
+    this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     return this;
   }
 
@@ -232,8 +234,25 @@ public final class ReplConfig {
     return maxTokens;
   }
 
-  Substrate substrate() {
-    return substrate;
+  DataSource dataSource() {
+    return dataSource;
+  }
+
+  /**
+   * This REPL's own database: H2, in memory, with every module's schema already in it.
+   *
+   * <p>Built HERE rather than inside {@link Repl} so a caller who needs to reach it — to open a
+   * notebook or a plan over the same store — can build one and hand it in, instead of asking this
+   * object what it happens to be holding.
+   */
+  private static DataSource ownDatabase() {
+    DataSource database =
+        new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .generateUniqueName(true)
+            .build();
+    Schemas.initialize(database);
+    return database;
   }
 
   /** Empty when the caller said nothing, so the harness keeps its own default. */

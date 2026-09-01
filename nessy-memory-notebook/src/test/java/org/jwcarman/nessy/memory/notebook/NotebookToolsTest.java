@@ -17,7 +17,6 @@ package org.jwcarman.nessy.memory.notebook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,7 +37,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("The notebook a model works with")
 class NotebookToolsTest {
@@ -50,7 +49,7 @@ class NotebookToolsTest {
 
   @BeforeEach
   void fresh() {
-    notebook = new SubstrateNotebook(new InMemorySubstrate(Clock.systemUTC()), TYPE);
+    notebook = new JdbcNotebook(TestDatabase.fresh(), TYPE);
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */

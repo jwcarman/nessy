@@ -15,12 +15,11 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.time.Clock;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.testing.MemoryContractTest;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * Certifies {@link TranscriptMemory} against {@link MemoryContractTest} — the conformance suite
@@ -33,7 +32,6 @@ class TranscriptMemoryContractTest extends MemoryContractTest {
 
   @Override
   protected Memory freshMemory() {
-    return TranscriptMemory.eternal(
-        new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
+    return TranscriptMemory.eternal(TestDatabase.fresh(), AgentType.of("watchman"));
   }
 }

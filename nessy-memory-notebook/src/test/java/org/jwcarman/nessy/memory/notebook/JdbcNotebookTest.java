@@ -18,7 +18,6 @@ package org.jwcarman.nessy.memory.notebook;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,10 +25,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("A notebook an agent keeps")
-class SubstrateNotebookTest {
+class JdbcNotebookTest {
 
   private static final AgentId ONE = AgentId.of("agent-one");
   private static final AgentId TWO = AgentId.of("agent-two");
@@ -38,8 +37,7 @@ class SubstrateNotebookTest {
 
   @BeforeEach
   void fresh() {
-    notebook =
-        new SubstrateNotebook(new InMemorySubstrate(Clock.systemUTC()), AgentType.of("chat"));
+    notebook = new JdbcNotebook(TestDatabase.fresh(), AgentType.of("chat"));
   }
 
   @Test

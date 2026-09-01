@@ -54,7 +54,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * A tool that says "I'll get back to you", and the world getting back.
@@ -144,14 +144,16 @@ class DeferredToolTest {
 
     PekkoHarnessFactory factory =
         new PekkoHarnessFactory(
-            testKit.system(),
-            new InMemorySubstrate(Clock.systemUTC()),
-            models,
-            4096,
-            java.util.Set.of(),
-            Runnable::run,
-            Clock.systemUTC(),
-            ReplyTokens.ephemeral());
+            engine ->
+                engine
+                    .system(testKit.system())
+                    .models(models)
+                    .dataSource(TestDatabase.fresh())
+                    .maxTokens(4096)
+                    .capabilities(java.util.Set.of())
+                    .blocking(Runnable::run)
+                    .clock(Clock.systemUTC())
+                    .replyTokens(ReplyTokens.ephemeral()));
     replies = factory.replies();
     harness =
         factory.createHarness(

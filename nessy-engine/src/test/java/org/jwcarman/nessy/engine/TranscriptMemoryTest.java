@@ -18,7 +18,6 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +34,7 @@ import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("What an agent remembers")
 class TranscriptMemoryTest {
@@ -45,9 +44,7 @@ class TranscriptMemoryTest {
 
   @BeforeEach
   void setUp() {
-    transcripts =
-        TranscriptMemory.eternal(
-            new InMemorySubstrate(Clock.systemUTC()), AgentType.of("watchman"));
+    transcripts = TranscriptMemory.eternal(TestDatabase.fresh(), AgentType.of("watchman"));
   }
 
   /** An exchange: the call, and the answer that settled it. */

@@ -21,7 +21,6 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -55,7 +54,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
@@ -161,9 +159,9 @@ class TurnResumeTest {
   @BeforeAll
   static void wire() {
     testKit = ClusterOfOne.start();
-    InMemorySubstrate substrate = new InMemorySubstrate(Clock.systemUTC());
-    memory = TranscriptMemory.eternal(substrate, WATCHMAN);
-    claims = new Claims(TestDatabase.fresh());
+    javax.sql.DataSource database = TestDatabase.fresh();
+    memory = TranscriptMemory.eternal(database, WATCHMAN);
+    claims = new Claims(database);
     deps =
         new TurnActor.Dependencies(
             WATCHMAN,

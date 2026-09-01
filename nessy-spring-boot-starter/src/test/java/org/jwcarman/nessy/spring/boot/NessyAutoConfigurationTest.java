@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.time.Clock;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
@@ -34,8 +35,7 @@ import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -89,21 +89,20 @@ class NessyAutoConfigurationTest {
   }
 
   @Test
-  void it_falls_back_to_an_in_memory_substrate_when_there_is_no_data_source() {
-    runner.run(
-        context ->
-            assertThat(context.getBean(Substrate.class)).isInstanceOf(InMemorySubstrate.class));
+  @DisplayName("with no DataSource configured, Nessy supplies an in-memory one and says so")
+  void it_falls_back_to_an_in_memory_database_when_there_is_no_data_source() {
+    runner.run(context -> assertThat(context).hasSingleBean(DataSource.class));
   }
 
   @Test
-  void an_application_substrate_wins() {
+  void an_application_data_source_wins() {
     runner
-        .withUserConfiguration(AnApplicationSubstrate.class)
+        .withUserConfiguration(AnApplicationDataSource.class)
         .run(
             context -> {
-              assertThat(context).hasSingleBean(Substrate.class);
-              assertThat(context.getBean(Substrate.class))
-                  .isSameAs(context.getBean(AnApplicationSubstrate.class).substrate);
+              assertThat(context).hasSingleBean(DataSource.class);
+              assertThat(context.getBean(DataSource.class))
+                  .isSameAs(context.getBean(AnApplicationDataSource.class).dataSource);
             });
   }
 
@@ -159,13 +158,13 @@ class NessyAutoConfigurationTest {
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class AnApplicationSubstrate {
+  static class AnApplicationDataSource {
 
-    private final Substrate substrate = new InMemorySubstrate(Clock.systemUTC());
+    private final DataSource dataSource = TestDatabase.fresh();
 
     @Bean
-    Substrate mine() {
-      return substrate;
+    DataSource mine() {
+      return dataSource;
     }
   }
 

@@ -56,7 +56,7 @@ import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * A CONVERSATION: one agent, told things one after another, the way a person uses one.
@@ -137,16 +137,18 @@ class ConversationTest {
 
     HarnessFactory factory =
         new PekkoHarnessFactory(
-            testKit.system(),
-            new InMemorySubstrate(Clock.systemUTC()),
-            models,
-            4096,
-            Set.of(),
-            // A REAL executor, unlike every other test here: the model call has to outlive the
-            // message that started it for the window to exist at all.
-            Executors.newVirtualThreadPerTaskExecutor(),
-            Clock.systemUTC(),
-            ReplyTokens.ephemeral());
+            engine ->
+                engine
+                    .system(testKit.system())
+                    .models(models)
+                    .dataSource(TestDatabase.fresh())
+                    .maxTokens(4096)
+                    .capabilities(Set.of())
+                    // A REAL executor, unlike every other test here: the model call has to outlive
+                    // the message that started it for the window to exist at all.
+                    .blocking(Executors.newVirtualThreadPerTaskExecutor())
+                    .clock(Clock.systemUTC())
+                    .replyTokens(ReplyTokens.ephemeral()));
 
     harness =
         factory.createHarness(

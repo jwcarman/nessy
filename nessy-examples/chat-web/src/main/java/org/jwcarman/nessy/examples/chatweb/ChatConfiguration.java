@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.chatweb;
 
 import java.time.Clock;
 import java.time.Duration;
+import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
@@ -25,17 +26,16 @@ import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
-import org.jwcarman.nessy.memory.notebook.SubstrateNotebook;
 import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
+import org.jwcarman.nessy.memory.plan.JdbcPlanStore;
 import org.jwcarman.nessy.memory.plan.PlanStore;
 import org.jwcarman.nessy.memory.plan.PlanTools;
-import org.jwcarman.nessy.memory.plan.SubstratePlanStore;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -87,14 +87,14 @@ public class ChatConfiguration {
 
   /** Where the agent keeps what it has been told worth keeping. */
   @Bean
-  public Notebook notebook(Substrate substrate) {
-    return new SubstrateNotebook(substrate, TYPE);
+  public Notebook notebook(DataSource dataSource) {
+    return new JdbcNotebook(dataSource, TYPE);
   }
 
   /** Where the agent keeps the multi-step work it has committed to. */
   @Bean
-  public PlanStore planStore(Substrate substrate) {
-    return new SubstratePlanStore(substrate, TYPE);
+  public PlanStore planStore(DataSource dataSource) {
+    return new JdbcPlanStore(dataSource, TYPE);
   }
 
   /**
@@ -166,9 +166,9 @@ public class ChatConfiguration {
    * surprising than a long context. A long-lived agent wants {@code TranscriptMemory.recent}.
    */
   @Bean
-  public Memory memory(Substrate substrate, Notebook notebook, PlanStore plans) {
+  public Memory memory(DataSource dataSource, Notebook notebook, PlanStore plans) {
     return MemoryPipeline.of(
-        TranscriptMemory.eternal(substrate, TYPE),
+        TranscriptMemory.eternal(dataSource, TYPE),
         pipeline -> pipeline.stage(NotebookTools.index(notebook)).stage(PlanTools.plan(plans)));
   }
 }

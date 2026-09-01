@@ -45,9 +45,7 @@ import org.jwcarman.nessy.engine.Replies;
 import org.jwcarman.nessy.engine.ReplyTokens;
 import org.jwcarman.nessy.engine.Traces;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
-import org.jwcarman.nessy.substrate.jdbc.JdbcSubstrate;
+import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -58,6 +56,8 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 /**
  * Wires a Nessy harness from {@code application.yaml}, and steps aside for anything the application
@@ -87,26 +87,32 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NessyAutoConfiguration {
 
   /**
-   * A substrate over the application's {@link DataSource} when it has one, and an in-memory one
-   * when it does not.
+   * The database Nessy stores everything in, when the application has not configured one.
    *
-   * <p>The fallback is LOUD about what it costs: an in-memory substrate loses every transcript,
-   * every backlog and every parked call when the process stops. It exists so a test or a spike
-   * starts without a database, never as a production default that nobody chose.
+   * <p>An in-memory H2, and loudly announced: a Boot application that forgot its {@code DataSource}
+   * should discover that at startup rather than the first time a restart loses a conversation.
+   * Boot's own auto-configuration supplies the real one whenever {@code spring.datasource.*} is
+   * set, and this backs off to it.
+   *
+   * <p>The schema is initialized only for the database WE created. One the application supplied is
+   * never touched uninvited — apply the shipped {@code nessy-schema.sql} however your operators
+   * prefer, or call {@code Schemas.initialize} yourself.
    */
   @Bean
-  @ConditionalOnMissingBean
-  public Substrate nessySubstrate(ObjectProvider<DataSource> dataSources, Clock clock) {
-    DataSource dataSource = dataSources.getIfAvailable();
-    if (dataSource != null) {
-      return new JdbcSubstrate(dataSource);
-    }
+  @ConditionalOnMissingBean(DataSource.class)
+  public DataSource nessyDataSource() {
     org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
         .warn(
-            "NESSY IS RUNNING IN MEMORY: no DataSource bean was found, so transcripts, backlogs and"
-                + " parked approvals will not survive a restart. Add a DataSource, or declare a"
-                + " Substrate bean, for anything that is not a test.");
-    return new InMemorySubstrate(clock);
+            "NESSY IS RUNNING IN MEMORY: no DataSource bean was found, so transcripts, notes, plans"
+                + " and parked approvals will not survive a restart. Configure a DataSource for"
+                + " anything that is not a test.");
+    DataSource database =
+        new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .generateUniqueName(true)
+            .build();
+    Schemas.initialize(database);
+    return database;
   }
 
   @Bean
@@ -220,7 +226,7 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public PekkoHarnessFactory nessyHarnessFactory(
       ActorSystem<Void> system,
-      Substrate substrate,
+      DataSource dataSource,
       ModelProvider models,
       ObjectProvider<ObservationRegistry> registries,
       ObjectProvider<MeterRegistry> meterRegistries,
@@ -235,16 +241,20 @@ public class NessyAutoConfiguration {
     ObservationRegistry registry = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     MeterRegistry meters = meterRegistries.getIfAvailable();
     boolean observing = !ObservationRegistry.NOOP.equals(registry) && meters != null;
+    ModelProvider provider =
+        observing ? Observed.models(models, properties.provider(), registry, meters) : models;
     return new PekkoHarnessFactory(
-        system,
-        substrate,
-        observing ? Observed.models(models, properties.provider(), registry, meters) : models,
-        properties.maxTokens(),
-        properties.capabilities(),
-        blocking,
-        clock,
-        tokens,
-        traces);
+        engine ->
+            engine
+                .system(system)
+                .models(provider)
+                .dataSource(dataSource)
+                .maxTokens(properties.maxTokens())
+                .capabilities(properties.capabilities())
+                .blocking(blocking)
+                .clock(clock)
+                .replyTokens(tokens)
+                .traces(traces));
   }
 
   /** The door an application answers a parked call through. */

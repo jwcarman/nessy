@@ -17,19 +17,21 @@ package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
+import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
-import org.jwcarman.nessy.memory.notebook.SubstrateNotebook;
 import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
+import org.jwcarman.nessy.memory.plan.JdbcPlanStore;
 import org.jwcarman.nessy.memory.plan.PlanStore;
 import org.jwcarman.nessy.memory.plan.PlanTools;
-import org.jwcarman.nessy.memory.plan.SubstratePlanStore;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.store.Schemas;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 /**
  * A conversation in a terminal, with one tool.
@@ -92,11 +94,17 @@ public final class Chat {
   public static void main(String[] args) {
     Clock clock = Clock.systemDefaultZone();
     // Built here rather than left to the REPL, because the notebook and the plan are opened over
-    // it: what the agent remembers and what its tools read have to be one store, and an
-    // application that cannot name that store cannot give the agent either.
-    Substrate substrate = new InMemorySubstrate();
-    Notebook notebook = new SubstrateNotebook(substrate, TYPE);
-    PlanStore plans = new SubstratePlanStore(substrate, TYPE);
+    // it: what the agent remembers and what its tools read have to be one database, and an
+    // application that cannot name it cannot give the agent either. Initialized because it is
+    // OURS — Nessy never runs DDL against a database an application supplied uninvited.
+    DataSource database =
+        new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .generateUniqueName(true)
+            .build();
+    Schemas.initialize(database);
+    Notebook notebook = new JdbcNotebook(database, TYPE);
+    PlanStore plans = new JdbcPlanStore(database, TYPE);
     Repl.run(
         config ->
             config
@@ -107,14 +115,14 @@ public final class Chat {
                 .farewell("bye.")
                 .systemPrompt(systemPrompt(LocalDate.now(clock)))
                 .agent(TYPE)
-                .substrate(substrate)
+                .dataSource(database)
                 // The transcript, plus two stages of background: the notebook's index and the
                 // current plan. Both are ambient, so they are rebuilt every call and never written
                 // to the transcript — the model sees the notes and the plan as they stand NOW, and
                 // the record stays a record of what was actually said.
                 .memory(
                     MemoryPipeline.of(
-                        TranscriptMemory.recent(substrate, TYPE, TRANSCRIPT_BUDGET),
+                        TranscriptMemory.recent(database, TYPE, TRANSCRIPT_BUDGET),
                         pipeline ->
                             pipeline
                                 .stage(NotebookTools.index(notebook))

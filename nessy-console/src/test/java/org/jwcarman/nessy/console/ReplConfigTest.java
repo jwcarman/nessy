@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -26,8 +27,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.HistoryMessage;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 /**
  * The settings a console application fills in.
@@ -42,33 +42,33 @@ class ReplConfigTest {
   private final ReplConfig config = new ReplConfig();
 
   @Nested
-  @DisplayName("the substrate")
-  class TheSubstrate {
+  @DisplayName("the database")
+  class TheDatabase {
 
     @Test
     @DisplayName("is there without being asked for, so the easy button stays easy")
-    void defaults_to_a_store_that_works() {
-      assertThat(config.substrate()).isNotNull();
+    void defaults_to_a_database_that_works() {
+      assertThat(config.dataSource()).isNotNull();
     }
 
     @Test
     @DisplayName("is the caller's own when they have one, which is the whole point")
-    void a_supplied_store_is_the_one_used() {
-      Substrate mine = new InMemorySubstrate();
+    void a_supplied_database_is_the_one_used() {
+      DataSource mine = TestDatabase.fresh();
 
-      config.substrate(mine);
+      config.dataSource(mine);
 
-      assertThat(config.substrate()).isSameAs(mine);
+      assertThat(config.dataSource()).isSameAs(mine);
     }
 
     @Test
-    void two_configurations_do_not_share_a_default_store() {
-      assertThat(config.substrate()).isNotSameAs(new ReplConfig().substrate());
+    void two_configurations_do_not_share_a_default_database() {
+      assertThat(config.dataSource()).isNotSameAs(new ReplConfig().dataSource());
     }
 
     @Test
     void null_is_refused_rather_than_silently_meaning_the_default() {
-      assertThatThrownBy(() -> config.substrate(null)).isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> config.dataSource(null)).isInstanceOf(NullPointerException.class);
     }
   }
 

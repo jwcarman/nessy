@@ -18,17 +18,16 @@ package org.jwcarman.nessy.memory.plan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("The plan an agent keeps")
-class SubstratePlanStoreTest {
+class JdbcPlanStoreTest {
 
   private static final AgentId ONE = AgentId.of("agent-one");
   private static final AgentId TWO = AgentId.of("agent-two");
@@ -40,7 +39,7 @@ class SubstratePlanStoreTest {
 
   @BeforeEach
   void fresh() {
-    plans = new SubstratePlanStore(new InMemorySubstrate(Clock.systemUTC()), AgentType.of("chat"));
+    plans = new JdbcPlanStore(TestDatabase.fresh(), AgentType.of("chat"));
   }
 
   @Test
@@ -100,9 +99,9 @@ class SubstratePlanStoreTest {
   @Test
   @DisplayName("two agent types keep separate plans even under the same id")
   void the_agent_type_scopes_the_store() {
-    InMemorySubstrate shared = new InMemorySubstrate(Clock.systemUTC());
-    PlanStore chat = new SubstratePlanStore(shared, AgentType.of("chat"));
-    PlanStore watchman = new SubstratePlanStore(shared, AgentType.of("watchman"));
+    javax.sql.DataSource shared = TestDatabase.fresh();
+    PlanStore chat = new JdbcPlanStore(shared, AgentType.of("chat"));
+    PlanStore watchman = new JdbcPlanStore(shared, AgentType.of("watchman"));
     chat.save(ONE, new Plan(List.of(WRITE)));
 
     assertThat(watchman.find(ONE)).isEmpty();
