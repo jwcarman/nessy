@@ -23,6 +23,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.apache.pekko.actor.typed.ActorSystem;
+import org.apache.pekko.cluster.sharding.typed.ClusterShardingSettings;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
@@ -147,7 +148,24 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     ClusterSharding sharding = ClusterSharding.get(system);
     EntityTypeKey<NarrationActor.Command> narrationKey =
         EntityTypeKey.create(NarrationActor.Command.class, "narration-" + type.name());
-    sharding.init(Entity.of(narrationKey, context -> NarrationActor.create()));
+    // NEVER passivated on a timer.
+    //
+    // This entity's whole state is a set of live subscribers, held in memory because that is what a
+    // subscription IS — an actor ref belonging to a process that is still listening. Nothing about
+    // it is recoverable, so unloading it does not free state to be read back later; it destroys it.
+    //
+    // Pekko's default is "default-idle-strategy": entities time out after two minutes idle. Applied
+    // here that means an application which subscribes and then goes quiet for two minutes silently
+    // stops receiving events — no error, no warning, and the next turn runs perfectly and publishes
+    // to nobody. Measured in a real session: the model answered, the engine finished the turn, and
+    // the terminal waited out its patience for an event that had been sent into an empty set.
+    //
+    // An entity that unloads itself when its last subscriber leaves would be better still, and is
+    // the shape to move to; until then, not timing it out is the difference between working and
+    // silently deaf.
+    sharding.init(
+        Entity.of(narrationKey, context -> NarrationActor.create())
+            .withSettings(ClusterShardingSettings.create(system).withNoPassivationStrategy()));
 
     Turns turns =
         (agentId, turnId, input, agent, carried) ->
