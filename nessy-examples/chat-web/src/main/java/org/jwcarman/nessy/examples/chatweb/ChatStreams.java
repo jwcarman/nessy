@@ -193,7 +193,14 @@ public class ChatStreams {
       Map<String, ?> payload) {
     for (SseEmitter emitter : targets) {
       try {
-        emitter.send(SseEmitter.event().id(cursor).name(name).data(payload));
+        SseEmitter.SseEventBuilder event = SseEmitter.event().name(name).data(payload);
+        if (cursor != null) {
+          // Only a narrated event has an id worth handing back as Last-Event-ID. "ready" is this
+          // server talking about itself, and stamping it would give the browser a cursor that
+          // names nothing — SseEventBuilder.id(null) throws outright, so the null is load-bearing.
+          event = event.id(cursor);
+        }
+        emitter.send(event);
       } catch (IOException | IllegalStateException gone) {
         LOG.debug("dropping a listener that went away", gone);
         all.remove(emitter);

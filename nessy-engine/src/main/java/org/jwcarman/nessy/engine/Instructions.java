@@ -263,9 +263,18 @@ final class Instructions {
                               () -> deps.bindings().approve(binding, request, context)),
                   answer ->
                       switch (answer) {
-                        case Awaited.Ready<ApprovalResult> ready ->
-                            new NessyMessage.ApprovalGiven(
-                                call.id(), call.name(), ready.result(), carried);
+                        case Awaited.Ready<ApprovalResult> ready -> {
+                          // A DENIAL is a result, so it is claimed here like any other — the model
+                          // is told it was refused and gets to decide what to do about that. The
+                          // logic marks the call completed and cannot write anything itself, so
+                          // without this the exchange reaches the transcript saying "no result was
+                          // recorded", which reads to the model as a broken tool rather than a
+                          // person saying no. Measured in the browser.
+                          denialResult(ready.result())
+                              .ifPresent(denied -> hold(agentId, state, call.id(), denied));
+                          yield new NessyMessage.ApprovalGiven(
+                              call.id(), call.name(), ready.result(), carried);
+                        }
                         case Awaited.Deferred<ApprovalResult> deferred -> {
                           // Narrated HERE and nowhere else: an ungated tool answers on the spot,
                           // and only a deferral means a person is actually being asked. The desk
@@ -282,12 +291,12 @@ final class Instructions {
                               call.id(), deferred.expiresAt(), carried);
                         }
                       },
-                  failure ->
-                      new NessyMessage.ApprovalGiven(
-                          call.id(),
-                          call.name(),
-                          ApprovalResult.denied("the approver failed: " + failure),
-                          carried),
+                  failure -> {
+                    ApprovalResult broke = ApprovalResult.denied("the approver failed: " + failure);
+                    denialResult(broke)
+                        .ifPresent(denied -> hold(agentId, state, call.id(), denied));
+                    return new NessyMessage.ApprovalGiven(call.id(), call.name(), broke, carried);
+                  },
                   agentId);
             },
             () ->
@@ -344,6 +353,15 @@ final class Instructions {
                   },
                   agentId);
             });
+  }
+
+  /** What a denied call answers with, or empty when it was approved and will answer for itself. */
+  static Optional<ToolResult> denialResult(ApprovalResult result) {
+    if (result instanceof ApprovalResult.Denied denied) {
+      return Optional.of(
+          ToolResult.error("denied: " + denied.reason() + "; the call was not made"));
+    }
+    return Optional.empty();
   }
 
   /** Writes a result and tells the agent — in that order, always. */

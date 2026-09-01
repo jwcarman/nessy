@@ -99,6 +99,16 @@ public final class Replies {
   public CompletionStage<NessyMessage.Ack> approve(ReplyToken token, ApprovalResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
+    // A denial arriving from a desk is claimed here for the same reason an immediate one is: it is
+    // the call's RESULT, and the agent is only ever told an id.
+    Instructions.denialResult(result)
+        .ifPresent(
+            denied ->
+                claims.put(
+                    AgentId.of(where.agentId()),
+                    where.turnId(),
+                    Instructions.resultKey(where.callId()),
+                    RESULTS.encode(denied)));
     return ask(
         where,
         replyTo ->

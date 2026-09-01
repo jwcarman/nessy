@@ -129,6 +129,16 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
     </dependency>
+    <!-- The driver behind the in-memory DataSource this starter builds when an application supplies
+         none. RUNTIME, because nothing here compiles against H2 — but without it the promised
+         default throws "Driver for test database type [H2] is not available" at startup, which is
+         a broken promise rather than a missing option. nessy-console declares it for the same
+         reason. An application that supplies its own DataSource can exclude it. -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- The starter builds the ActorSystem the engine runs on, so it names Pekko directly rather
          than relying on nessy-engine's own dependency leaking through. -->
     <dependency>
