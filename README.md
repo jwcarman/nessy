@@ -25,10 +25,8 @@ the front door: enough to run something real and decide what to install.
 
 ## The five-minute example
 
-Ask Nessy for a harness; keep it forever; bind any id into a transient
-agent; tell it things. Durability is a property of the substrate, not the
-API. Export a key and run — this one makes a real network call to a real
-model, a fraction of a cent on a small model for a prompt this size:
+Build a harness once, keep it, tell it things. Export a key and this makes a
+real call:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -47,125 +45,78 @@ class AddTool implements Tool<Add> {
     }
 }
 
-var anthropic = AnthropicModelProvider.fromEnv();   // vendor gateway — one per app
+var factory = new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(AnthropicModelProvider.fromEnv()));
 
-var harness = Nessy.harness(h -> h                  // built once, kept — immortal
-        .model(anthropic.model("claude-sonnet-5"))  // the one required dependency
+Harness<String> harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("assistant"))
         .systemPrompt("You are a terse assistant.")
-        .tools(new AddTool()));                     // bare tools, allow-by-default
+        .model(ModelId.of("claude-opus-4"))
+        .renderer(UserMessage::of)
+        .tool(new AddTool()));
 
-harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
-// The answer is 4 — narrated through a TurnObserver, not returned here.
+try (var subscription = harness.subscribe(AgentId.of("scope-1"), event -> {
+        if (event instanceof AgentEvent.TextDelta delta) {
+            System.out.print(delta.text());
+        }
+    })) {
+    harness.observe(AgentId.of("scope-1"), "what is 2+2?");
+}
 ```
 
-This snippet runs — nothing else is required. `OPENAI_API_KEY` and
-`OpenAiModelProvider.fromEnv()` are the one-line swap for OpenAI instead,
-with nothing else about the shape above changing. `ModelDiscovery.fromEnv()`
-(from `nessy-model-discovery`) picks whichever provider module you shipped
-and configures it from its key, so an application switches vendors by
-swapping one dependency and one environment variable, not its code.
+`observe` is a post, not a call: it returns as soon as the observation is
+durable, and the answer is **narrated** rather than returned. Hand the engine
+no `DataSource` and it builds an in-memory H2 and initializes it, so nothing
+else is required to run this.
 
-`Nessy.harness(HarnessCustomizer<String>)` is the one front door: the
-lambda fills in a live `HarnessConfig`, and Nessy alone turns it into the
-finished, kept `Harness` the instant the lambda returns. `harness.bind(id)`
-returns a plain, transient `Agent<String>` — thin, never closeable, holding
-nothing; `.tell(observation)` enqueues one fact for that scope and
-returns immediately. `.tools(Tool<?>...)` grants each tool an
-answered-allow policy for you (reach for `ToolGrant.grant(...)` directly,
-as in the capability table below, when a tool needs real authority rules).
-Every other config default already works: an in-memory `Memory` per scope,
-a fresh in-memory `Substrate`, a virtual-thread executor the harness owns
-for as long as the process runs. The smallest useful harness is a model, a
-system prompt, and nothing else.
-
-The harness is kept, not closed — no `try`-with-resources anywhere in this
-example, or any example on the docs site. Its life-support (the delivery
-worker, the approval and completion desks, the reaper sweep) runs on
-daemon threads for as long as the process does; `harness.shutdown()`
-exists for a container's destroy callback, never application hygiene.
-
-The same harness fronts a tool that needs a human, with an `ApprovalDesk`.
-`RestartTool` here is an ordinary `Tool<RestartInput>`, shaped just like
-`AddTool` above, granted an `Approver` that parks instead of `allow()`, and
-an `ActionContributor` (`RESTART_ACTION`) stating what the call will do.
-Telling people is the approver's own job — there is no harness-level
-notifier — so this one hands its parked id to a queue as it defers:
+For a terminal agent, one call does the whole bootstrap — actor system,
+cluster, harness and loop:
 
 ```java
-var pending = new LinkedBlockingQueue<ComputationId>();
-Approver parkAndQueue =
-    context -> {
-      ApprovalOutcome outcome = context.defer();
-      pending.add(((ApprovalOutcome.Deferred) outcome).id());
-      return outcome;
-    };
-
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(anthropic.model("claude-sonnet-5"))
-                .systemPrompt("You are the ops assistant.")
-                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, parkAndQueue)));
-                // The default substrate is a fresh InMemorySubstrate — durable only for this
-                // process's lifetime. Supply .substrate(Substrate) with a durable implementation
-                // in production so a suspended approval survives a restart.
-
-harness.bind(AgentId.of("ops")).tell("restart prod-1");
-
-ComputationId id = pending.take();
-harness.approvals().approve(id, "demo", "");
+public static void main(String[] args) {
+    Repl.run(config -> config
+            .systemPrompt("You are a helpful assistant.")
+            .approver(ConsoleApprover.atTheTerminal())
+            .tool(new AddTool()));
+}
 ```
-
-`.tell(observation)` enqueues a fact for that scope and returns
-immediately; the scope drains it, and if `RestartTool`'s grant defers, the
-call parks on a durable computation and the scope's phase records it —
-`id` is what `harness.approvals().approve(id, principal, note)`/
-`.deny(id, principal, reason)` decides. Nothing here holds a thread open
-waiting; whether that computation outlives a restart of the process that
-opened it depends entirely on the `Substrate` behind `.substrate(...)` —
-the in-memory default does not, a durable implementation does. See
-[Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
-the docs site for the rest of the walkthrough, and
-[Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the
-substrate underneath every store.
-
-An agent is assembled in three tiers: a **substrate** holds the durable
-state — one `Substrate` (in-memory here, JDBC or another durable backend in
-production) — and can be shared across many processes; a **harness** is a
-recipe compiled once per agent type, immortal for the life of the process
-that holds it, carrying the model-call and tool-call machinery plus its own
-life-support (the worker, the desks, the reaper); and a **binding** straps
-one scope's id to that harness on demand, for the length of a single
-delivery. `.substrate(Substrate)`, and the `memoryFactory` override that
-rides it, each hand back a view over the shared substrate rather than fresh
-state, which is what makes a scope's history survive from one delivery to
-the next.
 
 ## Try it
 
-`nessy-examples` has three runnable modules, each consumer code against the
-public API only — no key, no network, scripted providers throughout:
+`nessy-examples` has three runnable modules. All three want an
+OpenAI-compatible endpoint — [LM Studio](https://lmstudio.ai) on `:1234`
+works, and costs nothing:
 
 ```bash
-# hello: one tool, one turn, the five-minute promise above, for real
-./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted
-
-# approvals: a harness plus an approval desk — a restart parks for a human
-./mvnw -q -pl nessy-examples/approvals -am compile exec:java -Dexec.args=--scripted
-
-# governed: the full gate — declared intent, risk threshold, one narrated turn
-./mvnw -q -pl nessy-examples/governed -am compile exec:java -Dexec.args=--scripted
+export OPENAI_API_KEY=not-needed
+export OPENAI_BASE_URL=http://localhost:1234/v1
+export NESSY_MODEL=<a model id your endpoint serves>
 ```
 
-A fourth module, `nessy-examples/watchman`, is the Spring Boot one: a soak
-agent that lives on a real Linux box, does rounds on a timer, proposes
-remediations it is not allowed to run itself, and waits days for a human
-to answer through a page backed by `nessy-spring-boot-starter`'s
-pending-approvals projection. It needs Postgres and a real host (`df`,
-`systemctl`, `docker`), so it is not a `--scripted` one-liner like the
-three above — see [its README](nessy-examples/watchman/README.md) for the
-full runbook, including how to crash it on purpose and watch a parked
-approval survive.
+**`chat-cli`** — a terminal agent with a notebook and a plan, gated on a
+tool that asks at the prompt:
+
+```bash
+./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+**`chat-web`** — the same agent as a page: streamed answers over SSE, an
+approval desk you click, and `Last-Event-ID` resume when a browser
+reconnects.
+
+```bash
+cd nessy-examples/chat-web && ../../mvnw spring-boot:run
+```
+
+**`watchman`** — the Spring Boot soak. It lives on a real box, does rounds
+on a timer, proposes remediations it is not allowed to run itself, and waits
+days for a person to answer through a page backed by
+`nessy-spring-boot-starter`'s pending-approvals projection. It needs
+Postgres and a real host (`df`, `systemctl`, `docker`), so it is not a
+one-liner — `nessy-examples/watchman/soak.sh` runs it and then **asserts what
+happened**, including that something actually parked, so a run that did
+nothing fails rather than reading as success.
 
 ## Install
 
@@ -190,112 +141,46 @@ actually needs:
 </dependencyManagement>
 ```
 
-Tool, policy, and enricher authors compile against `nessy-api` alone; adapter
-authors — a custom `Memory`, `Substrate`, or approver — add `nessy-spi`; an
-application just building an agent depends on `nessy-agent`, which pulls both
-in. The declared-intent claim channel is its own artifact, `nessy-intent`,
-for applications that want it.
+Tool and policy authors compile against `nessy-api` alone; adapter authors —
+a custom `Memory` or `Model` — add `nessy-spi`; an application building an
+agent depends on `nessy-engine`, which pulls both in.
 
-```xml
-<dependencies>
-  <!-- The shared vocabulary: Tool, ToolGrant, Approver, the authorization chokepoint. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-api</artifactId>
-  </dependency>
+| Artifact | What it is for |
+|---|---|
+| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, messages, `AgentEvent` |
+| `nessy-spi` | adapter authors — a custom `Memory` or `Model`, and `Schemas` |
+| `nessy-engine` | the engine: `PekkoHarnessFactory`, the actor, the stores |
+| `nessy-console` | terminal applications — `Repl.run` |
+| `nessy-spring-boot-starter` | Boot auto-configuration and the approvals projection |
+| `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
+| `nessy-memory-plan` | a plan an agent holds across turns |
+| `nessy-memory-pipeline` | shaping the context a model call is built from |
+| `nessy-intent` | the declared-intent claim channel |
+| `nessy-tool-mcp` | importing a remote MCP server's tools |
+| `nessy-testing` | test doubles, including a fresh in-memory database |
 
-  <!-- Outsider seams: the model provider SPI, Memory, Substrate, the approver trio. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-spi</artifactId>
-  </dependency>
-
-  <!-- The agent runtime and both front doors: Nessy.harness(...) and Nessy.cli(). -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-agent</artifactId>
-  </dependency>
-
-  <!-- Optional: the declared-intent claim channel — IntentTool, IntentStore, IntentEnricher. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-intent</artifactId>
-  </dependency>
-
-  <!-- A model provider — pick one (or more). -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-anthropic</artifactId>
-  </dependency>
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-openai</artifactId>
-  </dependency>
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-gemini</artifactId>
-  </dependency>
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-bedrock</artifactId>
-  </dependency>
-
-  <!-- Optional: discovery. Resolves a model from whichever provider modules above are on the
-       classpath, configured by their keys; depends on none of them itself. Bedrock is never
-       discovered — construct BedrockModelProvider directly. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-discovery</artifactId>
-  </dependency>
-
-  <!-- ScriptedModel: the offline, no-key test double — see the docs
-       site's Testing guide. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-testing</artifactId>
-    <scope>test</scope>
-  </dependency>
-
-  <!-- Optional: wrap an MCP server's tools as nessy Tools. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-tool-mcp</artifactId>
-  </dependency>
-</dependencies>
-```
+A model provider module sits alongside `nessy-engine` in every application:
+`nessy-model-anthropic`, `nessy-model-openai` (which also speaks to any
+OpenAI-compatible endpoint), `nessy-model-gemini`, or `nessy-model-bedrock`.
+`nessy-model-discovery` resolves whichever one you shipped from the
+environment.
 
 ## What Nessy gives you
 
-Each of these is a seam with a working default — swap the piece, keep the
-framework. The docs site page teaches the whole story; this is just the map.
-
 | Capability | Site page |
 |---|---|
-| Agent as scope — a recipe bound to an id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
-| Durable computation — the shell's pure fold, effects, at-least-once replay | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
-| Tools — structured calls, sealed inputs, completion policy | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
-| Authorization — a ladder from a static verdict to typed actions, enrichers, and intent, with a self-documenting report | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
-| Intent — the claim channel a model states and an enricher may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
+| Agent as scope — one actor per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
+| Durable computation — parked calls, deadlines as rows, recovery on every activation | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
+| Tools — structured calls, sealed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
+| Authorization — approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
+| Intent — the claim channel a model states and an approver may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
 | Memory — the SPI a model call's context is actually built from | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
-| Storage — the two-shape kernel every store in Nessy is a recipe over | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
-| Providers — a vendor gateway per model provider, plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
-| MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
-| The harness — kept, not closed; `bind`/`tell`, approval desks, durable backends | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
-| Observability — turn narration, shell narration, and the authorization report | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
-| Spring Boot — `nessy-spring-boot-starter` wires a harness, the durable stores, and a pending-approvals page from `nessy.*` properties and beans | [Spring Boot](https://jwcarman.github.io/nessy/guides/spring-boot/) |
-
-A few seams the site doesn't have a dedicated page for yet:
-`ModelSettings.contextWindow()`, a declared-but-unconsumed token-budget
-dial reserved for a future token-aware `Memory`. It exists in `nessy-spi`
-today; see the Javadoc until it gets a home on the site.
-
-A standalone examples module is planned but not yet in the tree.
-Until it lands, the runnable proofs live in `nessy-agent`'s test sources:
-five `*Demo` classes (`HarnessDemo`, `DurableParkDemo`, `TypedIntentDemo`,
-`GovernedTurnDemo`, `HarnessApprovalDemo`) exercise a whole turn each
-under `./mvnw test`, and `ApprovalPlayground` is an IDE-run tinker door — a
-real provider key, a restart tool gated on human approval, typed at the
-console.
+| Storage — a table per thing, shaped for how it is read | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
+| Providers — a vendor gateway per provider, plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
+| MCP — import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
+| The harness — kept, not closed; observing, subscribing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
+| Observability — narration, traces that make a tree, and metrics | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
+| Spring Boot — a harness, the stores, and a pending-approvals page from `nessy.*` properties and beans | [Spring Boot](https://jwcarman.github.io/nessy/guides/spring-boot/) |
 
 ## Roadmap
 

@@ -154,7 +154,7 @@ truncate operation on it anywhere in `Substrate` — a transcript only ever
 grows.
 
 Two views built over the same shared store observe each other's writes;
-losing one loses nothing. See [The Four Tiers](the-four-tiers.md) for the
+losing one loses nothing. See [Storage](storage.md) for the
 general shape and the MUST-return-views contract a memory factory has to
 honor, and [Storage](storage.md) for the substrate `SubstrateMemory` rides.
 
@@ -222,7 +222,7 @@ the same facts.
 - [Agent as Scope](agent-as-scope.md) — how a transition's `commit` list
   becomes the `Remembrance`s a fold remembers, in the decide-remember-save-
   dispatch order.
-- [The Four Tiers](the-four-tiers.md) — substrates, views, and the
+- [Storage](storage.md) — substrates, views, and the
   MUST-return-views contract a `memoryFactory` has to honor.
 - [Storage](storage.md) — the substrate `SubstrateMemory` rides, and why
   `memory` is a reserved journal kind.

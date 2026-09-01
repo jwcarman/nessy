@@ -77,7 +77,6 @@ nav:
   - Home: index.md
   - Concepts:
       - Agent as Scope: concepts/agent-as-scope.md
-      - The Tiers: concepts/the-four-tiers.md
       - Durable Computation: concepts/durable-computation.md
       - Tools: concepts/tools.md
       - Authorization: concepts/authorization.md

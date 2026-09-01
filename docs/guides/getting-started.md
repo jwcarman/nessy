@@ -1,33 +1,12 @@
 # Getting Started
 
-Ask Nessy for a harness; keep it forever; bind any id into a transient
-agent; tell it things. Durability is a property of the substrate, not the
-API:
-
-```java
-var anthropic = AnthropicModelProvider.fromEnv();   // vendor gateway — one per app
-
-var harness = Nessy.harness(h -> h                  // built once, kept — immortal
-        .model(anthropic.model("claude-sonnet-5"))  // the one required dependency
-        .systemPrompt("You are the ops assistant.")
-        .tools(restart, diagnose)                   // bare tools, allow-by-default
-        .substrate(jdbc));                           // default: in-memory
-
-harness.bind(AgentId.of("ops-agent-1")).tell("restart prod-eu");
-```
-
-This snippet runs — nothing else is required. The identical program is a
-toy on the in-memory substrate and a durable, resumable, any-host system on
-JDBC — one line differs. That is the whole pitch, and this page walks it
-piece by piece.
+Build a harness once, keep it, tell it things. This page walks that door
+through line by line.
 
 ## Install
 
-Nessy has not yet made a public release to Maven Central: build locally
-(`./mvnw install`) and depend on `0.1.0-SNAPSHOT`. Every module shares
-`groupId` `org.jwcarman.nessy`.
-
-Import the BOM to align versions:
+Nessy has not yet released to Maven Central. Build locally
+(`./mvnw install`) and depend on `0.1.0-SNAPSHOT`.
 
 ```xml
 <dependencyManagement>
@@ -41,21 +20,12 @@ Import the BOM to align versions:
     </dependency>
   </dependencies>
 </dependencyManagement>
-```
 
-Then pick the artifacts the application actually needs. An application
-building an agent depends on `nessy-agent`, which pulls in `nessy-api` (the
-shared vocabulary — `Tool`, `ToolGrant`) and `nessy-spi` (the seams an
-outsider implements — `Model`, `Memory`, `Substrate`) for free:
-
-```xml
 <dependencies>
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-agent</artifactId>
+    <artifactId>nessy-engine</artifactId>
   </dependency>
-
-  <!-- A model provider gateway — pick one. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-anthropic</artifactId>
@@ -63,187 +33,156 @@ outsider implements — `Model`, `Memory`, `Substrate`) for free:
 </dependencies>
 ```
 
-`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock` are the
-other provider gateways; `nessy-model-discovery` resolves whichever of them
-is on the classpath from its key, so an application switches vendors by
-swapping a dependency and a variable rather than its code — see
-[Providers](providers.md).
-Tool, policy, and enricher authors compile against `nessy-api` alone;
-adapter authors — a custom `Memory` or `Substrate` — add `nessy-spi`.
+`nessy-engine` pulls in `nessy-api` (the vocabulary you write tools against)
+and `nessy-spi` (the seams you write adapters against).
 
 ## The one required dependency: a model
 
-Export a key:
-
-```bash
-export ANTHROPIC_API_KEY=...
-```
-
-`AnthropicModelProvider` is the vendor gateway — one per application, the
-application singleton holding the SDK client and credentials.
-`.fromEnv()` reads `ANTHROPIC_API_KEY`. The gateway itself never runs a
-request; `.model(id)` binds a cheap, immutable handle to one model id, and
-that handle — not the gateway — is what a harness consumes:
+A `ModelProvider` is a vendor gateway — one per application, not per agent.
 
 ```java
-var anthropic = AnthropicModelProvider.fromEnv();
-Model claude = anthropic.model("claude-sonnet-5");
+var models = AnthropicModelProvider.fromEnv();   // reads ANTHROPIC_API_KEY
 ```
 
-`.model(Model)` is the harness's one required dependency, with no
-environment fallback — the thing every caller must supply explicitly stays
-visible. `.systemPrompt(String)` is required alongside it, harness-level
-configuration rather than a field buried on a settings object. Everything
-else is optional, with honest defaults.
+Every provider module ships one: `AnthropicModelProvider`,
+`OpenAiModelProvider` (which also speaks to any OpenAI-compatible endpoint,
+including a local LM Studio), `GeminiModelProvider`, `BedrockModelProvider`.
+If you would rather resolve whichever one you shipped from the environment,
+add `nessy-model-discovery`.
 
-## Tools
+## A tool
 
-A tool built with `Tool.of` is three lines: an input record, a description,
-and a handler.
+A tool is a name, a description, an input type, and a method.
 
 ```java
 record Add(int left, int right) {}
 
-Tool<Add> addTool =
-    Tool.of(Add.class, t -> t.description("Adds two integers")
-        .executes(cmd -> cmd.left() + cmd.right()));
-```
+class AddTool implements Tool<Add> {
+    public String name() { return "add"; }
+    public String description() { return "Adds two integers"; }
+    public Class<Add> inputType() { return Add.class; }
 
-`.tools(Tool<?>...)` on the harness config grants each tool
-`Approvers.allow()` for you — allow-by-default sugar. Reach for
-`.grants(ToolGrant...)` directly when a tool needs a real `Approver`;
-see [Authorization](../concepts/authorization.md).
-
-## The smallest harness
-
-```java
-var provider = AnthropicModelProvider.fromEnv();
-
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(provider.model("claude-sonnet-5"))
-                .systemPrompt("You are a terse assistant.")
-                .tools(addTool));
-
-harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
-```
-
-`Nessy.harness(HarnessCustomizer<String>)` is the one door: the lambda
-fills in a live `HarnessConfig`, and Nessy — never the caller — turns it
-into the finished `Harness` the instant the lambda returns. There is no
-half-configured builder object in your hands, and no public `build()` to
-call.
-
-Every other setting already has a working default: an in-memory `Memory`
-per scope, a fresh in-memory `Substrate`, a virtual-thread executor the
-harness owns for as long as the process runs, `"agent"` as the recipe's
-type name. The smallest useful harness is a model, a system prompt, and
-nothing else.
-
-`harness.bind(id)` returns a plain, transient `Agent<String>` — it holds
-nothing, so there is nothing to leak by dropping it. `.tell(...)`
-enqueues one fact for that scope and returns immediately; the reply is
-narrated, not returned — see
-[Observability](observability.md) for wiring up a `TurnObserver` to watch
-turns happen, and [the harness guide](harness.md) for `bind`/`tell`,
-`approvals()`/`completions()`, and everything else the harness carries.
-
-## The durability move
-
-Nothing about the snippet above changes to make it durable — only the
-substrate does:
-
-```java
-var harness =
-    Nessy.harness(
-        h ->
-            h.model(provider.model("claude-sonnet-5"))
-                .systemPrompt("You are a terse assistant.")
-                .tools(addTool)
-                .substrate(jdbcSubstrate));
-```
-
-`.substrate(Substrate)` defaults to a fresh `InMemorySubstrate` — durable
-only for the process's lifetime. Every scope's state, memory, and backlog
-live as documents in whichever `Substrate` the harness is given; point it
-at a JDBC (or other durable) implementation and the same program survives a
-restart, resumes a parked approval days later, and answers from any node
-holding the same harness's type — see [Storage](../concepts/storage.md).
-
-## `tell` and `ask`
-
-`tell(observation)` is fire-and-forget: enqueue a fact, return immediately,
-watch the reply through a `TurnObserver` (see
-[Observability](observability.md)). `ask(observation)` is the pattern built
-on top, for the common case of wanting the turn's own outcome back as a
-value:
-
-```java
-TurnOutcome outcome = harness.bind(AgentId.of("scope-1")).ask("what is 2+2?");
-```
-
-`TurnOutcome` is a sealed three-way: `Replied(String text)` — the
-assistant's final reply; `Parked(ComputationId approval, ApprovalRequest
-request)` — the turn suspended on an approval, carrying the computation
-`harness.approvals().approve(id, principal, note)`/`.deny(id, principal,
-reason)` answers and the frozen question that was asked; `Failed(String
-reason)` — the turn ended in failure, narrated honestly rather than thrown.
-`ask` blocks the calling thread until one of the three settles;
-`agent.subscribe(TurnObserver)` underneath it is the lower-level door — a
-`AgentSubscription` your code can hold onto for as long as it wants to keep
-watching an id's turns, closed to stop.
-
-## The cli door
-
-`Nessy.cli()` is the fastest way to a terminal conversation — sugar over the
-exact same kept `Harness` every other door builds, composed with a
-`Console` that owns the terminal:
-
-```java
-try (Console console =
-    Nessy.cli()
-        .model(anthropic.model("claude-sonnet-5"))
-        .systemPrompt("You are a terse assistant.")
-        .tools(addTool)
-        .build()) {
-  console.run(); // reads System.in, prints to System.out, until EOF
+    public Awaited<ToolResult> execute(Add input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
+    }
 }
 ```
 
-`console.run()` is the read-`ask`-print loop: a line in, `ask(...)`, then
-`Replied` prints the reply, `Parked` hands the ticket to
-`console.approver()` (renders it, reads `y`/`n`(+reason), answers through
-`harness.approvals()`) and waits for the same turn to settle, and `Failed`
-prints the reason honestly. `.grants(ToolGrant...)` reaches the cli door's
-harness the same way `.tools(Tool...)` does, for a tool that needs a real
-`Approver` rather than allow-by-default — including `Approvers.defer()`,
-which `console.approver()` exists to answer. `.in(InputStream)`/
-`.out(PrintStream)` swap the terminal for scripted streams — how a test (or
-an embedding app) drives the console without a real one; see
-`nessy-examples/hello` for a scripted, key-free, runnable copy of the
-snippet above.
+The input type becomes the JSON schema the model is shown, so a record with
+good field names *is* the documentation. `Awaited.ready` answers now;
+`Awaited.deferred` parks the call and lets the world answer later — see
+[Tools](../concepts/tools.md).
 
-## Verify it against the real test
+## The smallest harness
 
-`NessyHarnessDoorTest` in `nessy-agent` exercises exactly this shape — the
-bare `.model(...).systemPrompt(...).tools(...)` minimum accepting an
-observation and completing a turn — and is part of the default,
-network-free build:
+Two configurations, and the difference matters. **The engine** is one per
+process:
 
-```bash
-./mvnw -q -pl nessy-agent -am test -Dtest=NessyHarnessDoorTest
+```java
+var factory = new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(models));
 ```
 
-Or run a runnable proof with no key at all:
-`./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted`
-(`nessy-examples/hello` in the repo).
+**A harness** is one per agent type:
+
+```java
+Harness<String> harness = factory.createHarness(String.class, config -> config
+        .type(AgentType.of("assistant"))
+        .systemPrompt("You are a terse assistant.")
+        .model(ModelId.of("claude-opus-4"))
+        .renderer(UserMessage::of)
+        .tool(new AddTool()));
+```
+
+`String.class` is the **observation type** — whatever your domain tells this
+agent about. `renderer` says how one becomes a message the model can read.
+Use your own record when a string is not the honest shape:
+
+```java
+record HouseEvent(String room, String what) {}
+
+factory.createHarness(HouseEvent.class, config -> config
+        .renderer(event -> UserMessage.of(event.room() + ": " + event.what()))
+        ...);
+```
+
+## Storage: nothing to configure, until it matters
+
+Hand the engine no `DataSource` and it builds an in-memory H2 **and
+initializes it**, so everything above runs with nothing else set up. It
+announces that it did, because an application that forgot its database
+should find out at startup rather than the first time a restart loses a
+conversation.
+
+Hand it one and it uses that — and never touches it uninvited:
+
+```java
+new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(models)
+        .dataSource(dataSource));
+```
+
+You apply the schema, once, however your operators prefer:
+
+```java
+Schemas.initialize(dataSource);
+```
+
+See [Storage](../concepts/storage.md).
+
+## Telling it something, and hearing back
+
+`observe` is a post, not a call. It returns as soon as the observation is
+durable; the answer is **narrated**.
+
+```java
+var agentId = AgentId.of("scope-1");
+
+try (AgentSubscription subscription = harness.subscribe(agentId, event -> {
+        switch (event) {
+            case AgentEvent.TextDelta delta -> System.out.print(delta.text());
+            case AgentEvent.TurnEnded ended -> System.out.println();
+            default -> { }
+        }
+    })) {
+    harness.observe(agentId, "what is 2+2?");
+}
+```
+
+Close the subscription — an unclosed one leaks a routing entry. Every event
+carries a time-ordered id, so a listener that drops off can resume from the
+last one it saw.
+
+## The console door
+
+For a terminal agent, one call does the whole bootstrap — actor system,
+cluster-of-one, reply tokens, harness, and the read-line loop:
+
+```java
+public static void main(String[] args) {
+    Repl.run(config -> config
+            .systemPrompt("You are a helpful assistant.")
+            .approver(ConsoleApprover.atTheTerminal())
+            .tool(new AddTool()));
+}
+```
+
+Run it against a local model with no key and no cost:
+
+```bash
+export OPENAI_API_KEY=not-needed
+export OPENAI_BASE_URL=http://localhost:1234/v1
+export NESSY_MODEL=<a model id your endpoint serves>
+```
+
+`nessy-examples/chat-cli` is exactly this, with a notebook and a plan added.
 
 ## Where next
 
-- [The harness guide](harness.md) — kept-not-closed, `bind`/`tell`,
-  `approvals()`/`completions()`, and the one-type-per-harness contract.
-- [Durable Computation](../concepts/durable-computation.md) — the
-  ownership-transfer pipeline the harness's worker and desks are built on.
-- [The Tiers](../concepts/the-four-tiers.md) — how a substrate, a
-  harness, and a binding compose into the agent this page just built.
+- [The Harness](harness.md) — the full configuration surface
+- [Agent as Scope](../concepts/agent-as-scope.md) — one actor per id, phases as data
+- [Tools](../concepts/tools.md) — deferring, and answering from outside
+- [Authorization](../concepts/authorization.md) — approvers and reply tokens
+- [Spring Boot](spring-boot.md) — the starter

@@ -1,455 +1,127 @@
 # Storage
 
-Every store in Nessy is the same sentence: save this, scoped to an id,
-safely. State is a versioned blob. Memory is a blob list. Intent is
-last-blob-wins. `Substrate` is the one primitive underneath all of them,
-and it stores bytes, not text.
+Nessy keeps four kinds of thing, and each one lives in a table shaped for
+how it is read.
 
-Durable computations — approvals and deferred tool calls — are not part of
-`Substrate` anymore. They live in a separate store owned by
-`org.jwcarman.continuum`. `Substrate` keeps no side index of which
-computation a call is in flight under — a call's `ToolCallState`, inside the
-scope's own `AwaitingTools` phase, names the computation directly. See
-[Durable Computation](durable-computation.md#a-calls-lifecycle-is-in-the-phase)
-and the warning below.
+| What | Where | Lives for |
+|---|---|---|
+| What an agent is doing | Pekko's `durable_state` | until the turn ends |
+| What is waiting to become a turn | `nessy_backlog` | until it is taken and swept |
+| Content a turn needs and no longer | `nessy_claim` | the turn |
+| A deadline that outlives its process | `nessy_reminder` | until the call settles |
+| The conversation | `nessy_transcript` | forever, unless your `Memory` says otherwise |
 
-## The substrate in one paragraph
+Notes, plans and intent each get a table too, from whichever module
+provides them.
 
-`Substrate` holds two shapes. **Documents** are mutable current-truth:
-read, write-CAS, delete, and list keys, addressed by `(kind, key)`. The
-**journal** is immutable history: append and read-from, addressed by
-`(kind, key, seq)`. **`batch`** applies a list of document writes, document
-deletes, and journal appends all-or-nothing across both shapes. Payloads
-are opaque `byte[]` — the substrate never parses or constrains them; UTF-8
-JSON is the house convention *above* the seam, not a substrate promise. The
-store is the lock: every mutation carries a CAS expectation, and a miss
-is a conflict, never a wait. Seven methods, two tables, and an adapter that
-implements them gets the entire system on Nessy's side — state,
-transcripts, intent, and backlogs.
+## There is no storage abstraction
 
-!!! warning "Two stores, one durability tier"
-    A harness now writes to two stores: this `Substrate`, and Continuum's
-    own computation store (approvals and deferred tool calls, plus their
-    outbox). **Both must be in memory, or both must be durable — never one
-    of each.**
+There used to be. `Substrate` was one key-value seam — documents and
+journals — that everything went through, with a JDBC implementation, an
+in-memory double, and a 550-line contract test holding the two together.
+It was deleted on 2026-09-01.
 
-    Mixing them breaks in opposite ways. Durable computations over an
-    in-memory substrate: a restart wipes scope state but not Continuum's
-    pending work, so every surviving delivery lands on a scope restored to
-    `Idle`, whose reducer ignores it — a tool result that never arrives and
-    a call that never completes, with nothing logged as an error.
-    In-memory computations over a durable substrate: a restart wipes
-    Continuum's pending work but not the scope's own phase, which still
-    names the computation a call's `ToolCallState` is `AwaitingApproval`/
-    `AwaitingResult` over — nothing will ever deliver against that id
-    again, and the call waits forever.
+It went because a general-purpose store makes its callers enforce its
+design rather than their own. The notebook loaded whole entries and threw
+the bodies away in Java to project a list of headings, because "give me
+the headings" was not a shape a key-value seam could express. The
+transcript read a fixed 500-message tail and then applied a character
+budget, because a cursor that stops when it has enough was not a shape
+either. Both are one statement now: `headings()` is `SELECT note_id, hook`,
+so a body cannot reach the model by accident, and the transcript budget is
+a newest-first cursor that stops, so `MAX_MESSAGES_READ` is gone.
 
-    Both in memory is what `Nessy.harness(...)` gives you by default. Both
-    durable is `.substrate(new JdbcSubstrate(ds))` with `.continuum(...)`
-    handed a `continuum-jdbc`-backed Continuum over the same database — see
-    [Durable Computation](durable-computation.md) for the full story and
-    the startup warning that catches a mismatched pairing.
+The portability it bought was for a backend nobody asked for. One real
+implementation and one test double, held to a contract, is a lot of
+apparatus for a seam with one thing behind it.
+
+## The engine needs it, so the engine provides it
+
+Claims and reminders are engine bookkeeping. Nothing outside the engine
+reads either, so neither is an extension point and neither is something an
+application should have to wire.
 
 ```java
-public interface Substrate {
-
-  // documents — mutable current-truth
-  Optional<Document> read(String kind, String key);
-  void write(String kind, String key, byte[] payload, long expectedVersion); // 0 = create
-  void delete(String kind, String key, long expectedVersion);
-  List<String> keys(String kind, int limit); // ascending key order
-
-  // journal — immutable history
-  void append(String kind, String key, long expectedSeq, byte[] payload); // create-only
-  List<Entry> entries(String kind, String key, long fromSeq); // ascending, inclusive
-
-  // atomicity — all-or-nothing across both shapes
-  void batch(List<Op> ops);
-}
+new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(models));            // no dataSource: the engine makes its own
 ```
 
-`write` with `expectedVersion == 0` creates; any other value must match the
-stored version exactly or the call throws `ConflictException`. `append`
-works the same way against a sequence number — sequences start at 1, and an
-entry already sitting at the expected seq is a conflict, never an
-overwrite. There are no locks and no waits: a caller that loses a race
-re-reads and retries. Implementations must not alias the caller's array —
-bytes are copied on write and on read, so nothing downstream can mutate
-stored truth behind the CAS.
-
-`org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is `Substrate`,
-`ConflictException`, `DocumentStore`/`JournalStore`, `Versioned`,
-`SubstrateSupport`, and `InMemorySubstrate` — the reference substrate,
-shipped alongside the contract so a feature jar can test against it without
-depending on `nessy-agent`. The typed seam above the bytes — `Codec<T>` and
-`CodecFactory` — is not Nessy's own: it's `org.jwcarman.codec.spi` from the
-released `org.jwcarman.codec` library (`codec-core` for the SPI,
-`codec-jackson2` for the Jackson binding), the same shapes this page
-described before the 2026-08-24 codec-adoption reform, now maintained
-outside Nessy. `Nessy.harness(...)` defaults to a fresh `InMemorySubstrate`;
-supply a durable implementation through `.substrate(Substrate)` to persist
-state, transcripts, memory, intent, and backlogs beyond the process — but
-that alone does not make durable computations durable. Durable computations
-(approvals, deferred tool calls) now live in a separate store owned by
-`org.jwcarman.continuum`, and the two stores must agree on durability. See
-the warning above and [Durable Computation](durable-computation.md).
-
-## `DocumentStore<T>`/`JournalStore<T>`: typed views, implemented once
-
-A feature never juggles the byte dance directly — it mints a typed view and
-writes domain logic:
+Hand it no `DataSource` and it builds an in-memory H2 and initializes it.
+Hand it one and it uses that — and **does not touch it**:
 
 ```java
-DocumentStore<Phase> states = substrate.document("state", Phase.class);
-JournalStore<Message> transcript = substrate.journal("memory", Message.class);
+new PekkoHarnessFactory(engine -> engine
+        .system(actorSystem)
+        .models(models)
+        .dataSource(yourDataSource));
 ```
 
-`kind` is given explicitly at the mint, never derived from `T`'s class name
-— a rename must never orphan data. The codec comes from `Substrate#codecs()`
-(a `CodecFactory`) unless a `Codec<T>` is supplied directly, bypassing the
-factory for a caller-owned binding (a transform, a test probe). Every
-substrate implementation gets its `CodecFactory` for free by extending
-`SubstrateSupport`, which owns one `ObjectMapper` per substrate instance
-(never a shared static) — and "pinned" here means genuinely copy-and-pinned:
-`SubstrateSupport.copyAndPin` (the single source of truth for the
-format-critical knob list — see "The one-mapper story" below) runs on BOTH
-the default, standard mapper and any caller-supplied one, so a document's
-stored format is safe regardless of who constructs the substrate. Overriding
-the mapper at construction (`new InMemorySubstrate(mapper)`) *is* the codec
-extension point; there is no separate per-feature codec seam to thread
-anymore.
+The engine initializes only a database it created. Yours is yours.
 
-`DocumentStore<T>` reads back a `Versioned<T>` (value plus version, the same
-pairing `Substrate.Document` always carried) and owns the read-modify-write
-CAS-retry loop once, for every caller: `documents.update(key, seed, fn)`
-reads current truth (or `seed` if absent), applies `fn`, and retries on a
-lost race until the write lands. `JournalStore<T>` owns the equivalent
-append-retry loop and returns decoded entries directly.
+## Applying the schema
 
-Both views mint the same `Substrate.Op`s a hand-rolled batch would build —
-`writeOp`/`deleteOp`/`appendOp` — so a multi-store atomic commit (a
-fold-advance, a completion) composes typed writes from several stores into
-one `Substrate#batch` call without ever touching a raw payload. `create` in
-[Durable Computation](durable-computation.md) is exactly this: a
-`computations.writeOp(...)` composed with whatever else the caller's own
-batch needs.
-
-Every recipe below — state, memory, backlog, intent, computations — rides a
-typed view now; the CAS-retry loops described in earlier revisions of this
-page as hand-rolled per recipe are this one implementation, reused.
-
-## `Codec<T>`: the typed seam above the bytes
-
-Nothing above the substrate hand-rolls byte encoding. `org.jwcarman.codec.spi.Codec<T>`
-is the seam every recipe stores its shape through — released separately
-from Nessy (`org.jwcarman.codec:codec-core`, 0.2.0):
+Every module that needs a table ships `nessy-schema.sql` at the root of its
+jar. `Schemas` gathers all of them and runs them:
 
 ```java
-public interface Codec<T> {
-  byte[] encode(T value);
-  T decode(byte[] bytes);
-
-  default Codec<T> andThen(Codec<byte[]> next) { ... }
-}
-
-public interface CodecFactory {
-  <T> Codec<T> create(TypeRef<T> type);
-  default <T> Codec<T> create(Class<T> type) { ... }
-}
+Schemas.initialize(dataSource);
 ```
 
-`SubstrateSupport` mints its `CodecFactory` as one `Jackson2CodecFactory`
-(`org.jwcarman.codec:codec-jackson2`) over the substrate's pinned mapper — a
-plain `writeValueAsBytes`/`readValue` pair through that mapper, exactly as
-it is configured; this binding inspects neither the requested type nor the
-mapper's configuration first. There is no construction-time check and no
-collision guard: a sealed type binds through whatever polymorphism the
-mapper resolves for it — `@JsonTypeInfo`/`@JsonSubTypes` directly on the
-type, a `mapper.addMixIn(...)`, a custom `AnnotationIntrospector` — the same
-vocabulary a tool input's schema/binding rides (see
-[Tools](tools.md#sealed-inputs-a-vocabulary-as-one-argument)). Annotate your
-sealed vocabularies: an unannotated sealed type simply gets Jackson's own
-natural behavior, no discriminator is ever written, and decoding fails with
-Jackson's own error.
+**The name is the opt-in.** Spring Boot looks for `schema.sql`, so Nessy's
+file never runs uninvited, and Nessy's loader never runs yours. Call this
+yourself, or apply the files through whatever runs your migrations.
 
-Misconfiguration surfaces exactly as it would in any Jackson application —
-Nessy does not inspect or police a caller's own mapper setup. The external
-codec's own failure contract is `UncheckedIOException`; Nessy's typed views
-(`DocumentStore<T>`/`JournalStore<T>`) are where that gets translated back
-into the `IllegalArgumentException` naming the offense that every malformed-
-payload test here has always seen — a raw Jackson exception never leaks past
-that boundary.
+`classpath*:` matters: it enumerates *every* matching resource rather than
+the first, so a jar added later brings its table with it. That is what
+Boot's own script initialization does.
 
-Test over `InMemorySubstrate`: storage there is real encoded bytes, so a
-Jackson misconfiguration fails in your own unit tests, not in production.
+## Two rules for the SQL
 
-## Transforms are patterns, not products
+Both are enforced by a test running the DDL against H2, rather than by
+anyone remembering them.
 
-A `Codec<byte[]>` is a byte-to-byte transform, and `andThen` chains one onto
-any `Codec<T>`: encoding runs left-to-right, decoding runs the chain
-backwards. That makes an enterprise at-rest story one line:
+**ANSI spellings only.** `TIMESTAMPTZ` is a PostgreSQL alias that H2
+rejects; `TIMESTAMP WITH TIME ZONE` works on both.
 
-```java
-Codec<Transcript> stored =
-    new Jackson2CodecFactory(mapper).create(Transcript.class).andThen(gzip).andThen(aes);
-```
+**No reserved words as identifiers.** `key` is reserved in H2 and merely
+unreserved in PostgreSQL, so `nessy_document.key` would have worked in
+production and failed in tests — which is the worse way round.
 
-Nessy ships no compression and no cryptography — `gzip` and `aes` above are
-illustrative, not shipped types. `nessy-crypto` (`AesCodec`, AES-GCM with a
-versioned key-id envelope) is designed but not built — it's tracked in
-`ROADMAP.md` at the repo root, under Safety & governance. Two sanctioned
-homes for a transform, neither shipped:
+## What the agent's own document holds
 
-- **Wrap the codec** — a `Codec<T>` decorating a `Codec<T>`: per-kind
-  control (encrypt transcripts, leave state plain).
-- **Wrap the substrate** — a `Substrate` decorating a delegate: blanket,
-  backend-agnostic; payloads transform passing through, metadata (`kind`,
-  `key`, seq, version, timestamps) stays plaintext.
+A turn id, a phase, two claim ids, and a token count. Around 260 bytes,
+measured on a real agent running real tools against PostgreSQL, and it does
+not grow with what the agent does.
 
-The `byte[]` contract is what makes both wrappers compose cleanly — and a
-database's own at-rest encryption (TDE, KMS) remains the zero-code
-alternative below the seam entirely.
+That is deliberate. The backlog is a table rather than a list in the
+document, so a phase change rewrites four short strings instead of a queue.
+Tool arguments and tool results are claimed, so a document never carries a
+megabyte of output somebody's tool decided to produce. What is left is only
+what answers one question: *what should happen if this process dies right
+now?*
 
-## The kinds table
+## The claim check
 
-A `kind` is a namespace with exactly one owning recipe. These names are
-reserved — a feature jar declares its own kinds and must not reuse one:
+A turn needs the message the model asked with, and what each tool answered.
+Neither can live on the document — they are the size of whatever a tool
+decided to hand back — and neither can live in the transcript, because an
+exchange is written **whole**, so for exactly the window a call is in
+flight the transcript is designed not to hold it.
 
-| kind | shape | key | owner |
-|---|---|---|---|
-| `state` | document | agentId | scope engine |
-| `memory` | journal | agentId | transcript recipe |
-| `summary` | document | agentId | summarization sidecar (future) |
-| `intent` | document | agentId | `nessy-intent` |
-| `backlog` | document | agentId | backlog recipe |
+So they are claimed, and the agent deals in ids. Claims are deleted by
+*turn*, not by key, which matters for more than tidiness: a claim written
+just before a crash, before the state naming it was persisted, is an orphan
+no key list contains. Deleting by turn sweeps it anyway, because it is in
+the turn.
 
-Approvals and deferred tool calls no longer live in `Substrate` at all —
-`org.jwcarman.continuum` owns that store now, under its own `approval/<agentType>`
-and `tool/<agentType>` kinds. `Substrate` keeps no side index naming which
-computation a call is in flight under: the `state` document's own phase
-carries a `ToolCallState` per call, and two of its five states —
-`AwaitingApproval`/`AwaitingResult` — name the Continuum computation
-directly, so a staleness redrive is absorbed by reading the phase Nessy
-already has to load. See
-[Durable Computation](durable-computation.md#a-calls-lifecycle-is-in-the-phase).
+## PostgreSQL
 
-## Layout rules
+`nessy-store-tests` runs the same certification against a real PostgreSQL 17
+container. Deliberately not Alpine — musl's `strcoll` masks collation bugs
+that glibc surfaces.
 
-Three rules decide which shape a new kind gets, normative for anything
-built on the substrate:
+## See also
 
-- **Mutable current-truth → document. Immutable history → journal. Derived
-  artifacts** (summaries, folds, snapshots) **→ documents pointing at a
-  seq.**
-- **Shared queue, many writers → document-per-item under a kind.**
-  Continuum's own outbox (no longer a `Substrate` recipe) is the model:
-  independent inserts, delete-on-ack, no write contention between
-  producers.
-- **Per-scope queue, one effective writer → queue-as-one-document under the
-  scope's key.** The backlog is the model: the scope's own CAS already
-  serializes its activity, so one document is enough.
-
-## Recipes, not more SPI
-
-`Memory`, `AgentStateStore`, and `Backlog<O>` survive as vocabulary — floor,
-not ceiling — with a substrate recipe as each one's default and only
-shipped implementation. A recipe owns its serialization; the substrate
-never sees anything but bytes.
-
-- **State** (`kind=state`) — one document per scope. The document version
-  *is* the scope version: `SubstrateAgentStateStore.save` writes at
-  `expectedVersion = state.version()`, and a lost race throws
-  `StaleStateException`.
-- **Memory** (`kind=memory`, plus `kind=memory-keys` for the idempotency
-  marker) — one journal per scope, one entry per `Remembrance`.
-  `SubstrateMemory.remember` is CAS-guarded against its marker document: a
-  key already known there makes `remember` a no-op; otherwise it appends at
-  `head + 1` in the same batch as the marker update, retrying on a lost
-  race. `recall()` folds every entry from seq 1 forward, reassembling
-  paired messages. Nothing here ever rewrites an entry — see
-  [Memory](memory.md). Memory is not part of the fold-advance batch below
-  (remembrance spec §1): a scope's `Memory` remembers before that batch
-  commits, never inside it.
-- **Backlog** (`kind=backlog`) — one document per scope holding the pending
-  observations as a JSON array. **Observations are typed:**
-  `SubstrateBacklog<O>` takes a `Codec<O>` — the `String` door defaults to a
-  trivial UTF-8 codec, the typed door (`Nessy.harness(Class<O>, ...)`) derives
-  one from the substrate's own `CodecFactory` over `observationType`
-  automatically. The stored document
-  is a JSON array whose *elements* are the base64 of each encoded
-  observation — uniform regardless of what codec produced the bytes,
-  because the backlog is self-draining transient state and glance-readability
-  yields to uniformity here. `SubstrateBacklog#add`/`.poll` are
-  read-mutate-CAS-retry loops; a full queue throws `IllegalStateException`.
-- **Durable computations** live outside `Substrate` entirely — approvals
-  and deferred tool calls are owned by `org.jwcarman.continuum`, under its
-  own `approval/<agentType>` and `tool/<agentType>` kinds, including its
-  own outbox. `Substrate` holds no index of them at all: a call's own
-  `ToolCallState`, folded into the scope's `state` document alongside
-  everything else in `AwaitingTools`, is the map — `AwaitingApproval(id)`
-  or `AwaitingResult(id)` names the computation directly, and the entry
-  simply becomes `Finished` in the same batch as the fold that resolves it.
-  See [Durable Computation](durable-computation.md).
-- **Intent** (`kind=intent`) — one document per scope, last-write-wins via
-  read-then-CAS retry, shipped in `nessy-intent` — see [Intent](intent.md).
-
-> **Discriminator conventions differ by kind.** Every polymorphic payload
-> above carries a `"type"` field, but its values aren't spelled the same
-> way: the message/phase codecs (`kind=memory`, `kind=state`) write
-> kebab-case values (`tool-use`, `redacted-thinking`, `tool-result`), while
-> the sealed intent vocabularies (`kind=intent`) write the declared
-> record's verbatim simple name (`Restart`, `Diagnose`). A reader of the
-> raw tables will see both conventions, one per kind.
-
-## The one-mapper story
-
-One `ObjectMapper` is handed to a harness config — `.objectMapper(ObjectMapper)`
-on both `Nessy.cli()` and `Nessy.harness(...)` — and everything downstream
-binds through it. Nessy calls `mapper.copy()` and pins the
-format-critical settings on the copy: lower-camel property naming, tolerant
-reads (unknown fields ignored), no default typing, `ALWAYS` inclusion, no
-root wrapping. User-registered modules and serializers survive the copy;
-only the wire-format knobs are pinned, because the stored format is a
-compatibility surface and cannot float on presentation preferences.
-
-`SubstrateSupport.copyAndPin` (`nessy-spi`) is the single source of truth for
-this knob list — the host module's own `Codecs.copyAndPin` (`nessy-agent`)
-delegates to it rather than carrying a second copy. `SubstrateSupport`
-applies it to every substrate's mapper, default or caller-supplied alike, so
-`Substrate#codecs()` is stored-format-safe no matter who constructed the
-substrate — a caller supplying their own `Substrate` implementation, or a
-bare `new InMemorySubstrate()` with no manual pin call, gets the identical
-pin a harness's `.objectMapper(ObjectMapper)` path always has.
-
-Two horror stories are why the pin exists, not a hypothetical:
-
-- A caller mapper set to `SNAKE_CASE` naming would rename every stored
-  field the moment it replaced the default — a scope's own state document
-  would stop parsing on the very next read.
-- A caller mapper set to `NON_EMPTY` inclusion could silently drop a field
-  a recipe's own codec expects present on read — a `computation` or
-  `outbox` document written under one inclusion policy and read back under
-  another is exactly the kind of drift the pin exists to rule out.
-
-The pinned copy feeds every recipe default codec and the tool executor's
-binding. `Schemas` generation and tool-result rendering are not threaded
-through it: `Schemas.of` takes no mapper argument at all, and
-`ConfiguredTool` renders a plain (non-`ToolResult`) return value through
-its own private static `ObjectMapper`. Both are named surfaces still to
-thread — parked, not forgotten — rather than already-closed doors. Model-
-provider wire mappers are exempt from the pin by design — they serve
-vendor protocol contracts, not user data, and build from the same
-copy-and-pin path with their format pinned by the vendor instead.
-
-## The annotations law
-
-- **Every sealed hierarchy carries Jackson annotations directly** — user
-  vocabularies and Nessy-owned types alike (the 2026-08-22 repeal). Nessy
-  binds nothing bespoke and polices nothing: `@JsonTypeInfo`/`@JsonSubTypes`
-  on the type is what `Schemas`, the substrate's `Codec`, and the tool
-  executor's binding all read. A user vocabulary that skips the annotations
-  gets either `Schemas`' own rejection (tool inputs — it cannot generate a
-  discriminated schema without them) or Jackson's own unannotated behavior
-  (stored shapes through the substrate's `Codec`).
-- **`ContentBlock` and `Phase` carry `@JsonTypeInfo`/`@JsonSubTypes` on
-  their sealed hierarchies**; the hand-rolled tree-walking codecs that used
-  to bind them are gone. The pinned mapper does the binding, and the wire
-  format is pinned by golden round-trip tests, not by artisanal code.
-  Discriminator values are unchanged (`text`, `image`, `thinking`,
-  `redacted-thinking`, `tool-use`, `tool-result`; `idle`, `awaiting-model`,
-  `awaiting-tools`).
-
-## The adapter pitch
-
-Implement seven methods against your database and every feature above
-works, unmodified, on top of it — no per-feature schema, no per-feature
-concurrency discipline to get right. The reference mapping onto two plain
-tables:
-
-```sql
-CREATE TABLE IF NOT EXISTS nessy_document (
-  kind        TEXT             NOT NULL,
-  key         TEXT COLLATE "C" NOT NULL,
-  payload     BYTEA            NOT NULL,
-  version     BIGINT           NOT NULL,
-  updated_at  TIMESTAMPTZ      NOT NULL,   -- stamped from a JVM Clock, never SQL now()
-  PRIMARY KEY (kind, key)
-);
-
-CREATE TABLE IF NOT EXISTS nessy_journal (
-  kind         TEXT             NOT NULL,
-  key          TEXT COLLATE "C" NOT NULL,
-  seq          BIGINT           NOT NULL,
-  payload      BYTEA            NOT NULL,
-  appended_at  TIMESTAMPTZ      NOT NULL,
-  PRIMARY KEY (kind, key, seq)
-);
-```
-
-`key` is pinned to the `"C"` collation on both tables — PostgreSQL's raw
-byte-order comparison — so `keys`' ascending order matches this interface's
-documented lexicographic order regardless of the database's own default
-collation, rather than a locale-aware dictionary ordering that would sort
-`"a"`, `"a-b"`, `"ab"`, `"B"` instead.
-
-`updated_at`/`appended_at` are stamped from a JVM `Clock` on every write,
-never SQL `now()` (spec §4): the reference in-memory substrate stamps in
-the JVM too, so both implementations agree and a test can control time by
-injecting a fixed clock.
-
-`read` is a point `SELECT`. A create-mode `write` (`expectedVersion == 0`)
-is an `INSERT`, where a duplicate-key error *is* the conflict. An
-update-mode `write` is `UPDATE … SET version = version + 1 WHERE kind = ?
-AND key = ? AND version = ?`, where a zero rowcount *is* the conflict.
-`keys` is an index range walk with `LIMIT`. `append` is an `INSERT`, again
-reading a duplicate key as the conflict. `entries` is a range `SELECT`.
-`batch` is one transaction. No secondary indexes, no `SELECT FOR UPDATE` —
-dialects differ only in the payload column type and the duplicate-key error
-code, which is why adding a new one is cheap. A `BYTEA`/`BLOB` column is not
-optional: the contract promises to store *any* bytes, a wrapping
-transform's ciphertext included, so a JSON-typed column would be a lie.
-Ops readability on untransformed payloads is one incantation away —
-`convert_from(payload, 'UTF8')` on Postgres, the dialect's equivalent
-elsewhere — and stops working the moment a codec wraps the payload in a
-transform, exactly as expected of encrypted or compressed bytes.
-
-`nessy-substrate-jdbc` ships a PostgreSQL-backed `Substrate`; its DDL is a
-classpath resource the application runs through its own migration tool.
-Nessy never creates or migrates schema.
-
-## What the substrate deliberately leaves out
-
-- **No queue primitive.** A queue is documents plus `batch` plus polling,
-  not a fourth shape. The property that matters — enqueueing atomically
-  with a state flip — lives in `batch` already.
-- **No truncate, no TTL.** The journal is immutable truth. Retention is an
-  operations concern, not a substrate one.
-- **No querying into payloads.** Reporting reads the database directly if
-  it must; the substrate contract stays bytes-in, bytes-out.
-
-## Specified, not built: the summary sidecar
-
-One piece of this design is ratified in the spec but has no code on this
-branch — documented here as the intended shape, not as something you can
-reach for today.
-
-**The summarization sidecar** (`kind=summary`, future) never rewrites the
-transcript. A `summary` document is meant to hold `{ text, throughSeq }`;
-a working context would then be the summary plus
-`entries("memory", id, throughSeq + 1)`. Re-summarizing would CAS-advance
-the sidecar document; the journal underneath would never hear about it.
-
-This does not exist in `nessy-spi` or `nessy-agent` today — treat this
-section as forward-looking design, not an API reference. The outbox it was
-once specified alongside now lives in Continuum's own store, not
-`Substrate` — see [Durable Computation](durable-computation.md).
-
-## Where next
-
-- [The Tiers](the-four-tiers.md) — where `Substrate` sits as the
-  substrate tier's one storage face.
-- [Memory](memory.md) — the journal recipe in full, and why the transcript
-  is never rewritten.
-- [Durable Computation](durable-computation.md) — Continuum's half of the
-  pipeline, how a call's `ToolCallState` names its computation, and the
-  durability rule that binds them.
+- [Memory](memory.md) — what an agent remembers, and who decides
+- [Durable Computation](durable-computation.md) — what survives a crash, and how
