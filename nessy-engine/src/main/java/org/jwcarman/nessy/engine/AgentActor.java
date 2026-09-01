@@ -166,6 +166,7 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
         .forAnyState()
         .onCommand(NessyMessage.Observe.class, this::onObserve)
         .onCommand(NessyMessage.TurnFinished.class, this::onTurnFinished)
+        .onCommand(NessyMessage.Expired.class, this::onExpired)
         .onCommand(NessyMessage.Wake.class, this::onWake)
         .onCommand(NessyMessage.AnswerToolCall.class, this::onAnswerToolCall)
         .onCommand(NessyMessage.AnswerApproval.class, this::onAnswerApproval)
@@ -202,6 +203,22 @@ public final class AgentActor<O> extends DurableStateBehavior<NessyMessage, Agen
     turn = null;
     Map<String, String> here = traces.capture(agentType.name(), agentId.value(), "Wake");
     return Effect().persist(state.finished()).thenRun(persisted -> nudge(persisted, here));
+  }
+
+  /**
+   * A parked call's deadline passed.
+   *
+   * <p>Arrives at this agent's LOGICAL address, so reaching a passivated agent reactivates it —
+   * which is what lets a three-day approval stop depending on anything staying in memory.
+   *
+   * <p>No turn, or a call this turn does not hold, is a no-op rather than an error: the sweep is
+   * at-least-once, and a call may have settled a moment before its reminder fired.
+   */
+  private Effect<AgentState<O>> onExpired(AgentState<O> state, NessyMessage.Expired message) {
+    if (turn != null) {
+      turn.tell(new TurnActor.RelayDeadline(message.callId()));
+    }
+    return Effect().none();
   }
 
   /**

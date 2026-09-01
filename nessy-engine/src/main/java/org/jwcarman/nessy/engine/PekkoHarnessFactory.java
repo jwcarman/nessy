@@ -140,6 +140,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
 
     Memory memory = memoryFor(config, type);
     Claims claims = new Claims(dataSource);
+    Reminders reminders = new Reminders(dataSource);
     Model model = models.model(config.modelId());
     ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
 
@@ -161,6 +162,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                     capabilities,
                     narratorFor(sharding, narrationKey, agentId),
                     claims,
+                    reminders,
                     tokens,
                     blocking,
                     traces),

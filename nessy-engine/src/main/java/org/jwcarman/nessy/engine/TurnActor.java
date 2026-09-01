@@ -88,6 +88,14 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
   /** An answer from the world, for a call this turn parked. */
   record RelayResult(String callId, ToolResult result) implements Command {}
 
+  /**
+   * A parked call's deadline passed, as the sweep noticed.
+   *
+   * <p>A call this turn no longer holds is a no-op rather than an error: the sweep is at-least-once
+   * and a call may have settled a moment before its reminder fired.
+   */
+  record RelayDeadline(String callId) implements Command {}
+
   /** What a turn needs. {@link Turns} closes over this so an agent never sees it. */
   public record Dependencies(
       AgentType agentType,
@@ -99,6 +107,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
       Set<Capability> capabilities,
       Narrator narrator,
       Claims claims,
+      Reminders reminders,
       ReplyTokens tokens,
       Executor blocking,
       Traces traces) {}
@@ -236,6 +245,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
         .onCommand(ToolSettled.class, this::onToolSettled)
         .onCommand(RelayApproval.class, this::onRelayApproval)
         .onCommand(RelayResult.class, this::onRelayResult)
+        .onCommand(RelayDeadline.class, this::onRelayDeadline)
         .build();
   }
 
@@ -376,6 +386,7 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
                 deps.tokens(),
                 deps.blocking(),
                 context.getSelf(),
+                deps.reminders(),
                 deps.traces(),
                 carried),
             "call-" + call.id()));
@@ -385,6 +396,14 @@ public final class TurnActor extends DurableStateBehavior<TurnActor.Command, Tur
     ActorRef<ToolCallActor.Command> call = inFlightCalls.get(command.callId());
     if (call != null) {
       call.tell(new ToolCallActor.RelayApproval(command.result()));
+    }
+    return Effect().none();
+  }
+
+  private Effect<TurnState> onRelayDeadline(TurnState state, RelayDeadline command) {
+    ActorRef<ToolCallActor.Command> call = inFlightCalls.get(command.callId());
+    if (call != null) {
+      call.tell(new ToolCallActor.Deadline());
     }
     return Effect().none();
   }

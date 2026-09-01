@@ -101,6 +101,7 @@ class TurnLifecycleTest {
             java.util.Set.<org.jwcarman.nessy.spi.model.Capability>of(),
             Narrator.silent(),
             new Claims(TestDatabase.fresh()),
+            new Reminders(TestDatabase.fresh()),
             ReplyTokens.ephemeral(),
             Runnable::run,
             Traces.noop());

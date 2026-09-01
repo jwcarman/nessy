@@ -164,6 +164,7 @@ class ToolCallTest {
             java.util.Set.<org.jwcarman.nessy.spi.model.Capability>of(),
             Narrator.to(narrated::add),
             new Claims(TestDatabase.fresh()),
+            new Reminders(TestDatabase.fresh()),
             ReplyTokens.ephemeral(),
             Runnable::run,
             Traces.noop());

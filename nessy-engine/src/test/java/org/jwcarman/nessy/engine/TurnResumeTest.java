@@ -183,6 +183,7 @@ class TurnResumeTest {
             java.util.Set.<org.jwcarman.nessy.spi.model.Capability>of(),
             Narrator.silent(),
             claims,
+            new Reminders(database),
             ReplyTokens.ephemeral(),
             Runnable::run,
             Traces.noop());

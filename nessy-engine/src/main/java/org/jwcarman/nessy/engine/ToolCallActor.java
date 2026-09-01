@@ -61,6 +61,17 @@ final class ToolCallActor {
   /** Relayed in from the world, by way of a reply token. */
   record RelayResult(ToolResult result) implements Command {}
 
+  /**
+   * A phase actor is now waiting on someone, until {@code expiresAt}.
+   *
+   * <p>Sent so the DEADLINE can be written down here, where the call's identity lives. A timer
+   * inside the phase actor dies with it; a row does not, which is the whole point.
+   */
+  record Parked(Instant expiresAt) implements Command {}
+
+  /** The deadline passed, as noticed by the sweep rather than by a timer we were holding. */
+  record Deadline() implements Command {}
+
   private ToolCallActor() {}
 
   static Behavior<Command> create(
@@ -72,10 +83,12 @@ final class ToolCallActor {
       ReplyTokens tokens,
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
+      Reminders reminders,
       Traces traces,
       Map<String, String> carried) {
     return callBehavior(
-        agentType, agentId, call, bindings, narrator, tokens, blocking, turn, traces, carried);
+        agentType, agentId, call, bindings, narrator, tokens, blocking, turn, reminders, traces,
+        carried);
   }
 
   private static Behavior<Command> callBehavior(
@@ -87,8 +100,13 @@ final class ToolCallActor {
       ReplyTokens tokens,
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
+      Reminders reminders,
       Traces traces,
       Map<String, String> carried) {
+    String deadlineKey = ReminderSweep.keyFor(agentType.name(), agentId.value(), call.id());
+    byte[] where =
+        ReminderSweep.encode(
+            new ReminderSweep.Coordinates(agentType.name(), agentId.value(), call.id()));
     return Behaviors.setup(
         context -> {
           ToolBinding<?> binding = bindings.binding(call.name()).orElse(null);
@@ -136,6 +154,9 @@ final class ToolCallActor {
               blocking,
               turn,
               approval,
+              reminders,
+              deadlineKey,
+              where,
               traces,
               carried);
         });
@@ -152,9 +173,31 @@ final class ToolCallActor {
       Executor blocking,
       ActorRef<TurnActor.Command> turn,
       ActorRef<ApprovalActor.Command> approval,
+      Reminders reminders,
+      String deadlineKey,
+      byte[] where,
       Traces traces,
       Map<String, String> carried) {
     return Behaviors.receive(Command.class)
+        .onMessage(
+            Parked.class,
+            parked -> {
+              // Written down BEFORE the wait it guards. A crash the other way round leaves a wait
+              // nothing will ever end; this way round leaves a reminder for a call that no longer
+              // exists, which fires, finds nothing, and is cancelled.
+              reminders.remind(deadlineKey, parked.expiresAt(), where);
+              return Behaviors.same();
+            })
+        .onMessage(
+            Deadline.class,
+            expired ->
+                settle(
+                    call,
+                    narrator,
+                    turn,
+                    reminders,
+                    deadlineKey,
+                    ToolResult.error("nobody answered in time; the call was not made")))
         .onMessage(
             RelayApproval.class,
             relayed -> {
@@ -199,6 +242,8 @@ final class ToolCallActor {
                         call,
                         narrator,
                         turn,
+                        reminders,
+                        deadlineKey,
                         ToolResult.error("denied: " + denied.reason() + "; the call was not made"));
                 case ApprovalResult.Approved approved ->
                     Behaviors.setup(
@@ -215,7 +260,8 @@ final class ToolCallActor {
                                       traces,
                                       carried),
                                   "execution");
-                          return awaitingExecution(call, narrator, turn, execution);
+                          return awaitingExecution(
+                              call, narrator, turn, execution, reminders, deadlineKey);
                         });
               };
             })
@@ -226,21 +272,49 @@ final class ToolCallActor {
       ToolCall call,
       Narrator narrator,
       ActorRef<TurnActor.Command> turn,
-      ActorRef<ExecutionActor.Command> execution) {
+      ActorRef<ExecutionActor.Command> execution,
+      Reminders reminders,
+      String deadlineKey) {
     return Behaviors.receive(Command.class)
+        .onMessage(
+            Parked.class,
+            parked -> {
+              // A tool can defer too — an approval is not the only thing that waits on the world.
+              reminders.remind(deadlineKey, parked.expiresAt(), execution.path().name().getBytes());
+              return Behaviors.same();
+            })
+        .onMessage(
+            Deadline.class,
+            expired ->
+                settle(
+                    call,
+                    narrator,
+                    turn,
+                    reminders,
+                    deadlineKey,
+                    ToolResult.error("the tool did not answer in time")))
         .onMessage(
             RelayResult.class,
             relayed -> {
               execution.tell(new ExecutionActor.Answer(relayed.result()));
               return Behaviors.same();
             })
-        .onMessage(Ran.class, ran -> settle(call, narrator, turn, ran.result()))
+        .onMessage(
+            Ran.class, ran -> settle(call, narrator, turn, reminders, deadlineKey, ran.result()))
         .build();
   }
 
   /** One place a call ends, so it cannot be reported to the turn without also being narrated. */
   private static Behavior<Command> settle(
-      ToolCall call, Narrator narrator, ActorRef<TurnActor.Command> turn, ToolResult result) {
+      ToolCall call,
+      Narrator narrator,
+      ActorRef<TurnActor.Command> turn,
+      Reminders reminders,
+      String deadlineKey,
+      ToolResult result) {
+    // The owner cancels, because only the owner knows the call settled. Silent when there was no
+    // deadline: a call that never parked has nothing to forget.
+    reminders.cancel(deadlineKey);
     narrator.narrate(
         new AgentEvent.ToolCallCompleted(Identifiers.next(), call.id(), call.name(), result));
     turn.tell(new TurnActor.ToolSettled(call.id(), result));

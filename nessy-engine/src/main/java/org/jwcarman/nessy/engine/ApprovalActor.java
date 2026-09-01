@@ -127,7 +127,13 @@ final class ApprovalActor {
                 settle(replyTo, ApprovalResult.denied("the approver failed: " + broke.reason())))
         .onMessage(
             Deferred.class,
-            deferred -> awaitingHuman(replyTo, request, narrator, deferred.expiresAt()))
+            deferred -> {
+              // Written down before the wait it guards. This actor's timer below is a fast path for
+              // as long as it lives; the row is what survives it being passivated, restarted, or
+              // killed with its parent.
+              replyTo.tell(new ToolCallActor.Parked(deferred.expiresAt()));
+              return awaitingHuman(replyTo, request, narrator, deferred.expiresAt());
+            })
         .build();
   }
 

@@ -104,7 +104,14 @@ final class ExecutionActor {
                 settle(
                     replyTo,
                     ToolResult.error(broke.reason() + "; it may have partially completed")))
-        .onMessage(Deferred.class, deferred -> awaitingTheWorld(replyTo, deferred.expiresAt()))
+        .onMessage(
+            Deferred.class,
+            deferred -> {
+              // A tool can wait on the world just as an approval waits on a person, and the
+              // deadline has to outlive this actor either way.
+              replyTo.tell(new ToolCallActor.Parked(deferred.expiresAt()));
+              return awaitingTheWorld(replyTo, deferred.expiresAt());
+            })
         .build();
   }
 
