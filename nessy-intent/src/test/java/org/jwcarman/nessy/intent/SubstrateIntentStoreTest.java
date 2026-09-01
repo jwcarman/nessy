@@ -310,11 +310,6 @@ class SubstrateIntentStoreTest {
     }
 
     @Override
-    public void batch(List<Op> ops) {
-      delegate.batch(ops);
-    }
-
-    @Override
     public CodecFactory codecs() {
       return delegate.codecs();
     }

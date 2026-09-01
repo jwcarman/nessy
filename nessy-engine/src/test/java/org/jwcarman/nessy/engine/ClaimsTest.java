@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,14 +70,6 @@ class ClaimsTest {
         .get()
         .extracting(ClaimsTest::text)
         .isEqualTo("after a crash");
-  }
-
-  @Test
-  void a_batch_lands_whole() {
-    claims.putAll(HOUSE, "turn-1", Map.of("a", bytes("one"), "b", bytes("two")));
-
-    assertThat(claims.get(HOUSE, "turn-1", "a")).isPresent();
-    assertThat(claims.get(HOUSE, "turn-1", "b")).isPresent();
   }
 
   @Test

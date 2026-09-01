@@ -432,12 +432,6 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
         });
   }
 
-  /**
-   * Overrides the {@link Substrate#head(String, String)} default with {@code MAX(seq)}: the journal
-   * table's primary key is {@code (kind, key, seq)}, so this is answered from the primary key index
-   * alone — a backward index scan for the last {@code seq} under {@code (kind, key)} — and never
-   * touches a {@code payload} column.
-   */
   @Override
   public long head(String kind, String key) {
     Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
@@ -456,35 +450,5 @@ public final class JdbcSubstrate extends SubstrateSupport implements Substrate {
             }
           }
         });
-  }
-
-  @Override
-  public void batch(List<Op> ops) {
-    Objects.requireNonNull(ops, "ops must not be null");
-    List<Op> snapshot = List.copyOf(ops);
-    inTransaction(
-        connection -> {
-          Instant now = clock.instant();
-          for (Op op : snapshot) {
-            applyOp(connection, op, now);
-          }
-          return null;
-        });
-  }
-
-  /**
-   * Applies one batch op by calling the exact same private method the corresponding single-op
-   * public method calls, so a batched write/delete/append can never diverge from its standalone
-   * counterpart's SQL.
-   */
-  private void applyOp(Connection connection, Op op, Instant now) throws SQLException {
-    switch (op) {
-      case Op.WriteDocument(String wKind, String wKey, byte[] wPayload, long wExpectedVersion) ->
-          writeDocument(connection, wKind, wKey, wPayload, wExpectedVersion, now);
-      case Op.DeleteDocument(String dKind, String dKey, long dExpectedVersion) ->
-          deleteDocument(connection, dKind, dKey, dExpectedVersion);
-      case Op.AppendEntry(String aKind, String aKey, long aSeq, byte[] aPayload) ->
-          appendEntry(connection, aKind, aKey, aSeq, aPayload, now);
-    }
   }
 }

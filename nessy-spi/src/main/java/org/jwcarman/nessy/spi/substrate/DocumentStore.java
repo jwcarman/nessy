@@ -29,9 +29,8 @@ import java.util.function.UnaryOperator;
  *
  * <p>{@link #update(String, Object, UnaryOperator)} owns the read-modify-write CAS-retry loop ONCE,
  * for every caller (spec ruling 1) — the same discipline every hand-rolled loop in the codebase
- * used to repeat. {@link #writeOp(String, Object, long)} and {@link #deleteOp(String, long)} mint
- * the same {@link Substrate.Op}s a caller would otherwise build by hand, so a typed write composes
- * into a larger atomic {@link Substrate#batch(List)} alongside other stores' ops (spec ruling 4).
+ * used to repeat. into a larger atomic {@link Substrate#batch(List)} alongside other stores' ops
+ * (spec ruling 4).
  *
  * @param <T> the domain shape this document kind holds
  */
@@ -74,17 +73,4 @@ public interface DocumentStore<T> {
 
   /** Keys under this kind, in ascending lexicographic order, at most {@code limit} results. */
   List<String> keys(int limit);
-
-  /**
-   * Mints the {@link Substrate.Op.WriteDocument} this write would perform, unexecuted — for
-   * composing into a larger {@link Substrate#batch(List)} alongside other stores' ops (spec ruling
-   * 4).
-   */
-  Substrate.Op writeOp(String key, T value, long expectedVersion);
-
-  /**
-   * Mints the {@link Substrate.Op.DeleteDocument} a delete at {@code key} would perform, unexecuted
-   * — the delete counterpart to {@link #writeOp(String, Object, long)}.
-   */
-  Substrate.Op deleteOp(String key, long expectedVersion);
 }

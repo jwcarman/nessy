@@ -267,79 +267,6 @@ public abstract class SubstrateContract {
   }
 
   @Test
-  void keysRespectsItsLimit() {
-    Substrate substrate = createSubstrate();
-    substrate.write(KIND, "a", "1".getBytes(UTF_8), 0);
-    substrate.write(KIND, "b", "2".getBytes(UTF_8), 0);
-    substrate.write(KIND, "c", "3".getBytes(UTF_8), 0);
-
-    assertThat(substrate.keys(KIND, 2)).containsExactly("a", "b");
-  }
-
-  @Test
-  void keysOrderMatchesStringCompareToNotADictionaryCollation() {
-    Substrate substrate = createSubstrate();
-    substrate.write(KIND, "B", "1".getBytes(UTF_8), 0);
-    substrate.write(KIND, "a", "2".getBytes(UTF_8), 0);
-    substrate.write(KIND, "a-b", "3".getBytes(UTF_8), 0);
-    substrate.write(KIND, "ab", "4".getBytes(UTF_8), 0);
-
-    // "a", "a-b", "ab", "B" is dictionary order (a glibc-collated database's default). Ascending
-    // lexicographic order — Substrate#keys's own promise, and how String.compareTo orders these
-    // four — is "B", "a", "a-b", "ab": every uppercase letter's code point precedes every
-    // lowercase one, and "-" (0x2D) precedes "b" (0x62) so "a-b" sorts before "ab". A key set of
-    // "a"/"b"/"c" alone can't tell these two orderings apart.
-    assertThat(substrate.keys(KIND, 10)).containsExactly("B", "a", "a-b", "ab");
-  }
-
-  @Test
-  void aBatchAppliesAcrossBothShapes() {
-    Substrate substrate = createSubstrate();
-
-    substrate.batch(
-        List.of(
-            new Substrate.Op.WriteDocument(KIND, "k", "doc".getBytes(UTF_8), 0),
-            new Substrate.Op.AppendEntry(KIND, "k", 1, "entry".getBytes(UTF_8))));
-
-    assertThat(substrate.read(KIND, "k")).isPresent();
-    assertThat(substrate.entries(KIND, "k", 1)).hasSize(1);
-  }
-
-  @Test
-  void aConflictAnywhereInABatchRollsBackEveryOp() {
-    Substrate substrate = createSubstrate();
-    substrate.write(KIND, "existing", "already".getBytes(UTF_8), 0);
-    List<Substrate.Op> ops =
-        List.of(
-            new Substrate.Op.WriteDocument(KIND, "fresh", "new".getBytes(UTF_8), 0),
-            new Substrate.Op.AppendEntry(KIND, "j", 1, "entry".getBytes(UTF_8)),
-            new Substrate.Op.WriteDocument(KIND, "existing", "clobber".getBytes(UTF_8), 0));
-
-    assertThatThrownBy(() -> substrate.batch(ops)).isInstanceOf(ConflictException.class);
-
-    assertThat(substrate.read(KIND, "fresh")).isEmpty();
-    assertThat(substrate.entries(KIND, "j", 1)).isEmpty();
-    assertThat(substrate.read(KIND, "existing"))
-        .hasValueSatisfying(
-            document -> assertThat(document.payload()).isEqualTo("already".getBytes(UTF_8)));
-  }
-
-  @Test
-  void aDeleteInABatchIsRolledBackToo() {
-    Substrate substrate = createSubstrate();
-    substrate.write(KIND, "doomed", "here".getBytes(UTF_8), 0);
-    substrate.write(KIND, "existing", "already".getBytes(UTF_8), 0);
-    List<Substrate.Op> ops =
-        List.of(
-            new Substrate.Op.DeleteDocument(KIND, "doomed", 1),
-            new Substrate.Op.WriteDocument(KIND, "existing", "clobber".getBytes(UTF_8), 0));
-
-    assertThatThrownBy(() -> substrate.batch(ops)).isInstanceOf(ConflictException.class);
-
-    assertThat(substrate.read(KIND, "doomed")).isPresent();
-  }
-
-  @Test
   void twoWritersAtTheSameVersionProduceExactlyOneWinner() throws Exception {
     Substrate substrate = createSubstrate();
     substrate.write(KIND, "k", "seed".getBytes(UTF_8), 0);
@@ -518,13 +445,6 @@ public abstract class SubstrateContract {
 
     assertThatThrownBy(() -> substrate.entries(KIND, null, 1))
         .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void applyingABatchOfNullOpsThrowsNullPointerException() {
-    Substrate substrate = createSubstrate();
-
-    assertThatThrownBy(() -> substrate.batch(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test

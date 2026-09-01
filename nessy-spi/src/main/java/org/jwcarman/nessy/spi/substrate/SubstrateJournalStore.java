@@ -59,12 +59,6 @@ final class SubstrateJournalStore<T> implements JournalStore<T> {
   }
 
   @Override
-  public Substrate.Op appendOp(String key, long expectedSeq, T value) {
-    Objects.requireNonNull(value, "value must not be null");
-    return new Substrate.Op.AppendEntry(kind, key, expectedSeq, encode(value));
-  }
-
-  @Override
   public List<T> entries(String key, long fromSeq) {
     return substrate.entries(kind, key, fromSeq).stream().map(e -> decode(e.payload())).toList();
   }

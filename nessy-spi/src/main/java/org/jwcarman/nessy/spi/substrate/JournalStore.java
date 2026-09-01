@@ -24,9 +24,8 @@ import java.util.List;
  * directly — the kind is fixed at the mint (spec ruling 2).
  *
  * <p>{@link #append(String, Object)} owns the re-read-the-head-and-retry CAS-retry loop every
- * hand-rolled journal appender used to repeat. {@link #appendOp(String, long, Object)} mints the
- * same {@link Substrate.Op.AppendEntry} a caller would otherwise build by hand, for composing into
- * a larger atomic {@link Substrate#batch(java.util.List)} (spec ruling 4).
+ * hand-rolled journal appender used to repeat. a larger atomic {@link
+ * Substrate#batch(java.util.List)} (spec ruling 4).
  *
  * @param <T> the domain shape this journal kind holds
  */
@@ -37,13 +36,6 @@ public interface JournalStore<T> {
    * lost race against a concurrent appender.
    */
   void append(String key, T value);
-
-  /**
-   * Mints the {@link Substrate.Op.AppendEntry} an append at {@code expectedSeq} would perform,
-   * unexecuted — for composing into a larger {@link Substrate#batch(java.util.List)} alongside
-   * other stores' ops (spec ruling 4).
-   */
-  Substrate.Op appendOp(String key, long expectedSeq, T value);
 
   /** {@code key}'s entries from {@code fromSeq} (inclusive) in ascending order, decoded. */
   List<T> entries(String key, long fromSeq);

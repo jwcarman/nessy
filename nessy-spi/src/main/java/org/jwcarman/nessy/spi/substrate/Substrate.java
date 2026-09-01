@@ -26,11 +26,10 @@ import org.jwcarman.codec.spi.CodecFactory;
 /**
  * The substrate (spec §2): two shapes — a document store (mutable current-truth, addressed by
  * {@code (kind, key)}) and a journal (immutable history, addressed by {@code (kind, key, seq)}) —
- * plus one atomic batch across both. Payloads are opaque, non-null byte arrays the substrate never
- * inspects or constrains; UTF-8 JSON is the house convention above the seam, but the contract
- * itself only says "bytes" (spec §4.5). Every mutation carries a CAS expectation and a miss is a
- * {@link ConflictException}, never a wait (spec §4.1–§4.2); implementations must be safe for
- * concurrent use (spec §4.7).
+ * Payloads are opaque, non-null byte arrays the substrate never inspects or constrains; UTF-8 JSON
+ * is the house convention above the seam, but the contract itself only says "bytes" (spec §4.5).
+ * Every mutation carries a CAS expectation and a miss is a {@link ConflictException}, never a wait
+ * (spec §4.1–§4.2); implementations must be safe for concurrent use (spec §4.7).
  */
 public interface Substrate {
 
@@ -128,15 +127,6 @@ public interface Substrate {
    * @throws NullPointerException if {@code kind} or {@code key} is null
    */
   long head(String kind, String key);
-
-  /**
-   * Applies {@code ops} atomically: all succeed or none apply. Any CAS or seq miss fails the whole
-   * batch with {@link ConflictException} and leaves every shape it touches untouched (spec §4.3).
-   *
-   * @throws NullPointerException if {@code ops} is null
-   * @throws ConflictException if any op's expectation is not met
-   */
-  void batch(List<Op> ops);
 
   /**
    * This substrate's {@link CodecFactory} (typed-stores spec §1 ruling 3): {@link #document(String,
@@ -287,120 +277,6 @@ public interface Substrate {
           + ", appendedAt="
           + appendedAt
           + "]";
-    }
-  }
-
-  /** One operation a {@link #batch(List)} call applies. */
-  sealed interface Op {
-
-    /**
-     * Writes a document under CAS, as {@link Substrate#write(String, String, byte[], long)}.
-     * Content-equal on {@code payload} bytes, defensively copied on construction and on read, per
-     * {@link Document}.
-     */
-    record WriteDocument(String kind, String key, byte[] payload, long expectedVersion)
-        implements Op {
-
-      public WriteDocument {
-        payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
-      }
-
-      @Override
-      public byte[] payload() {
-        return payload.clone();
-      }
-
-      @Override
-      public boolean equals(Object other) {
-        if (this == other) {
-          return true;
-        }
-        if (!(other
-            instanceof
-            WriteDocument(
-                String thatKind,
-                String thatKey,
-                byte[] thatPayload,
-                long thatExpectedVersion))) {
-          return false;
-        }
-        return expectedVersion == thatExpectedVersion
-            && Objects.equals(kind, thatKind)
-            && Objects.equals(key, thatKey)
-            && Arrays.equals(payload, thatPayload);
-      }
-
-      @Override
-      public int hashCode() {
-        return Objects.hash(kind, key, Arrays.hashCode(payload), expectedVersion);
-      }
-
-      @Override
-      public String toString() {
-        return "WriteDocument[kind="
-            + kind
-            + ", key="
-            + key
-            + SubstrateSupport.PAYLOAD_BYTES_LABEL
-            + payload.length
-            + ", expectedVersion="
-            + expectedVersion
-            + "]";
-      }
-    }
-
-    /** Deletes a document under CAS, as {@link Substrate#delete(String, String, long)}. */
-    record DeleteDocument(String kind, String key, long expectedVersion) implements Op {}
-
-    /**
-     * Appends a journal entry, as {@link Substrate#append(String, String, long, byte[])}.
-     * Content-equal on {@code payload} bytes, defensively copied on construction and on read, per
-     * {@link Document}.
-     */
-    record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {
-
-      public AppendEntry {
-        payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
-      }
-
-      @Override
-      public byte[] payload() {
-        return payload.clone();
-      }
-
-      @Override
-      public boolean equals(Object other) {
-        if (this == other) {
-          return true;
-        }
-        if (!(other
-            instanceof
-            AppendEntry(String thatKind, String thatKey, long thatSeq, byte[] thatPayload))) {
-          return false;
-        }
-        return seq == thatSeq
-            && Objects.equals(kind, thatKind)
-            && Objects.equals(key, thatKey)
-            && Arrays.equals(payload, thatPayload);
-      }
-
-      @Override
-      public int hashCode() {
-        return Objects.hash(kind, key, seq, Arrays.hashCode(payload));
-      }
-
-      @Override
-      public String toString() {
-        return "AppendEntry[kind="
-            + kind
-            + ", key="
-            + key
-            + ", seq="
-            + seq
-            + SubstrateSupport.PAYLOAD_BYTES_LABEL
-            + payload.length
-            + "]";
-      }
     }
   }
 }

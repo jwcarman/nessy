@@ -96,17 +96,6 @@ final class SubstrateDocumentStore<T> implements DocumentStore<T> {
     return substrate.keys(kind, limit);
   }
 
-  @Override
-  public Substrate.Op writeOp(String key, T value, long expectedVersion) {
-    Objects.requireNonNull(value, "value must not be null");
-    return new Substrate.Op.WriteDocument(kind, key, encode(value), expectedVersion);
-  }
-
-  @Override
-  public Substrate.Op deleteOp(String key, long expectedVersion) {
-    return new Substrate.Op.DeleteDocument(kind, key, expectedVersion);
-  }
-
   /**
    * {@code codec.decode}, translating a raw {@link UncheckedIOException} from the external codec
    * into the teaching {@link IllegalArgumentException} this view has always thrown for a malformed

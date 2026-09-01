@@ -19,13 +19,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -146,74 +144,6 @@ public final class InMemorySubstrate extends SubstrateSupport implements Substra
     synchronized (lock) {
       NavigableMap<Long, Entry> journal = journals.get(new DocKey(kind, key));
       return journal == null || journal.isEmpty() ? 0L : journal.lastKey();
-    }
-  }
-
-  @Override
-  public void batch(List<Op> ops) {
-    Objects.requireNonNull(ops, "ops must not be null");
-    List<Op> snapshot = List.copyOf(ops);
-    synchronized (lock) {
-      Set<DocKey> documentKeys = new HashSet<>();
-      Set<DocKey> journalKeys = new HashSet<>();
-      for (Op op : snapshot) {
-        collectTouchedKey(op, documentKeys, journalKeys);
-      }
-
-      Map<DocKey, Document> documentsCopy = new HashMap<>();
-      for (DocKey docKey : documentKeys) {
-        Document current = documents.get(docKey);
-        if (current != null) {
-          documentsCopy.put(docKey, current);
-        }
-      }
-      Map<DocKey, NavigableMap<Long, Entry>> journalsCopy = new HashMap<>();
-      for (DocKey docKey : journalKeys) {
-        NavigableMap<Long, Entry> current = journals.get(docKey);
-        if (current != null) {
-          journalsCopy.put(docKey, new TreeMap<>(current));
-        }
-      }
-
-      Instant now = clock.instant();
-      for (Op op : snapshot) {
-        applyOp(documentsCopy, journalsCopy, op, now);
-      }
-
-      for (DocKey docKey : documentKeys) {
-        Document result = documentsCopy.get(docKey);
-        if (result == null) {
-          documents.remove(docKey);
-        } else {
-          documents.put(docKey, result);
-        }
-      }
-      for (DocKey docKey : journalKeys) {
-        journals.put(docKey, journalsCopy.get(docKey));
-      }
-    }
-  }
-
-  private void collectTouchedKey(Op op, Set<DocKey> documentKeys, Set<DocKey> journalKeys) {
-    switch (op) {
-      case Op.WriteDocument w -> documentKeys.add(new DocKey(w.kind(), w.key()));
-      case Op.DeleteDocument d -> documentKeys.add(new DocKey(d.kind(), d.key()));
-      case Op.AppendEntry a -> journalKeys.add(new DocKey(a.kind(), a.key()));
-    }
-  }
-
-  private void applyOp(
-      Map<DocKey, Document> documentsCopy,
-      Map<DocKey, NavigableMap<Long, Entry>> journalsCopy,
-      Op op,
-      Instant now) {
-    switch (op) {
-      case Op.WriteDocument(String wKind, String wKey, byte[] wPayload, long wExpectedVersion) ->
-          applyWrite(documentsCopy, wKind, wKey, wPayload, wExpectedVersion, now);
-      case Op.DeleteDocument(String dKind, String dKey, long dExpectedVersion) ->
-          applyDelete(documentsCopy, dKind, dKey, dExpectedVersion);
-      case Op.AppendEntry(String aKind, String aKey, long aSeq, byte[] aPayload) ->
-          applyAppend(journalsCopy, aKind, aKey, aSeq, aPayload, now);
     }
   }
 

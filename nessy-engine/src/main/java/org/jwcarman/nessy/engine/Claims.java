@@ -15,9 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
@@ -61,23 +58,6 @@ final class Claims {
     String kind = kindOf(agentId, turnId);
     long version = substrate.read(kind, key).map(Substrate.Document::version).orElse(0L);
     substrate.write(kind, key, value, version);
-  }
-
-  /**
-   * Writes several at once, atomically.
-   *
-   * <p>One batch instead of N writes collapses the orphan window from N to one: either everything
-   * is there or nothing is, so recovery never finds three of five and no way to tell which two are
-   * missing.
-   *
-   * <p>Unlike {@link #put}, this expects the keys to be new — a batch is for the moment a set of
-   * facts first becomes known, not for rewriting.
-   */
-  void putAll(AgentId agentId, String turnId, Map<String, byte[]> values) {
-    String kind = kindOf(agentId, turnId);
-    List<Substrate.Op> ops = new ArrayList<>(values.size());
-    values.forEach((key, value) -> ops.add(new Substrate.Op.WriteDocument(kind, key, value, 0L)));
-    substrate.batch(ops);
   }
 
   Optional<byte[]> get(AgentId agentId, String turnId, String key) {
