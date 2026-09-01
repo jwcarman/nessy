@@ -15,11 +15,7 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Objects;
 import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
 import org.jwcarman.codec.spi.CodecFactory;
@@ -105,18 +101,7 @@ public abstract class SubstrateSupport {
    * {@link #codecs()}.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
-    Objects.requireNonNull(mapper, "mapper must not be null");
-    return mapper
-        .copy()
-        .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE)
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-        .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
-        .setPropertyInclusion(
-            JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS))
-        .configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, true)
-        .configure(SerializationFeature.WRAP_ROOT_VALUE, false)
-        .configure(DeserializationFeature.UNWRAP_ROOT_VALUE, false)
-        .deactivateDefaultTyping();
+    return org.jwcarman.nessy.spi.codec.Codecs.copyAndPin(mapper);
   }
 
   /** This instance's {@link CodecFactory} — satisfies {@link Substrate#codecs()}. */

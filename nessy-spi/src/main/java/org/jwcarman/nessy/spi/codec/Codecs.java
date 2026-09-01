@@ -15,11 +15,16 @@
  */
 package org.jwcarman.nessy.spi.codec;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Objects;
-import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
+import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.spi.CodecFactory;
 
 /**
  * Internal storage machinery: the mapper-binding boundary every codec that renders the byte-payload
@@ -46,15 +51,51 @@ public final class Codecs {
   }
 
   /**
-   * {@code mapper.copy()} with the format-critical settings pinned (spec §7) — delegates to {@link
-   * SubstrateSupport#copyAndPin(ObjectMapper)} (typed-stores fix round 1, Q1): the single source of
-   * truth for the pinned knob list lives in {@code nessy-spi} now, so a document's format-critical
-   * settings are pinned identically whether the mapper reaches a recipe through a harness's {@code
-   * .objectMapper(ObjectMapper)} or through a substrate's own {@code codecs()} — no duplicated knob
-   * list to drift between the two.
+   * {@code mapper.copy()} with the format-critical settings pinned (spec §7): lower-camel naming,
+   * tolerant reads, inclusion pinned to ALWAYS, empty arrays written, root wrapping off, default
+   * typing off. User-registered modules and serializers survive the copy — only the wire-format
+   * knobs are pinned, because the stored format is a compatibility surface and cannot float on a
+   * caller's presentation preferences.
+   *
+   * <p>This is the SINGLE source of truth for that knob list, so a document's format-critical
+   * settings are pinned identically however the mapper reaches a codec — through a harness's {@code
+   * .objectMapper(ObjectMapper)} or through a store's own factory.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
-    return SubstrateSupport.copyAndPin(mapper);
+    Objects.requireNonNull(mapper, "mapper must not be null");
+    return mapper
+        .copy()
+        .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE)
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
+        .setPropertyInclusion(
+            JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS))
+        .configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, true)
+        .configure(SerializationFeature.WRAP_ROOT_VALUE, false)
+        .configure(DeserializationFeature.UNWRAP_ROOT_VALUE, false)
+        .deactivateDefaultTyping();
+  }
+
+  /**
+   * A {@link CodecFactory} over a freshly constructed, pinned mapper.
+   *
+   * <p>One per caller, never a shared static (statics-die law): a mapper is configurable, and a
+   * shared one lets any caller's configuration reach every other caller's stored bytes.
+   */
+  public static CodecFactory factory() {
+    return factory(new ObjectMapper());
+  }
+
+  /**
+   * A {@link CodecFactory} over {@code mapper}, copy-and-pinned.
+   *
+   * <p>This is the codec extension point: a caller-configured mapper — modules, naming strategy,
+   * mix-ins — flows through every codec derived from it, untouched except for the format-critical
+   * knobs {@link #copyAndPin(ObjectMapper)} always applies.
+   */
+  public static CodecFactory factory(ObjectMapper mapper) {
+    Objects.requireNonNull(mapper, "mapper must not be null");
+    return new Jackson2CodecFactory(copyAndPin(mapper));
   }
 
   /** {@code json} parsed to a tree, or a malformed-payload {@link IllegalArgumentException}. */
