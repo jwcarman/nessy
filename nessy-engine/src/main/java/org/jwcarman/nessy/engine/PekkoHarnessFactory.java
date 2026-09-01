@@ -148,23 +148,23 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     ClusterSharding sharding = ClusterSharding.get(system);
     EntityTypeKey<NarrationActor.Command> narrationKey =
         EntityTypeKey.create(NarrationActor.Command.class, "narration-" + type.name());
-    // NEVER passivated on a timer.
+    // Unloaded when nobody is LISTENING, never when nothing has happened.
     //
-    // This entity's whole state is a set of live subscribers, held in memory because that is what a
-    // subscription IS — an actor ref belonging to a process that is still listening. Nothing about
-    // it is recoverable, so unloading it does not free state to be read back later; it destroys it.
+    // This entity's whole state is a set of live subscribers — actor refs belonging to processes
+    // still listening. None of it is recoverable, so unloading it does not free state to be read
+    // back later; it destroys it, and every subscriber goes deaf with no error anywhere.
     //
-    // Pekko's default is "default-idle-strategy": entities time out after two minutes idle. Applied
-    // here that means an application which subscribes and then goes quiet for two minutes silently
-    // stops receiving events — no error, no warning, and the next turn runs perfectly and publishes
-    // to nobody. Measured in a real session: the model answered, the engine finished the turn, and
-    // the terminal waited out its patience for an event that had been sent into an empty set.
+    // Pekko's default, "default-idle-strategy", unloads an entity after two minutes without
+    // MESSAGES. Measured breaking a real session: a person read a long answer and typed a reply,
+    // the turn that followed ran perfectly, finished, and published into an empty set while the
+    // terminal waited out its patience. An agent is allowed to think for longer than its audience
+    // takes to type.
     //
-    // An entity that unloads itself when its last subscriber leaves would be better still, and is
-    // the shape to move to; until then, not timing it out is the difference between working and
-    // silently deaf.
+    // So the timer is off here, and NarrationActor decides for itself: when its last subscriber
+    // leaves it starts a short countdown, cancelled the moment anyone subscribes again. Same
+    // economy, without mistaking silence for absence.
     sharding.init(
-        Entity.of(narrationKey, context -> NarrationActor.create())
+        Entity.of(narrationKey, context -> NarrationActor.create(context.getShard()))
             .withSettings(ClusterShardingSettings.create(system).withNoPassivationStrategy()));
 
     Turns turns =

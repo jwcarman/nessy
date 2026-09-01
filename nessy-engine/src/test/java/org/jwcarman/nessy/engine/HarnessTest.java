@@ -210,4 +210,54 @@ class HarnessTest {
 
     subscription.close();
   }
+
+  /**
+   * Listening from where a previous listener stopped.
+   *
+   * <p>The machinery for this existed from the start — a ring buffer of recent events, a cursor on
+   * Subscribe, replay before the live feed — and no caller could reach it: subscribe hardcoded a
+   * null cursor, so the buffer was written on every narration and read by nothing. This is the test
+   * that makes it a feature rather than an intention.
+   */
+  @Test
+  @DisplayName("a listener that comes back gets what it missed, then the live feed")
+  void resubscribing_with_a_cursor_replays_the_gap() {
+    AgentId agent = AgentId.of("house-15");
+    List<AgentEvent> first = new CopyOnWriteArrayList<>();
+
+    AgentSubscription listening = harness.subscribe(agent, first::add);
+    harness.observe(agent, new HouseEvent("kitchen", "door opened"));
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(endings(first)).hasSize(1));
+    String lastSeen = first.getLast().id();
+    listening.close();
+
+    // Missed entirely: nobody is listening while this turn runs.
+    harness.observe(agent, new HouseEvent("hall", "motion"));
+    await().atMost(15, SECONDS).untilAsserted(() -> assertThat(first).isNotEmpty());
+
+    List<AgentEvent> second = new CopyOnWriteArrayList<>();
+    try (AgentSubscription resumed = harness.subscribe(agent, second::add, lastSeen)) {
+      await().atMost(15, SECONDS).untilAsserted(() -> assertThat(endings(second)).isNotEmpty());
+
+      // Everything replayed is strictly newer than the cursor, and the missed turn is in it.
+      assertThat(second).isNotEmpty();
+      assertThat(second).allSatisfy(event -> assertThat(event.id()).isGreaterThan(lastSeen));
+      assertThat(second)
+          .filteredOn(AgentEvent.Answered.class::isInstance)
+          .extracting(event -> ((AgentEvent.Answered) event).message().content())
+          .contains(List.of(new TextBlock("noted: hall: motion")));
+    }
+  }
+
+  @Test
+  @DisplayName("a cursor of null starts from now, replaying nothing")
+  void subscribing_without_a_cursor_replays_nothing() {
+    AgentId agent = AgentId.of("house-16");
+    harness.observe(agent, new HouseEvent("kitchen", "door opened"));
+
+    List<AgentEvent> heard = new CopyOnWriteArrayList<>();
+    try (AgentSubscription listening = harness.subscribe(agent, heard::add, null)) {
+      assertThat(heard).isEmpty();
+    }
+  }
 }

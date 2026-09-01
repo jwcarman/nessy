@@ -104,6 +104,12 @@ final class ShardedHarness<O> implements Harness<O> {
    */
   @Override
   public AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber) {
+    return subscribe(agentId, subscriber, null);
+  }
+
+  @Override
+  public AgentSubscription subscribe(
+      AgentId agentId, AgentSubscriber subscriber, String lastEventId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(subscriber, "subscriber must not be null");
     ActorRef<Object> bridge =
@@ -120,7 +126,7 @@ final class ShardedHarness<O> implements Harness<O> {
             "sub-" + type.name() + "-" + agentId.value() + "-" + Identifiers.next(),
             Props.empty());
     EntityRef<NarrationActor.Command> narrator = narrationFor(agentId);
-    narrator.tell(new NarrationActor.Subscribe(bridge.narrow(), null));
+    narrator.tell(new NarrationActor.Subscribe(bridge.narrow(), lastEventId));
     return () -> {
       narrator.tell(new NarrationActor.Unsubscribe(bridge.narrow()));
       bridge.tell(new Close());

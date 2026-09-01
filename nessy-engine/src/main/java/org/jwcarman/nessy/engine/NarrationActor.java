@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
@@ -23,6 +24,8 @@ import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.ActorContext;
 import org.apache.pekko.actor.typed.javadsl.Behaviors;
+import org.apache.pekko.actor.typed.javadsl.TimerScheduler;
+import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.jwcarman.nessy.api.AgentEvent;
 
 /**
@@ -64,20 +67,46 @@ final class NarrationActor {
 
   private record Gone(ActorRef<AgentEvent> subscriber) implements Command {}
 
+  /** The grace period ran out with nobody listening. */
+  private record NobodyListening() implements Command {}
+
   private NarrationActor() {}
 
-  static Behavior<Command> create() {
-    return Behaviors.setup(context -> new Listening(context).behavior());
+  /**
+   * How long an entity with no subscribers waits before unloading itself.
+   *
+   * <p>Not zero, because a subscriber leaving and another arriving is ordinary — a browser
+   * reconnecting, one REPL replacing another — and unloading on every gap churns the shard for
+   * nothing. Not long, because an entity nobody is listening to holds only memory.
+   */
+  static final Duration LINGER = Duration.ofMinutes(1);
+
+  private static final Object LINGER_KEY = "linger";
+
+  static Behavior<Command> create(ActorRef<ClusterSharding.ShardCommand> shard) {
+    return Behaviors.setup(
+        context ->
+            Behaviors.withTimers(timers -> new Listening(context, timers, shard).behavior()));
   }
 
   private static final class Listening {
 
     private final ActorContext<Command> context;
+    private final TimerScheduler<Command> timers;
+    private final ActorRef<ClusterSharding.ShardCommand> shard;
     private final Set<ActorRef<AgentEvent>> subscribers = new HashSet<>();
     private final Deque<AgentEvent> recent = new ArrayDeque<>(BUFFERED_EVENTS);
 
-    private Listening(ActorContext<Command> context) {
+    private Listening(
+        ActorContext<Command> context,
+        TimerScheduler<Command> timers,
+        ActorRef<ClusterSharding.ShardCommand> shard) {
       this.context = context;
+      this.timers = timers;
+      this.shard = shard;
+      // Created because someone is about to subscribe or something is about to be narrated — but
+      // if neither happens, this must not sit here forever waiting to be told nobody came.
+      timers.startSingleTimer(LINGER_KEY, new NobodyListening(), LINGER);
     }
 
     private Behavior<Command> behavior() {
@@ -86,6 +115,7 @@ final class NarrationActor {
           .onMessage(Subscribe.class, this::onSubscribe)
           .onMessage(Unsubscribe.class, this::onUnsubscribe)
           .onMessage(Gone.class, this::onGone)
+          .onMessage(NobodyListening.class, this::onNobodyListening)
           .build();
     }
 
@@ -103,6 +133,8 @@ final class NarrationActor {
     }
 
     private Behavior<Command> onSubscribe(Subscribe message) {
+      // Someone is listening again, so the countdown to unloading is off.
+      timers.cancel(LINGER_KEY);
       catchUp(message.subscriber(), message.afterEventId());
       if (subscribers.add(message.subscriber())) {
         context.watchWith(message.subscriber(), new Gone(message.subscriber()));
@@ -137,6 +169,28 @@ final class NarrationActor {
       if (subscribers.remove(subscriber)) {
         context.unwatch(subscriber);
       }
+      if (subscribers.isEmpty()) {
+        timers.startSingleTimer(LINGER_KEY, new NobodyListening(), LINGER);
+      }
+    }
+
+    /**
+     * Nobody has listened for a while, so there is nothing left here worth keeping in memory.
+     *
+     * <p>This is what makes it safe for the engine to register this entity with NO idle passivation
+     * strategy. Pekko's default unloads an entity after two minutes without MESSAGES, which for
+     * this actor destroys live subscriptions and leaves every listener silently deaf. Unloading on
+     * "nobody is listening" instead of "nothing has happened" is the same economy without that
+     * failure — an agent can think for an hour and its audience still hears the answer.
+     *
+     * <p>Checked again on arrival rather than trusted: a subscriber can arrive in the moment
+     * between this timer firing and being handled.
+     */
+    private Behavior<Command> onNobodyListening(NobodyListening message) {
+      if (subscribers.isEmpty()) {
+        shard.tell(new ClusterSharding.Passivate<>(context.getSelf()));
+      }
+      return Behaviors.same();
     }
   }
 }

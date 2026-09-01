@@ -65,6 +65,12 @@ final class FakeHarness implements Harness<String> {
 
   @Override
   public AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber) {
+    return subscribe(agentId, subscriber, null);
+  }
+
+  @Override
+  public AgentSubscription subscribe(
+      AgentId agentId, AgentSubscriber subscriber, String lastEventId) {
     subscribers.add(subscriber);
     everSubscribed = true;
     return () -> subscribers.remove(subscriber);

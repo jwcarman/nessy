@@ -57,4 +57,22 @@ public interface Harness<O> {
    * @return a handle for stopping the subscription
    */
   AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber);
+
+  /**
+   * Listens from where a previous listener left off.
+   *
+   * <p>{@code lastEventId} is the {@link AgentEvent#id()} of the last event that listener actually
+   * received. Everything narrated after it is replayed before live events resume, so a subscriber
+   * that dropped and came back does not have a hole where the events it missed should be.
+   *
+   * <p>This is the shape a browser hands you: SSE reconnects carry a {@code Last-Event-ID} header
+   * holding exactly this, so a controller can pass it straight through. Event ids are UUIDv7 and
+   * therefore time-ordered, which is what lets one double as a cursor.
+   *
+   * <p>Replay is best-effort and bounded: an agent keeps a limited window of recent events, so a
+   * listener gone long enough gets whatever is still there rather than everything it missed. A null
+   * {@code lastEventId} means "start from now" and is what {@link #subscribe(AgentId,
+   * AgentSubscriber)} passes.
+   */
+  AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber, String lastEventId);
 }
