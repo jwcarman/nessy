@@ -109,6 +109,45 @@ within its type.
 `SummarizingMemory.forget` deletes this row as well as delegating — a summary of a
 forgotten agent is exactly the thing forgetting is for.
 
+### 3.3 One row means the summary is recursive, and that has a cost
+
+One row per agent is the right shape — what matters is the single paragraph carried
+into the next call, and unbounded summary rows would defeat the point. But it forces
+something worth stating plainly rather than discovering:
+
+```
+sweep 1:  summarize(messages 1-100)          -> S1, covers = 100
+sweep 2:  summarize(S1 + messages 101-200)   -> S2, covers = 200
+```
+
+**From the second sweep onward, every summary is a summary of a summary.** Each
+generation is lossy over the last, so detail decays geometrically: a fact mentioned
+once at message 3 survives S1 with some probability, S2 with that probability
+squared, and is gone long before the agent is. The agent does not forget suddenly —
+it fades.
+
+Two alternatives, both rejected:
+
+- **A chain of summary rows**, concatenated at recall, so nothing is ever
+  re-summarized. It removes the drift and reintroduces the growth this module exists
+  to stop.
+- **Re-summarizing from the original messages every time.** No drift, because there
+  is only ever one generation — but the input grows without bound, so eventually
+  each sweep feeds the entire transcript to a model to produce one paragraph. That
+  is affordable for a long time and not forever.
+
+The second is worth remembering: it is strictly better while the transcript is small
+enough to re-read, and a later version could summarize from source until some
+ceiling and only then start compounding. That is a real improvement with a real
+threshold to pick, and picking it without measurement would be guessing.
+
+**What this means for the prompt.** Because the summary is its own next input, the
+summarizing prompt must ask for something stable under repetition — names, decisions,
+commitments, open questions — rather than prose that re-narrates. A summarizer told
+"summarize the conversation" produces something that degrades into vagueness after
+five generations. This is the part of the design most likely to be got wrong by
+writing the obvious prompt.
+
 ## 4. Where the model call goes
 
 **A `Memory` has never needed a model.** `recall`, `remember` and `forget` take an
@@ -208,6 +247,9 @@ one.
 - **A model that fails leaves the previous recall intact**, and a model that returns
   empty does too. These are the tests that stop a bad day becoming amnesia.
 - **`forget` takes the summary with it.**
+- **A second sweep summarizes the PREVIOUS summary plus the new messages**, not the
+  whole transcript — asserted on what the model was handed, because this is the
+  behaviour that bounds the cost and the one a well-meaning refactor would undo.
 - **Concurrency**: two sweeps over the same row produce one summary and one model
   call — the `FOR UPDATE` claim, tested the way the backlog's take is.
 - **A late sweep is not a wrong answer**: with work pending, recall returns the
@@ -218,11 +260,12 @@ one.
 
 ## 6. Out of scope
 
-- **Summarizing the summary.** Eventually a summary of summaries drifts; recursive
-  compaction is its own problem with its own failure mode, and nothing needs it yet.
 - **Summarizing on demand** — "compress this agent now, I am about to ask it
   something expensive". Plausible, unrequested, and it would need a receipt, which
   the background design deliberately does not have.
 - **Choosing what to keep verbatim by importance** rather than recency. Interesting,
   unmeasured, and a different feature.
 - **A summarizer agent** (§4), until summarizing wants tools.
+- **Summarizing from source until a ceiling** (§3.3), which would delay compounding
+  drift. Strictly better while a transcript is small enough to re-read; the ceiling
+  is the part that needs measuring first.
