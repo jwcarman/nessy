@@ -34,9 +34,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * executor's Jackson binding with zero extra code. The freeform tier is the pre-built {@code T =
  * Intent} instance returned by {@link #freeform(IntentStore)}.
  *
- * <p>A named public class, not {@link Tool#of} — users reference {@code IntentTool} directly to
- * wire the same store into both this tool's grant and the {@link IntentEnricher} of the tool whose
- * call the declaration is meant to explain.
+ * <p>A named public class rather than an anonymous one, because callers reference {@code
+ * IntentTool} directly: the same store has to reach both this tool and the {@link IntentEnricher}
+ * of the tool whose call the declaration is meant to explain.
  *
  * @param <T> the declared-intent vocabulary this tool accepts
  */
