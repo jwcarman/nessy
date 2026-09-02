@@ -21,8 +21,6 @@ import static org.awaitility.Awaitility.await;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
@@ -36,10 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.AnswerMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.HistoryMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
@@ -66,9 +61,6 @@ class ForgetRaceTest {
 
   private HandBrake brake;
 
-  /** Opened once the finishing turn has written its answer, letting the forget carry on. */
-  private final CountDownLatch answerWritten = new CountDownLatch(1);
-
   @BeforeAll
   static void start() {
     testKit = ClusterOfOne.start();
@@ -86,17 +78,12 @@ class ForgetRaceTest {
 
   @Test
   @DisplayName("does not leave the answer behind it")
-  void the_write_does_not_land_inside_the_delete() throws InterruptedException {
+  void the_write_does_not_land_inside_the_delete() {
     brake = new HandBrake();
     TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
-            AgentType.of("racing"),
-            answeringThenHolding(),
-            List.of(),
-            brake,
-            this::pausingAfterForget);
+            testKit.system(), AgentType.of("racing"), answeringThenHolding(), List.of(), brake);
     AgentId agentId = shardedAgent("racing", parts, shard);
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
@@ -120,38 +107,6 @@ class ForgetRaceTest {
                 assertThat(parts.remembered().of(agentId))
                     .as("what a forgotten agent remembers")
                     .isEmpty());
-  }
-
-  /**
-   * A memory that stops the world once it has been wiped.
-   *
-   * <p>Forgetting wipes memory, then the backlog, then claims. Holding it open right after the wipe
-   * is the window the finishing turn's write lands in -- it redeems its answer from claims, which
-   * are still there, and puts it back into a memory that was just emptied.
-   */
-  private Memory pausingAfterForget(Memory delegate) {
-    answerWritten.countDown();
-    return new Memory() {
-      @Override
-      public Context recall(AgentId agentId) {
-        return delegate.recall(agentId);
-      }
-
-      @Override
-      public void remember(AgentId agentId, HistoryMessage message) {
-        delegate.remember(agentId, message);
-      }
-
-      @Override
-      public void forget(AgentId agentId) {
-        delegate.forget(agentId);
-        try {
-          answerWritten.await(10, TimeUnit.SECONDS);
-        } catch (InterruptedException interrupted) {
-          Thread.currentThread().interrupt();
-        }
-      }
-    };
   }
 
   /** Scripted, and it pulls the hand brake on its way out: everything after this is the test's. */

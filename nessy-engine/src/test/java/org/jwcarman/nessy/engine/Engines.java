@@ -127,23 +127,6 @@ final class Engines {
       Model model,
       List<ToolBinding<?>> bindings,
       Executor blocking) {
-    return of(system, type, model, bindings, blocking, memory -> memory);
-  }
-
-  /**
-   * The same, with the memory wrappable.
-   *
-   * <p>Forgetting deletes memory, backlog and claims in that order, and the window a racing write
-   * lands in is BETWEEN them. A test that wants that window on purpose has to be able to stop the
-   * world inside the memory, which is what this is for.
-   */
-  static Parts of(
-      ActorSystem<?> system,
-      AgentType type,
-      Model model,
-      List<ToolBinding<?>> bindings,
-      Executor blocking,
-      java.util.function.UnaryOperator<Memory> wrapping) {
     DataSource dataSource = TestDatabase.fresh();
     Claims claims = new Claims(dataSource);
     BacklogStore<HouseEvent> backlog =
@@ -162,7 +145,7 @@ final class Engines {
             system,
             new Instructions.Dependencies(
                 type,
-                wrapping.apply(recording(remembered)),
+                recording(remembered),
                 model,
                 "you watch a house",
                 256,

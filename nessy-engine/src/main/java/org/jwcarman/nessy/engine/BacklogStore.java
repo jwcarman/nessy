@@ -135,11 +135,20 @@ public final class BacklogStore<O> {
 
     @Override
     public boolean equals(Object other) {
-      return other instanceof Row row
-          && Objects.equals(itemId, row.itemId)
-          && Objects.equals(receivedAt, row.receivedAt)
-          && Arrays.equals(observation, row.observation)
-          && Objects.equals(takenClaim, row.takenClaim);
+      // Destructured with "other" names on purpose: the components are called the same things as
+      // this record's own fields, so binding them bare would shadow every field it is comparing
+      // against and the comparison would silently be with itself.
+      return other
+              instanceof
+              Row(
+                  TurnId otherItemId,
+                  Instant otherReceivedAt,
+                  byte[] otherObservation,
+                  String otherTakenClaim)
+          && Objects.equals(itemId, otherItemId)
+          && Objects.equals(receivedAt, otherReceivedAt)
+          && Arrays.equals(observation, otherObservation)
+          && Objects.equals(takenClaim, otherTakenClaim);
     }
 
     @Override
