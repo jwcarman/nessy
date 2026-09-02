@@ -93,6 +93,10 @@ describe, then hand the result to `connect(...)`. `connect` performs the MCP
 
 ## A worked example: DeepWiki
 
+`nessy-examples/mcp` is this, runnable — see
+[its README](https://github.com/jwcarman/nessy/tree/main/nessy-examples/mcp).
+
+
 [DeepWiki](https://deepwiki.com) publishes a no-auth public MCP server for
 researching public GitHub repositories — a convenient real server to import
 against, since it needs no credential of its own:

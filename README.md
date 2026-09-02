@@ -87,7 +87,7 @@ public static void main(String[] args) {
 
 ## Try it
 
-`nessy-examples` has three runnable modules. All three want an
+`nessy-examples` has four runnable modules. All three want an
 OpenAI-compatible endpoint — [LM Studio](https://lmstudio.ai) on `:1234`
 works, and costs nothing:
 
@@ -110,6 +110,14 @@ reconnects.
 
 ```bash
 cd nessy-examples/chat-web && ../../mvnw spring-boot:run
+```
+
+**`mcp`** — a terminal agent whose tools come from somebody else's server.
+It connects to DeepWiki's public MCP endpoint, grants the three tools it
+advertises, and gates the one that spends DeepWiki's own model budget:
+
+```bash
+./mvnw -q -pl nessy-examples/mcp -am compile exec:java
 ```
 
 **`watchman`** — the Spring Boot soak. It lives on a real box, does rounds

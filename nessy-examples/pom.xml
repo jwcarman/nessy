@@ -46,6 +46,7 @@
     <module>watchman</module>
     <module>chat-cli</module>
     <module>chat-web</module>
+    <module>mcp</module>
     <!-- THROWAWAY SPIKE: the watchman ported onto the actor design, to compare side by side. -->
   </modules>
   <dependencies>
