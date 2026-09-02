@@ -30,7 +30,7 @@ environment), and you have a `Harness<String>`.
 | `nessy.provider` | `unknown` — the vendor name observability reports |
 | `nessy.max-tokens` | 4096 |
 | `nessy.capabilities` | none |
-| `nessy.reply-keys` | ephemeral — see below |
+| `nessy.reply-token-encryption-keys` | ephemeral — see below |
 
 ## Every bean backs off
 
@@ -82,7 +82,7 @@ A `ReplyToken` is the address a parked call is answered at, and it is
 **encrypted**: the coordinates inside it are sealed with AES-GCM so the
 holder cannot read them, and cannot forge one either.
 
-`nessy.reply-keys` are those encryption keys, base64-encoded — secrets,
+`nessy.reply-token-encryption-keys` are those keys, base64-encoded — secrets,
 handled like any other. AES accepts 16, 24 or 32 bytes; **use 32**.
 
 ### Minting one
@@ -111,7 +111,7 @@ caused it.
 
 ```yaml
 nessy:
-  reply-keys:
+  reply-token-encryption-keys:
     - ${NESSY_REPLY_KEY_CURRENT}        # base64 of 32 random bytes
     - ${NESSY_REPLY_KEY_PREVIOUS}       # the one before it, kept to read old tokens
 ```

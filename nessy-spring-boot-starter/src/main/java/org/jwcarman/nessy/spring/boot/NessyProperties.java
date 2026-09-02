@@ -46,10 +46,12 @@ import org.springframework.util.FileCopyUtils;
  * @param maxTokens the longest answer to allow
  * @param capabilities what the application would LIKE its provider to use; an adapter that cannot
  *     oblige simply does not
- * @param replyKeys the AES keys reply tokens are sealed with, newest first — base64, 32 bytes each.
- *     Absent means an EPHEMERAL key, which is fine for a single process that never restarts
- *     mid-approval and wrong for anything else: a token minted before a restart cannot be read
- *     after one, so every parked call becomes unanswerable.
+ * @param replyTokenEncryptionKeys the AES keys a {@code ReplyToken}'s coordinates are sealed with,
+ *     newest first — base64, and 16, 24 or 32 bytes each (use 32). Named for what they ARE: "reply
+ *     keys" read as an address book rather than as secrets, and nobody could tell from the property
+ *     what to put in it. Absent means an EPHEMERAL key, which is fine for a single process that
+ *     never restarts mid-approval and wrong for anything else: a token minted before a restart
+ *     cannot be read after one, so every parked call becomes unanswerable.
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(
@@ -60,7 +62,7 @@ public record NessyProperties(
     String provider,
     Integer maxTokens,
     Set<Capability> capabilities,
-    java.util.List<String> replyKeys) {
+    java.util.List<String> replyTokenEncryptionKeys) {
 
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
@@ -70,7 +72,10 @@ public record NessyProperties(
         capabilities == null || capabilities.isEmpty()
             ? Set.of()
             : Set.copyOf(EnumSet.copyOf(capabilities));
-    replyKeys = replyKeys == null ? java.util.List.of() : java.util.List.copyOf(replyKeys);
+    replyTokenEncryptionKeys =
+        replyTokenEncryptionKeys == null
+            ? java.util.List.of()
+            : java.util.List.copyOf(replyTokenEncryptionKeys);
   }
 
   /**

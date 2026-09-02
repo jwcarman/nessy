@@ -124,20 +124,21 @@ public class NessyAutoConfiguration {
   /**
    * The keys reply tokens are sealed with, newest first.
    *
-   * <p>An absent {@code nessy.reply-keys} means an EPHEMERAL key, and that is said out loud for the
-   * same reason the in-memory substrate is: a token minted before a restart cannot be read after
-   * one, so every call parked on a human silently becomes unanswerable.
+   * <p>An absent {@code nessy.reply-token-encryption-keys} means an EPHEMERAL key, and that is said
+   * out loud for the same reason the in-memory substrate is: a token minted before a restart cannot
+   * be read after one, so every call parked on a human silently becomes unanswerable.
    */
   @Bean
   @ConditionalOnMissingBean
   public ReplyTokens nessyReplyTokens(NessyProperties properties) {
-    List<String> keys = properties.replyKeys();
+    List<String> keys = properties.replyTokenEncryptionKeys();
     if (keys.isEmpty()) {
       org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
           .warn(
-              "NESSY REPLY TOKENS ARE EPHEMERAL: no nessy.reply-keys configured, so any approval"
-                  + " parked on a person becomes unanswerable after a restart. Configure a"
-                  + " base64 32-byte key for anything that is not a test.");
+              "NESSY REPLY TOKENS ARE EPHEMERAL: no nessy.reply-token-encryption-keys"
+                  + " configured, so any approval parked on a person becomes unanswerable after a"
+                  + " restart. Configure a base64 32-byte AES key for anything that is not a test:"
+                  + " openssl rand -base64 32");
       return ReplyTokens.ephemeral();
     }
     return ReplyTokens.withKeys(
