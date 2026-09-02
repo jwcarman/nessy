@@ -96,6 +96,19 @@ class ReplyTokensTest {
     assertThatThrownBy(() -> tokens.read(nonsense)).isInstanceOf(IllegalArgumentException.class);
   }
 
+  /**
+   * {@code "not-a-token"} above is refused for being too SHORT once decoded — base64url's alphabet
+   * happens to accept every character in it. This one is refused at the decode step itself: it
+   * contains characters no base64url alphabet has ever accepted.
+   */
+  @Test
+  @DisplayName("text that is not even base64 is refused at the decode step")
+  void text_outside_the_base64_alphabet_is_refused() {
+    ReplyToken notBase64 = ReplyToken.of("not valid base64!! @@@");
+
+    assertThatThrownBy(() -> tokens.read(notBase64)).isInstanceOf(IllegalArgumentException.class);
+  }
+
   @Test
   @DisplayName("two tokens for the same call differ: a nonce is never reused")
   void minting_twice_does_not_produce_the_same_token() {
@@ -197,6 +210,35 @@ class ReplyTokensTest {
       assertThatThrownBy(() -> new ReplyTokens(none))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("at least one key");
+    }
+
+    /**
+     * A hardware or KMS-backed key does not hand back its bytes at all — {@code getEncoded()}
+     * returns {@code null} by contract, not a short array. Length cannot be checked on nothing, so
+     * construction has to let it through rather than treat "unknowable" as "wrong".
+     */
+    @Test
+    @DisplayName("a key that will not disclose its bytes is accepted rather than rejected")
+    void a_key_with_no_disclosable_material_is_accepted() {
+      javax.crypto.SecretKey undisclosed =
+          new javax.crypto.SecretKey() {
+            @Override
+            public String getAlgorithm() {
+              return "AES";
+            }
+
+            @Override
+            public String getFormat() {
+              return null;
+            }
+
+            @Override
+            public byte[] getEncoded() {
+              return null;
+            }
+          };
+
+      assertThat(new ReplyTokens(java.util.List.of(undisclosed))).isNotNull();
     }
   }
 }
