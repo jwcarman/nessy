@@ -43,7 +43,11 @@ context-pipeline reform.)
   no model-provider network access, always.
 - **Build economics**: `clean verify` on the whole reactor is the FINAL GATE,
   run ONCE per task before its last commit — never per step. While iterating,
-  use warm scoped builds: `./mvnw -q -pl <module> -am test` (no `clean`).
+  use warm scoped builds: `./mvnw -q -pl :<artifactId> -am test` (no `clean`).
+  **Select by artifactId, with the colon** — `-pl :nessy-model-openai`, never
+  `-pl nessy-model/openai`. The path form breaks whenever a module moves; the
+  artifactId form does not, and modules live under family directories
+  (`nessy-model/`, `nessy-memory/`, `nessy-spring-boot/`, `nessy-examples/`).
   Never run two Maven processes concurrently in one worktree (they collide on
   `target/`). Parallel reactor builds (`-T 1C`) are permitted once verified
   green in a worktree.

@@ -27,33 +27,25 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>nessy-model-anthropic</artifactId>
-  <name>Nessy Model Anthropic</name>
+  <artifactId>nessy-memory</artifactId>
+  <packaging>pom</packaging>
+  <name>Nessy Memory</name>
+  <description>What an agent remembers, and the stages that assemble it</description>
 
-  <dependencies>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.anthropic</groupId>
-      <artifactId>anthropic-java</artifactId>
-    </dependency>
-  </dependencies>
+  <properties>
+    <!-- An AGGREGATOR, not a parent: its children still inherit from nessy-parent, so their
+         published coordinates and inherited configuration are exactly what they were before the
+         move. Nothing consumes this pom, so it is not published. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.source.skip>true</maven.source.skip>
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <gpg.skip>true</gpg.skip>
+  </properties>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <archive>
-            <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.model.anthropic</Automatic-Module-Name>
-            </manifestEntries>
-          </archive>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
+  <modules>
+    <module>pipeline</module>
+    <module>notebook</module>
+    <module>plan</module>
+  </modules>
+
 </project>

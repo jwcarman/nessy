@@ -101,7 +101,7 @@ export NESSY_MODEL=<a model id your endpoint serves>
 tool that asks at the prompt:
 
 ```bash
-./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
 **`chat-web`** — the same agent as a page: streamed answers over SSE, an
@@ -117,7 +117,7 @@ It connects to DeepWiki's public MCP endpoint, grants the three tools it
 advertises, and gates the one that spends DeepWiki's own model budget:
 
 ```bash
-./mvnw -q -pl nessy-examples/mcp -am compile exec:java
+./mvnw -q -pl :nessy-example-mcp -am compile exec:java
 ```
 
 **`policy`** — the gate as data. An `Approver` that asks Open Policy Agent,
@@ -126,7 +126,7 @@ ships with a release. No model and no key: it runs the real OPA binary in a
 container.
 
 ```bash
-./mvnw -pl nessy-examples/policy test -Dnessy.excludedGroups=
+./mvnw -pl :nessy-example-policy test -Dnessy.excludedGroups=
 ```
 
 **`watchman`** — the Spring Boot soak. It lives on a real box, does rounds

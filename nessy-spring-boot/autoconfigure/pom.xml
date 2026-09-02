@@ -25,6 +25,8 @@
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
   <artifactId>nessy-spring-boot-autoconfigure</artifactId>

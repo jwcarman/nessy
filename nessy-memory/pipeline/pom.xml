@@ -25,44 +25,19 @@
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-memory-plan</artifactId>
-  <name>Nessy Memory Plan</name>
-  <description>A task list the model keeps and sticks to, carried in every context</description>
+  <artifactId>nessy-memory-pipeline</artifactId>
+  <name>Nessy Memory Pipeline</name>
+  <description>A memory that recalls through ordered stages</description>
 
   <dependencies>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-jdbc</artifactId>
-    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
-    </dependency>
-    <!-- The plan reaches the model as a pipeline stage; without one it is a store nothing reads. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-pipeline</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <!-- Only SubstratePlanStore needs this. The vocabulary above it needs nothing. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

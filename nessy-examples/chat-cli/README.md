@@ -60,16 +60,16 @@ runtime, which costs nothing:
 OPENAI_API_KEY=not-needed \
 OPENAI_BASE_URL=http://localhost:1234/v1 \
 NESSY_MODEL=qwen/qwen3.6-35b-a3b \
-  ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+  ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
 Against a real vendor, it is one variable:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
-GEMINI_API_KEY=…    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
-XAI_API_KEY=…       ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
-OPENAI_API_KEY=…    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+ANTHROPIC_API_KEY=… ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+GEMINI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+XAI_API_KEY=…       ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+OPENAI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
 `NESSY_MODEL` names a specific model instead of the winning provider's default.

@@ -25,17 +25,31 @@
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-memory-pipeline</artifactId>
-  <name>Nessy Memory Pipeline</name>
-  <description>A memory that recalls through ordered stages</description>
+  <artifactId>nessy-spring-boot-starter</artifactId>
+  <name>Nessy Spring Boot Starter</name>
+  <description>Everything a Spring Boot application needs to run an agent: add this one dependency.</description>
 
+  <!--
+    A starter carries NO CODE. It is a dependency aggregator, which is the convention every
+    Spring Boot starter follows: the auto-configuration lives in its own artifact, so an
+    application that wants the beans without the transitive opinions can depend on
+    nessy-spring-boot-autoconfigure directly and assemble the rest itself.
+
+    Keeping the two apart also keeps the starter honest. Adding a dependency here is a
+    decision about what every consumer gets; adding one to the autoconfigure module is a
+    decision about what the code needs to compile. Merged, the second silently becomes the
+    first.
+  -->
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-api</artifactId>
+      <artifactId>nessy-spring-boot-autoconfigure</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>
+
 </project>

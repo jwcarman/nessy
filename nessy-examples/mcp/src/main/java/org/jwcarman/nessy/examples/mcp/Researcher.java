@@ -46,7 +46,7 @@ import org.jwcarman.nessy.tool.mcp.McpToolbox;
  * export OPENAI_API_KEY=not-needed
  * export OPENAI_BASE_URL=http://localhost:1234/v1
  * export NESSY_MODEL=<a model your endpoint serves>
- * ./mvnw -q -pl nessy-examples/mcp -am compile exec:java
+ * ./mvnw -q -pl :nessy-example-mcp -am compile exec:java
  * }</pre>
  */
 public final class Researcher {

@@ -55,7 +55,7 @@ The tests are tagged `container` and skipped by default, so `clean verify`
 still passes with no Docker:
 
 ```bash
-./mvnw -pl nessy-examples/policy test -Dnessy.excludedGroups=
+./mvnw -pl :nessy-example-policy test -Dnessy.excludedGroups=
 ```
 
 They load the shipped `nessy.rego` — not a copy — into the real OPA binary.

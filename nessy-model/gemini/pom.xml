@@ -25,10 +25,12 @@
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-model-openai</artifactId>
-  <name>Nessy Model OpenAI</name>
+  <artifactId>nessy-model-gemini</artifactId>
+  <name>Nessy Model Gemini</name>
 
   <dependencies>
     <dependency>
@@ -36,8 +38,8 @@
       <artifactId>nessy-spi</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.openai</groupId>
-      <artifactId>openai-java</artifactId>
+      <groupId>com.google.genai</groupId>
+      <artifactId>google-genai</artifactId>
     </dependency>
   </dependencies>
 
@@ -49,7 +51,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.model.openai</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.model.gemini</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

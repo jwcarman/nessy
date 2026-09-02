@@ -402,7 +402,7 @@ replay, the same discipline Gemini's own unadvertised capabilities document.
 
     ```sh
     AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
-      ./mvnw test -Dnessy.excludedGroups= -pl nessy-model-bedrock
+      ./mvnw test -Dnessy.excludedGroups= -pl :nessy-model-bedrock
     ```
 
 ## The OpenAI-compatible universe

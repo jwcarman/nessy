@@ -60,19 +60,12 @@
     <module>nessy-engine</module>
     <module>nessy-testing</module>
     <module>nessy-store-tests</module>
-    <module>nessy-model-anthropic</module>
-    <module>nessy-model-openai</module>
-    <module>nessy-model-gemini</module>
-    <module>nessy-model-bedrock</module>
-    <module>nessy-model-discovery</module>
+    <module>nessy-model</module>
     <module>nessy-console</module>
-    <module>nessy-memory-pipeline</module>
-    <module>nessy-memory-notebook</module>
-    <module>nessy-memory-plan</module>
+    <module>nessy-memory</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
-    <module>nessy-spring-boot-autoconfigure</module>
-    <module>nessy-spring-boot-starter</module>
+    <module>nessy-spring-boot</module>
     <module>nessy-examples</module>
   </modules>
 

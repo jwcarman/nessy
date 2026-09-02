@@ -27,27 +27,27 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>nessy-spring-boot-starter</artifactId>
-  <name>Nessy Spring Boot Starter</name>
-  <description>Everything a Spring Boot application needs to run an agent: add this one dependency.</description>
+  <artifactId>nessy-model</artifactId>
+  <packaging>pom</packaging>
+  <name>Nessy Model Providers</name>
+  <description>Adapters for the model providers Nessy speaks to</description>
 
-  <!--
-    A starter carries NO CODE. It is a dependency aggregator, which is the convention every
-    Spring Boot starter follows: the auto-configuration lives in its own artifact, so an
-    application that wants the beans without the transitive opinions can depend on
-    nessy-spring-boot-autoconfigure directly and assemble the rest itself.
+  <properties>
+    <!-- An AGGREGATOR, not a parent: its children still inherit from nessy-parent, so their
+         published coordinates and inherited configuration are exactly what they were before the
+         move. Nothing consumes this pom, so it is not published. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.source.skip>true</maven.source.skip>
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <gpg.skip>true</gpg.skip>
+  </properties>
 
-    Keeping the two apart also keeps the starter honest. Adding a dependency here is a
-    decision about what every consumer gets; adding one to the autoconfigure module is a
-    decision about what the code needs to compile. Merged, the second silently becomes the
-    first.
-  -->
-  <dependencies>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spring-boot-autoconfigure</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-  </dependencies>
+  <modules>
+    <module>anthropic</module>
+    <module>openai</module>
+    <module>gemini</module>
+    <module>bedrock</module>
+    <module>discovery</module>
+  </modules>
 
 </project>

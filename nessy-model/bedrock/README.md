@@ -175,5 +175,5 @@ Haiku 4.5). Rerun anytime:
 
 ```sh
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
-  ./mvnw test -Dnessy.excludedGroups= -pl nessy-model-bedrock
+  ./mvnw test -Dnessy.excludedGroups= -pl :nessy-model-bedrock
 ```

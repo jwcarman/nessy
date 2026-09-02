@@ -36,7 +36,7 @@ irreversible — without being something you could point at a stranger.
 Defaults target [LM Studio](https://lmstudio.ai) on `localhost:1234`:
 
 ```bash
-./mvnw -q -pl nessy-examples/chat-web -am spring-boot:run
+./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
 
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
@@ -48,7 +48,7 @@ Any OpenAI-compatible endpoint works:
 CHAT_MODEL_URL=https://api.openai.com/v1 \
 CHAT_MODEL_API_KEY=sk-… \
 CHAT_MODEL_ID=gpt-4o-mini \
-  ./mvnw -q -pl nessy-examples/chat-web -am spring-boot:run
+  ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
 
 ## What it does not do

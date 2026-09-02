@@ -95,7 +95,7 @@ package-private seam that seam-tests fake directly instead.
 and a real tool-call round trip against the Gemini Developer API. **Live-validated 2026-08-15**
 against `gemini-3.6-flash` with a real `GEMINI_API_KEY`: both live tests pass, including the
 tool-call round trip that exercises `thoughtSignature` capture and replay for real. Rerun it
-anytime: `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl nessy-model-gemini`.
+anytime: `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl :nessy-model-gemini`.
 
 Tool-call replay carries real `thoughtSignature` bytes captured from the stream, and
 pre-existing histories that carry no signature degrade gracefully via Google's own sanctioned
