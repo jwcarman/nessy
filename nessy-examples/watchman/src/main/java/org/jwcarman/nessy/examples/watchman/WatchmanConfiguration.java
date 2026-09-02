@@ -161,7 +161,7 @@ public class WatchmanConfiguration {
    * <p>The assessment lands on the request, so the page can say why it is asking rather than only
    * what it is asking about.
    */
-  private static Approver gatedOnRisk(String tool, Approver desk) {
+  static Approver gatedOnRisk(String tool, Approver desk) {
     return Risk.assessing(assessorFor(tool))
         .approvingBelow(RiskLevel.MODERATE)
         .denyingAtOrAbove(RiskLevel.VERY_HIGH)

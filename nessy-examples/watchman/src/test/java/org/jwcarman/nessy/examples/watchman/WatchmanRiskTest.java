@@ -69,6 +69,37 @@ class WatchmanRiskTest {
   }
 
   @Test
+  @DisplayName("the gate actually reaches the desk — the middle band is not a comment")
+  void pruning_images_is_put_to_a_person() {
+    java.util.concurrent.atomic.AtomicBoolean asked =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    org.jwcarman.nessy.api.tool.Approver desk =
+        request -> {
+          asked.set(true);
+          return org.jwcarman.nessy.api.Awaited.deferred(Instant.EPOCH.plusSeconds(3600));
+        };
+
+    var answer = WatchmanConfiguration.gatedOnRisk("prune_images", desk).approve(pruning());
+
+    assertThat(asked).as("a soak that never parks cannot tell you this").isTrue();
+    assertThat(answer).isInstanceOf(org.jwcarman.nessy.api.Awaited.Deferred.class);
+  }
+
+  @Test
+  @DisplayName("and the person is told why they are being asked")
+  void the_assessment_reaches_whoever_answers() {
+    ApprovalRequest request = pruning();
+
+    WatchmanConfiguration.gatedOnRisk(
+            "prune_images", req -> org.jwcarman.nessy.api.Awaited.deferred(Instant.EPOCH))
+        .approve(request);
+
+    assertThat(request.fact(org.jwcarman.nessy.api.tool.risk.Risk.FACT))
+        .map(node -> node.asText())
+        .contains("MODERATE");
+  }
+
+  @Test
   @DisplayName("the question a person is shown names the command they are consenting to")
   void the_description_is_the_command() {
     assertThat(pruning().description()).isEqualTo("docker image prune -af");

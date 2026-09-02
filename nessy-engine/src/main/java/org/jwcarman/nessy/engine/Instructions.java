@@ -73,6 +73,8 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  */
 final class Instructions {
 
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(Instructions.class);
+
   private static final String ASKED_KEY = "asked";
   private static final String ANSWER_KEY = "answer";
 
@@ -117,7 +119,44 @@ final class Instructions {
     this.inputCodec = JsonCodec.of(mapper, UserMessage.class);
   }
 
-  /** Performs one instruction. Never blocks the calling thread on anything that can be slow. */
+  /**
+   * Performs a decision's instructions, IN ORDER, on the blocking executor.
+   *
+   * <p>One hop for the whole list rather than one per instruction, because the order is load
+   * bearing: a turn remembers before it releases, since releasing drops the claims the exchange is
+   * written from. Firing each instruction independently would let the release win that race.
+   *
+   * <p>The hop is why the instructions below may block. They read claims, write the transcript and
+   * arm alarms — all JDBC, and none of it belongs on an actor's thread, which is also the thread
+   * running sharding and cluster gossip. Instructions that wait on something SLOW (a model, a tool,
+   * an approver) hand that off again and return, so one long call never occupies this worker.
+   *
+   * <p>Returns immediately: the caller is an actor, and an actor waiting on storage is the thing
+   * this exists to prevent.
+   */
+  void performAll(
+      AgentId agentId,
+      AgentState state,
+      List<Instruction> instructions,
+      Map<String, String> carried) {
+    if (instructions.isEmpty()) {
+      return;
+    }
+    CompletableFuture.runAsync(
+            () ->
+                instructions.forEach(instruction -> perform(agentId, state, instruction, carried)),
+            deps.blocking())
+        .exceptionally(
+            failure -> {
+              // Nothing downstream is waiting on these, so a failure here would otherwise be a
+              // silent no-op: the turn simply stops, with no message and no log line.
+              LOG.error(
+                  "[{}] instructions failed for turn {}", agentId.value(), state.turnId(), failure);
+              return null;
+            });
+  }
+
+  /** Performs one instruction. May block: {@link #performAll} put it on the right thread. */
   void perform(
       AgentId agentId, AgentState state, Instruction instruction, Map<String, String> carried) {
     switch (instruction) {

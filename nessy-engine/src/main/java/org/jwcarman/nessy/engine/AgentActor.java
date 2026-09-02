@@ -141,7 +141,11 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
         .persist(decision.next())
         .thenRun(
             next -> {
-              decision.then().forEach(each -> run(next, each, carried));
+              // Handed off as ONE task, in order, on the blocking executor. Pekko runs this on the
+              // actor's own thread, which is also carrying sharding and cluster gossip, so a claim
+              // read against a remote database here would slow the cluster down and look like
+              // anything but storage.
+              instructions.performAll(agentId, next, decision.then(), carried);
               sleepIfAsked(next, decision);
             });
   }
@@ -181,10 +185,6 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
       return new NessyMessage.Ack(false, "no call \"" + callId + "\" is waiting for an answer");
     }
     return new NessyMessage.Ack(true, "accepted");
-  }
-
-  private void run(AgentState state, Instruction instruction, Map<String, String> carried) {
-    instructions.perform(agentId, state, instruction, carried);
   }
 
   /**
