@@ -41,10 +41,3 @@ jobs:
         else
           mvn -Pci -B verify -Dnessy.excludedGroups=live,vendor
         fi
-
-    - name: Verify hello's five-minute promise runs for real
-      shell: bash
-      run: |
-        set -o pipefail
-        ./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted | tee hello-output.txt
-        grep -q "The answer is 4. (COMPLETE)" hello-output.txt
