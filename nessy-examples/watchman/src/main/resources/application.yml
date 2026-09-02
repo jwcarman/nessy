@@ -45,7 +45,14 @@ nessy:
     - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
 
 watchman:
-  cron: ${WATCHMAN_CRON:0 */30 * * * *}
+  # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",
+  # and there is nothing about 3am that a watchman cares about.
+  #
+  # This key used to be `cron`, which nothing read -- WatchmanRounds has always been @Scheduled on
+  # ${watchman.round-interval}, and it is not even a field on WatchmanProperties. Every attempt to
+  # override the schedule was accepted in silence and ignored, and the app ran the PT30M default
+  # while looking perfectly configured.
+  round-interval: ${WATCHMAN_ROUND_INTERVAL:PT30M}
   approval-term: 3d
   ask-timeout: 10s
   scripted: ${WATCHMAN_SCRIPTED:false}
