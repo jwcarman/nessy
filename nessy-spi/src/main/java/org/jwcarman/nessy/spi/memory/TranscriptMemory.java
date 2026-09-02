@@ -83,6 +83,7 @@ public final class TranscriptMemory implements Memory {
       "INSERT INTO nessy_transcript (agent_type, agent_id, seq, payload, chars) "
           + "VALUES (?, ?, ?, ?, ?)";
   private static final String AGENT_ID_NOT_NULL = "agentId must not be null";
+  private static final String PAYLOAD_COLUMN = "payload";
 
   private final JdbcClient jdbc;
   private final Codec<HistoryMessage> codec = Codecs.factory().create(HistoryMessage.class);
@@ -122,7 +123,7 @@ public final class TranscriptMemory implements Memory {
           jdbc
               .sql(SELECT_ALL)
               .params(agentType, agentId.value())
-              .query((row, number) -> decode(row.getString("payload")))
+              .query((row, number) -> decode(row.getString(PAYLOAD_COLUMN)))
               .list()
               .stream()
               .map(ContextMessage.class::cast)
@@ -151,7 +152,7 @@ public final class TranscriptMemory implements Memory {
         jdbc
             .sql(SELECT_AFTER)
             .params(agentType, agentId.value(), seq)
-            .query((row, number) -> decode(row.getString("payload")))
+            .query((row, number) -> decode(row.getString(PAYLOAD_COLUMN)))
             .list()
             .stream()
             .map(ContextMessage.class::cast)
@@ -229,7 +230,7 @@ public final class TranscriptMemory implements Memory {
                     if (!newest.isEmpty() && spent + size > maxCharacters) {
                       break;
                     }
-                    newest.add(decode(rows.getString("payload")));
+                    newest.add(decode(rows.getString(PAYLOAD_COLUMN)));
                     spent += size;
                   }
                   return newest;
