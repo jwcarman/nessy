@@ -133,11 +133,12 @@ public final class EngineConfig {
   }
 
   ActorSystem<?> system() {
-    return required(system, "system");
+    return Objects.requireNonNull(system, "an engine cannot be built without an actor system");
   }
 
   ModelProvider models() {
-    return required(models, "models");
+    return Objects.requireNonNull(
+        models, "an engine cannot be built without a model provider to resolve its models");
   }
 
   /** Empty when the caller supplied none, which is how the engine knows to build its own. */
@@ -167,12 +168,5 @@ public final class EngineConfig {
 
   Traces traces() {
     return traces;
-  }
-
-  private static <T> T required(T value, String what) {
-    if (value == null) {
-      throw new IllegalStateException(what + " is required; an engine cannot be built without one");
-    }
-    return value;
   }
 }

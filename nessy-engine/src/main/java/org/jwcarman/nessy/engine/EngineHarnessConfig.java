@@ -112,26 +112,18 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
 
   /** Read once, by the factory, after the customizer has had its say. */
   AgentType agentType() {
-    if (type == null) {
-      throw new IllegalStateException("an agent kind must be given a type");
-    }
-    return type;
+    return Objects.requireNonNull(type, "an agent kind must be given a type");
   }
 
   ModelId modelId() {
-    if (modelId == null) {
-      throw new IllegalStateException("an agent kind must be given a model");
-    }
-    return modelId;
+    return Objects.requireNonNull(modelId, "an agent kind must be given a model");
   }
 
   ObservationRenderer<O> observationRenderer() {
-    if (renderer == null) {
-      throw new IllegalStateException(
-          "an agent kind must be given a renderer: nothing else knows how to turn one of its"
-              + " observations into something a model can read");
-    }
-    return renderer;
+    return Objects.requireNonNull(
+        renderer,
+        "an agent kind must be given a renderer: nothing else knows how to turn one of its"
+            + " observations into something a model can read");
   }
 
   String prompt() {
