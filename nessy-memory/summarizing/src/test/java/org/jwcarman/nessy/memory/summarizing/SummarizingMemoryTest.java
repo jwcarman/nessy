@@ -308,8 +308,12 @@ class SummarizingMemoryTest {
 
       say(memory, 10);
 
+      // Size first: "no summary in it" would pass against an empty recall, which is the very
+      // failure this test is about (S5841).
       assertThat(memory.recall(AGENT).messages())
-          .as("no summary was recorded")
+          .as("everything is still recalled, verbatim")
+          .hasSize(20)
+          .as("but no summary was recorded")
           .noneMatch(AmbientMessage.class::isInstance);
       assertThat(transcript.recall(AGENT).messages()).hasSize(20);
     }
@@ -321,7 +325,9 @@ class SummarizingMemoryTest {
 
       say(memory, 10);
 
-      assertThat(memory.recall(AGENT).messages()).noneMatch(AmbientMessage.class::isInstance);
+      assertThat(memory.recall(AGENT).messages())
+          .hasSize(20)
+          .noneMatch(AmbientMessage.class::isInstance);
       assertThat(transcript.recall(AGENT).messages()).hasSize(20);
     }
   }

@@ -115,7 +115,10 @@ class ForgetLogicTest {
 
       Decision decision = AgentLogic.decide(told, new Input.BacklogUpdated());
 
-      assertThat(decision.then()).doesNotContain(new Instruction.TakeWork());
+      // Not merely "no TakeWork" — an agent on its way out does nothing at all. Asserting the
+      // absence of one instruction would have passed vacuously against an empty list, which is
+      // what S5841 is for.
+      assertThat(decision.then()).isEmpty();
     }
 
     @Test

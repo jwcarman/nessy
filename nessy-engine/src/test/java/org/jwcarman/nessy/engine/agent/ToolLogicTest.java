@@ -216,6 +216,10 @@ class ToolLogicTest {
               working(Map.of(CallId.of("a"), new CallState.Parked())),
               new Input.ApprovalGiven(CallId.of("a"), "long_job", ApprovalResult.approved()));
 
+      // The positive assertion first, so the negative one cannot pass against an empty list.
+      assertThat(decision.then())
+          .as("an approval runs the tool")
+          .contains(new Instruction.RunTool(CallId.of("a"), "long_job"));
       assertThat(decision.then())
           .as("an approved call is still outstanding, so its deadline still means something")
           .doesNotContain(new Instruction.CancelAlarm(CallId.of("a")));
