@@ -29,240 +29,25 @@
 
   <artifactId>nessy-spring-boot-starter</artifactId>
   <name>Nessy Spring Boot Starter</name>
-  <description>Auto-configuration that wires a durable, observed Nessy harness from Spring beans.</description>
+  <description>Everything a Spring Boot application needs to run an agent: add this one dependency.</description>
 
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>io.micrometer</groupId>
-        <artifactId>micrometer-bom</artifactId>
-        <version>${micrometer.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <!-- Spring Boot's BOM, imported HERE rather than in the parent, and imported LAST.
-           Both halves of that are load-bearing:
+  <!--
+    A starter carries NO CODE. It is a dependency aggregator, which is the convention every
+    Spring Boot starter follows: the auto-configuration lives in its own artifact, so an
+    application that wants the beans without the transitive opinions can depend on
+    nessy-spring-boot-autoconfigure directly and assemble the rest itself.
 
-           - HERE, because importing it into the parent re-versions every module in the reactor.
-             Boot manages artifacts the parent does not pin (jackson-core, junit-platform-*,
-             mockito, byte-buddy, hamcrest, protobuf, gson), so nessy-agent's tree moved even with
-             the import declared last. Measured with a dependency:tree diff; see the parent's
-             spring-boot.version comment.
-           - LAST, because everything declared above it wins: Maven resolves competing managed
-             entries for one artifact in declaration order. The block above re-states the versions
-             this repo pins for artifacts Boot also has an opinion about, so this module compiles
-             and tests against the SAME jackson, junit, testcontainers and logback as every other
-             module — and Boot supplies versions only for the spring-* and boot-* artifacts
-             nothing here pins. testcontainers is the sharp one: Boot 4.1.1 manages the 2.x line,
-             which renamed every module artifact (see the parent's testcontainers.version comment),
-             so an unpinned import would not merely bump it — it would fail to resolve. -->
-      <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
-        <artifactId>jackson-bom</artifactId>
-        <version>${jackson.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>${junit.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.testcontainers</groupId>
-        <artifactId>testcontainers-bom</artifactId>
-        <version>${testcontainers.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.assertj</groupId>
-        <artifactId>assertj-core</artifactId>
-        <version>${assertj.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.slf4j</groupId>
-        <artifactId>slf4j-api</artifactId>
-        <version>${slf4j.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>ch.qos.logback</groupId>
-        <artifactId>logback-classic</artifactId>
-        <version>${logback.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>ch.qos.logback</groupId>
-        <artifactId>logback-core</artifactId>
-        <version>${logback.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.postgresql</groupId>
-        <artifactId>postgresql</artifactId>
-        <version>${postgresql.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.awaitility</groupId>
-        <artifactId>awaitility</artifactId>
-        <version>${awaitility.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-dependencies</artifactId>
-        <version>${spring-boot.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
-
+    Keeping the two apart also keeps the starter honest. Adding a dependency here is a
+    decision about what every consumer gets; adding one to the autoconfigure module is a
+    decision about what the code needs to compile. Merged, the second silently becomes the
+    first.
+  -->
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-engine</artifactId>
-    </dependency>
-    <!-- The driver behind the in-memory DataSource this starter builds when an application supplies
-         none. RUNTIME, because nothing here compiles against H2 — but without it the promised
-         default throws "Driver for test database type [H2] is not available" at startup, which is
-         a broken promise rather than a missing option. nessy-console declares it for the same
-         reason. An application that supplies its own DataSource can exclude it. -->
-    <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-      <scope>runtime</scope>
-    </dependency>
-    <!-- The starter builds the ActorSystem the engine runs on, so it names Pekko directly rather
-         than relying on nessy-engine's own dependency leaking through. -->
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-autoconfigure</artifactId>
-    </dependency>
-    <!-- The projection's only persistence tool. spring-jdbc rather than a JPA provider: one table,
-         four statements, no session. -->
-    <!-- Observability is instrumentation, not a requirement: an application with no
-         ObservationRegistry gets an unwrapped collaborator and pays nothing. -->
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-observation</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-core</artifactId>
-    </dependency>
-    <!-- Carries trace context across the hop into the blocking executor, which is where every
-         tool call runs and where a thread-local scope would otherwise be lost. -->
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>context-propagation</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-tracing</artifactId>
-    </dependency>
-
-    <!-- Optional, the way a starter carries a feature it does not force: an application with no
-         database never sees these, and the approvals projection simply is not wired. -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-jdbc</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-jdbc</artifactId>
-    </dependency>
-    <!-- Optional by design (watchman spec §1.1): with them on the classpath AND a DataSource bean
-         present, the starter wires the durable pair; without either, the in-memory stores. An
-         application that wants durability declares these two itself, exactly as it declares its
-         DataSource. -->
-    <!-- Boot's @ConfigurationProperties metadata, for IDE completion of the nessy.* keys. -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-configuration-processor</artifactId>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-test</artifactId>
-      <scope>test</scope>
-      <!-- The no-mocking-library promise (design of record), enforced by the build rather than by
-           discipline: spring-boot-starter-test drags Mockito in, and nothing here may use it.
-           Spring's own test slices and ApplicationContextRunner are the seams these tests use. -->
-      <exclusions>
-        <exclusion>
-          <groupId>org.mockito</groupId>
-          <artifactId>mockito-core</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.mockito</groupId>
-          <artifactId>mockito-junit-jupiter</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
+      <artifactId>nessy-spring-boot-autoconfigure</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.awaitility</groupId>
-      <artifactId>awaitility</artifactId>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <archive>
-            <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.spring.boot</Automatic-Module-Name>
-            </manifestEntries>
-          </archive>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
 </project>

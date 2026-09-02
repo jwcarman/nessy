@@ -132,7 +132,8 @@ names logical coordinates rather than an object. See
 | `nessy-spi` | adapter authors — a custom `Memory` or `Model`, and `Schemas` |
 | `nessy-engine` | application builders — `PekkoHarnessFactory`, the actor, the stores |
 | `nessy-console` | terminal applications — `Repl.run` |
-| `nessy-spring-boot-starter` | Boot applications — auto-configuration and the approvals projection |
+| `nessy-spring-boot-starter` | Boot applications — one dependency, no code of its own |
+| `nessy-spring-boot-autoconfigure` | the beans behind it, if you would rather assemble the starter yourself |
 | `nessy-memory-notebook`, `nessy-memory-plan`, `nessy-memory-pipeline` | agents that keep notes, hold a plan, or shape their own context |
 | `nessy-intent` | applications that want the declared-intent claim channel |
 | `nessy-tool-mcp` | agents that call MCP servers |

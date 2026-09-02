@@ -63,10 +63,11 @@
     </dependency>
     <!-- Not for its code: for the nessy-schema.sql it ships. Schemas gathers every module's DDL
          from the classpath, so a table only reaches this certification if the module that owns it
-         is here. The approvals projection was missing, and shipped PostgreSQL-only syntax. -->
+         is here. The approvals projection was missing, and shipped PostgreSQL-only syntax.
+         The autoconfigure module rather than the starter: the starter is an empty aggregator. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spring-boot-starter</artifactId>
+      <artifactId>nessy-spring-boot-autoconfigure</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>

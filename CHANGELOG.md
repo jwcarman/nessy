@@ -140,7 +140,10 @@ in its current vocabulary — not the sequence of designs that produced it.
   system, cluster, harness, loop — in one call.
 - **`nessy-spring-boot-starter`** assembles a harness from `nessy.*`
   properties and beans, every bean `@ConditionalOnMissingBean`, plus a
-  pending-approvals projection.
+  pending-approvals projection. The starter carries no code — the beans live
+  in `nessy-spring-boot-autoconfigure`, which is the convention every Boot
+  starter follows and what lets an application take the beans without the
+  starter's transitive opinions.
 - **Model providers** for Anthropic, OpenAI (and any OpenAI-compatible
   endpoint), Gemini and Bedrock, with `nessy-model-discovery` resolving from
   the environment.

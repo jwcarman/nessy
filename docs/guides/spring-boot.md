@@ -9,6 +9,21 @@
 </dependency>
 ```
 
+## Two artifacts, and which one you want
+
+Almost always the starter. It carries **no code** — it is a dependency
+aggregator, the shape every Spring Boot starter has — and it brings the
+auto-configuration plus what a running application needs.
+
+| Artifact | What it is |
+|---|---|
+| `nessy-spring-boot-starter` | the one dependency to add; no classes of its own |
+| `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and the approvals projection |
+
+Depend on the autoconfigure module directly when you want the beans without
+the starter's transitive opinions and would rather assemble the rest
+yourself.
+
 ```yaml
 nessy:
   type: assistant

@@ -151,7 +151,8 @@ agent depends on `nessy-engine`, which pulls both in.
 | `nessy-spi` | adapter authors — a custom `Memory` or `Model`, and `Schemas` |
 | `nessy-engine` | the engine: `PekkoHarnessFactory`, the actor, the stores |
 | `nessy-console` | terminal applications — `Repl.run` |
-| `nessy-spring-boot-starter` | Boot auto-configuration and the approvals projection |
+| `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
+| `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and the approvals projection |
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
 | `nessy-memory-plan` | a plan an agent holds across turns |
 | `nessy-memory-pipeline` | shaping the context a model call is built from |

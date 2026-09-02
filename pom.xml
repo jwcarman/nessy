@@ -71,6 +71,7 @@
     <module>nessy-memory-plan</module>
     <module>nessy-intent</module>
     <module>nessy-tool-mcp</module>
+    <module>nessy-spring-boot-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
     <module>nessy-examples</module>
   </modules>
@@ -161,7 +162,7 @@
     <!-- Spring Boot, for nessy-spring-boot-starter (watchman spec §1). Current stable line on
          Maven Central as of this module's creation (2026-08-26); 4.2.0-M1 is a milestone, not a
          release. The version is pinned HERE, with every other version property, but the
-         spring-boot-dependencies BOM is imported ONLY in nessy-spring-boot-starter's own POM —
+         spring-boot-dependencies BOM is imported ONLY in nessy-spring-boot-autoconfigure's own POM —
          never in this one.
 
          Measured, not assumed: importing that BOM into this dependencyManagement re-versions the
@@ -360,6 +361,11 @@
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-spring-boot-starter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-spring-boot-autoconfigure</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

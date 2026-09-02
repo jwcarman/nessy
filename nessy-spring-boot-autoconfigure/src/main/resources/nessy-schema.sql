@@ -9,6 +9,14 @@
 --
 -- Two portability rules, both measured: ANSI spellings only (TIMESTAMPTZ is a PostgreSQL alias H2
 -- rejects), and no reserved words as identifiers.
+--
+-- This table is a PROJECTION, not a source of truth, and it rebuilds itself: a recovered turn
+-- re-runs the calls it never settled, which asks its approver again and narrates the question
+-- again. Losing it loses nothing that will not come back as the agents recover.
+--
+-- reply_token is stored deliberately, and it is a CREDENTIAL. It is how a page answers a call days
+-- after the process that asked has forgotten, and it is sealed with the application's own key.
+-- Anyone who can read this table can approve anything still waiting.
 CREATE TABLE IF NOT EXISTS nessy_pending_approvals (
   call_id     TEXT                     NOT NULL,
   agent_type  TEXT                     NOT NULL,
