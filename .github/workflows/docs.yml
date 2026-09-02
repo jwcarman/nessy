@@ -44,7 +44,7 @@ jobs:
         run: pip install --only-binary ':all:' mkdocs-material==9.7.7
       - name: Build site
         run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
