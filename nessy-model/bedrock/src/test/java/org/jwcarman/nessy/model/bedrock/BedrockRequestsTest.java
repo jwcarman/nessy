@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -114,6 +115,43 @@ class BedrockRequestsTest {
     }
   }
 
+  /**
+   * Background the caller never said, folded into the {@code system} field alongside the standing
+   * instruction — Bedrock has a system field, so that is where ambient content belongs rather than
+   * in the conversation, tagged like Anthropic's own convention.
+   */
+  @Nested
+  class AmbientMessages {
+
+    @Test
+    void a_non_blank_ambient_message_becomes_its_own_xml_tagged_system_block() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var built = BedrockRequests.toRequest(request(List.of(ambient)), MODEL_ID);
+
+      assertThat(built.system()).hasSize(2);
+      assertThat(built.system().get(0).text()).isEqualTo("you are a helpful assistant");
+      assertThat(built.system().get(1).text())
+          .isEqualTo("<standing-plan>\nwater the plants\n</standing-plan>");
+    }
+
+    @Test
+    void a_blank_ambient_message_contributes_no_system_block() {
+      var ambient = new AmbientMessage("empty-note", List.of(new TextBlock("   ")));
+      var built = BedrockRequests.toRequest(request(List.of(ambient)), MODEL_ID);
+
+      assertThat(built.system()).hasSize(1);
+      assertThat(built.system().get(0).text()).isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void an_ambient_message_produces_no_message_in_the_conversation_itself() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var built = BedrockRequests.toRequest(request(List.of(ambient)), MODEL_ID);
+
+      assertThat(built.messages()).isEmpty();
+    }
+  }
+
   @Nested
   class UserTextMessages {
 
@@ -141,6 +179,50 @@ class BedrockRequestsTest {
       assertThat(content).hasSize(2);
       assertThat(content.get(0).text()).isEqualTo("first ");
       assertThat(content.get(1).text()).isEqualTo("second");
+    }
+  }
+
+  @Nested
+  class EmptyBlocksAreDropped {
+
+    @Test
+    void an_empty_text_block_is_dropped_leaving_its_siblings_in_order() {
+      var empty = new TextBlock("");
+      var text = new TextBlock("hello there");
+      var built =
+          BedrockRequests.toRequest(
+              request(List.of(new UserMessage(List.of(empty, text)))), MODEL_ID);
+
+      var content = built.messages().get(0).content();
+      assertThat(content).hasSize(1);
+      assertThat(content.get(0).text()).isEqualTo("hello there");
+    }
+
+    @Test
+    void an_empty_commentary_block_is_dropped_leaving_its_siblings_in_order() {
+      var empty = new CommentaryBlock("");
+      var text = new CommentaryBlock("running the tool");
+      var toolUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(empty, text, toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
+
+      var content = built.messages().get(0).content();
+      assertThat(content).hasSize(2);
+      assertThat(content.get(0).text()).isEqualTo("running the tool");
+      assertThat(content.get(1).toolUse()).isNotNull();
+    }
+
+    @Test
+    void an_assistant_message_of_only_empty_blocks_produces_no_message() {
+      var built =
+          BedrockRequests.toRequest(
+              request(List.of(new AnswerMessage(List.of(new TextBlock(""))))), MODEL_ID);
+
+      assertThat(built.messages()).isEmpty();
     }
   }
 
@@ -250,22 +332,41 @@ class BedrockRequestsTest {
       assertThat(input.get("verbose").asBoolean()).isTrue();
     }
 
+    @Test
+    void a_null_valued_argument_converts_to_a_null_document() {
+      ObjectNode arguments = MAPPER.createObjectNode();
+      arguments.putNull("path");
+      var toolUse = new ToolCallBlock(new ToolCall(CallId.of("call-1"), "read_file", arguments));
+      var assistantTurn =
+          new ExchangeMessage(
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
+
+      var input = built.messages().get(0).content().get(0).toolUse().input().asMap();
+      assertThat(input.get("path").isNull()).isTrue();
+    }
+
     /** Opaque state belongs to whoever issued it; this adapter issues none and reads none. */
     @Test
     void another_providers_state_is_ignored_on_replay() {
+      var foreign = new ProviderBlock("openai", MAPPER.createObjectNode().put("kind", "opaque"));
       var toolUse =
           new ToolCallBlock(
               new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
-              List.of(toolUse),
+              List.of(foreign, toolUse),
               List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
 
-      // No exception, and the rebuilt block carries the call unchanged — Bedrock's ToolCallBlock
-      // has no signature-shaped field for GeminiRequests' equivalent to replay onto.
+      // No exception, the foreign provider-state block leaves no trace, and the tool-use block
+      // that shared its turn survives untouched — Bedrock's ToolCallBlock has no signature-shaped
+      // field for GeminiRequests' equivalent to replay onto.
       var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
-      var block = built.messages().get(0).content().get(0).toolUse();
+      var content = built.messages().get(0).content();
+      assertThat(content).hasSize(1);
+      var block = content.get(0).toolUse();
       assertThat(block.toolUseId()).isEqualTo("call-1");
     }
   }

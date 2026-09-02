@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.model.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -32,6 +33,8 @@ import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
@@ -80,6 +83,18 @@ class BedrockModelProviderTest {
       assertThat(captured.modelId()).isEqualTo("us.anthropic.claude-haiku-4-5-20251001-v1:0");
       assertThat(captured.inferenceConfig().maxTokens()).isEqualTo(1024);
     }
+
+    /**
+     * {@link BedrockClient#close()} defaults to a no-op precisely so a hand-rolled fake like {@link
+     * #fakeClient} never has to implement it — this pins that the default itself does nothing
+     * rather than, say, throwing {@code UnsupportedOperationException}.
+     */
+    @Test
+    void closing_a_provider_over_a_client_with_no_close_override_does_nothing_special() {
+      var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
+
+      assertThatCode(provider::close).doesNotThrowAnyException();
+    }
   }
 
   @Nested
@@ -120,6 +135,20 @@ class BedrockModelProviderTest {
     @Test
     void an_explicit_region_set_after_from_env_still_builds_without_needing_the_environment() {
       try (var provider = new BedrockProviderConfig().fromEnv().region(Region.US_WEST_2).build()) {
+        assertThat(provider).isNotNull();
+      }
+    }
+
+    @Test
+    void an_explicit_credentials_provider_overrides_the_default_chain() {
+      var credentials =
+          StaticCredentialsProvider.create(AwsBasicCredentials.create("key", "secret"));
+
+      try (var provider =
+          new BedrockProviderConfig()
+              .region(Region.US_EAST_1)
+              .credentialsProvider(credentials)
+              .build()) {
         assertThat(provider).isNotNull();
       }
     }
@@ -223,16 +252,17 @@ class BedrockModelProviderTest {
           .isEqualTo("us.anthropic.claude-opus-5-20260101-v1:0");
     }
 
+    /**
+     * {@link BedrockModelProvider#model(ModelId)} itself performs no blankness check of its own
+     * (see its source: only {@link java.util.Objects#requireNonNull}) — a blank id can never reach
+     * it in the first place because {@link ModelId}'s own compact constructor rejects one first.
+     * This pins that {@code ModelId.of(" ")} is where the rejection actually happens, so a future
+     * relaxation of {@link ModelId}'s own guard does not silently let a blank id through this
+     * gateway unnoticed.
+     */
     @Test
-    void a_blank_model_id_is_rejected() {
-      var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
-
-      assertThatThrownBy(() -> requestBlankModel(provider))
-          .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    private static void requestBlankModel(BedrockModelProvider provider) {
-      provider.model(ModelId.of("  "));
+    void a_blank_model_id_is_rejected_by_model_id_itself_before_it_ever_reaches_the_provider() {
+      assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
