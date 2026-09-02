@@ -87,13 +87,19 @@ public final class OpaApprover implements Approver {
       }
       String reason = result.path("reason").asText("");
       return Awaited.ready(ApprovalResult.denied(reason.isBlank() ? "denied by policy" : reason));
-    } catch (IOException | InterruptedException | RuntimeException failure) {
-      if (failure instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
-      return Awaited.ready(
-          ApprovalResult.denied("the policy engine could not be reached: " + failure.getMessage()));
+    } catch (InterruptedException interrupted) {
+      // Restore the flag before answering: the caller's thread is the engine's, not ours.
+      Thread.currentThread().interrupt();
+      return unreachable(interrupted);
+    } catch (IOException | RuntimeException failure) {
+      return unreachable(failure);
     }
+  }
+
+  /** A control that did not answer is not a control that said yes. */
+  private static Awaited<ApprovalResult> unreachable(Exception failure) {
+    return Awaited.ready(
+        ApprovalResult.denied("the policy engine could not be reached: " + failure.getMessage()));
   }
 
   /**
