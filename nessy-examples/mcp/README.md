@@ -34,8 +34,8 @@ asking. `ask_question` puts the question to DeepWiki's own model and spends
 their budget, so it is the one behind an approver. That is this application's
 judgement about its own bill, not Nessy's judgement about DeepWiki.
 
-**A describer for a tool you did not write.** An imported tool's input is a
-`JsonNode`, because the server declared the schema. The describer reads the
+**A action renderer for a tool you did not write.** An imported tool's input is a
+`JsonNode`, because the server declared the schema. The action renderer reads the
 fields it knows — `repoName`, `question` — and falls back to the whole
 document rather than guessing, so a person always sees what they are
 approving.

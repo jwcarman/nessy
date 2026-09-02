@@ -103,8 +103,16 @@ in its current vocabulary — not the sequence of designs that produced it.
   under at-least-once execution.
 - **A denial is an answer**, with its reason, and the model responds to it.
   It is not a failed turn and must not look like a broken tool.
-- **`ToolDescriber`** writes the sentence a person consents to. Consenting to
-  a message you have not read is not consent.
+- **`ActionRenderer`** writes the sentence a person consents to, and
+  `ApprovalRequest.action()` is what it produced. Not "description": a `Tool`
+  has one of those and it means what the tool IS, written for the model.
+- **`ApprovalRequest` is flat and JSON-shaped** — `toolName`, `arguments`,
+  `action`, ids, facts. `arguments` is for DECIDING and `action` is for
+  SHOWING. It is untyped because the policy engines people plug in (OPA,
+  Cedar) take a JSON document, and because one approver serves every gated
+  tool.
+- **Reply tokens are minted on demand.** A token is a capability; most calls
+  are answered on the spot and hand one to nobody.
 - **Risk-based gating.** `RiskAssessment` derives a level from NIST SP 800-30's
   combination matrix, with `Likelihood`, `Impact` and `RiskLevel` as separate
   enums so a swapped argument is a compile error. `Risk.assessing(...)

@@ -21,6 +21,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 
 /**
  * The question an approver answers: this agent wants to make this call, and here is what it means.
@@ -53,30 +56,76 @@ import java.util.Optional;
  *     kinds side by side, and an id alone does not say which is which
  * @param agentId which agent is asking
  * @param call what it wants to do
- * @param description what that means, in words a person can consent to — the binding's {@code
- *     ToolDescriber} rendered this
+ * @param action what will actually happen if this is approved, in words a person can consent to —
+ *     the binding's {@code ActionRenderer} rendered it. Not "description": a {@link Tool} has one
+ *     of those, and it says what the tool IS. This says what this CALL would do.
  * @param askedAt when the question was raised — dwell time on a pending-approvals page, and the
  *     fixed point a deadline is measured from, so a restart cannot silently extend one
+ * @param arguments what the model asked for, as JSON — see the note on JSON below
  * @param facts whatever approvers have added so far; empty when the framework first asks
  */
 public record ApprovalRequest(
-    ToolCallRequest<?> call, String description, Instant askedAt, ObjectNode facts) {
+    AgentType agentType,
+    AgentId agentId,
+    String turnId,
+    String callId,
+    String toolName,
+    JsonNode arguments,
+    String action,
+    Instant askedAt,
+    Supplier<ReplyToken> replyTokens,
+    ObjectNode facts) {
 
   public ApprovalRequest {
-    Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(description, "description must not be null");
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(turnId, "turnId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(toolName, "toolName must not be null");
+    Objects.requireNonNull(arguments, "arguments must not be null");
+    Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(askedAt, "askedAt must not be null");
+    Objects.requireNonNull(replyTokens, "replyTokens must not be null");
     Objects.requireNonNull(facts, "facts must not be null");
   }
 
   /** The question as the harness first asks it: nothing has annotated it yet. */
-  public ApprovalRequest(ToolCallRequest<?> call, String description, Instant askedAt) {
-    this(call, description, askedAt, JsonNodeFactory.instance.objectNode());
+  public ApprovalRequest(
+      AgentType agentType,
+      AgentId agentId,
+      String turnId,
+      String callId,
+      String toolName,
+      JsonNode arguments,
+      String action,
+      Instant askedAt,
+      Supplier<ReplyToken> replyTokens) {
+    this(
+        agentType,
+        agentId,
+        turnId,
+        callId,
+        toolName,
+        arguments,
+        action,
+        askedAt,
+        replyTokens,
+        JsonNodeFactory.instance.objectNode());
   }
 
-  /** Where a person's answer goes, if this approver defers. */
+  /** Where a person's answer goes, if this approver defers. Minted on demand, then remembered. */
   public ReplyToken replyToken() {
-    return call.replyToken();
+    return replyTokens.get();
+  }
+
+  /**
+   * The key this call is identified by across a re-drive.
+   *
+   * <p>The turn and the call together, because a model's call id is unique within one response only
+   * — two turns can each produce a "call_1".
+   */
+  public String callKey() {
+    return turnId + "/" + callId;
   }
 
   /**
@@ -103,5 +152,38 @@ public record ApprovalRequest(
   public Optional<JsonNode> fact(String name) {
     Objects.requireNonNull(name, "name must not be null");
     return Optional.ofNullable(facts.get(name));
+  }
+
+  /**
+   * Equality over the question, ignoring how its address would be minted.
+   *
+   * <p>Written out for the same reason {@code ToolCallRequest}'s is: a record would compare the
+   * supplier by identity, so two requests about the same call would differ.
+   */
+  @Override
+  public boolean equals(Object other) {
+    return other instanceof ApprovalRequest request
+        && Objects.equals(agentType, request.agentType)
+        && Objects.equals(agentId, request.agentId)
+        && Objects.equals(turnId, request.turnId)
+        && Objects.equals(callId, request.callId)
+        && Objects.equals(toolName, request.toolName)
+        && Objects.equals(arguments, request.arguments)
+        && Objects.equals(action, request.action)
+        && Objects.equals(askedAt, request.askedAt)
+        && Objects.equals(facts, request.facts);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        agentType, agentId, turnId, callId, toolName, arguments, action, askedAt, facts);
+  }
+
+  /** The reply address is absent: it is a credential, and this may reach a log. */
+  @Override
+  public String toString() {
+    return "ApprovalRequest[agentId=%s, callId=%s, toolName=%s, action=%s, facts=%s]"
+        .formatted(agentId, callId, toolName, action, facts);
   }
 }

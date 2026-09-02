@@ -343,11 +343,11 @@ public final class Observed {
     return (request) -> {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
-              .contextualName("approve " + request.call().toolName())
-              .lowCardinalityKeyValue("gen_ai.agent.name", request.call().agentType().name())
-              .lowCardinalityKeyValue("gen_ai.tool.name", request.call().toolName())
-              .highCardinalityKeyValue("gen_ai.agent.id", request.call().agentId().value())
-              .highCardinalityKeyValue("gen_ai.tool.call.id", request.call().callId())
+              .contextualName("approve " + request.toolName())
+              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().name())
+              .lowCardinalityKeyValue("gen_ai.tool.name", request.toolName())
+              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value())
+              .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
       return observation.observe(
           () -> {

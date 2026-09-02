@@ -40,19 +40,17 @@ class ApprovalRequestTest {
   private static final AgentId HOUSE = AgentId.of("house-12");
   private static final Instant ASKED = Instant.parse("2026-09-01T12:00:00Z");
 
-  private static ToolCallRequest call() {
-    return new ToolCallRequest(
+  private static ApprovalRequest asked() {
+    return new ApprovalRequest(
         WATCHMAN,
         HOUSE,
         "turn-1",
         "c1",
         "prune_images",
         JsonNodeFactory.instance.objectNode(),
-        ReplyToken.of("token-1"));
-  }
-
-  private static ApprovalRequest asked() {
-    return new ApprovalRequest(call(), "docker image prune -af", ASKED);
+        "docker image prune -af",
+        ASKED,
+        () -> ReplyToken.of("token-1"));
   }
 
   @Nested
@@ -62,10 +60,10 @@ class ApprovalRequestTest {
     void it_carries_who_is_asking_and_what_about() {
       ApprovalRequest request = asked();
 
-      assertThat(request.call().agentType()).isEqualTo(WATCHMAN);
-      assertThat(request.call().agentId()).isEqualTo(HOUSE);
-      assertThat(request.call().toolName()).isEqualTo("prune_images");
-      assertThat(request.description()).isEqualTo("docker image prune -af");
+      assertThat(request.agentType()).isEqualTo(WATCHMAN);
+      assertThat(request.agentId()).isEqualTo(HOUSE);
+      assertThat(request.toolName()).isEqualTo("prune_images");
+      assertThat(request.action()).isEqualTo("docker image prune -af");
       assertThat(request.askedAt()).isEqualTo(ASKED);
     }
 
@@ -78,7 +76,7 @@ class ApprovalRequestTest {
     @Test
     @DisplayName("the call key is the turn and the call, since a call id repeats across turns")
     void it_carries_a_key_a_tool_can_deduplicate_on() {
-      assertThat(asked().call().callKey()).isEqualTo("turn-1/c1");
+      assertThat(asked().callKey()).isEqualTo("turn-1/c1");
     }
 
     @Test
@@ -131,19 +129,21 @@ class ApprovalRequestTest {
   class Refusing {
 
     @Test
-    void a_question_with_no_description_is_refused() {
-      ToolCallRequest call = call();
-
-      assertThatThrownBy(() -> new ApprovalRequest(call, null, ASKED))
+    void a_question_with_no_action_is_refused() {
+      assertThatThrownBy(
+              () ->
+                  new ApprovalRequest(
+                      WATCHMAN,
+                      HOUSE,
+                      "turn-1",
+                      "c1",
+                      "prune_images",
+                      JsonNodeFactory.instance.objectNode(),
+                      null,
+                      ASKED,
+                      () -> ReplyToken.of("token-1")))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("description");
-    }
-
-    @Test
-    void a_question_about_no_call_is_refused() {
-      assertThatThrownBy(() -> new ApprovalRequest(null, "something", ASKED))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("call");
+          .hasMessageContaining("action");
     }
 
     @Test
@@ -162,75 +162,6 @@ class ApprovalRequestTest {
       assertThatThrownBy(() -> request.fact(null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("name");
-    }
-  }
-
-  @Nested
-  @DisplayName("the reply address is a capability, so it is minted only when asked for")
-  class TheReplyAddress {
-
-    @Test
-    void a_call_nobody_asks_about_never_mints_one() {
-      java.util.concurrent.atomic.AtomicInteger minted =
-          new java.util.concurrent.atomic.AtomicInteger();
-
-      new ToolCallRequest<>(
-          WATCHMAN,
-          HOUSE,
-          "turn-1",
-          "c1",
-          "prune_images",
-          JsonNodeFactory.instance.objectNode(),
-          () -> {
-            minted.incrementAndGet();
-            return ReplyToken.of("token-1");
-          });
-
-      assertThat(minted)
-          .as("most calls are answered on the spot and hand no address to anybody")
-          .hasValue(0);
-    }
-
-    @Test
-    @DisplayName("asking twice hands out ONE address, not two that mean the same thing")
-    void it_is_minted_once_and_remembered() {
-      java.util.concurrent.atomic.AtomicInteger minted =
-          new java.util.concurrent.atomic.AtomicInteger();
-      ToolCallRequest<?> call =
-          new ToolCallRequest<>(
-              WATCHMAN,
-              HOUSE,
-              "turn-1",
-              "c1",
-              "prune_images",
-              JsonNodeFactory.instance.objectNode(),
-              () -> ReplyToken.of("token-" + minted.incrementAndGet()));
-
-      assertThat(call.replyToken()).isEqualTo(call.replyToken());
-      assertThat(minted).hasValue(1);
-    }
-
-    @Test
-    @DisplayName("two requests naming the same call are equal, however their address is minted")
-    void equality_ignores_how_the_address_would_be_made() {
-      ToolCallRequest<?> one = call();
-      ToolCallRequest<?> other =
-          new ToolCallRequest<>(
-              WATCHMAN,
-              HOUSE,
-              "turn-1",
-              "c1",
-              "prune_images",
-              JsonNodeFactory.instance.objectNode(),
-              () -> ReplyToken.of("a completely different token"));
-
-      assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
-    }
-
-    @Test
-    @DisplayName("a credential does not belong in a log line")
-    void the_address_is_absent_from_toString() {
-      assertThat(call().toString()).contains("prune_images").doesNotContain("token-1");
     }
   }
 }

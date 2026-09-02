@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.tool.Approver;
  *     binding ->
  *         binding
  *             .approver(ConsoleApprover.atTheTerminal())
- *             .describer(input -> "Send an email to " + input.to()));
+ *             .action(input -> "Send an email to " + input.to()));
  * }</pre>
  *
  * <p><b>It answers immediately, and that is the whole difference from a web desk.</b> An approver
@@ -75,7 +75,7 @@ public final class ConsoleApprover implements Approver {
     io.write(
         System.lineSeparator()
             + "  ⚠ "
-            + request.description()
+            + request.action()
             + System.lineSeparator()
             + "    allow? [y/N] ");
     io.flush();

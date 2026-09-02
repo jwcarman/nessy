@@ -30,7 +30,7 @@ import java.util.Optional;
  * @param agentType the kind of agent the parked call belongs to
  * @param agentId the agent the parked call belongs to
  * @param tool which tool was called
- * @param action what will actually happen if this is approved, as the tool's describer rendered it
+ * @param action what will actually happen if this is approved, as the tool's renderer rendered it
  * @param askedAt when the projection SAW the question — not when the approver parked. Narration
  *     carries no timestamp, so this is the observer's own clock at the moment it wrote the row
  * @param expiresAt when the question stops standing, so a page can show urgency and stop offering a

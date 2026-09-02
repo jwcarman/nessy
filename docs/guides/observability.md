@@ -29,7 +29,7 @@ try (AgentSubscription subscription = harness.subscribe(agentId, event -> {
 | `TurnStarted` | a turn began |
 | `TextDelta` | prose, as it streams |
 | `ReasoningDelta` | reasoning, as it streams |
-| `ToolCallRequested` | the model asked for a tool, with the describer's sentence |
+| `ToolCallRequested` | the model asked for a tool, with the action renderer's sentence |
 | `ApprovalRequested` | a call was actually put to a person, with its deadline |
 | `ApprovalDecided` | approved or denied |
 | `ToolCallCompleted` | a call answered, with its result |

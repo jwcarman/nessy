@@ -135,7 +135,7 @@ public class ChatConfiguration {
                             // The body too: a page has room, and approving a message you have not
                             // read is not approval. The console example trims for want of screen;
                             // here there is none of that excuse.
-                            .describer(
+                            .action(
                                 input ->
                                     "Send an email to %s, subject \"%s\": %s"
                                         .formatted(input.to(), input.subject(), input.body()))));

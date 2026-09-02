@@ -81,7 +81,7 @@ public static void main(String[] args) {
             .tool(new AddTool())
             .tool(new SendEmailTool(), binding -> binding
                     .approver(ConsoleApprover.atTheTerminal())
-                    .describer(email -> "Send an email to " + email.to())));
+                    .action(email -> "Send an email to " + email.to())));
 }
 ```
 

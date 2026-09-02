@@ -125,12 +125,11 @@ public class WatchmanConfiguration {
                               .approver(
                                   Observed.approver(
                                       gatedOnRisk(tool.name(), humanApprover), observations))
-                              .describer(args -> WatchmanTools.describe(tool.name(), args)));
+                              .action(args -> WatchmanTools.actionOf(tool.name(), args)));
                 } else {
                   config.tool(
                       observed,
-                      binding ->
-                          binding.describer(args -> WatchmanTools.describe(tool.name(), args)));
+                      binding -> binding.action(args -> WatchmanTools.actionOf(tool.name(), args)));
                 }
               });
         });
@@ -145,7 +144,7 @@ public class WatchmanConfiguration {
   @Bean
   public Approver humanApprover(PendingApprovalsListener listener, Clock clock) {
     return (request) -> {
-      listener.expecting(request.call().callId(), request.replyToken());
+      listener.expecting(request.callId(), request.replyToken());
       return Awaited.deferred(clock.instant().plus(APPROVAL_TERM));
     };
   }

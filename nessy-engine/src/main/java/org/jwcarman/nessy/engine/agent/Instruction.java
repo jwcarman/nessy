@@ -80,11 +80,14 @@ public sealed interface Instruction {
 
     record TurnEnded(TurnResult result, Usage usage) implements Narrate {}
 
-    record ToolCallRequested(String callId, String toolName) implements Narrate {}
-
-    // There is deliberately no ApprovalRequested here. An ungated tool is approved on the spot, so
+    // There is deliberately no ToolCallRequested or ApprovalRequested here. An ungated tool is
+    // approved on the spot, so
     // the only moment a person is actually being ASKED is when the approver defers — and that is
     // known in the shell, along with the deadline the event has to carry.
+    //
+    // ToolCallRequested is the same story: it carries the renderer's sentence, which is a shell
+    // concern. Emitting it from here meant the shell re-derived that sentence — reading the asking
+    // claim back and running the renderer a second time, per narrated call.
 
     record ApprovalDecided(String callId, ApprovalResult result) implements Narrate {}
 

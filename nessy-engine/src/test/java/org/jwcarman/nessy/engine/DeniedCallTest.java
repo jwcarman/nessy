@@ -40,12 +40,12 @@ import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 
@@ -105,7 +105,7 @@ class DeniedCallTest {
         new ToolBinding<>(
             send,
             request -> Awaited.ready(ApprovalResult.denied("not this time")),
-            ToolDescriber.byToString());
+            ActionRenderer.byToString());
 
     parts =
         Engines.of(

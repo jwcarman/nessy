@@ -24,7 +24,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.risk.Impact;
 import org.jwcarman.nessy.api.tool.risk.Likelihood;
 import org.jwcarman.nessy.api.tool.risk.RiskAssessment;
@@ -42,16 +41,15 @@ class WatchmanRiskTest {
 
   private static ApprovalRequest pruning() {
     return new ApprovalRequest(
-        new ToolCallRequest<>(
-            AgentType.of("watchman"),
-            AgentId.of("house"),
-            "turn-1",
-            "c1",
-            "prune_images",
-            "docker image prune -af",
-            ReplyToken.of("nowhere")),
+        AgentType.of("watchman"),
+        AgentId.of("house"),
+        "turn-1",
+        "c1",
+        "prune_images",
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
         "docker image prune -af",
-        Instant.EPOCH);
+        Instant.EPOCH,
+        () -> ReplyToken.of("nowhere"));
   }
 
   @Test
@@ -102,6 +100,6 @@ class WatchmanRiskTest {
   @Test
   @DisplayName("the question a person is shown names the command they are consenting to")
   void the_description_is_the_command() {
-    assertThat(pruning().description()).isEqualTo("docker image prune -af");
+    assertThat(pruning().action()).isEqualTo("docker image prune -af");
   }
 }

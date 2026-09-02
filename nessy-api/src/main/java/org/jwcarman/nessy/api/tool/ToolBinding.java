@@ -34,11 +34,11 @@ import java.util.Objects;
  *
  * @param <I> the tool's bound input
  */
-public record ToolBinding<I>(Tool<I> tool, Approver approver, ToolDescriber<I> describer) {
+public record ToolBinding<I>(Tool<I> tool, Approver approver, ActionRenderer<I> renderer) {
 
   public ToolBinding {
     Objects.requireNonNull(tool, "tool must not be null");
     Objects.requireNonNull(approver, "approver must not be null");
-    Objects.requireNonNull(describer, "describer must not be null");
+    Objects.requireNonNull(renderer, "renderer must not be null");
   }
 }

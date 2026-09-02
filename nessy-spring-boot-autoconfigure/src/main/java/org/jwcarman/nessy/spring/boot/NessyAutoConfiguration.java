@@ -319,7 +319,7 @@ public class NessyAutoConfiguration {
    *
    * <p>A method of its own purely so that {@code I} names the wildcard a {@code Tool<?>} out of the
    * bean factory carries. Java's capture conversion binds it at the call, so {@code
-   * HarnessConfig#tool} gets the concrete input type it needs to tie a tool to its describer — and
+   * HarnessConfig#tool} gets the concrete input type it needs to tie a tool to its renderer — and
    * no cast is needed to get it.
    */
   private static <I> void grant(

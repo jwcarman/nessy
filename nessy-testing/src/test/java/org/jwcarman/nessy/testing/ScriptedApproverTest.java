@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
 
 class ScriptedApproverTest {
 
@@ -38,16 +37,15 @@ class ScriptedApproverTest {
 
   private static ApprovalRequest asking(String description) {
     return new ApprovalRequest(
-        new ToolCallRequest(
-            AgentType.of("ops"),
-            AgentId.of("prod-eu"),
-            "turn-1",
-            CALL.id(),
-            CALL.name(),
-            CALL.arguments(),
-            new ReplyToken("nowhere")),
+        AgentType.of("ops"),
+        AgentId.of("prod-eu"),
+        "turn-1",
+        CALL.id(),
+        CALL.name(),
+        CALL.arguments(),
         description,
-        Instant.EPOCH);
+        Instant.EPOCH,
+        () -> new ReplyToken("nowhere"));
   }
 
   @Test
@@ -93,7 +91,7 @@ class ScriptedApproverTest {
     approver.approve(asking("second"));
 
     assertThat(approver.requests())
-        .extracting(ApprovalRequest::description)
+        .extracting(ApprovalRequest::action)
         .containsExactly("first", "second");
   }
 
@@ -106,6 +104,6 @@ class ScriptedApproverTest {
 
     approver.approve(asking("second"));
 
-    assertThat(snapshot).extracting(ApprovalRequest::description).containsExactly("first");
+    assertThat(snapshot).extracting(ApprovalRequest::action).containsExactly("first");
   }
 }

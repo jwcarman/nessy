@@ -149,17 +149,17 @@ public final class Chat {
                 .tool(NotebookTools.forget(notebook))
                 .tool(PlanTools.updatePlan(plans))
                 // The only thing here that reaches outside the process, so the only thing a
-                // person is asked about. The describer writes the sentence they consent to.
+                // person is asked about. The renderer writes the sentence they consent to.
                 .tool(
                     new SendEmailTool(),
                     binding ->
                         binding
                             .approver(ConsoleApprover.atTheTerminal())
-                            // Recipient, subject AND the body — because the describer writes the
+                            // Recipient, subject AND the body — because the renderer writes the
                             // sentence a person consents to, and consenting to a message you have
                             // not read is not consent. Trimmed rather than omitted: an essay at a
                             // terminal prompt is its own way of not being read.
-                            .describer(
+                            .action(
                                 input ->
                                     "Send an email to %s%n    subject: %s%n    body: %s"
                                         .formatted(

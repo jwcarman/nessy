@@ -184,7 +184,7 @@ public final class ReplConfig {
   }
 
   /**
-   * Grants one tool, saying how it is bound — an approver, a describer.
+   * Grants one tool, saying how it is bound — an approver, a renderer.
    *
    * <p>The customizer is held rather than applied, so the tool's input type stays tied to its own
    * binding: the type parameter lives on the METHOD, exactly as it does on {@code HarnessConfig},

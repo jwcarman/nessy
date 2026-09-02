@@ -44,12 +44,12 @@ import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
@@ -156,7 +156,7 @@ class ToolCallTest {
   private static void start(Approver approver) {
     testKit = ClusterOfOne.start();
     ToolBinding<Query> binding =
-        new ToolBinding<>(lookUp("found it"), approver, ToolDescriber.byToString());
+        new ToolBinding<>(lookUp("found it"), approver, ActionRenderer.byToString());
     parts = Engines.of(testKit.system(), WATCHMAN, asksThenAnswers(), List.of(binding));
 
     ClusterSharding.get(testKit.system())

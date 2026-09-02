@@ -69,7 +69,7 @@ Harness<String> harness = factory.createHarness(String.class, config -> config
         .tool(new DiskUsageTool())
         .tool(new PruneImagesTool(), binding -> binding
                 .approver(desk)
-                .describer(input -> "docker image prune -af")));
+                .action(input -> "docker image prune -af")));
 ```
 
 | Setting | What it decides |
@@ -179,7 +179,7 @@ public static void main(String[] args) {
             .tool(new AddTool())
             .tool(new SendEmailTool(), binding -> binding
                     .approver(ConsoleApprover.atTheTerminal())
-                    .describer(email -> "Send an email to " + email.to())));
+                    .action(email -> "Send an email to " + email.to())));
 }
 ```
 
@@ -222,7 +222,7 @@ A person consents to a sentence, so write the sentence:
 ```java
 .tool(sendEmail, binding -> binding
         .approver(desk)
-        .describer(email -> "Send an email to %s%n  subject: %s%n  body: %s"
+        .action(email -> "Send an email to %s%n  subject: %s%n  body: %s"
                 .formatted(email.to(), email.subject(), trimmed(email.body()))))
 ```
 

@@ -64,12 +64,12 @@ public final class ToolBindings {
   }
 
   /** What this call means, in words a person can consent to. */
-  public String describe(ToolBinding<?> binding, JsonNode arguments) {
-    return describeBound(binding, arguments);
+  public String actionOf(ToolBinding<?> binding, JsonNode arguments) {
+    return renderAction(binding, arguments);
   }
 
-  private <I> String describeBound(ToolBinding<I> binding, JsonNode arguments) {
-    return binding.describer().describe(bind(binding.tool(), arguments));
+  private <I> String renderAction(ToolBinding<I> binding, JsonNode arguments) {
+    return binding.renderer().render(bind(binding.tool(), arguments));
   }
 
   /** Whether this call may run, as the binding's own approver sees it. */

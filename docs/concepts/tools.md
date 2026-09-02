@@ -39,11 +39,11 @@ or, when it needs governing:
 ```java
 config.tool(new SendEmailTool(), binding -> binding
         .approver(desk)
-        .describer(email -> "Send an email to " + email.to()));
+        .action(email -> "Send an email to " + email.to()));
 ```
 
 The customizer is typed to *that* tool's input, so the compiler ties a
-describer to the tool it describes. That matters as soon as an agent has two
+action renderer to the tool it describes. That matters as soon as an agent has two
 tools with different inputs.
 
 ## Answering now, or later

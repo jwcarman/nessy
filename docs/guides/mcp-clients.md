@@ -63,7 +63,7 @@ ActionContributor<JsonNode, String> PURCHASE_ACTION =
 
 config.tool(toolbox.tool("purchase"), binding -> binding
         .approver(desk)
-        .describer(arguments -> "purchase " + arguments.path("flight").asText()));
+        .action(arguments -> "purchase " + arguments.path("flight").asText()));
 ```
 
 `McpTool#execute` is always a single request/response round trip — never a

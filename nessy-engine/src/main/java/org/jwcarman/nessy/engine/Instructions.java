@@ -287,12 +287,28 @@ final class Instructions {
         .binding(call.name())
         .ifPresentOrElse(
             binding -> {
-              String description = deps.bindings().describe(binding, call.arguments());
-              // The reply token is minted before anyone is asked, because the approver may hand it
-              // to a person and the tool may hand it to the outside world, and both settle the same
-              // call.
+              // Rendered ONCE, here, and used for both the narration and the question. It used to
+              // be rendered again from a Narrate instruction, which meant reading the asking claim
+              // back to find the call first.
+              String action = deps.bindings().actionOf(binding, call.arguments());
+              narrator(agentId)
+                  .narrate(
+                      new AgentEvent.ToolCallRequested(
+                          Identifiers.next(), call.id(), call.name(), action));
               ApprovalRequest request =
-                  new ApprovalRequest(requestFor(agentId, state, call), description, Instant.now());
+                  new ApprovalRequest(
+                      deps.agentType(),
+                      agentId,
+                      state.turnId(),
+                      call.id(),
+                      call.name(),
+                      call.arguments(),
+                      action,
+                      Instant.now(),
+                      // Not minted unless somebody asks. An approver that answers on the spot —
+                      // and most do — hands the address to nobody.
+                      () ->
+                          deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
               run(
                   () ->
                       deps.traces()
@@ -324,7 +340,7 @@ final class Instructions {
                                       Identifiers.next(),
                                       call.id(),
                                       call.name(),
-                                      description,
+                                      action,
                                       deferred.expiresAt()));
                           yield new NessyMessage.ToolParked(
                               call.id(), deferred.expiresAt(), carried);
@@ -462,14 +478,6 @@ final class Instructions {
       case Instruction.Narrate.TurnEnded ended ->
           narrator(agentId)
               .narrate(new AgentEvent.TurnEnded(Identifiers.next(), ended.result(), ended.usage()));
-      case Instruction.Narrate.ToolCallRequested requested ->
-          narrator(agentId)
-              .narrate(
-                  new AgentEvent.ToolCallRequested(
-                      Identifiers.next(),
-                      requested.callId(),
-                      requested.toolName(),
-                      describe(agentId, state, requested.callId())));
       case Instruction.Narrate.ApprovalDecided decided ->
           narrator(agentId)
               .narrate(
@@ -493,18 +501,6 @@ final class Instructions {
   private String nameOf(AgentId agentId, AgentState state, String callId) {
     ToolCall call = callOf(agentId, state, callId);
     return call == null ? "" : call.name();
-  }
-
-  /** What the model asked this tool to do, in the words the binding's describer chose. */
-  private String describe(AgentId agentId, AgentState state, String callId) {
-    ToolCall call = callOf(agentId, state, callId);
-    if (call == null) {
-      return "";
-    }
-    return deps.bindings()
-        .binding(call.name())
-        .map(binding -> deps.bindings().describe(binding, call.arguments()))
-        .orElse("");
   }
 
   private ToolCall callOf(AgentId agentId, AgentState state, String callId) {

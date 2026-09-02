@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool.risk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -30,7 +31,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
 
 /**
  * Gating a call on how bad it would be.
@@ -43,16 +43,15 @@ class RiskTest {
 
   private static ApprovalRequest asking() {
     return new ApprovalRequest(
-        new ToolCallRequest<>(
-            AgentType.of("ops"),
-            AgentId.of("prod-eu"),
-            "turn-1",
-            "c1",
-            "prune_images",
-            "docker image prune -af",
-            ReplyToken.of("nowhere")),
+        AgentType.of("ops"),
+        AgentId.of("prod-eu"),
+        "turn-1",
+        "c1",
+        "prune_images",
+        JsonNodeFactory.instance.objectNode(),
         "docker image prune -af",
-        Instant.EPOCH);
+        Instant.EPOCH,
+        () -> ReplyToken.of("nowhere"));
   }
 
   /** An approver that records whether it was consulted at all. */
@@ -192,8 +191,8 @@ class RiskTest {
     void it_is_given_the_whole_question() {
       Risk.assessing(
               request -> {
-                assertThat(request.call().toolName()).isEqualTo("prune_images");
-                assertThat(request.description()).isEqualTo("docker image prune -af");
+                assertThat(request.toolName()).isEqualTo("prune_images");
+                assertThat(request.action()).isEqualTo("docker image prune -af");
                 return RiskAssessment.of(Likelihood.LOW, Impact.LOW);
               })
           .approvingBelow(RiskLevel.MODERATE)

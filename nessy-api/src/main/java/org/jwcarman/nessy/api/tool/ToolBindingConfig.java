@@ -24,8 +24,8 @@ package org.jwcarman.nessy.api.tool;
  * server does not get to author the sentence a human approves against.
  *
  * <p>Mutable during customization, read once afterwards. Neither call is required — an unbound
- * approver is {@link Approver#always()} and an unbound describer is {@link
- * ToolDescriber#byToString()}.
+ * approver is {@link Approver#always()} and an unbound renderer is {@link
+ * ActionRenderer#byToString()}.
  *
  * @param <I> the tool's bound input
  */
@@ -36,7 +36,8 @@ public interface ToolBindingConfig<I> {
 
   /**
    * How a call of this tool reads to a person — an approval page, a chat UI, a log line. Defaults
-   * to {@link ToolDescriber#byToString()}, which is fine for narration and poor for consent.
+   * to {@link ActionRenderer#byToString()}, which is fine for narration and poor for consent.
    */
-  ToolBindingConfig<I> describer(ToolDescriber<I> describer);
+  /** How this call is put into words a person can consent to. */
+  ToolBindingConfig<I> action(ActionRenderer<I> renderer);
 }

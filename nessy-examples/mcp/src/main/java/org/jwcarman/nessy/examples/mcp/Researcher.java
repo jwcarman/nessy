@@ -99,7 +99,7 @@ public final class Researcher {
                       binding ->
                           binding
                               .approver(ConsoleApprover.atTheTerminal())
-                              .describer(Researcher::asking)));
+                              .action(Researcher::asking)));
     }
   }
 
@@ -107,9 +107,9 @@ public final class Researcher {
    * The sentence a person consents to.
    *
    * <p>An imported tool's input is a {@link JsonNode} — the server declared the schema, not us — so
-   * a describer reads the fields it knows and falls back to the whole document rather than
-   * guessing. Showing the raw JSON is still better than showing nothing: consenting to a question
-   * you cannot read is not consent.
+   * a renderer reads the fields it knows and falls back to the whole document rather than guessing.
+   * Showing the raw JSON is still better than showing nothing: consenting to a question you cannot
+   * read is not consent.
    */
   private static String asking(JsonNode arguments) {
     JsonNode question = arguments.path("question");

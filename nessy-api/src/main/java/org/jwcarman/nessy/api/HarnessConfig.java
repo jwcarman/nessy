@@ -62,8 +62,8 @@ public interface HarnessConfig<O> {
    * Grants one tool, and says how it is governed and explained.
    *
    * <p>The type parameter is on the METHOD rather than on this interface, so one kind of agent can
-   * grant tools whose inputs differ — and so the compiler still ties a tool to its own describer,
-   * which a {@code ToolBinding<?>} list could not.
+   * grant tools whose inputs differ — and so the compiler still ties a tool to its own action
+   * renderer, which a {@code ToolBinding<?>} list could not.
    */
   <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolBindingConfig<I>> customizer);
 

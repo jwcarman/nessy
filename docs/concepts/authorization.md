@@ -47,31 +47,45 @@ the message it would save, and it is the path recovery has to work on too.
 
 ```java
 record ApprovalRequest(
-    ToolCallRequest<?> call,
-    String description,
-    Instant askedAt,
-    ObjectNode facts) {
-
-  ReplyToken replyToken();   // reaches through to call.replyToken()
-}
-
-record ToolCallRequest<I>(
     AgentType agentType,
     AgentId agentId,
     String turnId,
     String callId,
     String toolName,
-    I input,
-    Supplier<ReplyToken> replyTokens) {
+    JsonNode arguments,
+    String action,
+    Instant askedAt,
+    Supplier<ReplyToken> replyTokens,
+    ObjectNode facts) {
 
   ReplyToken replyToken();   // mints on first call, then remembers
+  String callKey();          // turnId + "/" + callId
 }
 ```
 
-`ToolCallRequest<?>` rather than `ToolCallRequest<I>`: one approver serves
-every gated tool, and those tools have different inputs. An approver reads the
-description, the tool name and the ids — not the typed input — so the wildcard
-costs nothing it needed.
+**Flat, and untyped on purpose.** One approver serves every gated tool, and
+those tools have different inputs — so a typed request would mean a generic
+`Approver`, and a desk would have to be written as `Approver<Object>` to serve
+more than one tool. More to the point, the policy engines people actually plug
+in — OPA, Cedar — take a JSON document. A typed request would be typed on its
+way to being serialised back.
+
+**`arguments` is for deciding. `action` is for showing.**
+
+A policy reads `arguments.path("host").asText()` to decide. A page shows
+`action()` — the sentence the binding's `ActionRenderer` wrote. Rendering raw
+arguments at a person is the failure this split exists to prevent: nobody can
+consent to `{"customer_id":"cus_8823","op":"purge"}`, and everybody can consent
+to "permanently delete Acme Corp's record".
+
+**Not `description`.** A `Tool` has a description, and it means something else:
+what the tool IS, written for the model. This is what one call, with these
+arguments, would actually do.
+
+**Something richer than a string?** Put it in `facts` — it is an `ObjectNode`,
+and that is the channel for structured evidence a policy deposits or reads.
+`Risk` does exactly this. A typed *action* object would only restate the tool's
+input, which the renderer already receives.
 
 `call` is the whole of what the tool itself would be handed — the same record,
 so an approver can decide on exactly the values the tool will act on. `facts` is the
@@ -85,16 +99,16 @@ policy may weigh or ignore.
 ```java
 config.tool(sendEmail, binding -> binding
         .approver(desk)
-        .describer(email -> "Send an email to %s%n  subject: %s%n  body: %s"
+        .action(email -> "Send an email to %s%n  subject: %s%n  body: %s"
                 .formatted(email.to(), email.subject(), trimmed(email.body()))));
 ```
 
 **Consenting to a message you have not read is not consent.** Include the
 body. Trim it if your surface is a terminal prompt; don't if it is a page
-with room. A describer that names only the recipient and subject asks
+with room. A action renderer that names only the recipient and subject asks
 somebody to approve an email they cannot see.
 
-The default describer is the input's `toString()`, which is honest for a
+The default renderer is the input's `toString()`, which is honest for a
 small record and useless for a large one.
 
 ## A denial is an answer

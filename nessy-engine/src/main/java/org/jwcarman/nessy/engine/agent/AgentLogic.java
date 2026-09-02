@@ -104,7 +104,6 @@ public final class AgentLogic {
     List<Instruction> then = new ArrayList<>();
     for (Input.CallSummary call : asked.calls()) {
       calls.put(call.callId(), new CallState.Approving(call.toolName()));
-      then.add(new Instruction.Narrate.ToolCallRequested(call.callId(), call.toolName()));
       then.add(new Instruction.AskApprover(call.callId(), call.toolName()));
     }
     return new Decision(state.at(new Phase.WorkingTools(calls)), then);

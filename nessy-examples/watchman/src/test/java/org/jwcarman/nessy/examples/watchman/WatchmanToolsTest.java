@@ -106,7 +106,7 @@ class WatchmanToolsTest {
 
     @Test
     void the_action_a_human_is_shown_is_the_line_that_will_run() {
-      assertThat(WatchmanTools.describe("prune_images", NO_ARGUMENTS))
+      assertThat(WatchmanTools.actionOf("prune_images", NO_ARGUMENTS))
           .isEqualTo("docker image prune -af");
     }
   }

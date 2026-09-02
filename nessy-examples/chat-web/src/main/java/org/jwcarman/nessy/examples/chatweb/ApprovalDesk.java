@@ -48,7 +48,7 @@ public class ApprovalDesk {
    *
    * <p>The request carries the tool's own input object rather than the model's raw JSON — one
    * representation, so the page cannot show something the tool will not act on. Writing it back out
-   * as JSON is what makes it readable as evidence beside the describer's sentence.
+   * as JSON is what makes it readable as evidence beside the renderer's sentence.
    */
   private static final ObjectMapper EVIDENCE =
       new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
@@ -80,13 +80,13 @@ public class ApprovalDesk {
   /** Records a question the approver has just deferred. */
   public void expecting(ApprovalRequest request, ReplyToken replyToken) {
     waiting.put(
-        request.call().callId(),
+        request.callId(),
         new Waiting(
-            request.call().agentId().value(),
-            request.call().callId(),
-            request.call().toolName(),
-            evidenceOf(request.call().input()),
-            request.description(),
+            request.agentId().value(),
+            request.callId(),
+            request.toolName(),
+            request.arguments().toPrettyString(),
+            request.action(),
             request.askedAt(),
             replyToken));
   }

@@ -109,7 +109,7 @@ Harness<String> harness = factory.createHarness(String.class, config -> config
         .renderer(UserMessage::of)
         .tool(new RestartTool(), binding -> binding
                 .approver(desk)
-                .describer(input -> "restart " + input.host())));
+                .action(input -> "restart " + input.host())));
 
 harness.observe(AgentId.of("ops"), "restart prod-1");
 ```

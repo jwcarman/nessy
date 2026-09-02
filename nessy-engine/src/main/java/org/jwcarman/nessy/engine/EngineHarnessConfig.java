@@ -25,11 +25,11 @@ import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolBindingConfig;
-import org.jwcarman.nessy.api.tool.ToolDescriber;
 
 /**
  * What one kind of agent is, while it is being described.
@@ -94,7 +94,7 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
     Objects.requireNonNull(customizer, "customizer must not be null");
     BindingConfig<I> binding = new BindingConfig<>();
     customizer.accept(binding);
-    bindings.add(new ToolBinding<>(tool, binding.approver, binding.describer));
+    bindings.add(new ToolBinding<>(tool, binding.approver, binding.renderer));
     return this;
   }
 
@@ -146,7 +146,7 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
   private static final class BindingConfig<I> implements ToolBindingConfig<I> {
 
     private Approver approver = Approver.always();
-    private ToolDescriber<I> describer = ToolDescriber.byToString();
+    private ActionRenderer<I> renderer = ActionRenderer.byToString();
 
     @Override
     public ToolBindingConfig<I> approver(Approver approver) {
@@ -155,8 +155,8 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
     }
 
     @Override
-    public ToolBindingConfig<I> describer(ToolDescriber<I> describer) {
-      this.describer = Objects.requireNonNull(describer, "describer must not be null");
+    public ToolBindingConfig<I> action(ActionRenderer<I> renderer) {
+      this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
       return this;
     }
   }

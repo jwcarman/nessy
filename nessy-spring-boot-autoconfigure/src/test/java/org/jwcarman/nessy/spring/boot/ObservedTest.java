@@ -280,16 +280,15 @@ class ObservedTest {
 
   private static ApprovalRequest approvalRequest() {
     return new ApprovalRequest(
-        new ToolCallRequest(
-            AgentType.of("ops"),
-            AgentId.of("prod-eu"),
-            "turn-1",
-            "c1",
-            "restart",
-            com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
-            new ReplyToken("nowhere")),
+        AgentType.of("ops"),
+        AgentId.of("prod-eu"),
+        "turn-1",
+        "c1",
+        "restart",
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
         "restart prod-eu",
-        Instant.EPOCH);
+        Instant.EPOCH,
+        () -> new ReplyToken("nowhere"));
   }
 
   private static Tool<String> tool(java.util.function.Function<String, Awaited<ToolResult>> body) {

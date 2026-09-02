@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *
  * <p><b>No raw tool arguments appear anywhere.</b> Narration is serialized once per event and
  * delivered to a browser, and a tool's arguments may hold credentials or personal data. What a
- * watcher gets instead is the binding's {@code ToolDescriber} output — the sentence a person can
+ * watcher gets instead is the binding's {@code ActionRenderer} output — the sentence a person can
  * read, which is what a UI wanted to render anyway.
  *
  * <p><b>Every event carries an id</b> — a UUIDv7, so it is time-ordered as well as unique. That
@@ -107,7 +107,7 @@ public sealed interface AgentEvent {
   /**
    * The model asked for a tool.
    *
-   * <p>{@code description} is the binding's {@code ToolDescriber} rendering of this call — "search
+   * <p>{@code description} is the binding's {@code ActionRenderer} rendering of this call — "search
    * orders for blue widgets" — and it is all a watcher gets. The arguments themselves never
    * narrate.
    */

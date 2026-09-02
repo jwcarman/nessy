@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -40,7 +41,6 @@ import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 class McpToolboxTest {
@@ -264,7 +264,7 @@ class McpToolboxTest {
      * Spec §0's claim that a third-party tool is governable with no wrapper class of nessy's own:
      * {@link McpTool} (obtained here through {@link McpToolbox#tool(String)}, package-private and
      * never subclassed by this test) goes straight into a {@link ToolBinding} with a {@link
-     * ToolDescriber} that states the call and a pinned denying approver.
+     * ActionRenderer} that states the call and a pinned denying approver.
      */
     @Test
     void governs_a_fetched_mcp_tool_directly_with_no_wrapper_class() {
@@ -272,22 +272,31 @@ class McpToolboxTest {
           McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi there");
-        ToolDescriber<JsonNode> describer = args -> tool.name() + " " + args;
+        ActionRenderer<JsonNode> renderer = args -> tool.name() + " " + args;
         Approver deny = request -> Awaited.ready(ApprovalResult.denied("pinned"));
 
-        ToolBinding<JsonNode> binding = new ToolBinding<>(tool, deny, describer);
+        ToolBinding<JsonNode> binding = new ToolBinding<>(tool, deny, renderer);
 
         // The binding is the whole of the governance: the tool it wraps is untouched, the
-        // description a human would read comes off the describer, and the answer off the approver.
+        // sentence a human would read comes off the renderer, and the answer off the approver.
         assertThat(binding.tool()).isSameAs(tool);
-        assertThat(binding.describer().describe(arguments)).isEqualTo("echo " + arguments);
+        assertThat(binding.renderer().render(arguments)).isEqualTo("echo " + arguments);
         assertThat(binding.approver().approve(approvalRequestFor(arguments)))
             .isEqualTo(Awaited.ready(ApprovalResult.denied("pinned")));
       }
     }
 
     private static ApprovalRequest approvalRequestFor(JsonNode arguments) {
-      return new ApprovalRequest(contextFor(arguments), "echo " + arguments, Instant.EPOCH);
+      return new ApprovalRequest(
+          AgentType.of("mcp-test"),
+          AgentId.of("one"),
+          "turn-1",
+          "call-1",
+          "echo",
+          arguments,
+          "echo " + arguments,
+          Instant.EPOCH,
+          () -> new ReplyToken("unused-by-a-tool-that-never-defers"));
     }
   }
 
