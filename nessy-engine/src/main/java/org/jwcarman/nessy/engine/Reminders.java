@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,8 +51,35 @@ final class Reminders {
   private static final String READ =
       "SELECT reminder_key, expires_at, payload FROM nessy_reminder WHERE reminder_key = ?";
 
-  /** A reminder as the store holds it. */
-  record Reminder(String key, Instant expiresAt, byte[] payload) {}
+  /**
+   * A reminder as the store holds it.
+   *
+   * <p>Written out rather than generated because a record compares an array by IDENTITY: two
+   * reminders read from the same row would not be equal, and a payload would print as a type name
+   * and a hash rather than as anything a reader could use.
+   */
+  record Reminder(String key, Instant expiresAt, byte[] payload) {
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Reminder reminder
+          && Objects.equals(key, reminder.key)
+          && Objects.equals(expiresAt, reminder.expiresAt)
+          && Arrays.equals(payload, reminder.payload);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(key, expiresAt, Arrays.hashCode(payload));
+    }
+
+    /** The payload is opaque bytes, so it is measured rather than printed. */
+    @Override
+    public String toString() {
+      return "Reminder[key=%s, expiresAt=%s, payload=%d bytes]"
+          .formatted(key, expiresAt, payload == null ? 0 : payload.length);
+    }
+  }
 
   private final JdbcClient jdbc;
 

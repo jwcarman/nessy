@@ -23,6 +23,7 @@ import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
@@ -148,5 +149,34 @@ class RemindersTest {
   @Test
   void a_limit_below_one_is_refused() {
     assertThatThrownBy(() -> reminders.due(NOON, 0)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Nested
+  @DisplayName("a reminder compares by its bytes, not by which array holds them")
+  class Equality {
+
+    @Test
+    void two_reminders_read_from_the_same_row_are_equal() {
+      var one = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+      var other = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+
+      assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
+    }
+
+    @Test
+    void a_different_payload_is_a_different_reminder() {
+      var one = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+      var other = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {9});
+
+      assertThat(one).isNotEqualTo(other);
+    }
+
+    @Test
+    @DisplayName("the payload is measured rather than printed — it is opaque bytes")
+    void the_payload_does_not_appear_in_toString() {
+      var reminder = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+
+      assertThat(reminder.toString()).contains("3 bytes").doesNotContain("[B@");
+    }
   }
 }

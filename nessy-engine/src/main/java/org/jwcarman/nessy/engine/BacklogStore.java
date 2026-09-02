@@ -19,6 +19,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -93,9 +94,38 @@ public final class BacklogStore<O> {
   /** What a take hands back: the row's id, which is the turn id, and where its input is held. */
   public record Taken(String turnId, String observationClaim) {}
 
+  /**
+   * One row as the table holds it.
+   *
+   * <p>The generated equality a record gives you compares {@code observation} by IDENTITY, so two
+   * rows read from the same database would differ. Nothing here relies on that today; it is written
+   * out because the day something does, the failure is silent.
+   */
   private record Row(String itemId, Instant receivedAt, byte[] observation, String takenClaim) {
+
     boolean untaken() {
       return takenClaim == null;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Row row
+          && Objects.equals(itemId, row.itemId)
+          && Objects.equals(receivedAt, row.receivedAt)
+          && Arrays.equals(observation, row.observation)
+          && Objects.equals(takenClaim, row.takenClaim);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(itemId, receivedAt, Arrays.hashCode(observation), takenClaim);
+    }
+
+    /** The observation is a payload, so it is measured rather than printed. */
+    @Override
+    public String toString() {
+      return "Row[itemId=%s, receivedAt=%s, observation=%d bytes, takenClaim=%s]"
+          .formatted(itemId, receivedAt, observation == null ? 0 : observation.length, takenClaim);
     }
   }
 
