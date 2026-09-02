@@ -73,7 +73,7 @@ class PendingApprovalsListenerTest {
 
       listener.on(asked("c1"));
 
-      PendingApproval row = repository.byCallId("c1").orElseThrow();
+      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
       assertThat(row.tool()).isEqualTo("prune_images");
       assertThat(row.action()).isEqualTo("docker image prune -af");
       assertThat(row.agentType()).isEqualTo("watchman");
@@ -111,7 +111,8 @@ class PendingApprovalsListenerTest {
           new AgentEvent.ApprovalDecided("e2", "c1", "prune_images", ApprovalResult.approved()));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(repository.byCallId("c1").orElseThrow().answer()).contains("approved");
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().answer())
+          .contains("approved");
     }
 
     @Test
@@ -123,7 +124,7 @@ class PendingApprovalsListenerTest {
           new AgentEvent.ApprovalDecided(
               "e2", "c1", "prune_images", ApprovalResult.denied("not tonight")));
 
-      PendingApproval row = repository.byCallId("c1").orElseThrow();
+      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
       assertThat(row.answer()).contains("denied");
       assertThat(row.note()).contains("not tonight");
     }
@@ -155,7 +156,7 @@ class PendingApprovalsListenerTest {
       listener.on(asked("c1"));
 
       assertThat(repository.pending()).hasSize(1);
-      assertThat(repository.byCallId("c1").orElseThrow().replyToken())
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
           .as("a row keeping the old token would show a button the engine rejects")
           .isEqualTo("token-2");
     }

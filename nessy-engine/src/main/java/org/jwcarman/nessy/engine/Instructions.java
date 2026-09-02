@@ -170,9 +170,7 @@ final class Instructions {
       case Instruction.Release ignored -> deps.claims().deleteTurn(agentId, state.turnId());
       case Instruction.SetAlarm alarm -> setAlarm(agentId, alarm);
       case Instruction.CancelAlarm alarm ->
-          deps.reminders()
-              .cancel(
-                  ReminderSweep.keyFor(deps.agentType().name(), agentId.value(), alarm.callId()));
+          deps.reminders().cancel(deps.agentType().name(), agentId.value(), alarm.callId());
       case Instruction.Sleep ignored -> {
         // The agent asks the shard to unload it; that lives on the actor, which owns the handle.
       }
@@ -463,12 +461,7 @@ final class Instructions {
 
   private void setAlarm(AgentId agentId, Instruction.SetAlarm alarm) {
     deps.reminders()
-        .remind(
-            ReminderSweep.keyFor(deps.agentType().name(), agentId.value(), alarm.callId()),
-            alarm.expiresAt(),
-            ReminderSweep.encode(
-                new ReminderSweep.Coordinates(
-                    deps.agentType().name(), agentId.value(), alarm.callId())));
+        .remind(deps.agentType().name(), agentId.value(), alarm.callId(), alarm.expiresAt());
   }
 
   private void narrate(AgentId agentId, AgentState state, Instruction.Narrate narrate) {

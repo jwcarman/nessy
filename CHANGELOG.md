@@ -67,6 +67,11 @@ in its current vocabulary — not the sequence of designs that produced it.
   `nessy_claim`, `nessy_reminder`, `nessy_transcript`, plus one per store
   module. There is no storage abstraction, deliberately: a general-purpose
   seam made its callers enforce its design rather than their own.
+- **Every row says whose it is, in columns.** Identity is the agent TYPE,
+  the agent id, and — where a call is involved — the call id, because an
+  agent id is unique only within its type and a model's call id only within
+  one response. Nothing composes those into a single string: a separator in
+  an id is then just a character, not a collision landing in a primary key.
 - **The backlog is a table**, ordered by the coalescer's own output. The row
   id **is** the turn id, because one observation is one turn — which is also
   what makes a take idempotent across a crash.

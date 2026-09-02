@@ -77,7 +77,7 @@ class PendingApprovalsRepositoryTest {
     void a_question_comes_back_whole() {
       repository.asked(question("c1", "token-1"));
 
-      PendingApproval row = repository.byCallId("c1").orElseThrow();
+      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
 
       assertThat(row.tool()).isEqualTo("prune_images");
       assertThat(row.action()).isEqualTo("docker image prune -af");
@@ -89,7 +89,7 @@ class PendingApprovalsRepositoryTest {
 
     @Test
     void a_call_nobody_asked_about_is_absent() {
-      assertThat(repository.byCallId("never")).isEmpty();
+      assertThat(repository.byCallId("watchman", "house-12", "never")).isEmpty();
     }
 
     @Test
@@ -107,7 +107,8 @@ class PendingApprovalsRepositoryTest {
       repository.asked(question("c1", "token-1"));
       repository.asked(question("c1", "token-2"));
 
-      assertThat(repository.byCallId("c1").orElseThrow().replyToken()).isEqualTo("token-2");
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+          .isEqualTo("token-2");
     }
 
     @Test
@@ -141,10 +142,11 @@ class PendingApprovalsRepositoryTest {
     void an_answered_call_stops_waiting() {
       repository.asked(question("c1", "token-1"));
 
-      repository.answered("c1", "approved", "looks fine", ASKED.plusSeconds(60));
+      repository.answered(
+          "watchman", "house-12", "c1", "approved", "looks fine", ASKED.plusSeconds(60));
 
       assertThat(repository.pending()).isEmpty();
-      PendingApproval row = repository.byCallId("c1").orElseThrow();
+      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
       assertThat(row.answer()).contains("approved");
       assertThat(row.note()).contains("looks fine");
       assertThat(row.answeredAt()).contains(ASKED.plusSeconds(60));
@@ -154,23 +156,26 @@ class PendingApprovalsRepositoryTest {
     @DisplayName("a late click on a stale page does not overwrite what was decided")
     void a_second_answer_changes_nothing() {
       repository.asked(question("c1", "token-1"));
-      repository.answered("c1", "denied", "no", ASKED.plusSeconds(60));
+      repository.answered("watchman", "house-12", "c1", "denied", "no", ASKED.plusSeconds(60));
 
-      repository.answered("c1", "approved", "changed my mind", ASKED.plusSeconds(120));
+      repository.answered(
+          "watchman", "house-12", "c1", "approved", "changed my mind", ASKED.plusSeconds(120));
 
-      assertThat(repository.byCallId("c1").orElseThrow().answer()).contains("denied");
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().answer())
+          .contains("denied");
     }
 
     @Test
     @DisplayName("a late re-ask does not reopen a decision")
     void asking_again_after_an_answer_leaves_it_answered() {
       repository.asked(question("c1", "token-1"));
-      repository.answered("c1", "denied", "no", ASKED.plusSeconds(60));
+      repository.answered("watchman", "house-12", "c1", "denied", "no", ASKED.plusSeconds(60));
 
       repository.asked(question("c1", "token-2"));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(repository.byCallId("c1").orElseThrow().replyToken()).isEqualTo("token-1");
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+          .isEqualTo("token-1");
     }
   }
 }

@@ -162,7 +162,8 @@ class PostgresStoreCertificationTest {
               java.util.Optional.empty()));
 
       assertThat(repository.pending()).hasSize(1);
-      assertThat(repository.byCallId("c1").orElseThrow().replyToken()).isEqualTo("token-2");
+      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+          .isEqualTo("token-2");
     }
 
     @Test
@@ -185,10 +186,12 @@ class PostgresStoreCertificationTest {
               java.util.Optional.empty(),
               java.util.Optional.empty()));
 
-      repository.answered("c2", "denied", "not tonight", asked.plusSeconds(60));
+      repository.answered(
+          "watchman", "house-12", "c2", "denied", "not tonight", asked.plusSeconds(60));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(repository.byCallId("c2").orElseThrow().answer()).contains("denied");
+      assertThat(repository.byCallId("watchman", "house-12", "c2").orElseThrow().answer())
+          .contains("denied");
     }
   }
 

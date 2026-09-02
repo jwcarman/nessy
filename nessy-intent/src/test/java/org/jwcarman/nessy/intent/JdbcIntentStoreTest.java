@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
@@ -40,14 +41,16 @@ class JdbcIntentStoreTest {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
+      var store =
+          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
+      var store =
+          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER);
 
       store.declare(new Intent("first declaration"));
       store.declare(new Intent("second declaration"));
@@ -62,7 +65,7 @@ class JdbcIntentStoreTest {
           database,
           "agent-a",
           "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}");
-      var store = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
+      var store = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
@@ -74,8 +77,8 @@ class JdbcIntentStoreTest {
     @Test
     void shareTheDeclaration() {
       var database = TestDatabase.fresh();
-      var writer = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
-      var reader = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
+      var writer = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
+      var reader = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
 
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -101,14 +104,35 @@ class JdbcIntentStoreTest {
     @Test
     void blindlyOverwritesAnIncumbentItsOwnCodecCannotDecode() {
       var database = TestDatabase.fresh();
-      var plainStore = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
+      var plainStore = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
       var foreignStore =
-          new JdbcIntentStore<>(database, "agent-a", ForeignVocabulary.class, MAPPER);
+          new JdbcIntentStore<>(database, "chat", "agent-a", ForeignVocabulary.class, MAPPER);
       plainStore.declare(new Intent("a plain declaration, no \"type\" discriminator at all"));
 
       foreignStore.declare(new Restart("prod-eu", "stuck deploy"));
 
       assertThat(foreignStore.latest()).contains(new Restart("prod-eu", "stuck deploy"));
+    }
+  }
+
+  @Nested
+  @DisplayName("whose intent it is")
+  class Identity {
+
+    @Test
+    @DisplayName("an id is unique within its type, so two types do not share a declaration")
+    void two_agent_types_sharing_an_id_declare_separately() {
+      var database = TestDatabase.fresh();
+      var chat = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
+      var watchman = new JdbcIntentStore<>(database, "watchman", "agent-a", Intent.class, MAPPER);
+
+      chat.declare(new Intent("answering a question"));
+      watchman.declare(new Intent("pruning docker images"));
+
+      assertThat(chat.latest())
+          .as("keyed on the id alone, the watchman's declaration overwrote the chat agent's")
+          .contains(new Intent("answering a question"));
+      assertThat(watchman.latest()).contains(new Intent("pruning docker images"));
     }
   }
 
@@ -128,7 +152,8 @@ class JdbcIntentStoreTest {
 
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
-      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", OpsIntent.class, MAPPER);
+      var store =
+          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -137,7 +162,8 @@ class JdbcIntentStoreTest {
 
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
-      var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", OpsIntent.class, MAPPER);
+      var store =
+          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Diagnose("prod-eu"));
 
@@ -154,7 +180,7 @@ class JdbcIntentStoreTest {
     @Test
     void anAnnotatedVocabularySingleDiscriminatesRatherThanDoublingTheTypeKey() {
       var database = TestDatabase.fresh();
-      var store = new JdbcIntentStore<>(database, "agent-a", OpsIntent.class, MAPPER);
+      var store = new JdbcIntentStore<>(database, "chat", "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -169,11 +195,12 @@ class JdbcIntentStoreTest {
     @Test
     void retriesAndTheRetriedDeclarationStillWins() {
       var database = TestDatabase.fresh();
-      var raced = new JdbcIntentStore<>(losesOneWrite(database), "agent-a", Intent.class, MAPPER);
+      var raced =
+          new JdbcIntentStore<>(losesOneWrite(database), "chat", "agent-a", Intent.class, MAPPER);
 
       raced.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new JdbcIntentStore<>(database, "agent-a", Intent.class, MAPPER);
+      var readBack = new JdbcIntentStore<>(database, "chat", "agent-a", Intent.class, MAPPER);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }
@@ -187,7 +214,7 @@ class JdbcIntentStoreTest {
       var database = TestDatabase.fresh();
       Codec<Intent> codec =
           new Jackson2CodecFactory(MAPPER).create(Intent.class).andThen(new MarkerBytesCodec());
-      var store = new JdbcIntentStore<>(database, "agent-a", codec);
+      var store = new JdbcIntentStore<>(database, "chat", "agent-a", codec);
 
       store.declare(new Intent("restart prod-eu"));
 
@@ -232,7 +259,8 @@ class JdbcIntentStoreTest {
   private static void storeDeclaration(
       javax.sql.DataSource dataSource, String agentId, String declaration) {
     org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
-        .sql("INSERT INTO nessy_intent (agent_id, declaration, version) VALUES (?, ?, 1)")
+        .sql(
+            "INSERT INTO nessy_intent (agent_type, agent_id, declaration, version) VALUES ('chat', ?, ?, 1)")
         .params(agentId, declaration)
         .update();
   }
@@ -240,7 +268,7 @@ class JdbcIntentStoreTest {
   /** The stored bytes for an agent, read past the store rather than through it. */
   private static String declarationIn(javax.sql.DataSource dataSource, String agentId) {
     return org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
-        .sql("SELECT declaration FROM nessy_intent WHERE agent_id = ?")
+        .sql("SELECT declaration FROM nessy_intent WHERE agent_type = 'chat' AND agent_id = ?")
         .params(agentId)
         .query(String.class)
         .single();

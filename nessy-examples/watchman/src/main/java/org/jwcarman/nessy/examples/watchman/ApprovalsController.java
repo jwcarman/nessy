@@ -174,21 +174,27 @@ public class ApprovalsController {
     return block.isError() ? "failed: " + body : body;
   }
 
-  @PostMapping("/approve/{agentId}/{callId}")
+  // The type is in the path with the id, because an id names an agent only within its type. A
+  // link that carried the id alone could not find the row it came from once two kinds of agent
+  // are asking.
+  @PostMapping("/approve/{agentType}/{agentId}/{callId}")
   public CompletableFuture<String> approve(
+      @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
       Principal who) {
-    return answer(callId, ApprovalResult.approved(), who);
+    return answer(agentType, agentId, callId, ApprovalResult.approved(), who);
   }
 
-  @PostMapping("/deny/{agentId}/{callId}")
+  @PostMapping("/deny/{agentType}/{agentId}/{callId}")
   public CompletableFuture<String> deny(
+      @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
       @RequestParam(name = "note", defaultValue = "") String note,
       Principal who) {
-    return answer(callId, ApprovalResult.denied(note.isBlank() ? "denied" : note), who);
+    return answer(
+        agentType, agentId, callId, ApprovalResult.denied(note.isBlank() ? "denied" : note), who);
   }
 
   /**
@@ -198,8 +204,9 @@ public class ApprovalsController {
    * second click should land on a page showing what the first one decided rather than a stack
    * trace.
    */
-  private CompletableFuture<String> answer(String callId, ApprovalResult result, Principal who) {
-    PendingApproval row = approvals.byCallId(callId).orElse(null);
+  private CompletableFuture<String> answer(
+      String agentType, String agentId, String callId, ApprovalResult result, Principal who) {
+    PendingApproval row = approvals.byCallId(agentType, agentId, callId).orElse(null);
     if (row == null || !row.waiting()) {
       LOG.info("[watchman] {} answered {}, which was not waiting", name(who), callId);
       return CompletableFuture.completedFuture("redirect:/");

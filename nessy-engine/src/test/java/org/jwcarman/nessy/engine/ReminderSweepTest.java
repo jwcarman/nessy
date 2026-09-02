@@ -63,12 +63,7 @@ class ReminderSweepTest {
   }
 
   private void park(String callId, Instant expiresAt) {
-    ReminderSweep.Coordinates where =
-        new ReminderSweep.Coordinates(WHERE.agentType(), WHERE.agentId(), callId);
-    reminders.remind(
-        ReminderSweep.keyFor(where.agentType(), where.agentId(), callId),
-        expiresAt,
-        ReminderSweep.encode(where));
+    reminders.remind(WHERE.agentType(), WHERE.agentId(), callId, expiresAt);
   }
 
   @Test
@@ -100,7 +95,7 @@ class ReminderSweepTest {
 
     sweep.sweep();
 
-    assertThat(reminders.find(ReminderSweep.keyFor("chat", "agent-one", "call-1")).orElseThrow())
+    assertThat(reminders.find("chat", "agent-one", "call-1").orElseThrow())
         .extracting(Reminders.Reminder::expiresAt)
         .isEqualTo(NOON.plus(ReminderSweep.BACKOFF));
     assertThat(sweep.sweep()).isZero();
@@ -109,7 +104,7 @@ class ReminderSweepTest {
   @Test
   void a_cancelled_reminder_never_fires() {
     park("call-1", NOON.minusSeconds(1));
-    reminders.cancel(ReminderSweep.keyFor("chat", "agent-one", "call-1"));
+    reminders.cancel("chat", "agent-one", "call-1");
 
     assertThat(sweep.sweep()).isZero();
     assertThat(delivered).isEmpty();

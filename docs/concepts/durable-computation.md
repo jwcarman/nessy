@@ -63,12 +63,20 @@ does not:
 
 ```sql
 CREATE TABLE nessy_reminder (
-  reminder_key TEXT                     NOT NULL,
-  expires_at   TIMESTAMP WITH TIME ZONE NOT NULL,
-  payload      BYTEA                    NOT NULL,
-  PRIMARY KEY (reminder_key)
+  agent_type TEXT                     NOT NULL,
+  agent_id   TEXT                     NOT NULL,
+  call_id    TEXT                     NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (agent_type, agent_id, call_id)
 );
 ```
+
+Whose deadline it is, in columns. This was once one composed key and an
+opaque payload — the agent and the call written twice, once concatenated
+into the key and again as JSON so the sweep knew who to tell. That is a
+key-value store's shape, and it carried a key-value store's hazard: an
+agent id containing the separator collides with a different call, and the
+collision lands in a `PRIMARY KEY`.
 
 A sweep reads from the front of the index and stops at the first row not
 yet due, so its cost is the number of *expired* reminders rather than the

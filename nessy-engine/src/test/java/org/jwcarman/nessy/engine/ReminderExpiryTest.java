@@ -187,14 +187,17 @@ class ReminderExpiryTest {
   @DisplayName("the deadline is written down, then fires through the sweep and ends the turn")
   void a_parked_call_expires_without_anything_holding_a_timer() {
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
-    String key = ReminderSweep.keyFor(WATCHMAN.name(), HOUSE.value(), "c1");
 
     try (AgentSubscription listening = harness.subscribe(HOUSE, heard::add)) {
       harness.observe(HOUSE, new HouseEvent("kitchen", "door opened"));
 
       // The deadline is a ROW, and it names the term the approver asked for.
-      await().atMost(15, SECONDS).untilAsserted(() -> assertThat(reminders.find(key)).isPresent());
-      assertThat(reminders.find(key).orElseThrow().expiresAt()).isEqualTo(PARKED_AT.plus(TERM));
+      await()
+          .atMost(15, SECONDS)
+          .untilAsserted(
+              () -> assertThat(reminders.find(WATCHMAN.name(), HOUSE.value(), "c1")).isPresent());
+      assertThat(reminders.find(WATCHMAN.name(), HOUSE.value(), "c1").orElseThrow().expiresAt())
+          .isEqualTo(PARKED_AT.plus(TERM));
 
       // Three days later, without waiting three days: the sweep's clock is a parameter.
       ReminderSweep sweep =

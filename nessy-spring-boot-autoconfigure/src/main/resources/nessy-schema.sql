@@ -17,10 +17,13 @@
 -- reply_token is stored deliberately, and it is a CREDENTIAL. It is how a page answers a call days
 -- after the process that asked has forgotten, and it is sealed with the application's own key.
 -- Anyone who can read this table can approve anything still waiting.
+-- Keyed on the AGENT and the call, never the call alone. A model's call id is unique within one
+-- response and no further, so two agents can each be waiting on a "call_1" — and a row keyed on
+-- that would let one silently replace the other's question.
 CREATE TABLE IF NOT EXISTS nessy_pending_approvals (
-  call_id     TEXT                     NOT NULL,
   agent_type  TEXT                     NOT NULL,
   agent_id    TEXT                     NOT NULL,
+  call_id     TEXT                     NOT NULL,
   tool        TEXT                     NOT NULL,
   action      TEXT                     NOT NULL,
   asked_at    TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -29,7 +32,7 @@ CREATE TABLE IF NOT EXISTS nessy_pending_approvals (
   answer      TEXT,
   note        TEXT,
   answered_at TIMESTAMP WITH TIME ZONE,
-  PRIMARY KEY (call_id)
+  PRIMARY KEY (agent_type, agent_id, call_id)
 );
 
 -- The page asks for what is still waiting, oldest first, and that is the only query it makes often.

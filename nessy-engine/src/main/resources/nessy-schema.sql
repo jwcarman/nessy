@@ -20,11 +20,18 @@ CREATE TABLE IF NOT EXISTS nessy_claim (
 --
 -- An in-memory timer dies with its actor, which is why an approval parked on a person for three
 -- days used to require the agent to stay resident for three days. A row does not.
+-- Columns rather than a composed key and an opaque payload, which is what this was.
+--
+-- It held the agent and the call TWICE: concatenated into a primary key so a settled call could
+-- cancel its own alarm, and again as JSON so the sweep knew who to tell. That is a key-value
+-- store's shape, and it brought a key-value store's hazard — an agent id containing the separator
+-- collides with a different call, and the collision lands in a PRIMARY KEY.
 CREATE TABLE IF NOT EXISTS nessy_reminder (
-  reminder_key TEXT                     NOT NULL,
-  expires_at   TIMESTAMP WITH TIME ZONE NOT NULL,
-  payload      BYTEA                    NOT NULL,
-  PRIMARY KEY (reminder_key)
+  agent_type TEXT                     NOT NULL,
+  agent_id   TEXT                     NOT NULL,
+  call_id    TEXT                     NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (agent_type, agent_id, call_id)
 );
 
 -- The sweep reads from the front of this index and stops at the first row not yet due, so its cost

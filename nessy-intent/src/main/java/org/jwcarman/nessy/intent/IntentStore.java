@@ -25,7 +25,8 @@ import org.jwcarman.nessy.api.memory.Memory;
  *
  * <p>{@link Memory} no longer keeps it company in that: memory became id-keyed, because ONE memory
  * serves every agent of a type. A store here still answers for one agent, which is why {@link
- * SubstrateIntentStore} takes its {@code agentId} at construction rather than per call.
+ * JdbcIntentStore} takes the agent TYPE and id at construction rather than per call — an id is
+ * unique within its type and no further.
  *
  * @param <T> the declared-intent vocabulary this store holds — the freeform {@code Intent} record,
  *     or an organization's own sealed vocabulary (vocabulary amendment §3)

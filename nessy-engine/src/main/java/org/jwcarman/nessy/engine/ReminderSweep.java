@@ -77,10 +77,15 @@ final class ReminderSweep {
   int sweep() {
     List<Reminders.Reminder> due = reminders.due(clock.instant(), BATCH);
     for (Reminders.Reminder reminder : due) {
-      Coordinates where = decode(reminder.payload());
+      Coordinates where =
+          new Coordinates(reminder.agentType(), reminder.agentId(), reminder.callId());
       deliver.accept(where, new NessyMessage.DeadlinePassed(where.callId(), Map.of()));
       // Forward, not gone: the agent deletes it when the call settles.
-      reminders.remind(reminder.key(), clock.instant().plus(BACKOFF), reminder.payload());
+      reminders.remind(
+          reminder.agentType(),
+          reminder.agentId(),
+          reminder.callId(),
+          clock.instant().plus(BACKOFF));
     }
     if (!due.isEmpty()) {
       LOG.info("reminder sweep fired {} expired deadline(s)", due.size());
@@ -89,10 +94,6 @@ final class ReminderSweep {
   }
 
   /** The key a call's deadline is filed under. Deterministic, so settling can cancel it. */
-  static String keyFor(String agentType, String agentId, String callId) {
-    return agentType + "/" + agentId + "/" + callId;
-  }
-
   /**
    * An ADDRESS, never a continuation.
    *

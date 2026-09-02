@@ -43,22 +43,26 @@ public class PendingApprovalsRepository {
       "SELECT " + COLUMNS + " FROM nessy_pending_approvals WHERE answer IS NULL ORDER BY asked_at";
 
   private static final String BY_CALL =
-      "SELECT " + COLUMNS + " FROM nessy_pending_approvals WHERE call_id = ?";
+      "SELECT "
+          + COLUMNS
+          + " FROM nessy_pending_approvals"
+          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ?";
 
   private static final String INSERT =
-      "INSERT INTO nessy_pending_approvals (call_id, agent_type, agent_id, tool, action, asked_at,"
+      "INSERT INTO nessy_pending_approvals (agent_type, agent_id, call_id, tool, action, asked_at,"
           + " expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
   private static final String REFRESH =
       "UPDATE nessy_pending_approvals SET reply_token = ?, expires_at = ?"
-          + " WHERE call_id = ? AND answer IS NULL";
+          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ? AND answer IS NULL";
 
   private static final String EXISTS =
-      "SELECT count(*) FROM nessy_pending_approvals WHERE call_id = ?";
+      "SELECT count(*) FROM nessy_pending_approvals"
+          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ?";
 
   private static final String ANSWER =
       "UPDATE nessy_pending_approvals SET answer = ?, note = ?, answered_at = ?"
-          + " WHERE call_id = ? AND answer IS NULL";
+          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ? AND answer IS NULL";
 
   private final JdbcTemplate jdbc;
 
@@ -72,8 +76,8 @@ public class PendingApprovalsRepository {
   }
 
   /** One row by call id, answered or not. */
-  public Optional<PendingApproval> byCallId(String callId) {
-    return jdbc.query(BY_CALL, MAPPER, callId).stream().findFirst();
+  public Optional<PendingApproval> byCallId(String agentType, String agentId, String callId) {
+    return jdbc.query(BY_CALL, MAPPER, agentType, agentId, callId).stream().findFirst();
   }
 
   /**
@@ -99,15 +103,21 @@ public class PendingApprovalsRepository {
     // Not a race: one listener follows one agent, and an agent's events are serialized, so there
     // is a single writer per call id.
     int refreshed =
-        jdbc.update(REFRESH, row.replyToken(), Timestamp.from(row.expiresAt()), row.callId());
-    if (refreshed > 0 || alreadyDecided(row.callId())) {
+        jdbc.update(
+            REFRESH,
+            row.replyToken(),
+            Timestamp.from(row.expiresAt()),
+            row.agentType(),
+            row.agentId(),
+            row.callId());
+    if (refreshed > 0 || alreadyDecided(row.agentType(), row.agentId(), row.callId())) {
       return;
     }
     jdbc.update(
         INSERT,
-        row.callId(),
         row.agentType(),
         row.agentId(),
+        row.callId(),
         row.tool(),
         row.action(),
         Timestamp.from(row.askedAt()),
@@ -116,8 +126,8 @@ public class PendingApprovalsRepository {
   }
 
   /** Whether a row exists that the refresh deliberately left alone, because it was answered. */
-  private boolean alreadyDecided(String callId) {
-    Integer rows = jdbc.queryForObject(EXISTS, Integer.class, callId);
+  private boolean alreadyDecided(String agentType, String agentId, String callId) {
+    Integer rows = jdbc.queryForObject(EXISTS, Integer.class, agentType, agentId, callId);
     return rows != null && rows > 0;
   }
 
@@ -125,8 +135,9 @@ public class PendingApprovalsRepository {
    * Records an answer, if the row is still waiting. A second answer changes nothing — the engine
    * settles a call once, and a late click on a stale page must not overwrite what was decided.
    */
-  public void answered(String callId, String answer, String note, Instant when) {
-    jdbc.update(ANSWER, answer, note, Timestamp.from(when), callId);
+  public void answered(
+      String agentType, String agentId, String callId, String answer, String note, Instant when) {
+    jdbc.update(ANSWER, answer, note, Timestamp.from(when), agentType, agentId, callId);
   }
 
   private static final RowMapper<PendingApproval> MAPPER = PendingApprovalsRepository::map;

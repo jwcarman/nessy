@@ -18,7 +18,6 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +37,9 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 @DisplayName("A deadline that outlives its actor")
 class RemindersTest {
 
+  private static final String TYPE = "watchman";
+  private static final String AGENT = "house-12";
+
   private static final Instant NOON = Instant.parse("2026-09-01T12:00:00Z");
 
   private EmbeddedDatabase database;
@@ -54,10 +56,6 @@ class RemindersTest {
     database.shutdown();
   }
 
-  private static byte[] bytes(String value) {
-    return value.getBytes(StandardCharsets.UTF_8);
-  }
-
   @Test
   void a_store_with_nothing_in_it_owes_nothing() {
     assertThat(reminders.due(NOON, 10)).isEmpty();
@@ -66,16 +64,18 @@ class RemindersTest {
   @Test
   @DisplayName("a reminder due now is returned; one due later is not")
   void only_what_is_due_comes_back() {
-    reminders.remind("past", NOON.minusSeconds(1), bytes("a"));
-    reminders.remind("future", NOON.plusSeconds(1), bytes("b"));
+    reminders.remind(TYPE, AGENT, "past", NOON.minusSeconds(1));
+    reminders.remind(TYPE, AGENT, "future", NOON.plusSeconds(1));
 
-    assertThat(reminders.due(NOON, 10)).extracting(Reminders.Reminder::key).containsExactly("past");
+    assertThat(reminders.due(NOON, 10))
+        .extracting(Reminders.Reminder::callId)
+        .containsExactly("past");
   }
 
   /** At-or-before, not strictly-before: a reminder due exactly now has come due. */
   @Test
   void the_boundary_instant_is_due() {
-    reminders.remind("exactly", NOON, bytes("a"));
+    reminders.remind(TYPE, AGENT, "exactly", NOON);
 
     assertThat(reminders.due(NOON, 10)).hasSize(1);
   }
@@ -84,19 +84,19 @@ class RemindersTest {
   @Test
   @DisplayName("earliest first, so a sweep can stop at the first one not yet due")
   void due_returns_them_in_order() {
-    reminders.remind("third", NOON.minusSeconds(1), bytes("c"));
-    reminders.remind("first", NOON.minusSeconds(3), bytes("a"));
-    reminders.remind("second", NOON.minusSeconds(2), bytes("b"));
+    reminders.remind(TYPE, AGENT, "third", NOON.minusSeconds(1));
+    reminders.remind(TYPE, AGENT, "first", NOON.minusSeconds(3));
+    reminders.remind(TYPE, AGENT, "second", NOON.minusSeconds(2));
 
     assertThat(reminders.due(NOON, 10))
-        .extracting(Reminders.Reminder::key)
+        .extracting(Reminders.Reminder::callId)
         .containsExactly("first", "second", "third");
   }
 
   @Test
   void due_respects_its_limit() {
-    reminders.remind("a", NOON.minusSeconds(3), bytes("a"));
-    reminders.remind("b", NOON.minusSeconds(2), bytes("b"));
+    reminders.remind(TYPE, AGENT, "a", NOON.minusSeconds(3));
+    reminders.remind(TYPE, AGENT, "b", NOON.minusSeconds(2));
 
     assertThat(reminders.due(NOON, 1)).hasSize(1);
   }
@@ -108,42 +108,45 @@ class RemindersTest {
   @Test
   @DisplayName("reminding an existing key moves it rather than duplicating it")
   void remind_is_an_upsert() {
-    reminders.remind("call-1", NOON.minusSeconds(1), bytes("a"));
+    reminders.remind(TYPE, AGENT, "call-1", NOON.minusSeconds(1));
 
-    reminders.remind("call-1", NOON.plusSeconds(60), bytes("a"));
+    reminders.remind(TYPE, AGENT, "call-1", NOON.plusSeconds(60));
 
     assertThat(reminders.due(NOON, 10)).isEmpty();
-    assertThat(reminders.find("call-1").orElseThrow().expiresAt()).isEqualTo(NOON.plusSeconds(60));
+    assertThat(reminders.find(TYPE, AGENT, "call-1").orElseThrow().expiresAt())
+        .isEqualTo(NOON.plusSeconds(60));
   }
 
   @Test
   @DisplayName("a restarted actor can read back what it was waiting for")
   void find_returns_the_remaining_term() {
-    reminders.remind("call-1", NOON.plusSeconds(300), bytes("payload"));
+    reminders.remind(TYPE, AGENT, "call-1", NOON.plusSeconds(300));
 
-    Reminders.Reminder found = reminders.find("call-1").orElseThrow();
+    Reminders.Reminder found = reminders.find(TYPE, AGENT, "call-1").orElseThrow();
 
     assertThat(found.expiresAt()).isEqualTo(NOON.plusSeconds(300));
-    assertThat(found.payload()).isEqualTo(bytes("payload"));
+    assertThat(found.agentType()).isEqualTo(TYPE);
+    assertThat(found.agentId()).isEqualTo(AGENT);
+    assertThat(found.callId()).isEqualTo("call-1");
   }
 
   @Test
   void cancelling_removes_it() {
-    reminders.remind("call-1", NOON.minusSeconds(1), bytes("a"));
+    reminders.remind(TYPE, AGENT, "call-1", NOON.minusSeconds(1));
 
-    reminders.cancel("call-1");
+    reminders.cancel(TYPE, AGENT, "call-1");
 
     assertThat(reminders.due(NOON, 10)).isEmpty();
-    assertThat(reminders.find("call-1")).isEmpty();
+    assertThat(reminders.find(TYPE, AGENT, "call-1")).isEmpty();
   }
 
   /** A call can settle by more than one route, and each of them cancels. */
   @Test
   @DisplayName("cancelling something that was never there is silent")
   void cancelling_twice_is_not_an_error() {
-    reminders.cancel("never-there");
+    reminders.cancel(TYPE, AGENT, "never-there");
 
-    assertThat(reminders.find("never-there")).isEmpty();
+    assertThat(reminders.find(TYPE, AGENT, "never-there")).isEmpty();
   }
 
   @Test
@@ -152,31 +155,39 @@ class RemindersTest {
   }
 
   @Nested
-  @DisplayName("a reminder compares by its bytes, not by which array holds them")
-  class Equality {
+  @DisplayName("whose deadline it is")
+  class Identity {
 
     @Test
-    void two_reminders_read_from_the_same_row_are_equal() {
-      var one = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
-      var other = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+    @DisplayName("an agent id containing the old separator is just an id now")
+    void two_agents_do_not_share_a_deadline() {
+      reminders.remind(TYPE, "acme/user-7", "c1", NOON.plusSeconds(60));
+      reminders.remind(TYPE, "acme", "user-7/c1", NOON.plusSeconds(120));
 
-      assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
+      assertThat(reminders.find(TYPE, "acme/user-7", "c1").orElseThrow().expiresAt())
+          .as("a composed key made these one row, so arming one overwrote the other's deadline")
+          .isEqualTo(NOON.plusSeconds(60));
+      assertThat(reminders.find(TYPE, "acme", "user-7/c1").orElseThrow().expiresAt())
+          .isEqualTo(NOON.plusSeconds(120));
     }
 
     @Test
-    void a_different_payload_is_a_different_reminder() {
-      var one = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
-      var other = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {9});
+    void cancelling_one_leaves_the_other_armed() {
+      reminders.remind(TYPE, "acme/user-7", "c1", NOON.plusSeconds(60));
+      reminders.remind(TYPE, "acme", "user-7/c1", NOON.plusSeconds(120));
 
-      assertThat(one).isNotEqualTo(other);
+      reminders.cancel(TYPE, "acme/user-7", "c1");
+
+      assertThat(reminders.find(TYPE, "acme/user-7", "c1")).isEmpty();
+      assertThat(reminders.find(TYPE, "acme", "user-7/c1")).isPresent();
     }
 
     @Test
-    @DisplayName("the payload is measured rather than printed — it is opaque bytes")
-    void the_payload_does_not_appear_in_toString() {
-      var reminder = new Reminders.Reminder("k", Instant.EPOCH, new byte[] {1, 2, 3});
+    void two_agent_types_do_not_share_a_deadline() {
+      reminders.remind("watchman", AGENT, "c1", NOON.plusSeconds(60));
+      reminders.remind("chat", AGENT, "c1", NOON.plusSeconds(120));
 
-      assertThat(reminder.toString()).contains("3 bytes").doesNotContain("[B@");
+      assertThat(reminders.due(NOON.plusSeconds(200), 10)).hasSize(2);
     }
   }
 }

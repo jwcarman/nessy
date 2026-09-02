@@ -13,13 +13,16 @@ be checked against the call that follows.
 `IntentTool` is an ordinary tool the agent is granted:
 
 ```java
-IntentStore<Intent> store = new JdbcIntentStore<>(dataSource, Intent.class, mapper);
+IntentStore<Intent> store =
+    new JdbcIntentStore<>(dataSource, "assistant", agentId, Intent.class, mapper);
 
 config.tool(IntentTool.freeform(store));
 ```
 
-The model calls it, the declaration is stored against that agent, and
-`store.latest(agentId)` is what an approver reads.
+A store is a view of ONE agent's declaration, so it is built with the agent
+type and id it speaks for — an id is unique within its type and no further.
+The model calls the tool, the declaration replaces whatever that agent
+declared before, and `store.latest()` is what an approver reads.
 
 ## Your own vocabulary
 
@@ -29,7 +32,8 @@ something a policy can actually judge:
 ```java
 record OpsIntent(String action, String target, String reason) {}
 
-IntentStore<OpsIntent> store = new JdbcIntentStore<>(dataSource, OpsIntent.class, mapper);
+IntentStore<OpsIntent> store =
+    new JdbcIntentStore<>(dataSource, "ops", agentId, OpsIntent.class, mapper);
 
 config.tool(new IntentTool<>(OpsIntent.class, store));
 ```

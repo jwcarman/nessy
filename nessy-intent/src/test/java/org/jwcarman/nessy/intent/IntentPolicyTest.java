@@ -52,7 +52,7 @@ class IntentPolicyTest {
   }
 
   private static JdbcIntentStore<Intent> freshStore() {
-    return new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
+    return new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER);
   }
 
   @Test

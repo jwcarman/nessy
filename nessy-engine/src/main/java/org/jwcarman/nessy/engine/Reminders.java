@@ -17,7 +17,6 @@ package org.jwcarman.nessy.engine;
 
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -42,14 +41,16 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 final class Reminders {
 
-  private static final String DELETE = "DELETE FROM nessy_reminder WHERE reminder_key = ?";
+  private static final String COLUMNS = "agent_type, agent_id, call_id, expires_at";
+  private static final String WHERE_CALL = " WHERE agent_type = ? AND agent_id = ? AND call_id = ?";
+  private static final String DELETE = "DELETE FROM nessy_reminder" + WHERE_CALL;
   private static final String INSERT =
-      "INSERT INTO nessy_reminder (reminder_key, expires_at, payload) VALUES (?, ?, ?)";
+      "INSERT INTO nessy_reminder (agent_type, agent_id, call_id, expires_at) VALUES (?, ?, ?, ?)";
   private static final String DUE =
-      "SELECT reminder_key, expires_at, payload FROM nessy_reminder "
-          + "WHERE expires_at <= ? ORDER BY expires_at LIMIT ?";
-  private static final String READ =
-      "SELECT reminder_key, expires_at, payload FROM nessy_reminder WHERE reminder_key = ?";
+      "SELECT "
+          + COLUMNS
+          + " FROM nessy_reminder WHERE expires_at <= ? ORDER BY expires_at LIMIT ?";
+  private static final String READ = "SELECT " + COLUMNS + " FROM nessy_reminder" + WHERE_CALL;
 
   /**
    * A reminder as the store holds it.
@@ -58,28 +59,8 @@ final class Reminders {
    * reminders read from the same row would not be equal, and a payload would print as a type name
    * and a hash rather than as anything a reader could use.
    */
-  record Reminder(String key, Instant expiresAt, byte[] payload) {
-
-    @Override
-    public boolean equals(Object other) {
-      return other instanceof Reminder reminder
-          && Objects.equals(key, reminder.key)
-          && Objects.equals(expiresAt, reminder.expiresAt)
-          && Arrays.equals(payload, reminder.payload);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(key, expiresAt, Arrays.hashCode(payload));
-    }
-
-    /** The payload is opaque bytes, so it is measured rather than printed. */
-    @Override
-    public String toString() {
-      return "Reminder[key=%s, expiresAt=%s, payload=%d bytes]"
-          .formatted(key, expiresAt, payload == null ? 0 : payload.length);
-    }
-  }
+  /** A deadline, and whose it is. */
+  record Reminder(String agentType, String agentId, String callId, Instant expiresAt) {}
 
   private final JdbcClient jdbc;
 
@@ -95,12 +76,13 @@ final class Reminders {
    * and how the sweep backs off a reminder whose owner has not settled it. Delete-then-insert
    * rather than vendor upsert syntax, so one statement set serves every database.
    */
-  void remind(String key, Instant expiresAt, byte[] payload) {
-    Objects.requireNonNull(key, "key must not be null");
+  void remind(String agentType, String agentId, String callId, Instant expiresAt) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(expiresAt, "expiresAt must not be null");
-    Objects.requireNonNull(payload, "payload must not be null");
-    jdbc.sql(DELETE).params(key).update();
-    jdbc.sql(INSERT).params(key, Timestamp.from(expiresAt), payload).update();
+    jdbc.sql(DELETE).params(agentType, agentId, callId).update();
+    jdbc.sql(INSERT).params(agentType, agentId, callId, Timestamp.from(expiresAt)).update();
   }
 
   /**
@@ -120,29 +102,35 @@ final class Reminders {
         .query(
             (row, number) ->
                 new Reminder(
-                    row.getString("reminder_key"),
-                    row.getTimestamp("expires_at").toInstant(),
-                    row.getBytes("payload")))
+                    row.getString("agent_type"),
+                    row.getString("agent_id"),
+                    row.getString("call_id"),
+                    row.getTimestamp("expires_at").toInstant()))
         .list();
   }
 
   /** What this key is waiting for, if anything — the remaining term a restarted actor re-arms. */
-  Optional<Reminder> find(String key) {
-    Objects.requireNonNull(key, "key must not be null");
+  Optional<Reminder> find(String agentType, String agentId, String callId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
     return jdbc.sql(READ)
-        .params(key)
+        .params(agentType, agentId, callId)
         .query(
             (row, number) ->
                 new Reminder(
-                    row.getString("reminder_key"),
-                    row.getTimestamp("expires_at").toInstant(),
-                    row.getBytes("payload")))
+                    row.getString("agent_type"),
+                    row.getString("agent_id"),
+                    row.getString("call_id"),
+                    row.getTimestamp("expires_at").toInstant()))
         .optional();
   }
 
   /** Forgets it. Silent when there is nothing to forget: settling twice is not an error. */
-  void cancel(String key) {
-    Objects.requireNonNull(key, "key must not be null");
-    jdbc.sql(DELETE).params(key).update();
+  void cancel(String agentType, String agentId, String callId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
+    jdbc.sql(DELETE).params(agentType, agentId, callId).update();
   }
 }

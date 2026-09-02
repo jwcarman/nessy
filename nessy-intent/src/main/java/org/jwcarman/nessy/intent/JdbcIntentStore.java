@@ -28,7 +28,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * What an agent has declared it is trying to do, in a table of its own.
  *
  * <p>One row per agent: a declaration REPLACES the previous one rather than accumulating, because
- * what matters is the intent an agent is acting under now.
+ * what matters is the intent an agent is acting under now. "Per agent" means the TYPE and the id
+ * together — an id is unique within its type and no further.
  *
  * <p><b>Concurrent declarations settle rather than clobber.</b> The write is conditional on the
  * version that was read, and a loser retries — so two callers declaring at the same moment produce
@@ -36,32 +37,40 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 public final class JdbcIntentStore<T> implements IntentStore<T> {
 
-  private static final String SELECT = "SELECT declaration FROM nessy_intent WHERE agent_id = ?";
-  private static final String SELECT_VERSION =
-      "SELECT version FROM nessy_intent WHERE agent_id = ?";
+  private static final String WHERE_AGENT = " WHERE agent_type = ? AND agent_id = ?";
+  private static final String SELECT = "SELECT declaration FROM nessy_intent" + WHERE_AGENT;
+  private static final String SELECT_VERSION = "SELECT version FROM nessy_intent" + WHERE_AGENT;
   private static final String INSERT =
-      "INSERT INTO nessy_intent (agent_id, declaration, version) VALUES (?, ?, 1)";
+      "INSERT INTO nessy_intent (agent_type, agent_id, declaration, version) VALUES (?, ?, ?, 1)";
   private static final String UPDATE =
-      "UPDATE nessy_intent SET declaration = ?, version = version + 1 "
-          + "WHERE agent_id = ? AND version = ?";
+      "UPDATE nessy_intent SET declaration = ?, version = version + 1"
+          + WHERE_AGENT
+          + " AND version = ?";
 
   private final JdbcClient jdbc;
+  private final String agentType;
   private final String agentId;
   private final Codec<T> codec;
 
   /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
   public JdbcIntentStore(
-      DataSource dataSource, String agentId, Class<T> vocabulary, ObjectMapper mapper) {
+      DataSource dataSource,
+      String agentType,
+      String agentId,
+      Class<T> vocabulary,
+      ObjectMapper mapper) {
     this(
         dataSource,
+        agentType,
         agentId,
         new Jackson2CodecFactory(Objects.requireNonNull(mapper, "mapper must not be null"))
             .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
-  public JdbcIntentStore(DataSource dataSource, String agentId, Codec<T> codec) {
+  public JdbcIntentStore(DataSource dataSource, String agentType, String agentId, Codec<T> codec) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
@@ -74,14 +83,14 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
       Optional<Long> version = currentVersion();
       if (version.isEmpty()) {
         try {
-          jdbc.sql(INSERT).params(agentId, encoded).update();
+          jdbc.sql(INSERT).params(agentType, agentId, encoded).update();
           return;
         } catch (org.springframework.dao.DuplicateKeyException raced) {
           // Another caller declared first. Fall through and update its row instead.
           continue;
         }
       }
-      if (jdbc.sql(UPDATE).params(encoded, agentId, version.get()).update() == 1) {
+      if (jdbc.sql(UPDATE).params(encoded, agentType, agentId, version.get()).update() == 1) {
         return;
       }
       // The version moved between the read and the write; read it again and retry.
@@ -91,13 +100,13 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
   @Override
   public Optional<T> latest() {
     return jdbc.sql(SELECT)
-        .params(agentId)
+        .params(agentType, agentId)
         .query((row, number) -> decode(row.getString("declaration")))
         .optional();
   }
 
   private Optional<Long> currentVersion() {
-    return jdbc.sql(SELECT_VERSION).params(agentId).query(Long.class).optional();
+    return jdbc.sql(SELECT_VERSION).params(agentType, agentId).query(Long.class).optional();
   }
 
   private T decode(String declaration) {
