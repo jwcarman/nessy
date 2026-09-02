@@ -78,18 +78,53 @@ Boot looks for `schema.sql`; Nessy's file is `nessy-schema.sql`, so the name
 
 ## Reply tokens outlive the process, if you let them
 
-By default reply keys are ephemeral: tokens die with the JVM. That is right
-for a test and wrong for anything that parks work for days.
+A `ReplyToken` is the address a parked call is answered at, and it is
+**encrypted**: the coordinates inside it are sealed with AES-GCM so the
+holder cannot read them, and cannot forge one either.
+
+`nessy.reply-keys` are those encryption keys, base64-encoded — secrets,
+handled like any other. AES accepts 16, 24 or 32 bytes; **use 32**.
+
+### Minting one
+
+Any of these produces a key in the form the property expects:
+
+```bash
+openssl rand -base64 32
+head -c 32 /dev/urandom | base64        # no openssl
+```
+
+```java
+KeyGenerator generator = KeyGenerator.getInstance("AES");
+generator.init(256);
+String key = Base64.getEncoder().encodeToString(generator.generateKey().getEncoded());
+```
+
+The output is 44 characters ending in `=` — that is what 32 bytes of base64
+looks like, and a quick way to eyeball a key that got truncated somewhere.
+
+A key of some other length is not caught when it is configured. It fails when
+the first token is minted, because that is when the cipher sees it.
 
 ```yaml
 nessy:
   reply-keys:
-    - ${NESSY_REPLY_KEY_CURRENT}
-    - ${NESSY_REPLY_KEY_PREVIOUS}
+    - ${NESSY_REPLY_KEY_CURRENT}        # base64 of 32 random bytes
+    - ${NESSY_REPLY_KEY_PREVIOUS}       # the one before it, kept to read old tokens
 ```
 
-Tokens are minted with the first key and read by trying every one, so a
-rotation does not invalidate a token already sitting in somebody's inbox.
+**Configure none and they are ephemeral** — a fresh key at startup, so every
+token minted before a restart becomes unreadable and every approval parked on
+a person silently becomes unanswerable. Right for a test, wrong for anything
+else, and the starter says so loudly at startup.
+
+**Rotating.** Tokens are minted with the **first** key and read by trying
+**every** one, so putting a new key at the front and keeping the old one
+below it means a token already sitting in somebody's inbox still works. Drop
+a key only once every token minted with it has expired.
+
+A token that reads cleanly says only that this engine issued it — never that
+the call is still waiting.
 
 ## The approvals projection
 

@@ -92,24 +92,40 @@ agent apologising for an error it had not had.
 
 ## Reply tokens
 
-`ApprovalContext.replyToken()` is the address an answer comes back to. It is
-sealed and authenticated: a token that reads cleanly says only that this
-engine issued it, **never** that the call is still waiting. Answering a call
-that already settled or expired is reported honestly rather than silently
-changing nothing.
+`ApprovalContext.replyToken()` is the address an answer comes back to. The
+coordinates inside it — agent type, agent id, turn, call — are **encrypted
+with AES-GCM**, so whoever holds it can neither read them nor forge a token
+for a different call.
+
+Being authentic is not the same as being open: a token that reads cleanly
+says only that this engine issued it, **never** that the call is still
+waiting. Answering a call that already settled or expired is reported
+honestly rather than silently changing nothing.
 
 The same token reaches the approver and the tool, because both settle the
 same call and two addresses meaning one thing is two things to get wrong.
 
-Tokens are minted with the newest key and read by trying every configured
-key, so a rotation does not invalidate a token already sitting in somebody's
-inbox. By default the keys are **ephemeral** — tokens die with the process,
-which is right for a test and wrong for anything that parks work for days:
+The keys are AES keys of 16, 24 or 32 bytes — **use 32**. Mint one with
+`openssl rand -base64 32`, or in Java:
+
+```java
+KeyGenerator generator = KeyGenerator.getInstance("AES");
+generator.init(256);
+SecretKey key = generator.generateKey();
+```
+
+Tokens are minted with the **first** key and read by trying **every** one, so
+a rotation does not invalidate a token already sitting in somebody's inbox:
 
 ```java
 new PekkoHarnessFactory(engine -> engine
-        .replyTokens(ReplyTokens.withKeys(newKey, previousKey)));
+        .replyTokens(ReplyTokens.withKeys(currentKey, previousKey)));   // byte[32] each
 ```
+
+By default they are **ephemeral** — a fresh key per process, so tokens die
+with the JVM. That is right for a test and wrong for anything that parks
+work for days, because every approval waiting on a person becomes
+unanswerable after a restart.
 
 ## Deadlines
 
