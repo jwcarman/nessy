@@ -270,8 +270,7 @@ class ToolCallTest {
     assertThat(narrated("house-99")).isNotEmpty();
     List<String> ids = narrated("house-99").stream().map(AgentEvent::id).toList();
 
-    assertThat(ids).doesNotHaveDuplicates();
-    assertThat(ids).isSorted();
+    assertThat(ids).doesNotHaveDuplicates().isSorted();
   }
 
   @Test

@@ -106,8 +106,7 @@ class ToolCallRequestTest {
       ToolCallRequest<String> first = requestMinting(() -> ReplyToken.of("a"));
       ToolCallRequest<String> second = requestMinting(() -> ReplyToken.of("b"));
 
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second);
     }
 
     @Test
