@@ -82,6 +82,17 @@ class ForgetTest {
     return rows == null ? 0 : rows;
   }
 
+  /** Whether the pill itself — not merely its symptoms — is still sitting in the table. */
+  private static int poisonRows(Engines.Parts parts, AgentId agentId) {
+    Integer rows =
+        org.springframework.jdbc.core.simple.JdbcClient.create(parts.dataSource())
+            .sql("SELECT count(*) FROM nessy_poison WHERE agent_id = ?")
+            .param(agentId.value())
+            .query(Integer.class)
+            .single();
+    return rows == null ? 0 : rows;
+  }
+
   private static void tell(String typeName, AgentId agentId, NessyMessage message) {
     ClusterSharding.get(testKit.system())
         .entityRefFor(EntityTypeKey.create(NessyMessage.class, typeName), agentId.value())
@@ -154,6 +165,62 @@ class ForgetTest {
               assertThat(parts.remembered().of(agentId)).isEmpty();
               assertThat(backlogRows(parts, agentId)).isZero();
             });
+  }
+
+  @Test
+  @DisplayName("a forgotten id is usable again — the pill does not outlive the agent it named")
+  void a_forgotten_agent_id_can_be_used_again() {
+    // The design's own booby trap: swallow() is the LAST step of forgetting, deliberately, so a
+    // crash before it leaves the pill behind. Leaving it forever has no visible cause of its own —
+    // the next incarnation of a reusable id would simply never work, poisoned by a forget nobody
+    // watching it would ever connect to the symptom.
+    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
+    Engines.Parts parts =
+        Engines.of(
+            testKit.system(),
+            AgentType.of("reusable"),
+            Engines.saying(
+                java.util.List.of(
+                    new org.jwcarman.nessy.api.model.ModelResult.Answered(
+                        new org.jwcarman.nessy.api.message.AnswerMessage(
+                            java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
+                        org.jwcarman.nessy.api.model.StopReason.END_TURN,
+                        org.jwcarman.nessy.api.model.Usage.unreported()))));
+    AgentId agentId = shardedAgent("reusable", parts, shard);
+
+    parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
+    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(() -> assertThat(parts.remembered().of(agentId)).isNotEmpty());
+
+    parts.backlog().poison(agentId);
+    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(
+            () -> {
+              assertThat(parts.remembered().of(agentId)).isEmpty();
+              // The pill is swallowed LAST, deliberately — offering new work before it is gone
+              // would have this second offer deleted by the very forget that is still finishing,
+              // since `deleteAgent` takes every row for this id and a still-present pill means
+              // the next take reads Poisoned rather than the row just offered.
+              assertThat(poisonRows(parts, agentId)).as("the pill itself").isZero();
+            });
+
+    // A new incarnation of the SAME id, given SAME work. If the pill survived forgetting, the next
+    // take would find it poisoned again and this agent would never run — silently, with nothing in
+    // this test's view pointing at why.
+    parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened again"));
+    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(
+            () ->
+                assertThat(parts.remembered().of(agentId))
+                    .as("the reused id ran a turn instead of being poisoned by the old pill")
+                    .isNotEmpty());
   }
 
   @Test
