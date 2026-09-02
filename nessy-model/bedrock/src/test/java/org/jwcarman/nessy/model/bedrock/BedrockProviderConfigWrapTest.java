@@ -81,8 +81,8 @@ class BedrockProviderConfigWrapTest {
       var stream = client.converseStream(REQUEST);
 
       var collected = drain(stream);
-      assertThat(collected).isNotEmpty();
       assertThat(collected)
+          .isNotEmpty()
           .anyMatch(ModelEvent.TextChunk.class::isInstance)
           .anyMatch(ModelEvent.Stopped.class::isInstance);
     }

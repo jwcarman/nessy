@@ -113,8 +113,9 @@ class ModelRefusalTest {
     // The observation itself is remembered at the start of every turn, refused or not — that is
     // unrelated to this test. What must NOT appear is anything claiming the model answered.
     List<org.jwcarman.nessy.api.message.HistoryMessage> remembered = parts.remembered().of(agentId);
-    assertThat(remembered).as("the observation that started the turn").isNotEmpty();
     assertThat(remembered)
+        .as("the observation that started the turn")
+        .isNotEmpty()
         .as("a refusal is not an answer, and nothing here claimed it was one")
         .noneMatch(org.jwcarman.nessy.api.message.AnswerMessage.class::isInstance);
   }

@@ -202,8 +202,8 @@ class OpaPolicyEngineFailureTest {
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort() + "///")
                     .decisionPath("///nessy/tools/decision"));
 
-    assertThat(engine.decisionUri().toString())
-        .isEqualTo(
+    assertThat(engine.decisionUri())
+        .hasToString(
             "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/data/nessy/tools/decision");
   }
 

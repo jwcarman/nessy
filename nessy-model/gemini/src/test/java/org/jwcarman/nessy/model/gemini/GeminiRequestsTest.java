@@ -141,8 +141,7 @@ class GeminiRequestsTest {
       assertThat(parts).hasSize(2);
       assertThat(parts.get(0).text().orElseThrow()).contains("you are a helpful assistant");
       var ambientText = parts.get(1).text().orElseThrow();
-      assertThat(ambientText).contains("[standing-plan]");
-      assertThat(ambientText).contains("water the plants");
+      assertThat(ambientText).contains("[standing-plan]").contains("water the plants");
     }
 
     @Test

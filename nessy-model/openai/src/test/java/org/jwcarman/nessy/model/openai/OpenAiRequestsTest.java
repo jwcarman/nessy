@@ -122,8 +122,7 @@ class OpenAiRequestsTest {
       // One for the standing system prompt, one for the ambient message riding alongside it.
       assertThat(systemMessages).hasSize(2);
       var content = systemMessages.get(1).asSystem().content().asText();
-      assertThat(content).contains("[standing-plan]");
-      assertThat(content).contains("water the plants");
+      assertThat(content).contains("[standing-plan]").contains("water the plants");
     }
   }
 

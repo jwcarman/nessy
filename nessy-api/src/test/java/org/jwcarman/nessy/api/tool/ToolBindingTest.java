@@ -71,7 +71,9 @@ class ToolBindingTest {
   @Test
   @DisplayName("refuses a null tool")
   void refuses_a_null_tool() {
-    assertThatThrownBy(() -> new ToolBinding<>(null, Approver.always(), RENDERER))
+    Approver approver = Approver.always();
+
+    assertThatThrownBy(() -> new ToolBinding<>(null, approver, RENDERER))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("tool must not be null");
   }
@@ -88,7 +90,9 @@ class ToolBindingTest {
   @Test
   @DisplayName("refuses a null renderer")
   void refuses_a_null_renderer() {
-    assertThatThrownBy(() -> new ToolBinding<>(TOOL, Approver.always(), null))
+    Approver approver = Approver.always();
+
+    assertThatThrownBy(() -> new ToolBinding<>(TOOL, approver, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("renderer must not be null");
   }

@@ -37,6 +37,6 @@ class RiskFactorTest {
   void prints_as_its_name() {
     RiskFactor factor = new RiskFactor("destructive");
 
-    assertThat(factor.toString()).isEqualTo("destructive");
+    assertThat(factor).hasToString("destructive");
   }
 }
