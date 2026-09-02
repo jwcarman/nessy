@@ -178,6 +178,7 @@ agent depends on `nessy-engine`, which pulls both in.
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
 | `nessy-memory-plan` | a plan an agent holds across turns |
 | `nessy-memory-pipeline` | shaping the context a model call is built from |
+| `nessy-memory-summarizing` | compressing an agent's older history rather than dropping it |
 | `nessy-approval-intent` | the declared-intent claim channel |
 | `nessy-approval-policy` | deciding a tool call by policy — approve, deny, or delegate |
 | `nessy-approval-policy-opa` | an engine backed by Open Policy Agent |

@@ -73,6 +73,15 @@ in its current vocabulary — not the sequence of designs that produced it.
 
 ### Deciding
 
+- **A memory can compress instead of dropping.** `nessy-memory-summarizing` is a
+  sidecar: the transcript is never touched, and one row per agent says "everything
+  through sequence N is in this paragraph". Recall is that summary plus whatever
+  came after, so the covered messages are never read. Nothing is deleted to make
+  one, which is what lets it run in the background and fail without recovery — a
+  late summary means a context slightly larger than intended, not a wrong one.
+  What to preserve is configurable, because it is domain knowledge the framework
+  does not have; start from `SummarizingMemory.SUMMARIZE`, because a summary is
+  its own next input and a prompt asking for a retelling fades rather than fails.
 - **An agent instance can be forgotten.** `harness.forget(agentId)` drops an
   agent's memory, backlog rows, claims and persisted state. An agent id is not
   always a long-lived name — a browser session, one review by a judging agent, a

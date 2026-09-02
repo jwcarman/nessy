@@ -61,6 +61,93 @@ If you configure no memory, the engine uses `recent` and says so loudly at
 startup. That default exists so an agent does not eventually stop, not
 because it is a good memory, and the difference is worth being told once.
 
+## Summarizing instead of dropping
+
+Everything above throws information away. `recent` drops the oldest until the
+rest fit; `keepRecent` drops all but the last few; `elideToolResults` replaces
+old tool output with a marker. Each is honestly lossy and right sometimes, and
+none preserves what happened — so a long-running agent either carries everything
+or forgets the customer's name.
+
+`nessy-memory-summarizing` compresses instead:
+
+```java
+Memory memory = SummarizingMemory.create(config -> config
+    .transcript(TranscriptMemory.eternal(dataSource, type))
+    .dataSource(dataSource)
+    .agentType(type)
+    .model(model)
+    .executor(summarizing)      // where the model call runs
+    .summarizeAfter(200)        // messages of uncovered history
+    .keepVerbatim(20));         // never summarized
+```
+
+**It is a sidecar. The transcript is never touched.** One row per agent says
+"everything through sequence N is in this paragraph", and recall stitches that
+onto whatever came after:
+
+```
+recall = <summary>  +  everything after the sequence it covers
+```
+
+The covered messages are never read, which is the saving. And because nothing
+is deleted to produce a summary, a bad one costs one row and no history — which
+is what makes it safe to compress in the background and to fail without recovery.
+
+The summary arrives as an `AmbientMessage` of kind `summary`, so each
+provider adapter marks it the way its vendor prefers. It is not a turn, and it
+cannot reach the transcript: `HistoryMessage` is sealed to `UserMessage`,
+`ExchangeMessage` and `AnswerMessage`, and nobody *said* a summary.
+
+### Say what to preserve
+
+**This is the setting worth changing**, because what matters is domain knowledge
+the framework does not have:
+
+```java
+config.systemPrompt(SummarizingMemory.SUMMARIZE + """
+
+    This is a machine's own record of watching one host, not a conversation. Keep
+    measurements and how they have MOVED, anything that has recurred across
+    rounds, and anything still outstanding. Drop the narration of individual
+    rounds.
+    """);
+```
+
+A support agent wants order numbers kept; a coding agent wants file paths and the
+decisions behind them; an agent working in German should summarize in German.
+
+**Start from `SummarizingMemory.SUMMARIZE` rather than from nothing.** The
+default is public for exactly that, and the reason matters:
+
+> The summary is its own next input. From the second one onward, the model is
+> given the *previous summary* plus what has arrived since — never the whole
+> transcript, which is what bounds the cost. So every generation is lossy over
+> the last, and a fact mentioned once decays geometrically. **An agent does not
+> forget suddenly; it fades.**
+
+That is why the default asks for names, identifiers, decisions, commitments and
+open questions rather than a retelling. A prompt that says "summarize the
+conversation" does not fail — it produces, after five generations, a paragraph
+about there having been a conversation.
+
+`nessy-examples/watchman` is the worked example: it runs forever, so it
+summarizes, and `WatchmanPrompt.SUMMARIZE` shows the add-to-the-default shape.
+
+### Compressing happens off the writing thread
+
+`remember` never calls a model. It notices an agent has outrun its summary and
+hands the work to the `Executor` you supply — which is required rather than
+defaulted, because only your application knows which pool it can spare.
+
+A late summary is not a wrong answer: until the work finishes, recall returns the
+previous summary plus more verbatim history than intended. That is a context
+slightly larger than planned, which costs tokens, not one that is wrong.
+
+Concurrency costs money, not correctness. Two runs can both compress; the write
+is monotonic, so whichever covers less loses and a summary never goes backwards.
+That is why there is no lock.
+
 ## Shaping the context
 
 `nessy-memory-pipeline` wraps a memory in ordered stages, each of which may
