@@ -233,8 +233,18 @@ class JdbcIntentStoreTest {
   @Nested
   class A_cas_conflict_on_declare {
 
+    /**
+     * Pinned by {@link #a_lost_optimistic_lock_retries_rather_than_dropping_the_write()}: with the
+     * DataSource wrapper below removed to isolate what this test alone actually exercises, {@code
+     * declare}'s first call always takes the INSERT branch (no row exists yet), and INSERT never
+     * reads back the row count {@code losesOneWrite} fakes — so despite its name, this test never
+     * reached the conditional-UPDATE retry at all; it passed because the underlying INSERT it
+     * ignored the fake return value from still landed for real. Kept as a regression pin on the
+     * INSERT path (a first write with no contender always succeeds), but the name is corrected to
+     * say so, and the actual CAS-retry paths are covered by the two tests below instead.
+     */
     @Test
-    void retriesAndTheRetriedDeclarationStillWins() {
+    void aFirstWriteWithNoContenderSucceedsEvenWhenItsReportedRowCountIsWrong() {
       var database = TestDatabase.fresh();
       var raced =
           new JdbcIntentStore<>(
@@ -251,6 +261,54 @@ class JdbcIntentStoreTest {
               database, AgentType.of("chat"), AgentId.of("agent-a"), Intent.class, MAPPER);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
+    }
+
+    @Test
+    @DisplayName(
+        "an insert that loses to a duplicate key retries against the row the other caller just"
+            + " made, rather than failing")
+    void anInsertThatLosesToADuplicateKeyRetriesAgainstTheRow() {
+      var database = TestDatabase.fresh();
+      // Simulates another caller's declaration having already landed, between this store's
+      // (stale) empty read of the version and its own attempt to insert.
+      storeDeclaration(database, "agent-a", "{\"declaration\":\"won the race\"}");
+      var raced =
+          new JdbcIntentStore<>(
+              forcedEmptyVersionReadOnce(database),
+              AgentType.of("chat"),
+              AgentId.of("agent-a"),
+              Intent.class,
+              MAPPER);
+
+      raced.declare(new Intent("declared after losing the insert race"));
+
+      var readBack =
+          new JdbcIntentStore<>(
+              database, AgentType.of("chat"), AgentId.of("agent-a"), Intent.class, MAPPER);
+      assertThat(readBack.latest()).contains(new Intent("declared after losing the insert race"));
+    }
+
+    @Test
+    @DisplayName(
+        "a write that loses the optimistic-lock race retries instead of dropping the caller's"
+            + " declaration")
+    void a_lost_optimistic_lock_retries_rather_than_dropping_the_write() {
+      var database = TestDatabase.fresh();
+      var writer =
+          new JdbcIntentStore<>(
+              database, AgentType.of("chat"), AgentId.of("agent-a"), Intent.class, MAPPER);
+      writer.declare(new Intent("first declaration"));
+
+      var raced =
+          new JdbcIntentStore<>(
+              racingAnotherWriterIntoTheFirstUpdate(database),
+              AgentType.of("chat"),
+              AgentId.of("agent-a"),
+              Intent.class,
+              MAPPER);
+      raced.declare(new Intent("declared after losing the update race"));
+
+      assertThat(writer.latest()).contains(new Intent("declared after losing the update race"));
     }
   }
 
@@ -369,6 +427,106 @@ class JdbcIntentStoreTest {
                 lost[0] = true;
                 delegate.executeUpdate();
                 return 0;
+              }
+              return method.invoke(delegate, args);
+            });
+  }
+
+  /**
+   * A {@link javax.sql.DataSource} whose first read of the version sees nothing, even though a row
+   * is already there.
+   *
+   * <p>That is what a stale read looks like from {@code currentVersion()}'s point of view when
+   * another caller's declaration lands between the read and this caller's own insert: the SELECT is
+   * rewritten, once, to a condition that legitimately matches no row — a real query executed
+   * against the real database, not a fabricated result set — so the store's own INSERT collides
+   * with the row that is actually there and must catch the resulting {@code DuplicateKeyException}.
+   */
+  private static javax.sql.DataSource forcedEmptyVersionReadOnce(javax.sql.DataSource delegate) {
+    boolean[] intercepted = {false};
+    return (javax.sql.DataSource)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {javax.sql.DataSource.class},
+            (source, method, args) -> {
+              Object result = method.invoke(delegate, args);
+              return result instanceof java.sql.Connection connection
+                  ? proxyConnectionForcingEmptyVersionRead(connection, intercepted)
+                  : result;
+            });
+  }
+
+  private static java.sql.Connection proxyConnectionForcingEmptyVersionRead(
+      java.sql.Connection delegate, boolean[] intercepted) {
+    return (java.sql.Connection)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {java.sql.Connection.class},
+            (connection, method, args) -> {
+              if ("prepareStatement".equals(method.getName())
+                  && args.length == 1
+                  && args[0] instanceof String sql
+                  && sql.startsWith("SELECT version")
+                  && !intercepted[0]) {
+                intercepted[0] = true;
+                return delegate.prepareStatement(sql + " AND 1 = 0");
+              }
+              return method.invoke(delegate, args);
+            });
+  }
+
+  /**
+   * A {@link javax.sql.DataSource} on which the first attempt to carry out the store's own
+   * conditional UPDATE loses to another caller's write.
+   *
+   * <p>Right before that UPDATE runs — still bound to the version this caller read — a second, real
+   * writer bumps the row's version out from under it, over its own connection. The bound UPDATE
+   * then legitimately matches no row, the way it would if two callers had genuinely declared at the
+   * same moment, and the store must read the version again and retry.
+   */
+  private static javax.sql.DataSource racingAnotherWriterIntoTheFirstUpdate(
+      javax.sql.DataSource delegate) {
+    boolean[] raced = {false};
+    return (javax.sql.DataSource)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {javax.sql.DataSource.class},
+            (source, method, args) -> {
+              Object result = method.invoke(delegate, args);
+              return result instanceof java.sql.Connection connection
+                  ? proxyConnectionRacingTheUpdate(connection, delegate, raced)
+                  : result;
+            });
+  }
+
+  private static java.sql.Connection proxyConnectionRacingTheUpdate(
+      java.sql.Connection delegate, javax.sql.DataSource realDataSource, boolean[] raced) {
+    return (java.sql.Connection)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {java.sql.Connection.class},
+            (connection, method, args) -> {
+              Object result = method.invoke(delegate, args);
+              return result instanceof java.sql.PreparedStatement statement
+                  ? proxyStatementRacingTheUpdate(statement, realDataSource, raced)
+                  : result;
+            });
+  }
+
+  private static java.sql.PreparedStatement proxyStatementRacingTheUpdate(
+      java.sql.PreparedStatement delegate, javax.sql.DataSource realDataSource, boolean[] raced) {
+    return (java.sql.PreparedStatement)
+        java.lang.reflect.Proxy.newProxyInstance(
+            JdbcIntentStoreTest.class.getClassLoader(),
+            new Class<?>[] {java.sql.PreparedStatement.class},
+            (statement, method, args) -> {
+              if ("executeUpdate".equals(method.getName()) && !raced[0]) {
+                raced[0] = true;
+                org.springframework.jdbc.core.simple.JdbcClient.create(realDataSource)
+                    .sql(
+                        "UPDATE nessy_intent SET version = version + 1"
+                            + " WHERE agent_type = 'chat' AND agent_id = 'agent-a'")
+                    .update();
               }
               return method.invoke(delegate, args);
             });

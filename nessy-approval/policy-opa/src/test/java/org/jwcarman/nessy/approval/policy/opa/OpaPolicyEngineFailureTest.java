@@ -194,6 +194,20 @@ class OpaPolicyEngineFailureTest {
   }
 
   @Test
+  @DisplayName("more than one trailing or leading slash is trimmed, not just the first")
+  void multiple_slashes_are_all_trimmed() {
+    OpaPolicyEngine engine =
+        OpaPolicyEngine.create(
+            opa ->
+                opa.url("http://127.0.0.1:" + server.getAddress().getPort() + "///")
+                    .decisionPath("///nessy/tools/decision"));
+
+    assertThat(engine.decisionUri().toString())
+        .isEqualTo(
+            "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/data/nessy/tools/decision");
+  }
+
+  @Test
   @DisplayName("an engine missing its url or its decision path is refused at construction")
   void an_incomplete_engine_is_refused() {
     assertThatThrownBy(() -> OpaPolicyEngine.create(opa -> opa.decisionPath("a/b")))
