@@ -92,6 +92,70 @@ class WatchmanToolsTest {
           .doesNotContain("grafana running (Up 2 days) <--");
       assertThat(report).contains("loki exited").contains("needs attention");
     }
+
+    /**
+     * Captured verbatim from {@code df -h} on a real Mac. {@code devfs} is a virtual filesystem
+     * sized exactly to its contents (permanently 100% full by design) and {@code map auto_home} is
+     * an autofs placeholder with zero total blocks; neither is a signal a human can act on, and
+     * both drown out the real one here: {@code /System/Volumes/Data} at 96% (854Gi of 926Gi).
+     */
+    private static final String MAC_DF_H =
+        """
+        Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
+        /dev/disk3s1s1   926Gi    12Gi    37Gi    24%    459k  392M    0%   /
+        devfs            203Ki   203Ki     0Bi   100%     702     0  100%   /dev
+        /dev/disk3s6     926Gi    13Gi    37Gi    26%      13  392M    0%   /System/Volumes/VM
+        /dev/disk3s5     926Gi   854Gi    37Gi    96%    7.5M  392M    2%   /System/Volumes/Data
+        map auto_home      0Bi     0Bi     0Bi   100%       0     0     -   /System/Volumes/Data/home
+        """;
+
+    /**
+     * A plausible {@code df -h} sample from a Linux box: GNU df has no inode columns by default.
+     */
+    private static final String LINUX_DF_H =
+        """
+        Filesystem      Size  Used Avail Use% Mounted on
+        /dev/sda1       100G   40G   60G  40% /
+        tmpfs            16G   15G  1.0G  92% /run
+        """;
+
+    @Test
+    void disk_usage_skips_devfs_and_the_autofs_placeholder_but_keeps_the_real_alarm() {
+      CommandRunner runner = fixed("df -h", MAC_DF_H);
+
+      String report = run(runner, "disk_usage");
+
+      assertThat(report)
+          .doesNotContain("devfs")
+          .doesNotContain("/dev/")
+          .doesNotContain("auto_home")
+          .contains("/System/Volumes/Data 96% used, 37Gi free");
+    }
+
+    @Test
+    void disk_usage_reports_human_readable_units_not_bare_block_counts() {
+      CommandRunner runner = fixed("df -h", MAC_DF_H);
+
+      String report = run(runner, "disk_usage");
+
+      assertThat(report).contains("/ 24% used, 37Gi free");
+    }
+
+    @Test
+    void disk_usage_does_not_blanket_skip_non_dev_filesystems_a_full_tmpfs_is_still_reported() {
+      CommandRunner runner = fixed("df -h", LINUX_DF_H);
+
+      String report = run(runner, "disk_usage");
+
+      assertThat(report).contains("/run 92% used, 1.0G free").contains("/ 40% used, 60G free");
+    }
+
+    private static CommandRunner fixed(String expectedCommand, String stdout) {
+      return (argv, timeout) -> {
+        assertThat(String.join(" ", argv)).isEqualTo(expectedCommand);
+        return new CommandRunner.Output(0, stdout, "");
+      };
+    }
   }
 
   @Nested
