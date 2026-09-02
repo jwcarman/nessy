@@ -189,13 +189,11 @@ public final class GeminiRequests {
   private static List<Content> toContents(
       ContextMessage message, Map<CallId, String> callNamesById) {
     return switch (message) {
-      case UserMessage user -> toUserContent(user.content(), callNamesById).stream().toList();
-      case AnswerMessage answer -> toModelContent(answer.content()).stream().toList();
-      case AmbientMessage ignored -> List.of();
-      case ExchangeMessage exchange ->
-          java.util.stream.Stream.of(
-                  toModelContent(exchange.content()),
-                  toUserContent(exchange.results(), callNamesById))
+      case UserMessage(var content) -> toUserContent(content, callNamesById).stream().toList();
+      case AnswerMessage(var content) -> toModelContent(content).stream().toList();
+      case AmbientMessage _ -> List.of();
+      case ExchangeMessage(var content, var results) ->
+          java.util.stream.Stream.of(toModelContent(content), toUserContent(results, callNamesById))
               .flatMap(Optional::stream)
               .toList();
     };

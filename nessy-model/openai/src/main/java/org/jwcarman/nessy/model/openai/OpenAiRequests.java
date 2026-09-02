@@ -111,7 +111,7 @@ public final class OpenAiRequests {
    */
   private static List<ChatCompletionMessageParam> toMessageParams(ContextMessage message) {
     return switch (message) {
-      case UserMessage user -> toUserRoleMessageParams(user.content());
+      case UserMessage(var content) -> toUserRoleMessageParams(content);
       case AmbientMessage ambient ->
           List.of(
               ChatCompletionMessageParam.ofSystem(
@@ -124,8 +124,8 @@ public final class OpenAiRequests {
                                   ambient.kind(), concatenateText(ambient.content()).strip()))
                       .build()));
       case ExchangeMessage exchange -> toExchangeParams(exchange);
-      case AnswerMessage answer ->
-          toAssistantMessageParam(answer.content()).map(List::of).orElseGet(List::of);
+      case AnswerMessage(var content) ->
+          toAssistantMessageParam(content).map(List::of).orElseGet(List::of);
     };
   }
 

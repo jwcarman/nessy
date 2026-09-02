@@ -181,8 +181,8 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
   }
 
   private static NessyMessage.Ack waitingFor(AgentState state, CallId callId) {
-    if (!(state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools working)
-        || !working.calls().containsKey(callId)) {
+    if (!(state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools(var calls))
+        || !calls.containsKey(callId)) {
       return new NessyMessage.Ack(false, "no call \"" + callId + "\" is waiting for an answer");
     }
     return new NessyMessage.Ack(true, "accepted");
@@ -196,11 +196,11 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
    */
   private static Input inputOf(AgentState state, NessyMessage message) {
     return switch (message) {
-      case NessyMessage.BacklogUpdated ignored -> new Input.BacklogUpdated();
+      case NessyMessage.BacklogUpdated _ -> new Input.BacklogUpdated();
       case NessyMessage.WorkTaken taken ->
           new Input.WorkTaken(taken.turnId(), taken.observationClaim());
-      case NessyMessage.NoWork ignored -> new Input.NoWork();
-      case NessyMessage.Recovered ignored -> new Input.Recovered();
+      case NessyMessage.NoWork _ -> new Input.NoWork();
+      case NessyMessage.Recovered _ -> new Input.Recovered();
       case NessyMessage.ModelAnswered answered ->
           new Input.ModelAnswered.Answered(answered.stopReason(), answered.usage());
       case NessyMessage.ModelAsked asked ->
@@ -221,17 +221,17 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           // so a decision arriving three days later needs to say nothing but yes or no.
           new Input.ApprovalGiven(
               answered.callId(), nameOf(state, answered.callId()), answered.result());
-      case NessyMessage.Inspect ignored -> new Input.Recovered();
-      case NessyMessage.Forget ignored -> new Input.Forget();
-      case NessyMessage.Stop ignored -> new Input.SleepNow();
+      case NessyMessage.Inspect _ -> new Input.Recovered();
+      case NessyMessage.Forget _ -> new Input.Forget();
+      case NessyMessage.Stop _ -> new Input.SleepNow();
     };
   }
 
   private static String nameOf(AgentState state, CallId callId) {
-    if (state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools working
-        && working.calls().get(callId)
-            instanceof org.jwcarman.nessy.engine.agent.CallState.Approving approving) {
-      return approving.toolName();
+    if (state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools(var calls)
+        && calls.get(callId)
+            instanceof org.jwcarman.nessy.engine.agent.CallState.Approving(var toolName)) {
+      return toolName;
     }
     return "";
   }

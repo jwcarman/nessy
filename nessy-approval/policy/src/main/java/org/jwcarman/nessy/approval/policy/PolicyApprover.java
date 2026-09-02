@@ -157,8 +157,8 @@ public final class PolicyApprover implements Approver {
       return denied("the policy engine returned no verdict");
     }
     return switch (verdict) {
-      case Verdict.Approve ignored -> Awaited.ready(ApprovalResult.approved());
-      case Verdict.Deny denied -> Awaited.ready(ApprovalResult.denied(denied.reason()));
+      case Verdict.Approve() -> Awaited.ready(ApprovalResult.approved());
+      case Verdict.Deny(var reason) -> Awaited.ready(ApprovalResult.denied(reason));
       case Verdict.Delegate delegate -> handOff(request, delegate);
     };
   }
