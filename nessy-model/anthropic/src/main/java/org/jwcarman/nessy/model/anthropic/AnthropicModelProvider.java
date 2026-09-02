@@ -47,6 +47,8 @@ public final class AnthropicModelProvider implements ModelProvider, AutoCloseabl
    */
   static final String PROVIDER = "anthropic";
 
+  private static final String NAME = "Anthropic";
+
   /**
    * Which failures a caller wrapping this gateway in a retry should retry.
    *
@@ -127,12 +129,12 @@ public final class AnthropicModelProvider implements ModelProvider, AutoCloseabl
   @Override
   public Model model(ModelId id) {
     Objects.requireNonNull(id, "id must not be null");
-    return new AnthropicModel(id);
+    return new AnthropicModel(client, thinkingBudget, id);
   }
 
   /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
-    return "Anthropic";
+    return NAME;
   }
 
   /**
@@ -150,19 +152,9 @@ public final class AnthropicModelProvider implements ModelProvider, AutoCloseabl
     }
   }
 
-  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
-  private final class AnthropicModel implements Model {
-
-    private final ModelId id;
-
-    private AnthropicModel(ModelId id) {
-      this.id = id;
-    }
-
-    @Override
-    public ModelId id() {
-      return id;
-    }
+  /** A flyweight bound handle: pins one model id over its {@link AnthropicClient}. */
+  private record AnthropicModel(AnthropicClient client, int thinkingBudget, ModelId id)
+      implements Model {
 
     @Override
     public ModelStream stream(ModelRequest request) {
