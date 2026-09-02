@@ -185,6 +185,7 @@ environment.
 | Durable computation — parked calls, deadlines as rows, recovery on every activation | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
 | Tools — structured calls, sealed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization — approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
+| Risk — an assessment over the NIST SP 800-30 matrix, and two thresholds with a person in between | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/#gating-on-risk) |
 | Intent — the claim channel a model states and an approver may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
 | Memory — the SPI a model call's context is actually built from | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Storage — a table per thing, shaped for how it is read | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |

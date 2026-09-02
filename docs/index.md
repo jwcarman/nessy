@@ -122,8 +122,20 @@ replies.approve(token, ApprovalResult.approved());
 ```
 
 That works after a restart, because the deadline is a row and the token
-names logical coordinates rather than an object. See
-[Authorization](concepts/authorization.md).
+names logical coordinates rather than an object.
+
+When "which tool is it" is too blunt a question, gate on how bad the call
+would be instead:
+
+```java
+binding.approver(
+    Risk.assessing(assessor)
+        .approvingBelow(RiskLevel.MODERATE)      // runs unasked
+        .denyingAtOrAbove(RiskLevel.VERY_HIGH)   // refused without waking anybody
+        .otherwiseAsking(desk));                 // and the middle band is what a person is for
+```
+
+See [Authorization](concepts/authorization.md).
 
 ## The module map
 

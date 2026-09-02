@@ -221,5 +221,5 @@ page that approves or denies. See [Spring Boot](../guides/spring-boot.md).
 ## See also
 
 - [Tools](tools.md) — `Awaited`, and how a tool defers
-- [Intent](intent.md) — the claim channel an approver may weigh
+- [Intent](intent.md) — the claim channel an approver may weigh, and one input a risk assessor can read
 - [Durable Computation](durable-computation.md) — reply tokens and alarms

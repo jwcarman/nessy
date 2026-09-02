@@ -137,6 +137,6 @@ instances, granted and gated exactly like the ones you wrote. See
 
 ## See also
 
-- [Authorization](authorization.md) — approvers, and describing what a person consents to
+- [Authorization](authorization.md) — approvers, risk thresholds, and describing what a person consents to
 - [Durable Computation](durable-computation.md) — parking, alarms, and answering from outside
 - [The Harness](../guides/harness.md) — granting tools
