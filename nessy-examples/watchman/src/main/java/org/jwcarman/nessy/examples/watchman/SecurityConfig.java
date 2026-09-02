@@ -18,37 +18,34 @@ package org.jwcarman.nessy.examples.watchman;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
-/** One user, form login, everything behind it. A LAN page, not a public one. */
+/**
+ * Open. No login, no user store, no password.
+ *
+ * <p>It had one user and a form in front of everything, and the password was {@code watchman} in a
+ * committed file — ceremony that stopped nobody while making the page awkward to reach. A demo that
+ * asks for a credential it publishes is not demonstrating access control; it is demonstrating a
+ * login form.
+ *
+ * <p><b>Read this before copying it.</b> The approvals page is where a person turns a proposal into
+ * a real command on the host — {@code prune_images}, a service restart. Unauthenticated, the answer
+ * to "is a person willing to allow this?" becomes "whoever reached the port first". That is fine
+ * for a laptop and wrong for anything reachable by a network you do not control. If you run this
+ * somewhere real, put a credential back or bind it to localhost, and do not do both by halves.
+ *
+ * <p>Answers are recorded as "someone" now, because there is no longer anyone to name.
+ */
 @Configuration
 public class SecurityConfig {
 
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http.authorizeHttpRequests(
-            requests ->
-                requests
-                    .requestMatchers("/webjars/**", "/actuator/health")
-                    .permitAll()
-                    .anyRequest()
-                    .authenticated())
-        .formLogin(login -> login.permitAll())
+    // Spring Security is still on the classpath, so a chain is still required: without one the
+    // defaults apply, and the defaults are basic auth with a password printed to the log.
+    http.authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+        .anonymous(anonymous -> anonymous.disable())
         .csrf(csrf -> csrf.disable());
     return http.build();
-  }
-
-  @Bean
-  public UserDetailsService users(WatchmanProperties properties) {
-    return new InMemoryUserDetailsManager(
-        User.withUsername(properties.getUser().isBlank() ? "watchman" : properties.getUser())
-            .password(
-                "{noop}"
-                    + (properties.getPassword().isBlank() ? "watchman" : properties.getPassword()))
-            .roles("OPERATOR")
-            .build());
   }
 }

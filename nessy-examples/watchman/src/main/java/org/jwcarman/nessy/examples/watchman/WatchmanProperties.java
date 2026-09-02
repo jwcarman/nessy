@@ -28,9 +28,6 @@ public class WatchmanProperties {
   /** How long the web layer waits for the agent to confirm a decision is durable. */
   private Duration askTimeout = Duration.ofSeconds(10);
 
-  private String user = "";
-  private String password = "";
-
   /** Where the model lives. Defaults to LM Studio on this box. */
   private String modelUrl = "http://localhost:1234/v1";
 
@@ -109,22 +106,6 @@ public class WatchmanProperties {
 
   public void setAskTimeout(Duration askTimeout) {
     this.askTimeout = askTimeout;
-  }
-
-  public String getUser() {
-    return user;
-  }
-
-  public void setUser(String user) {
-    this.user = user;
-  }
-
-  public String getPassword() {
-    return password;
-  }
-
-  public void setPassword(String password) {
-    this.password = password;
   }
 
   public String getModelUrl() {

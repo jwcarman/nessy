@@ -71,6 +71,14 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    */
   private static final int DEFAULT_MEMORY_CHARACTERS = 100_000;
 
+  /**
+   * How often to look for expired deadlines.
+   *
+   * <p>Half of {@link ReminderSweep#BACKOFF}, so a reminder that fires and is not settled is looked
+   * at again soon after it becomes due rather than drifting a whole backoff behind.
+   */
+  private static final java.time.Duration SWEEP_INTERVAL = java.time.Duration.ofSeconds(30);
+
   private final ActorSystem<?> system;
   private final DataSource dataSource;
   private final ModelProvider models;
@@ -108,6 +116,33 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.claims = new Claims(this.dataSource);
     this.replies =
         new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces, this.claims);
+    startSweepingReminders();
+  }
+
+  /**
+   * Starts looking for deadlines that have passed.
+   *
+   * <p>Without this a durable deadline is a row nothing ever reads. {@link ReminderSweep} was
+   * written, tested and then never given a caller, so an approval parked for a three-day term
+   * waited for a person indefinitely instead -- measured on a real soak, where a call sat ten
+   * minutes past an expiry it should have been denied at. The term meant nothing because nothing
+   * was watching the clock.
+   *
+   * <p>Here rather than in an application, because {@code ReminderSweep} is the engine's own and an
+   * approval that never expires is a property of the engine rather than of whoever configured it.
+   * Every node sweeps; a reminder for a type this node does not serve is skipped and stays at the
+   * front of the index for one that does.
+   */
+  private void startSweepingReminders() {
+    ReminderSweep sweep =
+        new ReminderSweep(
+            new Reminders(dataSource),
+            clock,
+            (where, expired) -> replies.tell(where.agentType(), where.agentId(), expired));
+    system
+        .scheduler()
+        .scheduleAtFixedRate(
+            SWEEP_INTERVAL, SWEEP_INTERVAL, sweep::sweep, system.executionContext());
   }
 
   /**

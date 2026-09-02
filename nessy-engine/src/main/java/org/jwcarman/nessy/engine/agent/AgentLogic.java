@@ -154,6 +154,11 @@ public final class AgentLogic {
   }
 
   private static Decision onApproval(AgentState state, Input.ApprovalGiven given) {
+    // An approval can arrive for a call that already ended -- the deadline denied it a moment ago,
+    // or a person answered twice. Neither is a caller's mistake, and neither should end the agent.
+    if (!awaiting(state, given.callId())) {
+      return Decision.nothing(state);
+    }
     Instruction narrate = new Instruction.Narrate.ApprovalDecided(given.callId(), given.result());
     if (given.result() instanceof ApprovalResult.Approved) {
       return Decision.of(
@@ -164,6 +169,22 @@ public final class AgentLogic {
     // A denial is a COMPLETED call with a result of its own, not a failed turn: the model is told
     // it was refused and gets to decide what to do about that.
     return settle(state, given.callId(), narrate);
+  }
+
+  /**
+   * Whether this agent is still waiting to hear about that call.
+   *
+   * <p>It can be told twice. A parked call has a TERM, and the engine denies it on the person's
+   * behalf when that term expires — so an answer from a page arriving just after the deadline fired
+   * is ordinary traffic, not a broken caller. Before this, the second one asked a turn that had
+   * moved on for its tool calls and stopped the agent with "not working tools: CallingModel".
+   *
+   * <p>Same shape as a duplicate {@code WorkTaken}: news this agent has already had.
+   */
+  private static boolean awaiting(AgentState state, CallId callId) {
+    return state.phase() instanceof Phase.WorkingTools tools
+        && tools.calls().containsKey(callId)
+        && !(tools.calls().get(callId) instanceof CallState.Completed);
   }
 
   /**
@@ -182,6 +203,9 @@ public final class AgentLogic {
    * paths that never parked pay nothing.
    */
   private static Decision settle(AgentState state, CallId callId, Instruction... also) {
+    if (!awaiting(state, callId)) {
+      return Decision.nothing(state);
+    }
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
     List<Instruction> then = new ArrayList<>();
     then.add(new Instruction.CancelAlarm(callId));

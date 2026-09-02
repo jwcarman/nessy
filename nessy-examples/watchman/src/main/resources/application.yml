@@ -62,8 +62,6 @@ watchman:
   # Drop summarize-after to something small to watch a compression happen instead of waiting.
   summarize-after: ${WATCHMAN_SUMMARIZE_AFTER:60}
   keep-verbatim: ${WATCHMAN_KEEP_VERBATIM:20}
-  user: ${WATCHMAN_USER:watchman}
-  password: ${WATCHMAN_PASSWORD:watchman}
 
 management:
   endpoints:

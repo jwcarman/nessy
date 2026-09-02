@@ -225,4 +225,63 @@ class ToolLogicTest {
           .doesNotContain(new Instruction.CancelAlarm(CallId.of("a")));
     }
   }
+
+  /**
+   * A call can be answered twice, and the second answer must not be fatal.
+   *
+   * <p>The engine parks a call with a TERM and denies it on the human's behalf when that term
+   * expires. A person answering just after the deadline fired is therefore ORDINARY, not exotic —
+   * and it was killing the agent. Measured on a live watchman: the reminder sweep settled a call at
+   * 18:45:06, a denial arrived from the page at 18:45:26, and the actor stopped with "not working
+   * tools: CallingModel[]" because the last settle had already moved the turn on.
+   *
+   * <p>The same shape as a duplicate WorkTaken: an answer about something this agent is no longer
+   * waiting on is news it has already had.
+   */
+  @Nested
+  @DisplayName("an answer that arrives too late")
+  class LateAnswers {
+
+    @Test
+    @DisplayName("a denial for a call the deadline already settled is ignored")
+    void a_second_answer_does_not_kill_the_agent() {
+      AgentState movedOn =
+          working(Map.of(CallId.of("a"), new CallState.Completed())).at(new Phase.CallingModel());
+
+      Decision decision =
+          AgentLogic.decide(
+              movedOn,
+              new Input.ApprovalGiven(CallId.of("a"), "prune_images", ApprovalResult.denied("no")));
+
+      assertThat(decision.next()).isEqualTo(movedOn);
+      assertThat(decision.then()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a deadline for a call that already completed is ignored")
+    void a_late_deadline_is_ignored() {
+      AgentState movedOn =
+          working(Map.of(CallId.of("a"), new CallState.Completed())).at(new Phase.CallingModel());
+
+      Decision decision = AgentLogic.decide(movedOn, new Input.DeadlinePassed(CallId.of("a")));
+
+      assertThat(decision.next()).isEqualTo(movedOn);
+      assertThat(decision.then()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("an answer naming a call this turn never had is ignored")
+    void an_answer_for_an_unknown_call_is_ignored() {
+      AgentState state = working(Map.of(CallId.of("a"), new CallState.Approving("send_email")));
+
+      Decision decision =
+          AgentLogic.decide(
+              state,
+              new Input.ApprovalGiven(
+                  CallId.of("stranger"), "send_email", ApprovalResult.approved()));
+
+      assertThat(decision.next()).isEqualTo(state);
+      assertThat(decision.then()).isEmpty();
+    }
+  }
 }

@@ -25,6 +25,7 @@ import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -117,6 +118,25 @@ public final class Replies {
                 result,
                 replyTo,
                 traces.capture(where.agentType().name(), where.agentId().value(), "Answer")));
+  }
+
+  /**
+   * Sends to an agent without waiting for it, routing by type the way an answer does.
+   *
+   * <p>For senders that are not answering a question and have nobody to tell if the agent is not
+   * here — the reminder sweep above all. A type this process does not serve is skipped rather than
+   * thrown about: in a cluster the sweep runs everywhere and most nodes will not serve most types,
+   * which is ordinary rather than exceptional.
+   *
+   * @return whether it went anywhere
+   */
+  boolean tell(AgentType agentType, AgentId agentId, NessyMessage message) {
+    EntityTypeKey<NessyMessage> key = agentTypes.get(agentType);
+    if (key == null) {
+      return false;
+    }
+    ClusterSharding.get(system).entityRefFor(key, agentId.value()).tell(message);
+    return true;
   }
 
   private CompletionStage<NessyMessage.Ack> ask(
