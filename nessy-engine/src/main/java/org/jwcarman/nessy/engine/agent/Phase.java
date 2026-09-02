@@ -32,13 +32,25 @@ import org.jwcarman.nessy.api.CallId;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "phase")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = Phase.Idle.class, name = "idle"),
+  @JsonSubTypes.Type(value = Phase.AwaitingWork.class, name = "awaiting-work"),
   @JsonSubTypes.Type(value = Phase.CallingModel.class, name = "calling-model"),
   @JsonSubTypes.Type(value = Phase.WorkingTools.class, name = "working-tools")
 })
 public sealed interface Phase {
 
-  /** No turn is running. The agent may take from the backlog. */
+  /** No turn is running, and nothing has been asked for. The agent may take from the backlog. */
   record Idle() implements Phase {}
+
+  /**
+   * A take is outstanding: the agent has asked the backlog for work and has not heard back.
+   *
+   * <p>This exists because {@link Idle} used to mean both "nothing is happening" and "I have asked
+   * and am waiting", and could not tell them apart — so a second nudge asked a second time, and the
+   * duplicate was tolerated downstream rather than prevented. It is also where a poisoned take
+   * lands, which is the one moment provably after a finishing turn's writes: a reply to a take
+   * cannot arrive before the batch that asked for it has run.
+   */
+  record AwaitingWork() implements Phase {}
 
   /** A model call is in flight. */
   record CallingModel() implements Phase {}

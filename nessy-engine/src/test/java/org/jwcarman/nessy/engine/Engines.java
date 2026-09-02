@@ -111,6 +111,39 @@ final class Engines {
 
   static Parts of(
       ActorSystem<?> system, AgentType type, Model model, List<ToolBinding<?>> bindings) {
+    return of(system, type, model, bindings, BLOCKING);
+  }
+
+  /**
+   * The same, with the blocking executor handed in.
+   *
+   * <p>Instruction batches are one task each on this executor, so a test that owns it owns the
+   * order they run in — which is the only way to reproduce a race between two batches on purpose
+   * rather than one run in five.
+   */
+  static Parts of(
+      ActorSystem<?> system,
+      AgentType type,
+      Model model,
+      List<ToolBinding<?>> bindings,
+      Executor blocking) {
+    return of(system, type, model, bindings, blocking, memory -> memory);
+  }
+
+  /**
+   * The same, with the memory wrappable.
+   *
+   * <p>Forgetting deletes memory, backlog and claims in that order, and the window a racing write
+   * lands in is BETWEEN them. A test that wants that window on purpose has to be able to stop the
+   * world inside the memory, which is what this is for.
+   */
+  static Parts of(
+      ActorSystem<?> system,
+      AgentType type,
+      Model model,
+      List<ToolBinding<?>> bindings,
+      Executor blocking,
+      java.util.function.UnaryOperator<Memory> wrapping) {
     DataSource dataSource = TestDatabase.fresh();
     Claims claims = new Claims(dataSource);
     BacklogStore<HouseEvent> backlog =
@@ -129,7 +162,7 @@ final class Engines {
             system,
             new Instructions.Dependencies(
                 type,
-                recording(remembered),
+                wrapping.apply(recording(remembered)),
                 model,
                 "you watch a house",
                 256,
@@ -142,7 +175,7 @@ final class Engines {
                 // A REAL executor, not Runnable::run. Slow work now runs from the agent's own
                 // thread rather than a child actor's, so a model that blocks would block the
                 // actor — which is the very thing the blocking executor exists to prevent.
-                BLOCKING,
+                blocking,
                 Traces.noop(),
                 backlog));
     return new Parts(dataSource, claims, backlog, instructions, remembered, narrated);

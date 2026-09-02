@@ -40,7 +40,7 @@ public final class AgentLogic {
       case Input.BacklogUpdated() -> onBacklogUpdated(state);
       case Input.WorkTaken taken -> onWorkTaken(state, taken);
       case Input.Recovered() -> onRecovered(state);
-      case Input.NoWork() -> Decision.of(state, new Instruction.Sleep());
+      case Input.NoWork() -> Decision.of(state.finished(), new Instruction.Sleep());
       case Input.ModelAnswered.Answered(var stopReason, var usage) ->
           endTurn(state.spending(usage), resultOf(stopReason), new Instruction.Remember.Answer());
       case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
@@ -71,7 +71,11 @@ public final class AgentLogic {
       // to whoever next uses this id -- see Instruction.Forget.
       return Decision.nothing(state);
     }
-    return state.busy() ? Decision.nothing(state) : Decision.of(state, new Instruction.TakeWork());
+    // Only from Idle. Asking again while a take is already outstanding is the duplicate this
+    // phase exists to prevent; a turn in flight will ask for itself when it ends.
+    return state.phase() instanceof Phase.Idle
+        ? Decision.of(state.asking(), new Instruction.TakeWork())
+        : Decision.nothing(state);
   }
 
   /**
@@ -99,7 +103,9 @@ public final class AgentLogic {
    * SAME one, exactly as it is meant to — so without this, one observation would start two turns.
    */
   private static Decision onWorkTaken(AgentState state, Input.WorkTaken taken) {
-    if (state.busy()) {
+    // Only a reply to an outstanding ask starts a turn. A reply arriving in any other phase is a
+    // duplicate -- take is stranded-first, so it names the row this agent is already working.
+    if (!(state.phase() instanceof Phase.AwaitingWork)) {
       return Decision.nothing(state);
     }
     return Decision.of(
@@ -137,7 +143,7 @@ public final class AgentLogic {
     then.add(new Instruction.Release());
     // The one place a busy agent's forget is honoured: it asked to go, and now it can.
     then.add(state.forgetting() ? new Instruction.Forget() : new Instruction.TakeWork());
-    return new Decision(state.finished(), then);
+    return new Decision(state.forgetting() ? state.finished() : state.asking(), then);
   }
 
   /**
@@ -206,7 +212,10 @@ public final class AgentLogic {
    */
   private static Decision onRecovered(AgentState state) {
     return switch (state.phase()) {
-      case Phase.Idle() -> Decision.of(state, new Instruction.TakeWork());
+      case Phase.Idle() -> Decision.of(state.asking(), new Instruction.TakeWork());
+      // The ask itself did not survive the crash, so ask again. Safe because take is
+      // stranded-first: it hands back the row this agent already holds rather than a new one.
+      case Phase.AwaitingWork() -> Decision.of(state, new Instruction.TakeWork());
       case Phase.CallingModel() -> Decision.of(state, new Instruction.CallModel());
       case Phase.WorkingTools working -> new Decision(state, resume(working));
     };

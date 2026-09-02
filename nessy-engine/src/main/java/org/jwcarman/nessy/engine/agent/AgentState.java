@@ -76,8 +76,16 @@ public record AgentState(
   }
 
   /** Whether a turn is running. */
+  /**
+   * Whether a TURN is running — not merely whether something is outstanding.
+   *
+   * <p>Deliberately false while {@link Phase.AwaitingWork}: a take is in flight, but no turn is,
+   * and the difference is load bearing. {@code Instructions.takeWork} decides which backlog row to
+   * sweep from this, so an agent that called itself busy on its way to ask for work would never
+   * sweep the turn it just finished and would re-take the same observation forever.
+   */
   public boolean busy() {
-    return !(phase instanceof Phase.Idle);
+    return phase instanceof Phase.CallingModel || phase instanceof Phase.WorkingTools;
   }
 
   /** The tool calls in flight. Asking an agent that is not working tools is a bug, not a query. */
@@ -115,6 +123,11 @@ public record AgentState(
    */
   public AgentState finished() {
     return new AgentState(turnId, new Phase.Idle(), observation, usage, forgetting);
+  }
+
+  /** Asking the backlog for work. The turn id stays, because it names the row to sweep. */
+  public AgentState asking() {
+    return new AgentState(turnId, new Phase.AwaitingWork(), observation, usage, forgetting);
   }
 
   /**
