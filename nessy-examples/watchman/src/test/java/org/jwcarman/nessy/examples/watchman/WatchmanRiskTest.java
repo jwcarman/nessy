@@ -1,0 +1,76 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.examples.watchman;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Instant;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.risk.Impact;
+import org.jwcarman.nessy.api.tool.risk.Likelihood;
+import org.jwcarman.nessy.api.tool.risk.RiskAssessment;
+import org.jwcarman.nessy.api.tool.risk.RiskLevel;
+
+/**
+ * What this box's risk appetite actually does to its gated tool.
+ *
+ * <p>The thresholds and the assessment are separate decisions, and only their COMBINATION says
+ * whether anybody gets woken up. A comment claiming a matrix value is a comment that will
+ * eventually be wrong, so the claim lives here instead.
+ */
+@DisplayName("The watchman's risk appetite")
+class WatchmanRiskTest {
+
+  private static ApprovalRequest pruning() {
+    return new ApprovalRequest(
+        new ToolCallRequest<>(
+            AgentType.of("watchman"),
+            AgentId.of("house"),
+            "turn-1",
+            "c1",
+            "prune_images",
+            "docker image prune -af",
+            ReplyToken.of("nowhere")),
+        "docker image prune -af",
+        Instant.EPOCH);
+  }
+
+  @Test
+  @DisplayName("pruning images lands in the middle band, so a person decides")
+  void the_assessed_level_is_neither_waved_through_nor_refused() {
+    RiskLevel assessed = RiskAssessment.of(Likelihood.HIGH, Impact.MODERATE).risk();
+
+    assertThat(assessed).isEqualTo(RiskLevel.MODERATE);
+    assertThat(assessed)
+        .as("not below the approving threshold, so it is not waved through")
+        .isGreaterThanOrEqualTo(RiskLevel.MODERATE);
+    assertThat(assessed)
+        .as("not at the denying threshold, so nobody is refused without being asked")
+        .isLessThan(RiskLevel.VERY_HIGH);
+  }
+
+  @Test
+  @DisplayName("the question a person is shown names the command they are consenting to")
+  void the_description_is_the_command() {
+    assertThat(pruning().description()).isEqualTo("docker image prune -af");
+  }
+}

@@ -26,6 +26,13 @@ import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.risk.Impact;
+import org.jwcarman.nessy.api.tool.risk.Likelihood;
+import org.jwcarman.nessy.api.tool.risk.Risk;
+import org.jwcarman.nessy.api.tool.risk.RiskAssessment;
+import org.jwcarman.nessy.api.tool.risk.RiskAssessor;
+import org.jwcarman.nessy.api.tool.risk.RiskFactors;
+import org.jwcarman.nessy.api.tool.risk.RiskLevel;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -115,7 +122,9 @@ public class WatchmanConfiguration {
                       observed,
                       binding ->
                           binding
-                              .approver(Observed.approver(humanApprover, observations))
+                              .approver(
+                                  Observed.approver(
+                                      gatedOnRisk(tool.name(), humanApprover), observations))
                               .describer(args -> WatchmanTools.describe(tool.name(), args)));
                 } else {
                   config.tool(
@@ -139,6 +148,47 @@ public class WatchmanConfiguration {
       listener.expecting(request.call().callId(), request.replyToken());
       return Awaited.deferred(clock.instant().plus(APPROVAL_TERM));
     };
+  }
+
+  /**
+   * How risky a call is, and what this box does about it.
+   *
+   * <p>Two thresholds and a person in between. Below MODERATE runs unasked; at or above VERY_HIGH
+   * is refused without waking anybody at 3am; everything else is what the approvals page is for.
+   * Those numbers are THIS deployment's appetite — a staging box would set them differently with
+   * the same assessor.
+   *
+   * <p>The assessment lands on the request, so the page can say why it is asking rather than only
+   * what it is asking about.
+   */
+  private static Approver gatedOnRisk(String tool, Approver desk) {
+    return Risk.assessing(assessorFor(tool))
+        .approvingBelow(RiskLevel.MODERATE)
+        .denyingAtOrAbove(RiskLevel.VERY_HIGH)
+        .otherwiseAsking(desk);
+  }
+
+  /**
+   * What each gated tool is worth worrying about.
+   *
+   * <p>Constant per tool, because these risks do not vary with the arguments: {@code docker image
+   * prune -af} takes none. A tool whose danger DID depend on its input would read the request
+   * instead, which is why an assessor is given the whole question rather than a fixed verdict.
+   */
+  private static RiskAssessor assessorFor(String tool) {
+    if ("prune_images".equals(tool)) {
+      // Likely to bite — an image you wanted is only "unused" until you want it — and the loss is
+      // serious rather than catastrophic, because images can be pulled again. The matrix reads
+      // that pair as MODERATE, which is exactly the middle band: not waved through, not refused
+      // outright, so a person decides. WatchmanRiskTest holds that, because a comment claiming a
+      // matrix value is a comment that will eventually be wrong.
+      return RiskAssessor.always(
+          RiskAssessment.of(
+              Likelihood.HIGH, Impact.MODERATE, RiskFactors.DESTRUCTIVE, RiskFactors.IRREVERSIBLE));
+    }
+    // Anything else this box gates but has not assessed: say so rather than assuming it is safe.
+    return RiskAssessor.always(
+        RiskAssessment.of(Likelihood.MODERATE, Impact.MODERATE, RiskFactors.EXTERNAL_WORLD));
   }
 
   /**

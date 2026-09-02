@@ -148,6 +148,70 @@ Re-asking would mint a second reply token and invalidate the one already
 sitting in somebody's inbox. That is why the engine records *what kind* of
 waiting a call is doing rather than just that it is unfinished.
 
+## Gating on risk
+
+Some calls are worth a person's attention and some are not, and "which tool
+is it" is a blunt way to decide. `Risk` splits that into two decisions that
+belong to different people:
+
+```java
+binding.approver(
+    Risk.assessing(assessor)
+        .approvingBelow(RiskLevel.MODERATE)
+        .denyingAtOrAbove(RiskLevel.VERY_HIGH)
+        .otherwiseAsking(desk));
+```
+
+Below the floor runs unasked. At or above the ceiling is refused without
+waking anybody. Everything between is what a person is for — and the middle
+band is the whole point, because a gate with no middle band is just a boolean.
+
+**The assessment is somebody's judgement about a tool; the thresholds are
+somebody's appetite for risk.** A staging box and a production box run the
+same assessor with different numbers.
+
+### The assessment
+
+```java
+RiskAssessment.of(Likelihood.HIGH, Impact.MODERATE,
+                  RiskFactors.DESTRUCTIVE, RiskFactors.IRREVERSIBLE);
+```
+
+`Likelihood`, `Impact` and `RiskLevel` are three separate five-value enums,
+deliberately: swapping a likelihood for an impact is then a compile error
+rather than a silent severity bug. `of` derives the level from NIST SP
+800-30's qualitative combination matrix, and the canonical constructor is the
+door for an assessor whose own judgement differs from the matrix.
+
+### The assessor
+
+```java
+public interface RiskAssessor {
+  RiskAssessment assess(ApprovalRequest request);
+}
+```
+
+It sees the whole question — tool name, described action, arguments, and any
+facts an earlier approver deposited — so a policy can turn on what was
+actually asked. `RiskAssessor.always(...)` is the common case: a tool whose
+danger does not vary with its input.
+
+It is **not** asked whether to allow the call. It says how bad the call would
+be and how likely that is; the thresholds turn that into an answer.
+
+### What the person sees
+
+The assessment is recorded on the request under `Risk.FACT` before anyone is
+asked, so a desk can show *why* it is asking rather than only what it is
+asking about. That is the difference between a prompt and an interruption.
+
+### Contradictory thresholds are refused
+
+A ceiling below the floor would deny calls it also approves, so
+`denyingAtOrAbove` rejects it when it is configured rather than behaving
+oddly later. Equal thresholds are allowed and mean something coherent: every
+call is either approved or denied, and nobody is ever asked.
+
 ## The Spring Boot desk
 
 `nessy-spring-boot-starter` ships a pending-approvals projection: an

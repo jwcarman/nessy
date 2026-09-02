@@ -105,6 +105,13 @@ in its current vocabulary — not the sequence of designs that produced it.
   It is not a failed turn and must not look like a broken tool.
 - **`ToolDescriber`** writes the sentence a person consents to. Consenting to
   a message you have not read is not consent.
+- **Risk-based gating.** `RiskAssessment` derives a level from NIST SP 800-30's
+  combination matrix, with `Likelihood`, `Impact` and `RiskLevel` as separate
+  enums so a swapped argument is a compile error. `Risk.assessing(...)
+  .approvingBelow(...).denyingAtOrAbove(...).otherwiseAsking(desk)` turns an
+  assessment into an ordinary `Approver`: below the floor runs unasked, at or
+  above the ceiling is refused, and the middle band goes to a person. The
+  assessment is recorded on the request, so a desk can say why it is asking.
 - **Intent** (`nessy-intent`) is a claim channel: the model declares what it
   is about to do in your vocabulary, and `IntentPolicy.requireDeclared` fails
   closed for a call with nothing behind it.
