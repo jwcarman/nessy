@@ -96,7 +96,9 @@ class IdentifierTest {
   @Test
   @DisplayName("a call id is a provider's string, and is checked on the way in")
   void an_unusable_call_id_fails_at_the_parser_not_at_the_index() {
-    assertThatThrownBy(() -> CallId.of("call_" + "x".repeat(300)))
+    String tooLong = "call_" + "x".repeat(300);
+
+    assertThatThrownBy(() -> CallId.of(tooLong))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("call id");
   }

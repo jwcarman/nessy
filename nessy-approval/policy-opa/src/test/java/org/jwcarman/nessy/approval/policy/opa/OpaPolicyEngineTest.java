@@ -151,8 +151,9 @@ class OpaPolicyEngineTest {
       // Measured: OPA answers 200 with {} for a typo, for an undefined rule, and for a policy that
       // never loaded. Reading that as "no" denies everything, forever, in silence.
       PolicyEngine typo = engine("nessy/tools/decisionn");
+      ApprovalRequest asking = asking("watchman", "disk_usage", "staging-1");
 
-      assertThatThrownBy(() -> typo.decide(asking("watchman", "disk_usage", "staging-1")))
+      assertThatThrownBy(() -> typo.decide(asking))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no decision at")
           .hasMessageContaining("the path is wrong");
@@ -163,8 +164,9 @@ class OpaPolicyEngineTest {
       PolicyEngine offline =
           OpaPolicyEngine.create(
               opa -> opa.url("http://127.0.0.1:1").decisionPath("nessy/tools/decision"));
+      ApprovalRequest asking = asking("watchman", "disk_usage", "s");
 
-      assertThatThrownBy(() -> offline.decide(asking("watchman", "disk_usage", "s")))
+      assertThatThrownBy(() -> offline.decide(asking))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("could not reach");
     }
@@ -184,8 +186,9 @@ class OpaPolicyEngineTest {
 
       // The token settles the call. A policy engine logs its input and is often somebody else's
       // service, so it is the one field that must not be there.
-      assertThat(document).doesNotContain("a-capability-no-policy-should-see");
-      assertThat(document).contains("prune_images", "prod-eu-1", "watchman", "house-12");
+      assertThat(document)
+          .doesNotContain("a-capability-no-policy-should-see")
+          .contains("prune_images", "prod-eu-1", "watchman", "house-12");
     }
 
     @Test
@@ -196,8 +199,9 @@ class OpaPolicyEngineTest {
               .render(asking("watchman", "prune_images", "prod-eu-1"))
               .toString();
 
-      assertThat(document).doesNotContain("a-capability-no-policy-should-see");
-      assertThat(document).contains("\"subject\"", "\"resource\"", "\"action\"", "house-12");
+      assertThat(document)
+          .doesNotContain("a-capability-no-policy-should-see")
+          .contains("\"subject\"", "\"resource\"", "\"action\"", "house-12");
     }
 
     @Test

@@ -157,8 +157,7 @@ class ApprovalRequestTest {
               ASKED,
               () -> ReplyToken.of("b"));
 
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second);
     }
 
     @Test
@@ -211,15 +210,19 @@ class ApprovalRequestTest {
 
     @Test
     void a_question_with_no_action_is_refused() {
+      TurnId turnId = TurnId.of("turn-1");
+      CallId callId = CallId.of("c1");
+      var arguments = JsonNodeFactory.instance.objectNode();
+
       assertThatThrownBy(
               () ->
                   new ApprovalRequest(
                       WATCHMAN,
                       HOUSE,
-                      TurnId.of("turn-1"),
-                      CallId.of("c1"),
+                      turnId,
+                      callId,
                       "prune_images",
-                      JsonNodeFactory.instance.objectNode(),
+                      arguments,
                       null,
                       ASKED,
                       () -> ReplyToken.of("token-1")))

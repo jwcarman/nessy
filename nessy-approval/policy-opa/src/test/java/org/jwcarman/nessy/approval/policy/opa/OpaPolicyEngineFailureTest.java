@@ -102,8 +102,10 @@ class OpaPolicyEngineFailureTest {
   void a_rejected_request_throws() {
     status.set(new int[] {400});
     body.set("{\"code\":\"invalid_parameter\",\"message\":\"body contains malformed input\"}");
+    PolicyEngine engine = engine();
+    ApprovalRequest asking = asking();
 
-    assertThatThrownBy(() -> engine().decide(asking()))
+    assertThatThrownBy(() -> engine.decide(asking))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("OPA answered 400")
         .hasMessageContaining("invalid_parameter");
@@ -112,8 +114,10 @@ class OpaPolicyEngineFailureTest {
   @Test
   void a_body_that_is_not_json_throws() {
     body.set("<html>502 Bad Gateway</html>");
+    PolicyEngine engine = engine();
+    ApprovalRequest asking = asking();
 
-    assertThatThrownBy(() -> engine().decide(asking()))
+    assertThatThrownBy(() -> engine.decide(asking))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("not JSON");
   }
@@ -122,8 +126,10 @@ class OpaPolicyEngineFailureTest {
   @DisplayName("a response with no result is a broken gate, not a denial")
   void an_empty_document_throws() {
     body.set("{}");
+    PolicyEngine engine = engine();
+    ApprovalRequest asking = asking();
 
-    assertThatThrownBy(() -> engine().decide(asking()))
+    assertThatThrownBy(() -> engine.decide(asking))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("no decision at");
   }
@@ -143,9 +149,10 @@ class OpaPolicyEngineFailureTest {
   @DisplayName("an interrupted decision restores the flag rather than swallowing it")
   void interrupting_the_caller_is_reported_and_the_flag_survives() {
     PolicyEngine engine = engine();
+    ApprovalRequest asking = asking();
     Thread.currentThread().interrupt();
     try {
-      assertThatThrownBy(() -> engine.decide(asking()))
+      assertThatThrownBy(() -> engine.decide(asking))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("interrupted");
       assertThat(Thread.currentThread().isInterrupted())

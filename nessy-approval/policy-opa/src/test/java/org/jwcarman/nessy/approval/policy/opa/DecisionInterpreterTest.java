@@ -87,14 +87,18 @@ class DecisionInterpreterTest {
     @Test
     @DisplayName("a typo like \"alow\" must never read as a yes")
     void an_unknown_effect_throws() {
-      assertThatThrownBy(() -> interpreter.interpret(json("{\"effect\":\"alow\"}")))
+      JsonNode decision = json("{\"effect\":\"alow\"}");
+
+      assertThatThrownBy(() -> interpreter.interpret(decision))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("alow");
     }
 
     @Test
     void delegating_nowhere_throws() {
-      assertThatThrownBy(() -> interpreter.interpret(json("{\"effect\":\"delegate\"}")))
+      JsonNode decision = json("{\"effect\":\"delegate\"}");
+
+      assertThatThrownBy(() -> interpreter.interpret(decision))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("must name a");
     }
@@ -102,7 +106,9 @@ class DecisionInterpreterTest {
     @Test
     @DisplayName("a bare boolean is not a decision this convention understands")
     void a_document_of_the_wrong_shape_throws() {
-      assertThatThrownBy(() -> interpreter.interpret(json("true")))
+      JsonNode decision = json("true");
+
+      assertThatThrownBy(() -> interpreter.interpret(decision))
           .isInstanceOf(IllegalArgumentException.class);
     }
   }
@@ -135,7 +141,9 @@ class DecisionInterpreterTest {
     @Test
     @DisplayName("a response with no decision at all is a broken gate, not a no")
     void a_missing_decision_throws() {
-      assertThatThrownBy(() -> interpreter.interpret(json("{\"context\":{}}")))
+      JsonNode decision = json("{\"context\":{}}");
+
+      assertThatThrownBy(() -> interpreter.interpret(decision))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("boolean");
     }

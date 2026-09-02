@@ -123,8 +123,9 @@ class TranscriptMemoryTest {
     @DisplayName("a zero character budget is refused")
     void a_zero_budget_is_refused() {
       DataSource database = freshDatabase();
+      AgentType watchman = AgentType.of("watchman");
 
-      assertThatThrownBy(() -> TranscriptMemory.recent(database, AgentType.of("watchman"), 0))
+      assertThatThrownBy(() -> TranscriptMemory.recent(database, watchman, 0))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxCharacters");
     }
@@ -133,8 +134,9 @@ class TranscriptMemoryTest {
     @DisplayName("a negative character budget is refused")
     void a_negative_budget_is_refused() {
       DataSource database = freshDatabase();
+      AgentType watchman = AgentType.of("watchman");
 
-      assertThatThrownBy(() -> TranscriptMemory.recent(database, AgentType.of("watchman"), -1))
+      assertThatThrownBy(() -> TranscriptMemory.recent(database, watchman, -1))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxCharacters");
     }
