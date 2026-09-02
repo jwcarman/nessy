@@ -129,6 +129,37 @@ class ContextTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("must not be empty");
     }
+
+    /**
+     * The varargs overload is a thin wrapper over the list form; a caller passing a null array
+     * (rather than an empty one) is still a caller bug, not an empty enrichment.
+     */
+    @Test
+    void a_null_varargs_array_is_a_caller_bug() {
+      Context context = Context.empty();
+
+      assertThatThrownBy(
+              () -> context.enrich((org.jwcarman.nessy.api.block.UserContentBlock[]) null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("blocks must not be null");
+    }
+  }
+
+  @Nested
+  class Head {
+
+    /**
+     * {@code head} is the raw prefix cut a caller drives with a pair-safe index it computed itself;
+     * here every message is a plain turn, so any cut is pair-safe.
+     */
+    @Test
+    void keeps_the_prefix_before_the_cut() {
+      Context context = Context.of(List.of(user("one"), user("two"), user("three")));
+
+      Context result = context.head(2);
+
+      assertThat(result.messages()).containsExactly(user("one"), user("two"));
+    }
   }
 
   @Nested
@@ -166,6 +197,16 @@ class ContextTest {
       assertThatThrownBy(() -> context.elideToolResults(-1))
           .isInstanceOf(IllegalArgumentException.class);
     }
+
+    /** A message with no tool results — an ordinary turn — passes through untouched. */
+    @Test
+    void a_message_with_no_results_is_untouched() {
+      Context context = Context.of(List.of(user("plain"), assistantText("also plain")));
+
+      Context result = context.elideToolResults(0);
+
+      assertThat(result.messages()).isEqualTo(context.messages());
+    }
   }
 
   @Nested
@@ -192,6 +233,23 @@ class ContextTest {
       Context result = context.keepRecent(0);
 
       assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void a_negative_count_is_a_caller_bug() {
+      Context context = Context.empty();
+
+      assertThatThrownBy(() -> context.keepRecent(-1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Asking to keep at least as many messages as exist returns the context unchanged. */
+    @Test
+    void keeping_at_least_everything_returns_the_same_context() {
+      Context context = Context.of(List.of(user("one"), assistantText("a")));
+
+      Context result = context.keepRecent(5);
+
+      assertThat(result).isSameAs(context);
     }
   }
 
