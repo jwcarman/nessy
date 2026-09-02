@@ -163,7 +163,6 @@ public final class WatchmanTools {
     };
   }
 
-  /** The command line a human is shown, and the one that runs. Never a shell string. */
   /** What running this tool would actually do, as a person would read it. */
   public static String actionOf(String tool, JsonNode arguments) {
     return spec(tool)

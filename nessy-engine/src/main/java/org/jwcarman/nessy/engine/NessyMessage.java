@@ -198,7 +198,6 @@ public sealed interface NessyMessage {
     }
   }
 
-  /** The shard is unloading this agent. */
   /**
    * An application is finished with this agent instance.
    *
@@ -212,6 +211,7 @@ public sealed interface NessyMessage {
     }
   }
 
+  /** The shard is unloading this agent. */
   record Stop(Map<String, String> headers) implements NessyMessage {
     public Stop {
       headers = Map.copyOf(headers);

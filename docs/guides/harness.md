@@ -15,6 +15,7 @@ and sharding already knows where an agent lives.
 public interface Harness<O> {
   AgentType type();
   void observe(AgentId agentId, O observation);
+  void forget(AgentId agentId);
   AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber);
   AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber, String lastEventId);
 }
@@ -133,6 +134,38 @@ Rendering happens when an observation is taken, not when it arrives — so an
 observation that gets coalesced away is never rendered at all, and your
 coalescer compares real observations rather than string-matching its way
 back out of a rendered message.
+
+## Forgetting
+
+An agent id is not always a long-lived name. A browser session, one review by a
+judging agent, a single request — those instances have to be able to END, or
+every one of them is a permanent state row and a permanent transcript.
+
+```java
+harness.forget(agentId);
+```
+
+**A request, not a receipt.** It returns as soon as the agent has been told. If
+that agent is mid-turn it finishes first and forgets itself afterwards, so
+nothing is deleted out from under work in flight — the same cooperation
+`Thread.interrupt` asks for, and for the same reason: the alternative strands
+the model's answer in a dead incarnation with nobody left to end the turn. A
+caller that must *know* the agent is gone cannot learn it here.
+
+What goes: the agent's memory, its backlog rows, its claims, and its persisted
+state. What stays: stores it merely *used* — a notebook, a plan, a declared
+intent — because those have their own lifecycles and may be shared with other
+agents. Forget those yourself if you want them gone.
+
+Forgetting an agent that never existed is silent. Telling one twice is the same
+as telling it once.
+
+**Do not reuse a forgotten id.** An observation offered between the decision to
+forget and the deletion lands in a table nobody is reading. That is harmless
+until the id comes back, when it arrives as stale work for a new agent.
+
+`nessy-examples/chat-web` shows the shape: its "New chat" button ends the old
+conversation rather than minting a new id and walking away from the old one.
 
 ## Watching
 

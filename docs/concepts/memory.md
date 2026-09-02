@@ -7,6 +7,7 @@ model call's context is actually built from.
 public interface Memory {
   Context recall(AgentId agentId);
   void remember(AgentId agentId, HistoryMessage message);
+  void forget(AgentId agentId);
 }
 ```
 
@@ -119,3 +120,19 @@ an actor's thread. Take your time.
 - [Storage](storage.md) — the tables, and applying the schema
 - [Durable Computation](durable-computation.md) — why writing whole matters for recovery
 - [The Harness](../guides/harness.md) — configuring a memory
+
+## Forgetting
+
+`forget` drops everything remembered for one agent, as though it had never
+spoken. It exists because an agent id is not always a long-lived name — a
+browser session, one review by a judging agent, a single request — and those
+instances have to be able to end. See [`Harness.forget`](../guides/harness.md).
+
+**It is abstract, not a default that does nothing.** A memory that silently
+declined to forget would turn a privacy operation into a no-op with no way for
+the caller to tell, and "we deleted it" is not a thing to be wrong about. A new
+implementation is made to answer the question.
+
+Forgetting an agent that never spoke is silent rather than an error: the end
+state is the same either way, and a caller cleaning up should not have to know
+which case it is in.

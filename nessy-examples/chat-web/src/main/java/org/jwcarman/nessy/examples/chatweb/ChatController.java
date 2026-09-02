@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.Replies;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -92,6 +93,22 @@ public class ChatController {
   @PostMapping("/{id}/messages")
   public ResponseEntity<Void> say(@PathVariable("id") String id, @RequestBody MessageRequest body) {
     harness.observe(AgentId.of(id), body.text());
+    return ResponseEntity.accepted().build();
+  }
+
+  /**
+   * Ends this conversation: the agent behind it is forgotten, not merely cleared on screen.
+   *
+   * <p>The browser mints an agent id and keeps it in {@code localStorage}, so without this every
+   * visitor becomes a permanent agent — a state row and a transcript that nothing ever removes.
+   * "Start a new chat" was a lie the page told: it produced a new id and abandoned the old one.
+   *
+   * <p>Accepted, not confirmed. {@code forget} is a request: an agent mid-answer finishes first and
+   * forgets itself after, so a 202 says the agent has been told rather than that it is gone.
+   */
+  @DeleteMapping("/{id}")
+  public ResponseEntity<Void> forget(@PathVariable("id") String id) {
+    harness.forget(AgentId.of(id));
     return ResponseEntity.accepted().build();
   }
 

@@ -120,10 +120,12 @@ advertises, and gates the one that spends DeepWiki's own model budget:
 ./mvnw -q -pl :nessy-example-mcp -am compile exec:java
 ```
 
-**`policy`** — the gate as data. An `Approver` that asks Open Policy Agent,
-so the rules are Rego reviewed by whoever owns the risk rather than Java that
-ships with a release. No model and no key: it runs the real OPA binary in a
-container.
+**`policy`** — the gate as data. A `PolicyApprover` that asks Open Policy
+Agent, so the rules are Rego reviewed by whoever owns the risk rather than Java
+that ships with a release. Three verdicts — approve, deny, and **delegate**,
+which hands the decision to a named approver such as a human desk. No model and
+no key: it runs the real OPA binary in a container, and a second test shows the
+same gate with the rules written in Java instead.
 
 ```bash
 ./mvnw -pl :nessy-example-policy test -Dnessy.excludedGroups=
@@ -176,7 +178,9 @@ agent depends on `nessy-engine`, which pulls both in.
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
 | `nessy-memory-plan` | a plan an agent holds across turns |
 | `nessy-memory-pipeline` | shaping the context a model call is built from |
-| `nessy-intent` | the declared-intent claim channel |
+| `nessy-approval-intent` | the declared-intent claim channel |
+| `nessy-approval-policy` | deciding a tool call by policy — approve, deny, or delegate |
+| `nessy-approval-policy-opa` | an engine backed by Open Policy Agent |
 | `nessy-tool-mcp` | importing a remote MCP server's tools |
 | `nessy-testing` | test doubles, including a fresh in-memory database |
 

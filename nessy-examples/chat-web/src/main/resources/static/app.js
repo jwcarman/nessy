@@ -156,10 +156,21 @@ async function load() {
 }
 
 form.addEventListener("submit", send);
+// "New chat" used to mint a new id and walk away from the old one, which left an agent behind
+// for every conversation anybody ever started -- a state row and a transcript, forever. Ending
+// the old one is the whole difference between starting fresh and quietly littering.
 newChatButton.addEventListener("click", async () => {
+  const finished = agentId;
   useAgent(crypto.randomUUID());
   await load();
   listen();
+  // After the switch, deliberately: the new conversation should open even if this fails, and a
+  // forget the server never heard is a leaked agent, not a broken page.
+  try {
+    await fetch(`/api/agents/${finished}`, { method: "DELETE" });
+  } catch (ignored) {
+    // Nothing to tell the person: their new chat is already open and working.
+  }
 });
 
 useAgent(agentId);

@@ -261,37 +261,92 @@ call is either approved or denied, and nobody is ever asked.
 
 An approver can hand the decision to a policy engine. This is what the flat,
 JSON-shaped request buys: OPA reads `input.toolName` and
-`input.arguments.target` directly, so the adapter is about forty lines and
-nothing translates between a Java object graph and what Rego can see.
+`input.arguments.target` directly, so nothing translates between a Java object
+graph and what Rego can see.
 
-```rego
-default allow := false
+```java
+PolicyEngine opa = OpaPolicyEngine.create(policy -> policy
+    .url("http://localhost:8181")
+    .decisionPath("nessy/tools/decision"));
 
-allow if input.toolName in {"disk_usage", "containers"}
-
-allow if {
-    input.toolName == "prune_images"
-    input.agentType == "watchman"
-    not startswith(input.arguments.target, "prod-")
-}
+Approver gate = PolicyApprover.create(config -> config
+    .engine(opa)
+    .delegate("humans", desk));
 ```
 
 A gate written in Java ships when the application ships. A gate written in
 Rego is data: reviewed by whoever owns the risk, versioned on its own, and
 changed without a release.
 
-Two rules the adapter has to get right, and both are about failure:
+### Three verdicts
+
+**A policy decides now; an approver may take three days.** That sentence is the
+whole design. A `PolicyEngine` answers synchronously with a `Verdict`:
+
+| Verdict | What the approver does |
+|---|---|
+| `Approve` | the call runs |
+| `Deny(reason)` | the model is told why |
+| `Delegate(to)` | a named approver decides — which may park for days |
+
+```rego
+default decision := {"effect": "deny", "reason": "no rule allowed this"}
+
+decision := {"effect": "allow"} if input.toolName in {"disk_usage", "containers"}
+
+decision := {"effect": "delegate", "to": "humans", "term": "PT72H"} if production
+```
+
+There is deliberately no `ask`. A desk that parks a call and waits **is** an
+approver, so asking a person was never a kind of answer — only delegation to a
+particular one. That is what lets a policy name a review agent or a change
+board tomorrow with no Java changing.
+
+`Delegate` resolves against an **allowlist** given at construction. Given a
+registry of every approver in the process, a policy file could name one that
+always says yes, and the gate would be one text edit from being no gate at all.
+
+Note `term`: "production waits three days" is a sentence in the policy rather
+than a constant in Java, and it reaches the delegate as the fact `policy.term`.
+
+### The rules a gate has to get right
 
 - **The reply token is not sent.** It is a capability — whoever holds it can
   settle the call — and a policy engine logs its input and is often somebody
-  else's service. Build the document field by field rather than serializing
-  the record.
-- **A policy that cannot be reached denies.** An engine that is down or
-  misconfigured must not become an open gate. The failure of a control is not
-  permission.
+  else's service. The document is built field by field rather than serialized,
+  and a test exists whose only job is to keep the token out.
+- **A control that did not answer is not a control that said yes.** An engine
+  that is down, a mistyped decision path, an unknown effect: each denies **and**
+  logs an `error`. The level carries the distinction — `error` means the gate is
+  broken, a denial alone means the gate worked.
 
-`nessy-examples/policy` is the whole thing against the real OPA binary,
-including a test whose only job is to keep the token out of the document.
+That second one is sharper than it sounds with OPA, which answers HTTP 200 to
+nearly everything. A mistyped path returns `{}`, byte-identical to a rule that
+legitimately did not fire. Read it as "no" and a misconfiguration denies
+everything, forever, silently — so a decision rule must carry a `default`, which
+makes the presence of `result` a health check.
+
+### It need not be external
+
+`PolicyEngine` is one method, so rules in Java are a lambda:
+
+```java
+PolicyEngine rules = request ->
+    READ_ONLY.contains(request.toolName()) ? Verdict.approve() : Verdict.delegate("humans");
+```
+
+You give up rules-as-data and keep everything else — the three verdicts, the
+allowlist, the fail-closed discipline. And it is the same seam, so moving to OPA
+later changes one line.
+
+**Not every engine can route.** Only an engine that returns arbitrary structure
+can name a delegate. Cedar's decision is strictly Allow/Deny, and AuthZEN's is a
+boolean, so both can express two of the three. That is a limit of those engines,
+not of this design: a two-valued engine is still a perfectly good `PolicyEngine`,
+it just cannot delegate.
+
+`nessy-approval-policy` and `nessy-approval-policy-opa` are the modules;
+`nessy-examples/policy` wires them.
 
 ## The Spring Boot desk
 

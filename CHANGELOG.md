@@ -73,15 +73,39 @@ in its current vocabulary — not the sequence of designs that produced it.
 
 ### Deciding
 
-- **A policy engine can be the gate.** `ApprovalRequest` is flat and
-  JSON-shaped so an approver can hand the decision to OPA or Cedar, which read
-  `input.toolName` and `input.arguments.target` directly. Rules then live
-  outside the application: reviewed by whoever owns the risk, versioned on
-  their own, changed without a release. `nessy-examples/policy` is the whole
-  adapter against the real OPA binary. Two rules it demonstrates — the reply
-  token is never sent to a policy engine, because it is a capability; and an
-  engine that cannot be reached denies, because the failure of a control is
-  not permission.
+- **An agent instance can be forgotten.** `harness.forget(agentId)` drops an
+  agent's memory, backlog rows, claims and persisted state. An agent id is not
+  always a long-lived name — a browser session, one review by a judging agent, a
+  single request — and without this each of those is a permanent row. It is
+  cooperative, like an interrupt: a busy agent finishes its turn and forgets
+  itself afterwards, because deleting under a running turn strands the model's
+  answer in a dead incarnation. A request, not a receipt. `Memory` grows a
+  matching `forget`, abstract rather than defaulted, because a memory that
+  silently declined would make a privacy operation a no-op nobody could detect.
+
+- **A policy engine can be the gate.** `nessy-approval-policy` is the
+  engine-agnostic half — `PolicyEngine` answers with a `Verdict`, and
+  `PolicyApprover` carries it out. Three verdicts: approve, deny, and
+  **delegate**, which hands the decision to a named approver. There is
+  deliberately no "ask": a desk that parks a call *is* an approver, so asking a
+  person was never a kind of answer, only delegation to a particular one — which
+  is what lets a policy name a review agent tomorrow with no Java changing.
+  Delegates resolve against an allowlist, because a policy that could name any
+  approver could name one that always says yes.
+- **`nessy-approval-policy-opa`** speaks Rego, with two seams because neither
+  half of the conversation is standardized: an `InputRenderer` builds the input
+  document and a `DecisionInterpreter` reads the answer. Both ship in Nessy's own
+  convention and in AuthZEN's. Note the limit AuthZEN and Cedar share — their
+  decisions are two-valued, so they can express approve and deny but never
+  delegate.
+- **A control that did not answer is not a control that said yes.** An
+  unreachable engine, a mistyped decision path, an unknown effect: each denies
+  **and** logs an error. OPA answers HTTP 200 to nearly everything, and a typo'd
+  path is byte-identical to a rule that did not fire — so a decision rule carries
+  a `default`, which makes the presence of `result` a health check.
+- **The reply token never reaches a policy engine.** It is a capability, and an
+  engine logs its input and is often somebody else's service. The document is
+  built field by field, and a test exists whose only job is to keep it out.
 
 ### Storage
 
@@ -147,7 +171,7 @@ in its current vocabulary — not the sequence of designs that produced it.
   assessment into an ordinary `Approver`: below the floor runs unasked, at or
   above the ceiling is refused, and the middle band goes to a person. The
   assessment is recorded on the request, so a desk can say why it is asking.
-- **Intent** (`nessy-intent`) is a claim channel: the model declares what it
+- **Intent** (`nessy-approval-intent`) is a claim channel: the model declares what it
   is about to do in your vocabulary, and `IntentPolicy.requireDeclared` fails
   closed for a call with nothing behind it.
 
