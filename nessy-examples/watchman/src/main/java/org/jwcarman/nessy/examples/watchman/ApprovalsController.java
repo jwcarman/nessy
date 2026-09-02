@@ -45,8 +45,10 @@ import org.jwcarman.nessy.spring.boot.PendingApproval;
 import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -252,5 +254,17 @@ public class ApprovalsController {
 
   private static String name(Principal who) {
     return who == null ? "someone" : who.getName();
+  }
+
+  /**
+   * A hand-typed URL carrying an id the identifier rule refuses is the caller's mistake.
+   *
+   * <p>The page's own links never produce one — it builds them from rows it read — so this is for
+   * somebody editing the address bar. Without it they get a 500 that reads as "the watchman is
+   * broken".
+   */
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<String> malformed(IllegalArgumentException refused) {
+    return ResponseEntity.badRequest().body(refused.getMessage());
   }
 }

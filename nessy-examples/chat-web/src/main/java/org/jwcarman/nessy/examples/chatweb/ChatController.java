@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.Replies;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -137,5 +138,17 @@ public class ChatController {
         .approve(question.replyToken(), result)
         .toCompletableFuture()
         .thenApply(ack -> ResponseEntity.accepted().build());
+  }
+
+  /**
+   * An id the identifier rule refuses is the CALLER'S mistake, not this server's.
+   *
+   * <p>{@code AgentId.of} throws when a path variable is over-long or carries a character an
+   * identity must not, and without this that surfaces as a 500 — a page telling somebody the server
+   * broke when what actually happened is that they sent a bad id.
+   */
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<String> malformed(IllegalArgumentException refused) {
+    return ResponseEntity.badRequest().body(refused.getMessage());
   }
 }

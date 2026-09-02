@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -112,6 +113,14 @@ class ApprovalsPageTest {
         .andExpect(content().string(containsString("docker image prune -af")))
         .andExpect(content().string(containsString("house-12")))
         .andExpect(content().string(containsString("2h 0m")));
+  }
+
+  @Test
+  @DisplayName("an id the identifier rule refuses is the caller's mistake, not a 500")
+  void a_malformed_id_in_the_address_bar_is_a_bad_request() throws Exception {
+    // AgentId refuses a space. Without a handler this leaves the controller as an
+    // IllegalArgumentException and reaches the operator as "the watchman is broken".
+    mvc.perform(post("/approve/watchman/has a space/call-1")).andExpect(status().isBadRequest());
   }
 
   @Test
