@@ -116,12 +116,12 @@ class PendingApprovalsListenerTest {
               "e2", CallId.of("c1"), "prune_images", ApprovalResult.approved()));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(
-              repository
-                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
-                  .orElseThrow()
-                  .answer())
-          .contains("approved");
+      PendingApproval row =
+          repository
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+              .orElseThrow();
+      assertThat(row.waiting()).isFalse();
+      assertThat(row.answer()).contains("approved");
     }
 
     @Test

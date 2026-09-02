@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -160,6 +161,35 @@ class PlanToolsTest {
 
       assertThat(result).isEqualTo(ToolResult.ok("Plan updated: 2 tasks (1 in progress, 1 done)."));
     }
+
+    /**
+     * A model that omits the field entirely (rather than sending {@code []}) must clear the plan
+     * the same way — {@code toPlan} treats a null list the same as an empty one.
+     */
+    @Test
+    @DisplayName("an absent tasks field is treated as an empty list, not a null pointer")
+    void a_null_tasks_list_clears_the_plan_like_an_empty_one() {
+      run(PlanTools.updatePlan(plans), sending(task("First", Plan.Status.PENDING)));
+
+      ToolResult result = run(PlanTools.updatePlan(plans), new PlanTools.UpdatePlan(null));
+
+      assertThat(result).isInstanceOf(ToolResult.Success.class);
+      assertThat(plans.find(AGENT)).isEmpty();
+    }
+
+    /**
+     * These three answer the schema and the tool registry ask, not the model mid-turn -- but they
+     * are load-bearing wiring and deserve pinning like anything else on {@link Tool}.
+     */
+    @Test
+    @DisplayName("the tool declares its wire shape, name, and description")
+    void the_tool_describes_itself() {
+      Tool<PlanTools.UpdatePlan> tool = PlanTools.updatePlan(plans);
+
+      assertThat(tool.inputType()).isEqualTo(PlanTools.UpdatePlan.class);
+      assertThat(tool.name()).isEqualTo("update_plan");
+      assertThat(tool.description()).contains("COMPLETE list");
+    }
   }
 
   @Nested
@@ -274,6 +304,33 @@ class PlanToolsTest {
       ContextMessage last = context.messages().getLast();
       assertThat(last).isInstanceOf(AmbientMessage.class);
       return ((TextBlock) ((AmbientMessage) last).content().getFirst()).text();
+    }
+
+    /**
+     * {@link JdbcPlanStore} never hands back a present-but-empty plan -- an empty save clears the
+     * row instead. The stage's own emptiness check still has to hold for any {@link PlanStore}, so
+     * this one is exercised against a store that hands back exactly that shape.
+     */
+    private static final class PresentButEmpty implements PlanStore {
+      @Override
+      public Optional<Plan> find(AgentId agentId) {
+        return Optional.of(Plan.empty());
+      }
+
+      @Override
+      public void save(AgentId agentId, Plan plan) {
+        throw new UnsupportedOperationException("not needed for this test");
+      }
+    }
+
+    @Test
+    @DisplayName("a present but empty plan contributes nothing, same as no plan at all")
+    void a_present_empty_plan_adds_no_message() {
+      Memory memory =
+          MemoryPipeline.of(new Listing(), p -> p.stage(PlanTools.plan(new PresentButEmpty())));
+      memory.remember(AGENT, UserMessage.of("hello"));
+
+      assertThat(memory.recall(AGENT).messages()).containsExactly(UserMessage.of("hello"));
     }
   }
 }

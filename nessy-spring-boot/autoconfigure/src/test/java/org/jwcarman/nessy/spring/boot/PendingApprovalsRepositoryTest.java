@@ -168,9 +168,23 @@ class PendingApprovalsRepositoryTest {
           repository
               .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
               .orElseThrow();
+      assertThat(row.waiting()).isFalse();
       assertThat(row.answer()).contains("approved");
       assertThat(row.note()).contains("looks fine");
       assertThat(row.answeredAt()).contains(ASKED.plusSeconds(60));
+    }
+
+    @Test
+    @DisplayName("waiting() is exactly the absence of an answer, in either direction")
+    void a_row_with_no_answer_is_still_waiting() {
+      repository.asked(question("c1", "token-1"));
+
+      PendingApproval row =
+          repository
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+              .orElseThrow();
+
+      assertThat(row.waiting()).isTrue();
     }
 
     @Test

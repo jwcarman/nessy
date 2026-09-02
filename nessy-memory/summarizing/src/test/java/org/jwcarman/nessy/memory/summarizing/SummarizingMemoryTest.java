@@ -16,13 +16,17 @@
 package org.jwcarman.nessy.memory.summarizing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -116,6 +120,50 @@ class SummarizingMemoryTest {
           // nothing held
         }
       };
+    }
+  }
+
+  /** A model that answers, but not with an answer — a tool call it never got the chance to make. */
+  private static final class RefusingModel implements Model {
+
+    @Override
+    public ModelId id() {
+      return ModelId.of("refuser");
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      List<ModelEvent> events =
+          List.of(new ModelEvent.Refused("policy", "will not summarize this", Usage.unreported()));
+      return new ModelStream() {
+        @Override
+        public java.util.Iterator<ModelEvent> iterator() {
+          return events.iterator();
+        }
+
+        @Override
+        public void close() {
+          // nothing held
+        }
+      };
+    }
+  }
+
+  /** Captures what it is handed instead of running it, so a test can control WHEN work runs. */
+  private static final class QueueingExecutor implements Executor {
+    final List<Runnable> tasks = new ArrayList<>();
+
+    @Override
+    public void execute(Runnable command) {
+      tasks.add(command);
+    }
+  }
+
+  /** Every handoff is refused, the way a saturated thread pool would refuse one. */
+  private static final class RejectingExecutor implements Executor {
+    @Override
+    public void execute(Runnable command) {
+      throw new RejectedExecutionException("no capacity");
     }
   }
 
@@ -330,6 +378,23 @@ class SummarizingMemoryTest {
           .noneMatch(AmbientMessage.class::isInstance);
       assertThat(transcript.recall(AGENT).messages()).hasSize(20);
     }
+
+    /**
+     * {@code TOOL_USE} or a refusal is not a summary either — only {@code ModelResult.Answered}
+     * counts, and the summarizer treats anything else as a failed compression rather than writing
+     * something that is not one.
+     */
+    @Test
+    @DisplayName("a model that does not answer produces no summary")
+    void a_refusal_is_not_a_summary() {
+      Memory memory = summarizing(new RefusingModel(), 5, 4);
+
+      say(memory, 10);
+
+      assertThat(memory.recall(AGENT).messages())
+          .hasSize(20)
+          .noneMatch(AmbientMessage.class::isInstance);
+    }
   }
 
   @Nested
@@ -376,6 +441,58 @@ class SummarizingMemoryTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("keepVerbatim");
     }
+
+    @Test
+    @DisplayName("a verbatim window of nothing at all is refused")
+    void keepVerbatim_below_one_is_refused() {
+      Model model = Summarizer.saying("x");
+
+      assertThatThrownBy(() -> summarizing(model, 5, 0))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("keepVerbatim must be at least 1");
+    }
+
+    @Test
+    @DisplayName(
+        "a blank system prompt is refused, because an unwritten instruction summarizes nothing")
+    void a_blank_system_prompt_is_refused() {
+      assertThatThrownBy(
+              () ->
+                  SummarizingMemory.create(
+                      config ->
+                          config
+                              .transcript(transcript)
+                              .dataSource(database)
+                              .agentType(TYPE)
+                              .model(Summarizer.saying("x"))
+                              .executor(Runnable::run)
+                              .systemPrompt("   ")))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("a summarizer needs an instruction");
+    }
+
+    @Test
+    @DisplayName("maxTokens reaches the model in the request it is asked to answer")
+    void maxTokens_is_passed_to_the_model() {
+      Summarizer summarizer = Summarizer.saying("a summary");
+      Memory memory =
+          SummarizingMemory.create(
+              config ->
+                  config
+                      .transcript(transcript)
+                      .dataSource(database)
+                      .agentType(TYPE)
+                      .model(summarizer)
+                      .executor(Runnable::run)
+                      .summarizeAfter(5)
+                      .keepVerbatim(4)
+                      .maxTokens(256)
+                      .clock(Clock.fixed(NOW, ZoneOffset.UTC)));
+
+      say(memory, 10);
+
+      assertThat(summarizer.sawRequest.maxTokens()).isEqualTo(256);
+    }
   }
 
   @Nested
@@ -392,6 +509,84 @@ class SummarizingMemoryTest {
 
       assertThat(memory.recall(AGENT).messages()).isEmpty();
       assertThat(transcript.recall(AGENT).messages()).isEmpty();
+    }
+  }
+
+  @Nested
+  @DisplayName("handing compression off to the executor")
+  class HandingOff {
+
+    private Memory summarizingWith(Model model, Executor executor, long after, int keepVerbatim) {
+      return SummarizingMemory.create(
+          config ->
+              config
+                  .transcript(transcript)
+                  .dataSource(database)
+                  .agentType(TYPE)
+                  .model(model)
+                  .executor(executor)
+                  .summarizeAfter(after)
+                  .keepVerbatim(keepVerbatim)
+                  .clock(Clock.fixed(NOW, ZoneOffset.UTC)));
+    }
+
+    /**
+     * The executor is not consulted for correctness, only for WHEN — so a rejection is a lost
+     * chance to compress this time, not a broken write. The write that tripped the threshold must
+     * still succeed.
+     */
+    @Test
+    @DisplayName("a rejected handoff costs nothing but the compression")
+    void a_rejected_handoff_does_not_fail_the_write() {
+      Memory memory =
+          summarizingWith(Summarizer.refusingToBeCalled(), new RejectingExecutor(), 5, 4);
+
+      assertThatCode(() -> say(memory, 10)).doesNotThrowAnyException();
+
+      assertThat(memory.recall(AGENT).messages())
+          .hasSize(20)
+          .as("nothing was compressed, since the executor never ran anything")
+          .noneMatch(AmbientMessage.class::isInstance);
+    }
+
+    /**
+     * A burst of writes past the threshold must cost one model call, not one per message — so while
+     * a compression is still outstanding, a second attempt for the same agent is a no-op rather
+     * than a second handoff.
+     */
+    @Test
+    @DisplayName("a burst of writes hands off compression once, not once per message")
+    void a_second_attempt_while_one_is_outstanding_is_a_no_op() {
+      QueueingExecutor executor = new QueueingExecutor();
+      Memory memory = summarizingWith(Summarizer.refusingToBeCalled(), executor, 5, 4);
+
+      say(memory, 10); // crosses the threshold once, queues the one handoff
+      assertThat(executor.tasks).hasSize(1);
+
+      say(memory, 10); // enough more to trip the check again while the first is still outstanding
+      assertThat(executor.tasks).as("still just the one outstanding compression").hasSize(1);
+    }
+
+    /**
+     * Between the snapshot {@code considerCompressing} takes and the executor actually running the
+     * work, the agent can be forgotten out from under it. Nothing downstream should invent history
+     * that is no longer there — the stale attempt must decline rather than write a summary over a
+     * transcript it never actually covered.
+     */
+    @Test
+    @DisplayName("a transcript that shrank out from under a queued compression is left alone")
+    void a_compression_overtaken_by_a_forget_declines_to_write() {
+      QueueingExecutor executor = new QueueingExecutor();
+      Memory memory = summarizingWith(Summarizer.refusingToBeCalled(), executor, 5, 4);
+      say(memory, 10); // queues the one handoff, not yet run
+      assertThat(executor.tasks).hasSize(1);
+
+      memory.forget(AGENT);
+      executor.tasks.getFirst().run();
+
+      assertThat(memory.recall(AGENT).messages())
+          .as("the forgotten agent stays forgotten -- no summary was invented for it")
+          .isEmpty();
     }
   }
 }

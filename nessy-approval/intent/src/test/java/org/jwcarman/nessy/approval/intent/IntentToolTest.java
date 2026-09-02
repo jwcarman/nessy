@@ -73,6 +73,20 @@ class IntentToolTest {
     }
 
     @Test
+    void itsInputTypeIsTheFreeformIntentClass() {
+      var tool =
+          IntentTool.freeform(
+              new JdbcIntentStore<>(
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Intent.class,
+                  MAPPER));
+
+      assertThat(tool.inputType()).isEqualTo(Intent.class);
+    }
+
+    @Test
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
       var tool =
           IntentTool.freeform(

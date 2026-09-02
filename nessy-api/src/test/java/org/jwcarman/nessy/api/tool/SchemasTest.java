@@ -103,7 +103,18 @@ class SchemasTest {
 
   record UnannotatedMember(String value) implements UnannotatedVocabulary {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({@JsonSubTypes.Type(value = OnlyMember.class, name = "OnlyMember")})
+  sealed interface SinglePermitVocabulary permits OnlyMember {}
+
   record NestedTarget(String name) {}
+
+  /**
+   * Its one branch references {@code NestedTarget} twice, which is what makes victools dedupe the
+   * nested schema into its own {@code $defs} entry even on the single-permit path — the other
+   * single-permit fixture above never exercises that lift.
+   */
+  record OnlyMember(NestedTarget first, NestedTarget second) implements SinglePermitVocabulary {}
 
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
   @JsonSubTypes({
@@ -242,6 +253,42 @@ class SchemasTest {
       for (JsonNode branch : schema.get("oneOf")) {
         assertThat(branch.has("$schema")).isFalse();
       }
+    }
+
+    /**
+     * A sealed interface with exactly one permitted record generates no {@code anyOf} at all from
+     * victools — the combinator only appears once there is something to choose between — so {@link
+     * Schemas#sealedInterfaceSchema} has to wrap that single flat schema into a one-branch {@code
+     * oneOf} itself, for a shape uniform with the multi-branch case.
+     */
+    @Test
+    @DisplayName("a single permitted record still wraps into a one-branch oneOf")
+    void a_single_permitted_record_wraps_into_a_one_branch_oneOf() {
+      ObjectNode schema = Schemas.of(SinglePermitVocabulary.class);
+
+      assertThat(schema.get("oneOf")).hasSize(1);
+      ObjectNode branch = (ObjectNode) schema.get("oneOf").get(0);
+      assertThat(branch.at("/properties/type/const").asText()).isEqualTo("OnlyMember");
+      assertThat(branch.get("properties").has("first")).isTrue();
+      assertThat(branch.get("properties").has("second")).isTrue();
+      assertThat(branch.has("$schema")).isFalse();
+    }
+
+    /**
+     * The single-permit fallback can carry its own nested {@code $defs} (victools attaches it to
+     * whatever object it generates the schema into); that has to be lifted out of the wrapped
+     * branch and up to the new root before wrapping, since a {@code $ref} is always resolved
+     * against the true document root.
+     */
+    @Test
+    @DisplayName("a single permitted record's own $defs are lifted to the wrapping root")
+    void a_single_permitted_records_defs_are_lifted_to_the_root() {
+      ObjectNode schema = Schemas.of(SinglePermitVocabulary.class);
+
+      assertThat(schema.has("$defs")).isTrue();
+      assertThat(schema.get("$defs").has("NestedTarget")).isTrue();
+      ObjectNode branch = (ObjectNode) schema.get("oneOf").get(0);
+      assertThat(branch.has("$defs")).isFalse();
     }
 
     @Test

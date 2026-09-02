@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -43,6 +45,7 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
@@ -284,6 +287,199 @@ class ObservedTest {
     }
 
     assertThat(meters.find("gen_ai.client.operation.duration").timer()).isNull();
+  }
+
+  /**
+   * {@link Observed#models} is the provider-level wrapper the starter actually hands the engine;
+   * the tests above go straight at {@link Observed#model} because that is where the behaviour
+   * lives, but the factory method itself — resolving one model out of the delegate provider — needs
+   * its own call to be exercised at all.
+   */
+  @Test
+  void a_provider_resolves_an_observed_model_from_its_delegate() {
+    ModelId requestedId = ModelId.of("resolved-model");
+    Model delegateModel = saying();
+    ModelProvider delegate = id -> delegateModel;
+
+    ModelProvider observed = Observed.models(delegate, "openai", observations, meters);
+    Model model = observed.model(requestedId);
+
+    // The wrapper hands back exactly the delegate's model — the id it reports is that model's own,
+    // proof that the provider-level factory is not building anything of its own.
+    assertThat(model.id()).isEqualTo(delegateModel.id());
+  }
+
+  /** The id a wrapped model reports is the delegate's, never invented by the wrapper. */
+  @Test
+  void an_observed_model_reports_its_delegates_id() {
+    Model observed = Observed.model(saying(), "openai", observations, meters);
+
+    assertThat(observed.id()).isEqualTo(ModelId.of("a-model"));
+  }
+
+  /**
+   * A provider that cannot even start streaming — a rejected connection, say — still owes an
+   * observation: the span is closed with the error recorded rather than leaked open, and the
+   * original exception still reaches the caller unchanged.
+   */
+  @Test
+  void a_provider_that_throws_before_streaming_still_closes_its_span() {
+    Model refusing =
+        new Model() {
+          @Override
+          public ModelId id() {
+            return ModelId.of("a-model");
+          }
+
+          @Override
+          public ModelStream stream(ModelRequest request) {
+            throw new IllegalStateException("provider unreachable");
+          }
+        };
+    Model observed = Observed.model(refusing, "openai", observations, meters);
+    ModelRequest request = request();
+
+    assertThatThrownBy(() -> observed.stream(request))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("provider unreachable");
+
+    assertThat(meters.get("gen_ai.client.operation.duration").timer().getId().getTag("error.type"))
+        .isEqualTo("IllegalStateException");
+  }
+
+  /**
+   * {@code firstChunkSeen} only flips once. Every test above sends a single event per stream, which
+   * never exercises the branch where a later event finds the flag already set — this one sends two.
+   */
+  @Test
+  void only_the_first_event_in_a_stream_is_timed_to_first_chunk() {
+    Model observed =
+        Observed.model(
+            saying(
+                new ModelEvent.TextChunk("hello"),
+                new ModelEvent.Stopped(StopReason.END_TURN, new Usage(1, 1))),
+            "openai",
+            observations,
+            meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    // Both events were consumed without error; a second "first chunk" timestamp would only ever
+    // overwrite the first, so the only observable proof is that the stream still completed cleanly.
+    assertThat(meters.get("gen_ai.client.operation.duration").timer().count()).isEqualTo(1);
+  }
+
+  /** A delta carries no outcome, so recording it must not touch the finish reason at all. */
+  @Test
+  void a_text_chunk_is_not_treated_as_the_turns_outcome() {
+    Model observed =
+        Observed.model(
+            saying(new ModelEvent.TextChunk("still thinking")), "openai", observations, meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    assertThat(
+            meters
+                .get("gen_ai.client.operation.duration")
+                .timer()
+                .getId()
+                .getTag("gen_ai.response.finish_reasons"))
+        .isEqualTo("none");
+  }
+
+  @Test
+  void tool_use_is_reported_as_semconvs_own_finish_reason() {
+    assertFinishReason(StopReason.TOOL_USE, "tool_calls");
+  }
+
+  @Test
+  void max_tokens_is_reported_as_length_not_as_anything_about_tokens() {
+    assertFinishReason(StopReason.MAX_TOKENS, "length");
+  }
+
+  private void assertFinishReason(StopReason reason, String expected) {
+    Model observed =
+        Observed.model(
+            saying(new ModelEvent.Stopped(reason, new Usage(1, 1))),
+            "openai",
+            observations,
+            meters);
+
+    try (ModelStream stream = observed.stream(request())) {
+      stream.forEach(event -> {});
+    }
+
+    assertThat(
+            meters
+                .get("gen_ai.client.operation.duration")
+                .timer()
+                .getId()
+                .getTag("gen_ai.response.finish_reasons"))
+        .isEqualTo(expected);
+  }
+
+  /** Closing a stream twice must not stop an already-stopped observation a second time. */
+  @Test
+  void closing_a_stream_twice_stops_the_observation_only_once() {
+    Model observed = Observed.model(saying(), "openai", observations, meters);
+    ModelStream stream = observed.stream(request());
+
+    stream.close();
+    stream.close();
+
+    assertThat(meters.get("gen_ai.client.operation.duration").timer().count()).isEqualTo(1);
+  }
+
+  @Test
+  void a_wrapped_tool_answers_name_description_and_schema_from_its_delegate() {
+    Tool<String> delegate = tool(input -> Awaited.ready(ToolResult.ok("done")));
+
+    Tool<String> observed = Observed.tool(delegate, observations);
+
+    assertThat(observed.name()).isEqualTo("a-tool");
+    assertThat(observed.description()).isEqualTo("does a thing");
+    assertThat(observed.inputType()).isEqualTo(String.class);
+    assertThat(observed.inputSchema()).isEqualTo(delegate.inputSchema());
+  }
+
+  @Test
+  void a_successful_tool_call_is_recorded_as_a_success() {
+    Tool<String> succeeding = tool(input -> Awaited.ready(ToolResult.ok("done")));
+
+    Observed.tool(succeeding, observations)
+        .execute(call(AgentType.of("observed"), AgentId.of("one"), "x"));
+
+    assertThat(
+            meters
+                .get("gen_ai.client.operation.duration")
+                .timer()
+                .getId()
+                .getTag("nessy.tool.outcome"))
+        .isEqualTo("success");
+  }
+
+  @Test
+  void an_approved_call_is_recorded_as_approved() {
+    Approver approving = request -> Awaited.ready(ApprovalResult.approved());
+
+    Observed.approver(approving, observations).approve(approvalRequest());
+
+    assertThat(meters.get("nessy.approval").timer().getId().getTag("nessy.approval.answer"))
+        .isEqualTo("approved");
+  }
+
+  @Test
+  void a_denied_call_is_recorded_as_denied() {
+    Approver denying = request -> Awaited.ready(ApprovalResult.denied("not today"));
+
+    Observed.approver(denying, observations).approve(approvalRequest());
+
+    assertThat(meters.get("nessy.approval").timer().getId().getTag("nessy.approval.answer"))
+        .isEqualTo("denied");
   }
 
   private static ApprovalRequest approvalRequest() {

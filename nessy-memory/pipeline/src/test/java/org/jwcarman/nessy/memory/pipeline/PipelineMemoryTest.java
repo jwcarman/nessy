@@ -135,4 +135,20 @@ class PipelineMemoryTest {
 
     assertThat(bootstrap.recall(AGENT).messages()).containsExactly(UserMessage.of("said"));
   }
+
+  /**
+   * A stage assembles context at recall time and owns nothing it could forget -- what an agent
+   * actually said lives in the bootstrap, so {@code forget} must reach it and nothing else.
+   */
+  @Test
+  @DisplayName("forgetting reaches the bootstrap, not the stages")
+  void forgetting_delegates_to_the_bootstrap() {
+    Remembering bootstrap = new Remembering();
+    Memory memory = MemoryPipeline.of(bootstrap, p -> p.stage(adding("background")));
+    memory.remember(AGENT, UserMessage.of("said"));
+
+    memory.forget(AGENT);
+
+    assertThat(bootstrap.recall(AGENT).messages()).isEmpty();
+  }
 }

@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 
 /**
  * What every stored payload passes through on its way to a database.
@@ -168,6 +169,39 @@ class CodecPipelineTest {
       assertThatThrownBy(() -> after.decode(stored))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("reverse");
+    }
+  }
+
+  @Nested
+  class WrappingAFactory {
+
+    @Test
+    @DisplayName("every codec the wrapped factory creates already runs through the pipeline")
+    void codecs_from_the_wrapped_factory_are_transformed_on_encode() {
+      CodecPipeline pipeline = pipelineOf(chain -> chain.append("reverse", reversing()));
+      CodecFactory base = Codecs.factory();
+      CodecFactory wrapped = pipeline.factoryOver(base);
+      Codec<String> plain = base.create(String.class);
+      Codec<String> stored = wrapped.create(String.class);
+
+      byte[] plainBytes = plain.encode("hello");
+      byte[] storedBytes = stored.encode("hello");
+
+      assertThat(storedBytes).isNotEqualTo(plainBytes);
+      assertThat(stored.decode(storedBytes)).isEqualTo("hello");
+    }
+
+    @Test
+    @DisplayName("a headerless payload still reads correctly through the wrapped codec")
+    void bytes_written_before_the_pipeline_existed_still_read_through_the_wrapped_factory() {
+      CodecPipeline pipeline = pipelineOf(chain -> chain.append("reverse", reversing()));
+      CodecFactory base = Codecs.factory();
+      Codec<String> plain = base.create(String.class);
+      Codec<String> stored = pipeline.factoryOver(base).create(String.class);
+
+      byte[] plainBytes = plain.encode("hello");
+
+      assertThat(stored.decode(plainBytes)).isEqualTo("hello");
     }
   }
 

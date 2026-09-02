@@ -158,6 +158,19 @@ class PolicyApproverTest {
     }
 
     @Test
+    @DisplayName("a delegate that answers null denies rather than propagating the null")
+    void a_delegate_that_answers_null_denies() {
+      var gate =
+          PolicyApprover.create(
+              policy ->
+                  policy
+                      .engine(request -> Verdict.delegate("humans"))
+                      .delegate("humans", r -> null));
+
+      assertThat(denialOf(gate.approve(asking()))).contains("humans", "gave no answer");
+    }
+
+    @Test
     void a_delegate_that_throws_denies() {
       Approver broken =
           request -> {
@@ -243,6 +256,17 @@ class PolicyApproverTest {
                               .delegate("review", lenient)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("already registered");
+    }
+
+    @Test
+    @DisplayName(
+        "a max depth below one is refused at construction, since no delegation could ever run")
+    void a_max_depth_below_one_is_refused_at_construction() {
+      Map<String, Approver> empty = Map.of();
+
+      assertThatThrownBy(() -> new PolicyApprover(request -> Verdict.approve(), empty, 0))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("maxDepth must be at least 1");
     }
 
     @Test
