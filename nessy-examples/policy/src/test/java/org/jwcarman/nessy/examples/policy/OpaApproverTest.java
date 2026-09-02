@@ -20,7 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -65,9 +68,20 @@ class OpaApproverTest {
           .withExposedPorts(8181)
           .waitingFor(Wait.forHttp("/health").forStatusCode(200));
 
+  private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
+
   private static OpaApprover approver() {
+    return approver("nessy/tools/decision");
+  }
+
+  private static OpaApprover approver(String decisionPath) {
     return new OpaApprover(
-        "http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181), "nessy/tools", MAPPER);
+        "http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181),
+        decisionPath,
+        MAPPER,
+        InputRenderer.standard(MAPPER),
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        Duration.ofDays(3));
   }
 
   private static ApprovalRequest asking(String agentType, String tool, ObjectNode arguments) {
@@ -117,22 +131,49 @@ class OpaApproverTest {
       var forChat = approver().approve(asking("chat", "prune_images", target("staging-1")));
 
       assertThat(forWatchman).isEqualTo(Awaited.ready(ApprovalResult.approved()));
-      assertThat(denialOf(forChat)).isNotBlank();
+      assertThat(denialOf(forChat)).isEqualTo("no rule allowed this");
     }
 
     @Test
-    @DisplayName("the rule reads the arguments, so the target is what decides")
-    void production_is_refused_for_the_agent_that_is_otherwise_allowed() {
+    @DisplayName("production parks the call for a person, for the term the policy named")
+    void production_asks_a_human_rather_than_deciding() {
       var answer = approver().approve(asking("watchman", "prune_images", target("prod-eu-1")));
 
-      assertThat(denialOf(answer)).isEqualTo("targets production; a person has to say yes");
+      // The answer a boolean could not give. PT72H comes from the policy, not from Java.
+      assertThat(answer).isEqualTo(Awaited.deferred(NOW.plus(Duration.ofDays(3))));
     }
 
     @Test
     void a_tool_no_rule_mentions_is_refused_rather_than_ignored() {
       var answer = approver().approve(asking("watchman", "delete_everything", target("staging-1")));
 
-      assertThat(denialOf(answer)).isNotBlank();
+      assertThat(denialOf(answer)).isEqualTo("no rule allowed this");
+    }
+  }
+
+  @Nested
+  @DisplayName("when the policy is not answering")
+  class NotAnswering {
+
+    @Test
+    @DisplayName("a mistyped decision path is a misconfiguration, not a denial")
+    void a_path_that_names_no_rule_is_reported_rather_than_read_as_no() {
+      // Measured: OPA answers 200 with {} for a typo, for an undefined rule, and for a policy
+      // that never loaded. Reading that as "no" denies everything, forever, in silence.
+      var answer =
+          approver("nessy/tools/decisionn").approve(asking("watchman", "disk_usage", target("s")));
+
+      assertThat(denialOf(answer)).contains("the policy did not answer");
+    }
+
+    @Test
+    @DisplayName("a broken control is not permission")
+    void an_unreachable_policy_engine_denies() {
+      var offline = new OpaApprover("http://127.0.0.1:1", "nessy/tools/decision", MAPPER);
+
+      var answer = offline.approve(asking("watchman", "disk_usage", target("staging-1")));
+
+      assertThat(denialOf(answer)).contains("could not be reached");
     }
   }
 
@@ -145,27 +186,32 @@ class OpaApproverTest {
     void the_document_carries_no_capability() {
       ApprovalRequest request = asking("watchman", "prune_images", target("prod-eu-1"));
 
-      String document = approver().asInput(request).toString();
+      String document = InputRenderer.standard(MAPPER).render(request).toString();
 
       // The token settles the call. A policy engine logs its input and is often somebody else's
       // service, so it is the one field that must not be there.
       assertThat(document).doesNotContain("a-capability-no-policy-should-see");
       assertThat(document).contains("prune_images", "prod-eu-1", "watchman", "house-12");
     }
-  }
-
-  @Nested
-  @DisplayName("when the engine cannot be reached")
-  class Unreachable {
 
     @Test
-    @DisplayName("a broken control is not permission")
-    void an_unreachable_policy_engine_denies() {
-      var offline = new OpaApprover("http://127.0.0.1:1", "nessy/tools", MAPPER);
+    @DisplayName("a policy can be written against your own document instead")
+    void a_custom_renderer_is_what_the_policy_sees() {
+      // Proves the seam: this document has no toolName at all, so the read-only rule cannot fire
+      // and the default denial is what comes back.
+      InputRenderer mine = request -> MAPPER.createObjectNode().put("whatever", "shape you like");
 
-      var answer = offline.approve(asking("watchman", "disk_usage", target("staging-1")));
+      var approver =
+          new OpaApprover(
+              "http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181),
+              "nessy/tools/decision",
+              MAPPER,
+              mine,
+              Clock.fixed(NOW, ZoneOffset.UTC),
+              Duration.ofDays(3));
 
-      assertThat(denialOf(answer)).isNotBlank();
+      assertThat(denialOf(approver.approve(asking("watchman", "disk_usage", target("staging-1")))))
+          .isEqualTo("no rule allowed this");
     }
   }
 }
