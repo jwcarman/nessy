@@ -19,11 +19,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -66,7 +70,12 @@ public final class WatchmanTools {
             "Reports the used percentage and free space of every mounted filesystem.",
             false,
             Duration.ofSeconds(30),
-            args -> List.of("df", "-hP"),
+            // -P (POSIX output) guarantees one line per filesystem AND forces 512-byte blocks on
+            // BSD/macOS, silently overriding -h; the model then sees a unit-less number it can't
+            // reason about (see diskUsage/mount below). We drop -P for real units and make the
+            // parsing robust to what that costs: BSD may wrap a very long device name onto its
+            // own line, and BSD (unlike GNU) prints three extra inode columns by default.
+            args -> List.of("df", "-h"),
             (output, argv) -> diskUsage(output)));
     define(
         new Spec(
@@ -189,27 +198,85 @@ public final class WatchmanTools {
         : "`" + line + "` failed with exit " + output.exitCode() + ": " + text(output.text());
   }
 
+  // Matches a Capacity column: "24%", "100%", or the "-" df prints when a filesystem has no
+  // notion of capacity (e.g. some macOS synthetic mounts under -i).
+  private static final Pattern CAPACITY = Pattern.compile("^-?\\d+%$|^-$");
+
+  // Leading numeric portion of a size column ("0Bi", "203Ki", "1.0G"), used only to catch the
+  // zero-capacity autofs placeholders that don't already say "map" or "devfs".
+  private static final Pattern LEADING_NUMBER = Pattern.compile("^(\\d+(?:\\.\\d+)?)");
+
   static String diskUsage(CommandRunner.Output output) {
     if (!output.succeeded()) {
       return "df failed: " + output.text().strip();
     }
-    List<String> lines =
-        output
-            .stdout()
-            .lines()
-            .skip(1)
-            .map(WatchmanTools::mount)
-            .filter(line -> line != null)
-            .toList();
-    return lines.isEmpty() ? "no filesystems reported" : String.join("\n", lines);
+    List<String> reports = new ArrayList<>();
+    String carry = null;
+    for (String raw : output.stdout().lines().skip(1).toList()) {
+      String line = raw.strip();
+      if (line.isEmpty()) {
+        continue;
+      }
+      // A device name so long df wrapped it onto its own line, with the rest of the row (and no
+      // filesystem column) following on the next one. This can only happen without -P.
+      if (!line.matches(".*\\s.*")) {
+        carry = line;
+        continue;
+      }
+      String row = carry == null ? line : carry + " " + line;
+      carry = null;
+      String reported = mount(row);
+      if (reported != null) {
+        reports.add(reported);
+      }
+    }
+    return reports.isEmpty() ? "no filesystems reported" : String.join("\n", reports);
   }
 
   private static String mount(String line) {
     String[] columns = line.trim().split("\\s+");
-    if (columns.length < 6 || !columns[4].endsWith("%")) {
+    // Find Capacity by pattern, not fixed position: BSD's df -h inserts iused/ifree/%iused
+    // columns between Capacity and Mounted-on that GNU's does not (and %iused itself ends in
+    // "%", so we must take the FIRST match scanning left to right, not the last), and a
+    // two-word filesystem name ("map auto_home") shifts every column that follows it.
+    int capacityIndex = -1;
+    for (int i = 3; i < columns.length; i++) {
+      if (CAPACITY.matcher(columns[i]).matches()) {
+        capacityIndex = i;
+        break;
+      }
+    }
+    if (capacityIndex < 0) {
       return null;
     }
-    return columns[5] + " " + columns[4] + " used, " + columns[3] + " free";
+    String filesystem = String.join(" ", Arrays.copyOfRange(columns, 0, capacityIndex - 3));
+    String size = columns[capacityIndex - 3];
+    String used = columns[capacityIndex - 2];
+    String avail = columns[capacityIndex - 1];
+    String capacity = columns[capacityIndex];
+    String mountedOn =
+        String.join(" ", Arrays.copyOfRange(columns, capacityIndex + 1, columns.length));
+    if (isPseudoFilesystem(filesystem, size)) {
+      return null;
+    }
+    return mountedOn + " " + capacity + " used, " + avail + " free";
+  }
+
+  /**
+   * A filesystem the model can do nothing about, and that would bury a real alarm if reported.
+   * {@code devfs} is a virtual device-node filesystem, permanently 100% full by design. A {@code
+   * map ...} entry is an autofs placeholder, never a real mount. A total size of 0 means there is
+   * nothing to free regardless of name — this also covers Linux pseudo-filesystems like an empty
+   * {@code proc} or {@code sysfs}. Deliberately NOT "keep only /dev/*": a genuinely full Linux
+   * {@code tmpfs} (e.g. {@code /run}) is a real problem this tool must still report.
+   */
+  private static boolean isPseudoFilesystem(String filesystem, String size) {
+    return filesystem.equals("devfs") || filesystem.startsWith("map") || isZeroSize(size);
+  }
+
+  private static boolean isZeroSize(String size) {
+    Matcher matcher = LEADING_NUMBER.matcher(size);
+    return matcher.find() && Double.parseDouble(matcher.group(1)) == 0.0;
   }
 
   static String containers(CommandRunner.Output output) {

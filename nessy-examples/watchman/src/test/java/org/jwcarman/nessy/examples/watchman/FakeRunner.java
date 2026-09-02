@@ -24,7 +24,7 @@ public final class FakeRunner implements CommandRunner {
 
   private static final Map<String, String> CANNED =
       Map.of(
-          "df -hP",
+          "df -h",
               """
               Filesystem Size Used Avail Use% Mounted on
               /dev/sda1  100G  91G    9G  91% /
