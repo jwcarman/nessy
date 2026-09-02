@@ -90,15 +90,23 @@ public final class SummarizingMemory implements Memory {
   public static final String KIND = "summary";
 
   /**
-   * Written for repetition, because its own output is its next input.
+   * The default instruction, written for REPETITION.
    *
-   * <p>From the second summary onward the input is the PREVIOUS summary plus what has arrived
-   * since, so every generation is lossy over the last and a fact mentioned once decays
-   * geometrically — an agent does not forget suddenly, it fades. Asking for durable specifics
-   * rather than a retelling is what slows that down: a retelling summarized five times is a
-   * paragraph about there having been a conversation.
+   * <p>Public because {@link SummarizingMemoryConfig#systemPrompt} exists and starting from this is
+   * usually better than starting from nothing:
+   *
+   * <pre>{@code
+   * config.systemPrompt(SummarizingMemory.SUMMARIZE + "\n\nAlso keep every order number.")
+   * }</pre>
+   *
+   * <p><b>Read this before replacing it.</b> From the second summary onward the input is the
+   * PREVIOUS summary plus what has arrived since, so every generation is lossy over the last and a
+   * fact mentioned once decays geometrically — an agent does not forget suddenly, it fades. Asking
+   * for durable specifics rather than a retelling is what slows that down. A prompt that says
+   * "summarize the conversation" produces, after five generations, a paragraph about there having
+   * been a conversation.
    */
-  static final String SUMMARIZE =
+  public static final String SUMMARIZE =
       """
       You are compressing the earlier part of a conversation so it can be carried forward.
 
@@ -123,6 +131,7 @@ public final class SummarizingMemory implements Memory {
   private final long summarizeAfter;
   private final int keepVerbatim;
   private final int maxTokens;
+  private final String systemPrompt;
   private final Clock clock;
 
   /** Messages seen since this agent was last considered, so most writes cost no query at all. */
@@ -140,6 +149,7 @@ public final class SummarizingMemory implements Memory {
     this.summarizeAfter = configured.summarizeAfter;
     this.keepVerbatim = configured.keepVerbatim;
     this.maxTokens = configured.maxTokens;
+    this.systemPrompt = configured.systemPrompt;
     this.clock = configured.clock;
   }
 
@@ -271,7 +281,7 @@ public final class SummarizingMemory implements Memory {
     ModelResult result =
         ModelReplies.drain(
             model.stream(
-                new ModelRequest(Context.of(input), SUMMARIZE, maxTokens, List.of(), Set.of())),
+                new ModelRequest(Context.of(input), systemPrompt, maxTokens, List.of(), Set.of())),
             event -> {});
     if (result instanceof ModelResult.Answered answered) {
       return answered.message().content().stream()
@@ -302,6 +312,7 @@ public final class SummarizingMemory implements Memory {
     private long summarizeAfter = 100;
     private int keepVerbatim = 20;
     private int maxTokens = 1024;
+    private String systemPrompt = SUMMARIZE;
     private Clock clock = Clock.systemUTC();
 
     void check() {
@@ -374,6 +385,16 @@ public final class SummarizingMemory implements Memory {
     @Override
     public SummarizingMemoryConfig maxTokens(int maxTokens) {
       this.maxTokens = maxTokens;
+      return this;
+    }
+
+    @Override
+    public SummarizingMemoryConfig systemPrompt(String systemPrompt) {
+      Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+      if (systemPrompt.isBlank()) {
+        throw new IllegalArgumentException("a summarizer needs an instruction, not an empty one");
+      }
+      this.systemPrompt = systemPrompt;
       return this;
     }
 

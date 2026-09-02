@@ -71,6 +71,22 @@ public interface SummarizingMemoryConfig {
    */
   SummarizingMemoryConfig keepVerbatim(int messages);
 
+  /**
+   * What to preserve, and how. Defaults to {@link SummarizingMemory#SUMMARIZE}.
+   *
+   * <p>Worth setting, because WHAT MATTERS is domain knowledge this module does not have. A support
+   * agent wants order numbers kept; a coding agent wants file paths and the decisions behind them;
+   * an agent working in German should summarize in German.
+   *
+   * <p><b>Whatever you write has to survive being fed back to itself.</b> From the second summary
+   * onward the input is the previous summary plus what arrived since, so a prompt that asks for a
+   * retelling produces, after five generations, a paragraph about there having been a conversation.
+   * Ask for specifics that stay specific — names, identifiers, decisions, open questions. Starting
+   * from {@link SummarizingMemory#SUMMARIZE} and adding to it is usually better than starting from
+   * nothing.
+   */
+  SummarizingMemoryConfig systemPrompt(String systemPrompt);
+
   /** How long a summary may be. */
   SummarizingMemoryConfig maxTokens(int maxTokens);
 

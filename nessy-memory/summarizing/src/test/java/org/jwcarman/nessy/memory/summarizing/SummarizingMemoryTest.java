@@ -246,6 +246,43 @@ class SummarizingMemoryTest {
     }
 
     @Test
+    @DisplayName("what to preserve is the application's to say")
+    void the_prompt_can_be_replaced() {
+      Summarizer summarizer = Summarizer.saying("a summary");
+      Memory memory =
+          SummarizingMemory.create(
+              config ->
+                  config
+                      .transcript(transcript)
+                      .dataSource(database)
+                      .agentType(TYPE)
+                      .model(summarizer)
+                      .executor(Runnable::run)
+                      .summarizeAfter(5)
+                      .keepVerbatim(4)
+                      .systemPrompt("Keep every order number, in German.")
+                      .clock(Clock.fixed(NOW, ZoneOffset.UTC)));
+
+      say(memory, 10);
+
+      assertThat(summarizer.sawRequest.systemPrompt())
+          .isEqualTo("Keep every order number, in German.");
+    }
+
+    @Test
+    @DisplayName("the default instruction is what a summarizer is told when nobody says otherwise")
+    void the_default_prompt_is_used() {
+      Summarizer summarizer = Summarizer.saying("a summary");
+
+      say(summarizing(summarizer, 5, 4), 10);
+
+      assertThat(summarizer.sawRequest.systemPrompt())
+          .isEqualTo(SummarizingMemory.SUMMARIZE)
+          .as("written for repetition, because its own output is its next input")
+          .contains("fed back");
+    }
+
+    @Test
     @DisplayName("the summarizer is given no tools")
     void nothing_that_reads_untrusted_text_may_act() {
       Summarizer summarizer = Summarizer.saying("a summary");

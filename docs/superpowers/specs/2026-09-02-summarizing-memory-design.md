@@ -159,6 +159,13 @@ commitments, open questions — rather than prose that re-narrates. A summarizer
 five generations. This is the part of the design most likely to be got wrong by
 writing the obvious prompt.
 
+**And the prompt is configurable**, because WHAT to preserve is domain knowledge this
+module does not have: a support agent wants order numbers, a coding agent wants file
+paths and the decisions behind them, an agent working in German should summarize in
+German. `SummarizingMemory.SUMMARIZE` is public so an application can add to the
+default rather than start from nothing — which matters more than usual here, since a
+naive replacement does not fail, it just fades faster.
+
 ## 4. Where the model call goes
 
 **A `Memory` has never needed a model.** `recall`, `remember` and `forget` take an
