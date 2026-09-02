@@ -45,6 +45,8 @@ public final class NotebookTools {
   /** What this background is, so an adapter can label it the way its vendor likes. */
   private static final String KIND = "notebook";
 
+  private static final String NOTEBOOK_NOT_NULL = "notebook must not be null";
+
   private NotebookTools() {}
 
   /**
@@ -83,7 +85,7 @@ public final class NotebookTools {
    * notes contributes nothing at all rather than an empty block announcing its own emptiness.
    */
   public static ContextTransformer index(Notebook notebook) {
-    Objects.requireNonNull(notebook, "notebook must not be null");
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return (agentId, context) -> {
       List<Notebook.Heading> headings = notebook.headings(agentId);
       if (headings.isEmpty()) {
@@ -130,7 +132,7 @@ public final class NotebookTools {
    * correct rather than one the tool invited.
    */
   public static Tool<RememberNote> remember(Notebook notebook) {
-    Objects.requireNonNull(notebook, "notebook must not be null");
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         RememberNote.class,
         "remember",
@@ -145,7 +147,7 @@ public final class NotebookTools {
 
   /** Replaces a note the model has an id for. */
   public static Tool<ReviseNote> revise(Notebook notebook) {
-    Objects.requireNonNull(notebook, "notebook must not be null");
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         ReviseNote.class,
         "revise",
@@ -160,7 +162,7 @@ public final class NotebookTools {
   }
 
   public static Tool<RecallNote> recall(Notebook notebook) {
-    Objects.requireNonNull(notebook, "notebook must not be null");
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         RecallNote.class,
         "recall",
@@ -174,7 +176,7 @@ public final class NotebookTools {
   }
 
   public static Tool<ForgetNote> forget(Notebook notebook) {
-    Objects.requireNonNull(notebook, "notebook must not be null");
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         ForgetNote.class,
         "forget",

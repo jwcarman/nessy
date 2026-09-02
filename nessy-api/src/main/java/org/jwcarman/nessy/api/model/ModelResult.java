@@ -48,6 +48,8 @@ import org.jwcarman.nessy.api.message.AnswerMessage;
 })
 public sealed interface ModelResult {
 
+  String USAGE_NOT_NULL = "usage must not be null";
+
   /** What the call cost, whichever way it went. A refusal is billed too. */
   Usage usage();
 
@@ -62,7 +64,7 @@ public sealed interface ModelResult {
     public Answered {
       Objects.requireNonNull(message, "message must not be null");
       Objects.requireNonNull(stopReason, "stopReason must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
     }
   }
 
@@ -80,7 +82,7 @@ public sealed interface ModelResult {
   record Asked(List<ExchangeContentBlock> content, Usage usage) implements ModelResult {
     public Asked {
       Objects.requireNonNull(content, "content must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
       content = List.copyOf(content);
       if (content.stream().noneMatch(ToolCallBlock.class::isInstance)) {
         throw new IllegalArgumentException("asked for nothing: no tool calls");
@@ -99,7 +101,7 @@ public sealed interface ModelResult {
     public Refused {
       Objects.requireNonNull(category, "category must not be null");
       Objects.requireNonNull(explanation, "explanation must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
     }
   }
 }

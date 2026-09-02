@@ -110,13 +110,17 @@ public interface DecisionInterpreter {
    * <p>Its optional {@code context} carries {@code reason_user}, which is the closest thing to a
    * denial's reason, so that is what a denial reports.
    */
+  String DECISION_FIELD = "decision";
+
   static DecisionInterpreter authzen() {
     return result -> {
-      if (result == null || !result.hasNonNull("decision") || !result.get("decision").isBoolean()) {
+      if (result == null
+          || !result.hasNonNull(DECISION_FIELD)
+          || !result.get(DECISION_FIELD).isBoolean()) {
         throw new IllegalArgumentException(
             "an AuthZEN response must carry a boolean \"decision\", but was: " + result);
       }
-      if (result.get("decision").booleanValue()) {
+      if (result.get(DECISION_FIELD).booleanValue()) {
         return Verdict.approve();
       }
       JsonNode context = result.path("context");

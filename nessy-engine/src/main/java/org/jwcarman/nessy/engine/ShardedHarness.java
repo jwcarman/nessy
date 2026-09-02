@@ -45,6 +45,8 @@ import org.jwcarman.nessy.api.Harness;
  */
 final class ShardedHarness<O> implements Harness<O> {
 
+  private static final String AGENT_ID_NOT_NULL = "agentId must not be null";
+
   /** Closes a bridge. Private, so nothing else can pretend to be an event. */
   private record Close() {}
 
@@ -79,7 +81,7 @@ final class ShardedHarness<O> implements Harness<O> {
 
   @Override
   public void observe(AgentId agentId, O observation) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Objects.requireNonNull(observation, "observation must not be null");
     // COMMIT, then signal. Reversed, the agent could take before the row lands, find nothing, and
     // go back to sleep with work sitting in the table.
@@ -103,7 +105,7 @@ final class ShardedHarness<O> implements Harness<O> {
    */
   @Override
   public void forget(AgentId agentId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     sharding
         .entityRefFor(agents, agentId.value())
         .tell(new NessyMessage.Forget(traces.capture(type.name(), agentId.value(), "Forget")));
@@ -126,7 +128,7 @@ final class ShardedHarness<O> implements Harness<O> {
   @Override
   public AgentSubscription subscribe(
       AgentId agentId, AgentSubscriber subscriber, String lastEventId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Objects.requireNonNull(subscriber, "subscriber must not be null");
     ActorRef<Object> bridge =
         system.systemActorOf(

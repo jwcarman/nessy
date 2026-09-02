@@ -70,6 +70,11 @@ public final class Observed {
   /** Semconv's histogram of tokens used, split by {@code gen_ai.token.type}. */
   private static final String TOKENS = "gen_ai.client.token.usage";
 
+  private static final String OPERATION_NAME = "gen_ai.operation.name";
+  private static final String FINISH_REASONS = "gen_ai.response.finish_reasons";
+  private static final String DELEGATE_NOT_NULL = "delegate must not be null";
+  private static final String OBSERVATIONS_NOT_NULL = "observations must not be null";
+
   private Observed() {}
 
   /**
@@ -86,16 +91,16 @@ public final class Observed {
       String providerName,
       ObservationRegistry observations,
       MeterRegistry meters) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
+    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
     return id -> model(delegate.model(id), providerName, observations, meters);
   }
 
   /** One model, observed: a span per call, lasting as long as the provider actually takes. */
   public static Model model(
       Model delegate, String providerName, ObservationRegistry observations, MeterRegistry meters) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
+    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
     Objects.requireNonNull(providerName, "providerName must not be null");
-    Objects.requireNonNull(observations, "observations must not be null");
+    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
     Objects.requireNonNull(meters, "meters must not be null");
     return new Model() {
       @Override
@@ -111,14 +116,14 @@ public final class Observed {
                 // Semconv's span name is "{operation} {model}", which the metric name cannot also
                 // be — so the contextual name carries it and the meter keeps the histogram's name.
                 .contextualName("chat " + model)
-                .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
+                .lowCardinalityKeyValue(OPERATION_NAME, "chat")
                 .lowCardinalityKeyValue("gen_ai.provider.name", providerName)
                 .lowCardinalityKeyValue("gen_ai.request.model", model)
                 .lowCardinalityKeyValue("gen_ai.request.stream", "true")
                 // Set at START, not on outcome. Micrometer compares an observation's key set
                 // against others recorded under the same name, so a chat that only sometimes
                 // carried a finish reason would be a different shape from one that did.
-                .lowCardinalityKeyValue("gen_ai.response.finish_reasons", "none")
+                .lowCardinalityKeyValue(FINISH_REASONS, "none")
                 .lowCardinalityKeyValue("error.type", "none")
                 .start();
         try {
@@ -194,12 +199,11 @@ public final class Observed {
     private void record(ModelEvent event) {
       switch (event) {
         case ModelEvent.Stopped(StopReason reason, Usage usage) -> {
-          observation.lowCardinalityKeyValue(
-              "gen_ai.response.finish_reasons", finishReason(reason));
+          observation.lowCardinalityKeyValue(FINISH_REASONS, finishReason(reason));
           tokens(usage);
         }
-        case ModelEvent.Refused(String category, String explanation, Usage usage) -> {
-          observation.lowCardinalityKeyValue("gen_ai.response.finish_reasons", "content_filter");
+        case ModelEvent.Refused(var _, var _, Usage usage) -> {
+          observation.lowCardinalityKeyValue(FINISH_REASONS, "content_filter");
           tokens(usage);
         }
         default -> {
@@ -252,7 +256,7 @@ public final class Observed {
     private DistributionSummary tokenSummary(String type) {
       return DistributionSummary.builder(TOKENS)
           .baseUnit("token")
-          .tag("gen_ai.operation.name", "chat")
+          .tag(OPERATION_NAME, "chat")
           .tag("gen_ai.provider.name", providerName)
           .tag("gen_ai.request.model", model)
           .tag("gen_ai.token.type", type)
@@ -280,8 +284,8 @@ public final class Observed {
    * histogram as a chat call, distinguished by {@code gen_ai.operation.name}.
    */
   public static <I> Tool<I> tool(Tool<I> delegate, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
-    Objects.requireNonNull(observations, "observations must not be null");
+    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
+    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
     return new Tool<>() {
       @Override
       public String name() {
@@ -308,7 +312,7 @@ public final class Observed {
         Observation observation =
             Observation.createNotStarted(DURATION, observations)
                 .contextualName("execute_tool " + delegate.name())
-                .lowCardinalityKeyValue("gen_ai.operation.name", "execute_tool")
+                .lowCardinalityKeyValue(OPERATION_NAME, "execute_tool")
                 .lowCardinalityKeyValue("gen_ai.tool.name", delegate.name())
                 .lowCardinalityKeyValue("gen_ai.tool.type", "function")
                 .lowCardinalityKeyValue("nessy.tool.outcome", "none")
@@ -338,8 +342,8 @@ public final class Observed {
    * which is a job for the projection's asked_at, not for a tracer.
    */
   public static Approver approver(Approver delegate, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
-    Objects.requireNonNull(observations, "observations must not be null");
+    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
+    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
     return (request) -> {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
@@ -360,17 +364,17 @@ public final class Observed {
 
   private static String outcomeOf(Awaited<ToolResult> answer) {
     return switch (answer) {
-      case Awaited.Deferred<ToolResult> deferred -> "deferred";
-      case Awaited.Ready<ToolResult> ready ->
-          ready.result() instanceof ToolResult.Success ? "success" : "failure";
+      case Awaited.Deferred<ToolResult> _ -> "deferred";
+      case Awaited.Ready<ToolResult>(var result) ->
+          result instanceof ToolResult.Success ? "success" : "failure";
     };
   }
 
   private static String approvalOf(Awaited<ApprovalResult> answer) {
     return switch (answer) {
-      case Awaited.Deferred<ApprovalResult> deferred -> "asked-a-person";
-      case Awaited.Ready<ApprovalResult> ready ->
-          ready.result() instanceof ApprovalResult.Approved ? "approved" : "denied";
+      case Awaited.Deferred<ApprovalResult> _ -> "asked-a-person";
+      case Awaited.Ready<ApprovalResult>(var result) ->
+          result instanceof ApprovalResult.Approved ? "approved" : "denied";
     };
   }
 }
