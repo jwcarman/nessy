@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -440,13 +441,13 @@ class AnthropicStreamTest {
       assertThat(modelEvents).hasSize(3);
       assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var firstCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
-      assertThat(firstCall.id()).isEqualTo("toolu_1");
+      assertThat(firstCall.id()).isEqualTo(CallId.of("toolu_1"));
       assertThat(firstCall.name()).isEqualTo("get_weather");
       assertThat(firstCall.arguments().get("location").asText()).isEqualTo("NYC");
 
       assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var secondCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call();
-      assertThat(secondCall.id()).isEqualTo("toolu_2");
+      assertThat(secondCall.id()).isEqualTo(CallId.of("toolu_2"));
       assertThat(secondCall.name()).isEqualTo("get_time");
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
@@ -469,7 +470,8 @@ class AnthropicStreamTest {
       assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(call)
-          .isEqualTo(new ToolCall("toolu_3", "ping", JsonNodeFactory.instance.objectNode()));
+          .isEqualTo(
+              new ToolCall(CallId.of("toolu_3"), "ping", JsonNodeFactory.instance.objectNode()));
       assertThat(call.arguments().size()).isZero();
     }
 
@@ -490,7 +492,8 @@ class AnthropicStreamTest {
 
       var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       assertThat(call)
-          .isEqualTo(new ToolCall("toolu_4", "ping", JsonNodeFactory.instance.objectNode()));
+          .isEqualTo(
+              new ToolCall(CallId.of("toolu_4"), "ping", JsonNodeFactory.instance.objectNode()));
     }
 
     @Test

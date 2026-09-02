@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
@@ -40,11 +41,12 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class ExchangeMessageTest {
 
   private static ToolCallBlock calling(String id) {
-    return new ToolCallBlock(new ToolCall(id, "read_file", JsonNodeFactory.instance.objectNode()));
+    return new ToolCallBlock(
+        new ToolCall(CallId.of(id), "read_file", JsonNodeFactory.instance.objectNode()));
   }
 
   private static ToolResultBlock answering(String id) {
-    return ToolResultBlock.of(id, ToolResult.ok("ok"));
+    return ToolResultBlock.of(CallId.of(id), ToolResult.ok("ok"));
   }
 
   @Test

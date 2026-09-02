@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -100,7 +101,7 @@ public final class AgentLogic {
    * would save, and it is the path recovery has to work on too.
    */
   private static Decision onAsked(AgentState state, Input.ModelAnswered.Asked asked) {
-    Map<String, CallState> calls = new LinkedHashMap<>();
+    Map<CallId, CallState> calls = new LinkedHashMap<>();
     List<Instruction> then = new ArrayList<>();
     for (Input.CallSummary call : asked.calls()) {
       calls.put(call.callId(), new CallState.Approving(call.toolName()));
@@ -154,7 +155,7 @@ public final class AgentLogic {
    * One call reaches its end. When it is the last one, the exchange goes back to the model — which
    * is the only way a turn moves from working tools to calling the model.
    */
-  private static Decision settle(AgentState state, String callId, Instruction... also) {
+  private static Decision settle(AgentState state, CallId callId, Instruction... also) {
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
     List<Instruction> then = new ArrayList<>(List.of(also));
     if (next.allSettled()) {

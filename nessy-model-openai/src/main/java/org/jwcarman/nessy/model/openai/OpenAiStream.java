@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.TreeMap;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -354,7 +355,7 @@ public final class OpenAiStream implements ModelStream {
       if (!parsed.isObject()) {
         throw new IllegalStateException(describeFailure("did not parse to a JSON object", json));
       }
-      return new ToolCall(id, name, parsed);
+      return new ToolCall(CallId.of(id), name, parsed);
     }
 
     private String describeFailure(String problem, String json) {

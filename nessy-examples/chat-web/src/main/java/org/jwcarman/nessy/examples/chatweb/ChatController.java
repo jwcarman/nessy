@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.Context;
@@ -80,9 +81,10 @@ public class ChatController {
    */
   @GetMapping("/{id}")
   public Map<String, Object> state(@PathVariable("id") String id) {
-    Context context = memory.recall(AgentId.of(id));
+    AgentId agentId = AgentId.of(id);
+    Context context = memory.recall(agentId);
     List<Context.Line> lines = context.lines();
-    return Map.of("transcript", lines, "approvals", desk.pending(id));
+    return Map.of("transcript", lines, "approvals", desk.pending(agentId));
   }
 
   /** Says one thing to the agent. The answer comes back on the stream, not here. */
@@ -120,7 +122,7 @@ public class ChatController {
       @PathVariable("id") String id,
       @PathVariable("callId") String callId,
       @RequestBody Decision body) {
-    ApprovalDesk.Waiting question = desk.take(callId).orElse(null);
+    ApprovalDesk.Waiting question = desk.take(CallId.of(callId)).orElse(null);
     if (question == null) {
       // Already answered, by another tab or another person. Not an error: the page should redraw
       // and see what was decided, rather than be shown a stack trace for losing a race.

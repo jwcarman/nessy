@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -300,7 +301,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents.get(0)).isEqualTo(new ModelEvent.TextChunk("thinking..."));
       assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call();
-      assertThat(call.id()).isEqualTo("call_7");
+      assertThat(call.id()).isEqualTo(CallId.of("call_7"));
       assertThat(call.name()).isEqualTo("ping");
       assertThat(modelEvents.get(2)).isInstanceOf(ModelEvent.Stopped.class);
     }
@@ -348,13 +349,13 @@ class OpenAiStreamTest {
       assertThat(modelEvents).hasSize(3);
       assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var firstCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
-      assertThat(firstCall.id()).isEqualTo("call_1");
+      assertThat(firstCall.id()).isEqualTo(CallId.of("call_1"));
       assertThat(firstCall.name()).isEqualTo("get_weather");
       assertThat(firstCall.arguments().get("location").asText()).isEqualTo("NYC");
 
       assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var secondCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call();
-      assertThat(secondCall.id()).isEqualTo("call_2");
+      assertThat(secondCall.id()).isEqualTo(CallId.of("call_2"));
       assertThat(secondCall.name()).isEqualTo("get_time");
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
@@ -384,7 +385,7 @@ class OpenAiStreamTest {
       var modelEvents = drain(chunks);
 
       var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
-      assertThat(call).isEqualTo(new ToolCall("call_4", "ping", call.arguments()));
+      assertThat(call).isEqualTo(new ToolCall(CallId.of("call_4"), "ping", call.arguments()));
       assertThat(call.arguments().isObject()).isTrue();
       assertThat(call.arguments().size()).isZero();
     }

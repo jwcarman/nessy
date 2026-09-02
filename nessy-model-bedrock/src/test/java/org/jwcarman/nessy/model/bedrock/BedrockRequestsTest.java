@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
 import org.jwcarman.nessy.api.block.ProviderBlock;
@@ -183,7 +184,7 @@ class BedrockRequestsTest {
     private static ToolCall call(String id, String name, String argKey, String argValue) {
       ObjectNode arguments = MAPPER.createObjectNode();
       arguments.put(argKey, argValue);
-      return new ToolCall(id, name, arguments);
+      return new ToolCall(CallId.of(id), name, arguments);
     }
 
     @Test
@@ -191,7 +192,8 @@ class BedrockRequestsTest {
       var toolUse = new ToolCallBlock(call("call-1", "read_file", "path", "README.md"));
       var assistantTurn =
           new ExchangeMessage(
-              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
@@ -211,8 +213,8 @@ class BedrockRequestsTest {
           new ExchangeMessage(
               List.of(text, first, second),
               List.of(
-                  ToolResultBlock.of("call-1", ToolResult.ok("ok")),
-                  ToolResultBlock.of("call-2", ToolResult.ok("ok"))));
+                  ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok")),
+                  ToolResultBlock.of(CallId.of("call-2"), ToolResult.ok("ok"))));
       var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
@@ -228,10 +230,11 @@ class BedrockRequestsTest {
       arguments.put("lineCount", 25);
       arguments.put("ratio", 3.5);
       arguments.put("verbose", true);
-      var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
+      var toolUse = new ToolCallBlock(new ToolCall(CallId.of("call-1"), "read_file", arguments));
       var assistantTurn =
           new ExchangeMessage(
-              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var input = built.messages().get(0).content().get(0).toolUse().input().asMap();
@@ -252,10 +255,12 @@ class BedrockRequestsTest {
     void another_providers_state_is_ignored_on_replay() {
       var foreign = providerState("thinking", "someone else's reasoning", "sig");
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
-              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
 
       // No exception, and the rebuilt block carries the call unchanged — Bedrock's ToolCallBlock
       // has no signature-shaped field for GeminiRequests' equivalent to replay onto.
@@ -273,11 +278,12 @@ class BedrockRequestsTest {
     void a_thinking_block_is_dropped_leaving_its_siblings_in_order() {
       var thinking = providerState("thinking", "reasoning about the answer", "sig-123");
       var text = new CommentaryBlock("the visible answer");
-      var toolUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var toolUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
               List.of(thinking, text, toolUse),
-              List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var built = BedrockRequests.toRequest(request(List.of(assistantTurn)), MODEL_ID);
 
       var content = built.messages().get(0).content();
@@ -323,8 +329,9 @@ class BedrockRequestsTest {
     @Test
     void becomes_a_tool_result_block_addressed_by_the_matching_call_s_id() {
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", ToolResult.ok("42"));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("42"));
       var built =
           BedrockRequests.toRequest(
               request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))), MODEL_ID);
@@ -342,8 +349,9 @@ class BedrockRequestsTest {
     @Test
     void an_error_result_carries_the_error_status() {
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of(CallId.of("call-1"), ToolResult.error("file not found"));
       var built =
           BedrockRequests.toRequest(
               request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))), MODEL_ID);
@@ -355,10 +363,12 @@ class BedrockRequestsTest {
 
     @Test
     void multiple_results_become_sibling_content_blocks_on_one_message_in_order() {
-      var firstUse = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var secondUse = new ToolCallBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
-      var first = ToolResultBlock.of("call-1", ToolResult.ok("first"));
-      var second = ToolResultBlock.of("call-2", ToolResult.ok("second"));
+      var firstUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
+      var secondUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-2"), "noop", MAPPER.createObjectNode()));
+      var first = ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("first"));
+      var second = ToolResultBlock.of(CallId.of("call-2"), ToolResult.ok("second"));
       var built =
           BedrockRequests.toRequest(
               request(
@@ -379,8 +389,9 @@ class BedrockRequestsTest {
     @Test
     void a_tool_result_and_a_following_text_become_two_user_messages_in_order() {
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", ToolResult.ok("13"));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("13"));
       var text = new TextBlock("try again");
       var built =
           BedrockRequests.toRequest(
@@ -423,10 +434,11 @@ class BedrockRequestsTest {
 
     @Test
     void an_exchange_lands_its_results_as_a_tool_result_block() {
-      var call = new ToolCallBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var call =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
       var exchange =
           new ExchangeMessage(
-              List.of(call), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(call), List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
 
       var built = BedrockRequests.toRequest(request(List.of(exchange)), MODEL_ID);
 

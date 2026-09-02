@@ -136,7 +136,13 @@ public class ChatStreams {
                 cursor,
                 listeners,
                 "tool-requested",
-                Map.of("id", call.callId(), "name", call.toolName(), "what", call.description()));
+                Map.of(
+                    "id",
+                    call.callId().value(),
+                    "name",
+                    call.toolName(),
+                    "what",
+                    call.description()));
         case AgentEvent.ApprovalRequested asked ->
             emit(cursor, listeners, "approval", desk.card(asked.callId()));
         case AgentEvent.ApprovalDecided decided ->

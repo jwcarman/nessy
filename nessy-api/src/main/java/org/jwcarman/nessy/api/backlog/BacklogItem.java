@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.backlog;
 
 import java.time.Instant;
 import java.util.Objects;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * One observation waiting to become a turn.
@@ -27,7 +28,7 @@ import java.util.Objects;
  *
  * @param <O> the observation type
  */
-public record BacklogItem<O>(String id, O observation, Instant receivedAt) {
+public record BacklogItem<O>(TurnId id, O observation, Instant receivedAt) {
 
   public BacklogItem {
     Objects.requireNonNull(id, "id must not be null");

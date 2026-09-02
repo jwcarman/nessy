@@ -35,6 +35,8 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -170,7 +172,7 @@ final class Instructions {
       case Instruction.Release ignored -> deps.claims().deleteTurn(agentId, state.turnId());
       case Instruction.SetAlarm alarm -> setAlarm(agentId, alarm);
       case Instruction.CancelAlarm alarm ->
-          deps.reminders().cancel(deps.agentType().name(), agentId.value(), alarm.callId());
+          deps.reminders().cancel(deps.agentType(), agentId, alarm.callId());
       case Instruction.Sleep ignored -> {
         // The agent asks the shard to unload it; that lives on the actor, which owns the handle.
       }
@@ -197,7 +199,7 @@ final class Instructions {
   private void takeWork(AgentId agentId, AgentState state, Map<String, String> carried) {
     // The TURN id, which is the backlog row's id — not the claim key. Null until this agent has
     // finished one, and null while it is busy, because a turn in flight is nobody's to sweep.
-    String finished = state.busy() ? null : state.turnId();
+    TurnId finished = state.busy() ? null : state.turnId();
     run(
         () -> deps.backlog().take(agentId, finished),
         taken ->
@@ -413,12 +415,12 @@ final class Instructions {
   }
 
   /** Writes a result and tells the agent — in that order, always. */
-  private void completed(AgentId agentId, AgentState state, String callId, ToolResult result) {
+  private void completed(AgentId agentId, AgentState state, CallId callId, ToolResult result) {
     hold(agentId, state, callId, result);
     tell(agentId, new NessyMessage.ToolCompleted(callId, Map.of()));
   }
 
-  private void hold(AgentId agentId, AgentState state, String callId, ToolResult result) {
+  private void hold(AgentId agentId, AgentState state, CallId callId, ToolResult result) {
     deps.claims().put(agentId, state.turnId(), resultKey(callId), resultCodec.encode(result));
   }
 
@@ -460,8 +462,7 @@ final class Instructions {
   }
 
   private void setAlarm(AgentId agentId, Instruction.SetAlarm alarm) {
-    deps.reminders()
-        .remind(deps.agentType().name(), agentId.value(), alarm.callId(), alarm.expiresAt());
+    deps.reminders().remind(deps.agentType(), agentId, alarm.callId(), alarm.expiresAt());
   }
 
   private void narrate(AgentId agentId, AgentState state, Instruction.Narrate narrate) {
@@ -491,12 +492,12 @@ final class Instructions {
     }
   }
 
-  private String nameOf(AgentId agentId, AgentState state, String callId) {
+  private String nameOf(AgentId agentId, AgentState state, CallId callId) {
     ToolCall call = callOf(agentId, state, callId);
     return call == null ? "" : call.name();
   }
 
-  private ToolCall callOf(AgentId agentId, AgentState state, String callId) {
+  private ToolCall callOf(AgentId agentId, AgentState state, CallId callId) {
     return redeem(agentId, state, ASKED_KEY, askedCodec)
         .flatMap(
             asked -> callsIn(asked).stream().filter(call -> call.id().equals(callId)).findFirst())
@@ -563,7 +564,7 @@ final class Instructions {
         () -> deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
   }
 
-  static String resultKey(String callId) {
+  static String resultKey(CallId callId) {
     return "result-" + callId;
   }
 

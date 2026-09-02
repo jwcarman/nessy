@@ -21,6 +21,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
@@ -31,7 +33,7 @@ class ModelLogicTest {
   private static final Usage NOTHING_MEASURED = new Usage(null, null, null, null);
 
   private static AgentState calling() {
-    return AgentState.idle().taking("turn-1", "claim-1");
+    return AgentState.idle().taking(TurnId.of("turn-1"), "claim-1");
   }
 
   private static Decision answered(StopReason stopReason) {
@@ -86,24 +88,24 @@ class ModelLogicTest {
           calling(),
           new Input.ModelAnswered.Asked(
               List.of(
-                  new Input.CallSummary("a", "send_email"),
-                  new Input.CallSummary("b", "read_file")),
+                  new Input.CallSummary(CallId.of("a"), "send_email"),
+                  new Input.CallSummary(CallId.of("b"), "read_file")),
               NOTHING_MEASURED));
     }
 
     @Test
     void every_requested_call_starts_out_being_approved() {
       assertThat(asked().next().working().calls())
-          .containsEntry("a", new CallState.Approving("send_email"))
-          .containsEntry("b", new CallState.Approving("read_file"));
+          .containsEntry(CallId.of("a"), new CallState.Approving("send_email"))
+          .containsEntry(CallId.of("b"), new CallState.Approving("read_file"));
     }
 
     @Test
     void asking_the_approver_is_what_it_does_about_each_one() {
       assertThat(asked().then())
           .contains(
-              new Instruction.AskApprover("a", "send_email"),
-              new Instruction.AskApprover("b", "read_file"));
+              new Instruction.AskApprover(CallId.of("a"), "send_email"),
+              new Instruction.AskApprover(CallId.of("b"), "read_file"));
     }
 
     @Test

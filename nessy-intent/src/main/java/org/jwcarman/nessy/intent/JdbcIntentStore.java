@@ -22,6 +22,8 @@ import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -48,6 +50,8 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
           + " AND version = ?";
 
   private final JdbcClient jdbc;
+  // Unwrapped once, at construction: below this line is SQL, and SQL takes strings. The same
+  // shape JdbcNotebook, JdbcPlanStore and TranscriptMemory already use.
   private final String agentType;
   private final String agentId;
   private final Codec<T> codec;
@@ -55,8 +59,8 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
   /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
   public JdbcIntentStore(
       DataSource dataSource,
-      String agentType,
-      String agentId,
+      AgentType agentType,
+      AgentId agentId,
       Class<T> vocabulary,
       ObjectMapper mapper) {
     this(
@@ -67,11 +71,12 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
             .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
-  public JdbcIntentStore(DataSource dataSource, String agentType, String agentId, Codec<T> codec) {
+  public JdbcIntentStore(
+      DataSource dataSource, AgentType agentType, AgentId agentId, Codec<T> codec) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
-    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
-    this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").name();
+    this.agentId = Objects.requireNonNull(agentId, "agentId must not be null").value();
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 

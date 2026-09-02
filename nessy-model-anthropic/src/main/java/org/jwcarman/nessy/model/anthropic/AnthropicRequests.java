@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
@@ -426,19 +427,19 @@ public final class AnthropicRequests {
           Optional.of(
               ContentBlockParam.ofToolUse(
                   ToolUseBlockParam.builder()
-                      .id(call.id())
+                      .id(call.id().value())
                       .name(call.name())
                       .input(toInput(call.arguments()))
                       .cacheControl(cacheControl)
                       .build()));
       case ToolResultBlock(
-              String toolUseId,
+              CallId toolUseId,
               List<ToolResultContentBlock> content,
               boolean isError) ->
           Optional.of(
               ContentBlockParam.ofToolResult(
                   ToolResultBlockParam.builder()
-                      .toolUseId(toolUseId)
+                      .toolUseId(toolUseId.value())
                       .contentOfBlocks(
                           content.stream().map(AnthropicRequests::toResultBlock).toList())
                       .isError(isError)

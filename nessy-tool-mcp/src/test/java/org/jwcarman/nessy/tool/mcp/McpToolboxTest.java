@@ -33,6 +33,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -82,8 +84,8 @@ class McpToolboxTest {
     return new ToolCallRequest<>(
         AgentType.of("mcp-test"),
         AgentId.of("one"),
-        "turn-1",
-        "call-1",
+        TurnId.of("turn-1"),
+        CallId.of("call-1"),
         "echo",
         arguments,
         new ReplyToken("unused-by-a-tool-that-never-defers"));
@@ -290,8 +292,8 @@ class McpToolboxTest {
       return new ApprovalRequest(
           AgentType.of("mcp-test"),
           AgentId.of("one"),
-          "turn-1",
-          "call-1",
+          TurnId.of("turn-1"),
+          CallId.of("call-1"),
           "echo",
           arguments,
           "echo " + arguments,

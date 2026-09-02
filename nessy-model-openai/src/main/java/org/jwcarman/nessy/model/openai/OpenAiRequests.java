@@ -216,7 +216,7 @@ public final class OpenAiRequests {
     var content = result.isError() ? ERROR_PREFIX + flatten(result) : flatten(result);
     return ChatCompletionMessageParam.ofTool(
         ChatCompletionToolMessageParam.builder()
-            .toolCallId(result.toolUseId())
+            .toolCallId(result.toolUseId().value())
             .content(content)
             .build());
   }
@@ -275,7 +275,7 @@ public final class OpenAiRequests {
   private static ChatCompletionMessageFunctionToolCall toToolCall(ToolCallBlock toolUse) {
     var call = toolUse.call();
     return ChatCompletionMessageFunctionToolCall.builder()
-        .id(call.id())
+        .id(call.id().value())
         .function(
             ChatCompletionMessageFunctionToolCall.Function.builder()
                 .name(call.name())

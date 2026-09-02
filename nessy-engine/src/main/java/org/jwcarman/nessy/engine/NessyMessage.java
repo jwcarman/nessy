@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.pekko.actor.typed.ActorRef;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -63,7 +65,7 @@ public sealed interface NessyMessage {
   }
 
   /** The store handed over a row. Its id is the turn id; its claim holds the rendered input. */
-  record WorkTaken(String turnId, String observationClaim, Map<String, String> headers)
+  record WorkTaken(TurnId turnId, String observationClaim, Map<String, String> headers)
       implements NessyMessage {
     public WorkTaken {
       Objects.requireNonNull(turnId, "turnId must not be null");
@@ -125,7 +127,7 @@ public sealed interface NessyMessage {
    * the old engine ended up relaying everything down a hierarchy.
    */
   record ApprovalGiven(
-      String callId, String toolName, ApprovalResult result, Map<String, String> headers)
+      CallId callId, String toolName, ApprovalResult result, Map<String, String> headers)
       implements NessyMessage {
     public ApprovalGiven {
       headers = Map.copyOf(headers);
@@ -133,7 +135,7 @@ public sealed interface NessyMessage {
   }
 
   /** The answer will come later; someone holds a reply token. */
-  record ToolParked(String callId, Instant expiresAt, Map<String, String> headers)
+  record ToolParked(CallId callId, Instant expiresAt, Map<String, String> headers)
       implements NessyMessage {
     public ToolParked {
       headers = Map.copyOf(headers);
@@ -141,7 +143,7 @@ public sealed interface NessyMessage {
   }
 
   /** A call is done, however long it took. Its result is claimed. */
-  record ToolCompleted(String callId, Map<String, String> headers) implements NessyMessage {
+  record ToolCompleted(CallId callId, Map<String, String> headers) implements NessyMessage {
     public ToolCompleted {
       headers = Map.copyOf(headers);
     }
@@ -153,7 +155,7 @@ public sealed interface NessyMessage {
    * <p>Distinct from {@link ToolCompleted} deliberately: the sweep knows time passed and does not
    * get to decide what that means.
    */
-  record DeadlinePassed(String callId, Map<String, String> headers) implements NessyMessage {
+  record DeadlinePassed(CallId callId, Map<String, String> headers) implements NessyMessage {
     public DeadlinePassed {
       headers = Map.copyOf(headers);
     }
@@ -166,7 +168,7 @@ public sealed interface NessyMessage {
    * an id like every other message and the agent's handling of it is identical to a tool that
    * answered in two milliseconds.
    */
-  record ToolAnswered(String callId, ActorRef<Ack> replyTo, Map<String, String> headers)
+  record ToolAnswered(CallId callId, ActorRef<Ack> replyTo, Map<String, String> headers)
       implements NessyMessage {
     public ToolAnswered {
       Objects.requireNonNull(replyTo, "replyTo must not be null");
@@ -176,7 +178,7 @@ public sealed interface NessyMessage {
 
   /** A person's decision, arriving from outside on a reply token. */
   record ApprovalAnswered(
-      String callId, ApprovalResult result, ActorRef<Ack> replyTo, Map<String, String> headers)
+      CallId callId, ApprovalResult result, ActorRef<Ack> replyTo, Map<String, String> headers)
       implements NessyMessage {
     public ApprovalAnswered {
       Objects.requireNonNull(replyTo, "replyTo must not be null");

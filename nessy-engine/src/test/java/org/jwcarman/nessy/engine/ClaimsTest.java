@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
@@ -65,9 +66,9 @@ class ClaimsTest {
 
   @Test
   void what_goes_in_comes_back() {
-    claims.put(HOUSE, "turn-1", "asked", bytes("the question"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("the question"));
 
-    assertThat(claims.get(HOUSE, "turn-1", "asked"))
+    assertThat(claims.get(HOUSE, TurnId.of("turn-1"), "asked"))
         .isPresent()
         .get()
         .extracting(ClaimsTest::text)
@@ -77,11 +78,11 @@ class ClaimsTest {
   @Test
   @DisplayName("claiming the same key twice overwrites, because a re-driven turn does exactly that")
   void a_claim_can_be_written_again() {
-    claims.put(HOUSE, "turn-1", "asked", bytes("first attempt"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("first attempt"));
 
-    claims.put(HOUSE, "turn-1", "asked", bytes("after a crash"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("after a crash"));
 
-    assertThat(claims.get(HOUSE, "turn-1", "asked"))
+    assertThat(claims.get(HOUSE, TurnId.of("turn-1"), "asked"))
         .isPresent()
         .get()
         .extracting(ClaimsTest::text)
@@ -90,41 +91,41 @@ class ClaimsTest {
 
   @Test
   void one_turn_cannot_see_another_turn_s_claims() {
-    claims.put(HOUSE, "turn-1", "asked", bytes("mine"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("mine"));
 
-    assertThat(claims.get(HOUSE, "turn-2", "asked")).isEmpty();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-2"), "asked")).isEmpty();
   }
 
   @Test
   @DisplayName("ending a turn sweeps everything under it, including what nothing referenced")
   void deleting_a_turn_takes_orphans_too() {
-    claims.put(HOUSE, "turn-1", "asked", bytes("the question"));
-    claims.put(HOUSE, "turn-1", "result-c1", bytes("an answer"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("the question"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "result-c1", bytes("an answer"));
     // Written just before a notional crash: in the kind, named by no state anywhere.
-    claims.put(HOUSE, "turn-1", "orphan", bytes("nobody remembers me"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "orphan", bytes("nobody remembers me"));
 
-    claims.deleteTurn(HOUSE, "turn-1");
+    claims.deleteTurn(HOUSE, TurnId.of("turn-1"));
 
-    assertThat(claims.get(HOUSE, "turn-1", "asked")).isEmpty();
-    assertThat(claims.get(HOUSE, "turn-1", "result-c1")).isEmpty();
-    assertThat(claims.get(HOUSE, "turn-1", "orphan")).isEmpty();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-1"), "asked")).isEmpty();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-1"), "result-c1")).isEmpty();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-1"), "orphan")).isEmpty();
     assertThat(rowsFor(HOUSE, "turn-1")).isZero();
   }
 
   @Test
   void ending_a_turn_leaves_other_turns_alone() {
-    claims.put(HOUSE, "turn-1", "asked", bytes("mine"));
-    claims.put(HOUSE, "turn-2", "asked", bytes("theirs"));
+    claims.put(HOUSE, TurnId.of("turn-1"), "asked", bytes("mine"));
+    claims.put(HOUSE, TurnId.of("turn-2"), "asked", bytes("theirs"));
 
-    claims.deleteTurn(HOUSE, "turn-1");
+    claims.deleteTurn(HOUSE, TurnId.of("turn-1"));
 
-    assertThat(claims.get(HOUSE, "turn-2", "asked")).isPresent();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-2"), "asked")).isPresent();
   }
 
   @Test
   void ending_a_turn_that_claimed_nothing_is_not_an_error() {
-    claims.deleteTurn(HOUSE, "turn-never-ran");
+    claims.deleteTurn(HOUSE, TurnId.of("turn-never-ran"));
 
-    assertThat(claims.get(HOUSE, "turn-never-ran", "anything")).isEmpty();
+    assertThat(claims.get(HOUSE, TurnId.of("turn-never-ran"), "anything")).isEmpty();
   }
 }

@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.block.TextBlock;
@@ -122,7 +123,7 @@ class ConversationTest {
                           List.of(
                               new ToolCallBlock(
                                   new ToolCall(
-                                      "c" + calls.incrementAndGet(),
+                                      CallId.of("c" + calls.incrementAndGet()),
                                       "look_up",
                                       JsonNodeFactory.instance.objectNode()))),
                           new Usage(1, 1)));

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.Usage;
 
@@ -250,9 +251,13 @@ class ReplLoopTest {
     FakeHarness harness =
         new FakeHarness(
             List.of(
-                new AgentEvent.ToolCallRequested("e", "c1", "days_until", "counting days"),
+                new AgentEvent.ToolCallRequested(
+                    "e", CallId.of("c1"), "days_until", "counting days"),
                 new AgentEvent.ToolCallCompleted(
-                    "e", "c1", "days_until", org.jwcarman.nessy.api.tool.ToolResult.ok("116 days")),
+                    "e",
+                    CallId.of("c1"),
+                    "days_until",
+                    org.jwcarman.nessy.api.tool.ToolResult.ok("116 days")),
                 ended()));
     FakeConsole console = new FakeConsole("when is christmas", "quit");
 

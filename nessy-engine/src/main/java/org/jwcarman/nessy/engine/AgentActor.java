@@ -28,6 +28,7 @@ import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
 import org.apache.pekko.persistence.typed.state.javadsl.Effect;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.engine.agent.AgentLogic;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Decision;
@@ -179,7 +180,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     }
   }
 
-  private static NessyMessage.Ack waitingFor(AgentState state, String callId) {
+  private static NessyMessage.Ack waitingFor(AgentState state, CallId callId) {
     if (!(state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools working)
         || !working.calls().containsKey(callId)) {
       return new NessyMessage.Ack(false, "no call \"" + callId + "\" is waiting for an answer");
@@ -225,7 +226,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     };
   }
 
-  private static String nameOf(AgentState state, String callId) {
+  private static String nameOf(AgentState state, CallId callId) {
     if (state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools working
         && working.calls().get(callId)
             instanceof org.jwcarman.nessy.engine.agent.CallState.Approving approving) {

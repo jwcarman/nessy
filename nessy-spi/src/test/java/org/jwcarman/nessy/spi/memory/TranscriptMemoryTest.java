@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -67,8 +68,9 @@ class TranscriptMemoryTest {
     return new ExchangeMessage(
         List.of(
             new ToolCallBlock(
-                new ToolCall(callId, "read_file", JsonNodeFactory.instance.objectNode()))),
-        List.of(ToolResultBlock.of(callId, ToolResult.ok("done"))));
+                new ToolCall(
+                    CallId.of(callId), "read_file", JsonNodeFactory.instance.objectNode()))),
+        List.of(ToolResultBlock.of(CallId.of(callId), ToolResult.ok("done"))));
   }
 
   @Test

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.message;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
@@ -57,7 +58,7 @@ public record ExchangeMessage(List<ExchangeContentBlock> content, List<ToolResul
   /** Every call answered, every answer expected — checked once, here, and nowhere else again. */
   private static void requireAnswered(
       List<ExchangeContentBlock> content, List<ToolResultBlock> results) {
-    List<String> called = new ArrayList<>();
+    List<CallId> called = new ArrayList<>();
     for (ExchangeContentBlock block : content) {
       if (block instanceof ToolCallBlock call) {
         called.add(call.call().id());
@@ -66,13 +67,13 @@ public record ExchangeMessage(List<ExchangeContentBlock> content, List<ToolResul
     if (called.isEmpty()) {
       throw new IllegalArgumentException("an asking with no tool calls is not asking for anything");
     }
-    List<String> answered = results.stream().map(ToolResultBlock::toolUseId).toList();
-    for (String id : called) {
+    List<CallId> answered = results.stream().map(ToolResultBlock::toolUseId).toList();
+    for (CallId id : called) {
       if (!answered.contains(id)) {
         throw new IllegalArgumentException("unanswered tool call: " + id);
       }
     }
-    for (String id : answered) {
+    for (CallId id : answered) {
       if (!called.contains(id)) {
         throw new IllegalArgumentException("tool result answering no call: " + id);
       }

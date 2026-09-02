@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.TurnId;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -68,17 +69,20 @@ final class Claims {
    * vendor syntax and one DDL and one set of statements have to serve every database we support. A
    * turn is the only writer for its own claims, so there is no race for the two statements to lose.
    */
-  void put(AgentId agentId, String turnId, String key, byte[] value) {
-    jdbc.sql(UPSERT_DELETE).params(agentId.value(), turnId, key).update();
-    jdbc.sql(INSERT).params(agentId.value(), turnId, key, value).update();
+  void put(AgentId agentId, TurnId turnId, String key, byte[] value) {
+    jdbc.sql(UPSERT_DELETE).params(agentId.value(), turnId.value(), key).update();
+    jdbc.sql(INSERT).params(agentId.value(), turnId.value(), key, value).update();
   }
 
-  Optional<byte[]> get(AgentId agentId, String turnId, String key) {
-    return jdbc.sql(SELECT).params(agentId.value(), turnId, key).query(byte[].class).optional();
+  Optional<byte[]> get(AgentId agentId, TurnId turnId, String key) {
+    return jdbc.sql(SELECT)
+        .params(agentId.value(), turnId.value(), key)
+        .query(byte[].class)
+        .optional();
   }
 
   /** The turn ended, so its claims end — including any orphan no state ever referenced. */
-  void deleteTurn(AgentId agentId, String turnId) {
-    jdbc.sql(DELETE_TURN).params(agentId.value(), turnId).update();
+  void deleteTurn(AgentId agentId, TurnId turnId) {
+    jdbc.sql(DELETE_TURN).params(agentId.value(), turnId.value()).update();
   }
 }

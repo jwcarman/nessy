@@ -26,6 +26,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 
@@ -40,7 +43,8 @@ class ReminderSweepTest {
 
   private static final Instant NOON = Instant.parse("2026-09-01T12:00:00Z");
   private static final ReminderSweep.Coordinates WHERE =
-      new ReminderSweep.Coordinates("chat", "agent-one", "call-1");
+      new ReminderSweep.Coordinates(
+          AgentType.of("chat"), AgentId.of("agent-one"), CallId.of("call-1"));
 
   private EmbeddedDatabase database;
   private Reminders reminders;
@@ -63,7 +67,7 @@ class ReminderSweepTest {
   }
 
   private void park(String callId, Instant expiresAt) {
-    reminders.remind(WHERE.agentType(), WHERE.agentId(), callId, expiresAt);
+    reminders.remind(WHERE.agentType(), WHERE.agentId(), CallId.of(callId), expiresAt);
   }
 
   @Test
@@ -95,7 +99,10 @@ class ReminderSweepTest {
 
     sweep.sweep();
 
-    assertThat(reminders.find("chat", "agent-one", "call-1").orElseThrow())
+    assertThat(
+            reminders
+                .find(AgentType.of("chat"), AgentId.of("agent-one"), CallId.of("call-1"))
+                .orElseThrow())
         .extracting(Reminders.Reminder::expiresAt)
         .isEqualTo(NOON.plus(ReminderSweep.BACKOFF));
     assertThat(sweep.sweep()).isZero();
@@ -104,7 +111,7 @@ class ReminderSweepTest {
   @Test
   void a_cancelled_reminder_never_fires() {
     park("call-1", NOON.minusSeconds(1));
-    reminders.cancel("chat", "agent-one", "call-1");
+    reminders.cancel(AgentType.of("chat"), AgentId.of("agent-one"), CallId.of("call-1"));
 
     assertThat(sweep.sweep()).isZero();
     assertThat(delivered).isEmpty();
@@ -121,12 +128,6 @@ class ReminderSweepTest {
 
     assertThat(delivered)
         .extracting(ReminderSweep.Coordinates::callId)
-        .containsExactly("call-1", "call-2", "call-3");
-  }
-
-  @Test
-  @DisplayName("the payload carries an address and nothing else")
-  void coordinates_round_trip() {
-    assertThat(ReminderSweep.decode(ReminderSweep.encode(WHERE))).isEqualTo(WHERE);
+        .containsExactly(CallId.of("call-1"), CallId.of("call-2"), CallId.of("call-3"));
   }
 }

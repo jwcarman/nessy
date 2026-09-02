@@ -15,7 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
  * WHICH agent — one instance, within its {@link AgentType}.
@@ -26,17 +27,25 @@ import java.util.Objects;
  * <p>Chosen by the application, never minted here: an id is how the outside world names something
  * it already knows about — a house, a ticket, a customer — which is what makes an agent addressable
  * without a registry.
+ *
+ * <p>Chosen, but not arbitrary. An id is a primary-key column and an actor's address, so it is held
+ * to the shared identifier rule — printable, bounded, and free of characters something downstream
+ * reads as structure. An application whose own ids do not fit encodes them; that is a better
+ * conversation to have at the call site than in an index three days later.
  */
-public record AgentId(String value) {
+public record AgentId(@JsonValue String value) {
 
   public AgentId {
-    Objects.requireNonNull(value, "value must not be null");
-    if (value.isBlank()) {
-      throw new IllegalArgumentException("agent id must not be blank");
-    }
+    value = Identifier.checked("agent id", value);
   }
 
+  @JsonCreator
   public static AgentId of(String value) {
     return new AgentId(value);
+  }
+
+  @Override
+  public String toString() {
+    return value;
   }
 }

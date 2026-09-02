@@ -25,7 +25,7 @@ import org.apache.pekko.actor.typed.javadsl.AskPattern;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -56,7 +56,7 @@ public final class Replies {
   private final ActorSystem<?> system;
   private final Duration patience;
   private final ReplyTokens tokens;
-  private final Map<String, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
+  private final Map<AgentType, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
 
   private final Traces traces;
 
@@ -70,7 +70,7 @@ public final class Replies {
   }
 
   /** Called by the factory as each kind of agent gains a harness. */
-  void serving(String agentType, EntityTypeKey<NessyMessage> key) {
+  void serving(AgentType agentType, EntityTypeKey<NessyMessage> key) {
     agentTypes.put(agentType, key);
   }
 
@@ -82,7 +82,7 @@ public final class Replies {
     // answering on day three of a three-day term goes through the same door as one answering in two
     // milliseconds, which is the whole reason the agent has one message for both.
     claims.put(
-        AgentId.of(where.agentId()),
+        where.agentId(),
         where.turnId(),
         Instructions.resultKey(where.callId()),
         RESULTS.encode(result));
@@ -92,7 +92,7 @@ public final class Replies {
             new NessyMessage.ToolAnswered(
                 where.callId(),
                 replyTo,
-                traces.capture(where.agentType(), where.agentId(), "Answer")));
+                traces.capture(where.agentType().name(), where.agentId().value(), "Answer")));
   }
 
   /** A person's decision on a call that was waiting for one. */
@@ -105,7 +105,7 @@ public final class Replies {
         .ifPresent(
             denied ->
                 claims.put(
-                    AgentId.of(where.agentId()),
+                    where.agentId(),
                     where.turnId(),
                     Instructions.resultKey(where.callId()),
                     RESULTS.encode(denied)));
@@ -116,7 +116,7 @@ public final class Replies {
                 where.callId(),
                 result,
                 replyTo,
-                traces.capture(where.agentType(), where.agentId(), "Answer")));
+                traces.capture(where.agentType().name(), where.agentId().value(), "Answer")));
   }
 
   private CompletionStage<NessyMessage.Ack> ask(
@@ -133,7 +133,7 @@ public final class Replies {
               + " harness this process never created");
     }
     return AskPattern.ask(
-        ClusterSharding.get(system).entityRefFor(key, where.agentId()),
+        ClusterSharding.get(system).entityRefFor(key, where.agentId().value()),
         message::apply,
         patience,
         system.scheduler());

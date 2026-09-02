@@ -209,7 +209,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                     AgentActor.create(deps, AgentId.of(context.getEntityId()), context.getShard()))
             .withStopMessage(new NessyMessage.Stop(Map.of())));
 
-    replies.serving(type.name(), agentKey);
+    replies.serving(type, agentKey);
     return new ShardedHarness<>(type, agentKey, narrationKey, backlog, system, traces);
   }
 

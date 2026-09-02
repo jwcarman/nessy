@@ -24,6 +24,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 
@@ -64,18 +67,20 @@ class RemindersTest {
   @Test
   @DisplayName("a reminder due now is returned; one due later is not")
   void only_what_is_due_comes_back() {
-    reminders.remind(TYPE, AGENT, "past", NOON.minusSeconds(1));
-    reminders.remind(TYPE, AGENT, "future", NOON.plusSeconds(1));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("past"), NOON.minusSeconds(1));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("future"), NOON.plusSeconds(1));
 
     assertThat(reminders.due(NOON, 10))
         .extracting(Reminders.Reminder::callId)
-        .containsExactly("past");
+        .containsExactly(CallId.of("past"));
   }
 
   /** At-or-before, not strictly-before: a reminder due exactly now has come due. */
   @Test
   void the_boundary_instant_is_due() {
-    reminders.remind(TYPE, AGENT, "exactly", NOON);
+    reminders.remind(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("exactly"), NOON);
 
     assertThat(reminders.due(NOON, 10)).hasSize(1);
   }
@@ -84,19 +89,22 @@ class RemindersTest {
   @Test
   @DisplayName("earliest first, so a sweep can stop at the first one not yet due")
   void due_returns_them_in_order() {
-    reminders.remind(TYPE, AGENT, "third", NOON.minusSeconds(1));
-    reminders.remind(TYPE, AGENT, "first", NOON.minusSeconds(3));
-    reminders.remind(TYPE, AGENT, "second", NOON.minusSeconds(2));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("third"), NOON.minusSeconds(1));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("first"), NOON.minusSeconds(3));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("second"), NOON.minusSeconds(2));
 
     assertThat(reminders.due(NOON, 10))
         .extracting(Reminders.Reminder::callId)
-        .containsExactly("first", "second", "third");
+        .containsExactly(CallId.of("first"), CallId.of("second"), CallId.of("third"));
   }
 
   @Test
   void due_respects_its_limit() {
-    reminders.remind(TYPE, AGENT, "a", NOON.minusSeconds(3));
-    reminders.remind(TYPE, AGENT, "b", NOON.minusSeconds(2));
+    reminders.remind(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("a"), NOON.minusSeconds(3));
+    reminders.remind(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("b"), NOON.minusSeconds(2));
 
     assertThat(reminders.due(NOON, 1)).hasSize(1);
   }
@@ -108,45 +116,56 @@ class RemindersTest {
   @Test
   @DisplayName("reminding an existing key moves it rather than duplicating it")
   void remind_is_an_upsert() {
-    reminders.remind(TYPE, AGENT, "call-1", NOON.minusSeconds(1));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"), NOON.minusSeconds(1));
 
-    reminders.remind(TYPE, AGENT, "call-1", NOON.plusSeconds(60));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"), NOON.plusSeconds(60));
 
     assertThat(reminders.due(NOON, 10)).isEmpty();
-    assertThat(reminders.find(TYPE, AGENT, "call-1").orElseThrow().expiresAt())
+    assertThat(
+            reminders
+                .find(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"))
+                .orElseThrow()
+                .expiresAt())
         .isEqualTo(NOON.plusSeconds(60));
   }
 
   @Test
   @DisplayName("a restarted actor can read back what it was waiting for")
   void find_returns_the_remaining_term() {
-    reminders.remind(TYPE, AGENT, "call-1", NOON.plusSeconds(300));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"), NOON.plusSeconds(300));
 
-    Reminders.Reminder found = reminders.find(TYPE, AGENT, "call-1").orElseThrow();
+    Reminders.Reminder found =
+        reminders.find(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1")).orElseThrow();
 
     assertThat(found.expiresAt()).isEqualTo(NOON.plusSeconds(300));
-    assertThat(found.agentType()).isEqualTo(TYPE);
-    assertThat(found.agentId()).isEqualTo(AGENT);
-    assertThat(found.callId()).isEqualTo("call-1");
+    assertThat(found.agentType()).isEqualTo(AgentType.of(TYPE));
+    assertThat(found.agentId()).isEqualTo(AgentId.of(AGENT));
+    assertThat(found.callId()).isEqualTo(CallId.of("call-1"));
   }
 
   @Test
   void cancelling_removes_it() {
-    reminders.remind(TYPE, AGENT, "call-1", NOON.minusSeconds(1));
+    reminders.remind(
+        AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"), NOON.minusSeconds(1));
 
-    reminders.cancel(TYPE, AGENT, "call-1");
+    reminders.cancel(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1"));
 
     assertThat(reminders.due(NOON, 10)).isEmpty();
-    assertThat(reminders.find(TYPE, AGENT, "call-1")).isEmpty();
+    assertThat(reminders.find(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("call-1")))
+        .isEmpty();
   }
 
   /** A call can settle by more than one route, and each of them cancels. */
   @Test
   @DisplayName("cancelling something that was never there is silent")
   void cancelling_twice_is_not_an_error() {
-    reminders.cancel(TYPE, AGENT, "never-there");
+    reminders.cancel(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("never-there"));
 
-    assertThat(reminders.find(TYPE, AGENT, "never-there")).isEmpty();
+    assertThat(reminders.find(AgentType.of(TYPE), AgentId.of(AGENT), CallId.of("never-there")))
+        .isEmpty();
   }
 
   @Test
@@ -159,33 +178,49 @@ class RemindersTest {
   class Identity {
 
     @Test
-    @DisplayName("an agent id containing the old separator is just an id now")
+    @DisplayName("an id carrying a separator is just an id, because the key is columns")
     void two_agents_do_not_share_a_deadline() {
-      reminders.remind(TYPE, "acme/user-7", "c1", NOON.plusSeconds(60));
-      reminders.remind(TYPE, "acme", "user-7/c1", NOON.plusSeconds(120));
+      reminders.remind(
+          AgentType.of(TYPE), AgentId.of("acme:user-7"), CallId.of("c1"), NOON.plusSeconds(60));
+      reminders.remind(
+          AgentType.of(TYPE), AgentId.of("acme"), CallId.of("user-7:c1"), NOON.plusSeconds(120));
 
-      assertThat(reminders.find(TYPE, "acme/user-7", "c1").orElseThrow().expiresAt())
+      assertThat(
+              reminders
+                  .find(AgentType.of(TYPE), AgentId.of("acme:user-7"), CallId.of("c1"))
+                  .orElseThrow()
+                  .expiresAt())
           .as("a composed key made these one row, so arming one overwrote the other's deadline")
           .isEqualTo(NOON.plusSeconds(60));
-      assertThat(reminders.find(TYPE, "acme", "user-7/c1").orElseThrow().expiresAt())
+      assertThat(
+              reminders
+                  .find(AgentType.of(TYPE), AgentId.of("acme"), CallId.of("user-7:c1"))
+                  .orElseThrow()
+                  .expiresAt())
           .isEqualTo(NOON.plusSeconds(120));
     }
 
     @Test
     void cancelling_one_leaves_the_other_armed() {
-      reminders.remind(TYPE, "acme/user-7", "c1", NOON.plusSeconds(60));
-      reminders.remind(TYPE, "acme", "user-7/c1", NOON.plusSeconds(120));
+      reminders.remind(
+          AgentType.of(TYPE), AgentId.of("acme:user-7"), CallId.of("c1"), NOON.plusSeconds(60));
+      reminders.remind(
+          AgentType.of(TYPE), AgentId.of("acme"), CallId.of("user-7:c1"), NOON.plusSeconds(120));
 
-      reminders.cancel(TYPE, "acme/user-7", "c1");
+      reminders.cancel(AgentType.of(TYPE), AgentId.of("acme:user-7"), CallId.of("c1"));
 
-      assertThat(reminders.find(TYPE, "acme/user-7", "c1")).isEmpty();
-      assertThat(reminders.find(TYPE, "acme", "user-7/c1")).isPresent();
+      assertThat(reminders.find(AgentType.of(TYPE), AgentId.of("acme:user-7"), CallId.of("c1")))
+          .isEmpty();
+      assertThat(reminders.find(AgentType.of(TYPE), AgentId.of("acme"), CallId.of("user-7:c1")))
+          .isPresent();
     }
 
     @Test
     void two_agent_types_do_not_share_a_deadline() {
-      reminders.remind("watchman", AGENT, "c1", NOON.plusSeconds(60));
-      reminders.remind("chat", AGENT, "c1", NOON.plusSeconds(120));
+      reminders.remind(
+          AgentType.of("watchman"), AgentId.of(AGENT), CallId.of("c1"), NOON.plusSeconds(60));
+      reminders.remind(
+          AgentType.of("chat"), AgentId.of(AGENT), CallId.of("c1"), NOON.plusSeconds(120));
 
       assertThat(reminders.due(NOON.plusSeconds(200), 10)).hasSize(2);
     }

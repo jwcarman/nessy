@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -32,8 +34,8 @@ class DaysUntilToolTest {
     return new ToolCallRequest<>(
         AgentType.of("chat"),
         AgentId.of("one"),
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "days_until",
         new DaysUntilTool.Input(date),
         ReplyToken.of("unused"));

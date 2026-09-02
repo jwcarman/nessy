@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.block;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -40,7 +41,7 @@ public record ToolCallBlock(@JsonUnwrapped ToolCall call) implements ExchangeCon
   }
 
   /** The id this call must be answered under. */
-  public String id() {
+  public CallId id() {
     return call.id();
   }
 }

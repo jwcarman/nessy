@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.CallState;
@@ -51,14 +53,14 @@ class StateSerializerTest {
   @Test
   @DisplayName("a phase comes back as its own arm, not as the interface")
   void a_turn_calling_the_model_round_trips() {
-    AgentState written = AgentState.idle().taking("turn-1", "observation");
+    AgentState written = AgentState.idle().taking(TurnId.of("turn-1"), "observation");
 
     AgentState read =
         (AgentState)
             serializer.fromBinary(serializer.toBinary(written), serializer.manifest(written));
 
     assertThat(read.phase()).isInstanceOf(Phase.CallingModel.class);
-    assertThat(read.turnId()).isEqualTo("turn-1");
+    assertThat(read.turnId()).isEqualTo(TurnId.of("turn-1"));
     assertThat(read.observation()).isEqualTo("observation");
   }
 
@@ -67,30 +69,36 @@ class StateSerializerTest {
   void the_call_states_round_trip() {
     AgentState written =
         AgentState.idle()
-            .taking("turn-1", "observation")
+            .taking(TurnId.of("turn-1"), "observation")
             .at(
                 new Phase.WorkingTools(
                     Map.of(
-                        "a", new CallState.Approving("send_email"),
-                        "b", new CallState.Running("read_file"),
-                        "c", new CallState.Parked(),
-                        "d", new CallState.Completed())));
+                        CallId.of("a"),
+                        new CallState.Approving("send_email"),
+                        CallId.of("b"),
+                        new CallState.Running("read_file"),
+                        CallId.of("c"),
+                        new CallState.Parked(),
+                        CallId.of("d"),
+                        new CallState.Completed())));
 
     AgentState read =
         (AgentState)
             serializer.fromBinary(serializer.toBinary(written), serializer.manifest(written));
 
     assertThat(read.working().calls())
-        .containsEntry("a", new CallState.Approving("send_email"))
-        .containsEntry("b", new CallState.Running("read_file"))
-        .containsEntry("c", new CallState.Parked())
-        .containsEntry("d", new CallState.Completed());
+        .containsEntry(CallId.of("a"), new CallState.Approving("send_email"))
+        .containsEntry(CallId.of("b"), new CallState.Running("read_file"))
+        .containsEntry(CallId.of("c"), new CallState.Parked())
+        .containsEntry(CallId.of("d"), new CallState.Completed());
   }
 
   @Test
   void what_a_turn_has_cost_survives_a_restart() {
     AgentState written =
-        AgentState.idle().taking("turn-1", "observation").spending(new Usage(10, 20, null, null));
+        AgentState.idle()
+            .taking(TurnId.of("turn-1"), "observation")
+            .spending(new Usage(10, 20, null, null));
 
     AgentState read =
         (AgentState)

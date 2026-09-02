@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
@@ -112,7 +113,9 @@ class ReminderExpiryTest {
                         List.of(
                             new ToolCallBlock(
                                 new ToolCall(
-                                    "c1", "send_email", JsonNodeFactory.instance.objectNode()))),
+                                    CallId.of("c1"),
+                                    "send_email",
+                                    JsonNodeFactory.instance.objectNode()))),
                         new Usage(1, 1)));
               }
             };
@@ -195,8 +198,8 @@ class ReminderExpiryTest {
       await()
           .atMost(15, SECONDS)
           .untilAsserted(
-              () -> assertThat(reminders.find(WATCHMAN.name(), HOUSE.value(), "c1")).isPresent());
-      assertThat(reminders.find(WATCHMAN.name(), HOUSE.value(), "c1").orElseThrow().expiresAt())
+              () -> assertThat(reminders.find(WATCHMAN, HOUSE, CallId.of("c1"))).isPresent());
+      assertThat(reminders.find(WATCHMAN, HOUSE, CallId.of("c1")).orElseThrow().expiresAt())
           .isEqualTo(PARKED_AT.plus(TERM));
 
       // Three days later, without waiting three days: the sweep's clock is a parameter.
@@ -210,8 +213,8 @@ class ReminderExpiryTest {
               (where, expired) ->
                   ClusterSharding.get(testKit.system())
                       .entityRefFor(
-                          EntityTypeKey.create(NessyMessage.class, where.agentType()),
-                          where.agentId())
+                          EntityTypeKey.create(NessyMessage.class, where.agentType().name()),
+                          where.agentId().value())
                       .tell(expired));
 
       assertThat(sweep.sweep()).isEqualTo(1);

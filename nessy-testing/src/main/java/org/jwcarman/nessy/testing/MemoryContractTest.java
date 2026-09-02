@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.memory.Memory;
@@ -89,11 +90,11 @@ public abstract class MemoryContractTest {
   @Test
   void anExchangeIsRememberedWhole() {
     Memory memory = freshMemory();
-    ToolCall call = new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode());
+    ToolCall call = new ToolCall(CallId.of("c1"), "lookup", JsonNodeFactory.instance.objectNode());
     ExchangeMessage exchange =
         new ExchangeMessage(
             List.of(new ToolCallBlock(call)),
-            List.of(ToolResultBlock.of("c1", ToolResult.ok("42"))));
+            List.of(ToolResultBlock.of(CallId.of("c1"), ToolResult.ok("42"))));
 
     memory.remember(ONE, exchange);
 

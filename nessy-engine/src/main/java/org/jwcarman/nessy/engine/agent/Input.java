@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.List;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -46,7 +48,7 @@ public sealed interface Input {
   record BacklogUpdated() implements Input {}
 
   /** The store handed over a row: its id is the turn id, and its claim holds the rendered input. */
-  record WorkTaken(String turnId, String observationClaim) implements Input {}
+  record WorkTaken(TurnId turnId, String observationClaim) implements Input {}
 
   /** The store had nothing waiting. */
   record NoWork() implements Input {}
@@ -72,19 +74,19 @@ public sealed interface Input {
   }
 
   /** Bounded: an id and a name, which is all the logic needs to decide what to dispatch. */
-  record CallSummary(String callId, String toolName) {}
+  record CallSummary(CallId callId, String toolName) {}
 
   /** The call did not happen — a rate limit, a timeout, a connection reset. */
   record ModelFailed(String reason) implements Input {}
 
   /** The approver answered. The reason inside is short prose a person wrote. */
-  record ApprovalGiven(String callId, String toolName, ApprovalResult result) implements Input {}
+  record ApprovalGiven(CallId callId, String toolName, ApprovalResult result) implements Input {}
 
   /** The tool will answer later; someone holds a reply token. */
-  record ToolParked(String callId, java.time.Instant expiresAt) implements Input {}
+  record ToolParked(CallId callId, java.time.Instant expiresAt) implements Input {}
 
   /** The tool answered, whoever asked and however long it took. Its result is in claims. */
-  record ToolCompleted(String callId) implements Input {}
+  record ToolCompleted(CallId callId) implements Input {}
 
   /**
    * Time ran out on a call.
@@ -93,7 +95,7 @@ public sealed interface Input {
    * get to decide what that means. Whether a timeout is a denial, an error or a retry is policy,
    * and policy belongs where it is testable.
    */
-  record DeadlinePassed(String callId) implements Input {}
+  record DeadlinePassed(CallId callId) implements Input {}
 
   /** The idle linger elapsed with nothing to do. */
   record SleepNow() implements Input {}

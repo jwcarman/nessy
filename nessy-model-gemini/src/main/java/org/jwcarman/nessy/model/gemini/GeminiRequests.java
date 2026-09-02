@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ProviderBlock;
@@ -103,7 +104,7 @@ public final class GeminiRequests {
    * than an empty one with nothing for the model to see.
    */
   public static List<Content> toContents(ModelRequest request) {
-    Map<String, String> callNamesById = collectCallNames(request.context().messages());
+    Map<CallId, String> callNamesById = collectCallNames(request.context().messages());
     List<Content> contents = new ArrayList<>();
     for (ContextMessage message : request.context().messages()) {
       contents.addAll(toContents(message, callNamesById));
@@ -162,8 +163,8 @@ public final class GeminiRequests {
         .build();
   }
 
-  private static Map<String, String> collectCallNames(List<ContextMessage> messages) {
-    Map<String, String> names = new HashMap<>();
+  private static Map<CallId, String> collectCallNames(List<ContextMessage> messages) {
+    Map<CallId, String> names = new HashMap<>();
     for (ContextMessage message : messages) {
       if (!(message instanceof ExchangeMessage exchange)) {
         continue;
@@ -186,7 +187,7 @@ public final class GeminiRequests {
    * <p>Ambient content produces nothing: it goes to {@code systemInstruction}.
    */
   private static List<Content> toContents(
-      ContextMessage message, Map<String, String> callNamesById) {
+      ContextMessage message, Map<CallId, String> callNamesById) {
     return switch (message) {
       case UserMessage user -> toUserContent(user.content(), callNamesById).stream().toList();
       case AnswerMessage answer -> toModelContent(answer.content()).stream().toList();
@@ -209,12 +210,12 @@ public final class GeminiRequests {
    * function they answer.
    */
   private static Optional<Content> toUserContent(
-      List<? extends Block> content, Map<String, String> callNamesById) {
+      List<? extends Block> content, Map<CallId, String> callNamesById) {
     var parts = content.stream().map(block -> toUserPart(block, callNamesById)).toList();
     return Optional.of(Content.builder().role("user").parts(parts).build());
   }
 
-  private static Part toUserPart(Block block, Map<String, String> callNamesById) {
+  private static Part toUserPart(Block block, Map<CallId, String> callNamesById) {
     return switch (block) {
       case TextBlock(String text) -> Part.fromText(text);
       case ToolResultBlock result -> toFunctionResponsePart(result, callNamesById);
@@ -245,7 +246,7 @@ public final class GeminiRequests {
   }
 
   private static Part toFunctionResponsePart(
-      ToolResultBlock result, Map<String, String> callNamesById) {
+      ToolResultBlock result, Map<CallId, String> callNamesById) {
     String name = callNamesById.get(result.toolUseId());
     if (name == null) {
       throw new IllegalArgumentException(
@@ -260,7 +261,7 @@ public final class GeminiRequests {
   private static Optional<Content> toModelContent(List<? extends Block> content) {
     // Gemini ties a thought signature to a specific function call, so the state blocks are indexed
     // by the call they belong to before the parts are built.
-    Map<String, String> signatures = signaturesByCallId(content);
+    Map<CallId, String> signatures = signaturesByCallId(content);
     List<Part> parts = new ArrayList<>();
     for (Block block : content) {
       toModelPart(block, signatures).ifPresent(parts::add);
@@ -277,18 +278,19 @@ public final class GeminiRequests {
    * <p>A block another provider issued is skipped — a transcript outlives a model choice, and a
    * rival's opaque state means nothing here.
    */
-  private static Map<String, String> signaturesByCallId(List<? extends Block> content) {
-    Map<String, String> signatures = new java.util.HashMap<>();
+  private static Map<CallId, String> signaturesByCallId(List<? extends Block> content) {
+    Map<CallId, String> signatures = new java.util.HashMap<>();
     for (Block block : content) {
       if (block instanceof ProviderBlock(String provider, JsonNode data)
           && GeminiModelProvider.PROVIDER.equals(provider)) {
-        signatures.put(data.path("callId").asText(), data.path("thoughtSignature").asText());
+        signatures.put(
+            CallId.of(data.path("callId").asText()), data.path("thoughtSignature").asText());
       }
     }
     return signatures;
   }
 
-  private static Optional<Part> toModelPart(Block block, Map<String, String> signatures) {
+  private static Optional<Part> toModelPart(Block block, Map<CallId, String> signatures) {
     return switch (block) {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
       case CommentaryBlock(String text) -> Optional.of(Part.fromText(text));

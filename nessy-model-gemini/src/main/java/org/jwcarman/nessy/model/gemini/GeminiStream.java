@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -227,7 +228,7 @@ final class GeminiStream implements ModelStream {
               .orElseThrow(() -> new IllegalStateException("function call arrived with no name"));
       Map<String, Object> args = call.args().orElse(Map.of());
       JsonNode arguments = MAPPER.valueToTree(args);
-      ToolCall toolCall = new ToolCall(id, name, arguments);
+      ToolCall toolCall = new ToolCall(CallId.of(id), name, arguments);
       // The signature is state Gemini wants back, tied to THIS call — so it travels as provider
       // state naming the call, rather than riding on a tool-call event every other vendor shares.
       part.thoughtSignature()

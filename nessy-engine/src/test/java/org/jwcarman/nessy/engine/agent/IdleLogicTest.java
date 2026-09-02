@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.TurnId;
 
 @DisplayName("What an idle agent decides")
 class IdleLogicTest {
@@ -37,7 +38,7 @@ class IdleLogicTest {
 
     @Test
     void a_busy_agent_ignores_it_because_going_idle_always_takes() {
-      AgentState busy = AgentState.idle().taking("turn-1", "claim-1");
+      AgentState busy = AgentState.idle().taking(TurnId.of("turn-1"), "claim-1");
 
       Decision decision = AgentLogic.decide(busy, new Input.BacklogUpdated());
 
@@ -52,9 +53,9 @@ class IdleLogicTest {
     @Test
     void taking_work_starts_a_turn_on_the_backlog_rows_own_id() {
       Decision decision =
-          AgentLogic.decide(AgentState.idle(), new Input.WorkTaken("turn-7", "claim-7"));
+          AgentLogic.decide(AgentState.idle(), new Input.WorkTaken(TurnId.of("turn-7"), "claim-7"));
 
-      assertThat(decision.next().turnId()).isEqualTo("turn-7");
+      assertThat(decision.next().turnId()).isEqualTo(TurnId.of("turn-7"));
       assertThat(decision.next().observation()).isEqualTo("claim-7");
       assertThat(decision.next().phase()).isInstanceOf(Phase.CallingModel.class);
     }
@@ -62,11 +63,11 @@ class IdleLogicTest {
     @Test
     void taking_work_announces_the_turn_before_it_calls_the_model() {
       Decision decision =
-          AgentLogic.decide(AgentState.idle(), new Input.WorkTaken("turn-7", "claim-7"));
+          AgentLogic.decide(AgentState.idle(), new Input.WorkTaken(TurnId.of("turn-7"), "claim-7"));
 
       assertThat(decision.then())
           .containsExactly(
-              new Instruction.Narrate.TurnStarted("turn-7"),
+              new Instruction.Narrate.TurnStarted(TurnId.of("turn-7")),
               new Instruction.Remember.Input(),
               new Instruction.CallModel());
     }

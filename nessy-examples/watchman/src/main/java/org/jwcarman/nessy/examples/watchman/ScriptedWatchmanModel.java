@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.message.ContextMessage;
 import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.model.ModelId;
@@ -68,7 +69,8 @@ public final class ScriptedWatchmanModel implements Model {
       events.add(new ModelEvent.TextChunk("Checking the disks."));
       events.add(
           new ModelEvent.ToolCallEmitted(
-              new ToolCall("call-1", "disk_usage", JsonNodeFactory.instance.objectNode())));
+              new ToolCall(
+                  CallId.of("call-1"), "disk_usage", JsonNodeFactory.instance.objectNode())));
       events.add(new ModelEvent.Stopped(StopReason.TOOL_USE, USAGE));
     }
     return new ModelStream() {

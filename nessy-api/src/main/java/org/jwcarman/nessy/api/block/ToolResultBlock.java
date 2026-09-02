@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.block;
 
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -38,7 +39,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *     reaches the wire as a result block.
  */
 public record ToolResultBlock(
-    String toolUseId, List<ToolResultContentBlock> content, boolean isError) implements Block {
+    CallId toolUseId, List<ToolResultContentBlock> content, boolean isError) implements Block {
 
   public ToolResultBlock {
     Objects.requireNonNull(toolUseId, "toolUseId must not be null");
@@ -51,7 +52,7 @@ public record ToolResultBlock(
    * sealed success/failure distinction flattens to the {@code isError} flag the providers model.
    * Keeping it in a single method is what stops the two representations drifting apart.
    */
-  public static ToolResultBlock of(String toolUseId, ToolResult result) {
+  public static ToolResultBlock of(CallId toolUseId, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     return switch (result) {
       case ToolResult.Success success -> new ToolResultBlock(toolUseId, success.content(), false);

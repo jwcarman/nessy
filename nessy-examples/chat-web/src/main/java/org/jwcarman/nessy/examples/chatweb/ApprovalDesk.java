@@ -24,6 +24,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.springframework.stereotype.Component;
@@ -67,22 +69,22 @@ public class ApprovalDesk {
 
   /** One question, as both the page and the answer path need it. */
   public record Waiting(
-      String agentId,
-      String callId,
+      AgentId agentId,
+      CallId callId,
       String tool,
       String arguments,
       String description,
       Instant askedAt,
       ReplyToken replyToken) {}
 
-  private final ConcurrentMap<String, Waiting> waiting = new ConcurrentHashMap<>();
+  private final ConcurrentMap<CallId, Waiting> waiting = new ConcurrentHashMap<>();
 
   /** Records a question the approver has just deferred. */
   public void expecting(ApprovalRequest request, ReplyToken replyToken) {
     waiting.put(
         request.callId(),
         new Waiting(
-            request.agentId().value(),
+            request.agentId(),
             request.callId(),
             request.toolName(),
             request.arguments().toPrettyString(),
@@ -92,7 +94,7 @@ public class ApprovalDesk {
   }
 
   /** Everything still waiting on this agent, oldest first. */
-  public List<Map<String, ?>> pending(String agentId) {
+  public List<Map<String, ?>> pending(AgentId agentId) {
     return waiting.values().stream()
         .filter(question -> question.agentId().equals(agentId))
         .sorted(java.util.Comparator.comparing(Waiting::askedAt))
@@ -101,9 +103,9 @@ public class ApprovalDesk {
   }
 
   /** One question as the page draws it — no token. */
-  public Map<String, ?> card(String callId) {
+  public Map<String, ?> card(CallId callId) {
     Waiting question = waiting.get(callId);
-    return question == null ? Map.of("id", callId) : render(question);
+    return question == null ? Map.of("id", callId.value()) : render(question);
   }
 
   /**
@@ -113,13 +115,13 @@ public class ApprovalDesk {
    * and only the click that actually took the question gets to answer it. The loser is told the
    * question is gone rather than being allowed to settle a call twice.
    */
-  public Optional<Waiting> take(String callId) {
+  public Optional<Waiting> take(CallId callId) {
     return Optional.ofNullable(waiting.remove(callId));
   }
 
   private static Map<String, ?> render(Waiting question) {
     return Map.of(
-        "id", question.callId(),
+        "id", question.callId().value(),
         "tool", question.tool(),
         "args", question.arguments(),
         "what", question.description(),

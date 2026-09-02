@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * The question put to an approver.
@@ -44,8 +46,8 @@ class ApprovalRequestTest {
     return new ApprovalRequest(
         WATCHMAN,
         HOUSE,
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "prune_images",
         JsonNodeFactory.instance.objectNode(),
         "docker image prune -af",
@@ -135,8 +137,8 @@ class ApprovalRequestTest {
                   new ApprovalRequest(
                       WATCHMAN,
                       HOUSE,
-                      "turn-1",
-                      "c1",
+                      TurnId.of("turn-1"),
+                      CallId.of("c1"),
                       "prune_images",
                       JsonNodeFactory.instance.objectNode(),
                       null,

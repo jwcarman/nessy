@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
@@ -146,7 +147,7 @@ class ScriptedModelTest {
         .containsExactly(
             new ModelEvent.ReasoningChunk("pondering"),
             new ModelEvent.ProviderStateEmitted("anthropic", state),
-            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args)),
+            new ModelEvent.ToolCallEmitted(new ToolCall(CallId.of("c1"), "read_file", args)),
             new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 
@@ -170,7 +171,7 @@ class ScriptedModelTest {
     assertThat(drain(model.stream(request())))
         .containsExactly(
             new ModelEvent.ProviderStateEmitted("gcp.gemini", state),
-            new ModelEvent.ToolCallEmitted(new ToolCall("c1", "read_file", args)),
+            new ModelEvent.ToolCallEmitted(new ToolCall(CallId.of("c1"), "read_file", args)),
             new ModelEvent.Stopped(StopReason.TOOL_USE, Usage.unreported()));
   }
 

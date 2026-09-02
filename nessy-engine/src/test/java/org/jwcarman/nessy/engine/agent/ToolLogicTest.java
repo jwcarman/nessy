@@ -21,13 +21,17 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 
 @DisplayName("What an agent does while its tools run")
 class ToolLogicTest {
 
-  private static AgentState working(Map<String, CallState> calls) {
-    return AgentState.idle().taking("turn-1", "claim-1").at(new Phase.WorkingTools(calls));
+  private static AgentState working(Map<CallId, CallState> calls) {
+    return AgentState.idle()
+        .taking(TurnId.of("turn-1"), "claim-1")
+        .at(new Phase.WorkingTools(calls));
   }
 
   @Nested
@@ -37,12 +41,12 @@ class ToolLogicTest {
     void an_approved_call_runs() {
       Decision decision =
           AgentLogic.decide(
-              working(Map.of("a", new CallState.Approving("send_email"))),
-              new Input.ApprovalGiven("a", "send_email", ApprovalResult.approved()));
+              working(Map.of(CallId.of("a"), new CallState.Approving("send_email"))),
+              new Input.ApprovalGiven(CallId.of("a"), "send_email", ApprovalResult.approved()));
 
       assertThat(decision.next().working().calls())
-          .containsEntry("a", new CallState.Running("send_email"));
-      assertThat(decision.then()).contains(new Instruction.RunTool("a", "send_email"));
+          .containsEntry(CallId.of("a"), new CallState.Running("send_email"));
+      assertThat(decision.then()).contains(new Instruction.RunTool(CallId.of("a"), "send_email"));
     }
 
     @Test
@@ -51,11 +55,14 @@ class ToolLogicTest {
           AgentLogic.decide(
               working(
                   Map.of(
-                      "a", new CallState.Approving("send_email"),
-                      "b", new CallState.Running("read_file"))),
-              new Input.ApprovalGiven("a", "send_email", ApprovalResult.denied("no")));
+                      CallId.of("a"),
+                      new CallState.Approving("send_email"),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
+              new Input.ApprovalGiven(CallId.of("a"), "send_email", ApprovalResult.denied("no")));
 
-      assertThat(decision.next().working().calls()).containsEntry("a", new CallState.Completed());
+      assertThat(decision.next().working().calls())
+          .containsEntry(CallId.of("a"), new CallState.Completed());
       assertThat(decision.then()).isNotEmpty();
       assertThat(decision.then()).noneMatch(Instruction.RunTool.class::isInstance);
     }
@@ -66,9 +73,11 @@ class ToolLogicTest {
           AgentLogic.decide(
               working(
                   Map.of(
-                      "a", new CallState.Approving("send_email"),
-                      "b", new CallState.Running("read_file"))),
-              new Input.ApprovalGiven("a", "send_email", ApprovalResult.denied("no")));
+                      CallId.of("a"),
+                      new CallState.Approving("send_email"),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
+              new Input.ApprovalGiven(CallId.of("a"), "send_email", ApprovalResult.denied("no")));
 
       assertThat(decision.next().busy()).isTrue();
       assertThat(decision.then()).noneMatch(Instruction.Release.class::isInstance);
@@ -82,21 +91,23 @@ class ToolLogicTest {
     void a_parked_call_arms_an_alarm_that_outlives_this_process() {
       Decision decision =
           AgentLogic.decide(
-              working(Map.of("a", new CallState.Running("send_email"))),
-              new Input.ToolParked("a", java.time.Instant.EPOCH));
+              working(Map.of(CallId.of("a"), new CallState.Running("send_email"))),
+              new Input.ToolParked(CallId.of("a"), java.time.Instant.EPOCH));
 
-      assertThat(decision.next().working().calls()).containsEntry("a", new CallState.Parked());
+      assertThat(decision.next().working().calls())
+          .containsEntry(CallId.of("a"), new CallState.Parked());
       assertThat(decision.then())
-          .containsExactly(new Instruction.SetAlarm("a", java.time.Instant.EPOCH));
+          .containsExactly(new Instruction.SetAlarm(CallId.of("a"), java.time.Instant.EPOCH));
     }
 
     @Test
     void an_answer_that_finally_arrives_disarms_it() {
       Decision decision =
           AgentLogic.decide(
-              working(Map.of("a", new CallState.Parked())), new Input.ToolCompleted("a"));
+              working(Map.of(CallId.of("a"), new CallState.Parked())),
+              new Input.ToolCompleted(CallId.of("a")));
 
-      assertThat(decision.then()).contains(new Instruction.CancelAlarm("a"));
+      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
     }
   }
 
@@ -108,8 +119,12 @@ class ToolLogicTest {
       Decision decision =
           AgentLogic.decide(
               working(
-                  Map.of("a", new CallState.Completed(), "b", new CallState.Running("read_file"))),
-              new Input.ToolCompleted("b"));
+                  Map.of(
+                      CallId.of("a"),
+                      new CallState.Completed(),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
+              new Input.ToolCompleted(CallId.of("b")));
 
       assertThat(decision.next().phase()).isInstanceOf(Phase.CallingModel.class);
       assertThat(decision.then()).contains(new Instruction.CallModel());
@@ -121,12 +136,14 @@ class ToolLogicTest {
           AgentLogic.decide(
               working(
                   Map.of(
-                      "a", new CallState.Running("send_email"),
-                      "b", new CallState.Running("read_file"))),
-              new Input.ToolCompleted("a"));
+                      CallId.of("a"),
+                      new CallState.Running("send_email"),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
+              new Input.ToolCompleted(CallId.of("a")));
 
       assertThat(decision.next().working().calls())
-          .containsEntry("b", new CallState.Running("read_file"));
+          .containsEntry(CallId.of("b"), new CallState.Running("read_file"));
       assertThat(decision.then()).isNotEmpty();
       assertThat(decision.then()).noneMatch(Instruction.CallModel.class::isInstance);
     }
@@ -135,10 +152,16 @@ class ToolLogicTest {
     void a_deadline_completes_the_call_rather_than_ending_the_turn() {
       Decision decision =
           AgentLogic.decide(
-              working(Map.of("a", new CallState.Parked(), "b", new CallState.Running("read_file"))),
-              new Input.DeadlinePassed("a"));
+              working(
+                  Map.of(
+                      CallId.of("a"),
+                      new CallState.Parked(),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
+              new Input.DeadlinePassed(CallId.of("a")));
 
-      assertThat(decision.next().working().calls()).containsEntry("a", new CallState.Completed());
+      assertThat(decision.next().working().calls())
+          .containsEntry(CallId.of("a"), new CallState.Completed());
       assertThat(decision.next().busy()).isTrue();
     }
   }

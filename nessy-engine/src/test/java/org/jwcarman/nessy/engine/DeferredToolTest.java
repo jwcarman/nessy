@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
@@ -138,7 +139,9 @@ class DeferredToolTest {
                 arguments.put("what", "sweep the hall");
                 return Scripts.saying(
                     new ModelResult.Asked(
-                        List.of(new ToolCallBlock(new ToolCall("c1", "start_job", arguments))),
+                        List.of(
+                            new ToolCallBlock(
+                                new ToolCall(CallId.of("c1"), "start_job", arguments))),
                         new Usage(1, 1)));
               }
             };

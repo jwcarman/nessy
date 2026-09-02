@@ -21,6 +21,7 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscriber;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 
@@ -53,7 +54,7 @@ public class PendingApprovalsListener implements AgentSubscriber {
   private final AgentType agentType;
   private final AgentId agentId;
   private final Clock clock;
-  private final java.util.Map<String, ReplyToken> addresses =
+  private final java.util.Map<CallId, ReplyToken> addresses =
       new java.util.concurrent.ConcurrentHashMap<>();
 
   public PendingApprovalsListener(
@@ -68,7 +69,7 @@ public class PendingApprovalsListener implements AgentSubscriber {
    * Told by an approver, at the moment it decided a person was needed, where that person's answer
    * should go.
    */
-  public void expecting(String callId, ReplyToken replyTo) {
+  public void expecting(CallId callId, ReplyToken replyTo) {
     addresses.put(Objects.requireNonNull(callId, "callId must not be null"), replyTo);
   }
 
@@ -92,8 +93,8 @@ public class PendingApprovalsListener implements AgentSubscriber {
     repository.asked(
         new PendingApproval(
             asked.callId(),
-            agentType.name(),
-            agentId.value(),
+            agentType,
+            agentId,
             asked.toolName(),
             asked.description(),
             clock.instant(),
@@ -107,8 +108,7 @@ public class PendingApprovalsListener implements AgentSubscriber {
   private void settle(AgentEvent.ApprovalDecided decided) {
     String answer = decided.result() instanceof ApprovalResult.Approved ? "approved" : "denied";
     String note = decided.result() instanceof ApprovalResult.Denied denied ? denied.reason() : null;
-    repository.answered(
-        agentType.name(), agentId.value(), decided.callId(), answer, note, clock.instant());
+    repository.answered(agentType, agentId, decided.callId(), answer, note, clock.instant());
     addresses.remove(decided.callId());
   }
 }

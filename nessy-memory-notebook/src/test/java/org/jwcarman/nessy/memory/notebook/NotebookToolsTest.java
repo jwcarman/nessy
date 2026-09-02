@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.AmbientMessage;
@@ -55,7 +57,13 @@ class NotebookToolsTest {
   /** What the engine hands a running tool. No mocking library, and none needed. */
   private static <I> ToolCallRequest<I> callBy(AgentId agentId, I input) {
     return new ToolCallRequest<>(
-        TYPE, agentId, "turn-1", "c1", "a_tool", input, ReplyToken.of("unused"));
+        TYPE,
+        agentId,
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
+        "a_tool",
+        input,
+        ReplyToken.of("unused"));
   }
 
   /**

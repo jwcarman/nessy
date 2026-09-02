@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.ExchangeContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
@@ -32,7 +33,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class ContextTest {
 
   private static ToolCall call(String id) {
-    return new ToolCall(id, "read_file", JsonNodeFactory.instance.objectNode());
+    return new ToolCall(CallId.of(id), "read_file", JsonNodeFactory.instance.objectNode());
   }
 
   private static UserMessage user(String text) {
@@ -52,7 +53,7 @@ class ContextTest {
     return new ExchangeMessage(
         blocks,
         java.util.Arrays.stream(callIds)
-            .map(id -> ToolResultBlock.of(id, ToolResult.ok("ok")))
+            .map(id -> ToolResultBlock.of(CallId.of(id), ToolResult.ok("ok")))
             .toList());
   }
 
@@ -144,7 +145,7 @@ class ContextTest {
       assertThat(elided.results())
           .allSatisfy(
               block -> {
-                assertThat(block.toolUseId()).isEqualTo("a");
+                assertThat(block.toolUseId()).isEqualTo(CallId.of("a"));
                 assertThat(block.content()).containsExactly(new TextBlock("[elided]"));
               });
     }

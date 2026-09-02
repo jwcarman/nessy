@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
@@ -126,7 +127,7 @@ class ModelRepliesTest {
   @Test
   @DisplayName("prose said on the way to a call is commentary, not an answer")
   void prose_before_a_tool_call_becomes_commentary() {
-    ToolCall call = new ToolCall("c1", "look_up", JsonNodeFactory.instance.objectNode());
+    ToolCall call = new ToolCall(CallId.of("c1"), "look_up", JsonNodeFactory.instance.objectNode());
 
     ModelResult result =
         ModelReplies.drain(

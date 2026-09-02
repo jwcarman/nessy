@@ -33,6 +33,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -367,7 +368,7 @@ public final class AnthropicStream implements ModelStream {
       if (!arguments.isObject()) {
         throw new IllegalStateException(describeFailure("did not parse to a JSON object", json));
       }
-      return new ToolCall(id, name, arguments);
+      return new ToolCall(CallId.of(id), name, arguments);
     }
 
     private String describeFailure(String problem, String json) {

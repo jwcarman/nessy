@@ -34,6 +34,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.ImageBlock;
 import org.jwcarman.nessy.api.block.ProviderBlock;
@@ -273,12 +274,13 @@ class AnthropicRequestsTest {
     void a_mixed_message_keeps_its_surviving_blocks_in_order() {
       var unsigned = providerState("thinking", "cut off before signing", "");
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
       var said = new CommentaryBlock("the visible answer");
       var assistantMessage =
           new ExchangeMessage(
               List.of(unsigned, toolUse, said),
-              List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
@@ -297,10 +299,11 @@ class AnthropicRequestsTest {
     void become_a_tool_use_block_with_the_call_id_name_and_arguments() {
       ObjectNode arguments = MAPPER.createObjectNode();
       arguments.put("path", "README.md");
-      var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
+      var toolUse = new ToolCallBlock(new ToolCall(CallId.of("call-1"), "read_file", arguments));
       var assistantMessage =
           new ExchangeMessage(
-              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
@@ -317,10 +320,11 @@ class AnthropicRequestsTest {
       // ToolCall.arguments() is typed as JsonNode, not ObjectNode; a non-object node (an array,
       // here) must not blow up toInput — it simply carries no additional properties across.
       var arguments = MAPPER.createArrayNode().add("unexpected");
-      var toolUse = new ToolCallBlock(new ToolCall("call-1", "read_file", arguments));
+      var toolUse = new ToolCallBlock(new ToolCall(CallId.of("call-1"), "read_file", arguments));
       var assistantMessage =
           new ExchangeMessage(
-              List.of(toolUse), List.of(ToolResultBlock.of("call-1", ToolResult.ok("ok"))));
+              List.of(toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
       var params =
           AnthropicRequests.toParams(
               request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
@@ -354,8 +358,9 @@ class AnthropicRequestsTest {
     @Test
     void become_a_user_tool_result_block_carrying_is_error() {
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-1", ToolResult.error("file not found"));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of(CallId.of("call-1"), ToolResult.error("file not found"));
       var params =
           AnthropicRequests.toParams(
               request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))),
@@ -373,8 +378,9 @@ class AnthropicRequestsTest {
     @Test
     void a_successful_result_carries_is_error_false() {
       var toolUse =
-          new ToolCallBlock(new ToolCall("call-2", "read_file", MAPPER.createObjectNode()));
-      var result = ToolResultBlock.of("call-2", ToolResult.ok("42"));
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-2"), "read_file", MAPPER.createObjectNode()));
+      var result = ToolResultBlock.of(CallId.of("call-2"), ToolResult.ok("42"));
       var params =
           AnthropicRequests.toParams(
               request(List.of(new ExchangeMessage(List.of(toolUse), List.of(result)))),

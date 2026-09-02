@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jwcarman.nessy.api.CallId;
 
 /**
  * What the agent is doing, as data rather than as an actor's position in a behavior tree.
@@ -49,15 +50,15 @@ public sealed interface Phase {
    * whatever a tool decided to hand back — keeping it here would make the document grow with what
    * its tools do, which is the thing claims exist to prevent.
    */
-  record WorkingTools(Map<String, CallState> calls) implements Phase {
+  record WorkingTools(Map<CallId, CallState> calls) implements Phase {
 
     public WorkingTools {
       calls = Map.copyOf(calls);
     }
 
     /** The same phase with one call in a new state. */
-    public WorkingTools with(String callId, CallState state) {
-      Map<String, CallState> next = new LinkedHashMap<>(calls);
+    public WorkingTools with(CallId callId, CallState state) {
+      Map<CallId, CallState> next = new LinkedHashMap<>(calls);
       next.put(callId, state);
       return new WorkingTools(next);
     }

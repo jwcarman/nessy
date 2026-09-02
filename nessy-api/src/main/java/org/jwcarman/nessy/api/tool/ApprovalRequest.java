@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * The question an approver answers: this agent wants to make this call, and here is what it means.
@@ -67,8 +69,8 @@ import org.jwcarman.nessy.api.AgentType;
 public record ApprovalRequest(
     AgentType agentType,
     AgentId agentId,
-    String turnId,
-    String callId,
+    TurnId turnId,
+    CallId callId,
     String toolName,
     JsonNode arguments,
     String action,
@@ -93,8 +95,8 @@ public record ApprovalRequest(
   public ApprovalRequest(
       AgentType agentType,
       AgentId agentId,
-      String turnId,
-      String callId,
+      TurnId turnId,
+      CallId callId,
       String toolName,
       JsonNode arguments,
       String action,
@@ -125,7 +127,7 @@ public record ApprovalRequest(
    * — two turns can each produce a "call_1".
    */
   public String callKey() {
-    return turnId + "/" + callId;
+    return turnId.value() + "/" + callId.value();
   }
 
   /**

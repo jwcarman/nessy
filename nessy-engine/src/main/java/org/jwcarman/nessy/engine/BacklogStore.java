@@ -27,6 +27,7 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.ObservationRenderer;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
 import org.jwcarman.nessy.api.backlog.BacklogItem;
 import org.jwcarman.nessy.api.message.UserMessage;
@@ -92,7 +93,7 @@ public final class BacklogStore<O> {
   private final Clock clock;
 
   /** What a take hands back: the row's id, which is the turn id, and where its input is held. */
-  public record Taken(String turnId, String observationClaim) {}
+  public record Taken(TurnId turnId, String observationClaim) {}
 
   /**
    * One row as the table holds it.
@@ -101,7 +102,7 @@ public final class BacklogStore<O> {
    * rows read from the same database would differ. Nothing here relies on that today; it is written
    * out because the day something does, the failure is silent.
    */
-  private record Row(String itemId, Instant receivedAt, byte[] observation, String takenClaim) {
+  private record Row(TurnId itemId, Instant receivedAt, byte[] observation, String takenClaim) {
 
     boolean untaken() {
       return takenClaim == null;
@@ -164,7 +165,7 @@ public final class BacklogStore<O> {
           List<BacklogItem<O>> waiting =
               rows.stream().filter(Row::untaken).map(this::itemOf).toList();
           BacklogItem<O> arrival =
-              new BacklogItem<>(Identifiers.next(), observation, clock.instant());
+              new BacklogItem<>(TurnId.of(Identifiers.next()), observation, clock.instant());
           rewrite(agentId, coalescer.coalesce(waiting, arrival));
         });
   }
@@ -183,12 +184,12 @@ public final class BacklogStore<O> {
    * @param lastCompleted the turn id this agent has finished, or {@code null} if it has finished
    *     none
    */
-  public Optional<Taken> take(AgentId agentId, String lastCompleted) {
+  public Optional<Taken> take(AgentId agentId, TurnId lastCompleted) {
     return Optional.ofNullable(
         transactions.execute(
             status -> {
               if (lastCompleted != null) {
-                jdbc.sql(DELETE_ROW).params(agentId.value(), lastCompleted).update();
+                jdbc.sql(DELETE_ROW).params(agentId.value(), lastCompleted.value()).update();
                 claims.deleteTurn(agentId, lastCompleted);
               }
               List<Row> rows = rows(agentId);
@@ -206,7 +207,9 @@ public final class BacklogStore<O> {
                   head.itemId(),
                   OBSERVATION_KEY,
                   messages.encode(renderer.render(codec.decode(head.observation()))));
-              jdbc.sql(MARK_TAKEN).params(OBSERVATION_KEY, agentId.value(), head.itemId()).update();
+              jdbc.sql(MARK_TAKEN)
+                  .params(OBSERVATION_KEY, agentId.value(), head.itemId().value())
+                  .update();
               return new Taken(head.itemId(), OBSERVATION_KEY);
             }));
   }
@@ -217,7 +220,7 @@ public final class BacklogStore<O> {
         .query(
             (rs, index) ->
                 new Row(
-                    rs.getString("item_id"),
+                    TurnId.of(rs.getString("item_id")),
                     rs.getTimestamp("received_at").toInstant(),
                     rs.getBytes("observation"),
                     rs.getString("taken_claim")))
@@ -246,7 +249,7 @@ public final class BacklogStore<O> {
       jdbc.sql(INSERT)
           .params(
               agentId.value(),
-              item.id(),
+              item.id().value(),
               ordinal,
               Timestamp.from(item.receivedAt()),
               codec.encode(item.observation()))

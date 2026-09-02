@@ -17,6 +17,9 @@ package org.jwcarman.nessy.spring.boot;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 
 /**
  * One row of the pending-approvals projection: an approval waiting on a person, and — once someone
@@ -43,9 +46,9 @@ import java.util.Optional;
  * @param answeredAt when the answer was seen, or empty while still waiting
  */
 public record PendingApproval(
-    String callId,
-    String agentType,
-    String agentId,
+    CallId callId,
+    AgentType agentType,
+    AgentId agentId,
     String tool,
     String action,
     Instant askedAt,

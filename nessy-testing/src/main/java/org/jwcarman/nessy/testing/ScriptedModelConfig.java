@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -68,7 +69,7 @@ public final class ScriptedModelConfig {
   }
 
   public ScriptedModelConfig toolCall(String id, String name, ObjectNode arguments) {
-    current.add(new ModelEvent.ToolCallEmitted(new ToolCall(id, name, arguments)));
+    current.add(new ModelEvent.ToolCallEmitted(new ToolCall(CallId.of(id), name, arguments)));
     return this;
   }
 

@@ -15,7 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
  * What KIND of agent this is — a watchman, a support agent, a planner.
@@ -29,16 +30,19 @@ import java.util.Objects;
  * agent — so keep the name boring and stable. Renaming a type in a running system orphans whatever
  * was stored under the old one.
  */
-public record AgentType(String name) {
+public record AgentType(@JsonValue String name) {
 
   public AgentType {
-    Objects.requireNonNull(name, "name must not be null");
-    if (name.isBlank()) {
-      throw new IllegalArgumentException("agent type name must not be blank");
-    }
+    name = Identifier.checked("agent type name", name);
   }
 
+  @JsonCreator
   public static AgentType of(String name) {
     return new AgentType(name);
+  }
+
+  @Override
+  public String toString() {
+    return name;
   }
 }

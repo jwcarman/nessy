@@ -28,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -44,8 +46,8 @@ class WatchmanToolsTest {
       new ToolCallRequest<>(
           AgentType.of("watchman"),
           AgentId.of("house"),
-          "turn-1",
-          "c1",
+          TurnId.of("turn-1"),
+          CallId.of("c1"),
           "a_tool",
           NO_ARGUMENTS,
           new ReplyToken("nowhere"));

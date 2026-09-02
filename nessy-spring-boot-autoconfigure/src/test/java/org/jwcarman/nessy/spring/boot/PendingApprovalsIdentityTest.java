@@ -22,6 +22,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -45,9 +48,9 @@ class PendingApprovalsIdentityTest {
 
   private static PendingApproval waitingOn(String agentType, String agentId, String callId) {
     return new PendingApproval(
-        callId,
-        agentType,
-        agentId,
+        CallId.of(callId),
+        AgentType.of(agentType),
+        AgentId.of(agentId),
         "prune_images",
         "docker image prune -af on " + agentId,
         ASKED,
@@ -75,10 +78,16 @@ class PendingApprovalsIdentityTest {
     repository.asked(waitingOn("watchman", "house-12", "call_1"));
     repository.asked(waitingOn("watchman", "house-99", "call_1"));
 
-    repository.answered("watchman", "house-12", "call_1", "denied", "not tonight", ASKED);
+    repository.answered(
+        AgentType.of("watchman"),
+        AgentId.of("house-12"),
+        CallId.of("call_1"),
+        "denied",
+        "not tonight",
+        ASKED);
 
     assertThat(repository.pending()).hasSize(1);
-    assertThat(repository.pending().getFirst().agentId()).isEqualTo("house-99");
+    assertThat(repository.pending().getFirst().agentId()).isEqualTo(AgentId.of("house-99"));
   }
 
   @Test

@@ -347,7 +347,7 @@ public final class Observed {
               .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().name())
               .lowCardinalityKeyValue("gen_ai.tool.name", request.toolName())
               .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value())
-              .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId())
+              .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
       return observation.observe(
           () -> {

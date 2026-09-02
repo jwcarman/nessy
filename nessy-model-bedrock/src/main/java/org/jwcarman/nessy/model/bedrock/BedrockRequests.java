@@ -227,7 +227,7 @@ public final class BedrockRequests {
           Optional.of(
               software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromToolUse(
                   software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock.builder()
-                      .toolUseId(call.id())
+                      .toolUseId(call.id().value())
                       .name(call.name())
                       .input(toDocument(call.arguments()))
                       .build()));
@@ -235,7 +235,7 @@ public final class BedrockRequests {
           Optional.of(
               software.amazon.awssdk.services.bedrockruntime.model.ContentBlock.fromToolResult(
                   software.amazon.awssdk.services.bedrockruntime.model.ToolResultBlock.builder()
-                      .toolUseId(result.toolUseId())
+                      .toolUseId(result.toolUseId().value())
                       .content(ToolResultContentBlock.fromText(flatten(result)))
                       .status(result.isError() ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS)
                       .build()));

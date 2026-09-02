@@ -32,6 +32,8 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 
 /**
@@ -77,7 +79,7 @@ public final class ReplyTokens {
    * named only the call would leave the one thing the writer needs to be looked up somewhere, from
    * an agent that may not even be resident.
    */
-  record Coordinates(String agentType, String agentId, String turnId, String callId) {}
+  record Coordinates(AgentType agentType, AgentId agentId, TurnId turnId, CallId callId) {}
 
   private final List<SecretKey> keys;
   private final SecureRandom random = new SecureRandom();
@@ -161,8 +163,8 @@ public final class ReplyTokens {
     }
   }
 
-  ReplyToken mint(AgentType agentType, AgentId agentId, String turnId, String callId) {
-    byte[] plain = encode(new Coordinates(agentType.name(), agentId.value(), turnId, callId));
+  ReplyToken mint(AgentType agentType, AgentId agentId, TurnId turnId, CallId callId) {
+    byte[] plain = encode(new Coordinates(agentType, agentId, turnId, callId));
     byte[] nonce = new byte[NONCE_BYTES];
     random.nextBytes(nonce);
     byte[] sealed = crypt(keys.getFirst(), Cipher.ENCRYPT_MODE, nonce, plain);

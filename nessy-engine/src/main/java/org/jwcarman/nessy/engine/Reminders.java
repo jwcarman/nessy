@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -60,7 +63,7 @@ final class Reminders {
    * and a hash rather than as anything a reader could use.
    */
   /** A deadline, and whose it is. */
-  record Reminder(String agentType, String agentId, String callId, Instant expiresAt) {}
+  record Reminder(AgentType agentType, AgentId agentId, CallId callId, Instant expiresAt) {}
 
   private final JdbcClient jdbc;
 
@@ -76,13 +79,15 @@ final class Reminders {
    * and how the sweep backs off a reminder whose owner has not settled it. Delete-then-insert
    * rather than vendor upsert syntax, so one statement set serves every database.
    */
-  void remind(String agentType, String agentId, String callId, Instant expiresAt) {
+  void remind(AgentType agentType, AgentId agentId, CallId callId, Instant expiresAt) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(expiresAt, "expiresAt must not be null");
-    jdbc.sql(DELETE).params(agentType, agentId, callId).update();
-    jdbc.sql(INSERT).params(agentType, agentId, callId, Timestamp.from(expiresAt)).update();
+    jdbc.sql(DELETE).params(agentType.name(), agentId.value(), callId.value()).update();
+    jdbc.sql(INSERT)
+        .params(agentType.name(), agentId.value(), callId.value(), Timestamp.from(expiresAt))
+        .update();
   }
 
   /**
@@ -102,35 +107,35 @@ final class Reminders {
         .query(
             (row, number) ->
                 new Reminder(
-                    row.getString("agent_type"),
-                    row.getString("agent_id"),
-                    row.getString("call_id"),
+                    AgentType.of(row.getString("agent_type")),
+                    AgentId.of(row.getString("agent_id")),
+                    CallId.of(row.getString("call_id")),
                     row.getTimestamp("expires_at").toInstant()))
         .list();
   }
 
   /** What this key is waiting for, if anything — the remaining term a restarted actor re-arms. */
-  Optional<Reminder> find(String agentType, String agentId, String callId) {
+  Optional<Reminder> find(AgentType agentType, AgentId agentId, CallId callId) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
     return jdbc.sql(READ)
-        .params(agentType, agentId, callId)
+        .params(agentType.name(), agentId.value(), callId.value())
         .query(
             (row, number) ->
                 new Reminder(
-                    row.getString("agent_type"),
-                    row.getString("agent_id"),
-                    row.getString("call_id"),
+                    AgentType.of(row.getString("agent_type")),
+                    AgentId.of(row.getString("agent_id")),
+                    CallId.of(row.getString("call_id")),
                     row.getTimestamp("expires_at").toInstant()))
         .optional();
   }
 
   /** Forgets it. Silent when there is nothing to forget: settling twice is not an error. */
-  void cancel(String agentType, String agentId, String callId) {
+  void cancel(AgentType agentType, AgentId agentId, CallId callId) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
-    jdbc.sql(DELETE).params(agentType, agentId, callId).update();
+    jdbc.sql(DELETE).params(agentType.name(), agentId.value(), callId.value()).update();
   }
 }

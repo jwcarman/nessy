@@ -19,6 +19,8 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * One call the model asked for, and everything anyone answering it needs.
@@ -45,8 +47,8 @@ import org.jwcarman.nessy.api.AgentType;
 public record ToolCallRequest<I>(
     AgentType agentType,
     AgentId agentId,
-    String turnId,
-    String callId,
+    TurnId turnId,
+    CallId callId,
     String toolName,
     I input,
     Supplier<ReplyToken> replyTokens) {
@@ -79,8 +81,8 @@ public record ToolCallRequest<I>(
   public ToolCallRequest(
       AgentType agentType,
       AgentId agentId,
-      String turnId,
-      String callId,
+      TurnId turnId,
+      CallId callId,
       String toolName,
       I input,
       ReplyToken replyToken) {
@@ -140,8 +142,14 @@ public record ToolCallRequest<I>(
    * <p>It is the TURN and the call together, because a model's call id is unique only within one
    * response — two turns can each produce a "call_1". It is stable across a re-drive, because
    * recovery resumes the same turn and the claimed asking message pins the same call ids.
+   *
+   * <p>Composing two values into one string is exactly the shape Nessy's own tables were rid of,
+   * and it is safe HERE for a reason worth stating: neither component can contain a {@code /},
+   * because {@link TurnId} and {@link CallId} refuse one. The separator is therefore unambiguous
+   * rather than merely unlikely. It is also handed out rather than parsed back — nothing in Nessy
+   * takes this string apart.
    */
   public String callKey() {
-    return turnId + "/" + callId;
+    return turnId.value() + "/" + callId.value();
   }
 }

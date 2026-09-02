@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.agent;
 
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -36,10 +38,10 @@ public sealed interface Instruction {
   record CallModel() implements Instruction {}
 
   /** Ask the approver about one call. */
-  record AskApprover(String callId, String toolName) implements Instruction {}
+  record AskApprover(CallId callId, String toolName) implements Instruction {}
 
   /** Run one tool. */
-  record RunTool(String callId, String toolName) implements Instruction {}
+  record RunTool(CallId callId, String toolName) implements Instruction {}
 
   /**
    * Write to the transcript. Three different writes, because they are three different moments.
@@ -65,10 +67,10 @@ public sealed interface Instruction {
   record Release() implements Instruction {}
 
   /** Arm a durable deadline for one call, so it outlives the process that set it. */
-  record SetAlarm(String callId, java.time.Instant expiresAt) implements Instruction {}
+  record SetAlarm(CallId callId, java.time.Instant expiresAt) implements Instruction {}
 
   /** Disarm it. */
-  record CancelAlarm(String callId) implements Instruction {}
+  record CancelAlarm(CallId callId) implements Instruction {}
 
   /** Go to sleep. */
   record Sleep() implements Instruction {}
@@ -76,7 +78,7 @@ public sealed interface Instruction {
   /** Tell the narrator. The shell redeems whatever claim an event needs before it narrates. */
   sealed interface Narrate extends Instruction {
 
-    record TurnStarted(String turnId) implements Narrate {}
+    record TurnStarted(TurnId turnId) implements Narrate {}
 
     record TurnEnded(TurnResult result, Usage usage) implements Narrate {}
 
@@ -89,8 +91,8 @@ public sealed interface Instruction {
     // concern. Emitting it from here meant the shell re-derived that sentence — reading the asking
     // claim back and running the renderer a second time, per narrated call.
 
-    record ApprovalDecided(String callId, ApprovalResult result) implements Narrate {}
+    record ApprovalDecided(CallId callId, ApprovalResult result) implements Narrate {}
 
-    record ToolCallCompleted(String callId) implements Narrate {}
+    record ToolCallCompleted(CallId callId) implements Narrate {}
   }
 }

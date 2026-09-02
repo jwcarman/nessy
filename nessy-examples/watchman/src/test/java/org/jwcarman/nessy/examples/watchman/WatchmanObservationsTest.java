@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.backlog.BacklogItem;
 import org.jwcarman.nessy.api.message.UserMessage;
 
@@ -29,7 +30,7 @@ class WatchmanObservationsTest {
   private static final String TICK = "It is 03:00. Do your rounds.";
 
   private static BacklogItem<String> item(String id, String observation) {
-    return new BacklogItem<>(id, observation, Instant.EPOCH);
+    return new BacklogItem<>(TurnId.of(id), observation, Instant.EPOCH);
   }
 
   @Test
@@ -37,7 +38,7 @@ class WatchmanObservationsTest {
     List<BacklogItem<String>> kept =
         WatchmanObservations.COALESCER.coalesce(List.of(), item("a", TICK));
 
-    assertThat(kept).extracting(BacklogItem::id).containsExactly("a");
+    assertThat(kept).extracting(BacklogItem::id).containsExactly(TurnId.of("a"));
   }
 
   @Test
@@ -48,7 +49,7 @@ class WatchmanObservationsTest {
         WatchmanObservations.COALESCER.coalesce(waiting, item("new", TICK));
 
     // A watchman busy for an hour does one round of catching up, not twenty.
-    assertThat(kept).extracting(BacklogItem::id).containsExactly("new");
+    assertThat(kept).extracting(BacklogItem::id).containsExactly(TurnId.of("new"));
   }
 
   @Test
@@ -59,7 +60,7 @@ class WatchmanObservationsTest {
     List<BacklogItem<String>> kept =
         WatchmanObservations.COALESCER.coalesce(waiting, item("four", TICK));
 
-    assertThat(kept).extracting(BacklogItem::id).containsExactly("four");
+    assertThat(kept).extracting(BacklogItem::id).containsExactly(TurnId.of("four"));
   }
 
   @Test
@@ -70,7 +71,9 @@ class WatchmanObservationsTest {
         WatchmanObservations.COALESCER.coalesce(waiting, item("news", "The disk filled up."));
 
     // Only ticks supersede: a real event must never be swallowed by the next cron beat.
-    assertThat(kept).extracting(BacklogItem::id).containsExactly("tick", "news");
+    assertThat(kept)
+        .extracting(BacklogItem::id)
+        .containsExactly(TurnId.of("tick"), TurnId.of("news"));
   }
 
   @Test
@@ -80,7 +83,9 @@ class WatchmanObservationsTest {
     List<BacklogItem<String>> kept =
         WatchmanObservations.COALESCER.coalesce(waiting, item("tick", TICK));
 
-    assertThat(kept).extracting(BacklogItem::id).containsExactly("news", "tick");
+    assertThat(kept)
+        .extracting(BacklogItem::id)
+        .containsExactly(TurnId.of("news"), TurnId.of("tick"));
   }
 
   @Test

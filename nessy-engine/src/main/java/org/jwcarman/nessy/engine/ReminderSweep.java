@@ -15,13 +15,15 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +60,7 @@ final class ReminderSweep {
   private final BiConsumer<Coordinates, NessyMessage.DeadlinePassed> deliver;
 
   /** Which agent, and which of its calls — the coordinates a reply token already carries. */
-  record Coordinates(String agentType, String agentId, String callId) {}
+  record Coordinates(AgentType agentType, AgentId agentId, CallId callId) {}
 
   ReminderSweep(
       Reminders reminders,
@@ -101,16 +103,4 @@ final class ReminderSweep {
    * and nothing else, and keeping it that small is what stops anyone serialising behaviour into it
    * later.
    */
-  static byte[] encode(Coordinates where) {
-    return (where.agentType() + "/" + where.agentId() + "/" + where.callId())
-        .getBytes(StandardCharsets.UTF_8);
-  }
-
-  static Coordinates decode(byte[] payload) {
-    String[] parts = new String(payload, StandardCharsets.UTF_8).split("/", 3);
-    if (parts.length != 3) {
-      throw new IllegalArgumentException("a reminder payload names an agent and a call");
-    }
-    return new Coordinates(parts[0], parts[1], parts[2]);
-  }
 }

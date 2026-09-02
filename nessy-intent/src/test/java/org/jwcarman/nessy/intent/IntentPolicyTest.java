@@ -26,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -42,8 +44,8 @@ class IntentPolicyTest {
     return new ApprovalRequest(
         AgentType.of("ops"),
         AgentId.of("prod-eu"),
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "restart_prod",
         JsonNodeFactory.instance.objectNode().put("target", "prod-eu"),
         "restart prod-eu",
@@ -52,7 +54,8 @@ class IntentPolicyTest {
   }
 
   private static JdbcIntentStore<Intent> freshStore() {
-    return new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER);
+    return new JdbcIntentStore<>(
+        TestDatabase.fresh(), AgentType.of("chat"), AgentId.of("agent-a"), Intent.class, MAPPER);
   }
 
   @Test

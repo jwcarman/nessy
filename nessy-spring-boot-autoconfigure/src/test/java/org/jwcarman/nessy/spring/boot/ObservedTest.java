@@ -29,6 +29,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.model.StopReason;
@@ -50,7 +52,13 @@ class ObservedTest {
   /** What the engine tells a running tool; nothing here reads it. */
   private static <I> ToolCallRequest<I> call(AgentType agentType, AgentId agentId, I input) {
     return new ToolCallRequest<>(
-        agentType, agentId, "turn-1", "c1", "a_tool", input, new ReplyToken("nowhere"));
+        agentType,
+        agentId,
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
+        "a_tool",
+        input,
+        new ReplyToken("nowhere"));
   }
 
   private MeterRegistry meters;
@@ -282,8 +290,8 @@ class ObservedTest {
     return new ApprovalRequest(
         AgentType.of("ops"),
         AgentId.of("prod-eu"),
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "restart",
         com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
         "restart prod-eu",

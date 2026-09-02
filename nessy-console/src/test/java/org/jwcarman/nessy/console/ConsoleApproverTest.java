@@ -24,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -35,8 +37,8 @@ class ConsoleApproverTest {
       new ApprovalRequest(
           AgentType.of("chat"),
           AgentId.of("cli"),
-          "turn-1",
-          "c1",
+          TurnId.of("turn-1"),
+          CallId.of("c1"),
           "send_email",
           JsonNodeFactory.instance.objectNode(),
           "Send an email to jim@example.com",

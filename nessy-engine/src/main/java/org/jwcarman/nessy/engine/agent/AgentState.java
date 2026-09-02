@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.model.Usage;
 
 /**
@@ -39,7 +40,7 @@ import org.jwcarman.nessy.api.model.Usage;
  * @param observation the claim id holding the rendered observation
  * @param usage what this turn has cost so far, unreported until a provider says
  */
-public record AgentState(String turnId, Phase phase, String observation, Usage usage) {
+public record AgentState(TurnId turnId, Phase phase, String observation, Usage usage) {
 
   public AgentState {
     Objects.requireNonNull(phase, "phase must not be null");
@@ -74,7 +75,7 @@ public record AgentState(String turnId, Phase phase, String observation, Usage u
   }
 
   /** A turn begins: the backlog row's id IS the turn id, and its claim holds the input. */
-  public AgentState taking(String newTurnId, String observationClaim) {
+  public AgentState taking(TurnId newTurnId, String observationClaim) {
     return new AgentState(
         newTurnId, new Phase.CallingModel(), observationClaim, Usage.unreported());
   }

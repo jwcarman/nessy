@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.block.CommentaryBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
@@ -71,7 +74,13 @@ public class ApprovalsController {
   private static final Logger LOG = LoggerFactory.getLogger(ApprovalsController.class);
 
   /** One waiting approval, as the page shows it. */
-  public record Row(String agentId, String callId, String action, Instant askedAt, String dwell) {}
+  public record Row(
+      AgentType agentType,
+      AgentId agentId,
+      CallId callId,
+      String action,
+      Instant askedAt,
+      String dwell) {}
 
   private final PendingApprovalsRepository approvals;
   private final Replies replies;
@@ -94,6 +103,7 @@ public class ApprovalsController {
             .map(
                 row ->
                     new Row(
+                        row.agentType(),
                         row.agentId(),
                         row.callId(),
                         row.action(),
@@ -183,7 +193,12 @@ public class ApprovalsController {
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
       Principal who) {
-    return answer(agentType, agentId, callId, ApprovalResult.approved(), who);
+    return answer(
+        AgentType.of(agentType),
+        AgentId.of(agentId),
+        CallId.of(callId),
+        ApprovalResult.approved(),
+        who);
   }
 
   @PostMapping("/deny/{agentType}/{agentId}/{callId}")
@@ -194,7 +209,11 @@ public class ApprovalsController {
       @RequestParam(name = "note", defaultValue = "") String note,
       Principal who) {
     return answer(
-        agentType, agentId, callId, ApprovalResult.denied(note.isBlank() ? "denied" : note), who);
+        AgentType.of(agentType),
+        AgentId.of(agentId),
+        CallId.of(callId),
+        ApprovalResult.denied(note.isBlank() ? "denied" : note),
+        who);
   }
 
   /**
@@ -205,7 +224,7 @@ public class ApprovalsController {
    * trace.
    */
   private CompletableFuture<String> answer(
-      String agentType, String agentId, String callId, ApprovalResult result, Principal who) {
+      AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result, Principal who) {
     PendingApproval row = approvals.byCallId(agentType, agentId, callId).orElse(null);
     if (row == null || !row.waiting()) {
       LOG.info("[watchman] {} answered {}, which was not waiting", name(who), callId);

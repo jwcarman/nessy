@@ -111,7 +111,7 @@ public sealed interface AgentEvent {
    * orders for blue widgets" — and it is all a watcher gets. The arguments themselves never
    * narrate.
    */
-  record ToolCallRequested(String id, String callId, String toolName, String description)
+  record ToolCallRequested(String id, CallId callId, String toolName, String description)
       implements AgentEvent {
     public ToolCallRequested {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
@@ -135,7 +135,7 @@ public sealed interface AgentEvent {
    *     button that would no longer be honoured
    */
   record ApprovalRequested(
-      String id, String callId, String toolName, String description, Instant expiresAt)
+      String id, CallId callId, String toolName, String description, Instant expiresAt)
       implements AgentEvent {
     public ApprovalRequested {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
@@ -159,7 +159,7 @@ public sealed interface AgentEvent {
    * plus any decision a person made (more informative, compound rule). Settle it before an engine
    * implements against either.
    */
-  record ApprovalDecided(String id, String callId, String toolName, ApprovalResult result)
+  record ApprovalDecided(String id, CallId callId, String toolName, ApprovalResult result)
       implements AgentEvent {
     public ApprovalDecided {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
@@ -170,7 +170,7 @@ public sealed interface AgentEvent {
   }
 
   /** One tool call settled — an answer in hand, or a failure. */
-  record ToolCallCompleted(String id, String callId, String toolName, ToolResult result)
+  record ToolCallCompleted(String id, CallId callId, String toolName, ToolResult result)
       implements AgentEvent {
     public ToolCallCompleted {
       Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);

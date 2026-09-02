@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -32,13 +34,13 @@ class RecordingApproverTest {
 
   /** These approvers are asked in isolation, so nothing ever answers at this address. */
   private static final ToolCall CALL =
-      new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+      new ToolCall(CallId.of("c1"), "restart", JsonNodeFactory.instance.objectNode());
 
   private static ApprovalRequest asking(String description) {
     return new ApprovalRequest(
         AgentType.of("ops"),
         AgentId.of("prod-eu"),
-        "turn-1",
+        TurnId.of("turn-1"),
         CALL.id(),
         CALL.name(),
         CALL.arguments(),

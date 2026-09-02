@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -138,7 +139,7 @@ class ToolCallTest {
           arguments.put("text", "the kitchen");
           return Scripts.saying(
               new ModelResult.Asked(
-                  List.of(new ToolCallBlock(new ToolCall("c1", "look_up", arguments))),
+                  List.of(new ToolCallBlock(new ToolCall(CallId.of("c1"), "look_up", arguments))),
                   new Usage(1, 1)));
         }
         String heard = request.context().messages().size() + " messages seen";
@@ -207,7 +208,7 @@ class ToolCallTest {
               assertThat(context.messages().get(1)).isInstanceOf(ExchangeMessage.class);
               ExchangeMessage exchange = (ExchangeMessage) context.messages().get(1);
               assertThat(exchange.results()).hasSize(1);
-              assertThat(exchange.results().getFirst().toolUseId()).isEqualTo("c1");
+              assertThat(exchange.results().getFirst().toolUseId()).isEqualTo(CallId.of("c1"));
               assertThat(exchange.results().getFirst().isError()).isFalse();
             });
   }

@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -241,7 +242,7 @@ class GeminiStreamTest {
       assertThat(modelEvents).hasSize(2);
       assertThat(modelEvents.get(0)).isInstanceOf(ModelEvent.ToolCallEmitted.class);
       var call = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
-      assertThat(call.id()).isEqualTo("call-1");
+      assertThat(call.id()).isEqualTo(CallId.of("call-1"));
       assertThat(call.name()).isEqualTo("get_weather");
       assertThat(call.arguments().get("location").asText()).isEqualTo("NYC");
     }
@@ -269,8 +270,8 @@ class GeminiStreamTest {
 
       var firstCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call();
       var secondCall = ((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call();
-      assertThat(firstCall.id()).isEqualTo("gemini-call-0");
-      assertThat(secondCall.id()).isEqualTo("gemini-call-1");
+      assertThat(firstCall.id()).isEqualTo(CallId.of("gemini-call-0"));
+      assertThat(secondCall.id()).isEqualTo(CallId.of("gemini-call-1"));
     }
 
     @Test
@@ -319,8 +320,10 @@ class GeminiStreamTest {
       var modelEvents = drain(List.of(multiCallChunk, finishChunk("STOP")));
 
       assertThat(modelEvents).hasSize(3);
-      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call().id()).isEqualTo("call-1");
-      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call().id()).isEqualTo("call-2");
+      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(0)).call().id())
+          .isEqualTo(CallId.of("call-1"));
+      assertThat(((ModelEvent.ToolCallEmitted) modelEvents.get(1)).call().id())
+          .isEqualTo(CallId.of("call-2"));
     }
 
     @Test

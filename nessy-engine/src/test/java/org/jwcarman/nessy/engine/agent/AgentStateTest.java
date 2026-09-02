@@ -22,6 +22,8 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 
 @DisplayName("What an agent persists")
 class AgentStateTest {
@@ -40,17 +42,17 @@ class AgentStateTest {
 
     @Test
     void taking_names_the_turn_and_its_claim_in_one_step() {
-      AgentState state = AgentState.idle().taking("turn-1", "claim-1");
+      AgentState state = AgentState.idle().taking(TurnId.of("turn-1"), "claim-1");
 
       assertThat(state.busy()).isTrue();
-      assertThat(state.turnId()).isEqualTo("turn-1");
+      assertThat(state.turnId()).isEqualTo(TurnId.of("turn-1"));
       assertThat(state.observation()).isEqualTo("claim-1");
       assertThat(state.phase()).isInstanceOf(Phase.CallingModel.class);
     }
 
     @Test
     void finishing_keeps_the_claim_id_because_the_next_take_must_name_it() {
-      AgentState finished = AgentState.idle().taking("turn-1", "claim-1").finished();
+      AgentState finished = AgentState.idle().taking(TurnId.of("turn-1"), "claim-1").finished();
 
       assertThat(finished.busy()).isFalse();
       assertThat(finished.observation())
@@ -75,7 +77,11 @@ class AgentStateTest {
     void a_phase_with_one_unsettled_call_is_not_finished() {
       Phase.WorkingTools working =
           new Phase.WorkingTools(
-              Map.of("a", new CallState.Running("send_email"), "b", new CallState.Completed()));
+              Map.of(
+                  CallId.of("a"),
+                  new CallState.Running("send_email"),
+                  CallId.of("b"),
+                  new CallState.Completed()));
 
       assertThat(working.calls()).isNotEmpty();
       assertThat(working.allSettled()).isFalse();
@@ -83,7 +89,8 @@ class AgentStateTest {
 
     @Test
     void a_phase_whose_calls_have_all_completed_is_finished() {
-      Phase.WorkingTools working = new Phase.WorkingTools(Map.of("a", new CallState.Completed()));
+      Phase.WorkingTools working =
+          new Phase.WorkingTools(Map.of(CallId.of("a"), new CallState.Completed()));
 
       assertThat(working.calls()).isNotEmpty();
       assertThat(working.allSettled()).isTrue();
@@ -94,13 +101,15 @@ class AgentStateTest {
       Phase.WorkingTools working =
           new Phase.WorkingTools(
                   Map.of(
-                      "a", new CallState.Approving("send_email"),
-                      "b", new CallState.Running("read_file")))
-              .with("a", new CallState.Completed());
+                      CallId.of("a"),
+                      new CallState.Approving("send_email"),
+                      CallId.of("b"),
+                      new CallState.Running("read_file")))
+              .with(CallId.of("a"), new CallState.Completed());
 
       assertThat(working.calls())
-          .containsEntry("a", new CallState.Completed())
-          .containsEntry("b", new CallState.Running("read_file"));
+          .containsEntry(CallId.of("a"), new CallState.Completed())
+          .containsEntry(CallId.of("b"), new CallState.Running("read_file"));
     }
   }
 }

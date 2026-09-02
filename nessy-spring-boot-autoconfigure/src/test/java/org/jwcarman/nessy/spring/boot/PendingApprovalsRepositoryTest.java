@@ -25,6 +25,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.testing.TestDatabase;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -52,9 +55,9 @@ class PendingApprovalsRepositoryTest {
 
   private static PendingApproval question(String callId, String token) {
     return new PendingApproval(
-        callId,
-        "watchman",
-        "house-12",
+        CallId.of(callId),
+        AgentType.of("watchman"),
+        AgentId.of("house-12"),
         "prune_images",
         "docker image prune -af",
         ASKED,
@@ -77,7 +80,10 @@ class PendingApprovalsRepositoryTest {
     void a_question_comes_back_whole() {
       repository.asked(question("c1", "token-1"));
 
-      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
+      PendingApproval row =
+          repository
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+              .orElseThrow();
 
       assertThat(row.tool()).isEqualTo("prune_images");
       assertThat(row.action()).isEqualTo("docker image prune -af");
@@ -89,7 +95,10 @@ class PendingApprovalsRepositoryTest {
 
     @Test
     void a_call_nobody_asked_about_is_absent() {
-      assertThat(repository.byCallId("watchman", "house-12", "never")).isEmpty();
+      assertThat(
+              repository.byCallId(
+                  AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("never")))
+          .isEmpty();
     }
 
     @Test
@@ -107,7 +116,11 @@ class PendingApprovalsRepositoryTest {
       repository.asked(question("c1", "token-1"));
       repository.asked(question("c1", "token-2"));
 
-      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+      assertThat(
+              repository
+                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+                  .orElseThrow()
+                  .replyToken())
           .isEqualTo("token-2");
     }
 
@@ -116,9 +129,9 @@ class PendingApprovalsRepositoryTest {
       repository.asked(question("newer", "t2"));
       PendingApproval older =
           new PendingApproval(
-              "older",
-              "watchman",
-              "house-12",
+              CallId.of("older"),
+              AgentType.of("watchman"),
+              AgentId.of("house-12"),
               "restart",
               "restart prod-1",
               ASKED.minus(1, ChronoUnit.HOURS),
@@ -131,7 +144,7 @@ class PendingApprovalsRepositoryTest {
 
       assertThat(repository.pending())
           .extracting(PendingApproval::callId)
-          .containsExactly("older", "newer");
+          .containsExactly(CallId.of("older"), CallId.of("newer"));
     }
   }
 
@@ -143,10 +156,18 @@ class PendingApprovalsRepositoryTest {
       repository.asked(question("c1", "token-1"));
 
       repository.answered(
-          "watchman", "house-12", "c1", "approved", "looks fine", ASKED.plusSeconds(60));
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("c1"),
+          "approved",
+          "looks fine",
+          ASKED.plusSeconds(60));
 
       assertThat(repository.pending()).isEmpty();
-      PendingApproval row = repository.byCallId("watchman", "house-12", "c1").orElseThrow();
+      PendingApproval row =
+          repository
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+              .orElseThrow();
       assertThat(row.answer()).contains("approved");
       assertThat(row.note()).contains("looks fine");
       assertThat(row.answeredAt()).contains(ASKED.plusSeconds(60));
@@ -156,12 +177,27 @@ class PendingApprovalsRepositoryTest {
     @DisplayName("a late click on a stale page does not overwrite what was decided")
     void a_second_answer_changes_nothing() {
       repository.asked(question("c1", "token-1"));
-      repository.answered("watchman", "house-12", "c1", "denied", "no", ASKED.plusSeconds(60));
+      repository.answered(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("c1"),
+          "denied",
+          "no",
+          ASKED.plusSeconds(60));
 
       repository.answered(
-          "watchman", "house-12", "c1", "approved", "changed my mind", ASKED.plusSeconds(120));
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("c1"),
+          "approved",
+          "changed my mind",
+          ASKED.plusSeconds(120));
 
-      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().answer())
+      assertThat(
+              repository
+                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+                  .orElseThrow()
+                  .answer())
           .contains("denied");
     }
 
@@ -169,12 +205,22 @@ class PendingApprovalsRepositoryTest {
     @DisplayName("a late re-ask does not reopen a decision")
     void asking_again_after_an_answer_leaves_it_answered() {
       repository.asked(question("c1", "token-1"));
-      repository.answered("watchman", "house-12", "c1", "denied", "no", ASKED.plusSeconds(60));
+      repository.answered(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("c1"),
+          "denied",
+          "no",
+          ASKED.plusSeconds(60));
 
       repository.asked(question("c1", "token-2"));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+      assertThat(
+              repository
+                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+                  .orElseThrow()
+                  .replyToken())
           .isEqualTo("token-1");
     }
   }

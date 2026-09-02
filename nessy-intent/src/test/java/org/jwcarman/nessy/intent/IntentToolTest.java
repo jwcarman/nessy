@@ -26,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -46,8 +48,8 @@ class IntentToolTest {
     return new ToolCallRequest<>(
         AgentType.of("intent-test"),
         AgentId.of("one"),
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "declare_intent",
         intent,
         new ReplyToken("unused-by-a-tool-that-never-defers"));
@@ -60,7 +62,12 @@ class IntentToolTest {
     void itIsNamedDeclareIntent() {
       var tool =
           IntentTool.freeform(
-              new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Intent.class,
+                  MAPPER));
 
       assertThat(tool.name()).isEqualTo("declare-intent");
     }
@@ -69,7 +76,12 @@ class IntentToolTest {
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
       var tool =
           IntentTool.freeform(
-              new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Intent.class,
+                  MAPPER));
 
       assertThat(tool.description())
           .isEqualTo("Declare what you are about to do and why, before using any other tool.");
@@ -79,7 +91,12 @@ class IntentToolTest {
     void itAnswersImmediatelyRatherThanDeferring() {
       var tool =
           IntentTool.freeform(
-              new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Intent.class,
+                  MAPPER));
 
       // What CompletionPolicy.IMMEDIATE used to declare, the return type now shows: recording a
       // claim is local work, so this tool can only ever come back Ready.
@@ -90,7 +107,12 @@ class IntentToolTest {
     @Test
     void executingDeclaresTheDeclarationIntoTheStore() {
       var store =
-          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER);
+          new JdbcIntentStore<>(
+              TestDatabase.fresh(),
+              AgentType.of("chat"),
+              AgentId.of("agent-a"),
+              Intent.class,
+              MAPPER);
       var tool = IntentTool.freeform(store);
 
       tool.execute(declaring(new Intent("restart prod-eu to clear the stuck deploy")));
@@ -102,7 +124,12 @@ class IntentToolTest {
     void executingReturnsAnImmediatelyReadyOkResult() {
       var tool =
           IntentTool.freeform(
-              new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Intent.class, MAPPER));
+              new JdbcIntentStore<>(
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Intent.class,
+                  MAPPER));
 
       Awaited<ToolResult> outcome = tool.execute(declaring(new Intent("restart prod-eu")));
 
@@ -130,7 +157,11 @@ class IntentToolTest {
           new IntentTool<>(
               Vocabulary.class,
               new JdbcIntentStore<>(
-                  TestDatabase.fresh(), "chat", "agent-a", Vocabulary.class, MAPPER));
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Vocabulary.class,
+                  MAPPER));
 
       assertThat(tool.description())
           .isEqualTo(
@@ -144,7 +175,11 @@ class IntentToolTest {
           new IntentTool<>(
               Vocabulary.class,
               new JdbcIntentStore<>(
-                  TestDatabase.fresh(), "chat", "agent-a", Vocabulary.class, MAPPER));
+                  TestDatabase.fresh(),
+                  AgentType.of("chat"),
+                  AgentId.of("agent-a"),
+                  Vocabulary.class,
+                  MAPPER));
 
       var schema = tool.inputSchema();
 
@@ -155,7 +190,12 @@ class IntentToolTest {
     @Test
     void executingBindsTheTypedDeclarationIntoTheStore() {
       var store =
-          new JdbcIntentStore<>(TestDatabase.fresh(), "chat", "agent-a", Vocabulary.class, MAPPER);
+          new JdbcIntentStore<>(
+              TestDatabase.fresh(),
+              AgentType.of("chat"),
+              AgentId.of("agent-a"),
+              Vocabulary.class,
+              MAPPER);
       var tool = new IntentTool<>(Vocabulary.class, store);
 
       tool.execute(declaring(new Restart("prod-eu")));

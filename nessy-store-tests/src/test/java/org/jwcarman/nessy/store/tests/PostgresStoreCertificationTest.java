@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
@@ -134,9 +135,9 @@ class PostgresStoreCertificationTest {
       var asked = java.time.Instant.parse("2026-09-01T12:00:00Z");
       var question =
           new org.jwcarman.nessy.spring.boot.PendingApproval(
-              "c1",
-              "watchman",
-              "house-12",
+              CallId.of("c1"),
+              AgentType.of("watchman"),
+              AgentId.of("house-12"),
               "prune_images",
               "docker image prune -af",
               asked,
@@ -149,9 +150,9 @@ class PostgresStoreCertificationTest {
       repository.asked(question);
       repository.asked(
           new org.jwcarman.nessy.spring.boot.PendingApproval(
-              "c1",
-              "watchman",
-              "house-12",
+              CallId.of("c1"),
+              AgentType.of("watchman"),
+              AgentId.of("house-12"),
               "prune_images",
               "docker image prune -af",
               asked,
@@ -162,7 +163,11 @@ class PostgresStoreCertificationTest {
               java.util.Optional.empty()));
 
       assertThat(repository.pending()).hasSize(1);
-      assertThat(repository.byCallId("watchman", "house-12", "c1").orElseThrow().replyToken())
+      assertThat(
+              repository
+                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c1"))
+                  .orElseThrow()
+                  .replyToken())
           .isEqualTo("token-2");
     }
 
@@ -174,9 +179,9 @@ class PostgresStoreCertificationTest {
       var asked = java.time.Instant.parse("2026-09-01T12:00:00Z");
       repository.asked(
           new org.jwcarman.nessy.spring.boot.PendingApproval(
-              "c2",
-              "watchman",
-              "house-12",
+              CallId.of("c2"),
+              AgentType.of("watchman"),
+              AgentId.of("house-12"),
               "restart",
               "restart prod-1",
               asked,
@@ -187,10 +192,19 @@ class PostgresStoreCertificationTest {
               java.util.Optional.empty()));
 
       repository.answered(
-          "watchman", "house-12", "c2", "denied", "not tonight", asked.plusSeconds(60));
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("c2"),
+          "denied",
+          "not tonight",
+          asked.plusSeconds(60));
 
       assertThat(repository.pending()).isEmpty();
-      assertThat(repository.byCallId("watchman", "house-12", "c2").orElseThrow().answer())
+      assertThat(
+              repository
+                  .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("c2"))
+                  .orElseThrow()
+                  .answer())
           .contains("denied");
     }
   }

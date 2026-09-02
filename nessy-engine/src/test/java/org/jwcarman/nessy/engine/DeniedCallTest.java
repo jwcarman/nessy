@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -117,7 +118,7 @@ class DeniedCallTest {
                         List.of(
                             new ToolCallBlock(
                                 new ToolCall(
-                                    "c1",
+                                    CallId.of("c1"),
                                     "send_letter",
                                     EngineMapper.INSTANCE.valueToTree(
                                         new Letter("james@example.com"))))),

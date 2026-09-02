@@ -22,6 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.risk.Impact;
@@ -43,8 +45,8 @@ class WatchmanRiskTest {
     return new ApprovalRequest(
         AgentType.of("watchman"),
         AgentId.of("house"),
-        "turn-1",
-        "c1",
+        TurnId.of("turn-1"),
+        CallId.of("c1"),
         "prune_images",
         com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
         "docker image prune -af",

@@ -22,6 +22,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -76,8 +79,9 @@ public class PendingApprovalsRepository {
   }
 
   /** One row by call id, answered or not. */
-  public Optional<PendingApproval> byCallId(String agentType, String agentId, String callId) {
-    return jdbc.query(BY_CALL, MAPPER, agentType, agentId, callId).stream().findFirst();
+  public Optional<PendingApproval> byCallId(AgentType agentType, AgentId agentId, CallId callId) {
+    return jdbc.query(BY_CALL, MAPPER, agentType.name(), agentId.value(), callId.value()).stream()
+        .findFirst();
   }
 
   /**
@@ -107,17 +111,17 @@ public class PendingApprovalsRepository {
             REFRESH,
             row.replyToken(),
             Timestamp.from(row.expiresAt()),
-            row.agentType(),
-            row.agentId(),
-            row.callId());
+            row.agentType().name(),
+            row.agentId().value(),
+            row.callId().value());
     if (refreshed > 0 || alreadyDecided(row.agentType(), row.agentId(), row.callId())) {
       return;
     }
     jdbc.update(
         INSERT,
-        row.agentType(),
-        row.agentId(),
-        row.callId(),
+        row.agentType().name(),
+        row.agentId().value(),
+        row.callId().value(),
         row.tool(),
         row.action(),
         Timestamp.from(row.askedAt()),
@@ -126,8 +130,10 @@ public class PendingApprovalsRepository {
   }
 
   /** Whether a row exists that the refresh deliberately left alone, because it was answered. */
-  private boolean alreadyDecided(String agentType, String agentId, String callId) {
-    Integer rows = jdbc.queryForObject(EXISTS, Integer.class, agentType, agentId, callId);
+  private boolean alreadyDecided(AgentType agentType, AgentId agentId, CallId callId) {
+    Integer rows =
+        jdbc.queryForObject(
+            EXISTS, Integer.class, agentType.name(), agentId.value(), callId.value());
     return rows != null && rows > 0;
   }
 
@@ -136,17 +142,29 @@ public class PendingApprovalsRepository {
    * settles a call once, and a late click on a stale page must not overwrite what was decided.
    */
   public void answered(
-      String agentType, String agentId, String callId, String answer, String note, Instant when) {
-    jdbc.update(ANSWER, answer, note, Timestamp.from(when), agentType, agentId, callId);
+      AgentType agentType,
+      AgentId agentId,
+      CallId callId,
+      String answer,
+      String note,
+      Instant when) {
+    jdbc.update(
+        ANSWER,
+        answer,
+        note,
+        Timestamp.from(when),
+        agentType.name(),
+        agentId.value(),
+        callId.value());
   }
 
   private static final RowMapper<PendingApproval> MAPPER = PendingApprovalsRepository::map;
 
   private static PendingApproval map(ResultSet row, int rowNumber) throws SQLException {
     return new PendingApproval(
-        row.getString("call_id"),
-        row.getString("agent_type"),
-        row.getString("agent_id"),
+        CallId.of(row.getString("call_id")),
+        AgentType.of(row.getString("agent_type")),
+        AgentId.of(row.getString("agent_id")),
         row.getString("tool"),
         row.getString("action"),
         row.getTimestamp("asked_at").toInstant(),
