@@ -273,6 +273,33 @@ Three things it demonstrates, each corresponding to something the request had to
 carry: a decision on `toolName` alone; a decision on `agentType`, which is why an id
 is not enough; and a decision on `arguments`, which is why they travel.
 
+### 4.4 Not every engine can route
+
+Checked 2026-09-02, and it constrains where `Delegate` can come from:
+
+| Engine | Response | Verdicts it can express |
+|---|---|---|
+| **OPA** | any JSON a rule produces | all three |
+| **AuthZEN** | `{"decision": <boolean>, "context": {…}}` | Approve, Deny |
+| **Cedar** | `Allow`/`Deny` + diagnostics (determining policies, errors) | Approve, Deny |
+
+**Only an engine that returns arbitrary structure can name a delegate.** Cedar's
+decision is strictly two-valued; the richest thing it offers is *which policy*
+determined the outcome. Routing could be smuggled through policy IDs — a `forbid`
+named `must-ask-humans` read as `Delegate("humans")` — but that is a private
+convention wearing a standard's clothes, which is the same objection that ruled out
+faking it in AuthZEN's `context`.
+
+**This is not a flaw in the three-verdict model.** A two-valued engine is still a
+perfectly good `PolicyEngine`; it simply cannot route, and an application using one
+wires the routing itself — policy first, desk second, composed. Delegation is an
+option a capable engine unlocks, not a requirement the framework imposes.
+
+The practical consequence for choosing a second implementation: **a two-valued
+engine exercises the least of what this design does.** Cedar is a reasonable thing
+to ship the day somebody is already running it, and a poor choice for proving the
+seam, which was the reason to reach for it.
+
 ## 5. Agent-based approval
 
 A **separate** agent reviews the call. Never the originating agent approving its own
