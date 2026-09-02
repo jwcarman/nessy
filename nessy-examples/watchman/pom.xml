@@ -124,13 +124,6 @@
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-engine</artifactId>
-      <version>${project.version}</version>
-      <type>test-jar</type>
-      <scope>test</scope>
-    </dependency>
     <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
          that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
          that talks to it, pointed at a different base URL, exactly as XaiModelProviderBootstrap
