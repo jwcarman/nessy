@@ -569,7 +569,9 @@ final class Instructions {
         call.id(),
         call.name(),
         call.arguments(),
-        deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
+        // Not minted here: a token is a capability, and most calls are answered on the spot and
+        // never hand one out. ToolCallRequest mints on the first replyToken() and remembers it.
+        () -> deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
   }
 
   static String resultKey(String callId) {

@@ -164,4 +164,73 @@ class ApprovalRequestTest {
           .hasMessageContaining("name");
     }
   }
+
+  @Nested
+  @DisplayName("the reply address is a capability, so it is minted only when asked for")
+  class TheReplyAddress {
+
+    @Test
+    void a_call_nobody_asks_about_never_mints_one() {
+      java.util.concurrent.atomic.AtomicInteger minted =
+          new java.util.concurrent.atomic.AtomicInteger();
+
+      new ToolCallRequest<>(
+          WATCHMAN,
+          HOUSE,
+          "turn-1",
+          "c1",
+          "prune_images",
+          JsonNodeFactory.instance.objectNode(),
+          () -> {
+            minted.incrementAndGet();
+            return ReplyToken.of("token-1");
+          });
+
+      assertThat(minted)
+          .as("most calls are answered on the spot and hand no address to anybody")
+          .hasValue(0);
+    }
+
+    @Test
+    @DisplayName("asking twice hands out ONE address, not two that mean the same thing")
+    void it_is_minted_once_and_remembered() {
+      java.util.concurrent.atomic.AtomicInteger minted =
+          new java.util.concurrent.atomic.AtomicInteger();
+      ToolCallRequest<?> call =
+          new ToolCallRequest<>(
+              WATCHMAN,
+              HOUSE,
+              "turn-1",
+              "c1",
+              "prune_images",
+              JsonNodeFactory.instance.objectNode(),
+              () -> ReplyToken.of("token-" + minted.incrementAndGet()));
+
+      assertThat(call.replyToken()).isEqualTo(call.replyToken());
+      assertThat(minted).hasValue(1);
+    }
+
+    @Test
+    @DisplayName("two requests naming the same call are equal, however their address is minted")
+    void equality_ignores_how_the_address_would_be_made() {
+      ToolCallRequest<?> one = call();
+      ToolCallRequest<?> other =
+          new ToolCallRequest<>(
+              WATCHMAN,
+              HOUSE,
+              "turn-1",
+              "c1",
+              "prune_images",
+              JsonNodeFactory.instance.objectNode(),
+              () -> ReplyToken.of("a completely different token"));
+
+      assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
+    }
+
+    @Test
+    @DisplayName("a credential does not belong in a log line")
+    void the_address_is_absent_from_toString() {
+      assertThat(call().toString()).contains("prune_images").doesNotContain("token-1");
+    }
+  }
 }

@@ -45,4 +45,16 @@ import java.util.function.Consumer;
 public interface HarnessFactory {
 
   <O> Harness<O> createHarness(Class<O> observationType, Consumer<HarnessConfig<O>> configurer);
+
+  /**
+   * A harness for an agent that is told things in plain text.
+   *
+   * <p>{@code String} is the common case and the one every example here starts from, so it should
+   * not cost a class literal to say. Reach for the typed form the moment a string stops being the
+   * honest shape of what your domain observes — a record with named fields is worth more to a
+   * renderer, a coalescer and a reader than a string somebody has to parse back apart.
+   */
+  default Harness<String> createHarness(Consumer<HarnessConfig<String>> configurer) {
+    return createHarness(String.class, configurer);
+  }
 }

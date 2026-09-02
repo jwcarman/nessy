@@ -47,17 +47,31 @@ the message it would save, and it is the path recovery has to work on too.
 
 ```java
 record ApprovalRequest(
-    ToolCallRequest call, String description, Instant askedAt, ObjectNode facts) {}
+    ToolCallRequest<?> call,
+    String description,
+    Instant askedAt,
+    ObjectNode facts) {
 
-record ToolCallRequest(
+  ReplyToken replyToken();   // reaches through to call.replyToken()
+}
+
+record ToolCallRequest<I>(
     AgentType agentType,
     AgentId agentId,
     String turnId,
     String callId,
     String toolName,
-    JsonNode arguments,
-    ReplyToken replyToken) {}
+    I input,
+    Supplier<ReplyToken> replyTokens) {
+
+  ReplyToken replyToken();   // mints on first call, then remembers
+}
 ```
+
+`ToolCallRequest<?>` rather than `ToolCallRequest<I>`: one approver serves
+every gated tool, and those tools have different inputs. An approver reads the
+description, the tool name and the ids — not the typed input — so the wildcard
+costs nothing it needed.
 
 `call` is the whole of what the tool itself would be handed — the same record,
 so an approver can decide on exactly the values the tool will act on. `facts` is the
@@ -96,8 +110,16 @@ agent apologising for an error it had not had.
 
 ## Reply tokens
 
-`request.replyToken()` is the address an answer comes back to — the same one
-the tool would be handed, because both settle the same call. The
+`request.replyToken()` is the address an answer comes back to, and the tool
+gets one for the same call, because both settle it.
+
+**It is minted when you ask for it, not before.** A token is a capability —
+whoever holds it can settle this call — and most calls are answered on the
+spot and hand one to nobody. So asking is what mints it, and asking twice
+gives you the same one rather than two addresses that happen to mean the same
+thing.
+
+The
 coordinates inside it — agent type, agent id, turn, call — are **encrypted
 with AES-GCM**, so whoever holds it can neither read them nor forge a token
 for a different call.

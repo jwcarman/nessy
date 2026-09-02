@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 
@@ -33,7 +34,12 @@ import org.jwcarman.nessy.api.AgentType;
  * @param callId the model's own id for the call, unique within ONE response and no further
  * @param toolName the tool the model named
  * @param input the arguments the model produced, already bound to the tool's own input type
- * @param replyToken where an answer goes if this call is not answered on the spot
+ *     <p><b>The reply address is minted on demand.</b> Most calls are answered on the spot and
+ *     never need one, and a token is a CAPABILITY — whoever holds it can settle this call. Minting
+ *     one for every call would do the cryptography regardless and hand out an authority nobody
+ *     asked for, so {@link #replyToken()} is what mints it. Ask for it only when you are about to
+ *     hand it out.
+ * @param replyTokens mints the address an answer comes back to; prefer {@link #replyToken()}
  * @param <I> the tool's input type
  */
 public record ToolCallRequest<I>(
@@ -43,7 +49,7 @@ public record ToolCallRequest<I>(
     String callId,
     String toolName,
     I input,
-    ReplyToken replyToken) {
+    Supplier<ReplyToken> replyTokens) {
 
   public ToolCallRequest {
     Objects.requireNonNull(agentType, "agentType must not be null");
@@ -52,7 +58,77 @@ public record ToolCallRequest<I>(
     Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(toolName, "toolName must not be null");
     Objects.requireNonNull(input, "input must not be null");
-    Objects.requireNonNull(replyToken, "replyToken must not be null");
+    Objects.requireNonNull(replyTokens, "replyTokens must not be null");
+    // Memoized, so a tool that hands the address to two places hands out ONE address rather than
+    // two that happen to mean the same thing.
+    replyTokens = memoizing(replyTokens);
+  }
+
+  /**
+   * The address an answer comes back to, minted the first time it is asked for.
+   *
+   * <p>Handing this out is what makes a call answerable later — by a vendor's webhook, or by a
+   * person clicking Approve days from now. A tool that answers on the spot never calls this, and
+   * then no token for this call ever exists.
+   */
+  public ReplyToken replyToken() {
+    return replyTokens.get();
+  }
+
+  /** A convenience for callers that already hold an address, and for tests. */
+  public ToolCallRequest(
+      AgentType agentType,
+      AgentId agentId,
+      String turnId,
+      String callId,
+      String toolName,
+      I input,
+      ReplyToken replyToken) {
+    this(agentType, agentId, turnId, callId, toolName, input, () -> replyToken);
+  }
+
+  /**
+   * Equality over what the call IS, ignoring how its address would be minted.
+   *
+   * <p>A record's generated equality would compare the supplier by identity, so two requests naming
+   * the same call would differ — the same trap an array component sets, and the reason these are
+   * written out.
+   */
+  @Override
+  public boolean equals(Object other) {
+    return other instanceof ToolCallRequest<?> call
+        && Objects.equals(agentType, call.agentType)
+        && Objects.equals(agentId, call.agentId)
+        && Objects.equals(turnId, call.turnId)
+        && Objects.equals(callId, call.callId)
+        && Objects.equals(toolName, call.toolName)
+        && Objects.equals(input, call.input);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(agentType, agentId, turnId, callId, toolName, input);
+  }
+
+  /** The address is deliberately absent: it is a credential, and this may reach a log. */
+  @Override
+  public String toString() {
+    return "ToolCallRequest[agentType=%s, agentId=%s, turnId=%s, callId=%s, toolName=%s, input=%s]"
+        .formatted(agentType, agentId, turnId, callId, toolName, input);
+  }
+
+  private static Supplier<ReplyToken> memoizing(Supplier<ReplyToken> mint) {
+    return new Supplier<>() {
+      private ReplyToken minted;
+
+      @Override
+      public synchronized ReplyToken get() {
+        if (minted == null) {
+          minted = mint.get();
+        }
+        return minted;
+      }
+    };
   }
 
   /**
