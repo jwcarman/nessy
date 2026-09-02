@@ -44,6 +44,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
@@ -95,15 +96,14 @@ class DeniedCallTest {
           }
 
           @Override
-          public Awaited<ToolResult> execute(
-              Letter input, org.jwcarman.nessy.api.tool.ToolContext context) {
+          public Awaited<ToolResult> execute(Letter input, ToolCallRequest call) {
             throw new AssertionError("a denied call must never run");
           }
         };
     ToolBinding<Letter> binding =
         new ToolBinding<>(
             send,
-            (request, context) -> Awaited.ready(ApprovalResult.denied("not this time")),
+            request -> Awaited.ready(ApprovalResult.denied("not this time")),
             ToolDescriber.byToString());
 
     parts =

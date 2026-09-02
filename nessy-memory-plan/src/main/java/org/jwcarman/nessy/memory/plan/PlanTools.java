@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.memory.pipeline.ContextTransformer;
 
@@ -137,7 +137,7 @@ public final class PlanTools {
     }
 
     @Override
-    public Awaited<ToolResult> execute(UpdatePlan input, ToolContext context) {
+    public Awaited<ToolResult> execute(UpdatePlan input, ToolCallRequest context) {
       try {
         Plan plan = toPlan(input);
         store.save(context.agentId(), plan);

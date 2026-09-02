@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -47,9 +46,9 @@ public final class RecordingApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
     Objects.requireNonNull(request, "request must not be null");
-    Awaited<ApprovalResult> result = delegate.approve(request, context);
+    Awaited<ApprovalResult> result = delegate.approve(request);
     answers.add(new Answer(request, result));
     return result;
   }

@@ -48,7 +48,7 @@ import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
@@ -101,10 +101,10 @@ class DeferredToolTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Job input, ToolContext context) {
+      public Awaited<ToolResult> execute(Job input, ToolCallRequest call) {
         // Exactly what a real deferring tool does: hand the token to whoever will answer, then say
         // it will be a while.
-        handed.set(context.replyToken());
+        handed.set(call.replyToken());
         return Awaited.deferred(Instant.now().plus(1, ChronoUnit.HOURS));
       }
     };

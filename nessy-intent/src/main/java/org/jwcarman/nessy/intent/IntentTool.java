@@ -20,7 +20,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Schemas;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -82,7 +82,7 @@ public final class IntentTool<T> implements Tool<T> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(T input, ToolContext context) {
+  public Awaited<ToolResult> execute(T input, ToolCallRequest context) {
     store.declare(input);
     return Awaited.ready(ToolResult.ok("intent recorded"));
   }

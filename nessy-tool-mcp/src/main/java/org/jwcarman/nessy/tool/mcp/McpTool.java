@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -40,9 +40,10 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * McpToolbox#tool(String)} or {@link McpToolbox#tools()}, so a granted MCP tool always came from a
  * live, initialized session.
  *
- * <p>MCP progress notifications are not forwarded to {@link ToolContext#progress} in v1: the SDK's
- * sync client offers only a session-global progress consumer, not one scoped to a single {@code
- * tools/call}, so wiring one here would leak another call's progress into this tool's context.
+ * <p>MCP progress notifications are not forwarded to {@link ToolCallRequest#progress} in v1: the
+ * SDK's sync client offers only a session-global progress consumer, not one scoped to a single
+ * {@code tools/call}, so wiring one here would leak another call's progress into this tool's
+ * context.
  */
 final class McpTool implements Tool<JsonNode> {
 
@@ -89,7 +90,7 @@ final class McpTool implements Tool<JsonNode> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(JsonNode input, ToolContext context) {
+  public Awaited<ToolResult> execute(JsonNode input, ToolCallRequest context) {
     Map<String, Object> arguments = mapper.convertValue(input, ARGUMENTS_TYPE);
     McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(name(), arguments);
     // A transport/protocol failure that keeps the call from completing at all propagates as a

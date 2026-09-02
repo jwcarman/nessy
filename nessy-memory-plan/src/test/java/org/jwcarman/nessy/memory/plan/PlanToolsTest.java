@@ -17,6 +17,7 @@ package org.jwcarman.nessy.memory.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +36,7 @@ import org.jwcarman.nessy.api.message.HistoryMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
 import org.jwcarman.nessy.testing.TestDatabase;
@@ -54,16 +55,19 @@ class PlanToolsTest {
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */
-  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
-      implements ToolContext {
-
-    static Call by(AgentId agentId) {
-      return new Call(TYPE, agentId, ReplyToken.of("unused"));
-    }
+  private static ToolCallRequest callBy(AgentId agentId) {
+    return new ToolCallRequest(
+        TYPE,
+        agentId,
+        "turn-1",
+        "c1",
+        "a_tool",
+        JsonNodeFactory.instance.objectNode(),
+        ReplyToken.of("unused"));
   }
 
   private static <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.execute(input, Call.by(AGENT));
+    Awaited<ToolResult> answer = tool.execute(input, callBy(AGENT));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).result();
   }

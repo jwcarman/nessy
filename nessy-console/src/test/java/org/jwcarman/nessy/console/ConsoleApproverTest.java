@@ -27,25 +27,27 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 
 @DisplayName("Asking the person at the terminal")
 class ConsoleApproverTest {
 
   private static final ApprovalRequest SENDING_MAIL =
       new ApprovalRequest(
-          AgentType.of("chat"),
-          AgentId.of("cli"),
-          new ToolCall("c1", "send_email", JsonNodeFactory.instance.objectNode()),
+          new ToolCallRequest(
+              AgentType.of("chat"),
+              AgentId.of("cli"),
+              "turn-1",
+              "c1",
+              "send_email",
+              JsonNodeFactory.instance.objectNode(),
+              // Never read: this approver answers on the spot, so nothing replies later.
+              ReplyToken.of("unused")),
           "Send an email to jim@example.com",
           Instant.parse("2026-08-31T12:00:00Z"));
 
-  /** Never used: this approver answers on the spot, so there is nothing to reply to later. */
-  private static final ReplyToken UNUSED = ReplyToken.of("unused");
-
   private static ApprovalResult answerOf(FakeConsole console) {
-    Awaited<ApprovalResult> answer =
-        new ConsoleApprover(console).approve(SENDING_MAIL, () -> UNUSED);
+    Awaited<ApprovalResult> answer = new ConsoleApprover(console).approve(SENDING_MAIL);
 
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ApprovalResult>) answer).result();

@@ -18,7 +18,7 @@ package org.jwcarman.nessy.model.bedrock;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -35,7 +35,7 @@ record StubTool(String name, String description, ObjectNode inputSchema)
   }
 
   @Override
-  public Awaited<ToolResult> execute(ObjectNode input, ToolContext context) {
+  public Awaited<ToolResult> execute(ObjectNode input, ToolCallRequest context) {
     throw new UnsupportedOperationException("a declared-only tool is never executed");
   }
 }

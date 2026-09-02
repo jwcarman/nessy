@@ -37,8 +37,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -49,8 +48,16 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 class ObservedTest {
 
   /** What the engine tells a running tool; nothing here reads it. */
-  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
-      implements ToolContext {}
+  private static ToolCallRequest call(AgentType agentType, AgentId agentId) {
+    return new ToolCallRequest(
+        agentType,
+        agentId,
+        "turn-1",
+        "c1",
+        "a_tool",
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
+        new ReplyToken("nowhere"));
+  }
 
   private MeterRegistry meters;
   private ObservationRegistry observations;
@@ -226,8 +233,7 @@ class ObservedTest {
     Tool<String> failing = tool(input -> Awaited.ready(ToolResult.error("the disk is gone")));
 
     Observed.tool(failing, observations)
-        .execute(
-            "x", new Call(AgentType.of("observed"), AgentId.of("one"), new ReplyToken("nowhere")));
+        .execute("x", call(AgentType.of("observed"), AgentId.of("one")));
 
     assertThat(
             meters
@@ -243,8 +249,7 @@ class ObservedTest {
     Tool<String> defers = tool(input -> Awaited.deferred(Instant.now().plusSeconds(3600)));
 
     Observed.tool(defers, observations)
-        .execute(
-            "x", new Call(AgentType.of("observed"), AgentId.of("one"), new ReplyToken("nowhere")));
+        .execute("x", call(AgentType.of("observed"), AgentId.of("one")));
 
     // A deferral is neither a success nor a failure: nothing has happened yet.
     assertThat(
@@ -258,10 +263,9 @@ class ObservedTest {
 
   @Test
   void an_approval_says_which_agent_it_was_for() {
-    Approver defers = (request, context) -> Awaited.deferred(Instant.now().plusSeconds(3600));
+    Approver defers = request -> Awaited.deferred(Instant.now().plusSeconds(3600));
 
-    Observed.approver(defers, observations)
-        .approve(approvalRequest(), () -> new ReplyToken("nowhere"));
+    Observed.approver(defers, observations).approve(approvalRequest());
 
     var timer = meters.get("nessy.approval").timer();
     // The only collaborator the engine hands an identity to, so the only span that can say so.
@@ -282,12 +286,14 @@ class ObservedTest {
 
   private static ApprovalRequest approvalRequest() {
     return new ApprovalRequest(
-        AgentType.of("ops"),
-        AgentId.of("prod-eu"),
-        new ToolCall(
+        new ToolCallRequest(
+            AgentType.of("ops"),
+            AgentId.of("prod-eu"),
+            "turn-1",
             "c1",
             "restart",
-            com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()),
+            com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
+            new ReplyToken("nowhere")),
         "restart prod-eu",
         Instant.EPOCH);
   }
@@ -315,7 +321,7 @@ class ObservedTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(String input, ToolContext context) {
+      public Awaited<ToolResult> execute(String input, ToolCallRequest context) {
         return body.apply(input);
       }
     };

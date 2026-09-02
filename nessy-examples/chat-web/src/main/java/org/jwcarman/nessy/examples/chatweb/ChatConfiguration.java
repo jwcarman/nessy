@@ -149,8 +149,8 @@ public class ChatConfiguration {
    */
   @Bean
   public Approver desk(ApprovalDesk desk, Clock clock) {
-    return (request, context) -> {
-      desk.expecting(request, context.replyToken());
+    return (request) -> {
+      desk.expecting(request, request.replyToken());
       return Awaited.deferred(clock.instant().plus(APPROVAL_TERM));
     };
   }

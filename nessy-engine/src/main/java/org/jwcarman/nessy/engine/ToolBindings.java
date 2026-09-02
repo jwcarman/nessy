@@ -24,12 +24,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -74,19 +73,17 @@ public final class ToolBindings {
   }
 
   /** Whether this call may run, as the binding's own approver sees it. */
-  public Awaited<ApprovalResult> approve(
-      ToolBinding<?> binding, ApprovalRequest request, ApprovalContext context) {
-    return binding.approver().approve(request, context);
+  public Awaited<ApprovalResult> approve(ToolBinding<?> binding, ApprovalRequest request) {
+    return binding.approver().approve(request);
   }
 
   /** Run it. */
-  public Awaited<ToolResult> run(ToolBinding<?> binding, JsonNode arguments, ToolContext context) {
-    return runBound(binding, arguments, context);
+  public Awaited<ToolResult> run(ToolBinding<?> binding, ToolCallRequest call) {
+    return runBound(binding, call);
   }
 
-  private <I> Awaited<ToolResult> runBound(
-      ToolBinding<I> binding, JsonNode arguments, ToolContext context) {
-    return binding.tool().execute(bind(binding.tool(), arguments), context);
+  private <I> Awaited<ToolResult> runBound(ToolBinding<I> binding, ToolCallRequest call) {
+    return binding.tool().execute(bind(binding.tool(), call.arguments()), call);
   }
 
   private <I> I bind(Tool<I> tool, JsonNode arguments) {

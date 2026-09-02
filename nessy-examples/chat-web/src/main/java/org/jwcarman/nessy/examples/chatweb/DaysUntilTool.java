@@ -20,7 +20,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -51,7 +51,7 @@ public final class DaysUntilTool implements Tool<DaysUntilTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(Input input, ToolContext context) {
+  public Awaited<ToolResult> execute(Input input, ToolCallRequest context) {
     try {
       long days = ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(input.date()));
       return Awaited.ready(ToolResult.ok(days + " days"));

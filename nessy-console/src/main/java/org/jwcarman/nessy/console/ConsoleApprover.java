@@ -18,7 +18,6 @@ package org.jwcarman.nessy.console;
 import java.util.Locale;
 import java.util.Set;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -70,7 +69,7 @@ public final class ConsoleApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
     // A leading newline because the model was very likely mid-sentence: a question appended to a
     // half-written answer reads as part of it.
     io.write(

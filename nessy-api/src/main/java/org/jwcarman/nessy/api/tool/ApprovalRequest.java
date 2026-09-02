@@ -21,8 +21,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
 
 /**
  * The question an approver answers: this agent wants to make this call, and here is what it means.
@@ -62,16 +60,9 @@ import org.jwcarman.nessy.api.AgentType;
  * @param facts whatever approvers have added so far; empty when the framework first asks
  */
 public record ApprovalRequest(
-    AgentType agentType,
-    AgentId agentId,
-    ToolCall call,
-    String description,
-    Instant askedAt,
-    ObjectNode facts) {
+    ToolCallRequest call, String description, Instant askedAt, ObjectNode facts) {
 
   public ApprovalRequest {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(description, "description must not be null");
     Objects.requireNonNull(askedAt, "askedAt must not be null");
@@ -79,9 +70,13 @@ public record ApprovalRequest(
   }
 
   /** The question as the harness first asks it: nothing has annotated it yet. */
-  public ApprovalRequest(
-      AgentType agentType, AgentId agentId, ToolCall call, String description, Instant askedAt) {
-    this(agentType, agentId, call, description, askedAt, JsonNodeFactory.instance.objectNode());
+  public ApprovalRequest(ToolCallRequest call, String description, Instant askedAt) {
+    this(call, description, askedAt, JsonNodeFactory.instance.objectNode());
+  }
+
+  /** Where a person's answer goes, if this approver defers. */
+  public ReplyToken replyToken() {
+    return call.replyToken();
   }
 
   /**

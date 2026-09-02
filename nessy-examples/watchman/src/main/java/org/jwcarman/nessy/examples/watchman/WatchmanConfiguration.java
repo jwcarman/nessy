@@ -135,8 +135,8 @@ public class WatchmanConfiguration {
    */
   @Bean
   public Approver humanApprover(PendingApprovalsListener listener, Clock clock) {
-    return (request, context) -> {
-      listener.expecting(request.call().id(), context.replyToken());
+    return (request) -> {
+      listener.expecting(request.call().callId(), request.replyToken());
       return Awaited.deferred(clock.instant().plus(APPROVAL_TERM));
     };
   }

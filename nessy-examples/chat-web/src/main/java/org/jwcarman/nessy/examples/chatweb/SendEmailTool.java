@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -61,7 +61,7 @@ public final class SendEmailTool implements Tool<SendEmailTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(Input input, ToolContext context) {
+  public Awaited<ToolResult> execute(Input input, ToolCallRequest context) {
     sent.add(input);
     return Awaited.ready(ToolResult.ok("sent to " + input.to()));
   }

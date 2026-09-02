@@ -20,7 +20,7 @@ import java.util.Objects;
 /**
  * Where a deferred answer goes — an opaque token, handed to whatever will answer later.
  *
- * <p>A tool that defers reads this from its {@link ToolContext}, gives it to the vendor (in a
+ * <p>A tool that defers reads this from its {@link ToolCallRequest}, gives it to the vendor (in a
  * webhook URL, a message, a job record), and returns. Nothing else is needed: the address already
  * exists before the tool is dispatched, which is why there is no callback to run afterwards.
  *

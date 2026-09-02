@@ -23,23 +23,30 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 
 class RecordingApproverTest {
 
   /** These approvers are asked in isolation, so nothing ever answers at this address. */
-  private static final ApprovalContext NOWHERE = () -> new ReplyToken("nowhere");
-
   private static final ToolCall CALL =
       new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
 
   private static ApprovalRequest asking(String description) {
     return new ApprovalRequest(
-        AgentType.of("ops"), AgentId.of("prod-eu"), CALL, description, Instant.EPOCH);
+        new ToolCallRequest(
+            AgentType.of("ops"),
+            AgentId.of("prod-eu"),
+            "turn-1",
+            CALL.id(),
+            CALL.name(),
+            CALL.arguments(),
+            new ReplyToken("nowhere")),
+        description,
+        Instant.EPOCH);
   }
 
   @Test
@@ -48,7 +55,7 @@ class RecordingApproverTest {
     RecordingApprover approver = new RecordingApprover(delegate);
     ApprovalRequest request = asking("restart prod-eu");
 
-    Awaited<ApprovalResult> result = approver.approve(request, NOWHERE);
+    Awaited<ApprovalResult> result = approver.approve(request);
 
     assertThat(approver.answers()).containsExactly(new RecordingApprover.Answer(request, result));
   }
@@ -59,8 +66,8 @@ class RecordingApproverTest {
         new RecordingApprover(
             ScriptedApprover.answering(ApprovalResult.approved(), ApprovalResult.denied("no")));
 
-    approver.approve(asking("first"), NOWHERE);
-    approver.approve(asking("second"), NOWHERE);
+    approver.approve(asking("first"));
+    approver.approve(asking("second"));
 
     assertThat(approver.requests())
         .extracting(ApprovalRequest::description)
@@ -71,7 +78,7 @@ class RecordingApproverTest {
   void a_delegate_that_defers_is_recorded_as_having_deferred() {
     RecordingApprover approver = new RecordingApprover(ScriptedApprover.deferring());
 
-    approver.approve(asking("only"), NOWHERE);
+    approver.approve(asking("only"));
 
     assertThat(approver.answers()).isNotEmpty();
     assertThat(approver.answers())

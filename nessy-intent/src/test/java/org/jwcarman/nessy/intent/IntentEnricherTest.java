@@ -25,7 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.testing.TestDatabase;
 
 class IntentEnricherTest {
@@ -35,11 +36,17 @@ class IntentEnricherTest {
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   private static ApprovalRequest freshRequest() {
-    var call =
-        new ToolCall(
-            "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
     return new ApprovalRequest(
-        AgentType.of("ops"), AgentId.of("agent-a"), call, "restart prod-eu", Instant.EPOCH);
+        new ToolCallRequest(
+            AgentType.of("ops"),
+            AgentId.of("prod-eu"),
+            "turn-1",
+            "c1",
+            "restart_prod",
+            JsonNodeFactory.instance.objectNode().put("target", "prod-eu"),
+            new ReplyToken("nowhere")),
+        "restart prod-eu",
+        Instant.EPOCH);
   }
 
   private static JdbcIntentStore<Intent> freshStore() {

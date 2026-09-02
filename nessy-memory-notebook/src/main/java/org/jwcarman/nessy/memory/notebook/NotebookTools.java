@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.memory.pipeline.ContextTransformer;
 
@@ -208,7 +208,7 @@ public final class NotebookTools {
       implements Tool<I> {
 
     @Override
-    public Awaited<ToolResult> execute(I input, ToolContext context) {
+    public Awaited<ToolResult> execute(I input, ToolCallRequest context) {
       try {
         return Awaited.ready(verb.apply(context.agentId(), input));
       } catch (IllegalArgumentException | NullPointerException invalid) {

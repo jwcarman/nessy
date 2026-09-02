@@ -60,11 +60,11 @@ public interface Tool<I> {
    * Runs, or says it will answer later.
    *
    * <p>{@link Awaited.Deferred} hands the wait back to the engine: the tool has already told the
-   * outside world where to answer, using {@link ToolContext#replyToken()}, and states how long the
-   * question should stand.
+   * outside world where to answer, using {@link ToolCallRequest#replyToken()}, and states how long
+   * the question should stand.
    *
    * @param input the call's arguments, already bound to {@link #inputType()}
    * @param context what else this call offers — today, where to send a deferred answer
    */
-  Awaited<ToolResult> execute(I input, ToolContext context);
+  Awaited<ToolResult> execute(I input, ToolCallRequest call);
 }

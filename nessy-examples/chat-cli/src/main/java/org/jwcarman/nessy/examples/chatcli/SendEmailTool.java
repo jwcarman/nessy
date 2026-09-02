@@ -18,7 +18,7 @@ package org.jwcarman.nessy.examples.chatcli;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -54,7 +54,7 @@ final class SendEmailTool implements Tool<SendEmailTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(Input input, ToolContext context) {
+  public Awaited<ToolResult> execute(Input input, ToolCallRequest context) {
     return Awaited.ready(ToolResult.ok("sent to " + input.to()));
   }
 }

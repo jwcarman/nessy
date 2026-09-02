@@ -33,7 +33,7 @@ public interface Approver {
    * @param request what is being asked
    * @param context what else this decision offers — today, where a person's answer goes
    */
-  Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context);
+  Awaited<ApprovalResult> approve(ApprovalRequest request);
 
   /**
    * The approver that always says yes — for a tool nobody gates.
@@ -42,6 +42,6 @@ public interface Approver {
    * than a branch on whether a gate is present.
    */
   static Approver always() {
-    return (request, context) -> Awaited.ready(ApprovalResult.approved());
+    return request -> Awaited.ready(ApprovalResult.approved());
   }
 }

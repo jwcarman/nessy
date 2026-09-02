@@ -21,13 +21,14 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.testing.TestDatabase;
 
@@ -42,13 +43,14 @@ class IntentToolTest {
    * reads none of it — but a context is no longer a single method, because a tool that DOES keep
    * something per agent has to be told which agent it is serving.
    */
-  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
-      implements ToolContext {}
-
-  private static ToolContext freshContext() {
-    return new Call(
+  private static ToolCallRequest freshContext() {
+    return new ToolCallRequest(
         AgentType.of("intent-test"),
         AgentId.of("one"),
+        "turn-1",
+        "c1",
+        "declare_intent",
+        JsonNodeFactory.instance.objectNode(),
         new ReplyToken("unused-by-a-tool-that-never-defers"));
   }
 

@@ -33,15 +33,13 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
-import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -80,16 +78,16 @@ class McpToolboxTest {
    * Where an answer would go if the tool deferred. An MCP {@code tools/call} is a single round trip
    * and never defers, so nothing reads it.
    */
-  private static ToolContext contextFor(JsonNode arguments) {
-    return new Call(
+  private static ToolCallRequest contextFor(JsonNode arguments) {
+    return new ToolCallRequest(
         AgentType.of("mcp-test"),
         AgentId.of("one"),
+        "turn-1",
+        "call-1",
+        "echo",
+        arguments,
         new ReplyToken("unused-by-a-tool-that-never-defers"));
   }
-
-  /** An MCP tool keeps nothing per agent, but a context is no longer a single method. */
-  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
-      implements ToolContext {}
 
   /**
    * The text of a successful result. ToolResult is sealed now — Success carries content blocks and
@@ -275,7 +273,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi there");
         ToolDescriber<JsonNode> describer = args -> tool.name() + " " + args;
-        Approver deny = (request, context) -> Awaited.ready(ApprovalResult.denied("pinned"));
+        Approver deny = request -> Awaited.ready(ApprovalResult.denied("pinned"));
 
         ToolBinding<JsonNode> binding = new ToolBinding<>(tool, deny, describer);
 
@@ -283,23 +281,13 @@ class McpToolboxTest {
         // description a human would read comes off the describer, and the answer off the approver.
         assertThat(binding.tool()).isSameAs(tool);
         assertThat(binding.describer().describe(arguments)).isEqualTo("echo " + arguments);
-        assertThat(
-                binding
-                    .approver()
-                    .approve(
-                        approvalRequestFor(arguments),
-                        ((ApprovalContext) () -> new ReplyToken("nowhere"))))
+        assertThat(binding.approver().approve(approvalRequestFor(arguments)))
             .isEqualTo(Awaited.ready(ApprovalResult.denied("pinned")));
       }
     }
 
     private static ApprovalRequest approvalRequestFor(JsonNode arguments) {
-      return new ApprovalRequest(
-          AgentType.of("test-agent"),
-          AgentId.of("scope-1"),
-          new ToolCall("call-1", "echo", arguments),
-          "echo " + arguments,
-          Instant.EPOCH);
+      return new ApprovalRequest(contextFor(arguments), "echo " + arguments, Instant.EPOCH);
     }
   }
 
@@ -312,7 +300,7 @@ class McpToolboxTest {
           McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"));
       Tool<JsonNode> tool = fixture.tool("echo");
       JsonNode arguments = echoArguments("hi");
-      ToolContext context = contextFor(arguments);
+      ToolCallRequest context = contextFor(arguments);
       fixture.close();
 
       assertThatThrownBy(() -> tool.execute(arguments, context))

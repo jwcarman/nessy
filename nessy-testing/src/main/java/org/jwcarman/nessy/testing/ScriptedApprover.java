@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalContext;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -70,7 +69,7 @@ public final class ScriptedApprover implements Approver {
   }
 
   @Override
-  public Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context) {
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
     Objects.requireNonNull(request, "request must not be null");
     requests.add(request);
     ApprovalResult next = answers.poll();

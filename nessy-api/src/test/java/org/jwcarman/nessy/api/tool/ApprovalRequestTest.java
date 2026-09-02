@@ -40,13 +40,19 @@ class ApprovalRequestTest {
   private static final AgentId HOUSE = AgentId.of("house-12");
   private static final Instant ASKED = Instant.parse("2026-09-01T12:00:00Z");
 
-  private static ApprovalRequest asked() {
-    return new ApprovalRequest(
+  private static ToolCallRequest call() {
+    return new ToolCallRequest(
         WATCHMAN,
         HOUSE,
-        new ToolCall("c1", "prune_images", JsonNodeFactory.instance.objectNode()),
-        "docker image prune -af",
-        ASKED);
+        "turn-1",
+        "c1",
+        "prune_images",
+        JsonNodeFactory.instance.objectNode(),
+        ReplyToken.of("token-1"));
+  }
+
+  private static ApprovalRequest asked() {
+    return new ApprovalRequest(call(), "docker image prune -af", ASKED);
   }
 
   @Nested
@@ -56,11 +62,23 @@ class ApprovalRequestTest {
     void it_carries_who_is_asking_and_what_about() {
       ApprovalRequest request = asked();
 
-      assertThat(request.agentType()).isEqualTo(WATCHMAN);
-      assertThat(request.agentId()).isEqualTo(HOUSE);
-      assertThat(request.call().name()).isEqualTo("prune_images");
+      assertThat(request.call().agentType()).isEqualTo(WATCHMAN);
+      assertThat(request.call().agentId()).isEqualTo(HOUSE);
+      assertThat(request.call().toolName()).isEqualTo("prune_images");
       assertThat(request.description()).isEqualTo("docker image prune -af");
       assertThat(request.askedAt()).isEqualTo(ASKED);
+    }
+
+    @Test
+    @DisplayName("the reply token reaches through, so an approver needs one object")
+    void it_carries_where_an_answer_would_go() {
+      assertThat(asked().replyToken()).isEqualTo(ReplyToken.of("token-1"));
+    }
+
+    @Test
+    @DisplayName("the call key is the turn and the call, since a call id repeats across turns")
+    void it_carries_a_key_a_tool_can_deduplicate_on() {
+      assertThat(asked().call().callKey()).isEqualTo("turn-1/c1");
     }
 
     @Test
@@ -114,16 +132,16 @@ class ApprovalRequestTest {
 
     @Test
     void a_question_with_no_description_is_refused() {
-      ToolCall call = new ToolCall("c1", "prune_images", JsonNodeFactory.instance.objectNode());
+      ToolCallRequest call = call();
 
-      assertThatThrownBy(() -> new ApprovalRequest(WATCHMAN, HOUSE, call, null, ASKED))
+      assertThatThrownBy(() -> new ApprovalRequest(call, null, ASKED))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("description");
     }
 
     @Test
     void a_question_about_no_call_is_refused() {
-      assertThatThrownBy(() -> new ApprovalRequest(WATCHMAN, HOUSE, null, "something", ASKED))
+      assertThatThrownBy(() -> new ApprovalRequest(null, "something", ASKED))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("call");
     }

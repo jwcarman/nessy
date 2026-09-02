@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 @DisplayName("The watchman's tools")
@@ -40,11 +40,15 @@ class WatchmanToolsTest {
   private static final JsonNode NO_ARGUMENTS = JsonNodeFactory.instance.objectNode();
 
   /** What the engine tells a running tool. These tools read none of it. */
-  private record Call(AgentType agentType, AgentId agentId, ReplyToken replyToken)
-      implements ToolContext {}
-
-  private static final ToolContext NOWHERE =
-      new Call(AgentType.of("watchman"), AgentId.of("house"), new ReplyToken("nowhere"));
+  private static final ToolCallRequest NOWHERE =
+      new ToolCallRequest(
+          AgentType.of("watchman"),
+          AgentId.of("house"),
+          "turn-1",
+          "c1",
+          "a_tool",
+          NO_ARGUMENTS,
+          new ReplyToken("nowhere"));
 
   private final CommandRunner runner = new FakeRunner();
 

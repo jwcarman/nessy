@@ -45,7 +45,7 @@ import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Input;
@@ -248,19 +248,18 @@ final class Instructions {
         .ifPresentOrElse(
             binding -> {
               String description = deps.bindings().describe(binding, call.arguments());
+              // The reply token is minted before anyone is asked, because the approver may hand it
+              // to a person and the tool may hand it to the outside world, and both settle the same
+              // call.
               ApprovalRequest request =
-                  new ApprovalRequest(deps.agentType(), agentId, call, description, Instant.now());
-              // Minted before anyone is asked, because the approver may hand it to a person and
-              // the tool may hand it to the outside world, and both settle the same call.
-              org.jwcarman.nessy.api.tool.ApprovalContext context =
-                  () -> deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id());
+                  new ApprovalRequest(requestFor(agentId, state, call), description, Instant.now());
               run(
                   () ->
                       deps.traces()
                           .inSpan(
                               "approval " + call.name(),
                               carried,
-                              () -> deps.bindings().approve(binding, request, context)),
+                              () -> deps.bindings().approve(binding, request)),
                   answer ->
                       switch (answer) {
                         case Awaited.Ready<ApprovalResult> ready -> {
@@ -322,18 +321,13 @@ final class Instructions {
         .binding(call.name())
         .ifPresent(
             binding -> {
-              ToolContext context =
-                  new CallContext(
-                      deps.agentType(),
-                      agentId,
-                      deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
               run(
                   () ->
                       deps.traces()
                           .inSpan(
                               "tool " + call.name(),
                               carried,
-                              () -> deps.bindings().run(binding, call.arguments(), context)),
+                              () -> deps.bindings().run(binding, requestFor(agentId, state, call))),
                   answer ->
                       switch (answer) {
                         case Awaited.Ready<ToolResult> ready -> {
@@ -520,6 +514,24 @@ final class Instructions {
     }
   }
 
+  /**
+   * Everything anyone answering this call needs, built once per ask or run.
+   *
+   * <p>One record rather than the two context objects this replaced: a tool and an approver were
+   * handed different views of the same call, so the pair had to be kept in step and an approver
+   * could not see what the tool would be given.
+   */
+  private ToolCallRequest requestFor(AgentId agentId, AgentState state, ToolCall call) {
+    return new ToolCallRequest(
+        deps.agentType(),
+        agentId,
+        state.turnId(),
+        call.id(),
+        call.name(),
+        call.arguments(),
+        deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
+  }
+
   static String resultKey(String callId) {
     return "result-" + callId;
   }
@@ -536,14 +548,4 @@ final class Instructions {
     String message = cause.getMessage();
     return message == null ? cause.getClass().getSimpleName() : message;
   }
-
-  /**
-   * One call's address for the outside world.
-   *
-   * <p>The same token reaches the approver and the tool, because both settle the same call and two
-   * addresses meaning one thing is two things to get wrong.
-   */
-  private record CallContext(
-      AgentType agentType, AgentId agentId, org.jwcarman.nessy.api.tool.ReplyToken replyToken)
-      implements ToolContext {}
 }

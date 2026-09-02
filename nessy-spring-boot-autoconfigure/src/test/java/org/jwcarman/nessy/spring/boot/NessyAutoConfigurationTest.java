@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.PekkoHarnessFactory;
 import org.jwcarman.nessy.engine.Replies;
@@ -195,7 +195,7 @@ class NessyAutoConfigurationTest {
         }
 
         @Override
-        public Awaited<ToolResult> execute(ObjectNode input, ToolContext context) {
+        public Awaited<ToolResult> execute(ObjectNode input, ToolCallRequest context) {
           return Awaited.ready(ToolResult.ok("nothing happened"));
         }
       };

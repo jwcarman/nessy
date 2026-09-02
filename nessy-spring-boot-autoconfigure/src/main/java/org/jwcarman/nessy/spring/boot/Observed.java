@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -57,10 +57,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  *
  * <p><b>What this cannot do, and why.</b> Nothing here can say which agent or turn a model call
  * belongs to: {@link ModelRequest} carries a context, a prompt, tools and capabilities, and no
- * identity; {@link ToolContext} carries a reply address and nothing else. So model and tool spans
- * are correctly timed and correctly attributed, and they are ROOTS — they do not nest under a turn,
- * because there is nothing to nest them under. Approvals are the exception: {@link ApprovalRequest}
- * knows its agent and its call.
+ * identity; {@link ToolCallRequest} carries a reply address and nothing else. So model and tool
+ * spans are correctly timed and correctly attributed, and they are ROOTS — they do not nest under a
+ * turn, because there is nothing to nest them under. Approvals are the exception: {@link
+ * ApprovalRequest} knows its agent and its call.
  */
 public final class Observed {
 
@@ -304,7 +304,7 @@ public final class Observed {
       }
 
       @Override
-      public Awaited<ToolResult> execute(I input, ToolContext context) {
+      public Awaited<ToolResult> execute(I input, ToolCallRequest context) {
         Observation observation =
             Observation.createNotStarted(DURATION, observations)
                 .contextualName("execute_tool " + delegate.name())
@@ -340,18 +340,18 @@ public final class Observed {
   public static Approver approver(Approver delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
-    return (request, context) -> {
+    return (request) -> {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
-              .contextualName("approve " + request.call().name())
-              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().name())
-              .lowCardinalityKeyValue("gen_ai.tool.name", request.call().name())
-              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value())
-              .highCardinalityKeyValue("gen_ai.tool.call.id", request.call().id())
+              .contextualName("approve " + request.call().toolName())
+              .lowCardinalityKeyValue("gen_ai.agent.name", request.call().agentType().name())
+              .lowCardinalityKeyValue("gen_ai.tool.name", request.call().toolName())
+              .highCardinalityKeyValue("gen_ai.agent.id", request.call().agentId().value())
+              .highCardinalityKeyValue("gen_ai.tool.call.id", request.call().callId())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
       return observation.observe(
           () -> {
-            Awaited<ApprovalResult> answer = delegate.approve(request, context);
+            Awaited<ApprovalResult> answer = delegate.approve(request);
             observation.lowCardinalityKeyValue("nessy.approval.answer", approvalOf(answer));
             return answer;
           });

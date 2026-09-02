@@ -48,7 +48,7 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolDescriber;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
@@ -109,7 +109,7 @@ class ToolCallTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Query input, ToolContext context) {
+      public Awaited<ToolResult> execute(Query input, ToolCallRequest context) {
         return Awaited.ready(ToolResult.ok(answer + " for " + input.text()));
       }
     };

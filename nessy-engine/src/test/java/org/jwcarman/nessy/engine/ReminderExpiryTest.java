@@ -52,7 +52,7 @@ import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
@@ -150,7 +150,7 @@ class ReminderExpiryTest {
   }
 
   private static Approver parksForThreeDays() {
-    return (request, context) -> Awaited.deferred(PARKED_AT.plus(TERM));
+    return request -> Awaited.deferred(PARKED_AT.plus(TERM));
   }
 
   private static Tool<ObjectNode> sendEmail() {
@@ -176,7 +176,7 @@ class ReminderExpiryTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(ObjectNode input, ToolContext context) {
+      public Awaited<ToolResult> execute(ObjectNode input, ToolCallRequest context) {
         return Awaited.ready(ToolResult.ok("sent"));
       }
     };

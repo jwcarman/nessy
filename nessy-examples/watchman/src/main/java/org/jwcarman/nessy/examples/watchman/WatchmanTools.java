@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -142,7 +142,7 @@ public final class WatchmanTools {
       }
 
       @Override
-      public Awaited<ToolResult> execute(JsonNode input, ToolContext context) {
+      public Awaited<ToolResult> execute(JsonNode input, ToolCallRequest context) {
         // Blocking by design; the engine runs this on its blocking executor.
         List<String> argv = spec.argv().apply(input == null ? JSON.createObjectNode() : input);
         CommandRunner.Output output = runner.run(argv, spec.timeout());

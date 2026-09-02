@@ -55,11 +55,11 @@ public class ApprovalDesk {
   /** Records a question the approver has just deferred. */
   public void expecting(ApprovalRequest request, ReplyToken replyToken) {
     waiting.put(
-        request.call().id(),
+        request.call().callId(),
         new Waiting(
-            request.agentId().value(),
-            request.call().id(),
-            request.call().name(),
+            request.call().agentId().value(),
+            request.call().callId(),
+            request.call().toolName(),
             request.call().arguments().toPrettyString(),
             request.description(),
             request.askedAt(),

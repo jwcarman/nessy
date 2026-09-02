@@ -50,7 +50,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
@@ -105,7 +105,7 @@ class DeferredApprovalTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Job input, ToolContext context) {
+      public Awaited<ToolResult> execute(Job input, ToolCallRequest context) {
         ran.set(true);
         return Awaited.ready(ToolResult.ok("swept"));
       }
@@ -170,10 +170,10 @@ class DeferredApprovalTest {
                         sweepTool(),
                         binding ->
                             binding.approver(
-                                (request, context) -> {
+                                (request) -> {
                                   // What an approver that needs a person does: keep the address
                                   // the answer will come back to, then say a human is on it.
-                                  handed.set(context.replyToken());
+                                  handed.set(request.replyToken());
                                   asked.set(request.description());
                                   return Awaited.deferred(Instant.now().plus(1, ChronoUnit.HOURS));
                                 })));
