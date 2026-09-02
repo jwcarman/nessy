@@ -208,13 +208,17 @@ public class ApprovalsController {
       @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
-      @RequestParam(name = "note", defaultValue = "") String note,
+      // "reason", the word the form uses and the word ApprovalResult.Denied uses. It read "note"
+      // and the form has always sent "reason", so every denial a person typed was bound to
+      // nothing and recorded as the literal "denied" — the one thing a denial exists to carry,
+      // dropped in silence.
+      @RequestParam(name = "reason", defaultValue = "") String reason,
       Principal who) {
     return answer(
         AgentType.of(agentType),
         AgentId.of(agentId),
         CallId.of(callId),
-        ApprovalResult.denied(note.isBlank() ? "denied" : note),
+        ApprovalResult.denied(reason.isBlank() ? "denied" : reason),
         who);
   }
 

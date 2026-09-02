@@ -52,7 +52,6 @@
     <td class="dwell" th:text="${row.dwell}">how long</td>
     <td>
       <form method="post" th:action="@{/approve/{t}/{a}/{c}(t=${row.agentType},a=${row.agentId},c=${row.callId})}">
-        <input type="text" name="note" placeholder="note (optional)">
         <button type="submit">approve</button>
       </form>
       <form method="post" th:action="@{/deny/{t}/{a}/{c}(t=${row.agentType},a=${row.agentId},c=${row.callId})}">
