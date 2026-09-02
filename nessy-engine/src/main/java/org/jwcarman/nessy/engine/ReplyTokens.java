@@ -91,14 +91,47 @@ public final class ReplyTokens {
     if (keys.isEmpty()) {
       throw new IllegalArgumentException("at least one key is needed to mint a token");
     }
+    for (int i = 0; i < keys.size(); i++) {
+      requireUsable(keys.get(i), i);
+    }
     this.keys = List.copyOf(keys);
+  }
+
+  /**
+   * Rejects a key AES cannot use, here rather than at the first mint.
+   *
+   * <p>A cipher only sees its key when something asks it to encrypt, so a mistyped or truncated key
+   * would otherwise surface the first time a call parked on a person — the worst moment to discover
+   * a configuration error, and the one furthest from the line that caused it. Checking at
+   * construction means a bad key fails at startup, next to the property that set it.
+   *
+   * <p>Length is what can be checked. Whether the bytes are the RIGHT key is not knowable here: a
+   * wrong key of the right length reads no token, which is what the "not a reply token issued by
+   * this engine" message is for.
+   */
+  private static void requireUsable(SecretKey key, int position) {
+    Objects.requireNonNull(key, "key must not be null");
+    byte[] material = key.getEncoded();
+    if (material == null) {
+      // A hardware or KMS-backed key does not expose its bytes, and does not need us to check.
+      return;
+    }
+    int length = material.length;
+    if (length != 16 && length != 24 && length != 32) {
+      throw new IllegalArgumentException(
+          "reply key %d is %d bytes; AES needs 16, 24 or 32 (use 32)".formatted(position, length));
+    }
   }
 
   public ReplyTokens(SecretKey key) {
     this(List.of(Objects.requireNonNull(key, "key must not be null")));
   }
 
-  /** From raw key material — 16, 24, or 32 bytes, newest first. */
+  /**
+   * From raw key material — 16, 24, or 32 bytes, newest first.
+   *
+   * @throws IllegalArgumentException if any key is a length AES cannot use
+   */
   public static ReplyTokens withKeys(byte[]... keys) {
     List<SecretKey> secrets = new ArrayList<>(keys.length);
     for (byte[] key : keys) {

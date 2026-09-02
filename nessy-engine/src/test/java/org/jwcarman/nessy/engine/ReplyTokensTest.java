@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -148,5 +149,48 @@ class ReplyTokensTest {
     ReplyToken minted = ReplyTokens.withKey(key).mint(WATCHMAN, HOUSE, "turn-1", "c1");
 
     assertThat(ReplyTokens.withKey(key).read(minted).callId()).isEqualTo("c1");
+  }
+
+  @Nested
+  @DisplayName("keys are checked when they are configured")
+  class Keys {
+
+    @Test
+    @DisplayName("a key AES cannot use is refused at construction, not at the first mint")
+    void a_key_of_the_wrong_length_is_refused() {
+      byte[] tooShort = new byte[20];
+
+      assertThatThrownBy(() -> ReplyTokens.withKey(tooShort))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("20 bytes")
+          .hasMessageContaining("16, 24 or 32");
+    }
+
+    @Test
+    @DisplayName("the message names WHICH key, because a rotation configures several")
+    void a_bad_key_among_good_ones_is_named_by_position() {
+      byte[] good = new byte[32];
+      byte[] bad = new byte[7];
+
+      assertThatThrownBy(() -> ReplyTokens.withKeys(good, bad))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("key 1");
+    }
+
+    @Test
+    void every_length_aes_accepts_is_accepted() {
+      assertThat(ReplyTokens.withKey(new byte[16])).isNotNull();
+      assertThat(ReplyTokens.withKey(new byte[24])).isNotNull();
+      assertThat(ReplyTokens.withKey(new byte[32])).isNotNull();
+    }
+
+    @Test
+    void no_keys_at_all_is_refused() {
+      java.util.List<javax.crypto.SecretKey> none = java.util.List.of();
+
+      assertThatThrownBy(() -> new ReplyTokens(none))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("at least one key");
+    }
   }
 }

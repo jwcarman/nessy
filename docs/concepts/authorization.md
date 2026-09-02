@@ -105,8 +105,9 @@ honestly rather than silently changing nothing.
 The same token reaches the approver and the tool, because both settle the
 same call and two addresses meaning one thing is two things to get wrong.
 
-The keys are AES keys of 16, 24 or 32 bytes — **use 32**. Mint one with
-`openssl rand -base64 32`, or in Java:
+The keys are AES keys of 16, 24 or 32 bytes — **use 32**, and any other
+length is refused when it is configured rather than at the first mint. Mint
+one with `openssl rand -base64 32`, or in Java:
 
 ```java
 KeyGenerator generator = KeyGenerator.getInstance("AES");

@@ -103,8 +103,11 @@ String key = Base64.getEncoder().encodeToString(generator.generateKey().getEncod
 The output is 44 characters ending in `=` — that is what 32 bytes of base64
 looks like, and a quick way to eyeball a key that got truncated somewhere.
 
-A key of some other length is not caught when it is configured. It fails when
-the first token is minted, because that is when the cipher sees it.
+A key of some other length is refused **at startup**, naming which one — a
+cipher only sees its key when something asks it to encrypt, so without that
+check a mistyped key would surface the first time a call parked on a person,
+which is the worst moment to find out and the furthest from the line that
+caused it.
 
 ```yaml
 nessy:
