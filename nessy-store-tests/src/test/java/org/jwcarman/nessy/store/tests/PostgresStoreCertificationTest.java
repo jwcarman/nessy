@@ -100,7 +100,9 @@ class PostgresStoreCertificationTest {
               "nessy_note",
               "nessy_plan_task",
               "nessy_transcript",
-              "nessy_intent");
+              "nessy_intent",
+              "nessy_backlog",
+              "nessy_pending_approvals");
     }
 
     /** Every statement is IF NOT EXISTS, which is what makes it safe to run on every start. */
@@ -109,6 +111,84 @@ class PostgresStoreCertificationTest {
       Schemas.initialize(database);
 
       assertThat(tables()).contains("nessy_note");
+    }
+  }
+
+  @Nested
+  @DisplayName("the approvals projection")
+  class TheApprovals {
+
+    /**
+     * The statement, not just the table.
+     *
+     * <p>It used to be {@code ON CONFLICT ... DO UPDATE ... WHERE}, which PostgreSQL accepts and H2
+     * rejects — so the projection worked here and could not park a single approval on the database
+     * the starter builds by default. Certifying the write on both is what makes that a test failure
+     * rather than a support ticket.
+     */
+    @Test
+    void asking_twice_refreshes_the_address_without_making_a_second_row() {
+      var repository =
+          new org.jwcarman.nessy.spring.boot.PendingApprovalsRepository(
+              new org.springframework.jdbc.core.JdbcTemplate(database));
+      var asked = java.time.Instant.parse("2026-09-01T12:00:00Z");
+      var question =
+          new org.jwcarman.nessy.spring.boot.PendingApproval(
+              "c1",
+              "watchman",
+              "house-12",
+              "prune_images",
+              "docker image prune -af",
+              asked,
+              asked.plusSeconds(3600),
+              "token-1",
+              java.util.Optional.empty(),
+              java.util.Optional.empty(),
+              java.util.Optional.empty());
+
+      repository.asked(question);
+      repository.asked(
+          new org.jwcarman.nessy.spring.boot.PendingApproval(
+              "c1",
+              "watchman",
+              "house-12",
+              "prune_images",
+              "docker image prune -af",
+              asked,
+              asked.plusSeconds(7200),
+              "token-2",
+              java.util.Optional.empty(),
+              java.util.Optional.empty(),
+              java.util.Optional.empty()));
+
+      assertThat(repository.pending()).hasSize(1);
+      assertThat(repository.byCallId("c1").orElseThrow().replyToken()).isEqualTo("token-2");
+    }
+
+    @Test
+    void an_answer_stops_it_waiting() {
+      var repository =
+          new org.jwcarman.nessy.spring.boot.PendingApprovalsRepository(
+              new org.springframework.jdbc.core.JdbcTemplate(database));
+      var asked = java.time.Instant.parse("2026-09-01T12:00:00Z");
+      repository.asked(
+          new org.jwcarman.nessy.spring.boot.PendingApproval(
+              "c2",
+              "watchman",
+              "house-12",
+              "restart",
+              "restart prod-1",
+              asked,
+              asked.plusSeconds(3600),
+              "token-3",
+              java.util.Optional.empty(),
+              java.util.Optional.empty(),
+              java.util.Optional.empty()));
+
+      repository.answered("c2", "denied", "not tonight", asked.plusSeconds(60));
+
+      assertThat(repository.pending()).isEmpty();
+      assertThat(repository.byCallId("c2").orElseThrow().answer()).contains("denied");
     }
   }
 

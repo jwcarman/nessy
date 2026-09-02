@@ -47,10 +47,14 @@ public class PendingApprovalsRepository {
 
   private static final String INSERT =
       "INSERT INTO nessy_pending_approvals (call_id, agent_type, agent_id, tool, action, asked_at,"
-          + " expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-          + " ON CONFLICT (call_id) DO UPDATE SET reply_token = EXCLUDED.reply_token,"
-          + " expires_at = EXCLUDED.expires_at"
-          + " WHERE nessy_pending_approvals.answer IS NULL";
+          + " expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+  private static final String REFRESH =
+      "UPDATE nessy_pending_approvals SET reply_token = ?, expires_at = ?"
+          + " WHERE call_id = ? AND answer IS NULL";
+
+  private static final String EXISTS =
+      "SELECT count(*) FROM nessy_pending_approvals WHERE call_id = ?";
 
   private static final String ANSWER =
       "UPDATE nessy_pending_approvals SET answer = ?, note = ?, answered_at = ?"
@@ -87,6 +91,18 @@ public class PendingApprovalsRepository {
    * reopen it.
    */
   public void asked(PendingApproval row) {
+    // Refresh-then-insert rather than ON CONFLICT ... DO UPDATE, which is PostgreSQL syntax H2
+    // rejects outright — and H2 is what this starter runs on when an application supplied no
+    // DataSource, so the vendor form made the default configuration unable to park an approval at
+    // all. Measured: "bad SQL grammar" on the first question a person was ever asked.
+    //
+    // Not a race: one listener follows one agent, and an agent's events are serialized, so there
+    // is a single writer per call id.
+    int refreshed =
+        jdbc.update(REFRESH, row.replyToken(), Timestamp.from(row.expiresAt()), row.callId());
+    if (refreshed > 0 || alreadyDecided(row.callId())) {
+      return;
+    }
     jdbc.update(
         INSERT,
         row.callId(),
@@ -97,6 +113,12 @@ public class PendingApprovalsRepository {
         Timestamp.from(row.askedAt()),
         Timestamp.from(row.expiresAt()),
         row.replyToken());
+  }
+
+  /** Whether a row exists that the refresh deliberately left alone, because it was answered. */
+  private boolean alreadyDecided(String callId) {
+    Integer rows = jdbc.queryForObject(EXISTS, Integer.class, callId);
+    return rows != null && rows > 0;
   }
 
   /**
