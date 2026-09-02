@@ -43,11 +43,11 @@ public record AmbientMessage(String kind, List<AmbientContentBlock> content)
    * interpolate a kind into markup, and an unconstrained one could write structure into a prompt.
    * Checked here, so no adapter has to escape anything.
    */
-  private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9-]*");
+  private static final Pattern KIND_PATTERN = Pattern.compile("[a-z][a-z0-9-]*");
 
   public AmbientMessage {
     Objects.requireNonNull(kind, "kind must not be null");
-    if (!KIND.matcher(kind).matches()) {
+    if (!KIND_PATTERN.matcher(kind).matches()) {
       throw new IllegalArgumentException(
           "kind must be lowercase kebab-case starting with a letter: '" + kind + "'");
     }
