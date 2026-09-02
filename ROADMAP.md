@@ -88,7 +88,11 @@ shipped early, but *policy* is still per-tool and binary. These close the gap:
   (pre-model, post-model, pre-tool, post-tool) with policy-as-data: argument
   constraints ("this tool, but never above this amount"), content screens,
   deny-with-reason compacted into context so the model corrects course;
-  provider-native hooks (Bedrock Guardrails) ride the same seam.
+  provider-native hooks (Bedrock Guardrails) ride the same seam. *Partly
+  there:* the PRE-TOOL boundary already takes policy-as-data — `ApprovalRequest`
+  is a JSON document and `nessy-examples/policy` decides it in Rego, argument
+  constraints included. The gap is the other three boundaries and a seam that
+  is not the approver.
 - **Principals & identity propagation** — who a conversation acts *for*, as a
   first-class concept: per-principal grants and quotas, on-behalf-of identity
   reaching tools, tenancy built on the `SubjectId` foundation.
