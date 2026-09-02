@@ -152,17 +152,6 @@ public final class BedrockRequests {
   }
 
   /**
-   * Maps one {@link org.jwcarman.nessy.api.message.Message} to its SDK form, or nothing at all if
-   * every one of its content blocks was itself dropped (see {@link #toContentBlock}).
-   *
-   * <p>A message with no representable content is elided outright rather than sent with an empty
-   * block list: Bedrock rejects an empty {@code content} array, and — more to the point — a message
-   * that translated to nothing carries no information for the model to see. The scenario this
-   * guards is the same one {@code AnthropicRequests.toMessageParam} and {@code
-   * GeminiRequests.toModelContent} document: a resumed session whose thinking was cut off before it
-   * was signed settles as an assistant message containing only that one dropped block.
-   */
-  /**
    * One of our messages becomes as many of Bedrock's as its wire needs.
    *
    * <p>An exchange becomes two: the assistant turn carrying the tool uses, then a user turn
@@ -185,6 +174,17 @@ public final class BedrockRequests {
     };
   }
 
+  /**
+   * Maps one {@link org.jwcarman.nessy.api.message.Message} to its SDK form, or nothing at all if
+   * every one of its content blocks was itself dropped (see {@link #toContentBlock}).
+   *
+   * <p>A message with no representable content is elided outright rather than sent with an empty
+   * block list: Bedrock rejects an empty {@code content} array, and — more to the point — a message
+   * that translated to nothing carries no information for the model to see. The scenario this
+   * guards is the same one {@code AnthropicRequests.toMessageParam} and {@code
+   * GeminiRequests.toModelContent} document: a resumed session whose thinking was cut off before it
+   * was signed settles as an assistant message containing only that one dropped block.
+   */
   private static Optional<software.amazon.awssdk.services.bedrockruntime.model.Message> toMessage(
       ConversationRole role, List<? extends Block> content) {
     var blocks =

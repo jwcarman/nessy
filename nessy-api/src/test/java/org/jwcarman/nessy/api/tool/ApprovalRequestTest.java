@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
@@ -96,7 +97,7 @@ class ApprovalRequestTest {
     void a_text_fact_reads_back() {
       ApprovalRequest request = asked().fact("principal", "jcarman");
 
-      assertThat(request.fact("principal")).map(node -> node.asText()).contains("jcarman");
+      assertThat(request.fact("principal")).map(JsonNode::asText).contains("jcarman");
     }
 
     @Test
@@ -123,7 +124,7 @@ class ApprovalRequestTest {
     void a_fact_recorded_twice_keeps_the_second() {
       ApprovalRequest request = asked().fact("risk", "LOW").fact("risk", "HIGH");
 
-      assertThat(request.fact("risk")).map(node -> node.asText()).contains("HIGH");
+      assertThat(request.fact("risk")).map(JsonNode::asText).contains("HIGH");
     }
   }
 

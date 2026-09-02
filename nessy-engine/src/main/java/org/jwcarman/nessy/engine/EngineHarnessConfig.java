@@ -46,7 +46,7 @@ final class EngineHarnessConfig<O> implements HarnessConfig<O> {
   private AgentType type;
   private String systemPrompt = "";
   private ModelId modelId;
-  private BacklogCoalescer<O> coalescer = (waiting, arrival) -> append(waiting, arrival);
+  private BacklogCoalescer<O> coalescer = EngineHarnessConfig::append;
   private ObservationRenderer<O> renderer;
   private Memory memory;
   private final List<ToolBinding<?>> bindings = new ArrayList<>();

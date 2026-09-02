@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscriber;
-import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.TurnResult;
 
@@ -65,7 +64,7 @@ final class ReplLoop {
     // Closed on the way out: an unclosed subscription leaves a routing entry behind, and the
     // engine going on narrating into a REPL that has left is how a clean exit turns into a
     // warning about dropped messages.
-    try (AgentSubscription _ = harness.subscribe(agentId, printing())) {
+    try (var _ = harness.subscribe(agentId, printing())) {
       converse();
     }
   }
@@ -81,14 +80,13 @@ final class ReplLoop {
       if (line == null || config.isExit(line)) {
         break;
       }
-      if (line.isBlank()) {
-        continue;
+      if (!line.isBlank()) {
+        // Anything left over from a turn nobody waited for must not end THIS one instantly.
+        finished.clear();
+        spoke = false;
+        harness.observe(agentId, line);
+        awaitTurn();
       }
-      // Anything left over from a turn nobody waited for must not end THIS one instantly.
-      finished.clear();
-      spoke = false;
-      harness.observe(agentId, line);
-      awaitTurn();
     }
     if (!config.farewell().isEmpty()) {
       io.write(System.lineSeparator() + config.farewell() + System.lineSeparator());
@@ -165,7 +163,7 @@ final class ReplLoop {
         report(ended.outcome());
       }
       io.flush();
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }
@@ -184,11 +182,9 @@ final class ReplLoop {
       case TurnResult.Failed(var reason) -> note("failed: " + reason);
       case TurnResult.Truncated() ->
           note("the answer was cut off at the token limit; ask for less, or raise maxTokens");
-      case TurnResult.Completed() -> {
-        if (!spoke) {
+      case TurnResult.Completed() when !spoke ->
           note("the model ended the turn without saying anything");
-        }
-      }
+      case TurnResult.Completed() -> {}
     }
   }
 

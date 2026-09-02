@@ -173,7 +173,7 @@ class DeferredApprovalTest {
                         sweepTool(),
                         binding ->
                             binding.approver(
-                                (request) -> {
+                                request -> {
                                   // What an approver that needs a person does: keep the address
                                   // the answer will come back to, then say a human is on it.
                                   handed.set(request.replyToken());

@@ -90,7 +90,7 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
         try {
           jdbc.sql(INSERT).params(agentType, agentId, encoded).update();
           return;
-        } catch (org.springframework.dao.DuplicateKeyException raced) {
+        } catch (org.springframework.dao.DuplicateKeyException _) {
           // Another caller declared first. Fall through and update its row instead.
           continue;
         }

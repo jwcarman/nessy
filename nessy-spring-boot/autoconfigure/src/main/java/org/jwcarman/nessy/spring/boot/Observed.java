@@ -189,20 +189,20 @@ public final class Observed {
                 "gen_ai.response.time_to_first_chunk",
                 String.valueOf((System.nanoTime() - startedAt) / 1_000_000));
           }
-          record(event);
+          recordOutcome(event);
           return event;
         }
       };
     }
 
     /** The tokens THIS call reported, and how it ended. */
-    private void record(ModelEvent event) {
+    private void recordOutcome(ModelEvent event) {
       switch (event) {
         case ModelEvent.Stopped(StopReason reason, Usage usage) -> {
           observation.lowCardinalityKeyValue(FINISH_REASONS, finishReason(reason));
           tokens(usage);
         }
-        case ModelEvent.Refused(var _, var _, Usage usage) -> {
+        case ModelEvent.Refused(_, _, Usage usage) -> {
           observation.lowCardinalityKeyValue(FINISH_REASONS, "content_filter");
           tokens(usage);
         }
@@ -344,7 +344,7 @@ public final class Observed {
   public static Approver approver(Approver delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
     Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-    return (request) -> {
+    return request -> {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
               .contextualName("approve " + request.toolName())

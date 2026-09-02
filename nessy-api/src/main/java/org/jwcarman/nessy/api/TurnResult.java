@@ -29,8 +29,9 @@ import java.util.Objects;
  * <p>Sealed so a watcher rendering a turn cannot forget the awkward ones. A chat UI shows a
  * completed turn, a truncated one, and a refused one differently, and a failed one differently
  * again; a single reason string would let all four render identically by accident.
+ *
+ * <p>Wire names are a compatibility surface: narration delivered over SSE names them.
  */
-/** Wire names are a compatibility surface: narration delivered over SSE names them. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = TurnResult.Completed.class, name = "completed"),

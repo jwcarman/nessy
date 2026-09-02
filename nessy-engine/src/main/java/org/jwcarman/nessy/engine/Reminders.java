@@ -59,13 +59,14 @@ final class Reminders {
   private static final String CALL_ID_NOT_NULL = "callId must not be null";
 
   /**
-   * A reminder as the store holds it.
+   * A deadline, and whose it is.
+   *
+   * <p>A reminder as the store holds it.
    *
    * <p>Written out rather than generated because a record compares an array by IDENTITY: two
    * reminders read from the same row would not be equal, and a payload would print as a type name
    * and a hash rather than as anything a reader could use.
    */
-  /** A deadline, and whose it is. */
   record Reminder(AgentType agentType, AgentId agentId, CallId callId, Instant expiresAt) {}
 
   private final JdbcClient jdbc;

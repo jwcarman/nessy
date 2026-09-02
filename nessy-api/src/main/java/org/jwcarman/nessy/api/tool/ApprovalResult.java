@@ -30,8 +30,9 @@ import java.util.Objects;
  *
  * <p>Nothing on the wire corresponds to this; it is entirely Nessy's concept, so it is free to take
  * the shape that reads best rather than the shape a provider's JSON happens to use.
+ *
+ * <p>Wire names are a compatibility surface: a persisted decision names them.
  */
-/** Wire names are a compatibility surface: a persisted decision names them. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = ApprovalResult.Approved.class, name = "approved"),

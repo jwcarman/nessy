@@ -95,7 +95,7 @@ final class Summaries {
         jdbc.sql(START)
             .params(agentType.name(), agentId.value(), coversThrough, summary, Timestamp.from(now))
             .update();
-      } catch (org.springframework.dao.DuplicateKeyException raced) {
+      } catch (org.springframework.dao.DuplicateKeyException _) {
         // Somebody inserted between the update and this insert, and their summary covers at least
         // as much as ours. Theirs stands: a summary is a summary.
       }

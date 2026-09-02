@@ -52,8 +52,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * arm. Rather than writing one, extend {@link AgentSubscriberAdapter} or compose through {@link
  * AgentSubscriber#of} — both stay silent on variants you did not ask for, and both inherit a no-op
  * for free when the grammar grows.
+ *
+ * <p>Wire names are a compatibility surface: an SSE stream's event names come from here.
  */
-/** Wire names are a compatibility surface: an SSE stream's event names come from here. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),

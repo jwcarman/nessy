@@ -94,8 +94,11 @@ class NotebookToolsTest {
       assertThat(notebook.find(AGENT, id).orElseThrow().body()).isEqualTo("Short answers.");
     }
 
-    /** The id is the whole difference between adding and overwriting, and the model states it. */
-    /** Two notes, because remember has exactly one job now and replacing is not it. */
+    /**
+     * The id is the whole difference between adding and overwriting, and the model states it.
+     *
+     * <p>Two notes, because remember has exactly one job now and replacing is not it.
+     */
     @Test
     void remembering_twice_files_two_notes() {
       run(NotebookTools.remember(notebook), new NotebookTools.RememberNote("a hook", "one"));

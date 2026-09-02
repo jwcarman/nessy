@@ -38,8 +38,9 @@ import org.jwcarman.nessy.api.message.AnswerMessage;
  * <p><b>Failures are not here.</b> A rate limit, a timeout, a context overflow — the consumer of
  * those is your code, not the model, so they throw. Only outcomes the conversation itself has to
  * account for appear on this type.
+ *
+ * <p>Wire names are a compatibility surface.
  */
-/** Wire names are a compatibility surface. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = ModelResult.Answered.class, name = "answered"),

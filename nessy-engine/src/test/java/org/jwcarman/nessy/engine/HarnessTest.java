@@ -236,7 +236,7 @@ class HarnessTest {
     await().atMost(15, SECONDS).untilAsserted(() -> assertThat(first).isNotEmpty());
 
     List<AgentEvent> second = new CopyOnWriteArrayList<>();
-    try (AgentSubscription _ = harness.subscribe(agent, second::add, lastSeen)) {
+    try (var _ = harness.subscribe(agent, second::add, lastSeen)) {
       await().atMost(15, SECONDS).untilAsserted(() -> assertThat(endings(second)).isNotEmpty());
 
       // Everything replayed is strictly newer than the cursor, and the missed turn is in it.
@@ -256,7 +256,7 @@ class HarnessTest {
     harness.observe(agent, new HouseEvent("kitchen", "door opened"));
 
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
-    try (AgentSubscription _ = harness.subscribe(agent, heard::add, null)) {
+    try (var _ = harness.subscribe(agent, heard::add, null)) {
       assertThat(heard).isEmpty();
     }
   }
