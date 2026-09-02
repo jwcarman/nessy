@@ -128,6 +128,85 @@ class ApprovalRequestTest {
   }
 
   @Nested
+  class Equality {
+
+    @Test
+    @DisplayName(
+        "two requests about the same call are equal even though their token suppliers differ")
+    void equality_ignores_how_the_address_would_be_minted() {
+      ApprovalRequest first =
+          new ApprovalRequest(
+              WATCHMAN,
+              HOUSE,
+              TurnId.of("turn-1"),
+              CallId.of("c1"),
+              "prune_images",
+              JsonNodeFactory.instance.objectNode(),
+              "docker image prune -af",
+              ASKED,
+              () -> ReplyToken.of("a"));
+      ApprovalRequest second =
+          new ApprovalRequest(
+              WATCHMAN,
+              HOUSE,
+              TurnId.of("turn-1"),
+              CallId.of("c1"),
+              "prune_images",
+              JsonNodeFactory.instance.objectNode(),
+              "docker image prune -af",
+              ASKED,
+              () -> ReplyToken.of("b"));
+
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+    }
+
+    @Test
+    @DisplayName("a request annotated with a fact is no longer equal to one that was not")
+    void equality_is_sensitive_to_facts_since_they_are_part_of_the_parked_document() {
+      ApprovalRequest plain = asked();
+      ApprovalRequest annotated = asked().fact("principal", "jcarman");
+
+      assertThat(plain).isNotEqualTo(annotated);
+    }
+
+    @Test
+    @DisplayName("a request is not equal to some unrelated type")
+    void a_request_is_not_equal_to_something_else() {
+      assertThat(asked()).isNotEqualTo("not a request");
+    }
+  }
+
+  @Nested
+  class Printing {
+
+    @Test
+    @DisplayName(
+        "toString does NOT contain the reply token — it is a credential, and this may reach a log")
+    void the_reply_token_is_never_printed() {
+      ApprovalRequest request = asked();
+
+      // Force the token to be minted, so a leak via toString would have something to leak.
+      request.replyToken();
+
+      assertThat(request.toString()).doesNotContain("token-1");
+    }
+
+    @Test
+    @DisplayName("toString names the call and shows what has been recorded so far")
+    void the_visible_fields_are_present() {
+      ApprovalRequest request = asked().fact("principal", "jcarman");
+
+      assertThat(request.toString())
+          .contains("house-12")
+          .contains("c1")
+          .contains("prune_images")
+          .contains("docker image prune -af")
+          .contains("jcarman");
+    }
+  }
+
+  @Nested
   class Refusing {
 
     @Test
