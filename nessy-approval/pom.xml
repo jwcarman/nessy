@@ -43,6 +43,7 @@
   <modules>
     <module>intent</module>
     <module>policy</module>
+    <module>policy-opa</module>
   </modules>
 
 </project>
