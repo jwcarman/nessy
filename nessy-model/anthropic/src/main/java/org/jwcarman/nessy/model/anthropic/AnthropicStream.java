@@ -193,19 +193,6 @@ public final class AnthropicStream implements ModelStream {
       cacheWriteInputTokens = cacheWrite;
     }
 
-    /**
-     * Translates the two {@code content_block_start} variants that need one: {@code tool_use}
-     * (which opens accumulation, keyed by block index) and {@code redacted_thinking} (which is
-     * complete in one shot, so it's emitted immediately). {@code text} and {@code thinking} blocks
-     * carry nothing to translate here — their content arrives via {@code content_block_delta}.
-     *
-     * <p>Deliberately unmapped: {@code server_tool_use} and the various {@code *_tool_result} block
-     * variants (server-side tools this harness never declares, so they never appear when this
-     * stream is driven by {@code AnthropicRequests}-built params), plus any future block variant
-     * the SDK adds. All fall through as a silent no-op rather than a crash — content this harness
-     * doesn't model is content it drops, not an error — and are not logged, since this is a
-     * per-token hot path.
-     */
     /** Thinking text accumulated until its signature arrives, which is what makes it replayable. */
     private final StringBuilder reasoning = new StringBuilder();
 
@@ -229,6 +216,19 @@ public final class AnthropicStream implements ModelStream {
       return payload;
     }
 
+    /**
+     * Translates the two {@code content_block_start} variants that need one: {@code tool_use}
+     * (which opens accumulation, keyed by block index) and {@code redacted_thinking} (which is
+     * complete in one shot, so it's emitted immediately). {@code text} and {@code thinking} blocks
+     * carry nothing to translate here — their content arrives via {@code content_block_delta}.
+     *
+     * <p>Deliberately unmapped: {@code server_tool_use} and the various {@code *_tool_result} block
+     * variants (server-side tools this harness never declares, so they never appear when this
+     * stream is driven by {@code AnthropicRequests}-built params), plus any future block variant
+     * the SDK adds. All fall through as a silent no-op rather than a crash — content this harness
+     * doesn't model is content it drops, not an error — and are not logged, since this is a
+     * per-token hot path.
+     */
     private void translateContentBlockStart(RawContentBlockStartEvent start) {
       var block = start.contentBlock();
       if (block.isToolUse()) {

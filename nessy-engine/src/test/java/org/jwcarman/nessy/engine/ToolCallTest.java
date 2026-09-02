@@ -74,7 +74,6 @@ class ToolCallTest {
 
   private static ActorTestKit testKit;
 
-  /** Everything the engine said out loud, in order. */
   /** One agent's transcript, as a context. */
   private static Context remembered(String agentId) {
     return Context.of(
@@ -83,6 +82,7 @@ class ToolCallTest {
             .toList());
   }
 
+  /** Everything the engine said out loud, in order. */
   private static List<AgentEvent> narrated(String agentId) {
     return parts.narrated().of(AgentId.of(agentId));
   }

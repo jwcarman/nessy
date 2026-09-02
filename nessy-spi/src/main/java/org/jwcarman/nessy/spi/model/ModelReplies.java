@@ -50,9 +50,8 @@ public final class ModelReplies {
    * Drains {@code stream} to the end, showing every event to {@code watcher} on the way past.
    *
    * <p>Closes the stream. A provider needs to know when nobody is listening.
-   */
-  /**
-   * Folds a stream into one result.
+   *
+   * <p>Folds a stream into one result.
    *
    * <p><b>Where text becomes commentary.</b> A chunk of prose cannot be classified as it arrives —
    * whether the model was talking on its way to a tool call or answering the question is only

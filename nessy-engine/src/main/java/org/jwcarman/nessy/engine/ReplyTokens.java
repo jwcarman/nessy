@@ -70,9 +70,10 @@ public final class ReplyTokens {
   private static final int NONCE_BYTES = 12;
   private static final int TAG_BITS = 128;
 
-  /** What a token names. */
   /**
-   * Where an answer goes.
+   * What a token names.
+   *
+   * <p>Where an answer goes.
    *
    * <p>The TURN is part of the address, not decoration. An answer arriving three days later has to
    * be claimed before the agent is told about it, and a claim is keyed by turn — so a token that

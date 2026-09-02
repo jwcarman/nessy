@@ -39,8 +39,9 @@ import org.jwcarman.nessy.api.block.ToolResultContentBlock;
  * as a third arm — nothing branches on it, and the only party that needs to know is the model,
  * which reads prose. So the MESSAGE says it: "the call was not made" versus "it may have partially
  * completed."
+ *
+ * <p>Wire names are a compatibility surface: a parked call's claimed result names them.
  */
-/** Wire names are a compatibility surface: a parked call's claimed result names them. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = ToolResult.Success.class, name = "success"),

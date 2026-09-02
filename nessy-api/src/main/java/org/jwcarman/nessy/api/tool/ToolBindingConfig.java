@@ -35,9 +35,11 @@ public interface ToolBindingConfig<I> {
   ToolBindingConfig<I> approver(Approver approver);
 
   /**
-   * How a call of this tool reads to a person — an approval page, a chat UI, a log line. Defaults
-   * to {@link ActionRenderer#byToString()}, which is fine for narration and poor for consent.
+   * How this call is put into words a person can consent to.
+   *
+   * <p>How a call of this tool reads to a person — an approval page, a chat UI, a log line.
+   * Defaults to {@link ActionRenderer#byToString()}, which is fine for narration and poor for
+   * consent.
    */
-  /** How this call is put into words a person can consent to. */
   ToolBindingConfig<I> action(ActionRenderer<I> renderer);
 }

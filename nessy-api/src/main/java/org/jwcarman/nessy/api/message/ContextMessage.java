@@ -30,8 +30,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * record of an event and belongs in the transcript; an {@link AmbientMessage} is background
  * assembled for one call and thrown away. {@code Memory.remember} takes the former, so the latter
  * has no door into a transcript at all.
+ *
+ * <p>Wire names are a compatibility surface: a stored transcript names them. Never change one.
  */
-/** Wire names are a compatibility surface: a stored transcript names them. Never change one. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "role")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = UserMessage.class, name = "user"),
