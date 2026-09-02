@@ -331,8 +331,6 @@ class OpenAiModelProviderTest {
 
     @Test
     void a_blank_model_id_is_rejected() {
-      var provider = new OpenAiProviderConfig().apiKey("sk-test").build();
-
       // The check moved INTO ModelId, so a blank never reaches a provider at all.
       assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }

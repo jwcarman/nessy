@@ -39,7 +39,6 @@ record StubTool(String name, String description, ObjectNode inputSchema)
 
   @Override
   public Awaited<ToolResult> execute(ToolCallRequest<ObjectNode> call) {
-    ObjectNode input = call.input();
     throw new UnsupportedOperationException("a declared-only tool is never executed");
   }
 }

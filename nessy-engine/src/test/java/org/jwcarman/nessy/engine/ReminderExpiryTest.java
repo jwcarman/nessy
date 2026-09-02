@@ -180,7 +180,6 @@ class ReminderExpiryTest {
 
       @Override
       public Awaited<ToolResult> execute(ToolCallRequest<ObjectNode> call) {
-        ObjectNode input = call.input();
         return Awaited.ready(ToolResult.ok("sent"));
       }
     };
@@ -191,7 +190,7 @@ class ReminderExpiryTest {
   void a_parked_call_expires_without_anything_holding_a_timer() {
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
 
-    try (AgentSubscription listening = harness.subscribe(HOUSE, heard::add)) {
+    try (AgentSubscription _ = harness.subscribe(HOUSE, heard::add)) {
       harness.observe(HOUSE, new HouseEvent("kitchen", "door opened"));
 
       // The deadline is a ROW, and it names the term the approver asked for.
