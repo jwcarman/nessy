@@ -71,6 +71,7 @@ import org.thymeleaf.spring6.view.ThymeleafViewResolver;
 class ApprovalsPageTest {
 
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
+  private static final Pattern INPUT_NAME = Pattern.compile("<input[^>]*name=\"([^\"]+)\"");
 
   private MockMvc mvc;
   private PendingApprovalsRepository approvals;
@@ -169,7 +170,7 @@ class ApprovalsPageTest {
       String block = html.substring(open, close);
       from = close + "</form>".length();
       Set<String> fields = new LinkedHashSet<>();
-      Matcher input = Pattern.compile("<input[^>]*name=\"([^\"]+)\"").matcher(block);
+      Matcher input = INPUT_NAME.matcher(block);
       while (input.find()) {
         fields.add(input.group(1));
       }
