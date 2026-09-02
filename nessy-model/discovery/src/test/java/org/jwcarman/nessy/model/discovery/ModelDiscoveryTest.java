@@ -18,6 +18,7 @@ package org.jwcarman.nessy.model.discovery;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.HashMap;
 import java.util.List;
@@ -301,6 +302,41 @@ class ModelDiscoveryTest {
       assertThat(alpha.lastProvider().isClosed()).isTrue();
       assertThat(beta.lastProvider().isClosed()).isTrue();
     }
+
+    /**
+     * A gateway that misbehaves on the way out must not cost the caller the ambiguity failure it
+     * asked about — the close failure rides along as a suppressed exception instead of replacing or
+     * masking the real one.
+     */
+    @Test
+    void a_losing_candidate_that_throws_on_close_during_a_tiebreak_failure_is_suppressed() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+      var beta = FakeBootstrap.throwingOnClose("beta", "BETA_KEY");
+      var env = Map.of("ALPHA_KEY", "k", "BETA_KEY", "k");
+      List<ModelProviderBootstrap> bootstraps = List.of(alpha, beta);
+
+      var thrown = catchThrowable(() -> ModelDiscovery.select(env, bootstraps));
+
+      assertThat(thrown).isInstanceOf(IllegalStateException.class);
+      assertThat(thrown.getSuppressed()).hasSize(1);
+      assertThat(thrown.getSuppressed()[0]).hasMessageContaining("beta");
+    }
+
+    /**
+     * The success path's mirror: a losing candidate's close failure is logged and swallowed, never
+     * thrown, since the caller already got the selection it asked for.
+     */
+    @Test
+    void a_losing_candidate_that_throws_on_close_on_the_success_path_is_swallowed() {
+      var alpha = new FakeBootstrap("alpha", "ALPHA_KEY", "alpha-default");
+      var beta = FakeBootstrap.throwingOnClose("beta", "BETA_KEY");
+      var env = Map.of("ALPHA_KEY", "k", "BETA_KEY", "k", "NESSY_PROVIDER", "alpha");
+
+      var selection = ModelDiscovery.select(env, List.of(alpha, beta));
+
+      assertThat(selection.providerName()).isEqualTo("alpha");
+      assertThat(beta.lastProvider().isClosed()).isTrue();
+    }
   }
 
   @Nested
@@ -389,6 +425,37 @@ class ModelDiscoveryTest {
       new ModelDiscovery.Selection(provider, model, "alpha").close();
 
       assertThat(closed).isTrue();
+    }
+
+    /**
+     * {@link AutoCloseable#close()} allows a checked exception, but {@link
+     * ModelDiscovery.Selection#close()} declares none — a gateway that cannot let go of its client
+     * is a bug, so its failure is renamed into an unchecked one naming which provider misbehaved.
+     */
+    @Test
+    void a_gateway_that_fails_to_close_surfaces_as_an_unchecked_failure_naming_the_provider() {
+      var provider =
+          new CloseableProvider() {
+
+            @Override
+            public Model model(ModelId id) {
+              throw new UnsupportedOperationException("not needed here");
+            }
+
+            @Override
+            public void close() {
+              throw new IllegalStateException("connection pool refused to drain");
+            }
+          };
+      var model = ALPHA.bootstrap(Map.of("ALPHA_KEY", "k")).orElseThrow().model(ModelId.of("m"));
+      var selection = new ModelDiscovery.Selection(provider, model, "alpha");
+
+      assertThatThrownBy(selection::close)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("alpha")
+          .hasMessageContaining("failed to close")
+          .cause()
+          .hasMessageContaining("connection pool refused to drain");
     }
 
     /**

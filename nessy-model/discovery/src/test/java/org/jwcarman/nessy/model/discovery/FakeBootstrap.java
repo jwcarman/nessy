@@ -40,10 +40,11 @@ final class FakeBootstrap implements ModelProviderBootstrap {
   private final String defaultModelId;
   private final boolean throwsOnPresentKey;
   private final boolean nullVariables;
+  private final boolean throwsOnClose;
   private FakeProvider lastProvider;
 
   FakeBootstrap(String name, String environmentVariable, String defaultModelId) {
-    this(name, environmentVariable, defaultModelId, false, false);
+    this(name, environmentVariable, defaultModelId, false, false, false);
   }
 
   private FakeBootstrap(
@@ -51,22 +52,29 @@ final class FakeBootstrap implements ModelProviderBootstrap {
       String environmentVariable,
       String defaultModelId,
       boolean throwsOnPresentKey,
-      boolean nullVariables) {
+      boolean nullVariables,
+      boolean throwsOnClose) {
     this.name = name;
     this.environmentVariable = environmentVariable;
     this.defaultModelId = defaultModelId;
     this.throwsOnPresentKey = throwsOnPresentKey;
     this.nullVariables = nullVariables;
+    this.throwsOnClose = throwsOnClose;
   }
 
   /** The malformed-configuration case: a present key it cannot honour. */
   static FakeBootstrap throwingOnPresentKey(String name, String environmentVariable) {
-    return new FakeBootstrap(name, environmentVariable, name + "-default", true, false);
+    return new FakeBootstrap(name, environmentVariable, name + "-default", true, false, false);
   }
 
   /** The SPI-contract-violating case: {@code environmentVariables()} returns null. */
   static FakeBootstrap withNullVariables(String name) {
-    return new FakeBootstrap(name, "UNUSED_KEY", name + "-default", false, true);
+    return new FakeBootstrap(name, "UNUSED_KEY", name + "-default", false, true, false);
+  }
+
+  /** The misbehaving-gateway case: its {@code close()} throws instead of releasing quietly. */
+  static FakeBootstrap throwingOnClose(String name, String environmentVariable) {
+    return new FakeBootstrap(name, environmentVariable, name + "-default", false, false, true);
   }
 
   @Override
@@ -93,7 +101,7 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     if (throwsOnPresentKey) {
       throw new IllegalArgumentException(name + ": " + environmentVariable + " is malformed");
     }
-    FakeProvider provider = new FakeProvider(name, new AtomicBoolean());
+    FakeProvider provider = new FakeProvider(name, new AtomicBoolean(), throwsOnClose);
     lastProvider = provider;
     return Optional.of(provider);
   }
@@ -112,7 +120,7 @@ final class FakeBootstrap implements ModelProviderBootstrap {
    * win, so the losers have to be released by whoever built them — and {@code closed} is how a test
    * asks whether that happened.
    */
-  record FakeProvider(String providerName, AtomicBoolean closed)
+  record FakeProvider(String providerName, AtomicBoolean closed, boolean throwsOnClose)
       implements ModelProvider, AutoCloseable {
 
     @Override
@@ -123,6 +131,9 @@ final class FakeBootstrap implements ModelProviderBootstrap {
     @Override
     public void close() {
       closed.set(true);
+      if (throwsOnClose) {
+        throw new IllegalStateException(providerName + ": failed to close");
+      }
     }
 
     boolean isClosed() {
