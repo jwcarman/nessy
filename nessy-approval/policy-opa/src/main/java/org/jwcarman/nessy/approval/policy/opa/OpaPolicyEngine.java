@@ -181,7 +181,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
     try {
       JsonNode parsed = mapper.readTree(response.body());
       JsonNode warning = parsed.get("warning");
-      if (warning != null) {
+      if (warning != null && LOG.isWarnEnabled()) {
         // OPA hands this over for free; the common one is a missing `input` key.
         LOG.warn(
             "[opa] {} warned: {}", decision, warning.path("message").asText(warning.toString()));

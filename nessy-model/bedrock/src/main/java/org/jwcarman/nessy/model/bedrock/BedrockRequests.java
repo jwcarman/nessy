@@ -29,8 +29,6 @@ import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
@@ -62,8 +60,6 @@ import software.amazon.awssdk.services.bedrockruntime.model.ToolSpecification;
  * {@code GeminiRequests} keeps for its own unsupported block.
  */
 public final class BedrockRequests {
-
-  private static final Logger LOG = LoggerFactory.getLogger(BedrockRequests.class);
 
   private BedrockRequests() {}
 

@@ -52,6 +52,8 @@ public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
    */
   static final String PROVIDER = "openai";
 
+  private static final String NAME = "OpenAI";
+
   /**
    * Which failures a caller wrapping this gateway in a retry should retry.
    *
@@ -138,7 +140,7 @@ public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
   @Override
   public Model model(ModelId id) {
     Objects.requireNonNull(id, "id must not be null");
-    return new OpenAiModel(id);
+    return new OpenAiModel(client, id);
   }
 
   /**
@@ -155,22 +157,11 @@ public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
 
   /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
-    return "OpenAI";
+    return NAME;
   }
 
-  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
-  private final class OpenAiModel implements Model {
-
-    private final ModelId id;
-
-    private OpenAiModel(ModelId id) {
-      this.id = id;
-    }
-
-    @Override
-    public ModelId id() {
-      return id;
-    }
+  /** A flyweight bound handle: pins one model id over its {@link OpenAIClient}. */
+  private record OpenAiModel(OpenAIClient client, ModelId id) implements Model {
 
     @Override
     public ModelStream stream(ModelRequest request) {

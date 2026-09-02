@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.model.bedrock;
 
 import java.util.Objects;
-import java.util.Set;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
@@ -73,7 +72,7 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
    */
   static final String PROVIDER = "aws.bedrock";
 
-  private static final Set<Capability> CAPABILITIES = Set.of(Capability.PARALLEL_TOOL_CALLS);
+  private static final String NAME = "Bedrock";
 
   private final BedrockClient client;
 
@@ -107,12 +106,12 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
   @Override
   public Model model(ModelId id) {
     Objects.requireNonNull(id, "id must not be null");
-    return new BedrockModel(id);
+    return new BedrockModel(client, id);
   }
 
   /** This vendor, by name — no longer an SPI method, kept because callers and logs want it. */
   public String name() {
-    return "Bedrock";
+    return NAME;
   }
 
   @Override
@@ -120,19 +119,8 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
     client.close();
   }
 
-  /** A flyweight bound handle: pins one model id over the shared {@link #client}. */
-  private final class BedrockModel implements Model {
-
-    private final ModelId id;
-
-    private BedrockModel(ModelId id) {
-      this.id = id;
-    }
-
-    @Override
-    public ModelId id() {
-      return id;
-    }
+  /** A flyweight bound handle: pins one model id over its {@link BedrockClient}. */
+  private record BedrockModel(BedrockClient client, ModelId id) implements Model {
 
     @Override
     public ModelStream stream(ModelRequest request) {

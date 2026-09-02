@@ -251,8 +251,7 @@ public final class GeminiRequests {
           "tool result for an unknown call id: " + result.toolUseId());
     }
     String rendered = flatten(result);
-    Map<String, Object> response =
-        result.isError() ? Map.of("error", rendered) : Map.of("output", rendered);
+    Map<String, Object> response = Map.of(result.isError() ? "error" : "output", rendered);
     return Part.fromFunctionResponse(name, response);
   }
 
