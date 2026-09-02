@@ -73,7 +73,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-intent</artifactId>
+      <artifactId>nessy-approval-intent</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>

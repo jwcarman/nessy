@@ -218,10 +218,33 @@ this is standardized**: OPA passes any JSON through untouched, and `effect`/`rea
 Gatekeeper matches k8s `AdmissionReview` — and swapping interpreters is how those, or
 AuthZEN, are supported without touching transport.
 
-**Before this graduates, check AuthZEN** (OpenID Foundation Authorization API), the
-cross-vendor attempt at standardizing decision request/response. Adopting its shape
-would make the seam portable rather than ours. This spec does not assume its field
-names; that is a task for implementation time, with network access.
+**AuthZEN checked** (OpenID Foundation, Authorization API 1.0, read 2026-09-02).
+Its request maps onto ours cleanly:
+
+```json
+{"subject":  {"type":"agent","id":"house-12","properties":{"agentType":"watchman"}},
+ "resource": {"type":"tool","id":"prune_images"},
+ "action":   {"name":"call","properties":{"arguments": …}},
+ "context":  {"facts": …}}
+```
+
+**Its response cannot carry our third verdict.** It is
+`{"decision": <boolean>, "context": {"reason_admin": …, "reason_user": …}}` — allow
+or deny, and nothing else. One could smuggle `{"decision": false, "context":
+{"delegate_to": "humans"}}`, but a delegation is not a denial, and inventing
+`delegate_to` is a private convention wearing a standard's clothes.
+
+**So: support AuthZEN as one interpreter, do not adopt it as the shape.** Ship an
+AuthZEN `InputRenderer` for shops already running such endpoints — that half IS
+portable — and an interpreter mapping `decision` to `Approve`/`Deny(context.reason_user)`.
+A policy that needs delegation needs a richer response than AuthZEN defines, which is
+the argument for the interpreter seam rather than against our own convention.
+
+One modelling note for that renderer: AuthZEN's `resource` is the thing being
+protected, and generically that is the tool — but a policy usually cares about the
+tool's TARGET (`prod-eu-1`), and which argument that is cannot be known here. Default
+to `resource = tool`, and let an application that knows better supply its own
+renderer. That is the seam earning its keep.
 
 ### 4.3 The policy this ships with
 
