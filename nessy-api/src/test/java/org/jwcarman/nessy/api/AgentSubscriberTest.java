@@ -16,10 +16,12 @@
 package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -129,6 +131,44 @@ class AgentSubscriberTest {
       everyVariant().forEach(subscriber::on);
 
       assertThat(everyVariant()).hasSize(9);
+    }
+
+    @Test
+    @DisplayName("every variant can be composed on, not only the ones already exercised elsewhere")
+    void every_variant_reaches_its_own_registered_consumer() {
+      List<String> seen = new ArrayList<>();
+      AgentSubscriber subscriber =
+          AgentSubscriber.of(
+              s ->
+                  s.onTurnStarted(e -> seen.add("started"))
+                      .onReasoningDelta(e -> seen.add("reasoning"))
+                      .onToolCallRequested(e -> seen.add("requested"))
+                      .onApprovalRequested(e -> seen.add("approval-requested"))
+                      .onApprovalDecided(e -> seen.add("approval-decided"))
+                      .onToolCallCompleted(e -> seen.add("completed"))
+                      .onAnswered(e -> seen.add("answered"))
+                      .onTurnEnded(e -> seen.add("ended")));
+
+      everyVariant().forEach(subscriber::on);
+
+      assertThat(seen)
+          .containsExactly(
+              "started",
+              "reasoning",
+              "requested",
+              "approval-requested",
+              "approval-decided",
+              "completed",
+              "answered",
+              "ended");
+    }
+
+    @Test
+    @DisplayName("a null consumer is refused rather than silently swallowing events")
+    void registering_a_null_consumer_is_refused() {
+      assertThatThrownBy(() -> AgentSubscriber.of(s -> s.onTextDelta(null)))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("consumer");
     }
   }
 
