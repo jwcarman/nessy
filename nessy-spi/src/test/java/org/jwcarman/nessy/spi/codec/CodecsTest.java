@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.codec;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -141,7 +142,8 @@ class CodecsTest {
     void an_absent_field_is_allowed() {
       JsonNode root = JsonNodeFactory.instance.objectNode();
 
-      Codecs.requireArrayIfPresent(root, "items", "widget");
+      assertThatCode(() -> Codecs.requireArrayIfPresent(root, "items", "widget"))
+          .doesNotThrowAnyException();
     }
 
     @Test
@@ -149,7 +151,8 @@ class CodecsTest {
       ObjectNode root = JsonNodeFactory.instance.objectNode();
       root.putArray("items");
 
-      Codecs.requireArrayIfPresent(root, "items", "widget");
+      assertThatCode(() -> Codecs.requireArrayIfPresent(root, "items", "widget"))
+          .doesNotThrowAnyException();
     }
 
     @Test
@@ -172,7 +175,7 @@ class CodecsTest {
       ObjectNode root = JsonNodeFactory.instance.objectNode();
       root.putArray("items");
 
-      Codecs.requireArray(root, "items", "widget");
+      assertThatCode(() -> Codecs.requireArray(root, "items", "widget")).doesNotThrowAnyException();
     }
 
     @Test
