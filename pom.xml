@@ -214,6 +214,7 @@
     <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
     <jacoco.version>0.8.15</jacoco.version>
     <sonar.plugin.version>5.5.0.6356</sonar.plugin.version>
+    <exec.plugin.version>3.6.3</exec.plugin.version>
     <!-- Populated by the jacoco-maven-plugin prepare-agent execution in the
          ci profile; empty by default so surefire's argLine stays valid when
          the profile is inactive. -->
@@ -540,6 +541,14 @@
               <include>**/*Demo.java</include>
             </includes>
           </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <!-- Pinned HERE so the examples that run a main class inherit it and declare no version
+               of their own. An unpinned plugin resolves to whatever is newest at build time, which
+               is a build that cannot be reproduced and a warning on every run. -->
+          <version>${exec.plugin.version}</version>
         </plugin>
       </plugins>
     </pluginManagement>

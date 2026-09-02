@@ -88,9 +88,9 @@ public final class OpaPolicyEngine implements PolicyEngine {
         configured.interpreter != null ? configured.interpreter : DecisionInterpreter.effectStyle();
     this.decision =
         URI.create(
-            configured.url.replaceAll("/+$", "")
+            withoutTrailingSlashes(configured.url)
                 + "/v1/data/"
-                + configured.decisionPath.replaceAll("^/+", ""));
+                + withoutLeadingSlashes(configured.decisionPath));
     this.timeout = configured.timeout;
     this.http = HttpClient.newBuilder().connectTimeout(configured.connectTimeout).build();
   }
@@ -108,6 +108,30 @@ public final class OpaPolicyEngine implements PolicyEngine {
               + " \"nessy/tools/decision\"");
     }
     return new OpaPolicyEngine(configured);
+  }
+
+  /**
+   * Trims slashes without a regular expression.
+   *
+   * <p>This was {@code replaceAll("/+$", "")}, which backtracks: a greedy {@code +} anchored at the
+   * end makes the engine retry from every position, so the cost is super-linear in the number of
+   * trailing slashes. Nobody writes a URL like that on purpose, but a configuration value is
+   * somebody else's input and this is a two-line problem either way.
+   */
+  private static String withoutTrailingSlashes(String url) {
+    int end = url.length();
+    while (end > 0 && url.charAt(end - 1) == '/') {
+      end--;
+    }
+    return url.substring(0, end);
+  }
+
+  private static String withoutLeadingSlashes(String path) {
+    int start = 0;
+    while (start < path.length() && path.charAt(start) == '/') {
+      start++;
+    }
+    return path.substring(start);
   }
 
   /** Where this engine will send its questions — useful in a log line or a health page. */

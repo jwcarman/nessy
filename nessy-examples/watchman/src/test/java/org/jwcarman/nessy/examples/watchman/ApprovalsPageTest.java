@@ -147,20 +147,42 @@ class ApprovalsPageTest {
   /** One form's action path and the names it posts. */
   private record Form(String action, Set<String> fields) {}
 
+  /**
+   * Walks the forms by index rather than matching them with one expression.
+   *
+   * <p>The regex version — {@code <form[^>]*action="([^"]+)"(.*?)</form>} under DOTALL — nested a
+   * greedy character class inside a lazy one, which backtracks super-linearly. Scanning is both
+   * faster and easier to read, and this is a test: it should be the least clever code here.
+   */
   private static List<Form> formsIn(String html) {
     List<Form> forms = new ArrayList<>();
-    Matcher form =
-        Pattern.compile("<form[^>]*action=\"([^\"]+)\"(.*?)</form>", Pattern.DOTALL).matcher(html);
-    while (form.find()) {
+    int from = 0;
+    while (true) {
+      int open = html.indexOf("<form", from);
+      if (open < 0) {
+        break;
+      }
+      int close = html.indexOf("</form>", open);
+      if (close < 0) {
+        break;
+      }
+      String block = html.substring(open, close);
+      from = close + "</form>".length();
       Set<String> fields = new LinkedHashSet<>();
-      Matcher input = Pattern.compile("<input[^>]*name=\"([^\"]+)\"").matcher(form.group(2));
+      Matcher input = Pattern.compile("<input[^>]*name=\"([^\"]+)\"").matcher(block);
       while (input.find()) {
         fields.add(input.group(1));
       }
-      forms.add(new Form(form.group(1), fields));
+      forms.add(new Form(actionOf(block), fields));
     }
     assertThat(forms).as("the page rendered no forms at all").isNotEmpty();
     return forms;
+  }
+
+  /** The action of one form block, or empty if it declared none. */
+  private static String actionOf(String block) {
+    Matcher action = Pattern.compile("action=\"([^\"]+)\"").matcher(block);
+    return action.find() ? action.group(1) : "";
   }
 
   /**
