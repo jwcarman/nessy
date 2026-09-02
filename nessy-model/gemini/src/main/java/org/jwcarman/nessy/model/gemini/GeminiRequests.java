@@ -279,7 +279,7 @@ public final class GeminiRequests {
     Map<CallId, String> signatures = new java.util.HashMap<>();
     for (Block block : content) {
       if (block instanceof ProviderBlock(String provider, JsonNode data)
-          && GeminiModelProvider.PROVIDER.equals(provider)) {
+          && GeminiModelProvider.PROVIDER_NAME.equals(provider)) {
         signatures.put(
             CallId.of(data.path("callId").asText()), data.path("thoughtSignature").asText());
       }

@@ -70,7 +70,7 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
    * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
    * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
    */
-  static final String PROVIDER = "aws.bedrock";
+  static final String PROVIDER_NAME = "aws.bedrock";
 
   private static final String NAME = "Bedrock";
 

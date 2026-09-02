@@ -242,7 +242,7 @@ final class GeminiStream implements ModelStream {
       ObjectNode payload = JsonNodeFactory.instance.objectNode();
       payload.put("callId", callId);
       payload.put("thoughtSignature", signature);
-      return new ModelEvent.ProviderStateEmitted(GeminiModelProvider.PROVIDER, payload);
+      return new ModelEvent.ProviderStateEmitted(GeminiModelProvider.PROVIDER_NAME, payload);
     }
 
     /**

@@ -39,7 +39,7 @@ class OpenAiProviderNameTest {
 
   @Test
   void the_semconv_default_for_this_gateway_is_openai() {
-    assertThat(OpenAiModelProvider.PROVIDER).isEqualTo("openai");
+    assertThat(OpenAiModelProvider.PROVIDER_NAME).isEqualTo("openai");
   }
 
   @Test

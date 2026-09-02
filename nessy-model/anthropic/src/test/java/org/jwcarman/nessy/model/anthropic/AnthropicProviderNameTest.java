@@ -34,7 +34,7 @@ class AnthropicProviderNameTest {
 
   @Test
   void the_semconv_value_for_this_vendor_is_pinned() {
-    assertThat(AnthropicModelProvider.PROVIDER).isEqualTo("anthropic");
+    assertThat(AnthropicModelProvider.PROVIDER_NAME).isEqualTo("anthropic");
   }
 
   @Test

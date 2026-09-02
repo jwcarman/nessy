@@ -49,7 +49,7 @@ public final class GeminiModelProvider implements ModelProvider, AutoCloseable {
    * The OpenTelemetry GenAI semantic conventions' pinned value for this vendor, reported by every
    * {@link Model} this gateway mints as its {@link Model#provider()} (agentic-o11y spec §1.1).
    */
-  static final String PROVIDER = "gcp.gemini";
+  static final String PROVIDER_NAME = "gcp.gemini";
 
   private static final String NAME = "Gemini";
 

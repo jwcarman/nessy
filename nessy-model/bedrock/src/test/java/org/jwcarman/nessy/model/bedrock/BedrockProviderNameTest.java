@@ -30,7 +30,7 @@ class BedrockProviderNameTest {
 
   @Test
   void the_semconv_value_for_this_vendor_is_pinned() {
-    assertThat(BedrockModelProvider.PROVIDER).isEqualTo("aws.bedrock");
+    assertThat(BedrockModelProvider.PROVIDER_NAME).isEqualTo("aws.bedrock");
   }
 
   @Test

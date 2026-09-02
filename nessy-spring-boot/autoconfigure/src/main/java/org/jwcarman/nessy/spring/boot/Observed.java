@@ -84,7 +84,7 @@ public final class Observed {
    *     "openai"}, {@code "anthropic"}, {@code "gcp.gemini"}, {@code "aws.bedrock"}. Passed in
    *     because {@link Model} no longer reports its own vendor, and the application that built the
    *     provider is the one thing that knows. Each adapter publishes the right value as its own
-   *     {@code PROVIDER} constant.
+   *     {@code PROVIDER_NAME} constant.
    */
   public static ModelProvider models(
       ModelProvider delegate,

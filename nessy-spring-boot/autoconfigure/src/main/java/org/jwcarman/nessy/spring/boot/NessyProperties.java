@@ -42,7 +42,7 @@ import org.springframework.util.FileCopyUtils;
  *     — {@code openai}, {@code anthropic}, {@code gcp.gemini}, {@code aws.bedrock}. Configured
  *     rather than discovered, because a Model no longer reports its own vendor and only the
  *     application that built the provider knows which one it is. Each adapter publishes the right
- *     value as its own {@code PROVIDER} constant.
+ *     value as its own {@code PROVIDER_NAME} constant.
  * @param maxTokens the longest answer to allow
  * @param capabilities what the application would LIKE its provider to use; an adapter that cannot
  *     oblige simply does not

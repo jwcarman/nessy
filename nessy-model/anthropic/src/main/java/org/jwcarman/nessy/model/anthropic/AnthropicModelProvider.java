@@ -45,7 +45,7 @@ public final class AnthropicModelProvider implements ModelProvider, AutoCloseabl
    * §1.1). No longer reported through the SPI — {@code Model} describes nothing now — but kept as
    * the one spelling of the vendor's name for anything that reports on this adapter's behalf.
    */
-  static final String PROVIDER = "anthropic";
+  static final String PROVIDER_NAME = "anthropic";
 
   private static final String NAME = "Anthropic";
 

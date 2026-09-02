@@ -38,7 +38,7 @@ public final class XaiModelProviderBootstrap implements ModelProviderBootstrap {
    * with OpenAI, so the vendor identity has to be stamped here, where the key that named the vendor
    * was read (agentic-o11y spec §1.1).
    */
-  static final String PROVIDER = "x_ai";
+  static final String PROVIDER_NAME = "x_ai";
 
   /**
    * xAI ships no small/cheap alias; {@code grok-4.6} is the vendor's own current general-purpose
@@ -69,6 +69,7 @@ public final class XaiModelProviderBootstrap implements ModelProviderBootstrap {
       return Optional.empty();
     }
     return Optional.of(
-        OpenAiModelProvider.create(c -> c.apiKey(apiKey).baseUrl(BASE_URL).provider(PROVIDER)));
+        OpenAiModelProvider.create(
+            c -> c.apiKey(apiKey).baseUrl(BASE_URL).provider(PROVIDER_NAME)));
   }
 }

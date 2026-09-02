@@ -355,7 +355,7 @@ public final class AnthropicRequests {
    * outlives a model choice, and a rival's opaque state means nothing on this wire.
    */
   private static Optional<ContentBlockParam> ours(String provider, JsonNode data) {
-    if (!AnthropicModelProvider.PROVIDER.equals(provider)) {
+    if (!AnthropicModelProvider.PROVIDER_NAME.equals(provider)) {
       return Optional.empty();
     }
     return switch (data.path("type").asText()) {

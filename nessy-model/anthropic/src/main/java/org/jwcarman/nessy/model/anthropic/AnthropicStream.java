@@ -197,7 +197,7 @@ public final class AnthropicStream implements ModelStream {
     private final StringBuilder reasoning = new StringBuilder();
 
     private static ModelEvent providerState(ObjectNode payload) {
-      return new ModelEvent.ProviderStateEmitted(AnthropicModelProvider.PROVIDER, payload);
+      return new ModelEvent.ProviderStateEmitted(AnthropicModelProvider.PROVIDER_NAME, payload);
     }
 
     /** Anthropic's own shape, kept whole: this adapter is the only thing that reads it back. */

@@ -50,7 +50,7 @@ public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
    * {@link OpenAiProviderConfig#baseUrl(String)} still answers {@code openai}, which is the honest
    * default: nothing else is known about it.
    */
-  static final String PROVIDER = "openai";
+  static final String PROVIDER_NAME = "openai";
 
   private static final String NAME = "OpenAI";
 
@@ -105,7 +105,7 @@ public final class OpenAiModelProvider implements ModelProvider, AutoCloseable {
   private final boolean ownsClient;
 
   OpenAiModelProvider(OpenAIClient client) {
-    this(client, PROVIDER, true);
+    this(client, PROVIDER_NAME, true);
   }
 
   OpenAiModelProvider(OpenAIClient client, String provider, boolean ownsClient) {

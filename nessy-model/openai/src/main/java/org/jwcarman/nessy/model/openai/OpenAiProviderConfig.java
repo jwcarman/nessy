@@ -32,7 +32,7 @@ public final class OpenAiProviderConfig {
   private String organization;
   private OpenAIClient client;
   private boolean useEnv;
-  private String provider = OpenAiModelProvider.PROVIDER;
+  private String provider = OpenAiModelProvider.PROVIDER_NAME;
 
   OpenAiProviderConfig() {}
 
