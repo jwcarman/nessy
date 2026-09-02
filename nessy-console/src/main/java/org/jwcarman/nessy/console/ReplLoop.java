@@ -184,6 +184,8 @@ final class ReplLoop {
           note("the answer was cut off at the token limit; ask for less, or raise maxTokens");
       case TurnResult.Completed() when !spoke ->
           note("the model ended the turn without saying anything");
+      // Said its piece and stopped. The answer IS the report, so anything here would be the REPL
+      // talking over the model.
       case TurnResult.Completed() -> {}
     }
   }
