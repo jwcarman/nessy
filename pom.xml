@@ -235,9 +235,12 @@
     <sonar.organization>jwcarman</sonar.organization>
     <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     <sonar.projectKey>jwcarman_nessy</sonar.projectKey>
-    <sonar.coverage.exclusions>nessy-examples/**</sonar.coverage.exclusions>
+    <sonar.coverage.exclusions>nessy-examples/**,nessy-spike-*/**</sonar.coverage.exclusions>
     <!-- nessy-examples are console demo apps where stdout/stderr IS the product;
-         excluded from analysis rather than suppressing individual S106 issues. -->
+         excluded from analysis rather than suppressing individual S106 issues.
+         nessy-spike-* are the throwaway spikes named above: kept to read, never
+         shipped, and holding a dashboard to account for code nothing depends on
+         makes the number say less rather than more. -->
     <sonar.exclusions>nessy-examples/**</sonar.exclusions>
 
     <!-- Accepted findings — review-ruled, recorded in docs/superpowers ledgers.
