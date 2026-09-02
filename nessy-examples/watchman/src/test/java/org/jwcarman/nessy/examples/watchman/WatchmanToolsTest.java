@@ -89,8 +89,9 @@ class WatchmanToolsTest {
 
       assertThat(report)
           .contains("grafana running")
-          .doesNotContain("grafana running (Up 2 days) <--");
-      assertThat(report).contains("loki exited").contains("needs attention");
+          .doesNotContain("grafana running (Up 2 days) <--")
+          .contains("loki exited")
+          .contains("needs attention");
     }
 
     /**
@@ -121,9 +122,9 @@ class WatchmanToolsTest {
 
     @Test
     void disk_usage_skips_devfs_and_the_autofs_placeholder_but_keeps_the_real_alarm() {
-      CommandRunner runner = fixed("df -h", MAC_DF_H);
+      CommandRunner df = fixed("df -h", MAC_DF_H);
 
-      String report = run(runner, "disk_usage");
+      String report = run(df, "disk_usage");
 
       assertThat(report)
           .doesNotContain("devfs")
@@ -134,18 +135,18 @@ class WatchmanToolsTest {
 
     @Test
     void disk_usage_reports_human_readable_units_not_bare_block_counts() {
-      CommandRunner runner = fixed("df -h", MAC_DF_H);
+      CommandRunner df = fixed("df -h", MAC_DF_H);
 
-      String report = run(runner, "disk_usage");
+      String report = run(df, "disk_usage");
 
       assertThat(report).contains("/ 24% used, 37Gi free");
     }
 
     @Test
     void disk_usage_does_not_blanket_skip_non_dev_filesystems_a_full_tmpfs_is_still_reported() {
-      CommandRunner runner = fixed("df -h", LINUX_DF_H);
+      CommandRunner df = fixed("df -h", LINUX_DF_H);
 
-      String report = run(runner, "disk_usage");
+      String report = run(df, "disk_usage");
 
       assertThat(report).contains("/run 92% used, 1.0G free").contains("/ 40% used, 60G free");
     }

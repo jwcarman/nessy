@@ -54,21 +54,27 @@ class ModelRequestTest {
 
   @Test
   void a_null_system_prompt_is_refused() {
-    assertThatThrownBy(() -> request(Context.empty(), null, 100, List.of(), Set.of()))
+    Context empty = Context.empty();
+
+    assertThatThrownBy(() -> request(empty, null, 100, List.of(), Set.of()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   @DisplayName("a non-positive maxTokens is refused")
   void a_zero_max_tokens_is_refused() {
-    assertThatThrownBy(() -> request(Context.empty(), "you are helpful", 0, List.of(), Set.of()))
+    Context empty = Context.empty();
+
+    assertThatThrownBy(() -> request(empty, "you are helpful", 0, List.of(), Set.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTokens");
   }
 
   @Test
   void a_negative_max_tokens_is_refused() {
-    assertThatThrownBy(() -> request(Context.empty(), "you are helpful", -1, List.of(), Set.of()))
+    Context empty = Context.empty();
+
+    assertThatThrownBy(() -> request(empty, "you are helpful", -1, List.of(), Set.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTokens");
   }
@@ -88,10 +94,10 @@ class ModelRequestTest {
     ModelRequest request = request(Context.empty(), "you are helpful", 100, mutable, Set.of());
 
     mutable.clear();
+    List<Tool<?>> tools = request.tools();
 
-    assertThat(request.tools()).isEmpty();
-    assertThatThrownBy(() -> request.tools().add(null))
-        .isInstanceOf(UnsupportedOperationException.class);
+    assertThat(tools).isEmpty();
+    assertThatThrownBy(() -> tools.add(null)).isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
@@ -101,9 +107,10 @@ class ModelRequestTest {
     ModelRequest request = request(Context.empty(), "you are helpful", 100, List.of(), mutable);
 
     mutable.clear();
+    Set<Capability> requested = request.requested();
 
-    assertThat(request.requested()).containsExactly(Capability.THINKING);
-    assertThatThrownBy(() -> request.requested().add(Capability.IMAGE_INPUT))
+    assertThat(requested).containsExactly(Capability.THINKING);
+    assertThatThrownBy(() -> requested.add(Capability.IMAGE_INPUT))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 }

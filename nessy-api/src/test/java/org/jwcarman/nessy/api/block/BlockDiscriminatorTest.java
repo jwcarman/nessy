@@ -21,7 +21,6 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -70,8 +69,7 @@ class BlockDiscriminatorTest {
     JsonSubTypes declared = Block.class.getAnnotation(JsonSubTypes.class);
     assertThat(declared).isNotNull();
 
-    List<Class<?>> named =
-        Arrays.stream(declared.value()).map(JsonSubTypes.Type::value).collect(Collectors.toList());
+    List<Class<?>> named = Arrays.stream(declared.value()).map(JsonSubTypes.Type::value).toList();
 
     assertThat(named)
         .containsExactlyInAnyOrder(
@@ -93,8 +91,8 @@ class BlockDiscriminatorTest {
             AmbientContentBlock.class,
             ToolResultContentBlock.class);
 
-    assertThat(markers).isNotEmpty();
     assertThat(markers)
+        .isNotEmpty()
         .allSatisfy(
             marker ->
                 assertThat(marker.getAnnotation(JsonSubTypes.class))

@@ -696,8 +696,8 @@ class AnthropicRequestsTest {
               THINKING_DISABLED);
 
       var cacheControls = allCacheControls(params);
-      assertThat(cacheControls).hasSize(4);
       assertThat(cacheControls)
+          .hasSize(4)
           .allSatisfy(
               cacheControl ->
                   assertThat(cacheControl.ttl()).contains(CacheControlEphemeral.Ttl.TTL_1H));
@@ -731,8 +731,8 @@ class AnthropicRequestsTest {
               cachedRequest(Set.of(Capability.PROMPT_CACHING)), "claude-sonnet", THINKING_DISABLED);
 
       var cacheControls = allCacheControls(params);
-      assertThat(cacheControls).hasSize(4);
       assertThat(cacheControls)
+          .hasSize(4)
           .allSatisfy(cacheControl -> assertThat(cacheControl.ttl()).isEmpty());
     }
 

@@ -59,11 +59,10 @@ class WatchmanRiskTest {
   void the_assessed_level_is_neither_waved_through_nor_refused() {
     RiskLevel assessed = RiskAssessment.of(Likelihood.HIGH, Impact.MODERATE).risk();
 
-    assertThat(assessed).isEqualTo(RiskLevel.MODERATE);
     assertThat(assessed)
+        .isEqualTo(RiskLevel.MODERATE)
         .as("not below the approving threshold, so it is not waved through")
-        .isGreaterThanOrEqualTo(RiskLevel.MODERATE);
-    assertThat(assessed)
+        .isGreaterThanOrEqualTo(RiskLevel.MODERATE)
         .as("not at the denying threshold, so nobody is refused without being asked")
         .isLessThan(RiskLevel.VERY_HIGH);
   }

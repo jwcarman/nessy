@@ -227,8 +227,12 @@ class BedrockModelProviderTest {
     void a_blank_model_id_is_rejected() {
       var provider = new BedrockModelProvider(fakeClient(new Object[1], null));
 
-      assertThatThrownBy(() -> provider.model(ModelId.of("  ")))
+      assertThatThrownBy(() -> requestBlankModel(provider))
           .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static void requestBlankModel(BedrockModelProvider provider) {
+      provider.model(ModelId.of("  "));
     }
 
     @Test

@@ -370,7 +370,9 @@ class SummarizingMemoryTest {
     @Test
     @DisplayName("a threshold inside the verbatim window would never compress anything")
     void an_impossible_configuration_is_refused() {
-      assertThatThrownBy(() -> summarizing(Summarizer.saying("x"), 5, 10))
+      Model model = Summarizer.saying("x");
+
+      assertThatThrownBy(() -> summarizing(model, 5, 10))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("keepVerbatim");
     }

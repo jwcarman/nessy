@@ -277,7 +277,7 @@ class GeminiRequestsTest {
               new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
       var assistantTurn =
           new ExchangeMessage(
-              List.of(toolUse),
+              List.of(signatureFor("call-1", "not-valid-base64!!!"), toolUse),
               List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
 
       var contents = GeminiRequests.toContents(request(List.of(assistantTurn)));
