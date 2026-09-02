@@ -147,7 +147,7 @@ noisily at startup rather than silently doing the wrong thing mid-turn.
   `connect` nor `McpToolbox` exposes a way to raise it yet. Real MCP tools
   (web search, code execution) routinely run longer than 20 seconds, so a
   slow server or a slow tool call can time out before it answers.
-- **Progress notifications are not forwarded to `ToolContext.progress`.**
+- **Progress notifications are not forwarded anywhere.**
   The SDK's sync client exposes only a session-global progress consumer, not
   one scoped to a single `tools/call`, so v1 defers progress forwarding
   rather than leaking one call's progress into another's context.

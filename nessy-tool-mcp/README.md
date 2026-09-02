@@ -83,7 +83,7 @@ look a tool up.
   routinely run longer than 20 seconds, so a slow server or a slow tool call can time out
   before it answers. Configurability arrives with the starter wiring, a later generation —
   not this one.
-- **Progress notifications are not forwarded to `ToolContext.progress`.**
+- **Progress notifications are not forwarded anywhere.**
   The SDK's sync client (`McpSyncClient`) exposes only a session-global
   progress consumer, registered once at client build time and applied to
   every call the session ever makes — not one scoped to a single

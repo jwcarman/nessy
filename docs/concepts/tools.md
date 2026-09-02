@@ -10,7 +10,7 @@ class AddTool implements Tool<Add> {
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(Add input, ToolContext context) {
+    public Awaited<ToolResult> execute(Add input, ToolCallRequest call) {
         return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
 }
@@ -61,8 +61,8 @@ does not hold a thread, an actor, or a process.
 Whoever will answer needs an address, and that is the `ReplyToken`:
 
 ```java
-public Awaited<ToolResult> execute(Order input, ToolContext context) {
-    vendor.placeOrder(input, context.replyToken());   // hand it out
+public Awaited<ToolResult> execute(Order input, ToolCallRequest call) {
+    vendor.placeOrder(input, call.replyToken());      // hand it out
     return Awaited.deferred(clock.instant().plus(Duration.ofHours(2)));
 }
 ```
@@ -100,14 +100,22 @@ recovery, because nothing recorded that it had finished. No marker fixes
 this — a "started" marker only moves the ambiguity — so it is stated as a
 contract rather than hidden.
 
-The engine's mitigation is the stable key on `ToolContext`: the same call,
-re-driven, presents the same coordinates, so a tool that cares can make
-itself idempotent.
+The engine's mitigation is `call.callKey()`: the turn and the call together,
+stable across a re-drive, so a tool that cares can deduplicate on it. The
+turn is in there because a model's call id is unique within ONE response —
+two turns can each produce a `call_1`.
+
+## One record, not two contexts
+
+A tool and an approver are handed the **same** `ToolCallRequest`. There used
+to be two context objects carrying overlapping views of one call, which meant
+keeping them in step and left an approver unable to see what the tool would
+actually be given.
 
 ## What a tool never sees
 
-A tool gets its input, its identity (`agentType`, `agentId`), and its reply
-token. It does not get the transcript, the harness, or the agent's state —
+A tool gets its input and the call: who is calling, which turn, which call,
+the arguments, and where an answer goes. It does not get the transcript, the harness, or the agent's state —
 those are not its business, and a tool that could reach them would be a tool
 you could not test.
 

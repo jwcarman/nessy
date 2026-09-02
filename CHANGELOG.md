@@ -93,6 +93,12 @@ in its current vocabulary — not the sequence of designs that produced it.
 - **`Approver`** is asked per call and may answer or defer. Every call goes
   through one, ungated included — one path through the code is worth more
   than the message it saves, and it is the path recovery has to work on.
+- **`ToolCallRequest`** names one call, and a tool and an approver are handed
+  the same one. It replaced two context objects that carried overlapping
+  views of the same call, so an approver could not see what the tool would
+  get. `callKey()` is the turn and the call together — a model's call id is
+  unique within one response only — and it is what a tool deduplicates on
+  under at-least-once execution.
 - **A denial is an answer**, with its reason, and the model responds to it.
   It is not a failed turn and must not look like a broken tool.
 - **`ToolDescriber`** writes the sentence a person consents to. Consenting to

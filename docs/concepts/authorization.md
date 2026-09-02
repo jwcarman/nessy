@@ -5,7 +5,7 @@ Some tools should not run without a decision. In Nessy that decision is an
 
 ```java
 public interface Approver {
-  Awaited<ApprovalResult> approve(ApprovalRequest request, ApprovalContext context);
+  Awaited<ApprovalResult> approve(ApprovalRequest request);
 }
 ```
 
@@ -47,16 +47,20 @@ the message it would save, and it is the path recovery has to work on too.
 
 ```java
 record ApprovalRequest(
+    ToolCallRequest call, String description, Instant askedAt, ObjectNode facts) {}
+
+record ToolCallRequest(
     AgentType agentType,
     AgentId agentId,
-    ToolCall call,
-    String description,
-    Instant askedAt,
-    ObjectNode facts) {}
+    String turnId,
+    String callId,
+    String toolName,
+    JsonNode arguments,
+    ReplyToken replyToken) {}
 ```
 
-`call` carries the tool's name and the arguments the model produced, so a
-policy can decide on the actual values. `facts` is the
+`call` is the whole of what the tool itself would be handed — the same record,
+so an approver can decide on exactly the values the tool will act on. `facts` is the
 [intent](intent.md) channel — what the model *said* it was doing, which a
 policy may weigh or ignore.
 
@@ -92,7 +96,8 @@ agent apologising for an error it had not had.
 
 ## Reply tokens
 
-`ApprovalContext.replyToken()` is the address an answer comes back to. The
+`request.replyToken()` is the address an answer comes back to — the same one
+the tool would be handed, because both settle the same call. The
 coordinates inside it — agent type, agent id, turn, call — are **encrypted
 with AES-GCM**, so whoever holds it can neither read them nor forge a token
 for a different call.
