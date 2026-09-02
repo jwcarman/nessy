@@ -117,6 +117,11 @@
          owns the transcript directly; this port no longer has one of its own. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-summarizing</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spring-boot-starter</artifactId>
     </dependency>
     <dependency>

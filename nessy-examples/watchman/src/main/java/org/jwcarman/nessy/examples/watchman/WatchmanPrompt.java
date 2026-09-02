@@ -37,4 +37,34 @@ public final class WatchmanPrompt {
       """;
 
   private WatchmanPrompt() {}
+
+  /**
+   * What survives from older rounds.
+   *
+   * <p>The default instruction is written for a conversation; a watchman is not having one. It does
+   * rounds, and what matters across them is what CHANGED and what is still outstanding — a disk
+   * that has been filling for a week, a container that keeps restarting, a prune somebody refused
+   * and why. Round-by-round narration is exactly what should be dropped.
+   *
+   * <p>Built on the default rather than replacing it, because the default carries the property that
+   * matters most: this text is fed back to itself, so it has to ask for specifics that stay
+   * specific. See {@code SummarizingMemory.SUMMARIZE}.
+   */
+  public static final String SUMMARIZE =
+      org.jwcarman.nessy.memory.summarizing.SummarizingMemory.SUMMARIZE
+          + """
+
+          This is a machine's own record of watching one host, not a conversation. Keep:
+
+          - measurements and how they have MOVED: a filesystem at 71% last week and 96% now is
+            the finding, where either number alone is not
+          - anything that has recurred across rounds, and how many times
+          - remediations proposed, and whether a person approved or refused them, with the reason
+          - anything still outstanding: a question asked and unanswered, a job started and not
+            seen to finish
+
+          Drop the narration of individual rounds. "Checked the disks and everything looked fine"
+          is worth nothing next week; "/System/Volumes/Data has climbed from 71% to 96% since
+          2026-08-24" is worth everything.
+          """;
 }

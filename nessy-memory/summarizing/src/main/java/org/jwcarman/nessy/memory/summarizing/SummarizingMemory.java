@@ -86,8 +86,14 @@ public final class SummarizingMemory implements Memory {
 
   private static final Logger LOG = LoggerFactory.getLogger(SummarizingMemory.class);
 
-  /** What an adapter sees, so it can label the background the way its vendor likes. */
-  public static final String KIND = "summary";
+  /**
+   * What an adapter sees, so it can label the background the way its vendor likes — XML tags for
+   * one, a heading for another, nothing at all for a third.
+   *
+   * <p>Private, like {@code PlanTools} and {@code NotebookTools} keep theirs. Nothing outside needs
+   * to name it, and a string nobody asked for is not worth putting on the API surface.
+   */
+  private static final String KIND = "summary";
 
   /**
    * The default instruction, written for REPETITION.

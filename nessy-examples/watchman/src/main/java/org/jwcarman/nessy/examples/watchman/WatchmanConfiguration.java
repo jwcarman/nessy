@@ -100,6 +100,15 @@ public class WatchmanConfiguration {
       WatchmanProperties properties,
       CommandRunner runner,
       Approver humanApprover,
+      ModelProvider models,
+      org.jwcarman.nessy.spi.memory.TranscriptMemory transcript,
+      // Qualified, because the starter contributes an ExecutorService of its own
+      // (nessyBlockingExecutor) and by-type injection cannot choose between them. Relying on the
+      // parameter name would work only while -parameters is on.
+      @org.springframework.beans.factory.annotation.Qualifier("summarizing")
+          java.util.concurrent.ExecutorService summarizing,
+      javax.sql.DataSource dataSource,
+      Clock clock,
       io.micrometer.observation.ObservationRegistry observations) {
     List<Tool<com.fasterxml.jackson.databind.JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.createHarness(
@@ -110,7 +119,23 @@ public class WatchmanConfiguration {
               .systemPrompt(WatchmanPrompt.SYSTEM)
               .model(ModelId.of(properties.getModelId()))
               .renderer(WatchmanObservations.RENDERER)
-              .coalescer(WatchmanObservations.COALESCER);
+              .coalescer(WatchmanObservations.COALESCER)
+              // A watchman does rounds forever, so its transcript grows forever -- and without
+              // this every round would carry every previous round into the model. Older rounds
+              // become a paragraph; the last few stay verbatim.
+              .memory(
+                  org.jwcarman.nessy.memory.summarizing.SummarizingMemory.create(
+                      summary ->
+                          summary
+                              .transcript(transcript)
+                              .dataSource(dataSource)
+                              .agentType(AgentType.of("watchman"))
+                              .model(models.model(ModelId.of(properties.getModelId())))
+                              .executor(summarizing)
+                              .systemPrompt(WatchmanPrompt.SUMMARIZE)
+                              .summarizeAfter(60)
+                              .keepVerbatim(20)
+                              .clock(clock)));
           tools.forEach(
               tool -> {
                 // Wrapped here rather than by the starter: this application grants its own tools,
@@ -207,11 +232,36 @@ public class WatchmanConfiguration {
     return () -> org.jwcarman.nessy.spi.store.Schemas.initialize(dataSource);
   }
 
-  /** The transcript the page renders, read through the same door the engine writes it with. */
+  /**
+   * Everything the watchman has ever said, whole.
+   *
+   * <p>The page renders THIS rather than what the model sees, and the difference is the point: the
+   * model is given a summary of the older rounds, while a person debugging gets the full history.
+   * Summarizing is a sidecar — nothing is deleted to produce it — and this bean is the proof.
+   */
   @Bean
-  public org.jwcarman.nessy.api.memory.Memory memory(javax.sql.DataSource dataSource) {
+  public org.jwcarman.nessy.spi.memory.TranscriptMemory transcript(
+      javax.sql.DataSource dataSource) {
     return org.jwcarman.nessy.spi.memory.TranscriptMemory.eternal(
         dataSource, AgentType.of("watchman"));
+  }
+
+  /**
+   * Where a summary is written, off the thread that noticed it was needed.
+   *
+   * <p>Its own single thread rather than a shared pool: a vendor call that hangs must not starve
+   * anything else, and one summarizer at a time is plenty for one agent. Daemon, so it never holds
+   * up a shutdown — a summary that does not finish costs a slightly larger context next round,
+   * which is the whole reason this work is safe to abandon.
+   */
+  @Bean(destroyMethod = "shutdown")
+  public java.util.concurrent.ExecutorService summarizing() {
+    return java.util.concurrent.Executors.newSingleThreadExecutor(
+        runnable -> {
+          Thread thread = new Thread(runnable, "watchman-summarizing");
+          thread.setDaemon(true);
+          return thread;
+        });
   }
 
   @Bean
