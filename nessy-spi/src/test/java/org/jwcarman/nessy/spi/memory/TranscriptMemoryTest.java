@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine;
+package org.jwcarman.nessy.spi.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,18 +33,33 @@ import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.testing.TestDatabase;
+import org.jwcarman.nessy.spi.store.Schemas;
 
 @DisplayName("What an agent remembers")
 class TranscriptMemoryTest {
+
+  /**
+   * A database nobody else is using, with Nessy's DDL applied.
+   *
+   * <p>Built here rather than taken from {@code nessy-testing}, which depends on this module — a
+   * test dependency the other way would be a cycle.
+   */
+  private static javax.sql.DataSource freshDatabase() {
+    javax.sql.DataSource database =
+        new org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder()
+            .setType(org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType.H2)
+            .generateUniqueName(true)
+            .build();
+    Schemas.initialize(database);
+    return database;
+  }
 
   private static final AgentId HOUSE = AgentId.of("house-12");
   private TranscriptMemory transcripts;
 
   @BeforeEach
   void setUp() {
-    transcripts = TranscriptMemory.eternal(TestDatabase.fresh(), AgentType.of("watchman"));
+    transcripts = TranscriptMemory.eternal(freshDatabase(), AgentType.of("watchman"));
   }
 
   /** An exchange: the call, and the answer that settled it. */
