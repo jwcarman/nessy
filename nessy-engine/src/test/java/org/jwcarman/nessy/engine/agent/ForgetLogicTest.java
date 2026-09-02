@@ -18,11 +18,7 @@ package org.jwcarman.nessy.engine.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.model.StopReason;
-import org.jwcarman.nessy.api.model.Usage;
 
 /**
  * Being told to disappear.
@@ -32,101 +28,37 @@ import org.jwcarman.nessy.api.model.Usage;
  * model's answer arriving at a dead incarnation with nobody left to finish the turn, which is a
  * defect this engine has already had once and does not need under a new name.
  */
-@DisplayName("An agent told to forget itself")
+@DisplayName("Taking a poison pill")
 class ForgetLogicTest {
 
-  private static AgentState busy() {
-    return AgentState.idle().taking(TurnId.of("turn-1"), "claim-1");
+  @Test
+  @DisplayName("wipes the agent and then asks to be unloaded")
+  void a_poisoned_take_forgets_and_sleeps() {
+    Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
+
+    assertThat(decision.then()).containsExactly(new Instruction.Forget(), new Instruction.Sleep());
   }
 
-  @Nested
-  @DisplayName("when it is idle")
-  class Idle {
+  @Test
+  @DisplayName("ends the turn it was in, so nothing is left mid-flight")
+  void a_poisoned_take_leaves_no_turn_running() {
+    Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
 
-    @Test
-    void it_forgets_itself_at_once() {
-      Decision decision = AgentLogic.decide(AgentState.idle(), new Input.Forget());
-
-      assertThat(decision.then()).contains(new Instruction.Forget());
-      assertThat(decision.next().forgetting()).isTrue();
-    }
-
-    @Test
-    @DisplayName("being told twice is the same as being told once")
-    void it_is_idempotent() {
-      Decision once = AgentLogic.decide(AgentState.idle(), new Input.Forget());
-      Decision twice = AgentLogic.decide(once.next(), new Input.Forget());
-
-      assertThat(twice.then()).contains(new Instruction.Forget());
-      assertThat(twice.next().forgetting()).isTrue();
-    }
+    assertThat(decision.next().phase()).isInstanceOf(Phase.Idle.class);
+    assertThat(decision.next().busy()).isFalse();
   }
 
-  @Nested
-  @DisplayName("when it is busy")
-  class Busy {
+  /**
+   * The queued work dies with the agent rather than running on its way out.
+   *
+   * <p>The store enforces this — the pill is checked before any row is claimed — and this is the
+   * half of it the logic owns: a poisoned take issues no TakeWork, so nothing goes looking again.
+   */
+  @Test
+  void a_poisoned_take_does_not_ask_for_more_work() {
+    Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
 
-    @Test
-    @DisplayName("nothing is deleted while a turn is running")
-    void it_only_records_the_flag() {
-      Decision decision = AgentLogic.decide(busy(), new Input.Forget());
-
-      assertThat(decision.next().forgetting()).isTrue();
-      assertThat(decision.then())
-          .as("deleting under a running turn strands its answer in a dead incarnation")
-          .doesNotContain(new Instruction.Forget());
-    }
-
-    @Test
-    @DisplayName("the flag survives the turn, because it lives in persisted state")
-    void the_flag_is_carried_through_the_turn() {
-      AgentState told = AgentLogic.decide(busy(), new Input.Forget()).next();
-
-      // Every transition a turn makes must carry it, or a restart would resurrect the agent.
-      assertThat(told.at(new Phase.CallingModel()).forgetting()).isTrue();
-      assertThat(told.spending(new Usage(1, 1)).forgetting()).isTrue();
-      assertThat(told.finished().forgetting()).isTrue();
-    }
-
-    @Test
-    @DisplayName("the turn ends, and THEN it forgets itself instead of taking more work")
-    void it_forgets_when_the_turn_ends() {
-      AgentState told = AgentLogic.decide(busy(), new Input.Forget()).next();
-
-      Decision ending =
-          AgentLogic.decide(
-              told, new Input.ModelAnswered.Answered(StopReason.END_TURN, Usage.unreported()));
-
-      assertThat(ending.then()).contains(new Instruction.Forget());
-      assertThat(ending.then())
-          .as("an agent on its way out does not start something new")
-          .doesNotContain(new Instruction.TakeWork());
-    }
-  }
-
-  @Nested
-  @DisplayName("once it is on its way out")
-  class OnItsWayOut {
-
-    @Test
-    @DisplayName("new work offered is not picked up")
-    void it_ignores_the_backlog() {
-      AgentState told = AgentLogic.decide(AgentState.idle(), new Input.Forget()).next();
-
-      Decision decision = AgentLogic.decide(told, new Input.BacklogUpdated());
-
-      // Not merely "no TakeWork" — an agent on its way out does nothing at all. Asserting the
-      // absence of one instruction would have passed vacuously against an empty list, which is
-      // what S5841 is for.
-      assertThat(decision.then()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("an agent that was NOT told still takes work, which is the control")
-    void an_ordinary_agent_still_takes_work() {
-      Decision decision = AgentLogic.decide(AgentState.idle(), new Input.BacklogUpdated());
-
-      assertThat(decision.then()).contains(new Instruction.TakeWork());
-    }
+    assertThat(decision.then()).isNotEmpty();
+    assertThat(decision.then()).doesNotContain(new Instruction.TakeWork());
   }
 }

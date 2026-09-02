@@ -1,3 +1,18 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,19 +105,13 @@ class ForgetRaceTest {
     // The turn has decided how it ends; its answer is not written yet -- that batch is held.
     await().atMost(Duration.ofSeconds(10)).until(() -> brake.pending() >= 1);
 
-    tell(agentId, new NessyMessage.Forget(Map.of()));
-    await().atMost(Duration.ofSeconds(10)).until(() -> brake.pending() >= 2);
+    // The forget, exactly as the harness does it: a row, then a nudge. The nudge lands while a
+    // take is already outstanding and is correctly ignored -- there is no second batch to race,
+    // which is the point.
+    parts.backlog().poison(agentId);
+    tell(agentId, new NessyMessage.BacklogUpdated(Map.of()));
 
     brake.releaseTogether();
-
-    await()
-        .atMost(Duration.ofSeconds(10))
-        .untilAsserted(
-            () ->
-                assertThat(parts.remembered().of(agentId))
-                    .as("the turn got its answer written down")
-                    .isNotEmpty());
-    answerWritten.countDown();
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -121,6 +130,7 @@ class ForgetRaceTest {
    * are still there, and puts it back into a memory that was just emptied.
    */
   private Memory pausingAfterForget(Memory delegate) {
+    answerWritten.countDown();
     return new Memory() {
       @Override
       public Context recall(AgentId agentId) {

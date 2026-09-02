@@ -66,3 +66,23 @@ CREATE TABLE IF NOT EXISTS nessy_backlog (
 );
 
 CREATE INDEX IF NOT EXISTS nessy_backlog_waiting ON nessy_backlog (agent_id, ordinal);
+
+-- A forget, waiting to be taken.
+--
+-- Telling an agent to forget itself used to be a message straight to the actor, which meant it was
+-- ordered against nothing: instruction batches are one task each on the blocking executor, and an
+-- agent calls itself idle the moment a turn's decision is returned rather than when that decision's
+-- writes have landed. So a delete could overtake the answer it was supposed to follow.
+--
+-- A row cannot overtake anything. The agent finds out it is doomed by TAKING it, and a reply to a
+-- take cannot arrive before the batch that asked for it has finished.
+--
+-- Keyed like nessy_backlog, which it is checked alongside. NOTE that nessy_backlog and nessy_claim
+-- are keyed on agent_id alone with no agent_type, unlike nessy_reminder -- so two agent types
+-- sharing a database share their backlogs. Giving this table a type column alone would imply an
+-- isolation the table it guards does not provide.
+CREATE TABLE IF NOT EXISTS nessy_poison (
+  agent_id    TEXT                     NOT NULL,
+  offered_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (agent_id)
+);

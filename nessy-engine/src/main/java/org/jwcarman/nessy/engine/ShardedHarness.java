@@ -97,18 +97,26 @@ final class ShardedHarness<O> implements Harness<O> {
   }
 
   /**
-   * Tells the agent it is finished with, and returns.
+   * Leaves a forget where the agent will find it, and nudges.
    *
-   * <p>No backlog write and no commit-then-signal dance: unlike an observation there is nothing
-   * durable to land first. The agent's own state is where the intent is recorded, by the agent, so
-   * that a restart between being told and acting still forgets.
+   * <p>The same two steps as {@link #observe}, and for the same reason: COMMIT, then signal. A
+   * message straight to the actor would be ordered against nothing — instruction batches are one
+   * task each, and an agent calls itself idle when a turn's decision is returned rather than when
+   * that decision's writes have landed, so a delete could overtake the answer it followed. A row
+   * cannot overtake anything, and the agent finds it by taking it.
+   *
+   * <p>It also survives what a message does not: a crash before it is read, a rebalance, and an
+   * agent nobody has spoken to in a week.
    */
   @Override
   public void forget(AgentId agentId) {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    backlog.poison(agentId);
     sharding
         .entityRefFor(agents, agentId.value())
-        .tell(new NessyMessage.Forget(traces.capture(type.name(), agentId.value(), "Forget")));
+        .tell(
+            new NessyMessage.BacklogUpdated(
+                traces.capture(type.name(), agentId.value(), "BacklogUpdated")));
   }
 
   /**

@@ -208,11 +208,12 @@ final class Instructions {
     run(
         () -> deps.backlog().take(agentId, finished),
         taken ->
-            taken
-                .<NessyMessage>map(
-                    work ->
-                        new NessyMessage.WorkTaken(work.turnId(), work.observationClaim(), carried))
-                .orElseGet(() -> new NessyMessage.NoWork(carried)),
+            switch (taken) {
+              case BacklogStore.TakeResult.Work(TurnId turnId, String claim) ->
+                  new NessyMessage.WorkTaken(turnId, claim, carried);
+              case BacklogStore.TakeResult.Empty() -> new NessyMessage.NoWork(carried);
+              case BacklogStore.TakeResult.Poisoned() -> new NessyMessage.Poisoned(carried);
+            },
         failure ->
             new NessyMessage.ModelFailed("the backlog could not be read: " + failure, carried),
         agentId);
@@ -483,6 +484,10 @@ final class Instructions {
     deps.backlog().deleteAgent(agentId);
     deps.claims().deleteAgent(agentId);
     deleteState(agentId);
+    // LAST, and that ordering is the whole recovery story: everything above is idempotent, so a
+    // crash before this leaves the pill, the next incarnation takes it, and the same work runs
+    // again to the same end. Swallowing it first would lose a half-finished forget in silence.
+    deps.backlog().swallow(agentId);
     LOG.info("[{}] forgotten", agentId.value());
   }
 

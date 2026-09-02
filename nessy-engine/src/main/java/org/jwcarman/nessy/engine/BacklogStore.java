@@ -79,6 +79,10 @@ public final class BacklogStore<O> {
   private static final String DELETE_ROW =
       "DELETE FROM nessy_backlog WHERE agent_id = ? AND item_id = ?";
   private static final String DELETE_AGENT = "DELETE FROM nessy_backlog WHERE agent_id = ?";
+  private static final String POISON =
+      "INSERT INTO nessy_poison (agent_id, offered_at) VALUES (?, ?)";
+  private static final String POISONED = "SELECT count(*) FROM nessy_poison WHERE agent_id = ?";
+  private static final String SWALLOW = "DELETE FROM nessy_poison WHERE agent_id = ?";
   private static final String DELETE_UNTAKEN =
       "DELETE FROM nessy_backlog WHERE agent_id = ? AND taken_claim IS NULL";
   private static final String MARK_TAKEN =
@@ -95,6 +99,26 @@ public final class BacklogStore<O> {
 
   /** What a take hands back: the row's id, which is the turn id, and where its input is held. */
   public record Taken(TurnId turnId, String observationClaim) {}
+
+  /**
+   * What looking for work found.
+   *
+   * <p>Three answers rather than two, because "there is nothing to do" and "stop existing" are not
+   * the same news. The poison is checked FIRST, so queued work is never reached — forgetting must
+   * not run an agent's remaining tool calls on its way out, since their side effects would outlive
+   * the record of having made them.
+   */
+  public sealed interface TakeResult {
+
+    /** Here is a turn's worth of work. */
+    record Work(TurnId turnId, String observationClaim) implements TakeResult {}
+
+    /** Nothing waiting. */
+    record Empty() implements TakeResult {}
+
+    /** This agent has been told to end. */
+    record Poisoned() implements TakeResult {}
+  }
 
   /**
    * One row as the table holds it.
@@ -196,34 +220,73 @@ public final class BacklogStore<O> {
    * @param lastCompleted the turn id this agent has finished, or {@code null} if it has finished
    *     none
    */
-  public Optional<Taken> take(AgentId agentId, TurnId lastCompleted) {
-    return Optional.ofNullable(
-        transactions.execute(
-            status -> {
-              if (lastCompleted != null) {
-                jdbc.sql(DELETE_ROW).params(agentId.value(), lastCompleted.value()).update();
-                claims.deleteTurn(agentId, lastCompleted);
-              }
-              List<Row> rows = rows(agentId);
-              Optional<Row> stranded = rows.stream().filter(row -> !row.untaken()).findFirst();
-              if (stranded.isPresent()) {
-                Row row = stranded.get();
-                return new Taken(row.itemId(), row.takenClaim());
-              }
-              if (rows.isEmpty()) {
-                return null;
-              }
-              Row head = rows.getFirst();
-              claims.put(
-                  agentId,
-                  head.itemId(),
-                  OBSERVATION_KEY,
-                  messages.encode(renderer.render(codec.decode(head.observation()))));
-              jdbc.sql(MARK_TAKEN)
-                  .params(OBSERVATION_KEY, agentId.value(), head.itemId().value())
-                  .update();
-              return new Taken(head.itemId(), OBSERVATION_KEY);
-            }));
+  public TakeResult take(AgentId agentId, TurnId lastCompleted) {
+    return transactions.execute(
+        status -> {
+          // FIRST, and inside the same transaction: an agent on its way out does not run the
+          // work still queued for it. Those rows are about to be deleted anyway; running them
+          // would leave their side effects in the world with nothing left to say who caused
+          // them.
+          if (poisoned(agentId)) {
+            return new TakeResult.Poisoned();
+          }
+          if (lastCompleted != null) {
+            jdbc.sql(DELETE_ROW).params(agentId.value(), lastCompleted.value()).update();
+            claims.deleteTurn(agentId, lastCompleted);
+          }
+          List<Row> rows = rows(agentId);
+          Optional<Row> stranded = rows.stream().filter(row -> !row.untaken()).findFirst();
+          if (stranded.isPresent()) {
+            Row row = stranded.get();
+            return new TakeResult.Work(row.itemId(), row.takenClaim());
+          }
+          if (rows.isEmpty()) {
+            return new TakeResult.Empty();
+          }
+          Row head = rows.getFirst();
+          claims.put(
+              agentId,
+              head.itemId(),
+              OBSERVATION_KEY,
+              messages.encode(renderer.render(codec.decode(head.observation()))));
+          jdbc.sql(MARK_TAKEN)
+              .params(OBSERVATION_KEY, agentId.value(), head.itemId().value())
+              .update();
+          return new TakeResult.Work(head.itemId(), OBSERVATION_KEY);
+        });
+  }
+
+  /**
+   * Leaves a forget where the agent will find it.
+   *
+   * <p>Idempotent: being told twice is being told once. The row is what makes a forget survive a
+   * crash, a rebalance, and a passivated agent that nobody has spoken to in a week.
+   */
+  public void poison(AgentId agentId) {
+    // Delete-then-insert rather than an upsert, for the reason Claims already gives: ON CONFLICT
+    // and MERGE are dialect-specific, and this store is meant to run on more than one database.
+    transactions.execute(
+        status -> {
+          jdbc.sql(SWALLOW).param(agentId.value()).update();
+          return jdbc.sql(POISON).params(agentId.value(), Timestamp.from(clock.instant())).update();
+        });
+  }
+
+  /**
+   * Removes the pill. THE LAST STEP of forgetting, and deliberately so.
+   *
+   * <p>It is the commit point: everything before it is idempotent, so a crash anywhere leaves the
+   * pill, the next incarnation takes it, and the whole thing runs again to the same end. Removing
+   * it first would lose a half-finished forget silently. Leaving it forever would poison the next
+   * agent to use this id, which is a booby trap with no visible cause.
+   */
+  public void swallow(AgentId agentId) {
+    jdbc.sql(SWALLOW).param(agentId.value()).update();
+  }
+
+  private boolean poisoned(AgentId agentId) {
+    Integer found = jdbc.sql(POISONED).param(agentId.value()).query(Integer.class).single();
+    return found != null && found > 0;
   }
 
   private List<Row> rows(AgentId agentId) {

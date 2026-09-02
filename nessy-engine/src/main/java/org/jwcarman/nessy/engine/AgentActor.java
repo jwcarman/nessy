@@ -200,6 +200,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
       case NessyMessage.WorkTaken taken ->
           new Input.WorkTaken(taken.turnId(), taken.observationClaim());
       case NessyMessage.NoWork _ -> new Input.NoWork();
+      case NessyMessage.Poisoned _ -> new Input.Poisoned();
       case NessyMessage.Recovered _ -> new Input.Recovered();
       case NessyMessage.ModelAnswered answered ->
           new Input.ModelAnswered.Answered(answered.stopReason(), answered.usage());
@@ -222,7 +223,6 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           new Input.ApprovalGiven(
               answered.callId(), nameOf(state, answered.callId()), answered.result());
       case NessyMessage.Inspect _ -> new Input.Recovered();
-      case NessyMessage.Forget _ -> new Input.Forget();
       case NessyMessage.Stop _ -> new Input.SleepNow();
     };
   }

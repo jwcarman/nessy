@@ -53,6 +53,9 @@ public sealed interface Input {
   /** The store had nothing waiting. */
   record NoWork() implements Input {}
 
+  /** The store had a poison pill waiting: this agent has been told to end. */
+  record Poisoned() implements Input {}
+
   /** Fed on every activation, so recovery is the common path rather than a rare one. */
   record Recovered() implements Input {}
 
@@ -96,14 +99,6 @@ public sealed interface Input {
    * and policy belongs where it is testable.
    */
   record DeadlinePassed(CallId callId) implements Input {}
-
-  /**
-   * An application is finished with this agent instance.
-   *
-   * <p>Cooperative, like an interrupt: this SETS a flag rather than deleting anything. An idle
-   * agent acts on it at once; a busy one finishes its turn first.
-   */
-  record Forget() implements Input {}
 
   /** The idle linger elapsed with nothing to do. */
   record SleepNow() implements Input {}

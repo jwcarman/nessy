@@ -55,7 +55,7 @@ public final class AgentLogic {
       case Input.ToolCompleted(var callId) ->
           settle(state, callId, new Instruction.Narrate.ToolCallCompleted(callId));
       case Input.DeadlinePassed(var callId) -> settle(state, callId);
-      case Input.Forget() -> onForget(state);
+      case Input.Poisoned() -> onPoisoned(state);
       default -> Decision.nothing(state);
     };
   }
@@ -65,12 +65,6 @@ public final class AgentLogic {
    * take, so missing the signal costs nothing when a signal-free path reaches the same place.
    */
   private static Decision onBacklogUpdated(AgentState state) {
-    if (state.forgetting()) {
-      // An agent on its way out does not start something new. Work offered after a forget stays
-      // in the backlog; forgetting deletes those rows, and anything that lands in the gap belongs
-      // to whoever next uses this id -- see Instruction.Forget.
-      return Decision.nothing(state);
-    }
     // Only from Idle. Asking again while a take is already outstanding is the duplicate this
     // phase exists to prevent; a turn in flight will ask for itself when it ends.
     return state.phase() instanceof Phase.Idle
@@ -79,19 +73,18 @@ public final class AgentLogic {
   }
 
   /**
-   * Told to forget itself.
+   * The backlog handed back a poison pill instead of work.
    *
-   * <p>Idle: do it now. Busy: record the flag and let the turn end first — deleting out from under
-   * a running turn strands its answer in a dead incarnation, which is a defect this engine has had
-   * once already and does not need under a new name.
-   *
-   * <p>Idempotent: being told twice is the same as being told once.
+   * <p>It can only arrive as a reply to a take, which is what makes this safe: a reply to a take
+   * cannot come back before the batch that asked for it has run, so the turn that just ended has
+   * finished writing itself down. The old Forget message had no such ordering — it went straight to
+   * the actor, past the only queue this agent's work is sequenced against, and its delete could
+   * overtake the answer it was supposed to follow.
    */
-  private static Decision onForget(AgentState state) {
-    if (state.busy()) {
-      return Decision.nothing(state.toldToForget());
-    }
-    return Decision.of(state.toldToForget(), new Instruction.Forget());
+  private static Decision onPoisoned(AgentState state) {
+    // Everything that was queued dies with it: an agent on its way out does not run its remaining
+    // work, because those side effects would outlive the record of having caused them.
+    return Decision.of(state.finished(), new Instruction.Forget(), new Instruction.Sleep());
   }
 
   /**
@@ -142,8 +135,9 @@ public final class AgentLogic {
     then.add(new Instruction.Narrate.TurnEnded(result, state.usage()));
     then.add(new Instruction.Release());
     // The one place a busy agent's forget is honoured: it asked to go, and now it can.
-    then.add(state.forgetting() ? new Instruction.Forget() : new Instruction.TakeWork());
-    return new Decision(state.forgetting() ? state.finished() : state.asking(), then);
+    // Always take. A forget is a row this take will find, not a flag this decision has to check.
+    then.add(new Instruction.TakeWork());
+    return new Decision(state.asking(), then);
   }
 
   /**

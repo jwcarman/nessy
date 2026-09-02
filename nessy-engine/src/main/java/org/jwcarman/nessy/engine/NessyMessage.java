@@ -82,6 +82,19 @@ public sealed interface NessyMessage {
     }
   }
 
+  /**
+   * The store handed over a poison pill: this agent has been told to end.
+   *
+   * <p>It arrives as a reply to a take rather than as a message from outside, and that is the whole
+   * point — a reply to a take cannot arrive before the batch that asked for it has finished, so a
+   * forget can never overtake the writes of the turn it followed.
+   */
+  record Poisoned(Map<String, String> headers) implements NessyMessage {
+    public Poisoned {
+      headers = Map.copyOf(headers);
+    }
+  }
+
   /** The agent tells itself this on every activation. Recovery is not a mode. */
   record Recovered(Map<String, String> headers) implements NessyMessage {
     public Recovered {
@@ -196,19 +209,6 @@ public sealed interface NessyMessage {
       implements NessyMessage {
     public Inspect {
       Objects.requireNonNull(replyTo, REPLY_TO_NOT_NULL);
-      headers = Map.copyOf(headers);
-    }
-  }
-
-  /**
-   * An application is finished with this agent instance.
-   *
-   * <p>Cooperative: this sets a flag rather than deleting anything. An idle agent acts at once; a
-   * busy one finishes its turn first.
-   */
-  record Forget(Map<String, String> headers) implements NessyMessage {
-    public Forget {
-      Objects.requireNonNull(headers, "headers must not be null");
       headers = Map.copyOf(headers);
     }
   }

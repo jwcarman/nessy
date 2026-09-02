@@ -111,7 +111,8 @@ class ForgetTest {
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(() -> assertThat(parts.remembered().of(agentId)).isNotEmpty());
 
-    tell("ephemeral", agentId, new NessyMessage.Forget(Map.of()));
+    parts.backlog().poison(agentId);
+    tell("ephemeral", agentId, new NessyMessage.BacklogUpdated(Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -143,7 +144,8 @@ class ForgetTest {
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
     tell("mid-turn", agentId, new NessyMessage.BacklogUpdated(Map.of()));
-    tell("mid-turn", agentId, new NessyMessage.Forget(Map.of()));
+    parts.backlog().poison(agentId);
+    tell("mid-turn", agentId, new NessyMessage.BacklogUpdated(Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -171,7 +173,8 @@ class ForgetTest {
                         org.jwcarman.nessy.api.model.Usage.unreported()))));
     AgentId agentId = shardedAgent("stranger", parts, shard);
 
-    tell("stranger", agentId, new NessyMessage.Forget(Map.of()));
+    parts.backlog().poison(agentId);
+    tell("stranger", agentId, new NessyMessage.BacklogUpdated(Map.of()));
 
     await()
         .atMost(Duration.ofSeconds(10))

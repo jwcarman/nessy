@@ -22,7 +22,6 @@ import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,7 +80,7 @@ class BacklogStoreTest {
   }
 
   /** What the model would be asked, read back out of the claim the take wrote. */
-  private String claimed(BacklogStore.Taken taken) {
+  private String claimed(BacklogStore.TakeResult.Work taken) {
     ObjectMapper mapper = EngineMapper.create();
     byte[] payload = claims.get(AGENT, taken.turnId(), taken.observationClaim()).orElseThrow();
     UserMessage message = JsonCodec.of(mapper, UserMessage.class).decode(payload);
@@ -103,7 +102,8 @@ class BacklogStoreTest {
 
     @Test
     void a_take_from_an_empty_backlog_hands_back_nothing() {
-      assertThat(storeWith(keepAll()).take(AGENT, null)).isEmpty();
+      assertThat(storeWith(keepAll()).take(AGENT, null))
+          .isInstanceOf(BacklogStore.TakeResult.Empty.class);
     }
 
     @Test
@@ -112,7 +112,7 @@ class BacklogStoreTest {
       store.offer(AGENT, "one");
       store.offer(AGENT, "two");
 
-      assertThat(claimed(store.take(AGENT, null).orElseThrow())).isEqualTo("one");
+      assertThat(claimed(work(store.take(AGENT, null)))).isEqualTo("one");
     }
 
     @Test
@@ -122,10 +122,11 @@ class BacklogStoreTest {
       store.offer(AGENT, "tick two");
       store.offer(AGENT, "tick three");
 
-      BacklogStore.Taken taken = store.take(AGENT, null).orElseThrow();
+      BacklogStore.TakeResult.Work taken = work(store.take(AGENT, null));
 
       assertThat(claimed(taken)).isEqualTo("tick three");
-      assertThat(store.take(AGENT, taken.turnId())).isEmpty();
+      assertThat(store.take(AGENT, taken.turnId()))
+          .isInstanceOf(BacklogStore.TakeResult.Empty.class);
     }
 
     @Test
@@ -134,7 +135,7 @@ class BacklogStoreTest {
       store.offer(AGENT, "first to arrive");
       store.offer(AGENT, "last to arrive");
 
-      assertThat(claimed(store.take(AGENT, null).orElseThrow())).isEqualTo("last to arrive");
+      assertThat(claimed(work(store.take(AGENT, null)))).isEqualTo("last to arrive");
     }
   }
 
@@ -146,8 +147,8 @@ class BacklogStoreTest {
       BacklogStore<String> store = storeWith(keepAll());
       store.offer(AGENT, "one");
 
-      BacklogStore.Taken first = store.take(AGENT, null).orElseThrow();
-      BacklogStore.Taken again = store.take(AGENT, null).orElseThrow();
+      BacklogStore.TakeResult.Work first = work(store.take(AGENT, null));
+      BacklogStore.TakeResult.Work again = work(store.take(AGENT, null));
 
       assertThat(again.turnId())
           .as("the agent died before recording the take; nobody named the row, so it comes back")
@@ -160,8 +161,8 @@ class BacklogStoreTest {
       store.offer(AGENT, "one");
       store.offer(AGENT, "two");
 
-      BacklogStore.Taken first = store.take(AGENT, null).orElseThrow();
-      BacklogStore.Taken second = store.take(AGENT, first.turnId()).orElseThrow();
+      BacklogStore.TakeResult.Work first = work(store.take(AGENT, null));
+      BacklogStore.TakeResult.Work second = work(store.take(AGENT, first.turnId()));
 
       assertThat(second.turnId()).isNotEqualTo(first.turnId());
       assertThat(claimed(second)).isEqualTo("two");
@@ -172,17 +173,17 @@ class BacklogStoreTest {
       BacklogStore<String> store = storeWith(keepAll());
       store.offer(AGENT, "only");
 
-      BacklogStore.Taken taken = store.take(AGENT, null).orElseThrow();
-      Optional<BacklogStore.Taken> nothing = store.take(AGENT, taken.turnId());
+      BacklogStore.TakeResult.Work taken = work(store.take(AGENT, null));
+      BacklogStore.TakeResult nothing = store.take(AGENT, taken.turnId());
 
-      assertThat(nothing).isEmpty();
+      assertThat(nothing).isInstanceOf(BacklogStore.TakeResult.Empty.class);
     }
 
     @Test
     void a_sweep_takes_the_finished_turns_claims_with_it() {
       BacklogStore<String> store = storeWith(keepAll());
       store.offer(AGENT, "one");
-      BacklogStore.Taken taken = store.take(AGENT, null).orElseThrow();
+      BacklogStore.TakeResult.Work taken = work(store.take(AGENT, null));
 
       store.take(AGENT, taken.turnId());
 
@@ -193,7 +194,7 @@ class BacklogStoreTest {
     void a_superseding_coalescer_cannot_merge_away_the_observation_being_worked_on() {
       BacklogStore<String> store = storeWith(newestOnly());
       store.offer(AGENT, "being worked");
-      BacklogStore.Taken taken = store.take(AGENT, null).orElseThrow();
+      BacklogStore.TakeResult.Work taken = work(store.take(AGENT, null));
 
       store.offer(AGENT, "arriving later");
 
@@ -201,5 +202,11 @@ class BacklogStoreTest {
           .as("the taken row is not waiting, so the coalescer never sees it")
           .isEqualTo("being worked");
     }
+  }
+
+  /** The tests here are about which row comes back, so anything else is a failed assumption. */
+  private static BacklogStore.TakeResult.Work work(BacklogStore.TakeResult result) {
+    assertThat(result).isInstanceOf(BacklogStore.TakeResult.Work.class);
+    return (BacklogStore.TakeResult.Work) result;
   }
 }
