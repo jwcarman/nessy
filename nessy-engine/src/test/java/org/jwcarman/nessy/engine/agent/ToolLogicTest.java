@@ -165,4 +165,60 @@ class ToolLogicTest {
       assertThat(decision.next().busy()).isTrue();
     }
   }
+
+  @Nested
+  @DisplayName("a call that has ended has no deadline, whichever way it ended")
+  class Alarms {
+
+    // A parked call armed an alarm. Every way that call can now end must disarm it, because
+    // ReminderSweep RE-ARMS what it fires: a row that outlives its call wakes this agent about a
+    // settled decision every backoff, forever. Measured on a live watchman -- an approval denied
+    // at 11:00 still held an alarm for three days later.
+
+    @Test
+    @DisplayName("a denial from a desk cancels the alarm the park armed")
+    void a_denied_call_disarms_its_alarm() {
+      Decision decision =
+          AgentLogic.decide(
+              working(Map.of(CallId.of("a"), new CallState.Parked())),
+              new Input.ApprovalGiven(
+                  CallId.of("a"), "prune_images", ApprovalResult.denied("not tonight")));
+
+      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+    }
+
+    @Test
+    @DisplayName("a deadline that passes deletes its own row rather than being re-armed")
+    void a_deadline_that_passes_disarms_its_alarm() {
+      Decision decision =
+          AgentLogic.decide(
+              working(Map.of(CallId.of("a"), new CallState.Parked())),
+              new Input.DeadlinePassed(CallId.of("a")));
+
+      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+    }
+
+    @Test
+    void a_completed_tool_still_cancels_as_it_always_did() {
+      Decision decision =
+          AgentLogic.decide(
+              working(Map.of(CallId.of("a"), new CallState.Running("send_email"))),
+              new Input.ToolCompleted(CallId.of("a")));
+
+      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+    }
+
+    @Test
+    @DisplayName("an approval does NOT cancel: the tool has not run yet and may take its time")
+    void an_approved_call_keeps_its_alarm_until_the_tool_finishes() {
+      Decision decision =
+          AgentLogic.decide(
+              working(Map.of(CallId.of("a"), new CallState.Parked())),
+              new Input.ApprovalGiven(CallId.of("a"), "long_job", ApprovalResult.approved()));
+
+      assertThat(decision.then())
+          .as("an approved call is still outstanding, so its deadline still means something")
+          .doesNotContain(new Instruction.CancelAlarm(CallId.of("a")));
+    }
+  }
 }

@@ -36,10 +36,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.PendingApproval;
 import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
@@ -71,6 +73,8 @@ class ApprovalsPageTest {
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
 
   private MockMvc mvc;
+  private PendingApprovalsRepository approvals;
+  private ApprovalsController controller;
 
   @BeforeEach
   void renderTheRealTemplates() {
@@ -80,7 +84,7 @@ class ApprovalsPageTest {
             .setType(EmbeddedDatabaseType.H2)
             .build();
     Schemas.initialize(database);
-    var approvals = new PendingApprovalsRepository(new JdbcTemplate(database));
+    approvals = new PendingApprovalsRepository(new JdbcTemplate(database));
     approvals.asked(
         new PendingApproval(
             CallId.of("call-1"),
@@ -97,8 +101,7 @@ class ApprovalsPageTest {
 
     // Null for the two the read path never reaches: answering is the POST handlers' business, and
     // both need a running engine. A null here fails loudly if that ever stops being true.
-    var controller =
-        new ApprovalsController(approvals, null, null, Clock.fixed(NOW, ZoneOffset.UTC));
+    controller = new ApprovalsController(approvals, null, null, Clock.fixed(NOW, ZoneOffset.UTC));
     mvc = MockMvcBuilders.standaloneSetup(controller).setViewResolvers(thymeleaf()).build();
   }
 
@@ -199,5 +202,73 @@ class ApprovalsPageTest {
     mvc.perform(get("/"))
         .andExpect(content().string(containsString("/approve/watchman/house-12/call-1")))
         .andExpect(content().string(containsString("/deny/watchman/house-12/call-1")));
+  }
+
+  @Nested
+  @DisplayName("the page a decision redirects to")
+  class ReadYourWrites {
+
+    // The projection's writer is the listener, which records a decision when the agent narrates
+    // it -- measured at 38ms after the engine accepted it on a live watchman. The redirect lands
+    // inside that window, so the person who just clicked is the one guaranteed to see the question
+    // they have already answered still sitting on the board.
+
+    @Test
+    @DisplayName("the row is gone from the board once the decision has been recorded")
+    void answering_takes_the_question_off_the_board() {
+      assertThat(approvals.pending()).hasSize(1);
+
+      controller.recordLocally(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("call-1"),
+          ApprovalResult.denied("that seems dangerous"));
+
+      assertThat(approvals.pending()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the reason survives, so the two writers agree rather than race")
+    void the_recorded_answer_is_the_one_that_was_sent() {
+      controller.recordLocally(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("call-1"),
+          ApprovalResult.denied("that seems dangerous"));
+
+      var row =
+          approvals
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("call-1"))
+              .orElseThrow();
+
+      assertThat(row.answer()).contains("denied");
+      assertThat(row.note()).contains("that seems dangerous");
+    }
+
+    @Test
+    @DisplayName("the listener writing the same decision afterwards changes nothing")
+    void whichever_writer_arrives_second_is_a_no_op() {
+      controller.recordLocally(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("call-1"),
+          ApprovalResult.denied("that seems dangerous"));
+
+      // What the listener does when the agent narrates ApprovalDecided a few milliseconds later.
+      approvals.answered(
+          AgentType.of("watchman"),
+          AgentId.of("house-12"),
+          CallId.of("call-1"),
+          "denied",
+          "that seems dangerous",
+          NOW.plusSeconds(1));
+
+      var row =
+          approvals
+              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("call-1"))
+              .orElseThrow();
+      assertThat(row.answeredAt()).contains(NOW);
+      assertThat(approvals.pending()).isEmpty();
+    }
   }
 }

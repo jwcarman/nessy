@@ -240,7 +240,36 @@ public class ApprovalsController {
     return replies
         .approve(new ReplyToken(row.replyToken()), result)
         .toCompletableFuture()
-        .thenApply(ack -> "redirect:/");
+        .thenApply(
+            ack -> {
+              recordLocally(agentType, agentId, callId, result);
+              return "redirect:/";
+            });
+  }
+
+  /**
+   * Marks the row answered on the way out, so the page this redirects to shows the decision.
+   *
+   * <p><b>Read your writes.</b> The projection's writer is the listener, which records the decision
+   * when the agent narrates it — some milliseconds after the engine accepts it. Measured on a live
+   * watchman: the engine acknowledged at 12:00:01.808 and the listener wrote at 12:00:01.846.38ms,
+   * and the redirect lands inside it, so the one person guaranteed to look too early is the person
+   * who just clicked. They see the question they have already answered still sitting there.
+   *
+   * <p>Waiting for the listener instead would mean blocking, and the thread that completes this
+   * future belongs to the engine — the one thing this project will not do. So the click records
+   * what it already knows: the engine ACCEPTED this exact result, which is why this runs after the
+   * ack and never before. Both writers converge on the same value, and {@code answered} only
+   * touches a row still waiting, so whichever arrives second changes nothing.
+   */
+  void recordLocally(AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result) {
+    approvals.answered(
+        agentType,
+        agentId,
+        callId,
+        result instanceof ApprovalResult.Approved ? "approved" : "denied",
+        result instanceof ApprovalResult.Denied denied ? denied.reason() : null,
+        clock.instant());
   }
 
   /** The coarsest unit that is still true — a page shows "3h 12m", never "192 minutes". */

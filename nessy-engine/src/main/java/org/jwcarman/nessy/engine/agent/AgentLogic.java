@@ -58,11 +58,7 @@ public final class AgentLogic {
               state.at(state.working().with(parked.callId(), new CallState.Parked())),
               new Instruction.SetAlarm(parked.callId(), parked.expiresAt()));
       case Input.ToolCompleted done ->
-          settle(
-              state,
-              done.callId(),
-              new Instruction.CancelAlarm(done.callId()),
-              new Instruction.Narrate.ToolCallCompleted(done.callId()));
+          settle(state, done.callId(), new Instruction.Narrate.ToolCallCompleted(done.callId()));
       case Input.DeadlinePassed passed -> settle(state, passed.callId());
       default -> Decision.nothing(state);
     };
@@ -154,10 +150,23 @@ public final class AgentLogic {
   /**
    * One call reaches its end. When it is the last one, the exchange goes back to the model — which
    * is the only way a turn moves from working tools to calling the model.
+   *
+   * <p><b>Cancelling the alarm belongs HERE, not at the call sites.</b> It used to be passed in by
+   * the one path that remembered — tool completion — so a call that ended any other way kept its
+   * deadline. A denial from a desk was the visible case: the row outlived the decision, and because
+   * {@code ReminderSweep} RE-ARMS every reminder it fires, that row would wake this agent about a
+   * settled call every backoff, forever. Measured on a live watchman: an approval denied at 11:00
+   * still held an alarm for three days later.
+   *
+   * <p>A call that has ended has no deadline, whichever way it ended, so the only place that cannot
+   * forget is the place that ends it. Cancelling an alarm that was never armed is silent, so the
+   * paths that never parked pay nothing.
    */
   private static Decision settle(AgentState state, CallId callId, Instruction... also) {
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
-    List<Instruction> then = new ArrayList<>(List.of(also));
+    List<Instruction> then = new ArrayList<>();
+    then.add(new Instruction.CancelAlarm(callId));
+    then.addAll(List.of(also));
     if (next.allSettled()) {
       then.add(new Instruction.Remember.Exchange());
       then.add(new Instruction.CallModel());
