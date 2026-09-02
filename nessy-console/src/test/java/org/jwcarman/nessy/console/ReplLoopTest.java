@@ -206,6 +206,34 @@ class ReplLoopTest {
     }
   }
 
+  /**
+   * The loop waits on a {@link java.util.concurrent.BlockingQueue}, and a blocking wait is exactly
+   * the kind of call that must not swallow an interrupt: something outside the loop (a shutdown, a
+   * test harness) may need the thread back. {@link java.util.concurrent.ArrayBlockingQueue#poll}
+   * checks the interrupt flag before it ever blocks, so setting it first makes this deterministic —
+   * no five-minute wait for {@code PATIENCE} required.
+   */
+  @Test
+  @DisplayName("an interrupt while waiting for the turn is put back on the thread, not lost")
+  void an_interrupt_while_waiting_for_the_turn_is_restored_on_the_thread() {
+    // No TurnEnded is ever narrated, so awaitTurn() has nothing to poll but the interrupt itself.
+    FakeHarness harness = new FakeHarness(List.of());
+    FakeConsole console = new FakeConsole("hello", "quit");
+    Thread.currentThread().interrupt();
+
+    try {
+      run(harness, console, config());
+
+      assertThat(Thread.currentThread().isInterrupted())
+          .as("the catch block re-interrupts rather than swallowing the signal")
+          .isTrue();
+    } finally {
+      // Clears the flag so this test's interrupt does not leak into whichever test runs next on
+      // the same surefire-forked thread.
+      Thread.interrupted();
+    }
+  }
+
   @Nested
   class Blank_lines {
 

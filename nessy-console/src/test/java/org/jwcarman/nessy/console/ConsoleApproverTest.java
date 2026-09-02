@@ -53,6 +53,17 @@ class ConsoleApproverTest {
     return ((Awaited.Ready<ApprovalResult>) answer).result();
   }
 
+  /**
+   * Weak as assertions go — there is nothing to observe about the real terminal from inside a test
+   * — but it is the only sensible one for a one-line factory: it proves construction actually
+   * completes rather than throwing while wiring {@link ConsoleIo#standard()} in.
+   */
+  @Test
+  @DisplayName("atTheTerminal() builds an approver over the real console")
+  void at_the_terminal_builds_a_real_approver() {
+    assertThat(ConsoleApprover.atTheTerminal()).isNotNull();
+  }
+
   @Test
   void y_allows_it() {
     assertThat(answerOf(new FakeConsole("y"))).isInstanceOf(ApprovalResult.Approved.class);

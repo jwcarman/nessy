@@ -17,8 +17,12 @@ package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -64,5 +68,40 @@ class ReplTest {
     assertThat(console.written())
         .as("the banner belongs to the loop, which this run never gets to")
         .doesNotContain("nessy chat");
+  }
+
+  /**
+   * The one-argument overload is the whole public entry point: build a config, hand it to the
+   * customizer, run against the real console. It is exercised here rather than mocked away because
+   * it is the ONE path {@code main} actually calls.
+   */
+  @Nested
+  @DisplayName("the one call from main")
+  class TheOneCallFromMain {
+
+    @Test
+    @DisplayName("a null customizer is refused, not silently treated as no configuration")
+    void a_null_customizer_is_refused() {
+      assertThatThrownBy(() -> Repl.run(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    /**
+     * Runs to completion without a model configured, same as {@link ReplTest} above, but through
+     * the real one-argument entry point: the customizer is applied, a config is built from it, and
+     * discovery still fails the same way. Nothing here reads from or writes to a fake console — the
+     * real one is used, exactly as {@code main} would — so the only thing to assert is that it
+     * returns instead of hanging or throwing.
+     */
+    @Test
+    @DisplayName("the customizer is applied before the same 'nothing to talk to' failure appears")
+    void the_customizer_runs_and_then_discovery_still_fails_the_same_way() {
+      List<String> customizedWith = new ArrayList<>();
+
+      assertThatCode(() -> Repl.run(config -> customizedWith.add(config.systemPrompt())))
+          .doesNotThrowAnyException();
+
+      assertThat(customizedWith)
+          .containsExactly("You are a helpful assistant in someone's terminal.");
+    }
   }
 }
