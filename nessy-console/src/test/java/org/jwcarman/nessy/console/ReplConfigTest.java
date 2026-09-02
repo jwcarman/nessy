@@ -88,6 +88,11 @@ class ReplConfigTest {
           public void remember(AgentId agentId, HistoryMessage message) {
             // nothing to keep
           }
+
+          @Override
+          public void forget(AgentId agentId) {
+            // Nothing kept here.
+          }
         };
 
     /**

@@ -30,6 +30,10 @@ import java.util.function.Function;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
+import org.apache.pekko.persistence.state.DurableStateStoreRegistry;
+import org.apache.pekko.persistence.state.javadsl.DurableStateStore;
+import org.apache.pekko.persistence.state.javadsl.DurableStateUpdateStore;
+import org.apache.pekko.persistence.typed.PersistenceId;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
@@ -173,6 +177,7 @@ final class Instructions {
       case Instruction.SetAlarm alarm -> setAlarm(agentId, alarm);
       case Instruction.CancelAlarm alarm ->
           deps.reminders().cancel(deps.agentType(), agentId, alarm.callId());
+      case Instruction.Forget ignored -> forget(agentId);
       case Instruction.Sleep ignored -> {
         // The agent asks the shard to unload it; that lives on the actor, which owns the handle.
       }
@@ -459,6 +464,53 @@ final class Instructions {
               }
               deps.memory().remember(agentId, new ExchangeMessage(asked, answers));
             });
+  }
+
+  /**
+   * Erases an agent: everything it remembered, everything waiting for it, everything it held, and
+   * finally the record that it existed.
+   *
+   * <p><b>State last, deliberately.</b> A crash partway through should leave LESS behind rather
+   * than an agent whose state is gone but whose transcript is not — a ghost that recovers into
+   * emptiness and cannot be found again to clean up. Deleting the state object last means every
+   * intermediate failure leaves an agent that is still findable and still forgettable.
+   *
+   * <p><b>Only ever issued when idle.</b> {@code AgentLogic} holds a busy agent's request until the
+   * turn ends, so nothing here races work in flight.
+   *
+   * <p>The state object goes through Pekko's own store rather than SQL. The durable-state table is
+   * not Nessy's — an application picks the plugin and ships the DDL — so deleting by statement
+   * would mean knowing a table name from configuration this engine never reads.
+   */
+  private void forget(AgentId agentId) {
+    deps.memory().forget(agentId);
+    deps.backlog().deleteAgent(agentId);
+    deps.claims().deleteAgent(agentId);
+    deleteState(agentId);
+    LOG.info("[{}] forgotten", agentId.value());
+  }
+
+  private void deleteState(AgentId agentId) {
+    String plugin = system.settings().config().getString("pekko.persistence.state.plugin");
+    if (plugin.isBlank()) {
+      // No durable-state plugin configured means nothing was ever written to delete.
+      return;
+    }
+    DurableStateStore<AgentState> store =
+        DurableStateStoreRegistry.get(system)
+            .getDurableStateStoreFor(DurableStateStore.class, plugin);
+    if (store instanceof DurableStateUpdateStore<AgentState> deletable) {
+      String persistenceId = PersistenceId.of(deps.agentType().name(), agentId.value()).id();
+      deletable.deleteObject(persistenceId).toCompletableFuture().join();
+      return;
+    }
+    // A read-only store cannot forget. Saying so is better than a silent partial deletion, since
+    // "we deleted it" is not a thing to be wrong about.
+    LOG.error(
+        "[{}] the durable-state plugin \"{}\" cannot delete, so this agent's state survives being"
+            + " forgotten",
+        agentId.value(),
+        plugin);
   }
 
   private void setAlarm(AgentId agentId, Instruction.SetAlarm alarm) {

@@ -222,6 +222,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           new Input.ApprovalGiven(
               answered.callId(), nameOf(state, answered.callId()), answered.result());
       case NessyMessage.Inspect ignored -> new Input.Recovered();
+      case NessyMessage.Forget ignored -> new Input.Forget();
       case NessyMessage.Stop ignored -> new Input.SleepNow();
     };
   }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.CallId;
@@ -100,5 +101,40 @@ public abstract class MemoryContractTest {
 
     List<ContextMessage> messages = memory.recall(ONE).messages();
     assertThat(messages).containsExactly(exchange);
+  }
+
+  @Test
+  @DisplayName("forgetting an agent leaves it with nothing to recall")
+  void forgettingAnAgentEmptiesIt() {
+    Memory memory = freshMemory();
+    memory.remember(ONE, UserMessage.of("something worth keeping"));
+    assertThat(memory.recall(ONE).messages()).isNotEmpty();
+
+    memory.forget(ONE);
+
+    assertThat(memory.recall(ONE).messages()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("forgetting one agent leaves every other agent alone")
+  void forgettingIsScopedToOneAgent() {
+    Memory memory = freshMemory();
+    memory.remember(ONE, UserMessage.of("mine"));
+    memory.remember(TWO, UserMessage.of("theirs"));
+
+    memory.forget(ONE);
+
+    assertThat(memory.recall(ONE).messages()).isEmpty();
+    assertThat(memory.recall(TWO).messages()).isNotEmpty();
+  }
+
+  @Test
+  @DisplayName("forgetting an agent that never spoke is silent, not an error")
+  void forgettingNothingIsNotAnError() {
+    Memory memory = freshMemory();
+
+    memory.forget(ONE);
+
+    assertThat(memory.recall(ONE).messages()).isEmpty();
   }
 }

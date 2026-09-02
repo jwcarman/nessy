@@ -54,4 +54,16 @@ final class PipelineMemory implements Memory {
   public void remember(AgentId agentId, HistoryMessage message) {
     bootstrap.remember(agentId, message);
   }
+
+  /**
+   * Forwards to what this pipeline was built over.
+   *
+   * <p>The stages are not consulted: a stage ASSEMBLES context at recall time — background, a
+   * notebook index — and owns nothing it could forget. What an agent actually said lives in the
+   * bootstrap memory, so that is the only thing with anything to drop.
+   */
+  @Override
+  public void forget(AgentId agentId) {
+    bootstrap.forget(agentId);
+  }
 }

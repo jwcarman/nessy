@@ -49,6 +49,7 @@ final class Claims {
       "INSERT INTO nessy_claim (agent_id, turn_id, claim_key, payload) VALUES (?, ?, ?, ?)";
   private static final String SELECT =
       "SELECT payload FROM nessy_claim WHERE agent_id = ? AND turn_id = ? AND claim_key = ?";
+  private static final String DELETE_AGENT = "DELETE FROM nessy_claim WHERE agent_id = ?";
   private static final String DELETE_TURN =
       "DELETE FROM nessy_claim WHERE agent_id = ? AND turn_id = ?";
 
@@ -84,5 +85,10 @@ final class Claims {
   /** The turn ended, so its claims end — including any orphan no state ever referenced. */
   void deleteTurn(AgentId agentId, TurnId turnId) {
     jdbc.sql(DELETE_TURN).params(agentId.value(), turnId.value()).update();
+  }
+
+  /** Every claim this agent holds, of every turn. Only forgetting the agent goes this wide. */
+  void deleteAgent(AgentId agentId) {
+    jdbc.sql(DELETE_AGENT).params(agentId.value()).update();
   }
 }

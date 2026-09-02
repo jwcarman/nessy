@@ -78,6 +78,7 @@ public final class BacklogStore<O> {
           + " VALUES (?, ?, ?, ?, ?)";
   private static final String DELETE_ROW =
       "DELETE FROM nessy_backlog WHERE agent_id = ? AND item_id = ?";
+  private static final String DELETE_AGENT = "DELETE FROM nessy_backlog WHERE agent_id = ?";
   private static final String DELETE_UNTAKEN =
       "DELETE FROM nessy_backlog WHERE agent_id = ? AND taken_claim IS NULL";
   private static final String MARK_TAKEN =
@@ -168,6 +169,17 @@ public final class BacklogStore<O> {
               new BacklogItem<>(TurnId.of(Identifiers.next()), observation, clock.instant());
           rewrite(agentId, coalescer.coalesce(waiting, arrival));
         });
+  }
+
+  /**
+   * Every row waiting for this agent, taken or not.
+   *
+   * <p>Only forgetting goes this wide. An observation offered AFTER this returns lands in an empty
+   * table under an id nobody is listening to — harmless unless that id is used again, which is why
+   * an id worth forgetting is worth not reusing.
+   */
+  public void deleteAgent(AgentId agentId) {
+    jdbc.sql(DELETE_AGENT).param(agentId.value()).update();
   }
 
   /**

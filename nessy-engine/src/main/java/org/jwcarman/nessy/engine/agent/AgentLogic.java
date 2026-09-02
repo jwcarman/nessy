@@ -60,6 +60,7 @@ public final class AgentLogic {
       case Input.ToolCompleted done ->
           settle(state, done.callId(), new Instruction.Narrate.ToolCallCompleted(done.callId()));
       case Input.DeadlinePassed passed -> settle(state, passed.callId());
+      case Input.Forget ignored -> onForget(state);
       default -> Decision.nothing(state);
     };
   }
@@ -69,7 +70,29 @@ public final class AgentLogic {
    * take, so missing the signal costs nothing when a signal-free path reaches the same place.
    */
   private static Decision onBacklogUpdated(AgentState state) {
+    if (state.forgetting()) {
+      // An agent on its way out does not start something new. Work offered after a forget stays
+      // in the backlog; forgetting deletes those rows, and anything that lands in the gap belongs
+      // to whoever next uses this id -- see Instruction.Forget.
+      return Decision.nothing(state);
+    }
     return state.busy() ? Decision.nothing(state) : Decision.of(state, new Instruction.TakeWork());
+  }
+
+  /**
+   * Told to forget itself.
+   *
+   * <p>Idle: do it now. Busy: record the flag and let the turn end first — deleting out from under
+   * a running turn strands its answer in a dead incarnation, which is a defect this engine has had
+   * once already and does not need under a new name.
+   *
+   * <p>Idempotent: being told twice is the same as being told once.
+   */
+  private static Decision onForget(AgentState state) {
+    if (state.busy()) {
+      return Decision.nothing(state.toldToForget());
+    }
+    return Decision.of(state.toldToForget(), new Instruction.Forget());
   }
 
   /**
@@ -117,7 +140,8 @@ public final class AgentLogic {
     List<Instruction> then = new ArrayList<>(List.of(remembering));
     then.add(new Instruction.Narrate.TurnEnded(result, state.usage()));
     then.add(new Instruction.Release());
-    then.add(new Instruction.TakeWork());
+    // The one place a busy agent's forget is honoured: it asked to go, and now it can.
+    then.add(state.forgetting() ? new Instruction.Forget() : new Instruction.TakeWork());
     return new Decision(state.finished(), then);
   }
 

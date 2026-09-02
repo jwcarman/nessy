@@ -49,6 +49,32 @@ public interface Harness<O> {
   void observe(AgentId agentId, O observation);
 
   /**
+   * Says an application is finished with this agent instance, so everything it holds can go.
+   *
+   * <p>An agent id is not always a long-lived name. A browser session, one review by a judging
+   * agent, a single request — those instances have to be able to END, or every one of them is a
+   * permanent state row and a permanent transcript.
+   *
+   * <p><b>A request, not a receipt.</b> This returns as soon as the agent has been told. If it is
+   * mid-turn it finishes first and then forgets itself, so nothing is deleted out from under work
+   * in flight — the same cooperation {@code Thread.interrupt} asks for, and for the same reason:
+   * the alternative strands an answer in a dead incarnation. A caller that must KNOW the agent is
+   * gone cannot learn it here.
+   *
+   * <p>Forgetting an agent that never existed is silent. Telling one twice is the same as once.
+   *
+   * <p>What goes: the agent's memory, its backlog rows, its claims, and its persisted state. What
+   * stays: stores it merely used — a notebook, a plan, a declared intent — because those have their
+   * own lifecycles and may be shared with other agents. Forget those yourself if you want them
+   * gone.
+   *
+   * <p><b>Reusing a forgotten id is asking for trouble.</b> An observation offered between the
+   * decision to forget and the deletion lands in a table nobody is reading; it is harmless until
+   * that id comes back, when it would arrive as stale work for a new agent.
+   */
+  void forget(AgentId agentId);
+
+  /**
    * Listens to one agent's turns from here on. Close the returned subscription to stop; dropping it
    * unclosed leaks a routing entry, never a thread.
    *

@@ -223,6 +223,11 @@ class NotebookToolsTest {
       public void remember(AgentId agentId, HistoryMessage message) {
         told.add(message);
       }
+
+      @Override
+      public void forget(AgentId agentId) {
+        // Nothing kept, so nothing to drop -- this memory exists to be recalled from.
+      }
     }
 
     private Memory withIndex(Notebook notebook, Listing bootstrap) {

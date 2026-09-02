@@ -71,6 +71,8 @@ public final class TranscriptMemory implements Memory {
   private static final String NEXT_SEQ =
       "SELECT coalesce(max(seq), 0) + 1 FROM nessy_transcript "
           + "WHERE agent_type = ? AND agent_id = ?";
+  private static final String DELETE_ALL =
+      "DELETE FROM nessy_transcript WHERE agent_type = ? AND agent_id = ?";
   private static final String INSERT =
       "INSERT INTO nessy_transcript (agent_type, agent_id, seq, payload, chars) "
           + "VALUES (?, ?, ?, ?, ?)";
@@ -135,6 +137,20 @@ public final class TranscriptMemory implements Memory {
             new String(codec.encode(message), StandardCharsets.UTF_8),
             (long) charactersOf(message))
         .update();
+  }
+
+  /**
+   * Drops every row this agent wrote. Silent when there are none: an agent that never spoke and an
+   * agent whose words have been deleted are the same agent afterwards.
+   *
+   * <p>Keyed on the TYPE and the id, like every read and write here, because an id names an agent
+   * only within its type — forgetting on the id alone would take somebody else's transcript with
+   * it.
+   */
+  @Override
+  public void forget(AgentId agentId) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    jdbc.sql(DELETE_ALL).params(agentType, agentId.value()).update();
   }
 
   private long nextSeq(AgentId agentId) {

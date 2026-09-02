@@ -64,6 +64,11 @@ final class FakeHarness implements Harness<String> {
   }
 
   @Override
+  public void forget(AgentId agentId) {
+    // A fake that keeps nothing has nothing to forget.
+  }
+
+  @Override
   public AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber) {
     return subscribe(agentId, subscriber, null);
   }

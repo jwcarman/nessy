@@ -95,6 +95,21 @@ final class ShardedHarness<O> implements Harness<O> {
   }
 
   /**
+   * Tells the agent it is finished with, and returns.
+   *
+   * <p>No backlog write and no commit-then-signal dance: unlike an observation there is nothing
+   * durable to land first. The agent's own state is where the intent is recorded, by the agent, so
+   * that a restart between being told and acting still forgets.
+   */
+  @Override
+  public void forget(AgentId agentId) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    sharding
+        .entityRefFor(agents, agentId.value())
+        .tell(new NessyMessage.Forget(traces.capture(type.name(), agentId.value(), "Forget")));
+  }
+
+  /**
    * Bridges a plain subscriber onto the narration entity.
    *
    * <p>A subscriber is a lambda; narration delivers to ADDRESSES, because the agent may be on

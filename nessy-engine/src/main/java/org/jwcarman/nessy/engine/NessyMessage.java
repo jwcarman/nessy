@@ -199,6 +199,19 @@ public sealed interface NessyMessage {
   }
 
   /** The shard is unloading this agent. */
+  /**
+   * An application is finished with this agent instance.
+   *
+   * <p>Cooperative: this sets a flag rather than deleting anything. An idle agent acts at once; a
+   * busy one finishes its turn first.
+   */
+  record Forget(Map<String, String> headers) implements NessyMessage {
+    public Forget {
+      Objects.requireNonNull(headers, "headers must not be null");
+      headers = Map.copyOf(headers);
+    }
+  }
+
   record Stop(Map<String, String> headers) implements NessyMessage {
     public Stop {
       headers = Map.copyOf(headers);

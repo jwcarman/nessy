@@ -50,6 +50,11 @@ class PipelineMemoryTest {
     public void remember(AgentId agentId, HistoryMessage message) {
       told.add(message);
     }
+
+    @Override
+    public void forget(AgentId agentId) {
+      told.clear();
+    }
   }
 
   private static ContextTransformer adding(String text) {

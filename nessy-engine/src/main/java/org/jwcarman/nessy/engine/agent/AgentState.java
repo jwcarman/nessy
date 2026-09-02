@@ -39,16 +39,40 @@ import org.jwcarman.nessy.api.model.Usage;
  * @param phase what is being waited on
  * @param observation the claim id holding the rendered observation
  * @param usage what this turn has cost so far, unreported until a provider says
+ * @param forgetting whether this agent has been told to forget itself
+ *     <p>The flag a cooperative cancellation needs, and it lives HERE — in persisted state — rather
+ *     than in a field on the actor. A field would be lost to a restart between being told and
+ *     finishing the turn, and an agent that was asked to disappear would quietly come back. That is
+ *     the same trap {@code Thread.interrupt} sets when a catch block forgets to restore the flag.
+ *     <p>Being told is not being gone. A busy agent finishes its turn first, then forgets itself;
+ *     deleting out from under a running turn strands the answer in a dead incarnation, which is a
+ *     defect this engine has already had once.
  */
-public record AgentState(TurnId turnId, Phase phase, String observation, Usage usage) {
+public record AgentState(
+    TurnId turnId, Phase phase, String observation, Usage usage, boolean forgetting) {
 
   public AgentState {
     Objects.requireNonNull(phase, "phase must not be null");
     usage = usage == null ? Usage.unreported() : usage;
   }
 
+  /**
+   * The shape before forgetting existed.
+   *
+   * <p>Old rows deserialize without the flag, and Jackson leaves a missing boolean false — which is
+   * the right answer: an agent written before anybody could be forgotten was not being.
+   */
+  public AgentState(TurnId turnId, Phase phase, String observation, Usage usage) {
+    this(turnId, phase, observation, usage, false);
+  }
+
   public static AgentState idle() {
-    return new AgentState(null, new Phase.Idle(), null, Usage.unreported());
+    return new AgentState(null, new Phase.Idle(), null, Usage.unreported(), false);
+  }
+
+  /** Told to forget itself. Whether that happens now or after this turn is the phase's business. */
+  public AgentState toldToForget() {
+    return new AgentState(turnId, phase, observation, usage, true);
   }
 
   /** Whether a turn is running. */
@@ -66,18 +90,18 @@ public record AgentState(TurnId turnId, Phase phase, String observation, Usage u
 
   /** The same turn, at a new phase. */
   public AgentState at(Phase next) {
-    return new AgentState(turnId, next, observation, usage);
+    return new AgentState(turnId, next, observation, usage, forgetting);
   }
 
   /** Adds what one model call reported, keeping whichever halves it actually gave. */
   public AgentState spending(Usage reported) {
-    return new AgentState(turnId, phase, observation, add(usage, reported));
+    return new AgentState(turnId, phase, observation, add(usage, reported), forgetting);
   }
 
   /** A turn begins: the backlog row's id IS the turn id, and its claim holds the input. */
   public AgentState taking(TurnId newTurnId, String observationClaim) {
     return new AgentState(
-        newTurnId, new Phase.CallingModel(), observationClaim, Usage.unreported());
+        newTurnId, new Phase.CallingModel(), observationClaim, Usage.unreported(), forgetting);
   }
 
   /**
@@ -90,7 +114,7 @@ public record AgentState(TurnId turnId, Phase phase, String observation, Usage u
    * and they release, all of which are keyed by turn.
    */
   public AgentState finished() {
-    return new AgentState(turnId, new Phase.Idle(), observation, usage);
+    return new AgentState(turnId, new Phase.Idle(), observation, usage, forgetting);
   }
 
   /**

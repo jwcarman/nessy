@@ -79,6 +79,10 @@ final class Engines {
       return List.copyOf(byAgent.getOrDefault(agentId.value(), List.of()));
     }
 
+    synchronized void clear(AgentId agentId) {
+      byAgent.remove(agentId.value());
+    }
+
     synchronized List<HistoryMessage> all() {
       return byAgent.values().stream().flatMap(List::stream).toList();
     }
@@ -155,6 +159,11 @@ final class Engines {
       @Override
       public void remember(AgentId agentId, HistoryMessage message) {
         remembered.add(agentId, message);
+      }
+
+      @Override
+      public void forget(AgentId agentId) {
+        remembered.clear(agentId);
       }
     };
   }

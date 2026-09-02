@@ -75,6 +75,15 @@ public sealed interface Instruction {
   /** Go to sleep. */
   record Sleep() implements Instruction {}
 
+  /**
+   * Erase this agent: its memory, its backlog rows, its claims, and the state that records it
+   * existed at all.
+   *
+   * <p>Issued only when the agent is idle — {@code AgentLogic} holds a busy agent's request until
+   * its turn ends — so nothing is deleted from under work in flight.
+   */
+  record Forget() implements Instruction {}
+
   /** Tell the narrator. The shell redeems whatever claim an event needs before it narrates. */
   sealed interface Narrate extends Instruction {
 

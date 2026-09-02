@@ -50,4 +50,22 @@ public interface Memory {
    * cheaper than a transcript persisted in a state nothing can read.
    */
   void remember(AgentId agentId, HistoryMessage message);
+
+  /**
+   * Drops everything remembered for {@code agentId}, as though it had never spoken.
+   *
+   * <p>Called when an application is finished with an agent instance — see {@code Harness.forget}.
+   * An agent id is not always a long-lived name: a browser session, a single review by a judging
+   * agent, one request. Those instances must be able to end, and this is the half of ending that
+   * concerns memory.
+   *
+   * <p><b>Abstract, deliberately, rather than a default that does nothing.</b> A memory that
+   * silently declined to forget would turn a privacy operation into a no-op with no way for the
+   * caller to tell — and "we deleted it" is not a thing to be wrong about. A new implementation is
+   * made to answer the question.
+   *
+   * <p>Forgetting an agent that never spoke is silent, not an error: the end state is the same
+   * either way, and a caller cleaning up should not have to know which case it is in.
+   */
+  void forget(AgentId agentId);
 }

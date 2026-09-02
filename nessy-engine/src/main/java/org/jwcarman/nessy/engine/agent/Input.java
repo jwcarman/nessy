@@ -97,6 +97,14 @@ public sealed interface Input {
    */
   record DeadlinePassed(CallId callId) implements Input {}
 
+  /**
+   * An application is finished with this agent instance.
+   *
+   * <p>Cooperative, like an interrupt: this SETS a flag rather than deleting anything. An idle
+   * agent acts on it at once; a busy one finishes its turn first.
+   */
+  record Forget() implements Input {}
+
   /** The idle linger elapsed with nothing to do. */
   record SleepNow() implements Input {}
 }
