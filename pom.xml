@@ -73,7 +73,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
     <pekko.version>1.7.0</pekko.version>
-    <anthropic.version>2.53.0</anthropic.version>
+    <anthropic.version>2.59.0</anthropic.version>
     <openai.version>4.50.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
