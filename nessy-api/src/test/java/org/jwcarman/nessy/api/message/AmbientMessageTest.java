@@ -22,6 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.block.AmbientContentBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 
@@ -59,27 +61,13 @@ class AmbientMessageTest {
           .hasMessageContaining("kebab-case");
     }
 
-    @Test
-    void an_uppercase_kind_is_refused() {
+    @ParameterizedTest
+    @ValueSource(strings = {"Plan", "2plans", ""})
+    @DisplayName("an uppercase kind, a kind starting with a digit, and an empty kind are refused")
+    void a_kind_violating_the_kebab_case_rule_is_refused(String illegal) {
       List<AmbientContentBlock> content = something();
 
-      assertThatThrownBy(() -> new AmbientMessage("Plan", content))
-          .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void a_kind_starting_with_a_digit_is_refused() {
-      List<AmbientContentBlock> content = something();
-
-      assertThatThrownBy(() -> new AmbientMessage("2plans", content))
-          .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void an_empty_kind_is_refused() {
-      List<AmbientContentBlock> content = something();
-
-      assertThatThrownBy(() -> new AmbientMessage("", content))
+      assertThatThrownBy(() -> new AmbientMessage(illegal, content))
           .isInstanceOf(IllegalArgumentException.class);
     }
   }
