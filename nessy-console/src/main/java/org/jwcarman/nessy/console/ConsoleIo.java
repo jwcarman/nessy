@@ -59,7 +59,9 @@ interface ConsoleIo {
 
     private Standard() {}
 
-    private static ConsoleIo create() {
+    // Package-private rather than private: a test builds one directly, with System.in/out
+    // redirected first, instead of fighting the timing of the lazily-initialized singleton above.
+    static ConsoleIo create() {
       BufferedReader in =
           new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
       PrintStream out = System.out;
