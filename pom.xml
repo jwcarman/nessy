@@ -140,7 +140,7 @@
          org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-jdbc's container
          test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
-    <testcontainers.version>1.21.4</testcontainers.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
     <!-- Condition-based waiting for concurrency tests (S2925: no Thread.sleep in tests). Managed
          here directly, unlike nessy-autoconfigure, which inherits the version from its own Boot
          BOM import — nessy-console pulls no Spring BOM at all. -->
