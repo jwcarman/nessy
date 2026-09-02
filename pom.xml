@@ -84,7 +84,7 @@
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
-    <awssdk.version>2.46.7</awssdk.version>
+    <awssdk.version>2.54.1</awssdk.version>
     <jackson.version>2.22.0</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
