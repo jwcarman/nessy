@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -120,6 +121,47 @@ class GeminiRequestsTest {
       var config = GeminiRequests.toConfig(request(List.of()));
 
       assertThat(config.maxOutputTokens()).contains(1024);
+    }
+  }
+
+  /**
+   * Background the caller never said, folded into {@code systemInstruction} alongside the standing
+   * instruction — Gemini has no separate slot for it, so it rides as its own labelled {@link
+   * com.google.genai.types.Part}, and it never appears in the conversation itself.
+   */
+  @Nested
+  class AmbientMessages {
+
+    @Test
+    void a_non_blank_ambient_message_becomes_its_own_labelled_part_after_the_system_prompt() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var config = GeminiRequests.toConfig(request(List.of(ambient)));
+
+      var parts = config.systemInstruction().orElseThrow().parts().orElseThrow();
+      assertThat(parts).hasSize(2);
+      assertThat(parts.get(0).text().orElseThrow()).contains("you are a helpful assistant");
+      var ambientText = parts.get(1).text().orElseThrow();
+      assertThat(ambientText).contains("[standing-plan]");
+      assertThat(ambientText).contains("water the plants");
+    }
+
+    @Test
+    void a_blank_ambient_message_contributes_no_part() {
+      var ambient = new AmbientMessage("empty-note", List.of(new TextBlock("   ")));
+      var config = GeminiRequests.toConfig(request(List.of(ambient)));
+
+      var parts = config.systemInstruction().orElseThrow().parts().orElseThrow();
+      assertThat(parts).hasSize(1);
+      assertThat(parts.get(0).text()).contains("you are a helpful assistant");
+    }
+
+    @Test
+    void an_ambient_message_produces_no_content_in_the_conversation_itself() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+
+      var contents = GeminiRequests.toContents(request(List.of(ambient)));
+
+      assertThat(contents).isEmpty();
     }
   }
 

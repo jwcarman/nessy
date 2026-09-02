@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -100,6 +101,29 @@ class OpenAiRequestsTest {
       var params = OpenAiRequests.toParams(requestWithSystemPrompt("   "), "gpt-4o");
 
       assertThat(params.messages()).noneMatch(ChatCompletionMessageParam::isSystem);
+    }
+  }
+
+  /**
+   * Background the caller never said, becoming its own system message headed by its kind — a
+   * separate message is already a boundary here, so unlike the standing system prompt it is never
+   * omitted for being blank, only labelled.
+   */
+  @Nested
+  class AmbientMessages {
+
+    @Test
+    void becomes_its_own_kind_labelled_system_message() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var params = OpenAiRequests.toParams(request(List.of(ambient)), "gpt-4o");
+
+      var systemMessages =
+          params.messages().stream().filter(ChatCompletionMessageParam::isSystem).toList();
+      // One for the standing system prompt, one for the ambient message riding alongside it.
+      assertThat(systemMessages).hasSize(2);
+      var content = systemMessages.get(1).asSystem().content().asText();
+      assertThat(content).contains("[standing-plan]");
+      assertThat(content).contains("water the plants");
     }
   }
 

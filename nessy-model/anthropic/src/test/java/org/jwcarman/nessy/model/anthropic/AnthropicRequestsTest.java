@@ -27,6 +27,7 @@ import com.anthropic.models.messages.TextBlockParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.block.ProviderBlock;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.block.ToolResultBlock;
+import org.jwcarman.nessy.api.message.AmbientMessage;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ContextMessage;
@@ -135,6 +137,48 @@ class AnthropicRequestsTest {
               requestWithSystemPrompt("   "), "claude-sonnet", THINKING_DISABLED);
 
       assertThat(params.system()).isEmpty();
+    }
+  }
+
+  /**
+   * Background the caller never said, folded into the top-level {@code system} field alongside the
+   * standing instruction — Anthropic's prompt guidance asks for XML tags to mark a section, and it
+   * never appears among the conversation's own messages.
+   */
+  @Nested
+  class AmbientMessages {
+
+    @Test
+    void a_non_blank_ambient_message_becomes_its_own_xml_tagged_system_block() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var params =
+          AnthropicRequests.toParams(request(List.of(ambient)), "claude-sonnet", THINKING_DISABLED);
+
+      var systemBlocks = params.system().orElseThrow().asTextBlockParams();
+      assertThat(systemBlocks).hasSize(2);
+      assertThat(systemBlocks.get(0).text()).isEqualTo("you are a helpful assistant");
+      assertThat(systemBlocks.get(1).text())
+          .isEqualTo("<standing-plan>\nwater the plants\n</standing-plan>");
+    }
+
+    @Test
+    void a_blank_ambient_message_contributes_no_system_block() {
+      var ambient = new AmbientMessage("empty-note", List.of(new TextBlock("   ")));
+      var params =
+          AnthropicRequests.toParams(request(List.of(ambient)), "claude-sonnet", THINKING_DISABLED);
+
+      var systemBlocks = params.system().orElseThrow().asTextBlockParams();
+      assertThat(systemBlocks).hasSize(1);
+      assertThat(systemBlocks.get(0).text()).isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void an_ambient_message_produces_no_message_in_the_conversation_itself() {
+      var ambient = new AmbientMessage("standing-plan", List.of(new TextBlock("water the plants")));
+      var params =
+          AnthropicRequests.toParams(request(List.of(ambient)), "claude-sonnet", THINKING_DISABLED);
+
+      assertThat(params.messages()).isEmpty();
     }
   }
 
@@ -289,6 +333,61 @@ class AnthropicRequestsTest {
       assertThat(blocks).hasSize(2);
       assertThat(blocks.get(0).isToolUse()).isTrue();
       assertThat(blocks.get(1).isText()).isTrue();
+    }
+
+    @Test
+    void an_empty_commentary_block_is_dropped_leaving_its_siblings_in_order() {
+      var empty = new CommentaryBlock("");
+      var toolUse =
+          new ToolCallBlock(
+              new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));
+      var said = new CommentaryBlock("the visible answer");
+      var assistantMessage =
+          new ExchangeMessage(
+              List.of(empty, said, toolUse),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(assistantMessage)), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = params.messages().get(0).content().asBlockParams();
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.get(0).isText()).isTrue();
+      assertThat(blocks.get(0).asText().text()).isEqualTo("the visible answer");
+      assertThat(blocks.get(1).isToolUse()).isTrue();
+    }
+
+    /** Opaque state belongs to whoever issued it; a rival provider's payload means nothing here. */
+    @Test
+    void another_providers_thinking_shaped_state_is_ignored_on_replay() {
+      var foreign = providerState("thinking", "reasoning about the answer", "sig-123");
+      var foreignBlock = new ProviderBlock("gcp.gemini", foreign.data());
+      var text = new TextBlock("the visible answer");
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(new AnswerMessage(List.of(foreignBlock, text)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
+
+      var blocks = params.messages().get(0).content().asBlockParams();
+      assertThat(blocks).hasSize(1);
+      assertThat(blocks.get(0).isText()).isTrue();
+    }
+
+    /** Our own provider, but a payload shape this adapter has no case for. */
+    @Test
+    void our_own_state_of_an_unrecognized_type_is_dropped() {
+      var unrecognized = providerState("summary", "not a thinking block", "sig-123");
+      var text = new TextBlock("the visible answer");
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(new AnswerMessage(List.of(unrecognized, text)))),
+              "claude-sonnet",
+              THINKING_DISABLED);
+
+      var blocks = params.messages().get(0).content().asBlockParams();
+      assertThat(blocks).hasSize(1);
+      assertThat(blocks.get(0).isText()).isTrue();
     }
   }
 
@@ -606,6 +705,117 @@ class AnthropicRequestsTest {
       var blocks = blocksOf(params);
       assertThat(blocks).hasSize(3);
       assertThat(markedIn(blocks)).containsExactly(1);
+    }
+
+    /**
+     * Every block kind {@link AnthropicRequests#mayCarryCacheControl} calls eligible must actually
+     * be chosen when it is the nearest one behind an ineligible tail block — text and thinking are
+     * pinned above; this rounds out image, tool result, tool call and commentary.
+     */
+    @Test
+    void an_image_block_may_carry_the_moving_breakpoint() {
+      var messages =
+          List.<ContextMessage>of(
+              new UserMessage(List.of(new ImageBlock("image/png", "aGVsbG8="))),
+              new AnswerMessage(List.of(providerState("thinking", "hmm", "signed"))));
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(messages, java.util.List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).hasSize(2);
+      assertThat(markedIn(blocks)).containsExactly(0);
+      assertThat(blocks.get(0).isImage()).isTrue();
+    }
+
+    @Test
+    void a_tool_result_block_may_carry_the_moving_breakpoint() {
+      var toolUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
+      var messages =
+          List.<ContextMessage>of(
+              new ExchangeMessage(
+                  List.of(toolUse),
+                  List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok")))),
+              new AnswerMessage(List.of(providerState("thinking", "hmm", "signed"))));
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(messages, java.util.List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).hasSize(3);
+      assertThat(markedIn(blocks)).containsExactly(1);
+      assertThat(blocks.get(1).isToolResult()).isTrue();
+    }
+
+    /**
+     * Neither a tool call nor commentary can ever be the conversation's absolute last block — each
+     * always shares its {@link ExchangeMessage} with a {@link ToolResultBlock}, which lands after
+     * it and is itself always eligible, so it always wins the {@code moving} breakpoint first. The
+     * ANCHOR breakpoint, one lookback window behind, has no such constraint: this places one
+     * directly on a tool-call block and, in the sibling test, on a commentary block, by controlling
+     * exactly what sits {@code LOOKBACK} positions behind the tail.
+     */
+    @Test
+    void a_tool_call_block_may_carry_the_anchor_breakpoint() {
+      var toolUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
+      var opening =
+          new ExchangeMessage(
+              List.of(toolUse, providerState("thinking", "hmm", "signed")),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
+      // opening contributes 3 blocks: toolUse(0), thinking(1, ineligible), toolResult(2).
+      var messages = new ArrayList<ContextMessage>();
+      messages.add(opening);
+      messages.addAll(conversation(19)); // 19 more eligible blocks: indices 3..21
+      messages.add(
+          new AnswerMessage(
+              List.of(providerState("thinking", "trailing", "signed")))); // index 22, ineligible
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(messages, java.util.List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).hasSize(23);
+      // moving falls back from the trailing thinking block (22) to the last conversation() block
+      // (21); anchor, one lookback window behind moving, falls back from the exchange's own
+      // thinking block (1) to the tool call that opened it (0).
+      assertThat(markedIn(blocks)).containsExactly(0, 21);
+      assertThat(blocks.get(0).isToolUse()).isTrue();
+    }
+
+    @Test
+    void a_commentary_block_may_carry_the_anchor_breakpoint() {
+      var toolUse =
+          new ToolCallBlock(new ToolCall(CallId.of("call-1"), "noop", MAPPER.createObjectNode()));
+      var commentary = new CommentaryBlock("thinking out loud");
+      var opening =
+          new ExchangeMessage(
+              List.of(toolUse, commentary, providerState("thinking", "hmm", "signed")),
+              List.of(ToolResultBlock.of(CallId.of("call-1"), ToolResult.ok("ok"))));
+      // opening contributes 4 blocks: toolUse(0), commentary(1), thinking(2, ineligible),
+      // toolResult(3).
+      var messages = new ArrayList<ContextMessage>();
+      messages.add(opening);
+      messages.addAll(conversation(19)); // 19 more eligible blocks: indices 4..22
+      messages.add(
+          new AnswerMessage(
+              List.of(providerState("thinking", "trailing", "signed")))); // index 23, ineligible
+
+      var params =
+          AnthropicRequests.toParams(
+              cachedRequest(messages, java.util.List.of()), "claude-sonnet", THINKING_DISABLED);
+
+      var blocks = blocksOf(params);
+      assertThat(blocks).hasSize(24);
+      // moving falls back from the trailing thinking block (23) to the last conversation() block
+      // (22); anchor, one lookback window behind moving, falls back from the exchange's own
+      // thinking block (2) to the commentary that preceded it (1).
+      assertThat(markedIn(blocks)).containsExactly(1, 22);
+      assertThat(blocks.get(1).isText()).isTrue();
     }
 
     /**

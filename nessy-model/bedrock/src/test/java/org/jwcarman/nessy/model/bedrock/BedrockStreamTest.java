@@ -17,6 +17,7 @@ package org.jwcarman.nessy.model.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -180,6 +181,25 @@ class BedrockStreamTest {
       assertThat(modelEvents)
           .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
     }
+
+    /**
+     * A content-block-delta event with no {@code delta} field at all — distinct from one whose
+     * delta carries empty text. The SDK's own event shape permits this (the union's payload is
+     * itself optional), so this pins that it is simply ignored rather than a {@code
+     * NullPointerException} waiting to happen.
+     */
+    @Test
+    void a_delta_event_with_no_delta_payload_produces_no_text_chunk() {
+      var chunks =
+          List.of(
+              ConverseStreamOutput.contentBlockDeltaBuilder().contentBlockIndex(0).build(),
+              messageStop("end_turn"));
+
+      var modelEvents = drain(chunks);
+
+      assertThat(modelEvents)
+          .containsExactly(new ModelEvent.Stopped(StopReason.END_TURN, Usage.unreported()));
+    }
   }
 
   @Nested
@@ -268,6 +288,41 @@ class BedrockStreamTest {
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("get_weather");
+    }
+
+    /** Valid JSON, just not the object shape a tool call's arguments must be. */
+    @Test
+    void accumulated_json_that_is_not_an_object_fails_loudly() {
+      var chunks =
+          List.of(
+              toolUseStart(0, "call-1", "get_weather"),
+              toolUseInputDelta(0, "[1, 2, 3]"),
+              contentBlockStop(0),
+              messageStop("tool_use"));
+      var stream = new BedrockStream(chunks, () -> {});
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("get_weather")
+          .hasMessageContaining("did not parse to a JSON object");
+    }
+
+    @Test
+    void a_long_malformed_payload_is_truncated_in_the_failure_message() {
+      var longGarbage = "x".repeat(250);
+      var chunks =
+          List.of(
+              toolUseStart(0, "call-1", "get_weather"),
+              toolUseInputDelta(0, longGarbage),
+              contentBlockStop(0),
+              messageStop("tool_use"));
+      var stream = new BedrockStream(chunks, () -> {});
+
+      var thrown = catchThrowable(() -> stream.forEach(event -> {}));
+
+      assertThat(thrown).isInstanceOf(IllegalStateException.class);
+      assertThat(thrown.getMessage()).contains("x".repeat(200));
+      assertThat(thrown.getMessage()).doesNotContain("x".repeat(201));
     }
   }
 

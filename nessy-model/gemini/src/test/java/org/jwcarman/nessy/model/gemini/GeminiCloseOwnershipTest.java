@@ -17,10 +17,12 @@ package org.jwcarman.nessy.model.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.genai.Client;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -83,6 +85,28 @@ class GeminiCloseOwnershipTest {
     new GeminiModelProvider(recording).close();
 
     assertThat(closes).hasValue(1);
+  }
+
+  /**
+   * {@code AutoCloseable#close()} declares a checked {@code Exception}, but {@link
+   * GeminiClient#close()} does not — {@code wrap}'s own close renames whatever {@code onClose}
+   * throws into an unchecked {@link IllegalStateException} so the seam's signature can stay clean.
+   */
+  @Test
+  void a_failing_close_target_is_renamed_into_an_unchecked_failure() {
+    Client sdkClient = offlineClient();
+    var originalFailure = new IOException("could not release the underlying resource");
+    AutoCloseable failingClose =
+        () -> {
+          throw originalFailure;
+        };
+
+    GeminiClient wrapped = GeminiProviderConfig.wrap(sdkClient, failingClose);
+
+    assertThatThrownBy(wrapped::close)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("closing the Gemini client failed")
+        .hasCause(originalFailure);
   }
 
   /** A gateway holding a seam with nothing to release closes silently — the SPI default. */
