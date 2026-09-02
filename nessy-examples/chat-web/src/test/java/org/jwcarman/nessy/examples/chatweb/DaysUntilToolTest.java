@@ -18,18 +18,33 @@ package org.jwcarman.nessy.examples.chatweb;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 class DaysUntilToolTest {
+
+  /** What the engine hands a running tool. The input rides on it, so there is nothing to stub. */
+  private static ToolCallRequest<DaysUntilTool.Input> asking(String date) {
+    return new ToolCallRequest<>(
+        AgentType.of("chat"),
+        AgentId.of("one"),
+        "turn-1",
+        "c1",
+        "days_until",
+        new DaysUntilTool.Input(date),
+        ReplyToken.of("unused"));
+  }
 
   private final DaysUntilTool tool = new DaysUntilTool();
 
   @Test
   void countsForwardToADateThisTurnOfTheCentury() {
     Awaited<ToolResult> answer =
-        tool.execute(
-            new DaysUntilTool.Input(java.time.LocalDate.now().plusDays(3).toString()), null);
+        tool.execute(asking(java.time.LocalDate.now().plusDays(3).toString()));
 
     assertThat(answer)
         .isInstanceOfSatisfying(
@@ -40,8 +55,7 @@ class DaysUntilToolTest {
   @Test
   void countsBackwardsForADateAlreadyPast() {
     Awaited<ToolResult> answer =
-        tool.execute(
-            new DaysUntilTool.Input(java.time.LocalDate.now().minusDays(2).toString()), null);
+        tool.execute(asking(java.time.LocalDate.now().minusDays(2).toString()));
 
     assertThat(answer)
         .isInstanceOfSatisfying(
@@ -55,7 +69,7 @@ class DaysUntilToolTest {
    */
   @Test
   void tellsTheModelWhenTheDateIsNotADate() {
-    Awaited<ToolResult> answer = tool.execute(new DaysUntilTool.Input("next Tuesday"), null);
+    Awaited<ToolResult> answer = tool.execute(asking("next Tuesday"));
 
     assertThat(answer)
         .isInstanceOfSatisfying(

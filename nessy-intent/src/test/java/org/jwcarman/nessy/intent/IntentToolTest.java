@@ -21,7 +21,6 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -43,14 +42,14 @@ class IntentToolTest {
    * reads none of it — but a context is no longer a single method, because a tool that DOES keep
    * something per agent has to be told which agent it is serving.
    */
-  private static ToolCallRequest freshContext() {
-    return new ToolCallRequest(
+  private static <T> ToolCallRequest<T> declaring(T intent) {
+    return new ToolCallRequest<>(
         AgentType.of("intent-test"),
         AgentId.of("one"),
         "turn-1",
         "c1",
         "declare_intent",
-        JsonNodeFactory.instance.objectNode(),
+        intent,
         new ReplyToken("unused-by-a-tool-that-never-defers"));
   }
 
@@ -84,7 +83,7 @@ class IntentToolTest {
 
       // What CompletionPolicy.IMMEDIATE used to declare, the return type now shows: recording a
       // claim is local work, so this tool can only ever come back Ready.
-      assertThat(tool.execute(new Intent("something"), freshContext()))
+      assertThat(tool.execute(declaring(new Intent("something"))))
           .isInstanceOf(Awaited.Ready.class);
     }
 
@@ -93,7 +92,7 @@ class IntentToolTest {
       var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER);
       var tool = IntentTool.freeform(store);
 
-      tool.execute(new Intent("restart prod-eu to clear the stuck deploy"), freshContext());
+      tool.execute(declaring(new Intent("restart prod-eu to clear the stuck deploy")));
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }
@@ -104,7 +103,7 @@ class IntentToolTest {
           IntentTool.freeform(
               new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Intent.class, MAPPER));
 
-      Awaited<ToolResult> outcome = tool.execute(new Intent("restart prod-eu"), freshContext());
+      Awaited<ToolResult> outcome = tool.execute(declaring(new Intent("restart prod-eu")));
 
       assertThat(outcome).isEqualTo(Awaited.ready(ToolResult.ok("intent recorded")));
     }
@@ -155,7 +154,7 @@ class IntentToolTest {
       var store = new JdbcIntentStore<>(TestDatabase.fresh(), "agent-a", Vocabulary.class, MAPPER);
       var tool = new IntentTool<>(Vocabulary.class, store);
 
-      tool.execute(new Restart("prod-eu"), freshContext());
+      tool.execute(declaring(new Restart("prod-eu")));
 
       assertThat(store.latest()).contains(new Restart("prod-eu"));
     }

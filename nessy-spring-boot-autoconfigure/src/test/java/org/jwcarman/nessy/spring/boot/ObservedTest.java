@@ -48,15 +48,9 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 class ObservedTest {
 
   /** What the engine tells a running tool; nothing here reads it. */
-  private static ToolCallRequest call(AgentType agentType, AgentId agentId) {
-    return new ToolCallRequest(
-        agentType,
-        agentId,
-        "turn-1",
-        "c1",
-        "a_tool",
-        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
-        new ReplyToken("nowhere"));
+  private static <I> ToolCallRequest<I> call(AgentType agentType, AgentId agentId, I input) {
+    return new ToolCallRequest<>(
+        agentType, agentId, "turn-1", "c1", "a_tool", input, new ReplyToken("nowhere"));
   }
 
   private MeterRegistry meters;
@@ -233,7 +227,7 @@ class ObservedTest {
     Tool<String> failing = tool(input -> Awaited.ready(ToolResult.error("the disk is gone")));
 
     Observed.tool(failing, observations)
-        .execute("x", call(AgentType.of("observed"), AgentId.of("one")));
+        .execute(call(AgentType.of("observed"), AgentId.of("one"), "x"));
 
     assertThat(
             meters
@@ -249,7 +243,7 @@ class ObservedTest {
     Tool<String> defers = tool(input -> Awaited.deferred(Instant.now().plusSeconds(3600)));
 
     Observed.tool(defers, observations)
-        .execute("x", call(AgentType.of("observed"), AgentId.of("one")));
+        .execute(call(AgentType.of("observed"), AgentId.of("one"), "x"));
 
     // A deferral is neither a success nor a failure: nothing has happened yet.
     assertThat(
@@ -321,7 +315,8 @@ class ObservedTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(String input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<String> call) {
+        String input = call.input();
         return body.apply(input);
       }
     };

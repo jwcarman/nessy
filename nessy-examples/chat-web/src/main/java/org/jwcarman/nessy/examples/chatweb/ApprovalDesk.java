@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,28 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApprovalDesk {
 
+  /**
+   * Renders the input a person is being asked about.
+   *
+   * <p>The request carries the tool's own input object rather than the model's raw JSON — one
+   * representation, so the page cannot show something the tool will not act on. Writing it back out
+   * as JSON is what makes it readable as evidence beside the describer's sentence.
+   */
+  private static final ObjectMapper EVIDENCE =
+      new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+
+  private static String evidenceOf(Object input) {
+    try {
+      return EVIDENCE.writeValueAsString(input);
+    } catch (JsonProcessingException notRenderable) {
+      // A tool whose input will not serialize is a tool nobody can review; say so rather than
+      // showing an empty box beside an Approve button.
+      return "(this tool's input could not be rendered: "
+          + notRenderable.getOriginalMessage()
+          + ")";
+    }
+  }
+
   /** One question, as both the page and the answer path need it. */
   public record Waiting(
       String agentId,
@@ -60,7 +85,7 @@ public class ApprovalDesk {
             request.call().agentId().value(),
             request.call().callId(),
             request.call().toolName(),
-            request.call().arguments().toPrettyString(),
+            evidenceOf(request.call().input()),
             request.description(),
             request.askedAt(),
             replyToken));

@@ -54,7 +54,8 @@ final class SendEmailTool implements Tool<SendEmailTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(Input input, ToolCallRequest context) {
+  public Awaited<ToolResult> execute(ToolCallRequest<Input> call) {
+    Input input = call.input();
     return Awaited.ready(ToolResult.ok("sent to " + input.to()));
   }
 }

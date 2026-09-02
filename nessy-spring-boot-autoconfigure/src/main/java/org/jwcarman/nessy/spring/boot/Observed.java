@@ -304,7 +304,7 @@ public final class Observed {
       }
 
       @Override
-      public Awaited<ToolResult> execute(I input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<I> call) {
         Observation observation =
             Observation.createNotStarted(DURATION, observations)
                 .contextualName("execute_tool " + delegate.name())
@@ -315,7 +315,7 @@ public final class Observed {
                 .lowCardinalityKeyValue("nessy.tool.deferred", "none");
         return observation.observe(
             () -> {
-              Awaited<ToolResult> answer = delegate.execute(input, context);
+              Awaited<ToolResult> answer = delegate.execute(call);
               observation.lowCardinalityKeyValue("nessy.tool.outcome", outcomeOf(answer));
               observation.lowCardinalityKeyValue(
                   "nessy.tool.deferred",

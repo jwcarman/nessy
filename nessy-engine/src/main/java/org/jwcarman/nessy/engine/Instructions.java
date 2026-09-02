@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -521,7 +522,7 @@ final class Instructions {
    * handed different views of the same call, so the pair had to be kept in step and an approver
    * could not see what the tool would be given.
    */
-  private ToolCallRequest requestFor(AgentId agentId, AgentState state, ToolCall call) {
+  private ToolCallRequest<JsonNode> requestFor(AgentId agentId, AgentState state, ToolCall call) {
     return new ToolCallRequest(
         deps.agentType(),
         agentId,

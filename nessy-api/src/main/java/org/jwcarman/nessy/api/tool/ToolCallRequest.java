@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -33,16 +32,17 @@ import org.jwcarman.nessy.api.AgentType;
  * @param turnId the turn this call belongs to
  * @param callId the model's own id for the call, unique within ONE response and no further
  * @param toolName the tool the model named
- * @param arguments the arguments it produced, before binding to the tool's input type
+ * @param input the arguments the model produced, already bound to the tool's own input type
  * @param replyToken where an answer goes if this call is not answered on the spot
+ * @param <I> the tool's input type
  */
-public record ToolCallRequest(
+public record ToolCallRequest<I>(
     AgentType agentType,
     AgentId agentId,
     String turnId,
     String callId,
     String toolName,
-    JsonNode arguments,
+    I input,
     ReplyToken replyToken) {
 
   public ToolCallRequest {
@@ -51,7 +51,7 @@ public record ToolCallRequest(
     Objects.requireNonNull(turnId, "turnId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(toolName, "toolName must not be null");
-    Objects.requireNonNull(arguments, "arguments must not be null");
+    Objects.requireNonNull(input, "input must not be null");
     Objects.requireNonNull(replyToken, "replyToken must not be null");
   }
 

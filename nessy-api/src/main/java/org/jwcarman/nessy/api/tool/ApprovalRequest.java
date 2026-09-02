@@ -60,7 +60,7 @@ import java.util.Optional;
  * @param facts whatever approvers have added so far; empty when the framework first asks
  */
 public record ApprovalRequest(
-    ToolCallRequest call, String description, Instant askedAt, ObjectNode facts) {
+    ToolCallRequest<?> call, String description, Instant askedAt, ObjectNode facts) {
 
   public ApprovalRequest {
     Objects.requireNonNull(call, "call must not be null");
@@ -70,7 +70,7 @@ public record ApprovalRequest(
   }
 
   /** The question as the harness first asks it: nothing has annotated it yet. */
-  public ApprovalRequest(ToolCallRequest call, String description, Instant askedAt) {
+  public ApprovalRequest(ToolCallRequest<?> call, String description, Instant askedAt) {
     this(call, description, askedAt, JsonNodeFactory.instance.objectNode());
   }
 

@@ -176,7 +176,8 @@ class ReminderExpiryTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(ObjectNode input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<ObjectNode> call) {
+        ObjectNode input = call.input();
         return Awaited.ready(ToolResult.ok("sent"));
       }
     };

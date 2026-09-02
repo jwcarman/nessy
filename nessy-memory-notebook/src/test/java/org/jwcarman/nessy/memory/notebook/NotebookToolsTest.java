@@ -17,7 +17,6 @@ package org.jwcarman.nessy.memory.notebook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,15 +53,9 @@ class NotebookToolsTest {
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */
-  private static ToolCallRequest callBy(AgentId agentId) {
-    return new ToolCallRequest(
-        TYPE,
-        agentId,
-        "turn-1",
-        "c1",
-        "a_tool",
-        JsonNodeFactory.instance.objectNode(),
-        ReplyToken.of("unused"));
+  private static <I> ToolCallRequest<I> callBy(AgentId agentId, I input) {
+    return new ToolCallRequest<>(
+        TYPE, agentId, "turn-1", "c1", "a_tool", input, ReplyToken.of("unused"));
   }
 
   /**
@@ -73,7 +66,7 @@ class NotebookToolsTest {
    * thing.
    */
   private static <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.execute(input, callBy(AGENT));
+    Awaited<ToolResult> answer = tool.execute(callBy(AGENT, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).result();
   }

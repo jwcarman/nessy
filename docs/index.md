@@ -49,7 +49,8 @@ class AddTool implements Tool<Add> {
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(Add input, ToolCallRequest call) {
+    public Awaited<ToolResult> execute(ToolCallRequest<Add> call) {
+        Add input = call.input();
         return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
 }

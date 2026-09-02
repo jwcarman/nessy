@@ -176,8 +176,10 @@ cluster-of-one, reply tokens, the harness and the loop:
 public static void main(String[] args) {
     Repl.run(config -> config
             .systemPrompt("You are a helpful assistant.")
-            .approver(ConsoleApprover.atTheTerminal())
-            .tool(new AddTool()));
+            .tool(new AddTool())
+            .tool(new SendEmailTool(), binding -> binding
+                    .approver(ConsoleApprover.atTheTerminal())
+                    .describer(email -> "Send an email to " + email.to())));
 }
 ```
 

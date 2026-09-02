@@ -137,10 +137,11 @@ public final class PlanTools {
     }
 
     @Override
-    public Awaited<ToolResult> execute(UpdatePlan input, ToolCallRequest context) {
+    public Awaited<ToolResult> execute(ToolCallRequest<UpdatePlan> call) {
+      UpdatePlan input = call.input();
       try {
         Plan plan = toPlan(input);
-        store.save(context.agentId(), plan);
+        store.save(call.agentId(), plan);
         return Awaited.ready(ToolResult.ok(confirm(plan)));
       } catch (IllegalArgumentException | NullPointerException invalid) {
         // A failed call, not a failed turn: the model can read this and send a better list.

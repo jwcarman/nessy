@@ -40,7 +40,8 @@ class AddTool implements Tool<Add> {
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(Add input, ToolCallRequest call) {
+    public Awaited<ToolResult> execute(ToolCallRequest<Add> call) {
+        Add input = call.input();
         return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
 }
@@ -77,8 +78,10 @@ cluster, harness and loop:
 public static void main(String[] args) {
     Repl.run(config -> config
             .systemPrompt("You are a helpful assistant.")
-            .approver(ConsoleApprover.atTheTerminal())
-            .tool(new AddTool()));
+            .tool(new AddTool())
+            .tool(new SendEmailTool(), binding -> binding
+                    .approver(ConsoleApprover.atTheTerminal())
+                    .describer(email -> "Send an email to " + email.to())));
 }
 ```
 

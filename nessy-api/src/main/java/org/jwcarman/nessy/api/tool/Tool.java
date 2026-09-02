@@ -66,5 +66,5 @@ public interface Tool<I> {
    * @param input the call's arguments, already bound to {@link #inputType()}
    * @param context what else this call offers — today, where to send a deferred answer
    */
-  Awaited<ToolResult> execute(I input, ToolCallRequest call);
+  Awaited<ToolResult> execute(ToolCallRequest<I> call);
 }

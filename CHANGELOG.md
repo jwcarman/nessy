@@ -85,16 +85,18 @@ in its current vocabulary — not the sequence of designs that produced it.
 
 ### Tools and authorization
 
-- **`Tool<I>`** — a name, a description, an input type, and a method. The
-  input type becomes the schema the model is shown.
+- **`Tool<I>`** — a name, a description, an input type, and a method taking
+  ONE parameter: `execute(ToolCallRequest<I> call)`. The input type becomes
+  the schema the model is shown, and the binding deserializes into it before
+  anything runs, so `call.input()` is already your type.
 - **`Awaited`** has two arms: `ready` answers now, `deferred` parks the call
   and lets the world answer later without holding a thread, an actor or a
   process.
 - **`Approver`** is asked per call and may answer or defer. Every call goes
   through one, ungated included — one path through the code is worth more
   than the message it saves, and it is the path recovery has to work on.
-- **`ToolCallRequest`** names one call, and a tool and an approver are handed
-  the same one. It replaced two context objects that carried overlapping
+- **`ToolCallRequest<I>`** names one call and carries its bound input, and a
+  tool and an approver are handed the same one. It replaced two context objects that carried overlapping
   views of the same call, so an approver could not see what the tool would
   get. `callKey()` is the turn and the call together — a model's call id is
   unique within one response only — and it is what a tool deduplicates on

@@ -101,7 +101,8 @@ class DeferredToolTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Job input, ToolCallRequest call) {
+      public Awaited<ToolResult> execute(ToolCallRequest<Job> call) {
+        Job input = call.input();
         // Exactly what a real deferring tool does: hand the token to whoever will answer, then say
         // it will be a while.
         handed.set(call.replyToken());

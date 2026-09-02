@@ -78,12 +78,28 @@ public final class ToolBindings {
   }
 
   /** Run it. */
-  public Awaited<ToolResult> run(ToolBinding<?> binding, ToolCallRequest call) {
+  public Awaited<ToolResult> run(ToolBinding<?> binding, ToolCallRequest<JsonNode> call) {
     return runBound(binding, call);
   }
 
-  private <I> Awaited<ToolResult> runBound(ToolBinding<I> binding, ToolCallRequest call) {
-    return binding.tool().execute(bind(binding.tool(), call.arguments()), call);
+  /**
+   * Binds the model's JSON to the tool's own input type, then hands over ONE request.
+   *
+   * <p>Generic in {@code I} so the bound input and the tool that will read it are tied together by
+   * the compiler rather than by a cast.
+   */
+  private <I> Awaited<ToolResult> runBound(ToolBinding<I> binding, ToolCallRequest<JsonNode> call) {
+    return binding
+        .tool()
+        .execute(
+            new ToolCallRequest<>(
+                call.agentType(),
+                call.agentId(),
+                call.turnId(),
+                call.callId(),
+                call.toolName(),
+                bind(binding.tool(), call.input()),
+                call.replyToken()));
   }
 
   private <I> I bind(Tool<I> tool, JsonNode arguments) {

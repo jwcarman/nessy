@@ -40,8 +40,8 @@ class WatchmanToolsTest {
   private static final JsonNode NO_ARGUMENTS = JsonNodeFactory.instance.objectNode();
 
   /** What the engine tells a running tool. These tools read none of it. */
-  private static final ToolCallRequest NOWHERE =
-      new ToolCallRequest(
+  private static final ToolCallRequest<JsonNode> NOWHERE =
+      new ToolCallRequest<>(
           AgentType.of("watchman"),
           AgentId.of("house"),
           "turn-1",
@@ -69,7 +69,7 @@ class WatchmanToolsTest {
   }
 
   private String run(CommandRunner runner, String tool) {
-    return textOf(toolsOf(runner).get(tool).execute(NO_ARGUMENTS, NOWHERE));
+    return textOf(toolsOf(runner).get(tool).execute(NOWHERE));
   }
 
   @Nested
@@ -141,7 +141,7 @@ class WatchmanToolsTest {
       CommandRunner broken =
           (argv, timeout) -> new CommandRunner.Output(1, "", "docker: no such host");
 
-      Awaited<ToolResult> answer = toolsOf(broken).get("containers").execute(NO_ARGUMENTS, NOWHERE);
+      Awaited<ToolResult> answer = toolsOf(broken).get("containers").execute(NOWHERE);
 
       // A failed command is a Failure now, not a success carrying an error string — the model is
       // told plainly that nothing happened.

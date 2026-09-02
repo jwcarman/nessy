@@ -51,7 +51,8 @@ public final class DaysUntilTool implements Tool<DaysUntilTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(Input input, ToolCallRequest context) {
+  public Awaited<ToolResult> execute(ToolCallRequest<Input> call) {
+    Input input = call.input();
     try {
       long days = ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(input.date()));
       return Awaited.ready(ToolResult.ok(days + " days"));

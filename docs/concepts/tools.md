@@ -10,7 +10,8 @@ class AddTool implements Tool<Add> {
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(Add input, ToolCallRequest call) {
+    public Awaited<ToolResult> execute(ToolCallRequest<Add> call) {
+        Add input = call.input();
         return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
 }
@@ -61,8 +62,8 @@ does not hold a thread, an actor, or a process.
 Whoever will answer needs an address, and that is the `ReplyToken`:
 
 ```java
-public Awaited<ToolResult> execute(Order input, ToolCallRequest call) {
-    vendor.placeOrder(input, call.replyToken());      // hand it out
+public Awaited<ToolResult> execute(ToolCallRequest<Order> call) {
+    vendor.placeOrder(call.input(), call.replyToken());   // hand it out
     return Awaited.deferred(clock.instant().plus(Duration.ofHours(2)));
 }
 ```
@@ -105,12 +106,21 @@ stable across a re-drive, so a tool that cares can deduplicate on it. The
 turn is in there because a model's call id is unique within ONE response —
 two turns can each produce a `call_1`.
 
-## One record, not two contexts
+## One request, not two contexts and an input
 
-A tool and an approver are handed the **same** `ToolCallRequest`. There used
-to be two context objects carrying overlapping views of one call, which meant
-keeping them in step and left an approver unable to see what the tool would
-actually be given.
+`execute` takes one parameter. The request carries the call — who is asking,
+which turn, which call, where an answer goes — **and the input**, already
+bound to your type by the binding before anything runs.
+
+A tool used to be handed the same call in two pieces: its input, and a
+context describing the call the input came from. And an approver was handed a
+third view of it, so the two had to be kept in step while neither could see
+what the other got. Now a tool and an approver read the same record.
+
+Carrying the raw JSON alongside the bound input would be a second
+representation of one thing, and two representations drift — so the request
+has `input()` and nothing else. A page that wants to show the arguments
+serializes the input back out, which is what chat-web's approval desk does.
 
 ## What a tool never sees
 

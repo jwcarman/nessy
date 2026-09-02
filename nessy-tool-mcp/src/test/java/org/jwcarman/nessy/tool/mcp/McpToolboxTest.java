@@ -78,8 +78,8 @@ class McpToolboxTest {
    * Where an answer would go if the tool deferred. An MCP {@code tools/call} is a single round trip
    * and never defers, so nothing reads it.
    */
-  private static ToolCallRequest contextFor(JsonNode arguments) {
-    return new ToolCallRequest(
+  private static ToolCallRequest<JsonNode> contextFor(JsonNode arguments) {
+    return new ToolCallRequest<>(
         AgentType.of("mcp-test"),
         AgentId.of("one"),
         "turn-1",
@@ -199,7 +199,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi there");
 
-        tool.execute(arguments, contextFor(arguments));
+        tool.execute(contextFor(arguments));
 
         assertThat(received.get()).containsExactly(Map.entry("message", "hi there"));
       }
@@ -213,7 +213,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
+        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
 
         assertThat(successText(result)).isEqualTo("line one\nline two");
       }
@@ -232,7 +232,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
+        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
 
         assertThat(failureMessage(result)).isEqualTo("boom");
       }
@@ -250,7 +250,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(arguments, contextFor(arguments)));
+        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
 
         assertThat(successText(result)).contains("YWJj").contains("image/png");
       }
@@ -303,7 +303,7 @@ class McpToolboxTest {
       ToolCallRequest context = contextFor(arguments);
       fixture.close();
 
-      assertThatThrownBy(() -> tool.execute(arguments, context))
+      assertThatThrownBy(() -> tool.execute(context))
           .isInstanceOf(RuntimeException.class)
           .hasMessageContaining("failed to initialize")
           .rootCause()

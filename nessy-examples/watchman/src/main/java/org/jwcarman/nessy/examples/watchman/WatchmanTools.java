@@ -142,7 +142,8 @@ public final class WatchmanTools {
       }
 
       @Override
-      public Awaited<ToolResult> execute(JsonNode input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<JsonNode> call) {
+        JsonNode input = call.input();
         // Blocking by design; the engine runs this on its blocking executor.
         List<String> argv = spec.argv().apply(input == null ? JSON.createObjectNode() : input);
         CommandRunner.Output output = runner.run(argv, spec.timeout());

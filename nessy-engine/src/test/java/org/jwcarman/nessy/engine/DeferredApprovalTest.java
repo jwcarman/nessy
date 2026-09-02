@@ -105,7 +105,8 @@ class DeferredApprovalTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Job input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<Job> call) {
+        Job input = call.input();
         ran.set(true);
         return Awaited.ready(ToolResult.ok("swept"));
       }

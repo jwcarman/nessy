@@ -96,7 +96,8 @@ class DeniedCallTest {
           }
 
           @Override
-          public Awaited<ToolResult> execute(Letter input, ToolCallRequest call) {
+          public Awaited<ToolResult> execute(ToolCallRequest<Letter> call) {
+            Letter input = call.input();
             throw new AssertionError("a denied call must never run");
           }
         };

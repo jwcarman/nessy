@@ -90,7 +90,8 @@ final class McpTool implements Tool<JsonNode> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(JsonNode input, ToolCallRequest context) {
+  public Awaited<ToolResult> execute(ToolCallRequest<JsonNode> call) {
+    JsonNode input = call.input();
     Map<String, Object> arguments = mapper.convertValue(input, ARGUMENTS_TYPE);
     McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(name(), arguments);
     // A transport/protocol failure that keeps the call from completing at all propagates as a

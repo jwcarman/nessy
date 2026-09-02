@@ -82,7 +82,8 @@ public final class IntentTool<T> implements Tool<T> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(T input, ToolCallRequest context) {
+  public Awaited<ToolResult> execute(ToolCallRequest<T> call) {
+    T input = call.input();
     store.declare(input);
     return Awaited.ready(ToolResult.ok("intent recorded"));
   }

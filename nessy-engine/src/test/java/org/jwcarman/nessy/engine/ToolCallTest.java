@@ -109,7 +109,8 @@ class ToolCallTest {
       }
 
       @Override
-      public Awaited<ToolResult> execute(Query input, ToolCallRequest context) {
+      public Awaited<ToolResult> execute(ToolCallRequest<Query> call) {
+        Query input = call.input();
         return Awaited.ready(ToolResult.ok(answer + " for " + input.text()));
       }
     };

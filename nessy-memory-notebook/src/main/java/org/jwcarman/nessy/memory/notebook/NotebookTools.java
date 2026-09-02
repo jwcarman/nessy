@@ -208,9 +208,10 @@ public final class NotebookTools {
       implements Tool<I> {
 
     @Override
-    public Awaited<ToolResult> execute(I input, ToolCallRequest context) {
+    public Awaited<ToolResult> execute(ToolCallRequest<I> call) {
+      I input = call.input();
       try {
-        return Awaited.ready(verb.apply(context.agentId(), input));
+        return Awaited.ready(verb.apply(call.agentId(), input));
       } catch (IllegalArgumentException | NullPointerException invalid) {
         return Awaited.ready(ToolResult.error(invalid.getMessage()));
       }
