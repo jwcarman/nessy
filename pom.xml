@@ -232,9 +232,16 @@
     <sonar.organization>jwcarman</sonar.organization>
     <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     <sonar.projectKey>jwcarman_nessy</sonar.projectKey>
-    <sonar.coverage.exclusions>nessy-examples/**</sonar.coverage.exclusions>
+    <sonar.coverage.exclusions>nessy-examples/**,nessy-testing/**</sonar.coverage.exclusions>
     <!-- nessy-examples are console demo apps where stdout/stderr IS the product;
-         excluded from analysis rather than suppressing individual S106 issues. -->
+         excluded from analysis rather than suppressing individual S106 issues.
+
+         nessy-testing is test scaffolding that happens to ship as main sources, so
+         other modules can depend on it: MemoryContractTest, TestDatabase, the
+         scripted doubles. It is EXERCISED constantly and covered nowhere, because
+         jacoco attributes execution to the module that ran it. Holding it to a
+         coverage number would mean writing tests for test helpers to satisfy an
+         arithmetic that never described them. -->
     <sonar.exclusions>nessy-examples/**</sonar.exclusions>
 
     <!-- Accepted findings — review-ruled, recorded in docs/superpowers ledgers.
