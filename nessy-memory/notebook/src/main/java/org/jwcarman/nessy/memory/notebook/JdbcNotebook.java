@@ -64,6 +64,8 @@ public final class JdbcNotebook implements Notebook {
       "SELECT coalesce(max(ordinal), 0) + 1 FROM nessy_note WHERE agent_type = ? AND agent_id = ?";
   private static final String EXISTS =
       "SELECT count(*) FROM nessy_note WHERE agent_type = ? AND agent_id = ? AND note_id = ?";
+  private static final String AGENT_ID_NOT_NULL = "agentId must not be null";
+  private static final String ID_NOT_NULL = "id must not be null";
 
   private final JdbcClient jdbc;
   private final String agentType;
@@ -76,7 +78,7 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public List<Heading> headings(AgentId agentId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     return jdbc.sql(SELECT_HEADINGS)
         .params(agentType, agentId.value())
         .query((row, number) -> new Heading(row.getString("note_id"), row.getString("hook")))
@@ -85,8 +87,8 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public Optional<Entry> find(AgentId agentId, String id) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(id, ID_NOT_NULL);
     return jdbc.sql(SELECT_ONE)
         .params(agentType, agentId.value(), id)
         .query(
@@ -97,7 +99,7 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public Entry write(AgentId agentId, String hook, String body) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     // Constructed first, so a blank hook or body is refused before anything is written.
     Entry entry = new Entry(mintUnusedIn(agentId), hook, body);
     jdbc.sql(INSERT)
@@ -108,8 +110,8 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public Optional<Entry> revise(AgentId agentId, String id, String hook, String body) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(id, ID_NOT_NULL);
     Entry revised = new Entry(id, hook, body);
     // No ordinal touched: a revision replaces what a note says, never where it sits in the index.
     int changed = jdbc.sql(UPDATE).params(hook, body, agentType, agentId.value(), id).update();
@@ -118,8 +120,8 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public void forget(AgentId agentId, String id) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(id, ID_NOT_NULL);
     jdbc.sql(DELETE).params(agentType, agentId.value(), id).update();
   }
 

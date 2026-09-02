@@ -37,30 +37,25 @@ public final class AgentLogic {
 
   public static Decision decide(AgentState state, Input input) {
     return switch (input) {
-      case Input.BacklogUpdated ignored -> onBacklogUpdated(state);
+      case Input.BacklogUpdated() -> onBacklogUpdated(state);
       case Input.WorkTaken taken -> onWorkTaken(state, taken);
-      case Input.Recovered ignored -> onRecovered(state);
-      case Input.NoWork ignored -> Decision.of(state, new Instruction.Sleep());
-      case Input.ModelAnswered.Answered answered ->
-          endTurn(
-              state.spending(answered.usage()),
-              resultOf(answered.stopReason()),
-              new Instruction.Remember.Answer());
+      case Input.Recovered() -> onRecovered(state);
+      case Input.NoWork() -> Decision.of(state, new Instruction.Sleep());
+      case Input.ModelAnswered.Answered(var stopReason, var usage) ->
+          endTurn(state.spending(usage), resultOf(stopReason), new Instruction.Remember.Answer());
       case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
-      case Input.ModelAnswered.Refused refused ->
-          endTurn(
-              state.spending(refused.usage()),
-              new TurnResult.Refused(refused.category(), refused.explanation()));
-      case Input.ModelFailed failed -> endTurn(state, new TurnResult.Failed(failed.reason()));
+      case Input.ModelAnswered.Refused(var category, var explanation, var usage) ->
+          endTurn(state.spending(usage), new TurnResult.Refused(category, explanation));
+      case Input.ModelFailed(var reason) -> endTurn(state, new TurnResult.Failed(reason));
       case Input.ApprovalGiven given -> onApproval(state, given);
-      case Input.ToolParked parked ->
+      case Input.ToolParked(var callId, var expiresAt) ->
           Decision.of(
-              state.at(state.working().with(parked.callId(), new CallState.Parked())),
-              new Instruction.SetAlarm(parked.callId(), parked.expiresAt()));
-      case Input.ToolCompleted done ->
-          settle(state, done.callId(), new Instruction.Narrate.ToolCallCompleted(done.callId()));
-      case Input.DeadlinePassed passed -> settle(state, passed.callId());
-      case Input.Forget ignored -> onForget(state);
+              state.at(state.working().with(callId, new CallState.Parked())),
+              new Instruction.SetAlarm(callId, expiresAt));
+      case Input.ToolCompleted(var callId) ->
+          settle(state, callId, new Instruction.Narrate.ToolCallCompleted(callId));
+      case Input.DeadlinePassed(var callId) -> settle(state, callId);
+      case Input.Forget() -> onForget(state);
       default -> Decision.nothing(state);
     };
   }
@@ -211,8 +206,8 @@ public final class AgentLogic {
    */
   private static Decision onRecovered(AgentState state) {
     return switch (state.phase()) {
-      case Phase.Idle ignored -> Decision.of(state, new Instruction.TakeWork());
-      case Phase.CallingModel ignored -> Decision.of(state, new Instruction.CallModel());
+      case Phase.Idle() -> Decision.of(state, new Instruction.TakeWork());
+      case Phase.CallingModel() -> Decision.of(state, new Instruction.CallModel());
       case Phase.WorkingTools working -> new Decision(state, resume(working));
     };
   }
@@ -225,17 +220,17 @@ public final class AgentLogic {
             (callId, call) -> {
               switch (call) {
                 // Asking is idempotent, so ask again.
-                case CallState.Approving approving ->
-                    then.add(new Instruction.AskApprover(callId, approving.toolName()));
+                case CallState.Approving(var toolName) ->
+                    then.add(new Instruction.AskApprover(callId, toolName));
                 // Nobody else will answer this one. Tool execution is at-least-once by contract.
-                case CallState.Running running ->
-                    then.add(new Instruction.RunTool(callId, running.toolName()));
+                case CallState.Running(var toolName) ->
+                    then.add(new Instruction.RunTool(callId, toolName));
                 // Someone holds a reply token and an alarm is armed. Re-asking would mint a second.
-                case CallState.Parked ignored -> {
+                case CallState.Parked() -> {
                   // deliberately nothing
                 }
                 // Its result is in claims.
-                case CallState.Completed ignored -> {
+                case CallState.Completed() -> {
                   // deliberately nothing
                 }
               }

@@ -222,8 +222,6 @@ class GeminiModelProviderTest {
 
     @Test
     void a_blank_model_id_is_rejected() {
-      var provider = new GeminiProviderConfig().apiKey("test-key").build();
-
       // The check moved INTO ModelId, so a blank never reaches a provider at all.
       assertThatThrownBy(() -> ModelId.of("  ")).isInstanceOf(IllegalArgumentException.class);
     }

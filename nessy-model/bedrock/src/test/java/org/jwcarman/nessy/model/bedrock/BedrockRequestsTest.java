@@ -253,7 +253,6 @@ class BedrockRequestsTest {
     /** Opaque state belongs to whoever issued it; this adapter issues none and reads none. */
     @Test
     void another_providers_state_is_ignored_on_replay() {
-      var foreign = providerState("thinking", "someone else's reasoning", "sig");
       var toolUse =
           new ToolCallBlock(
               new ToolCall(CallId.of("call-1"), "read_file", MAPPER.createObjectNode()));

@@ -49,6 +49,8 @@ import org.jwcarman.nessy.engine.agent.Input;
  */
 public sealed interface NessyMessage {
 
+  String REPLY_TO_NOT_NULL = "replyTo must not be null";
+
   Map<String, String> headers();
 
   /**
@@ -171,7 +173,7 @@ public sealed interface NessyMessage {
   record ToolAnswered(CallId callId, ActorRef<Ack> replyTo, Map<String, String> headers)
       implements NessyMessage {
     public ToolAnswered {
-      Objects.requireNonNull(replyTo, "replyTo must not be null");
+      Objects.requireNonNull(replyTo, REPLY_TO_NOT_NULL);
       headers = Map.copyOf(headers);
     }
   }
@@ -181,7 +183,7 @@ public sealed interface NessyMessage {
       CallId callId, ApprovalResult result, ActorRef<Ack> replyTo, Map<String, String> headers)
       implements NessyMessage {
     public ApprovalAnswered {
-      Objects.requireNonNull(replyTo, "replyTo must not be null");
+      Objects.requireNonNull(replyTo, REPLY_TO_NOT_NULL);
       headers = Map.copyOf(headers);
     }
   }
@@ -193,7 +195,7 @@ public sealed interface NessyMessage {
   record Inspect(ActorRef<AgentState> replyTo, Map<String, String> headers)
       implements NessyMessage {
     public Inspect {
-      Objects.requireNonNull(replyTo, "replyTo must not be null");
+      Objects.requireNonNull(replyTo, REPLY_TO_NOT_NULL);
       headers = Map.copyOf(headers);
     }
   }

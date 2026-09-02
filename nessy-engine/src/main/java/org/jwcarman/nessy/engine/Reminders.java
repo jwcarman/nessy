@@ -54,6 +54,9 @@ final class Reminders {
           + COLUMNS
           + " FROM nessy_reminder WHERE expires_at <= ? ORDER BY expires_at LIMIT ?";
   private static final String READ = "SELECT " + COLUMNS + " FROM nessy_reminder" + WHERE_CALL;
+  private static final String AGENT_TYPE_NOT_NULL = "agentType must not be null";
+  private static final String AGENT_ID_NOT_NULL = "agentId must not be null";
+  private static final String CALL_ID_NOT_NULL = "callId must not be null";
 
   /**
    * A reminder as the store holds it.
@@ -80,9 +83,9 @@ final class Reminders {
    * rather than vendor upsert syntax, so one statement set serves every database.
    */
   void remind(AgentType agentType, AgentId agentId, CallId callId, Instant expiresAt) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(callId, CALL_ID_NOT_NULL);
     Objects.requireNonNull(expiresAt, "expiresAt must not be null");
     jdbc.sql(DELETE).params(agentType.name(), agentId.value(), callId.value()).update();
     jdbc.sql(INSERT)
@@ -116,9 +119,9 @@ final class Reminders {
 
   /** What this key is waiting for, if anything — the remaining term a restarted actor re-arms. */
   Optional<Reminder> find(AgentType agentType, AgentId agentId, CallId callId) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(callId, CALL_ID_NOT_NULL);
     return jdbc.sql(READ)
         .params(agentType.name(), agentId.value(), callId.value())
         .query(
@@ -133,9 +136,9 @@ final class Reminders {
 
   /** Forgets it. Silent when there is nothing to forget: settling twice is not an error. */
   void cancel(AgentType agentType, AgentId agentId, CallId callId) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(callId, CALL_ID_NOT_NULL);
     jdbc.sql(DELETE).params(agentType.name(), agentId.value(), callId.value()).update();
   }
 }

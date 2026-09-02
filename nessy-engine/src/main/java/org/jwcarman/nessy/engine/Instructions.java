@@ -166,19 +166,19 @@ final class Instructions {
   void perform(
       AgentId agentId, AgentState state, Instruction instruction, Map<String, String> carried) {
     switch (instruction) {
-      case Instruction.TakeWork ignored -> takeWork(agentId, state, carried);
-      case Instruction.CallModel ignored -> callModel(agentId, state, carried);
+      case Instruction.TakeWork() -> takeWork(agentId, state, carried);
+      case Instruction.CallModel() -> callModel(agentId, state, carried);
       case Instruction.AskApprover ask -> askApprover(agentId, state, ask, carried);
       case Instruction.RunTool run -> runTool(agentId, state, run, carried);
-      case Instruction.Remember.Input ignored -> rememberInput(agentId, state);
-      case Instruction.Remember.Answer ignored -> rememberAnswer(agentId, state);
-      case Instruction.Remember.Exchange ignored -> rememberExchange(agentId, state);
-      case Instruction.Release ignored -> deps.claims().deleteTurn(agentId, state.turnId());
+      case Instruction.Remember.Input() -> rememberInput(agentId, state);
+      case Instruction.Remember.Answer() -> rememberAnswer(agentId, state);
+      case Instruction.Remember.Exchange() -> rememberExchange(agentId, state);
+      case Instruction.Release() -> deps.claims().deleteTurn(agentId, state.turnId());
       case Instruction.SetAlarm alarm -> setAlarm(agentId, alarm);
-      case Instruction.CancelAlarm alarm ->
-          deps.reminders().cancel(deps.agentType(), agentId, alarm.callId());
-      case Instruction.Forget ignored -> forget(agentId);
-      case Instruction.Sleep ignored -> {
+      case Instruction.CancelAlarm(var callId) ->
+          deps.reminders().cancel(deps.agentType(), agentId, callId);
+      case Instruction.Forget() -> forget(agentId);
+      case Instruction.Sleep() -> {
         // The agent asks the shard to unload it; that lives on the actor, which owns the handle.
       }
       case Instruction.Narrate narrate -> narrate(agentId, state, narrate);
@@ -257,21 +257,19 @@ final class Instructions {
   private NessyMessage answerOf(
       AgentId agentId, AgentState state, ModelResult result, Map<String, String> carried) {
     return switch (result) {
-      case ModelResult.Refused refused ->
-          new NessyMessage.ModelRefused(
-              refused.category(), refused.explanation(), refused.usage(), carried);
-      case ModelResult.Answered answered -> {
-        deps.claims()
-            .put(agentId, state.turnId(), ANSWER_KEY, answerCodec.encode(answered.message()));
-        yield new NessyMessage.ModelAnswered(answered.stopReason(), answered.usage(), carried);
+      case ModelResult.Refused(var category, var explanation, var usage) ->
+          new NessyMessage.ModelRefused(category, explanation, usage, carried);
+      case ModelResult.Answered(var message, var stopReason, var usage) -> {
+        deps.claims().put(agentId, state.turnId(), ANSWER_KEY, answerCodec.encode(message));
+        yield new NessyMessage.ModelAnswered(stopReason, usage, carried);
       }
-      case ModelResult.Asked asked -> {
-        deps.claims().put(agentId, state.turnId(), ASKED_KEY, askedCodec.encode(asked.content()));
+      case ModelResult.Asked(var content, var usage) -> {
+        deps.claims().put(agentId, state.turnId(), ASKED_KEY, askedCodec.encode(content));
         yield new NessyMessage.ModelAsked(
-            callsIn(asked.content()).stream()
+            callsIn(content).stream()
                 .map(call -> new Input.CallSummary(call.id(), call.name()))
                 .toList(),
-            asked.usage(),
+            usage,
             carried);
       }
     };
@@ -323,19 +321,19 @@ final class Instructions {
                               () -> deps.bindings().approve(binding, request)),
                   answer ->
                       switch (answer) {
-                        case Awaited.Ready<ApprovalResult> ready -> {
+                        case Awaited.Ready<ApprovalResult>(var result) -> {
                           // A DENIAL is a result, so it is claimed here like any other — the model
                           // is told it was refused and gets to decide what to do about that. The
                           // logic marks the call completed and cannot write anything itself, so
                           // without this the exchange reaches the transcript saying "no result was
                           // recorded", which reads to the model as a broken tool rather than a
                           // person saying no. Measured in the browser.
-                          denialResult(ready.result())
+                          denialResult(result)
                               .ifPresent(denied -> hold(agentId, state, call.id(), denied));
                           yield new NessyMessage.ApprovalGiven(
-                              call.id(), call.name(), ready.result(), carried);
+                              call.id(), call.name(), result, carried);
                         }
-                        case Awaited.Deferred<ApprovalResult> deferred -> {
+                        case Awaited.Deferred<ApprovalResult>(var expiresAt) -> {
                           // Narrated HERE and nowhere else: an ungated tool answers on the spot,
                           // and only a deferral means a person is actually being asked. The desk
                           // needs the deadline, which is knowable at exactly this moment.
@@ -346,9 +344,8 @@ final class Instructions {
                                       call.id(),
                                       call.name(),
                                       action,
-                                      deferred.expiresAt()));
-                          yield new NessyMessage.ToolParked(
-                              call.id(), deferred.expiresAt(), carried);
+                                      expiresAt));
+                          yield new NessyMessage.ToolParked(call.id(), expiresAt, carried);
                         }
                       },
                   failure -> {
@@ -391,12 +388,12 @@ final class Instructions {
                               () -> deps.bindings().run(binding, requestFor(agentId, state, call))),
                   answer ->
                       switch (answer) {
-                        case Awaited.Ready<ToolResult> ready -> {
-                          hold(agentId, state, call.id(), ready.result());
+                        case Awaited.Ready<ToolResult>(var result) -> {
+                          hold(agentId, state, call.id(), result);
                           yield new NessyMessage.ToolCompleted(call.id(), carried);
                         }
-                        case Awaited.Deferred<ToolResult> deferred ->
-                            new NessyMessage.ToolParked(call.id(), deferred.expiresAt(), carried);
+                        case Awaited.Deferred<ToolResult>(var expiresAt) ->
+                            new NessyMessage.ToolParked(call.id(), expiresAt, carried);
                       },
                   failure -> {
                     hold(
@@ -412,9 +409,8 @@ final class Instructions {
 
   /** What a denied call answers with, or empty when it was approved and will answer for itself. */
   static Optional<ToolResult> denialResult(ApprovalResult result) {
-    if (result instanceof ApprovalResult.Denied denied) {
-      return Optional.of(
-          ToolResult.error("denied: " + denied.reason() + "; the call was not made"));
+    if (result instanceof ApprovalResult.Denied(var reason)) {
+      return Optional.of(ToolResult.error("denied: " + reason + "; the call was not made"));
     }
     return Optional.empty();
   }
@@ -519,27 +515,23 @@ final class Instructions {
 
   private void narrate(AgentId agentId, AgentState state, Instruction.Narrate narrate) {
     switch (narrate) {
-      case Instruction.Narrate.TurnStarted ignored ->
+      case Instruction.Narrate.TurnStarted(var _) ->
           narrator(agentId).narrate(new AgentEvent.TurnStarted(Identifiers.next()));
-      case Instruction.Narrate.TurnEnded ended ->
-          narrator(agentId)
-              .narrate(new AgentEvent.TurnEnded(Identifiers.next(), ended.result(), ended.usage()));
-      case Instruction.Narrate.ApprovalDecided decided ->
+      case Instruction.Narrate.TurnEnded(var result, var usage) ->
+          narrator(agentId).narrate(new AgentEvent.TurnEnded(Identifiers.next(), result, usage));
+      case Instruction.Narrate.ApprovalDecided(var callId, var result) ->
           narrator(agentId)
               .narrate(
                   new AgentEvent.ApprovalDecided(
-                      Identifiers.next(),
-                      decided.callId(),
-                      nameOf(agentId, state, decided.callId()),
-                      decided.result()));
-      case Instruction.Narrate.ToolCallCompleted done ->
+                      Identifiers.next(), callId, nameOf(agentId, state, callId), result));
+      case Instruction.Narrate.ToolCallCompleted(var callId) ->
           narrator(agentId)
               .narrate(
                   new AgentEvent.ToolCallCompleted(
                       Identifiers.next(),
-                      done.callId(),
-                      nameOf(agentId, state, done.callId()),
-                      redeem(agentId, state, resultKey(done.callId()), resultCodec)
+                      callId,
+                      nameOf(agentId, state, callId),
+                      redeem(agentId, state, resultKey(callId), resultCodec)
                           .orElseGet(() -> ToolResult.error("no result was recorded"))));
     }
   }
@@ -585,11 +577,10 @@ final class Instructions {
   /** Painted as it arrives, on the thread draining the stream — narrating is a tell. */
   private void narrateChunk(AgentId agentId, ModelEvent event) {
     switch (event) {
-      case ModelEvent.TextChunk chunk ->
-          narrator(agentId).narrate(new AgentEvent.TextDelta(Identifiers.next(), chunk.text()));
-      case ModelEvent.ReasoningChunk chunk ->
-          narrator(agentId)
-              .narrate(new AgentEvent.ReasoningDelta(Identifiers.next(), chunk.text()));
+      case ModelEvent.TextChunk(var text) ->
+          narrator(agentId).narrate(new AgentEvent.TextDelta(Identifiers.next(), text));
+      case ModelEvent.ReasoningChunk(var text) ->
+          narrator(agentId).narrate(new AgentEvent.ReasoningDelta(Identifiers.next(), text));
       default -> {
         // Assembled into the message, or narrated by whoever owns the fact.
       }

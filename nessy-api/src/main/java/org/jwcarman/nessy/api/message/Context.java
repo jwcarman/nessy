@@ -218,19 +218,19 @@ public record Context(List<ContextMessage> messages) {
   private static String textOf(ContextMessage message) {
     StringBuilder text = new StringBuilder();
     switch (message) {
-      case UserMessage user ->
-          user.content().stream()
+      case UserMessage(var content) ->
+          content.stream()
               .filter(TextBlock.class::isInstance)
               .forEach(block -> text.append(((TextBlock) block).text()));
-      case AnswerMessage assistant ->
-          assistant.content().stream()
+      case AnswerMessage(var content) ->
+          content.stream()
               .filter(TextBlock.class::isInstance)
               .forEach(block -> text.append(((TextBlock) block).text()));
       case ExchangeMessage asking ->
           asking.content().stream()
               .filter(CommentaryBlock.class::isInstance)
               .forEach(block -> text.append(((CommentaryBlock) block).text()));
-      case AmbientMessage ignored -> {
+      case AmbientMessage _ -> {
         // Background is not speech.
       }
     }
@@ -244,15 +244,15 @@ public record Context(List<ContextMessage> messages) {
    * provider still accepts, because the pairing is intact by construction rather than by care.
    */
   private static ContextMessage elideToolResultContent(ContextMessage message) {
-    if (!(message instanceof ExchangeMessage asking) || asking.results().isEmpty()) {
+    if (!(message instanceof ExchangeMessage(var content, var results)) || results.isEmpty()) {
       return message;
     }
-    List<ToolResultBlock> elided = new ArrayList<>(asking.results().size());
-    for (ToolResultBlock block : asking.results()) {
+    List<ToolResultBlock> elided = new ArrayList<>(results.size());
+    for (ToolResultBlock block : results) {
       elided.add(
           new ToolResultBlock(
               block.toolUseId(), List.of(new TextBlock("[elided]")), block.isError()));
     }
-    return new ExchangeMessage(asking.content(), elided);
+    return new ExchangeMessage(content, elided);
   }
 }

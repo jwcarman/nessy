@@ -73,24 +73,22 @@ public final class ModelReplies {
       for (ModelEvent event : events) {
         watcher.accept(event);
         switch (event) {
-          case ModelEvent.TextChunk chunk -> prose.append(chunk.text());
-          case ModelEvent.ReasoningChunk ignored -> {
+          case ModelEvent.TextChunk(var text) -> prose.append(text);
+          case ModelEvent.ReasoningChunk _ -> {
             // Narration only: watched above, never kept.
           }
-          case ModelEvent.ProviderStateEmitted emitted ->
-              state.add(new ProviderBlock(emitted.provider(), emitted.data()));
-          case ModelEvent.ToolCallEmitted emitted -> {
+          case ModelEvent.ProviderStateEmitted(var provider, var data) ->
+              state.add(new ProviderBlock(provider, data));
+          case ModelEvent.ToolCallEmitted(var call) -> {
             flushCommentary(asked, prose);
             asked.addAll(state);
             state.clear();
-            asked.add(new ToolCallBlock(emitted.call()));
+            asked.add(new ToolCallBlock(call));
           }
-          case ModelEvent.Stopped stopped ->
-              result = settle(asked, state, prose, stopped.reason(), stopped.usage());
-          case ModelEvent.Refused refused ->
-              result =
-                  new ModelResult.Refused(
-                      refused.category(), refused.explanation(), refused.usage());
+          case ModelEvent.Stopped(var reason, var usage) ->
+              result = settle(asked, state, prose, reason, usage);
+          case ModelEvent.Refused(var category, var explanation, var usage) ->
+              result = new ModelResult.Refused(category, explanation, usage);
         }
       }
     }

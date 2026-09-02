@@ -82,6 +82,7 @@ public final class TranscriptMemory implements Memory {
   private static final String INSERT =
       "INSERT INTO nessy_transcript (agent_type, agent_id, seq, payload, chars) "
           + "VALUES (?, ?, ?, ?, ?)";
+  private static final String AGENT_ID_NOT_NULL = "agentId must not be null";
 
   private final JdbcClient jdbc;
   private final Codec<HistoryMessage> codec = Codecs.factory().create(HistoryMessage.class);
@@ -115,7 +116,7 @@ public final class TranscriptMemory implements Memory {
 
   @Override
   public Context recall(AgentId agentId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     if (maxCharacters == Integer.MAX_VALUE) {
       return Context.of(
           jdbc
@@ -145,7 +146,7 @@ public final class TranscriptMemory implements Memory {
    * @param seq the sequence number already accounted for; 0 means everything
    */
   public Context recallAfter(AgentId agentId, long seq) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     return Context.of(
         jdbc
             .sql(SELECT_AFTER)
@@ -163,14 +164,14 @@ public final class TranscriptMemory implements Memory {
    * <p>What a caller compares against its own coverage to know how far behind it is.
    */
   public long lastSeq(AgentId agentId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Long last = jdbc.sql(LAST_SEQ).params(agentType, agentId.value()).query(Long.class).single();
     return last == null ? 0L : last;
   }
 
   @Override
   public void remember(AgentId agentId, HistoryMessage message) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Objects.requireNonNull(message, "message must not be null");
     // Counted once, here, so a recall never has to decode a message to find out whether it fits.
     jdbc.sql(INSERT)
@@ -193,7 +194,7 @@ public final class TranscriptMemory implements Memory {
    */
   @Override
   public void forget(AgentId agentId) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     jdbc.sql(DELETE_ALL).params(agentType, agentId.value()).update();
   }
 
@@ -245,11 +246,11 @@ public final class TranscriptMemory implements Memory {
   /** How much of the budget a message spends. Text only: it is the part that is large. */
   private static int charactersOf(HistoryMessage message) {
     return switch (message) {
-      case UserMessage user -> charactersIn(user.content());
-      case AnswerMessage answer -> charactersIn(answer.content());
-      case ExchangeMessage exchange -> {
-        int total = charactersIn(exchange.content());
-        for (ToolResultBlock result : exchange.results()) {
+      case UserMessage(var content) -> charactersIn(content);
+      case AnswerMessage(var content) -> charactersIn(content);
+      case ExchangeMessage(var content, var results) -> {
+        int total = charactersIn(content);
+        for (ToolResultBlock result : results) {
           total += charactersIn(result.content());
         }
         yield total;
@@ -260,8 +261,8 @@ public final class TranscriptMemory implements Memory {
   private static int charactersIn(List<? extends Block> blocks) {
     int total = 0;
     for (Block block : blocks) {
-      if (block instanceof TextBlock text) {
-        total += text.text().length();
+      if (block instanceof TextBlock(var text)) {
+        total += text.length();
       }
     }
     return total;

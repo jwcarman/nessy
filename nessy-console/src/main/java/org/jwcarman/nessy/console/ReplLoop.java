@@ -65,7 +65,7 @@ final class ReplLoop {
     // Closed on the way out: an unclosed subscription leaves a routing entry behind, and the
     // engine going on narrating into a REPL that has left is how a clean exit turns into a
     // warning about dropped messages.
-    try (AgentSubscription listening = harness.subscribe(agentId, printing())) {
+    try (AgentSubscription _ = harness.subscribe(agentId, printing())) {
       converse();
     }
   }
@@ -179,12 +179,12 @@ final class ReplLoop {
    */
   private void report(TurnResult outcome) {
     switch (outcome) {
-      case TurnResult.Refused refused ->
-          note("refused (" + refused.category() + "): " + refused.explanation());
-      case TurnResult.Failed failed -> note("failed: " + failed.reason());
-      case TurnResult.Truncated ignored ->
+      case TurnResult.Refused(var category, var explanation) ->
+          note("refused (" + category + "): " + explanation);
+      case TurnResult.Failed(var reason) -> note("failed: " + reason);
+      case TurnResult.Truncated() ->
           note("the answer was cut off at the token limit; ask for less, or raise maxTokens");
-      case TurnResult.Completed ignored -> {
+      case TurnResult.Completed() -> {
         if (!spoke) {
           note("the model ended the turn without saying anything");
         }

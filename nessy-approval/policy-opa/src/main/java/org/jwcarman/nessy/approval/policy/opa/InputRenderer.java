@@ -39,6 +39,8 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 @FunctionalInterface
 public interface InputRenderer {
 
+  String ACTION_FIELD = "action";
+
   ObjectNode render(ApprovalRequest request);
 
   /** Everything a rule could reasonably judge on, flat, and nothing that grants authority. */
@@ -50,7 +52,7 @@ public interface InputRenderer {
       input.put("turnId", request.turnId().value());
       input.put("callId", request.callId().value());
       input.put("toolName", request.toolName());
-      input.put("action", request.action());
+      input.put(ACTION_FIELD, request.action());
       input.put("askedAt", request.askedAt().toString());
       input.set("arguments", request.arguments());
       input.set("facts", request.facts());
@@ -86,12 +88,12 @@ public interface InputRenderer {
       resource.put("type", "tool");
       resource.put("id", request.toolName());
 
-      ObjectNode action = input.putObject("action");
+      ObjectNode action = input.putObject(ACTION_FIELD);
       action.put("name", "call");
       action.putObject("properties").set("arguments", request.arguments());
 
       ObjectNode context = input.putObject("context");
-      context.put("action", request.action());
+      context.put(ACTION_FIELD, request.action());
       context.put("askedAt", request.askedAt().toString());
       context.set("facts", request.facts());
       return input;

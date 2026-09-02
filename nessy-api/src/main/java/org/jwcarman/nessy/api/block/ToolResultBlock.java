@@ -55,9 +55,9 @@ public record ToolResultBlock(
   public static ToolResultBlock of(CallId toolUseId, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     return switch (result) {
-      case ToolResult.Success success -> new ToolResultBlock(toolUseId, success.content(), false);
-      case ToolResult.Failure failure ->
-          new ToolResultBlock(toolUseId, List.of(new TextBlock(failure.message())), true);
+      case ToolResult.Success(var content) -> new ToolResultBlock(toolUseId, content, false);
+      case ToolResult.Failure(var message) ->
+          new ToolResultBlock(toolUseId, List.of(new TextBlock(message)), true);
     };
   }
 }

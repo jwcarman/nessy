@@ -175,15 +175,15 @@ public final class BedrockRequests {
   private static List<software.amazon.awssdk.services.bedrockruntime.model.Message> toMessages(
       org.jwcarman.nessy.api.message.ContextMessage message) {
     return switch (message) {
-      case org.jwcarman.nessy.api.message.UserMessage user ->
-          toMessage(ConversationRole.USER, user.content()).stream().toList();
-      case org.jwcarman.nessy.api.message.AnswerMessage answer ->
-          toMessage(ConversationRole.ASSISTANT, answer.content()).stream().toList();
-      case org.jwcarman.nessy.api.message.AmbientMessage ignored -> List.of();
-      case org.jwcarman.nessy.api.message.ExchangeMessage exchange ->
+      case org.jwcarman.nessy.api.message.UserMessage(var content) ->
+          toMessage(ConversationRole.USER, content).stream().toList();
+      case org.jwcarman.nessy.api.message.AnswerMessage(var content) ->
+          toMessage(ConversationRole.ASSISTANT, content).stream().toList();
+      case org.jwcarman.nessy.api.message.AmbientMessage _ -> List.of();
+      case org.jwcarman.nessy.api.message.ExchangeMessage(var content, var results) ->
           java.util.stream.Stream.of(
-                  toMessage(ConversationRole.ASSISTANT, exchange.content()),
-                  toMessage(ConversationRole.USER, exchange.results()))
+                  toMessage(ConversationRole.ASSISTANT, content),
+                  toMessage(ConversationRole.USER, results))
               .flatMap(Optional::stream)
               .toList();
     };

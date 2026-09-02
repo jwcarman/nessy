@@ -107,7 +107,7 @@ public class PendingApprovalsListener implements AgentSubscriber {
 
   private void settle(AgentEvent.ApprovalDecided decided) {
     String answer = decided.result() instanceof ApprovalResult.Approved ? "approved" : "denied";
-    String note = decided.result() instanceof ApprovalResult.Denied denied ? denied.reason() : null;
+    String note = decided.result() instanceof ApprovalResult.Denied(var reason) ? reason : null;
     repository.answered(agentType, agentId, decided.callId(), answer, note, clock.instant());
     addresses.remove(decided.callId());
   }

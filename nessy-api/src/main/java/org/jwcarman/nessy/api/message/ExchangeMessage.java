@@ -60,8 +60,8 @@ public record ExchangeMessage(List<ExchangeContentBlock> content, List<ToolResul
       List<ExchangeContentBlock> content, List<ToolResultBlock> results) {
     List<CallId> called = new ArrayList<>();
     for (ExchangeContentBlock block : content) {
-      if (block instanceof ToolCallBlock call) {
-        called.add(call.call().id());
+      if (block instanceof ToolCallBlock(var call)) {
+        called.add(call.id());
       }
     }
     if (called.isEmpty()) {

@@ -187,7 +187,6 @@ class ConversationTest {
 
       @Override
       public Awaited<ToolResult> execute(ToolCallRequest<Query> call) {
-        Query input = call.input();
         return Awaited.ready(ToolResult.ok("found it"));
       }
     };
@@ -206,7 +205,7 @@ class ConversationTest {
     AgentId talkative = AgentId.of("house-conversation");
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
 
-    try (AgentSubscription listening = harness.subscribe(talkative, heard::add)) {
+    try (AgentSubscription _ = harness.subscribe(talkative, heard::add)) {
       for (int round = 1; round <= ROUNDS; round++) {
         int expected = round;
         harness.observe(talkative, new HouseEvent("kitchen", "event " + round));

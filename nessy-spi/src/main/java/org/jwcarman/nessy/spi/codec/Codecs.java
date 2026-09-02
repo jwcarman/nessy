@@ -44,10 +44,12 @@ import org.jwcarman.codec.spi.CodecFactory;
  */
 public final class Codecs {
 
+  private static final String MAPPER_NOT_NULL = "mapper must not be null";
+
   private final ObjectMapper mapper;
 
   public Codecs(ObjectMapper mapper) {
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.mapper = Objects.requireNonNull(mapper, MAPPER_NOT_NULL);
   }
 
   /**
@@ -62,7 +64,7 @@ public final class Codecs {
    * .objectMapper(ObjectMapper)} or through a store's own factory.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
-    Objects.requireNonNull(mapper, "mapper must not be null");
+    Objects.requireNonNull(mapper, MAPPER_NOT_NULL);
     return mapper
         .copy()
         .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE)
@@ -94,7 +96,7 @@ public final class Codecs {
    * knobs {@link #copyAndPin(ObjectMapper)} always applies.
    */
   public static CodecFactory factory(ObjectMapper mapper) {
-    Objects.requireNonNull(mapper, "mapper must not be null");
+    Objects.requireNonNull(mapper, MAPPER_NOT_NULL);
     return new Jackson2CodecFactory(copyAndPin(mapper));
   }
 

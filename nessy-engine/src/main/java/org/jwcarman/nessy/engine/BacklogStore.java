@@ -234,7 +234,7 @@ public final class BacklogStore<O> {
                 new Row(
                     TurnId.of(rs.getString("item_id")),
                     rs.getTimestamp("received_at").toInstant(),
-                    rs.getBytes("observation"),
+                    rs.getBytes(OBSERVATION_KEY),
                     rs.getString("taken_claim")))
         .list();
   }
