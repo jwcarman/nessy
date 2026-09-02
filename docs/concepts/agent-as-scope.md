@@ -30,7 +30,7 @@ decision.
 ## The document is small on purpose
 
 ```java
-record AgentState(String turnId, Phase phase, String observation, Usage usage) {}
+record AgentState(TurnId turnId, Phase phase, String observation, Usage usage) {}
 ```
 
 A turn id, a phase, a claim id, and a token count. Around 260 bytes,

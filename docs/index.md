@@ -97,8 +97,8 @@ A tool that needs a decision gets an approver. It can answer now, or defer
 and let a person answer days later:
 
 ```java
-Approver desk = (request, context) -> {
-    pending.save(request, context.replyToken());        // hand out the address
+Approver desk = request -> {
+    pending.save(request, request.replyToken());        // hand out the address
     return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
 };
 

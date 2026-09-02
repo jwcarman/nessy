@@ -87,7 +87,7 @@ public static void main(String[] args) {
 
 ## Try it
 
-`nessy-examples` has four runnable modules. All three want an
+`nessy-examples` has five modules. The four that talk to a model want an
 OpenAI-compatible endpoint — [LM Studio](https://lmstudio.ai) on `:1234`
 works, and costs nothing:
 
@@ -118,6 +118,15 @@ advertises, and gates the one that spends DeepWiki's own model budget:
 
 ```bash
 ./mvnw -q -pl nessy-examples/mcp -am compile exec:java
+```
+
+**`policy`** — the gate as data. An `Approver` that asks Open Policy Agent,
+so the rules are Rego reviewed by whoever owns the risk rather than Java that
+ships with a release. No model and no key: it runs the real OPA binary in a
+container.
+
+```bash
+./mvnw -pl nessy-examples/policy test -Dnessy.excludedGroups=
 ```
 
 **`watchman`** — the Spring Boot soak. It lives on a real box, does rounds

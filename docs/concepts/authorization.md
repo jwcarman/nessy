@@ -26,15 +26,17 @@ config.tool(new PurchaseTool(), binding -> binding.approver(approver));
 The approver can answer immediately:
 
 ```java
-Approver always = (request, context) -> Awaited.ready(ApprovalResult.approved());
-Approver never  = (request, context) -> Awaited.ready(ApprovalResult.denied("not in this tenant"));
+Approver always = request -> Awaited.ready(ApprovalResult.approved());
+Approver never  = request -> Awaited.ready(ApprovalResult.denied("not in this tenant"));
 ```
 
 or defer to a person, and answer days later:
 
 ```java
-Approver desk = (request, context) -> {
-    pending.save(request, context.replyToken());
+Approver desk = request -> {
+    // Ask for the address only when handing it out: it is a capability, and most calls
+    // never need one.
+    pending.save(request, request.replyToken());
     return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
 };
 ```
@@ -49,8 +51,8 @@ the message it would save, and it is the path recovery has to work on too.
 record ApprovalRequest(
     AgentType agentType,
     AgentId agentId,
-    String turnId,
-    String callId,
+    TurnId turnId,
+    CallId callId,
     String toolName,
     JsonNode arguments,
     String action,
@@ -59,7 +61,7 @@ record ApprovalRequest(
     ObjectNode facts) {
 
   ReplyToken replyToken();   // mints on first call, then remembers
-  String callKey();          // turnId + "/" + callId
+  String callKey();          // turnId + "/" + callId — neither can contain a "/"
 }
 ```
 
@@ -87,10 +89,17 @@ and that is the channel for structured evidence a policy deposits or reads.
 `Risk` does exactly this. A typed *action* object would only restate the tool's
 input, which the renderer already receives.
 
-`call` is the whole of what the tool itself would be handed — the same record,
-so an approver can decide on exactly the values the tool will act on. `facts` is the
-[intent](intent.md) channel — what the model *said* it was doing, which a
-policy may weigh or ignore.
+`facts` is the [intent](intent.md) channel — what the model *said* it was
+doing, which a policy may weigh or ignore.
+
+**An identifier is a type.** `AgentType`, `AgentId`, `TurnId` and `CallId` are
+records, not strings, because they travel in pairs and adjacent strings can be
+transposed in silence. Each serializes as its own bare string, so a policy still
+reads `input.callId` rather than `input.callId.value`. Each is also checked
+where it is written: at most 256 characters, ASCII letters, digits and
+`-_.:@+=`. These are primary-key columns and actor addresses, and an id that
+fails those rules fails much later otherwise — in an INSERT that names none of
+this.
 
 ## Describing what is being approved
 
@@ -247,6 +256,42 @@ A ceiling below the floor would deny calls it also approves, so
 `denyingAtOrAbove` rejects it when it is configured rather than behaving
 oddly later. Equal thresholds are allowed and mean something coherent: every
 call is either approved or denied, and nobody is ever asked.
+
+## Rules that live outside the application
+
+An approver can hand the decision to a policy engine. This is what the flat,
+JSON-shaped request buys: OPA reads `input.toolName` and
+`input.arguments.target` directly, so the adapter is about forty lines and
+nothing translates between a Java object graph and what Rego can see.
+
+```rego
+default allow := false
+
+allow if input.toolName in {"disk_usage", "containers"}
+
+allow if {
+    input.toolName == "prune_images"
+    input.agentType == "watchman"
+    not startswith(input.arguments.target, "prod-")
+}
+```
+
+A gate written in Java ships when the application ships. A gate written in
+Rego is data: reviewed by whoever owns the risk, versioned on its own, and
+changed without a release.
+
+Two rules the adapter has to get right, and both are about failure:
+
+- **The reply token is not sent.** It is a capability — whoever holds it can
+  settle the call — and a policy engine logs its input and is often somebody
+  else's service. Build the document field by field rather than serializing
+  the record.
+- **A policy that cannot be reached denies.** An engine that is down or
+  misconfigured must not become an open gate. The failure of a control is not
+  permission.
+
+`nessy-examples/policy` is the whole thing against the real OPA binary,
+including a test whose only job is to keep the token out of the document.
 
 ## The Spring Boot desk
 

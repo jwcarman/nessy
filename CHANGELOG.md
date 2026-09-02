@@ -57,9 +57,31 @@ in its current vocabulary — not the sequence of designs that produced it.
 - **Tool execution is at-least-once**, stated as a contract rather than
   hidden. The engine's mitigation is a stable key a tool can use to make
   itself idempotent.
+- **An identifier is a type, checked where it is written.** `AgentType`,
+  `AgentId`, `TurnId` and `CallId` are records rather than strings, because
+  they travel in pairs and adjacent strings can be transposed in silence. One
+  shared rule: at most 256 characters, and ASCII letters, digits and `-_.:@+=`.
+  Those are primary-key columns and actor addresses — an over-long id fails in
+  a PostgreSQL index, data-dependently, because index entries are compressed;
+  a `|` is rejected by Pekko inside a persistence id. Each serializes as its
+  own bare string, so a policy engine reads `input.callId` and stored state is
+  unchanged. A provider's call id is checked in the adapter that read it off
+  the wire.
 - **`ReplyToken`** is how the outside world answers a parked call: sealed,
   authenticated, carrying agent type, agent id, turn and call. Keys rotate,
   so a token already in somebody's inbox survives one.
+
+### Deciding
+
+- **A policy engine can be the gate.** `ApprovalRequest` is flat and
+  JSON-shaped so an approver can hand the decision to OPA or Cedar, which read
+  `input.toolName` and `input.arguments.target` directly. Rules then live
+  outside the application: reviewed by whoever owns the risk, versioned on
+  their own, changed without a release. `nessy-examples/policy` is the whole
+  adapter against the real OPA binary. Two rules it demonstrates — the reply
+  token is never sent to a policy engine, because it is a capability; and an
+  engine that cannot be reached denies, because the failure of a control is
+  not permission.
 
 ### Storage
 

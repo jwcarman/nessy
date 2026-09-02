@@ -192,14 +192,14 @@ is never the only way to get one — every piece above is still settable.
 An approver answers a question about one call. It can answer now:
 
 ```java
-Approver always = (request, context) -> Awaited.ready(ApprovalResult.approved());
+Approver always = request -> Awaited.ready(ApprovalResult.approved());
 ```
 
 or later:
 
 ```java
-Approver desk = (request, context) -> {
-    pending.save(request, context.replyToken());
+Approver desk = request -> {
+    pending.save(request, request.replyToken());
     return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
 };
 ```

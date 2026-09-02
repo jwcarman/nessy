@@ -153,8 +153,8 @@ projection: `PendingApprovalsListener` records what parked, and
 ```java
 @Bean
 Approver desk(PendingApprovalsListener listener, Clock clock) {
-    return (request, context) -> {
-        listener.record(request, context.replyToken());
+    return request -> {
+        listener.expecting(request.callId(), request.replyToken());
         return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
     };
 }

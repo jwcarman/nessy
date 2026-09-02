@@ -10,7 +10,7 @@ Each agent is one sharded, durable actor. It works one turn at a time, and
 what it persists is small:
 
 ```java
-record AgentState(String turnId, Phase phase, String observation, Usage usage) {}
+record AgentState(TurnId turnId, Phase phase, String observation, Usage usage) {}
 ```
 
 `Phase` is `Idle`, `CallingModel`, or `WorkingTools` — and `WorkingTools`
