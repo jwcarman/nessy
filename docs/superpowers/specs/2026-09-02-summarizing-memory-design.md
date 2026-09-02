@@ -1,6 +1,8 @@
 # Summarizing memory
 
-**Status:** designed 2026-09-02, not built. Adds the first memory that COMPRESSES
+**Status:** BUILT 2026-09-02 as `nessy-memory-summarizing`, with two corrections James caught
+during implementation — see §3.1 and §4.1. Read those before the rest; the original reasoning in
+both was wrong. Adds the first memory that COMPRESSES
 rather than drops.
 
 ## 1. What is wrong
@@ -63,20 +65,29 @@ recall(agentId)  =  the summary, if any        (AmbientMessage, from nessy_summa
                  +  the messages it does not cover
 ```
 
-### 3.1 Coverage is a count, not a sequence number
+### 3.1 Coverage is a SEQUENCE — the count was wrong
 
-The summary row records **how many messages it covers**, not a transcript sequence
-number.
+This section originally argued for a count, so that the module could decorate any
+`Memory`. **That does not work, and James caught it.** Two ways:
 
-That is deliberate. A seq belongs to `TranscriptMemory`'s columns, and reaching into
-them would weld this to one implementation. A count is expressible against the only
-thing every `Memory` offers — the list `recall` returns — so this decorates a
-notebook-backed memory, a pipeline, or something an application wrote, without
-knowing anything about how they store.
+- `TranscriptMemory.recent(…)` returns a *window* — the newest messages that fit a
+  character budget. A count indexes into a window whose start position is unknown and
+  MOVES, so the summary would silently cover the wrong messages.
+- Even over `eternal`, applying a count means loading the whole transcript and
+  discarding the covered prefix. That is exactly the cost summarizing exists to
+  avoid, paid on every recall.
 
-The cost: a memory that reorders or removes history behind this module's back would
-misalign the count. That is a contract this module states rather than defends, and
-every memory in the repo appends.
+So coverage is `covers_through`, a transcript sequence, and this depends on
+`TranscriptMemory` rather than any `Memory` — because it needs to read from a
+POSITION, which `Memory.recall` cannot express:
+
+```java
+transcript.recallAfter(agentId, coversThrough)   // SELECT … WHERE seq > ?
+```
+
+The covered messages are never read at all. The generality the count was chosen for
+was not real generality; it was a version that quietly did the wrong thing over half
+the memories in this repo.
 
 ### 3.2 The table
 
@@ -179,16 +190,29 @@ The model is given NO tools, deliberately. A summarizer that could call somethin
 is a summarizer that can act, and nothing it reads should be able to make it do
 anything — the same rule the judging agent lives under, for the same reason.
 
-### 4.1 It runs in the background
+### 4.1 A write hands the work to a thread — there is no sweeper
 
-**Not on the turn's thread at all.** `remember` notices that history has grown and
-records that fact; a sweeper does the work later, the way `ReminderSweep` already
-handles deadlines nobody is waiting on.
+The first draft here was a periodic sweep, and a cached `latest_seq` column so the
+sweep could find work without scanning. **James rejected both, and was right about
+each.**
+
+`latest_seq` duplicated something already indexed: `nessy_transcript` is keyed
+`(agent_type, agent_id, seq)`, so `max(seq)` per agent is an index lookup. Caching it
+cost an UPDATE on the write path for **every remembered message** — paying on the hot
+path to save on the cold one. It also forced a nullable `summary` column, because a
+row had to exist from the first message just to hold the counter.
+
+And the sweeper itself was more machinery than the job needs:
 
 ```
-remember()  ->  one small UPDATE: uncovered = uncovered + 1
-SummarySweep ->  finds rows where uncovered - covers > threshold, summarizes, writes back
+remember()  ->  transcript.remember(…), then MAYBE hand off to an Executor
 ```
+
+Nothing scans. A write notices the agent has outrun its summary and submits the work;
+the model call happens on somebody else's thread. Two cheap guards keep that from
+being expensive: the check only happens every `keepVerbatim` writes, so most writes
+cost one in-memory increment and no query at all, and an in-flight set means a burst
+past the threshold fires once rather than once per message.
 
 Doing it inline at the tail of `remember` was the first draft, and it is worse in
 three ways. It puts a vendor call on the end of a turn, so the turn that happens to
@@ -207,16 +231,24 @@ want.
 The sweep needs no new idiom. `ReminderSweep` is the model: a clock as a parameter,
 a bounded batch, and its own test that fires it without waiting for real time.
 
-### 4.2 Two sweeps, one summary
+### 4.2 Concurrency is a cost problem, not a correctness one
 
-Two sweepers can run — a second process, or an overlapping tick — and both can find
-the same row over threshold. Unguarded that is two vendor calls producing two
-summaries, one silently overwriting the other.
+Two threads — or two processes — can both decide an agent is behind. Both call a
+model. Both write. The write is what makes that safe:
 
-The fix is the discipline `BacklogStore.take` already uses: claim the row `FOR
-UPDATE` before summarizing, so the second sweep finds it taken and moves on. Cheaper
-than the alternative, and the alternative is paying a vendor twice for the same
-paragraph.
+```sql
+UPDATE nessy_summary SET covers_through = ?, summary = ?
+ WHERE agent_type = ? AND agent_id = ? AND covers_through < ?   -- monotonic
+```
+
+Whichever covers less loses. A summary never goes backwards, never re-reads history it
+had compressed, and the winner always covers exactly what it claims — no gap, no
+double-count. **What a race costs is a duplicate model call, not a wrong answer.**
+
+That is why there is no lock. A distributed lock would buy the occasional duplicate
+call across processes and bring stale locks, timeouts, and a new way for summarizing
+to fail — to protect a few cents, when the data is already protected. The in-flight
+set handles the common single-process case for nothing.
 
 ### 4.3 When the model refuses
 

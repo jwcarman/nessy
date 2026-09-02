@@ -71,6 +71,12 @@ public final class TranscriptMemory implements Memory {
   private static final String NEXT_SEQ =
       "SELECT coalesce(max(seq), 0) + 1 FROM nessy_transcript "
           + "WHERE agent_type = ? AND agent_id = ?";
+  private static final String SELECT_AFTER =
+      "SELECT payload FROM nessy_transcript "
+          + "WHERE agent_type = ? AND agent_id = ? AND seq > ? ORDER BY seq";
+  private static final String LAST_SEQ =
+      "SELECT coalesce(max(seq), 0) FROM nessy_transcript "
+          + "WHERE agent_type = ? AND agent_id = ?";
   private static final String DELETE_ALL =
       "DELETE FROM nessy_transcript WHERE agent_type = ? AND agent_id = ?";
   private static final String INSERT =
@@ -122,6 +128,44 @@ public final class TranscriptMemory implements Memory {
               .toList());
     }
     return Context.of(newestWithinBudget(agentId));
+  }
+
+  /**
+   * Everything said AFTER {@code seq}, oldest first.
+   *
+   * <p>Positional, and that is the whole point: a caller holding a compressed version of the
+   * earlier history needs the rest WITHOUT paying to read what it already replaced. {@code recall}
+   * cannot express that — it either returns everything or a newest-first window whose start moves —
+   * so the covered prefix would have to be loaded and discarded, which is exactly the cost
+   * summarizing exists to avoid.
+   *
+   * <p>Unbudgeted, deliberately: the caller decides what to do about size, because it is the one
+   * holding the summary that makes the rest small.
+   *
+   * @param seq the sequence number already accounted for; 0 means everything
+   */
+  public Context recallAfter(AgentId agentId, long seq) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    return Context.of(
+        jdbc
+            .sql(SELECT_AFTER)
+            .params(agentType, agentId.value(), seq)
+            .query((row, number) -> decode(row.getString("payload")))
+            .list()
+            .stream()
+            .map(ContextMessage.class::cast)
+            .toList());
+  }
+
+  /**
+   * The sequence number of the newest thing this agent said, or 0 if it has said nothing.
+   *
+   * <p>What a caller compares against its own coverage to know how far behind it is.
+   */
+  public long lastSeq(AgentId agentId) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Long last = jdbc.sql(LAST_SEQ).params(agentType, agentId.value()).query(Long.class).single();
+    return last == null ? 0L : last;
   }
 
   @Override
