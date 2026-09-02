@@ -209,7 +209,7 @@ public final class ReplyTokens {
     for (SecretKey candidate : keys) {
       try {
         return crypt(candidate, Cipher.DECRYPT_MODE, nonce, sealed);
-      } catch (IllegalArgumentException tryTheNextOne) {
+      } catch (IllegalArgumentException _) {
         // Minted under an older key, or not ours at all. The loop decides which.
       }
     }

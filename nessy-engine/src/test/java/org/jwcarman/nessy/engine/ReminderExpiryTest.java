@@ -37,7 +37,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallId;
@@ -190,7 +189,7 @@ class ReminderExpiryTest {
   void a_parked_call_expires_without_anything_holding_a_timer() {
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
 
-    try (AgentSubscription _ = harness.subscribe(HOUSE, heard::add)) {
+    try (var _ = harness.subscribe(HOUSE, heard::add)) {
       harness.observe(HOUSE, new HouseEvent("kitchen", "door opened"));
 
       // The deadline is a ROW, and it names the term the approver asked for.

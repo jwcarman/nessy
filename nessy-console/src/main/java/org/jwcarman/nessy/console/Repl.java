@@ -186,7 +186,7 @@ public final class Repl {
       get.terminate();
       try {
         get.getWhenTerminated().toCompletableFuture().get(SHUTDOWN_TIMEOUT.toSeconds(), SECONDS);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       } catch (ExecutionException | TimeoutException e) {
         // Shutting down is the last thing this process does. A system that will not stop is worth

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -95,7 +96,7 @@ class WatchmanRiskTest {
         .approve(request);
 
     assertThat(request.fact(org.jwcarman.nessy.api.tool.risk.Risk.FACT))
-        .map(node -> node.asText())
+        .map(JsonNode::asText)
         .contains("MODERATE");
   }
 

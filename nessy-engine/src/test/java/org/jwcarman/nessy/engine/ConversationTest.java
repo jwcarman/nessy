@@ -34,7 +34,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallId;
@@ -111,7 +110,7 @@ class ConversationTest {
               public ModelStream stream(ModelRequest request) {
                 try {
                   Thread.sleep(MODEL_LATENCY_MILLIS);
-                } catch (InterruptedException interrupted) {
+                } catch (InterruptedException _) {
                   Thread.currentThread().interrupt();
                 }
                 // A tool on the way in, an answer on the way out — the two-model-call turn the CLI
@@ -205,7 +204,7 @@ class ConversationTest {
     AgentId talkative = AgentId.of("house-conversation");
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
 
-    try (AgentSubscription _ = harness.subscribe(talkative, heard::add)) {
+    try (var _ = harness.subscribe(talkative, heard::add)) {
       for (int round = 1; round <= ROUNDS; round++) {
         int expected = round;
         harness.observe(talkative, new HouseEvent("kitchen", "event " + round));

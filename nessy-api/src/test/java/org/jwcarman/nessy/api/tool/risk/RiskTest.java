@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool.risk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -142,7 +143,7 @@ class RiskTest {
 
       gate(RiskLevel.HIGH, Approver.always()).approve(request);
 
-      assertThat(request.fact(Risk.FACT)).map(node -> node.asText()).contains("HIGH");
+      assertThat(request.fact(Risk.FACT)).map(JsonNode::asText).contains("HIGH");
     }
   }
 

@@ -81,8 +81,7 @@ public final class Traces {
    */
   public Map<String, String> capture(String destination, String partition, String what) {
     Map<String, String> headers = new HashMap<>();
-    SenderContext<Map<String, String>> sending =
-        new SenderContext<>((carrier, key, value) -> carrier.put(key, value), Kind.PRODUCER);
+    SenderContext<Map<String, String>> sending = new SenderContext<>(Map::put, Kind.PRODUCER);
     sending.setCarrier(headers);
     // Destination is WHO it goes to, per messaging semconv; the message type is its own key.
     // "send Observe" said what was sent and never to whom, which in a system of four actor kinds

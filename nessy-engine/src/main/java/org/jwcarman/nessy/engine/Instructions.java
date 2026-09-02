@@ -378,33 +378,33 @@ final class Instructions {
     deps.bindings()
         .binding(call.name())
         .ifPresent(
-            binding -> {
-              run(
-                  () ->
-                      deps.traces()
-                          .inSpan(
-                              "tool " + call.name(),
-                              carried,
-                              () -> deps.bindings().run(binding, requestFor(agentId, state, call))),
-                  answer ->
-                      switch (answer) {
-                        case Awaited.Ready<ToolResult>(var result) -> {
-                          hold(agentId, state, call.id(), result);
-                          yield new NessyMessage.ToolCompleted(call.id(), carried);
-                        }
-                        case Awaited.Deferred<ToolResult>(var expiresAt) ->
-                            new NessyMessage.ToolParked(call.id(), expiresAt, carried);
-                      },
-                  failure -> {
-                    hold(
-                        agentId,
-                        state,
-                        call.id(),
-                        ToolResult.error(failure + "; it may have partially completed"));
-                    return new NessyMessage.ToolCompleted(call.id(), carried);
-                  },
-                  agentId);
-            });
+            binding ->
+                run(
+                    () ->
+                        deps.traces()
+                            .inSpan(
+                                "tool " + call.name(),
+                                carried,
+                                () ->
+                                    deps.bindings().run(binding, requestFor(agentId, state, call))),
+                    answer ->
+                        switch (answer) {
+                          case Awaited.Ready<ToolResult>(var result) -> {
+                            hold(agentId, state, call.id(), result);
+                            yield new NessyMessage.ToolCompleted(call.id(), carried);
+                          }
+                          case Awaited.Deferred<ToolResult>(var expiresAt) ->
+                              new NessyMessage.ToolParked(call.id(), expiresAt, carried);
+                        },
+                    failure -> {
+                      hold(
+                          agentId,
+                          state,
+                          call.id(),
+                          ToolResult.error(failure + "; it may have partially completed"));
+                      return new NessyMessage.ToolCompleted(call.id(), carried);
+                    },
+                    agentId));
   }
 
   /** What a denied call answers with, or empty when it was approved and will answer for itself. */
@@ -515,7 +515,7 @@ final class Instructions {
 
   private void narrate(AgentId agentId, AgentState state, Instruction.Narrate narrate) {
     switch (narrate) {
-      case Instruction.Narrate.TurnStarted(var _) ->
+      case Instruction.Narrate.TurnStarted(_) ->
           narrator(agentId).narrate(new AgentEvent.TurnStarted(Identifiers.next()));
       case Instruction.Narrate.TurnEnded(var result, var usage) ->
           narrator(agentId).narrate(new AgentEvent.TurnEnded(Identifiers.next(), result, usage));

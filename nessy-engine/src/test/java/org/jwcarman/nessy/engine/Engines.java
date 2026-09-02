@@ -184,7 +184,7 @@ final class Engines {
             // Blocks its caller for good, which is the point: the turn never ends.
             try {
               Thread.sleep(java.time.Duration.ofMinutes(10));
-            } catch (InterruptedException interrupted) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
             }
             return java.util.Collections.emptyIterator();
