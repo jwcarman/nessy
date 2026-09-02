@@ -48,8 +48,6 @@ import org.jwcarman.nessy.api.message.ContextMessage;
 import org.jwcarman.nessy.api.message.ExchangeMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Assembles a wire-neutral {@link ModelRequest} into the openai-java SDK's {@link
@@ -64,8 +62,6 @@ import org.slf4j.LoggerFactory;
  * on this wire to round-trip them through.
  */
 public final class OpenAiRequests {
-
-  private static final Logger LOG = LoggerFactory.getLogger(OpenAiRequests.class);
 
   private static final String ERROR_PREFIX = "ERROR: ";
 
