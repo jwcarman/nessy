@@ -52,6 +52,33 @@ public class WatchmanProperties {
   /** The model's own output budget for one turn. */
   private int maxTokens = 4096;
 
+  /**
+   * How many messages may accumulate before older ones are compressed into a summary.
+   *
+   * <p>The floor for a long-lived agent, and the knob worth dropping to something small when you
+   * want to watch compression happen rather than wait for it.
+   */
+  private int summarizeAfter = 60;
+
+  /** How many of the newest messages stay verbatim, below whatever the summary covers. */
+  private int keepVerbatim = 20;
+
+  public int getSummarizeAfter() {
+    return summarizeAfter;
+  }
+
+  public void setSummarizeAfter(int summarizeAfter) {
+    this.summarizeAfter = summarizeAfter;
+  }
+
+  public int getKeepVerbatim() {
+    return keepVerbatim;
+  }
+
+  public void setKeepVerbatim(int keepVerbatim) {
+    this.keepVerbatim = keepVerbatim;
+  }
+
   public long getContextBudgetTokens() {
     return contextBudgetTokens;
   }

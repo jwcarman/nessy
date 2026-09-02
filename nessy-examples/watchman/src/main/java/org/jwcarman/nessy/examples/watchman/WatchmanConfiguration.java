@@ -133,8 +133,8 @@ public class WatchmanConfiguration {
                               .model(models.model(ModelId.of(properties.getModelId())))
                               .executor(summarizing)
                               .systemPrompt(WatchmanPrompt.SUMMARIZE)
-                              .summarizeAfter(60)
-                              .keepVerbatim(20)
+                              .summarizeAfter(properties.getSummarizeAfter())
+                              .keepVerbatim(properties.getKeepVerbatim())
                               .clock(clock)));
           tools.forEach(
               tool -> {
