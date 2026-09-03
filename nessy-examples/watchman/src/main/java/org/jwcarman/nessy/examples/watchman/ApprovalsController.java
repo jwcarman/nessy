@@ -242,6 +242,18 @@ public class ApprovalsController {
         .toCompletableFuture()
         .thenApply(
             ack -> {
+              // The agent gets the last word on whether an answer landed, and it can refuse: a
+              // call whose term expired seconds ago has already been denied on this person's
+              // behalf. Recording regardless is how the board came to show decisions that never
+              // reached the agent.
+              if (!ack.accepted()) {
+                LOG.warn(
+                    "[watchman] {} answered {}, but the agent had already moved on: {}",
+                    name(who),
+                    callId,
+                    ack.detail());
+                return "redirect:/";
+              }
               recordLocally(agentType, agentId, callId, result);
               return "redirect:/";
             });

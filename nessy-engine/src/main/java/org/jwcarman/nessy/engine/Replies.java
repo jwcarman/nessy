@@ -58,11 +58,18 @@ public final class Replies {
   private final Duration patience;
   private final ReplyTokens tokens;
   private final Map<AgentType, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
+  private final Reminders reminders;
 
   private final Traces traces;
 
   Replies(
-      ActorSystem<?> system, Duration patience, ReplyTokens tokens, Traces traces, Claims claims) {
+      ActorSystem<?> system,
+      Duration patience,
+      ReplyTokens tokens,
+      Traces traces,
+      Claims claims,
+      Reminders reminders) {
+    this.reminders = reminders;
     this.claims = claims;
     this.system = system;
     this.patience = patience;
@@ -79,6 +86,9 @@ public final class Replies {
   public CompletionStage<NessyMessage.Ack> answer(ReplyToken token, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
+    if (!stillOpen(where)) {
+      return java.util.concurrent.CompletableFuture.completedFuture(SETTLED);
+    }
     // Claimed BEFORE the agent hears about it, exactly as an in-process tool's result is. A vendor
     // answering on day three of a three-day term goes through the same door as one answering in two
     // milliseconds, which is the whole reason the agent has one message for both.
@@ -100,6 +110,9 @@ public final class Replies {
   public CompletionStage<NessyMessage.Ack> approve(ReplyToken token, ApprovalResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
+    if (!stillOpen(where)) {
+      return java.util.concurrent.CompletableFuture.completedFuture(SETTLED);
+    }
     // A denial arriving from a desk is claimed here for the same reason an immediate one is: it is
     // the call's RESULT, and the agent is only ever told an id.
     Instructions.denialResult(result)
@@ -138,6 +151,30 @@ public final class Replies {
     ClusterSharding.get(system).entityRefFor(key, agentId.value()).tell(message);
     return true;
   }
+
+  /**
+   * Whether that call is still open, WITHOUT waking the agent to ask.
+   *
+   * <p>A reminder exists for exactly the window in which a call can be answered from outside: it is
+   * armed in one place (a parked call) and cancelled in one place (that call settling), and the
+   * sweep re-arms rather than deletes, so it survives an expiry nobody has settled yet. Present
+   * means open; absent means done.
+   *
+   * <p><b>Why this is worth a query.</b> Delivering to a sharded entity CREATES it. Without this,
+   * an answer clicked minutes late — for a call the deadline already denied, or an agent since
+   * forgotten — brings that agent back into memory purely so it can refuse the message. A row
+   * lookup refuses it without resurrecting anything.
+   *
+   * <p>Racy in one direction only, and deliberately so. A stale "open" costs a delivery the agent
+   * then rejects, which is harmless. A wrong "done" would swallow a real answer — so absence has to
+   * be conclusive, and the agent's own Ack remains the authority for everything this lets through.
+   */
+  private boolean stillOpen(ReplyTokens.Coordinates where) {
+    return reminders.find(where.agentType(), where.agentId(), where.callId()).isPresent();
+  }
+
+  private static final NessyMessage.Ack SETTLED =
+      new NessyMessage.Ack(false, "that call has already ended");
 
   private CompletionStage<NessyMessage.Ack> ask(
       ReplyTokens.Coordinates where,

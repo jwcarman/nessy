@@ -115,7 +115,13 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.dataSource = config.dataSource().orElseGet(PekkoHarnessFactory::ownDatabase);
     this.claims = new Claims(this.dataSource);
     this.replies =
-        new Replies(system, java.time.Duration.ofSeconds(10), tokens, this.traces, this.claims);
+        new Replies(
+            system,
+            java.time.Duration.ofSeconds(10),
+            tokens,
+            this.traces,
+            this.claims,
+            new Reminders(this.dataSource));
     startSweepingReminders();
   }
 

@@ -26,6 +26,7 @@ import org.apache.pekko.persistence.typed.PersistenceId;
 import org.apache.pekko.persistence.typed.state.javadsl.CommandHandler;
 import org.apache.pekko.persistence.typed.state.javadsl.DurableStateBehavior;
 import org.apache.pekko.persistence.typed.state.javadsl.Effect;
+import org.apache.pekko.persistence.typed.state.javadsl.EffectBuilder;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallId;
@@ -135,20 +136,26 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     if (message instanceof NessyMessage.Stop) {
       return Effect().none().thenStop();
     }
+    reportIfResurrected(state, message);
     acknowledge(state, message);
     Decision decision = AgentLogic.decide(state, inputOf(state, message));
     Map<String, String> carried = message.headers();
-    return Effect()
-        .persist(decision.next())
-        .thenRun(
-            next -> {
-              // Handed off as ONE task, in order, on the blocking executor. Pekko runs this on the
-              // actor's own thread, which is also carrying sharding and cluster gossip, so a claim
-              // read against a remote database here would slow the cluster down and look like
-              // anything but storage.
-              instructions.performAll(agentId, next, decision.then(), carried);
-              sleepIfAsked(next, decision);
-            });
+    // Nothing changed, so there is nothing to write. Five of the logic's answers are "I have
+    // already had this news" -- a nudge arriving mid-turn, a second WorkTaken, an answer for a
+    // call that already ended -- and each of them used to cost a durable write and a revision
+    // bump to store a document identical to the one already there. A busy watchman is nudged on
+    // every observation it is offered, so this is the common path, not the rare one.
+    EffectBuilder<AgentState> effect =
+        decision.next().equals(state) ? Effect().none() : Effect().persist(decision.next());
+    return effect.thenRun(
+        next -> {
+          // Handed off as ONE task, in order, on the blocking executor. Pekko runs this on the
+          // actor's own thread, which is also carrying sharding and cluster gossip, so a claim
+          // read against a remote database here would slow the cluster down and look like
+          // anything but storage.
+          instructions.performAll(agentId, next, decision.then(), carried);
+          sleepIfAsked(next, decision);
+        });
   }
 
   /**
@@ -180,9 +187,48 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     }
   }
 
+  /**
+   * Says so when an answer arrives for an agent that has no record of asking anything.
+   *
+   * <p>Delivering to a sharded entity CREATES it, so an answer for a call that already ended — the
+   * deadline denied it, or the agent was forgotten outright — brings a brand new incarnation into
+   * existence purely to refuse the message. It recovers empty, takes nothing, and passivates, but
+   * activation persists on its way past, so a state row reappears under an id that was deleted.
+   *
+   * <p>A null turn id is the tell: this agent has never taken work in its life, and an answer can
+   * only exist for a call some agent made. The two together mean the answer has outlived whoever
+   * asked. {@code Replies} looks for the reminder first and refuses most of these without ever
+   * sending, but that check is a row read racing a delete — it narrows the window rather than
+   * closing it, which is why this exists to notice the ones that get through.
+   */
+  private void reportIfResurrected(AgentState state, NessyMessage message) {
+    if (state.turnId() != null) {
+      return;
+    }
+    CallId answered =
+        switch (message) {
+          case NessyMessage.ToolAnswered answer -> answer.callId();
+          case NessyMessage.ApprovalAnswered answer -> answer.callId();
+          default -> null;
+        };
+    if (answered != null) {
+      context
+          .getLog()
+          .warn(
+              "[{}] an answer for call {} woke an agent with no record of asking: it was forgotten"
+                  + " or already settled, and delivering resurrected it",
+              agentId.value(),
+              answered);
+    }
+  }
+
   private static NessyMessage.Ack waitingFor(AgentState state, CallId callId) {
     if (!(state.phase() instanceof org.jwcarman.nessy.engine.agent.Phase.WorkingTools(var calls))
-        || !calls.containsKey(callId)) {
+        || !calls.containsKey(callId)
+        // Present but finished: the deadline denied it a moment ago, or this is a second answer.
+        // Saying "accepted" here would promise a caller that something happened when AgentLogic is
+        // about to ignore it -- the two have to agree on what "still waiting" means.
+        || calls.get(callId) instanceof org.jwcarman.nessy.engine.agent.CallState.Completed) {
       return new NessyMessage.Ack(false, "no call \"" + callId + "\" is waiting for an answer");
     }
     return new NessyMessage.Ack(true, "accepted");

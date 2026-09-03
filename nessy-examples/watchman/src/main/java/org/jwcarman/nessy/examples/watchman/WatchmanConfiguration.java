@@ -58,9 +58,6 @@ public class WatchmanConfiguration {
   /** One box, one watchman. */
   public static final AgentId AGENT = AgentId.of(Watchman.AGENT_ID);
 
-  /** How long a proposed command may sit waiting for a person before it is abandoned. */
-  private static final Duration APPROVAL_TERM = Duration.ofDays(3);
-
   @Bean
   public CommandRunner commandRunner() {
     return new ProcessRunner();
@@ -167,10 +164,16 @@ public class WatchmanConfiguration {
    * say how long the question stands. It never decides — deciding is what the page is for.
    */
   @Bean
-  public Approver humanApprover(PendingApprovalsListener listener, Clock clock) {
+  public Approver humanApprover(
+      PendingApprovalsListener listener, Clock clock, WatchmanProperties properties) {
+    // From the property, not a constant beside it. `watchman.approval-term` was documented in
+    // application.yml, had a field and a getter on WatchmanProperties, and was read by NOTHING --
+    // the term actually used was a hardcoded three days a few lines up. Setting it did nothing and
+    // said nothing, which is the same failure this example had with `watchman.cron`.
+    Duration term = properties.getApprovalTerm();
     return (request) -> {
       listener.expecting(request.callId(), request.replyToken());
-      return Awaited.deferred(clock.instant().plus(APPROVAL_TERM));
+      return Awaited.deferred(clock.instant().plus(term));
     };
   }
 
