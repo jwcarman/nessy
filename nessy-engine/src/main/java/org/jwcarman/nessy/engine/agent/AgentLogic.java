@@ -182,9 +182,9 @@ public final class AgentLogic {
    * <p>Same shape as a duplicate {@code WorkTaken}: news this agent has already had.
    */
   private static boolean awaiting(AgentState state, CallId callId) {
-    return state.phase() instanceof Phase.WorkingTools tools
-        && tools.calls().containsKey(callId)
-        && !(tools.calls().get(callId) instanceof CallState.Completed);
+    return state.phase() instanceof Phase.WorkingTools(var calls)
+        && calls.containsKey(callId)
+        && !(calls.get(callId) instanceof CallState.Completed);
   }
 
   /**

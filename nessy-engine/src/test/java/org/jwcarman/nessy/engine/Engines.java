@@ -197,9 +197,11 @@ final class Engines {
         return new ModelStream() {
           @Override
           public java.util.Iterator<org.jwcarman.nessy.spi.model.ModelEvent> iterator() {
-            // Blocks its caller for good, which is the point: the turn never ends.
+            // Blocks its caller for good, which is the point: the turn never ends. A latch
+            // nobody counts down says that exactly, where a ten-minute sleep only said it for
+            // ten minutes and left a reader wondering what was special about the number.
             try {
-              Thread.sleep(java.time.Duration.ofMinutes(10));
+              new java.util.concurrent.CountDownLatch(1).await();
             } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
             }

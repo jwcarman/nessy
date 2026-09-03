@@ -19,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import org.apache.pekko.actor.ExtendedActorSystem;
-import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.serialization.SerializerWithStringManifest;
 import org.jwcarman.nessy.engine.agent.AgentState;
 
@@ -50,11 +49,6 @@ public final class StateSerializer extends SerializerWithStringManifest {
   /** For reading state back outside an actor system — a page, a repair tool, a test. */
   public StateSerializer() {
     this(null);
-  }
-
-  /** Convenience for a typed system. */
-  public static StateSerializer on(ActorSystem<?> system) {
-    return new StateSerializer();
   }
 
   @Override
