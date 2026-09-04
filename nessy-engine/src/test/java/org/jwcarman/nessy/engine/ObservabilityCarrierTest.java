@@ -15,12 +15,16 @@
  */
 package org.jwcarman.nessy.engine;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,6 +34,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.model.ModelResult;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
@@ -47,6 +53,16 @@ import org.jwcarman.nessy.engine.agent.Input;
  * default, do. This test drives {@link EffectWorker} directly against a CAPTURING {@link
  * Dispatcher} instead, so the serialized carrier is a value someone actually asserted on rather
  * than a parameter nothing reads.
+ *
+ * <p><b>Two boundaries, not one.</b> The first two cases drive {@code AskApprover} for a call whose
+ * asking message was never claimed, which answers SYNCHRONOUSLY through {@code completed()} --
+ * proof that {@code tell()} and {@code observabilityOf} serialize correctly, but not proof that
+ * {@code carried} survives the actual asynchronous hop. {@code run()} -- used by {@code takeWork},
+ * {@code callModel}, {@code runTool}, and {@code askApprover}'s binding-present branch -- is where
+ * {@code CompletableFuture.supplyAsync(work, blocking).whenComplete(...)} crosses onto another
+ * thread, and it was measured (by a reviewer, not assumed) that swapping {@code run()}'s own {@code
+ * tell(..., carried)} for {@code tell(..., Map.of())} left every test in the tree green. The third
+ * case below closes exactly that gap, through {@code CallModel}.
  */
 @DisplayName("The trace carrier riding an effect's outcome out")
 class ObservabilityCarrierTest {
@@ -121,5 +137,55 @@ class ObservabilityCarrierTest {
 
     assertThat(seen).hasSize(1);
     assertThat(seen.getFirst().observability()).isNull();
+  }
+
+  /**
+   * The boundary the first two cases cannot reach: {@code CallModel} always goes through {@code
+   * run()}, so its dispatch is the answer to {@code CompletableFuture.supplyAsync(work,
+   * blocking).whenComplete(...)} rather than a call made straight out of {@code perform()}.
+   *
+   * <p><b>How this synchronizes.</b> {@code blocking} here is a REAL virtual-thread-per-task
+   * executor, not a synchronous stand-in, so the dispatch genuinely happens on another thread and
+   * this test cannot read {@code seen} the instant {@code perform()} returns -- {@code perform()}
+   * returns as soon as the work is SUBMITTED, before the model has even been asked. {@code
+   * await().untilAsserted} polls until the capturing dispatcher has actually been called, which is
+   * the only honest way to observe an asynchronous answer; reading {@code seen} immediately would
+   * either race (usually empty, flaky rather than reliably red) or -- if it happened to win the
+   * race by chance -- silently stop testing the asynchronous path at all.
+   */
+  @Test
+  @DisplayName("a carrier crossing the async hop in run() reaches the dispatcher intact")
+  void a_carrier_crossing_run_reaches_the_dispatcher() throws JsonProcessingException {
+    List<Captured> seen = new ArrayList<>();
+    Dispatcher capturing =
+        (agentId, input, completing, observability) ->
+            seen.add(new Captured(agentId, input, completing, observability));
+    AgentType type = AgentType.of("carrier-across-run");
+    Executor realBlocking = Executors.newVirtualThreadPerTaskExecutor();
+    Engines.Parts parts =
+        Engines.of(
+            testKit.system(),
+            type,
+            Engines.saying(
+                List.of(
+                    new ModelResult.Refused(
+                        "harassment", "will not help with that", Usage.unreported()))),
+            List.of(),
+            realBlocking,
+            capturing);
+    AgentId agentId = AgentId.of("house-carrier-across-run");
+    AgentState state = AgentState.idle().taking(TurnId.of("turn-across-run"), "obs-claim");
+    Map<String, String> carried = Map.of("traceparent", "00-1234ef-2-01");
+
+    parts.effectWorker().perform(agentId, state, new Effect.CallModel(), EffectId.next(), carried);
+
+    await()
+        .atMost(15, SECONDS)
+        .untilAsserted(
+            () -> {
+              assertThat(seen).hasSize(1);
+              assertThat(seen.getFirst().observability())
+                  .isEqualTo(EngineMapper.INSTANCE.writeValueAsString(carried));
+            });
   }
 }
