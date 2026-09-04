@@ -65,14 +65,19 @@ final class AgentStore {
 
   private final JdbcClient jdbc;
   private final Codec<AgentState> codec;
-  private final TransactionTemplate newTransaction;
+  private final TransactionTemplate savepointTransaction;
 
   AgentStore(DataSource dataSource) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.codec = JsonCodec.of(EngineMapper.INSTANCE, AgentState.class);
-    this.newTransaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-    this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
+    // Off by default -- without this, PROPAGATION_NESTED throws
+    // NestedTransactionNotSupportedException
+    // rather than silently degrading, but create() needs the savepoint it enables, not the throw.
+    transactionManager.setNestedTransactionAllowed(true);
+    this.savepointTransaction = new TransactionTemplate(transactionManager);
+    this.savepointTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_NESTED);
   }
 
   /**
@@ -152,13 +157,23 @@ final class AgentStore {
   }
 
   /**
-   * Inserts the idle row in a transaction of its own.
+   * Inserts the idle row behind a savepoint, not a second transaction.
    *
    * <p>PostgreSQL aborts the WHOLE transaction on any SQL error, and {@link JdbcClient} sets no
-   * savepoint -- so an insert that loses the duplicate-key race here would poison every statement
-   * the caller runs afterward in ITS transaction, on ITS connection, for the rest of it. {@code
-   * PROPAGATION_REQUIRES_NEW} keeps the blast radius of a lost race to a connection and a
-   * transaction this method opens and closes itself, leaving the caller's untouched.
+   * savepoint of its own -- so an insert that loses the duplicate-key race here would poison every
+   * statement the caller runs afterward in ITS transaction, on ITS connection, for the rest of it.
+   *
+   * <p><b>A savepoint, not {@code PROPAGATION_REQUIRES_NEW}.</b> A second transaction needs a
+   * SECOND connection, held open at the same time as the caller's first one. Under test that costs
+   * nothing -- {@code TestDatabase.fresh()} runs on an unpooled {@code SimpleDriverDataSource} that
+   * hands out a fresh connection to whoever asks. In production, behind Spring Boot's pooled and
+   * BOUNDED HikariCP, it is a deadlock: N concurrent first-touches of brand new agents each hold
+   * connection 1 and each block waiting on connection 2, and with a pool smaller than N every one
+   * of them waits out the connection-acquisition timeout. {@code PROPAGATION_NESTED} isolates the
+   * failed insert with a JDBC savepoint on the SAME connection the caller is already holding --
+   * {@code ROLLBACK TO SAVEPOINT} clears PostgreSQL's poisoned-transaction state without aborting
+   * the caller's transaction, and no second connection is ever asked for. Do not "simplify" this
+   * back to a second transaction; that is the deadlock, not a refactor of it.
    *
    * <p>Two shapes of "someone beat us to it" reach here depending on timing, and both mean the row
    * we wanted now exists: {@link DuplicateKeyException} when the other insert had already
@@ -167,7 +182,7 @@ final class AgentStore {
    */
   private void create(AgentType agentType, AgentId agentId) {
     try {
-      newTransaction.executeWithoutResult(
+      savepointTransaction.executeWithoutResult(
           status ->
               jdbc.sql(INSERT)
                   .param(agentType.name())
