@@ -86,3 +86,23 @@ CREATE TABLE IF NOT EXISTS nessy_poison (
   offered_at  TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (agent_id)
 );
+
+-- One agent's whole durable self: a phase, a turn id, and two short strings.
+--
+-- Keyed on (agent_type, agent_id) rather than agent_id alone. nessy_backlog and nessy_claim are
+-- keyed on the id by itself, so two agent types sharing a database share their backlogs; this
+-- table does not repeat that, because a state document is the one thing that must never be
+-- confused between two kinds of agent.
+--
+-- last_touched_at is not diagnostics. It is what lets a reaper find an agent that is mid-turn and
+-- has not moved in minutes -- a stall detector needing no heartbeat and no leader election.
+CREATE TABLE IF NOT EXISTS nessy_agent (
+  agent_type      TEXT                     NOT NULL,
+  agent_id        TEXT                     NOT NULL,
+  version         BIGINT                   NOT NULL,
+  state           TEXT                     NOT NULL,
+  last_touched_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (agent_type, agent_id)
+);
+
+CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_touched_at);
