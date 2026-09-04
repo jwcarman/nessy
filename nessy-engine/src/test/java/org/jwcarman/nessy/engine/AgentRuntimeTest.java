@@ -16,12 +16,17 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,6 +99,45 @@ class AgentRuntimeTest {
 
     assertThat(performed).isNotEmpty();
     assertThat(performed).allMatch(Effect.TakeWork.class::isInstance);
+  }
+
+  @Test
+  @DisplayName("drive hands the drain to the executor rather than running it inline")
+  void drive_returns_before_a_blocked_performer_finishes() {
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch done = new CountDownLatch(1);
+    List<Effect> performedAsync = new CopyOnWriteArrayList<>();
+    AgentRuntime asyncRuntime =
+        new AgentRuntime(
+            TYPE,
+            transition,
+            effects,
+            (agentId, state, effect, effectId) -> {
+              awaitQuietly(release, Duration.ofSeconds(5));
+              performedAsync.add(effect);
+              done.countDown();
+            },
+            Executors.newVirtualThreadPerTaskExecutor(),
+            Duration.ofMinutes(1));
+
+    // If drive() ran work() on the calling thread instead of handing it to the executor, this
+    // call would block on the still-held latch and this assertion would time out and fail --
+    // it cannot pass because the collection below happens to be empty; it can only pass because
+    // drive() actually returned control to this thread while the performer was still blocked.
+    assertTimeoutPreemptively(
+        Duration.ofSeconds(5),
+        () -> asyncRuntime.drive(AGENT, new Input.BacklogUpdated(), null, null));
+
+    // Proof the drain is genuinely elsewhere: the obligation is claimed and its performer has
+    // been entered on another thread, but that thread is still parked on the latch, so nothing
+    // has been recorded yet.
+    assertThat(performedAsync).isEmpty();
+
+    release.countDown();
+
+    assertThat(awaitQuietly(done, Duration.ofSeconds(5))).isTrue();
+    assertThat(performedAsync).isNotEmpty();
+    assertThat(performedAsync).allMatch(Effect.TakeWork.class::isInstance);
   }
 
   @Test
@@ -198,5 +242,15 @@ class AgentRuntimeTest {
     return new TransactionTemplate(new DataSourceTransactionManager(database))
         .execute(status -> store.lockAndLoad(TYPE, AGENT))
         .phase();
+  }
+
+  /** A bounded wait with no checked exception to smuggle out of a lambda. */
+  private static boolean awaitQuietly(CountDownLatch latch, Duration timeout) {
+    try {
+      return latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 }

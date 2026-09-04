@@ -82,6 +82,17 @@ final class AgentRuntime implements Dispatcher {
    * is logged rather than thrown: nothing downstream is waiting, so an exception would otherwise
    * stop the turn with no message and no line -- and the obligations are rows, so another node
    * finishes what this one dropped.
+   *
+   * <p><b>This method hands off to {@code threads} even though {@link #dispatch} already did.</b>
+   * The two hops protect different callers and neither is redundant. {@code dispatch}'s hop
+   * protects whoever is delivering an outcome from outside -- an HTTP handler must return after the
+   * fold, not after the model call its own effect may start. {@code drive}'s own hop protects
+   * whoever calls it DIRECTLY, which {@code dispatch} is not involved in: {@link #recover}, called
+   * by the effect reaper and the stall sweep on every pass. Without this second hop, a sweep would
+   * run whatever obligation it just re-armed inline, and a model call on one stalled agent would
+   * stall every sweep behind it in the same loop. A virtual thread costs on the order of a
+   * microsecond, so paying for a hop that is sometimes redundant is far cheaper than the loop it
+   * would otherwise be possible to serialize. Do not collapse this into one hop.
    */
   void drive(AgentId agentId, Input input, EffectId completing, String observability) {
     Transition.Applied applied;
