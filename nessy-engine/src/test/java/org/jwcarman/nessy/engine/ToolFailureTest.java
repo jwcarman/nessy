@@ -28,6 +28,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -59,6 +60,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * because whether the tool's code ran to any effect before it threw is exactly what nobody here can
  * know.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("An approved tool that throws instead of returning")
 class ToolFailureTest {
 

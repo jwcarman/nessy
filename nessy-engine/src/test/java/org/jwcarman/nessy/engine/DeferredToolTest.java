@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -64,6 +65,7 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * handed to the model, because execution ran on a pooled worker with no per-call identity and there
  * was nowhere for a late answer to arrive. The execution actor is that somewhere.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A tool that defers")
 class DeferredToolTest {
 

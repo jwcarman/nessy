@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import org.apache.pekko.actor.typed.ActorRef;
 import org.apache.pekko.actor.typed.Behavior;
 import org.apache.pekko.actor.typed.javadsl.ActorContext;
@@ -152,7 +153,32 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           // actor's own thread, which is also carrying sharding and cluster gossip, so a claim
           // read against a remote database here would slow the cluster down and look like
           // anything but storage.
-          effectWorker.performAll(agentId, next, decision.then(), carried);
+          //
+          // No row in nessy_effect backs any of these ids: the durable claim-and-run path is
+          // AgentRuntime's (Task 6), which this legacy actor never becomes. A freshly minted id
+          // per effect is discharged against a row that was never inserted -- EffectStore.complete
+          // is a DELETE, harmless against a key that never matched -- which is enough to keep this
+          // class, already marked for deletion in Task 11, compiling against the new seam.
+          CompletableFuture.runAsync(
+                  () ->
+                      decision
+                          .then()
+                          .forEach(
+                              effectToRun ->
+                                  effectWorker.perform(
+                                      agentId, next, effectToRun, EffectId.next(), carried)),
+                  effectWorker.blocking())
+              .exceptionally(
+                  failure -> {
+                    context
+                        .getLog()
+                        .error(
+                            "[{}] effects failed for turn {}",
+                            agentId.value(),
+                            next.turnId(),
+                            failure);
+                    return null;
+                  });
         });
   }
 
@@ -258,6 +284,40 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
               answered.callId(), nameOf(state, answered.callId()), answered.result());
       case NessyMessage.Inspect _ -> new Input.Recovered();
       case NessyMessage.Stop _ -> new Input.SleepNow();
+    };
+  }
+
+  /**
+   * The reverse of {@link #inputOf}: what a {@link Dispatcher} still routed to a sharded entity
+   * sends back in.
+   *
+   * <p>Provisional. {@link EffectWorker} answers through {@code Dispatcher} now rather than by
+   * telling this actor directly, so this exists only so {@link PekkoHarnessFactory} can still wire
+   * one up for the entities it registers -- a bridge, not a design, and it goes with the rest of
+   * this class in Task 11.
+   */
+  static NessyMessage messageOf(Input input, Map<String, String> headers) {
+    return switch (input) {
+      case Input.BacklogUpdated _ -> new NessyMessage.BacklogUpdated(headers);
+      case Input.WorkTaken(var turnId, var claim) ->
+          new NessyMessage.WorkTaken(turnId, claim, headers);
+      case Input.NoWork _ -> new NessyMessage.NoWork(headers);
+      case Input.Poisoned _ -> new NessyMessage.Poisoned(headers);
+      case Input.Recovered _ -> new NessyMessage.Recovered(headers);
+      case Input.ModelAnswered.Answered(var stopReason, var usage) ->
+          new NessyMessage.ModelAnswered(stopReason, usage, headers);
+      case Input.ModelAnswered.Asked(var calls, var usage) ->
+          new NessyMessage.ModelAsked(calls, usage, headers);
+      case Input.ModelAnswered.Refused(var category, var explanation, var usage) ->
+          new NessyMessage.ModelRefused(category, explanation, usage, headers);
+      case Input.ModelFailed(var reason) -> new NessyMessage.ModelFailed(reason, headers);
+      case Input.ApprovalGiven(var callId, var toolName, var result) ->
+          new NessyMessage.ApprovalGiven(callId, toolName, result, headers);
+      case Input.ToolParked(var callId, var expiresAt) ->
+          new NessyMessage.ToolParked(callId, expiresAt, headers);
+      case Input.ToolCompleted(var callId) -> new NessyMessage.ToolCompleted(callId, headers);
+      case Input.DeadlinePassed(var callId) -> new NessyMessage.DeadlinePassed(callId, headers);
+      case Input.SleepNow _ -> new NessyMessage.Stop(headers);
     };
   }
 

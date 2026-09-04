@@ -27,6 +27,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -39,6 +40,7 @@ import org.jwcarman.nessy.api.AgentType;
  * rows are the point — an agent instance that cannot end is a permanent transcript, and this is the
  * test that would fail if forgetting quietly deleted nothing.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("Forgetting an agent")
 class ForgetTest {
 

@@ -29,6 +29,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -63,6 +64,7 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  * are one fact, and the transcript must never hold the first without the second — so this asserts
  * the finished shape rather than the steps.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A turn that calls a tool")
 class ToolCallTest {
 

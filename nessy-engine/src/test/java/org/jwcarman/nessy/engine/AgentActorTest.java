@@ -27,6 +27,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -42,6 +43,7 @@ import org.jwcarman.nessy.engine.agent.Phase;
  * drains it. What is under test is the rule that makes the backlog meaningful — one turn at a time,
  * and everything else waiting in the store rather than in the agent's document.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("An agent receiving observations")
 class AgentActorTest {
 

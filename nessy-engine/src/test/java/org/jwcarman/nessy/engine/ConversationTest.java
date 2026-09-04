@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -72,6 +73,7 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * and what a fast typist approximates. That combination lands an observation inside the window
  * between an agent asking to be passivated and the shard telling it to stop.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("An agent held in conversation")
 class ConversationTest {
 

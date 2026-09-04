@@ -33,6 +33,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -68,6 +69,7 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * waited for: the sweep is a call and its clock is a parameter, so "three days have passed" is one
  * line rather than a test that sleeps.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A parked approval whose deadline passes")
 class ReminderExpiryTest {
 

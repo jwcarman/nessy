@@ -17,13 +17,9 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import java.util.List;
 import java.util.Map;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.actor.typed.javadsl.Behaviors;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
 import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
@@ -99,7 +95,7 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(agentId, state, new Effect.AskApprover(callId, "some_tool"), Map.of());
+          .perform(agentId, state, new Effect.AskApprover(callId, "some_tool"), EffectId.next());
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -116,7 +112,7 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(agentId, state, new Effect.RunTool(callId, "some_tool"), Map.of());
+          .perform(agentId, state, new Effect.RunTool(callId, "some_tool"), EffectId.next());
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -144,7 +140,7 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), Map.of());
+          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), EffectId.next());
 
       assertThat(parts.remembered().of(neverWorked))
           .as("nothing was ever claimed under a null key, so nothing was remembered")
@@ -153,38 +149,40 @@ class EffectWorkerEdgeCasesTest {
   }
 
   @Nested
-  @DisplayName("forgetting with no durable-state plugin configured")
-  class NoDurableStatePlugin {
+  @DisplayName("forgetting an agent")
+  class Forgetting {
 
-    private ActorSystem<Void> system;
+    private ActorTestKit testKit;
 
     @AfterEach
     void shutdown() {
-      if (system != null) {
-        system.terminate();
+      if (testKit != null) {
+        testKit.shutdownTestKit();
       }
     }
 
     /**
-     * {@code deleteState} reads the plugin name straight from config; a blank one means nothing was
-     * ever durable, so it returns without touching {@code DurableStateStoreRegistry} — which, on an
-     * {@link ActorSystem} that never joined a cluster, is not even reachable. This is the only way
-     * to prove that early return without standing up a whole second cluster just to configure it
-     * away.
+     * {@code forget} no longer reaches into Pekko's durable-state registry to delete a persisted
+     * state row -- that required the {@code ActorSystem} reference {@link EffectWorker} gave up
+     * when it started answering through {@link Dispatcher} instead of a cluster entity, and the row
+     * it used to delete survives until Task 11 removes the journal machinery that wrote it. What
+     * this proves is narrower than the old test's name claimed and no less real: the SQL-backed
+     * participants -- memory and the backlog -- are still wiped.
      */
     @Test
-    @DisplayName("the other participants are still forgotten")
-    void forgetting_still_wipes_memory_backlog_and_claims() {
-      Config config = ConfigFactory.parseString("pekko.persistence.state.plugin = \"\"");
-      system = ActorSystem.create(Behaviors.empty(), "no-durable-state", config);
+    @DisplayName("memory and the backlog are wiped")
+    void forgetting_wipes_memory_and_backlog() {
+      testKit = ClusterOfOne.start();
       AgentType type = AgentType.of("stateless");
-      Engines.Parts parts = Engines.of(system, type, Engines.stalled());
+      Engines.Parts parts = Engines.of(testKit.system(), type, Engines.stalled());
       AgentId agentId = AgentId.of("house-stateless");
 
       parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
       parts.remembered().add(agentId, answer());
 
-      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), Map.of());
+      parts
+          .effectWorker()
+          .perform(agentId, AgentState.idle(), new Effect.Forget(), EffectId.next());
 
       assertThat(parts.remembered().of(agentId)).as("memory").isEmpty();
       assertThat(backlogRowCount(parts, agentId)).as("backlog rows").isZero();

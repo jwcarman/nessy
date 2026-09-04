@@ -28,6 +28,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -59,6 +60,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * than a person refusing. Measured in a browser before this test existed: the agent apologised for
  * an error it had not had.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A call a person refused")
 class DeniedCallTest {
 

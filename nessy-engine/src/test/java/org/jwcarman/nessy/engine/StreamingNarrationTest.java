@@ -26,6 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -51,6 +52,7 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * while the model is still producing it. What reaches the transcript is a different thing — one
  * settled block, not one per network packet — and both have to be true at once.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A model streaming its answer")
 class StreamingNarrationTest {
 

@@ -18,10 +18,13 @@ package org.jwcarman.nessy.engine;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import javax.sql.DataSource;
 import org.apache.pekko.actor.typed.ActorSystem;
+import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
+import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -140,9 +143,14 @@ final class Engines {
             Clock.systemUTC());
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
+    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
+    Dispatcher dispatcher =
+        (agentId, input, completing, observability) ->
+            ClusterSharding.get(system)
+                .entityRefFor(agentKey, agentId.value())
+                .tell(AgentActor.messageOf(input, Map.of()));
     EffectWorker effectWorker =
         new EffectWorker(
-            system,
             new EffectWorker.Dependencies(
                 type,
                 recording(remembered),
@@ -160,7 +168,9 @@ final class Engines {
                 // actor — which is the very thing the blocking executor exists to prevent.
                 blocking,
                 Traces.noop(),
-                backlog));
+                backlog,
+                new EffectStore(dataSource),
+                dispatcher));
     return new Parts(dataSource, claims, backlog, effectWorker, remembered, narrated);
   }
 

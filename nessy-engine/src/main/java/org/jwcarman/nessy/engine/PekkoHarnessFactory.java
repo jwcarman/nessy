@@ -221,9 +221,12 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             config.backlogCoalescer(),
             clock);
 
+    // Named before EffectWorker is built: the Dispatcher below closes over it to route an
+    // outcome back to the very entity type this call is about to register.
+    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
+
     EffectWorker effectWorker =
         new EffectWorker(
-            system,
             new EffectWorker.Dependencies(
                 type,
                 memory,
@@ -238,11 +241,12 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                 tokens,
                 blocking,
                 traces,
-                backlog));
+                backlog,
+                new EffectStore(dataSource),
+                dispatcherFor(sharding, agentKey)));
 
     AgentActor.Dependencies deps = new AgentActor.Dependencies(type, effectWorker, traces);
 
-    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
     sharding.init(
         Entity.of(
                 agentKey,
@@ -257,6 +261,24 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   /** Where the outside world answers calls parked by any agent this factory serves. */
   public Replies replies() {
     return replies;
+  }
+
+  /**
+   * A {@link Dispatcher} that still routes through a sharded entity.
+   *
+   * <p>Provisional, like the actor system it addresses: Task 10 replaces this factory with one
+   * whose Dispatcher drives {@code AgentRuntime} directly, and Task 11 deletes this one along with
+   * every other Pekko type here. The trace carrier is not reconstructed on this path -- an empty
+   * header map is told instead -- because nothing that still exercises it survives past this
+   * migration; a durable carrier round-trip belongs to the Dispatcher Task 6 writes, not to a
+   * bridge scheduled for deletion.
+   */
+  private static Dispatcher dispatcherFor(
+      ClusterSharding sharding, EntityTypeKey<NessyMessage> agentKey) {
+    return (agentId, input, completing, observability) ->
+        sharding
+            .entityRefFor(agentKey, agentId.value())
+            .tell(AgentActor.messageOf(input, Map.of()));
   }
 
   /**

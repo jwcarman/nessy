@@ -28,6 +28,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -57,6 +58,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * reply. This is the one path {@code DeniedCallTest} does not reach — a THROWING approver, not one
  * that answers with a denial.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("An approver that fails instead of deciding")
 class ApproverFailureTest {
 

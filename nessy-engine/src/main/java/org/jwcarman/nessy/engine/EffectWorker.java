@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.engine;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +29,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
-import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
-import org.apache.pekko.persistence.state.DurableStateStoreRegistry;
-import org.apache.pekko.persistence.state.javadsl.DurableStateStore;
-import org.apache.pekko.persistence.state.javadsl.DurableStateUpdateStore;
-import org.apache.pekko.persistence.typed.PersistenceId;
+import java.util.function.Supplier;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
@@ -66,16 +62,16 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 /**
  * Everything an agent's decisions actually DO, and none of the deciding.
  *
- * <p><b>The rule this class exists to keep.</b> Work handed to the blocking executor has its answer
- * addressed to a LOGICAL address, never to {@code getSelf()}. The executor outlives actors; a
- * reference does not. An {@link org.apache.pekko.cluster.sharding.typed.javadsl.EntityRef} is
- * resolved by the shard at delivery, so if the agent was unloaded in the meantime the shard creates
- * one and delivers there — which makes the answer arriving its own knock on the door.
+ * <p><b>Answers go out through {@link Dispatcher}, never through a reference.</b> Work handed to
+ * the blocking executor reports back by calling {@code dispatcher.dispatch(agentId, input,
+ * effectId, observability)} -- an agent id, not a handle to anything. Nothing here holds an actor
+ * reference or a cluster address, which is what makes it irrelevant whether the thing that answers
+ * is still the same process that started the work.
  *
- * <p><b>Content is claimed BEFORE the agent is told.</b> Every message this sends carries ids and
- * small statuses; a tool's result and the model's asking message go into claims first. That is what
- * makes a persisted state safe to reference them: a state saying a call completed cannot point at a
- * result that is not there.
+ * <p><b>Content is claimed BEFORE the agent is told.</b> Every {@link Input} this produces carries
+ * ids and small statuses; a tool's result and the model's asking message go into claims first. That
+ * is what makes a persisted state safe to reference them: a state saying a call completed cannot
+ * point at a result that is not there.
  */
 final class EffectWorker {
 
@@ -104,20 +100,18 @@ final class EffectWorker {
       ReplyTokens tokens,
       Executor blocking,
       Traces traces,
-      BacklogStore<?> backlog) {}
+      BacklogStore<?> backlog,
+      EffectStore effects,
+      Dispatcher dispatcher) {}
 
-  private final ActorSystem<?> system;
   private final Dependencies deps;
-  private final EntityTypeKey<NessyMessage> key;
   private final Codec<List<ExchangeContentBlock>> askedCodec;
   private final Codec<ToolResult> resultCodec;
   private final Codec<AnswerMessage> answerCodec;
   private final Codec<UserMessage> inputCodec;
 
-  EffectWorker(ActorSystem<?> system, Dependencies deps) {
-    this.system = Objects.requireNonNull(system, "system must not be null");
+  EffectWorker(Dependencies deps) {
     this.deps = Objects.requireNonNull(deps, "deps must not be null");
-    this.key = EntityTypeKey.create(NessyMessage.class, deps.agentType().name());
     ObjectMapper mapper = EngineMapper.INSTANCE;
     this.askedCodec = JsonCodec.ofList(mapper, ExchangeContentBlock.class);
     this.resultCodec = JsonCodec.of(mapper, ToolResult.class);
@@ -126,55 +120,51 @@ final class EffectWorker {
   }
 
   /**
-   * Performs a decision's effects, IN ORDER, on the blocking executor.
+   * Does one obligation.
    *
-   * <p>One hop for the whole list rather than one per effect, because the order is load bearing: a
-   * turn remembers before it releases, since releasing drops the claims the exchange is written
-   * from. Firing each effect independently would let the release win that race.
-   *
-   * <p>The hop is why the effects below may block. They read claims, write the transcript and arm
-   * alarms — all JDBC, and none of it belongs on an actor's thread, which is also the thread
-   * running sharding and cluster gossip. Effects that wait on something SLOW (a model, a tool, an
-   * approver) hand that off again and return, so one long call never occupies this worker.
-   *
-   * <p>Returns immediately: the caller is an actor, and an actor waiting on storage is the thing
-   * this exists to prevent.
+   * <p>{@code effectId} travels with the work so that whoever answers can discharge it. Effects
+   * that answer immediately discharge it themselves; ones that start external work -- a model call,
+   * a tool -- hand it to the thread that will report back, and the effect stays outstanding with a
+   * watchdog until that happens.
    */
-  void performAll(
-      AgentId agentId, AgentState state, List<Effect> effects, Map<String, String> carried) {
-    if (effects.isEmpty()) {
-      return;
-    }
-    CompletableFuture.runAsync(
-            () -> effects.forEach(effect -> perform(agentId, state, effect, carried)),
-            deps.blocking())
-        .exceptionally(
-            failure -> {
-              // Nothing downstream is waiting on these, so a failure here would otherwise be a
-              // silent no-op: the turn simply stops, with no message and no log line.
-              LOG.error(
-                  "[{}] effects failed for turn {}", agentId.value(), state.turnId(), failure);
-              return null;
-            });
-  }
-
-  /** Performs one effect. May block: {@link #performAll} put it on the right thread. */
-  void perform(AgentId agentId, AgentState state, Effect effect, Map<String, String> carried) {
+  void perform(
+      AgentId agentId,
+      AgentState state,
+      Effect effect,
+      EffectId effectId,
+      Map<String, String> carried) {
     switch (effect) {
-      case Effect.TakeWork() -> takeWork(agentId, state, carried);
-      case Effect.CallModel() -> callModel(agentId, state, carried);
-      case Effect.AskApprover ask -> askApprover(agentId, state, ask, carried);
-      case Effect.RunTool run -> runTool(agentId, state, run, carried);
-      case Effect.Remember.Input() -> rememberInput(agentId, state);
-      case Effect.Remember.Answer() -> rememberAnswer(agentId, state);
-      case Effect.Remember.Exchange() -> rememberExchange(agentId, state);
-      case Effect.Release() -> deps.claims().deleteTurn(agentId, state.turnId());
-      case Effect.SetAlarm alarm -> setAlarm(agentId, alarm);
-      case Effect.CancelAlarm(var callId) ->
-          deps.reminders().cancel(deps.agentType(), agentId, callId);
-      case Effect.Forget() -> forget(agentId);
+      case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried);
+      case Effect.CallModel() -> callModel(agentId, state, effectId, carried);
+      case Effect.AskApprover ask -> askApprover(agentId, state, ask, effectId, carried);
+      case Effect.RunTool run -> runTool(agentId, state, run, effectId, carried);
+      case Effect.Remember.Input() -> settle(effectId, () -> rememberInput(agentId, state));
+      case Effect.Remember.Answer() -> settle(effectId, () -> rememberAnswer(agentId, state));
+      case Effect.Remember.Exchange() -> settle(effectId, () -> rememberExchange(agentId, state));
+      case Effect.Release() ->
+          settle(effectId, () -> deps.claims().deleteTurn(agentId, state.turnId()));
+      case Effect.Forget() -> settle(effectId, () -> forget(agentId));
+      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
+          throw new IllegalStateException("alarms are written by the transition: " + effect);
       case Effect.Narrate narrate -> narrate(agentId, state, narrate);
     }
+  }
+
+  /** Narration and reaper retries carry no trace headers of their own. */
+  void perform(AgentId agentId, AgentState state, Effect effect, EffectId effectId) {
+    perform(agentId, state, effect, effectId, Map.of());
+  }
+
+  /**
+   * Runs work that finishes here, and discharges its obligation.
+   *
+   * <p>These produce no Input -- nothing is waiting to hear that a claim was deleted -- so the
+   * effect is retired directly rather than by a transition. A failure leaves the row outstanding
+   * and its watchdog armed, which is exactly right: someone should try again.
+   */
+  private void settle(EffectId effectId, Runnable work) {
+    work.run();
+    deps.effects().complete(effectId);
   }
 
   /** Narration is per agent, so it is resolved per call: an entity ref is a routing decision. */
@@ -182,8 +172,24 @@ final class EffectWorker {
     return deps.narrators().apply(agentId);
   }
 
-  private void tell(AgentId agentId, NessyMessage message) {
-    ClusterSharding.get(system).entityRefFor(key, agentId.value()).tell(message);
+  /**
+   * The one executor the engine does agent work on. {@link AgentActor} -- provisional, and gone in
+   * Task 11 -- borrows it to run a decision's effects off its own thread, exactly as {@code
+   * performAll} used to.
+   */
+  Executor blocking() {
+    return deps.blocking();
+  }
+
+  /**
+   * Feeds the agent an outcome, and discharges the effect that produced it -- except for a parked
+   * tool, which has NOT finished: a person or a deadline discharges that one, so passing the effect
+   * id here would retire an obligation nobody has met.
+   */
+  private void tell(
+      AgentId agentId, Input input, EffectId completing, Map<String, String> carried) {
+    EffectId discharges = input instanceof Input.ToolParked ? null : completing;
+    deps.dispatcher().dispatch(agentId, input, discharges, observabilityOf(carried));
   }
 
   /**
@@ -193,7 +199,8 @@ final class EffectWorker {
    * sweep has to name, and naming it is what distinguishes a turn that ended from a take the agent
    * never recorded.
    */
-  private void takeWork(AgentId agentId, AgentState state, Map<String, String> carried) {
+  private void takeWork(
+      AgentId agentId, AgentState state, EffectId effectId, Map<String, String> carried) {
     // The TURN id, which is the backlog row's id — not the claim key. Null until this agent has
     // finished one, and null while it is busy, because a turn in flight is nobody's to sweep.
     TurnId finished = state.busy() ? null : state.turnId();
@@ -202,13 +209,14 @@ final class EffectWorker {
         taken ->
             switch (taken) {
               case BacklogStore.TakeResult.Work(TurnId turnId, String claim) ->
-                  new NessyMessage.WorkTaken(turnId, claim, carried);
-              case BacklogStore.TakeResult.Empty() -> new NessyMessage.NoWork(carried);
-              case BacklogStore.TakeResult.Poisoned() -> new NessyMessage.Poisoned(carried);
+                  new Input.WorkTaken(turnId, claim);
+              case BacklogStore.TakeResult.Empty() -> new Input.NoWork();
+              case BacklogStore.TakeResult.Poisoned() -> new Input.Poisoned();
             },
-        failure ->
-            new NessyMessage.ModelFailed("the backlog could not be read: " + failure, carried),
-        agentId);
+        failure -> new Input.ModelFailed("the backlog could not be read: " + failure),
+        agentId,
+        effectId,
+        carried);
   }
 
   /**
@@ -218,7 +226,8 @@ final class EffectWorker {
    * the request out here would put it on the actor's thread — three lines above the hop that exists
    * for exactly that reason.
    */
-  private void callModel(AgentId agentId, AgentState state, Map<String, String> carried) {
+  private void callModel(
+      AgentId agentId, AgentState state, EffectId effectId, Map<String, String> carried) {
     run(
         () ->
             deps.traces()
@@ -235,48 +244,54 @@ final class EffectWorker {
                                     deps.bindings().tools(),
                                     deps.capabilities())),
                             event -> narrateChunk(agentId, event))),
-        result -> answerOf(agentId, state, result, carried),
-        failure -> new NessyMessage.ModelFailed(failure, carried),
-        agentId);
+        result -> answerOf(agentId, state, result),
+        failure -> new Input.ModelFailed(failure),
+        agentId,
+        effectId,
+        carried);
   }
 
   /**
-   * Turns what the model said into a message carrying no content.
+   * Turns what the model said into an input carrying no content.
    *
    * <p>The asking message is claimed before the agent hears about it, and it is what pins the CALL
    * IDS: without it a recovered turn would have to ask the model again, get fresh ids, and re-run
    * tools whose answers it already had.
    */
-  private NessyMessage answerOf(
-      AgentId agentId, AgentState state, ModelResult result, Map<String, String> carried) {
+  private Input answerOf(AgentId agentId, AgentState state, ModelResult result) {
     return switch (result) {
       case ModelResult.Refused(var category, var explanation, var usage) ->
-          new NessyMessage.ModelRefused(category, explanation, usage, carried);
+          new Input.ModelAnswered.Refused(category, explanation, usage);
       case ModelResult.Answered(var message, var stopReason, var usage) -> {
         deps.claims().put(agentId, state.turnId(), ANSWER_KEY, answerCodec.encode(message));
-        yield new NessyMessage.ModelAnswered(stopReason, usage, carried);
+        yield new Input.ModelAnswered.Answered(stopReason, usage);
       }
       case ModelResult.Asked(var content, var usage) -> {
         deps.claims().put(agentId, state.turnId(), ASKED_KEY, askedCodec.encode(content));
-        yield new NessyMessage.ModelAsked(
+        yield new Input.ModelAnswered.Asked(
             callsIn(content).stream()
                 .map(call -> new Input.CallSummary(call.id(), call.name()))
                 .toList(),
-            usage,
-            carried);
+            usage);
       }
     };
   }
 
   private void askApprover(
-      AgentId agentId, AgentState state, Effect.AskApprover ask, Map<String, String> carried) {
+      AgentId agentId,
+      AgentState state,
+      Effect.AskApprover ask,
+      EffectId effectId,
+      Map<String, String> carried) {
     ToolCall call = callOf(agentId, state, ask.callId());
     if (call == null) {
       completed(
           agentId,
           state,
           ask.callId(),
-          ToolResult.error("the asking message is gone; the call was not made"));
+          ToolResult.error("the asking message is gone; the call was not made"),
+          effectId,
+          carried);
       return;
     }
     deps.bindings()
@@ -323,8 +338,7 @@ final class EffectWorker {
                           // person saying no. Measured in the browser.
                           denialResult(result)
                               .ifPresent(denied -> hold(agentId, state, call.id(), denied));
-                          yield new NessyMessage.ApprovalGiven(
-                              call.id(), call.name(), result, carried);
+                          yield new Input.ApprovalGiven(call.id(), call.name(), result);
                         }
                         case Awaited.Deferred<ApprovalResult>(var expiresAt) -> {
                           // Narrated HERE and nowhere else: an ungated tool answers on the spot,
@@ -338,34 +352,44 @@ final class EffectWorker {
                                       call.name(),
                                       action,
                                       expiresAt));
-                          yield new NessyMessage.ToolParked(call.id(), expiresAt, carried);
+                          yield new Input.ToolParked(call.id(), expiresAt);
                         }
                       },
                   failure -> {
                     ApprovalResult broke = ApprovalResult.denied("the approver failed: " + failure);
                     denialResult(broke)
                         .ifPresent(denied -> hold(agentId, state, call.id(), denied));
-                    return new NessyMessage.ApprovalGiven(call.id(), call.name(), broke, carried);
+                    return new Input.ApprovalGiven(call.id(), call.name(), broke);
                   },
-                  agentId);
+                  agentId,
+                  effectId,
+                  carried);
             },
             () ->
                 completed(
                     agentId,
                     state,
                     call.id(),
-                    ToolResult.error("no such tool: " + call.name() + "; the call was not made")));
+                    ToolResult.error("no such tool: " + call.name() + "; the call was not made"),
+                    effectId,
+                    carried));
   }
 
   private void runTool(
-      AgentId agentId, AgentState state, Effect.RunTool run, Map<String, String> carried) {
+      AgentId agentId,
+      AgentState state,
+      Effect.RunTool run,
+      EffectId effectId,
+      Map<String, String> carried) {
     ToolCall call = callOf(agentId, state, run.callId());
     if (call == null) {
       completed(
           agentId,
           state,
           run.callId(),
-          ToolResult.error("the asking message is gone; it was not run"));
+          ToolResult.error("the asking message is gone; it was not run"),
+          effectId,
+          carried);
       return;
     }
     deps.bindings()
@@ -384,10 +408,10 @@ final class EffectWorker {
                         switch (answer) {
                           case Awaited.Ready<ToolResult>(var result) -> {
                             hold(agentId, state, call.id(), result);
-                            yield new NessyMessage.ToolCompleted(call.id(), carried);
+                            yield new Input.ToolCompleted(call.id());
                           }
                           case Awaited.Deferred<ToolResult>(var expiresAt) ->
-                              new NessyMessage.ToolParked(call.id(), expiresAt, carried);
+                              new Input.ToolParked(call.id(), expiresAt);
                         },
                     failure -> {
                       hold(
@@ -395,9 +419,11 @@ final class EffectWorker {
                           state,
                           call.id(),
                           ToolResult.error(failure + "; it may have partially completed"));
-                      return new NessyMessage.ToolCompleted(call.id(), carried);
+                      return new Input.ToolCompleted(call.id());
                     },
-                    agentId));
+                    agentId,
+                    effectId,
+                    carried));
   }
 
   /** What a denied call answers with, or empty when it was approved and will answer for itself. */
@@ -409,9 +435,15 @@ final class EffectWorker {
   }
 
   /** Writes a result and tells the agent — in that order, always. */
-  private void completed(AgentId agentId, AgentState state, CallId callId, ToolResult result) {
+  private void completed(
+      AgentId agentId,
+      AgentState state,
+      CallId callId,
+      ToolResult result,
+      EffectId effectId,
+      Map<String, String> carried) {
     hold(agentId, state, callId, result);
-    tell(agentId, new NessyMessage.ToolCompleted(callId, Map.of()));
+    tell(agentId, new Input.ToolCompleted(callId), effectId, carried);
   }
 
   private void hold(AgentId agentId, AgentState state, CallId callId, ToolResult result) {
@@ -459,55 +491,25 @@ final class EffectWorker {
    * Erases an agent: everything it remembered, everything waiting for it, everything it held, and
    * finally the record that it existed.
    *
-   * <p><b>State last, deliberately.</b> A crash partway through should leave LESS behind rather
-   * than an agent whose state is gone but whose transcript is not — a ghost that recovers into
-   * emptiness and cannot be found again to clean up. Deleting the state object last means every
-   * intermediate failure leaves an agent that is still findable and still forgettable.
-   *
    * <p><b>Only ever issued when idle.</b> {@code AgentLogic} holds a busy agent's request until the
    * turn ends, so nothing here races work in flight.
    *
-   * <p>The state object goes through Pekko's own store rather than SQL. The durable-state table is
-   * not Nessy's — an application picks the plugin and ships the DDL — so deleting by statement
-   * would mean knowing a table name from configuration this engine never reads.
+   * <p><b>The agent's own state row is not touched here.</b> {@link EffectWorker} used to reach
+   * into Pekko's durable-state registry to delete it, which is why this class held an {@code
+   * ActorSystem}. That reference is gone with the seam this class now answers through, so a
+   * forgotten agent's Pekko-persisted row survives until Task 11 deletes the journal machinery that
+   * wrote it — dead weight in a store nothing reads back, not a correctness gap in the engine this
+   * design is replacing it with.
    */
   private void forget(AgentId agentId) {
     deps.memory().forget(agentId);
     deps.backlog().deleteAgent(agentId);
     deps.claims().deleteAgent(agentId);
-    deleteState(agentId);
     // LAST, and that ordering is the whole recovery story: everything above is idempotent, so a
     // crash before this leaves the pill, the next incarnation takes it, and the same work runs
     // again to the same end. Swallowing it first would lose a half-finished forget in silence.
     deps.backlog().swallow(agentId);
     LOG.info("[{}] forgotten", agentId.value());
-  }
-
-  private void deleteState(AgentId agentId) {
-    String plugin = system.settings().config().getString("pekko.persistence.state.plugin");
-    if (plugin.isBlank()) {
-      // No durable-state plugin configured means nothing was ever written to delete.
-      return;
-    }
-    DurableStateStore<AgentState> store =
-        DurableStateStoreRegistry.get(system)
-            .getDurableStateStoreFor(DurableStateStore.class, plugin);
-    if (store instanceof DurableStateUpdateStore<AgentState> deletable) {
-      String persistenceId = PersistenceId.of(deps.agentType().name(), agentId.value()).id();
-      deletable.deleteObject(persistenceId).toCompletableFuture().join();
-      return;
-    }
-    // A read-only store cannot forget. Saying so is better than a silent partial deletion, since
-    // "we deleted it" is not a thing to be wrong about.
-    LOG.error(
-        "[{}] the durable-state plugin \"{}\" cannot delete, so this agent's state survives being"
-            + " forgotten",
-        agentId.value(),
-        plugin);
-  }
-
-  private void setAlarm(AgentId agentId, Effect.SetAlarm alarm) {
-    deps.reminders().remind(deps.agentType(), agentId, alarm.callId(), alarm.expiresAt());
   }
 
   private void narrate(AgentId agentId, AgentState state, Effect.Narrate narrate) {
@@ -553,22 +555,45 @@ final class EffectWorker {
   }
 
   /**
-   * Hands work to the blocking executor and posts the answer to the agent's LOGICAL address.
+   * Hands work to the blocking executor and reports the answer through the {@link Dispatcher}.
    *
-   * <p>This is the whole safety property in one method: nothing here holds an actor reference, so
-   * an agent unloaded while the work ran is simply started again by the shard to receive it.
+   * <p>This is the whole safety property in one method: nothing here holds a reference to anything
+   * that can go away, so work that outlives the process that started it is simply picked up by
+   * whatever answers on {@code agentId}'s behalf next.
    */
   private <T> void run(
-      java.util.function.Supplier<T> work,
-      Function<T, NessyMessage> answer,
-      Function<String, NessyMessage> broke,
-      AgentId agentId) {
+      Supplier<T> work,
+      Function<T, Input> answer,
+      Function<String, Input> broke,
+      AgentId agentId,
+      EffectId effectId,
+      Map<String, String> carried) {
     CompletableFuture.supplyAsync(work, deps.blocking())
         .whenComplete(
             (value, failure) ->
                 tell(
                     agentId,
-                    failure == null ? answer.apply(value) : broke.apply(describe(failure))));
+                    failure == null ? answer.apply(value) : broke.apply(describe(failure)),
+                    effectId,
+                    carried));
+  }
+
+  /**
+   * The propagation context, serialized to the JSON object {@code nessy_effect.observability}
+   * stores.
+   *
+   * <p>Null when there is nothing to carry — an empty map is not a carrier that failed to
+   * serialize, it is work with no ambient trace, which is legitimate and common.
+   */
+  private static String observabilityOf(Map<String, String> carried) {
+    if (carried == null || carried.isEmpty()) {
+      return null;
+    }
+    try {
+      return EngineMapper.INSTANCE.writeValueAsString(carried);
+    } catch (JsonProcessingException e) {
+      throw new UncheckedIOException("could not serialize the trace carrier", e);
+    }
   }
 
   /** Painted as it arrives, on the thread draining the stream — narrating is a tell. */

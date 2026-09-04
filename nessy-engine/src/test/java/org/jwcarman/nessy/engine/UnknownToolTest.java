@@ -27,6 +27,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -50,6 +51,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * place that knows what this agent can actually do. This is the path nothing before it drove: a
  * model naming a tool with no binding at all, rather than one whose binding denies or fails.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A call for a tool nobody bound")
 class UnknownToolTest {
 

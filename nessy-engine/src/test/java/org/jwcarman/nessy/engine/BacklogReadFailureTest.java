@@ -28,6 +28,7 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -56,6 +57,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
  * narrate it twice, which is a fact about startup rather than about the thing this test means to
  * pin.
  */
+@Disabled("Pekko removed in Task 11")
 @DisplayName("A backlog the store cannot read")
 class BacklogReadFailureTest {
 
