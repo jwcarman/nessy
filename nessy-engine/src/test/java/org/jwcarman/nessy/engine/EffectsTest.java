@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -85,30 +86,32 @@ class EffectsTest {
   @Test
   @DisplayName("claiming returns this agent's work in decision order")
   void claims_come_back_in_ordinal_order() {
-    effects.insert(TYPE, AGENT, TURN, 1, "release");
-    effects.insert(TYPE, AGENT, TURN, 0, "remember");
+    effects.insert(TYPE, AGENT, TURN, 1, bytes("release"), null);
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("remember"), null);
 
     List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
-    assertThat(claimed).extracting(Effects.Claimed::payload).containsExactly("remember", "release");
+    assertThat(claimed)
+        .extracting(effect -> text(effect.payload()))
+        .containsExactly("remember", "release");
   }
 
   @Test
   @DisplayName("one agent's claim never takes another agent's work")
   void claims_are_per_agent() {
-    effects.insert(TYPE, AGENT, TURN, 0, "mine");
-    effects.insert(TYPE, OTHER, TURN, 0, "theirs");
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("mine"), null);
+    effects.insert(TYPE, OTHER, TURN, 0, bytes("theirs"), null);
 
     List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
     assertThat(claimed).isNotEmpty();
-    assertThat(claimed).allMatch(effect -> "mine".equals(effect.payload()));
+    assertThat(claimed).allMatch(effect -> "mine".equals(text(effect.payload())));
   }
 
   @Test
   @DisplayName("a claimed effect is not claimed again")
   void claiming_is_exclusive() {
-    effects.insert(TYPE, AGENT, TURN, 0, "call-model");
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, SOON);
 
     assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
@@ -131,7 +134,7 @@ class EffectsTest {
   private void raceOneClaim(AgentId agent) throws Exception {
     int total = ROWS_PER_TRIAL;
     for (int i = 0; i < total; i++) {
-      effects.insert(TYPE, agent, TURN, i, "effect-" + i);
+      effects.insert(TYPE, agent, TURN, i, bytes("effect-" + i), null);
     }
 
     CountDownLatch startGate = new CountDownLatch(1);
@@ -158,7 +161,7 @@ class EffectsTest {
   @Test
   @DisplayName("a completed effect is gone for good")
   void completing_removes_it() {
-    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, "call-model");
+    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, SOON);
 
     effects.complete(id);
@@ -169,19 +172,19 @@ class EffectsTest {
   @Test
   @DisplayName("an effect whose watchdog expired comes back, with its attempt counted")
   void an_expired_effect_is_reclaimable() {
-    effects.insert(TYPE, AGENT, TURN, 0, "call-model");
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, Instant.now().minus(Duration.ofSeconds(1)));
 
     List<Effects.Claimed> expired = effects.claimExpired(TYPE, Instant.now(), 10);
 
-    assertThat(expired).extracting(Effects.Claimed::payload).containsExactly("call-model");
+    assertThat(expired).extracting(effect -> text(effect.payload())).containsExactly("call-model");
     assertThat(expired).allMatch(effect -> effect.attempts() == 2);
   }
 
   @Test
   @DisplayName("an effect whose watchdog has not expired stays put")
   void a_live_effect_is_not_reaped() {
-    effects.insert(TYPE, AGENT, TURN, 0, "call-model");
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, SOON);
 
     assertThat(effects.claimExpired(TYPE, Instant.now(), 10)).isEmpty();
@@ -190,7 +193,7 @@ class EffectsTest {
   @Test
   @DisplayName("a failed effect stops being work, stops being reaped, and keeps its payload")
   void failing_retires_it() {
-    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, "call-model");
+    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, Instant.now().minus(Duration.ofSeconds(1)));
 
     effects.fail(id, "the model refused four times");
@@ -203,12 +206,34 @@ class EffectsTest {
   @Test
   @DisplayName("an effect with no turn yet round-trips a null turn id")
   void an_effect_with_no_turn_round_trips_null() {
-    effects.insert(TYPE, AGENT, null, 0, "take-work");
+    effects.insert(TYPE, AGENT, null, 0, bytes("take-work"), null);
 
     List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
-    assertThat(claimed).extracting(Effects.Claimed::payload).containsExactly("take-work");
+    assertThat(claimed).extracting(effect -> text(effect.payload())).containsExactly("take-work");
     assertThat(claimed).allMatch(effect -> effect.turnId() == null);
+  }
+
+  @Test
+  @DisplayName("the trace context an effect was inserted with round-trips verbatim")
+  void observability_round_trips() {
+    String carrier = "{\"traceparent\":\"00-4bf92f-00f067-01\"}";
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), carrier);
+
+    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+
+    assertThat(claimed).extracting(Effects.Claimed::observability).containsExactly(carrier);
+  }
+
+  @Test
+  @DisplayName("an effect inserted outside any trace carries no observability context")
+  void observability_is_null_when_there_was_no_trace() {
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
+
+    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+
+    assertThat(claimed).extracting(Effects.Claimed::payload).isNotEmpty();
+    assertThat(claimed).allMatch(effect -> effect.observability() == null);
   }
 
   private List<Effects.Claimed> awaitAndClaim(AgentId agent, CountDownLatch startGate)
@@ -222,10 +247,20 @@ class EffectsTest {
   }
 
   private String payloadOf(EffectId id) {
-    return JdbcClient.create(database)
-        .sql("SELECT payload FROM nessy_effect WHERE effect_id = ?")
-        .param(id.value())
-        .query(String.class)
-        .single();
+    byte[] payload =
+        JdbcClient.create(database)
+            .sql("SELECT payload FROM nessy_effect WHERE effect_id = ?")
+            .param(id.value())
+            .query(byte[].class)
+            .single();
+    return text(payload);
+  }
+
+  private static byte[] bytes(String value) {
+    return value.getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static String text(byte[] value) {
+    return new String(value, StandardCharsets.UTF_8);
   }
 }

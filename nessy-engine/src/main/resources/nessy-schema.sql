@@ -130,18 +130,36 @@ CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_
 -- reason is separate from payload. A failed effect is retired, not discharged, and the payload is
 -- still the obligation it never got to keep -- overwriting it with why it stopped would leave the
 -- one row that could tell an operator what the agent was trying to do saying only why it gave up.
+-- reason itself stays TEXT: it is a human-readable message, not codec output.
+--
+-- payload is BYTEA, not TEXT, matching nessy_claim.payload and nessy_backlog.observation. It is
+-- codec-encoded content: CodecPipeline frames its output with a binary magic header, and a
+-- composed codec (compression, encryption) emits bytes a TEXT column would corrupt.
+--
+-- observability is TEXT, deliberately unlike payload -- and the two are TEXT/BYTEA for opposite
+-- reasons, not the same reason as reason. payload is BYTEA because a CODEC OWNS IT: application
+-- content, possibly compressed or encrypted, not guaranteed to be UTF-8, and never meant to be
+-- read by a person. observability is TEXT because it is a W3C propagation CARRIER -- traceparent,
+-- tracestate, and any intentionally propagated baggage, serialized as JSON by the caller and
+-- stored verbatim: ASCII by specification, carrying no application content (no tool arguments, no
+-- observations, no credentials), and it already travels in the clear in HTTP headers by design.
+-- Its entire purpose is operational correlation -- an operator looking at a stuck effect row must
+-- be able to read the trace id out and paste it into a trace viewer. Encoding it would defeat the
+-- only reason to store it. It is nullable: an effect created outside any trace has no context to
+-- carry.
 CREATE TABLE IF NOT EXISTS nessy_effect (
-  effect_id   TEXT                     NOT NULL,
-  agent_type  TEXT                     NOT NULL,
-  agent_id    TEXT                     NOT NULL,
-  turn_id     TEXT,
-  ordinal     INTEGER                  NOT NULL,
-  payload     TEXT                     NOT NULL,
-  status      TEXT                     NOT NULL,
-  attempts    INTEGER                  NOT NULL,
-  reason      TEXT,
-  expires_at  TIMESTAMP WITH TIME ZONE,
-  created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+  effect_id     TEXT                     NOT NULL,
+  agent_type    TEXT                     NOT NULL,
+  agent_id      TEXT                     NOT NULL,
+  turn_id       TEXT,
+  ordinal       INTEGER                  NOT NULL,
+  payload       BYTEA                    NOT NULL,
+  observability TEXT,
+  status        TEXT                     NOT NULL,
+  attempts      INTEGER                  NOT NULL,
+  reason        TEXT,
+  expires_at    TIMESTAMP WITH TIME ZONE,
+  created_at    TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (effect_id)
 );
 

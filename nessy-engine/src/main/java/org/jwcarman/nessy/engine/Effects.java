@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import javax.sql.DataSource;
@@ -59,14 +60,16 @@ final class Effects {
 
   private static final String INSERT =
       "INSERT INTO nessy_effect"
-          + " (effect_id, agent_type, agent_id, turn_id, ordinal, payload, status, attempts,"
-          + " expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)";
+          + " (effect_id, agent_type, agent_id, turn_id, ordinal, payload, observability, status,"
+          + " attempts, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)";
   private static final String SELECT_PENDING =
-      "SELECT effect_id, agent_id, turn_id, ordinal, payload, attempts FROM nessy_effect"
+      "SELECT effect_id, agent_id, turn_id, ordinal, payload, observability, attempts"
+          + " FROM nessy_effect"
           + " WHERE agent_type = ? AND agent_id = ? AND status = ?"
           + " ORDER BY ordinal FOR UPDATE SKIP LOCKED";
   private static final String SELECT_EXPIRED =
-      "SELECT effect_id, agent_id, turn_id, ordinal, payload, attempts FROM nessy_effect"
+      "SELECT effect_id, agent_id, turn_id, ordinal, payload, observability, attempts"
+          + " FROM nessy_effect"
           + " WHERE agent_type = ? AND status = ? AND expires_at < ?"
           + " ORDER BY expires_at FOR UPDATE SKIP LOCKED";
   private static final String TAKE =
@@ -76,9 +79,75 @@ final class Effects {
   private static final String RETIRE =
       "UPDATE nessy_effect SET status = ?, reason = ?, expires_at = NULL WHERE effect_id = ?";
 
-  /** One claimed obligation, and what it says to do. */
+  /**
+   * One claimed obligation, and what it says to do.
+   *
+   * <p>{@code observability} is the W3C propagation carrier -- traceparent, tracestate, and any
+   * intentionally propagated baggage -- as the JSON the caller of {@link #insert} serialized it to.
+   * {@code Effects} stores and returns it verbatim; it neither parses nor interprets it. A claiming
+   * node restores the trace context from it before performing the work, which is what keeps a
+   * turn's distributed trace from fragmenting at the effect boundary. May be {@code null}: an
+   * effect created outside any trace has no context to carry.
+   *
+   * <p>The generated equality a record gives you compares {@code payload} by IDENTITY, so two
+   * {@code Claimed} values read from the same database would differ. Written out explicitly for the
+   * same reason {@code BacklogStore.Row} is: nothing here relies on that today, but the day
+   * something does, the failure is silent otherwise.
+   */
   record Claimed(
-      EffectId id, AgentId agentId, TurnId turnId, int ordinal, String payload, int attempts) {}
+      EffectId id,
+      AgentId agentId,
+      TurnId turnId,
+      int ordinal,
+      byte[] payload,
+      String observability,
+      int attempts) {
+
+    @Override
+    public boolean equals(Object other) {
+      // Destructured with "other" names on purpose: the components are called the same things as
+      // this record's own fields, so binding them bare would shadow every field it is comparing
+      // against and the comparison would silently be with itself.
+      return other
+              instanceof
+              Claimed(
+                  EffectId otherId,
+                  AgentId otherAgentId,
+                  TurnId otherTurnId,
+                  int otherOrdinal,
+                  byte[] otherPayload,
+                  String otherObservability,
+                  int otherAttempts)
+          && Objects.equals(id, otherId)
+          && Objects.equals(agentId, otherAgentId)
+          && Objects.equals(turnId, otherTurnId)
+          && ordinal == otherOrdinal
+          && Arrays.equals(payload, otherPayload)
+          && Objects.equals(observability, otherObservability)
+          && attempts == otherAttempts;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(
+          id, agentId, turnId, ordinal, Arrays.hashCode(payload), observability, attempts);
+    }
+
+    /** The payload is codec-encoded content, so it is measured rather than printed. */
+    @Override
+    public String toString() {
+      return "Claimed[id=%s, agentId=%s, turnId=%s, ordinal=%d, payload=%d bytes,"
+          + " observability=%s, attempts=%d]"
+              .formatted(
+                  id,
+                  agentId,
+                  turnId,
+                  ordinal,
+                  payload == null ? 0 : payload.length,
+                  observability,
+                  attempts);
+    }
+  }
 
   private final JdbcClient jdbc;
   private final TransactionTemplate claiming;
@@ -90,7 +159,12 @@ final class Effects {
   }
 
   EffectId insert(
-      AgentType agentType, AgentId agentId, TurnId turnId, int ordinal, String payload) {
+      AgentType agentType,
+      AgentId agentId,
+      TurnId turnId,
+      int ordinal,
+      byte[] payload,
+      String observability) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(payload, "payload must not be null");
@@ -102,6 +176,7 @@ final class Effects {
         .param(turnId == null ? null : turnId.value())
         .param(ordinal)
         .param(payload)
+        .param(observability)
         .param(PENDING)
         .param(Instant.now())
         .update();
@@ -178,7 +253,13 @@ final class Effects {
   private Claimed take(Claimed raw, Instant watchdogAt) {
     jdbc.sql(TAKE).param(EXECUTING).param(watchdogAt).param(raw.id().value()).update();
     return new Claimed(
-        raw.id(), raw.agentId(), raw.turnId(), raw.ordinal(), raw.payload(), raw.attempts() + 1);
+        raw.id(),
+        raw.agentId(),
+        raw.turnId(),
+        raw.ordinal(),
+        raw.payload(),
+        raw.observability(),
+        raw.attempts() + 1);
   }
 
   /**
@@ -192,7 +273,8 @@ final class Effects {
         AgentId.of(rs.getString("agent_id")),
         turnId == null ? null : TurnId.of(turnId),
         rs.getInt("ordinal"),
-        rs.getString("payload"),
+        rs.getBytes("payload"),
+        rs.getString("observability"),
         rs.getInt("attempts"));
   }
 }
