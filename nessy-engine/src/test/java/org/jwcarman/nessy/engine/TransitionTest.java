@@ -16,21 +16,33 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.logging.Logger;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.engine.agent.Phase;
 import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -129,7 +141,9 @@ class TransitionTest {
 
     assertThat(started.narrations()).isNotEmpty();
     assertThat(started.narrations()).allMatch(Effect.Narrate.class::isInstance);
-    assertThat(effects.claim(TYPE, AGENT, SOON))
+    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+    assertThat(pending).isNotEmpty();
+    assertThat(pending)
         .noneMatch(
             effect -> EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.Narrate);
   }
@@ -157,5 +171,149 @@ class TransitionTest {
 
     assertThat(effects.claimExpired(TYPE, Instant.now().plus(Duration.ofHours(1)), 10))
         .noneMatch(effect -> effect.id().equals(take.id()));
+  }
+
+  @Test
+  @DisplayName("a parked call arms a live alarm, and settling it disarms the same one")
+  void alarms_are_armed_and_disarmed_by_the_right_effect() {
+    CallId callId = CallId.of("call-1");
+
+    transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
+    transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
+    transition.apply(
+        AGENT,
+        new Input.ModelAnswered.Asked(
+            List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
+        null,
+        null);
+
+    // TRANSACTIONAL, not a row: Effect.SetAlarm never reaches nessy_effect, so the only way to
+    // observe it is to ask Reminders whether it armed the RIGHT half of the pair. A swap of
+    // remind/cancel inside Transition.alarm fails this line: nothing would be armed.
+    transition.apply(AGENT, new Input.ToolParked(callId, SOON), null, null);
+    assertThat(reminders.find(TYPE, AGENT, callId)).isPresent();
+
+    // And a swap fails this line the other way: CancelAlarm would have called remind again
+    // instead of cancel, and the alarm set above would still be sitting there.
+    transition.apply(AGENT, new Input.ToolCompleted(callId), null, null);
+    assertThat(reminders.find(TYPE, AGENT, callId)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("the observability carrier is stamped on every durable effect a decision emits")
+  void observability_round_trips_through_the_stored_effect() {
+    transition.apply(AGENT, new Input.BacklogUpdated(), null, "traceparent=00-abc-def-01");
+
+    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+
+    assertThat(pending).isNotEmpty();
+    assertThat(pending)
+        .allMatch(effect -> "traceparent=00-abc-def-01".equals(effect.observability()));
+  }
+
+  @Test
+  @DisplayName("a failure partway through the transaction leaves nothing durable behind")
+  void a_partial_failure_leaves_no_partial_commit() {
+    DataSource exploding = new ExplodingDataSource(database, "INSERT INTO nessy_effect");
+    Transition fragile =
+        new Transition(
+            TYPE,
+            new AgentStore(exploding),
+            new EffectStore(exploding),
+            new Reminders(exploding),
+            new TransactionTemplate(new DataSourceTransactionManager(exploding)));
+
+    assertThatThrownBy(() -> fragile.apply(AGENT, new Input.BacklogUpdated(), null, null))
+        .isInstanceOf(DataAccessException.class);
+
+    // Read through the GOOD transition, on the GOOD database: if the state write from the failed
+    // attempt had survived (a partial commit), this agent would already be AwaitingWork rather
+    // than a row that has never been touched.
+    assertThat(transition.read(AGENT).phase()).isInstanceOf(Phase.Idle.class);
+    assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
+  }
+
+  /**
+   * A {@link DataSource} that behaves exactly like the one it wraps, except that ONE statement --
+   * picked by a fragment of its SQL text -- throws instead of preparing.
+   *
+   * <p>Built with {@link Proxy} rather than a mocking library, per house rule: {@code Proxy} is a
+   * JDK class, not a library, and this project already hand-writes its fakes. This is what makes
+   * the atomicity claim in {@code Transition}'s javadoc falsifiable rather than merely plausible:
+   * without it, every test above only ever observes a transaction that fully succeeded, and four
+   * small transactions that all happen to succeed look identical to one.
+   */
+  private static final class ExplodingDataSource implements DataSource {
+
+    private final DataSource delegate;
+    private final String trigger;
+
+    ExplodingDataSource(DataSource delegate, String trigger) {
+      this.delegate = delegate;
+      this.trigger = trigger;
+    }
+
+    @Override
+    public Connection getConnection() throws SQLException {
+      Connection real = delegate.getConnection();
+      return (Connection)
+          Proxy.newProxyInstance(
+              Connection.class.getClassLoader(),
+              new Class<?>[] {Connection.class},
+              (proxy, method, args) -> {
+                if ("prepareStatement".equals(method.getName())
+                    && args != null
+                    && args.length > 0
+                    && args[0] instanceof String sql
+                    && sql.contains(trigger)) {
+                  throw new SQLException("simulated failure preparing: " + sql);
+                }
+                try {
+                  return method.invoke(real, args);
+                } catch (InvocationTargetException e) {
+                  throw e.getCause();
+                }
+              });
+    }
+
+    @Override
+    public Connection getConnection(String username, String password) throws SQLException {
+      return delegate.getConnection(username, password);
+    }
+
+    @Override
+    public PrintWriter getLogWriter() throws SQLException {
+      return delegate.getLogWriter();
+    }
+
+    @Override
+    public void setLogWriter(PrintWriter out) throws SQLException {
+      delegate.setLogWriter(out);
+    }
+
+    @Override
+    public void setLoginTimeout(int seconds) throws SQLException {
+      delegate.setLoginTimeout(seconds);
+    }
+
+    @Override
+    public int getLoginTimeout() throws SQLException {
+      return delegate.getLoginTimeout();
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+      return delegate.getParentLogger();
+    }
+
+    @Override
+    public <T> T unwrap(Class<T> iface) throws SQLException {
+      return delegate.unwrap(iface);
+    }
+
+    @Override
+    public boolean isWrapperFor(Class<?> iface) throws SQLException {
+      return delegate.isWrapperFor(iface);
+    }
   }
 }

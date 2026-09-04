@@ -108,7 +108,12 @@ final class Transition {
         });
   }
 
-  /** The stored state, with no fold and no write. */
+  /**
+   * The stored state, with no fold -- but not write-free. {@code lockAndLoad} inserts an idle row
+   * the first time an unknown agent is asked about, so the first {@code read} of an agent nobody
+   * has heard of is what brings it into existence. What this method promises is narrower than "no
+   * write": no decision is folded, and nothing beyond that idle-row creation happens.
+   */
   AgentState read(AgentId agentId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     return transactions.execute(status -> store.lockAndLoad(agentType, agentId));
