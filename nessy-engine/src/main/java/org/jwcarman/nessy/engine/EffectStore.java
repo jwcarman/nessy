@@ -22,9 +22,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.engine.agent.Effect;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -53,6 +55,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * atomicity is the property the durability design rests on.
  */
 final class EffectStore {
+
+  /** How an effect is stored while its obligation is outstanding. */
+  static final Codec<Effect> PAYLOADS = JsonCodec.of(EngineMapper.INSTANCE, Effect.class);
 
   private static final String PENDING = "PENDING";
   private static final String EXECUTING = "EXECUTING";
