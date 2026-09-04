@@ -64,7 +64,7 @@ class ForgetTest {
                     key,
                     context ->
                         AgentActor.create(
-                            new AgentActor.Dependencies(type, parts.instructions(), Traces.noop()),
+                            new AgentActor.Dependencies(type, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             shard.ref()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

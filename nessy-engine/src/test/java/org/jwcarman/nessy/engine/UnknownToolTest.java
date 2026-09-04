@@ -46,7 +46,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * A call for a tool this agent was never given.
  *
  * <p>{@code AgentLogic} decides to ask an approver for every call the model made without ever
- * checking whether a binding exists — that check belongs to {@code Instructions}, which is the last
+ * checking whether a binding exists — that check belongs to {@code EffectWorker}, which is the last
  * place that knows what this agent can actually do. This is the path nothing before it drove: a
  * model naming a tool with no binding at all, rather than one whose binding denies or fails.
  */
@@ -90,7 +90,7 @@ class UnknownToolTest {
                     context ->
                         AgentActor.create(
                             new AgentActor.Dependencies(
-                                WATCHMAN, parts.instructions(), Traces.noop()),
+                                WATCHMAN, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             context.getShard()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

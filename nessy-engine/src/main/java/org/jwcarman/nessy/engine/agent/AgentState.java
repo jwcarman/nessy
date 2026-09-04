@@ -61,7 +61,7 @@ public record AgentState(TurnId turnId, Phase phase, String observation, Usage u
    * Whether a TURN is running — not merely whether something is outstanding.
    *
    * <p>Deliberately false while {@link Phase.AwaitingWork}: a take is in flight, but no turn is,
-   * and the difference is load bearing. {@code Instructions.takeWork} decides which backlog row to
+   * and the difference is load bearing. {@code EffectWorker.takeWork} decides which backlog row to
    * sweep from this, so an agent that called itself busy on its way to ask for work would never
    * sweep the turn it just finished and would re-take the same observation forever.
    */
@@ -99,8 +99,8 @@ public record AgentState(TurnId turnId, Phase phase, String observation, Usage u
    * <p>The turn id STAYS. Being idle is a fact about the phase, not about whether an id is present,
    * and the id is exactly what the next take must name so the backlog sweeps the right row — naming
    * it is what separates a turn that finished from a take the agent never recorded. It is also what
-   * the instructions this decision returns are still working against: they remember, they narrate,
-   * and they release, all of which are keyed by turn.
+   * the effects this decision returns are still working against: they remember, they narrate, and
+   * they release, all of which are keyed by turn.
    */
   public AgentState finished() {
     return new AgentState(turnId, new Phase.Idle(), observation, usage);

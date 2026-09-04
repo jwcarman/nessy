@@ -89,7 +89,7 @@ class StrandedTakeInvariantTest {
 
     // Two takes really can be outstanding at once: recovery re-asks without knowing whether the
     // first ask was ever recorded. Both go to the SAME real store, exactly as they would from two
-    // instructions issued before either answer comes back.
+    // effects issued before either answer comes back.
     BacklogStore.TakeResult first = store.take(AGENT, null);
     BacklogStore.TakeResult second = store.take(AGENT, null);
 
@@ -120,6 +120,6 @@ class StrandedTakeInvariantTest {
     assertThat(duplicate.next())
         .as("the duplicate reply changes nothing about the running turn")
         .isEqualTo(started.next());
-    assertThat(duplicate.then()).as("and issues no further instructions").isEmpty();
+    assertThat(duplicate.then()).as("and issues no further effects").isEmpty();
   }
 }

@@ -15,13 +15,13 @@
  */
 package org.jwcarman.nessy.engine;
 
-import org.jwcarman.nessy.engine.agent.Instruction;
+import org.jwcarman.nessy.engine.agent.Effect;
 
 /**
- * When an instruction happens, relative to the transition that decided it.
+ * When an effect happens, relative to the transition that decided it.
  *
- * <p>The engine used to run every instruction the same way -- fire and forget, on a blocking
- * executor, after the state was persisted. That is correct for exactly one of these three.
+ * <p>The engine used to run every effect the same way -- fire and forget, on a blocking executor,
+ * after the state was persisted. That is correct for exactly one of these three.
  */
 public enum Disposition {
 
@@ -51,18 +51,18 @@ public enum Disposition {
    */
   NARRATION;
 
-  /** Exhaustive over the grammar, with no default arm: a new instruction must choose. */
-  public static Disposition of(Instruction instruction) {
-    return switch (instruction) {
-      case Instruction.SetAlarm _, Instruction.CancelAlarm _ -> TRANSACTIONAL;
-      case Instruction.Narrate _ -> NARRATION;
-      case Instruction.TakeWork _,
-          Instruction.CallModel _,
-          Instruction.AskApprover _,
-          Instruction.RunTool _,
-          Instruction.Remember _,
-          Instruction.Release _,
-          Instruction.Forget _ ->
+  /** Exhaustive over the grammar, with no default arm: a new effect must choose. */
+  public static Disposition of(Effect effect) {
+    return switch (effect) {
+      case Effect.SetAlarm _, Effect.CancelAlarm _ -> TRANSACTIONAL;
+      case Effect.Narrate _ -> NARRATION;
+      case Effect.TakeWork _,
+          Effect.CallModel _,
+          Effect.AskApprover _,
+          Effect.RunTool _,
+          Effect.Remember _,
+          Effect.Release _,
+          Effect.Forget _ ->
           DURABLE;
     };
   }

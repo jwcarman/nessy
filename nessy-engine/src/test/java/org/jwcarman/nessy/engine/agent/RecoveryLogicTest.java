@@ -44,7 +44,7 @@ class RecoveryLogicTest {
     void an_idle_agent_asks_whether_anything_is_waiting() {
       Decision decision = AgentLogic.decide(AgentState.idle(), new Input.Recovered());
 
-      assertThat(decision.then()).containsExactly(new Instruction.TakeWork());
+      assertThat(decision.then()).containsExactly(new Effect.TakeWork());
     }
   }
 
@@ -57,7 +57,7 @@ class RecoveryLogicTest {
 
       Decision decision = AgentLogic.decide(calling, new Input.Recovered());
 
-      assertThat(decision.then()).containsExactly(new Instruction.CallModel());
+      assertThat(decision.then()).containsExactly(new Effect.CallModel());
     }
 
     @Test
@@ -72,15 +72,14 @@ class RecoveryLogicTest {
       Decision decision = recovering(Map.of(CallId.of("a"), new CallState.Approving("send_email")));
 
       assertThat(decision.then())
-          .containsExactly(new Instruction.AskApprover(CallId.of("a"), "send_email"));
+          .containsExactly(new Effect.AskApprover(CallId.of("a"), "send_email"));
     }
 
     @Test
     void a_call_that_died_running_runs_again_because_nobody_else_will_answer() {
       Decision decision = recovering(Map.of(CallId.of("a"), new CallState.Running("read_file")));
 
-      assertThat(decision.then())
-          .containsExactly(new Instruction.RunTool(CallId.of("a"), "read_file"));
+      assertThat(decision.then()).containsExactly(new Effect.RunTool(CallId.of("a"), "read_file"));
     }
 
     @Test
@@ -113,8 +112,8 @@ class RecoveryLogicTest {
 
       assertThat(decision.then())
           .containsExactlyInAnyOrder(
-              new Instruction.AskApprover(CallId.of("a"), "send_email"),
-              new Instruction.RunTool(CallId.of("b"), "read_file"));
+              new Effect.AskApprover(CallId.of("a"), "send_email"),
+              new Effect.RunTool(CallId.of("b"), "read_file"));
     }
   }
 }

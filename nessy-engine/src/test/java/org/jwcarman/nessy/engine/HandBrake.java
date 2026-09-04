@@ -23,12 +23,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * A blocking executor a test can stop, so two instruction batches can be run in a chosen order.
+ * A blocking executor a test can stop, so two effect batches can be run in a chosen order.
  *
- * <p>Instruction batches are one task each, and nothing orders two of them. That is a real property
- * of the engine and it is why an interleaving that loses a write happens about one run in five —
- * which is no use to a test. Pulling the hand brake queues every task from that moment, letting a
- * test say "run the second batch before the first" on purpose.
+ * <p>Effect batches are one task each, and nothing orders two of them. That is a real property of
+ * the engine and it is why an interleaving that loses a write happens about one run in five — which
+ * is no use to a test. Pulling the hand brake queues every task from that moment, letting a test
+ * say "run the second batch before the first" on purpose.
  */
 final class HandBrake implements Executor {
 

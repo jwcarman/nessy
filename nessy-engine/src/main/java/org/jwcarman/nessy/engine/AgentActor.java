@@ -45,9 +45,9 @@ import org.jwcarman.nessy.engine.agent.Input;
  * three days depended on a process staying up.
  *
  * <p><b>This class does four things and nothing else:</b> translate a message into an {@link
- * Input}, call {@link AgentLogic#decide}, persist what it returns, and hand the instructions to
- * {@link Instructions}. Every rule lives in the logic, which has no way to do anything; every
- * effect lives in the shell, which decides nothing.
+ * Input}, call {@link AgentLogic#decide}, persist what it returns, and hand the effects to {@link
+ * EffectWorker}. Every rule lives in the logic, which has no way to do anything; every effect lives
+ * in the shell, which decides nothing.
  *
  * <p><b>Why the revival is gone.</b> {@code onStop} used to post a {@code Wake} to its own entity
  * id so a successor would pick up a stranded turn. Slow work now addresses its answer to the
@@ -59,7 +59,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
   private final ActorContext<NessyMessage> context;
   private final AgentType agentType;
   private final AgentId agentId;
-  private final Instructions instructions;
+  private final EffectWorker effectWorker;
   private final Traces traces;
   private final ActorRef<ClusterSharding.ShardCommand> shard;
 
@@ -72,13 +72,13 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
     this.context = context;
     this.agentType = deps.agentType();
     this.agentId = agentId;
-    this.instructions = deps.instructions();
+    this.effectWorker = deps.effectWorker();
     this.traces = deps.traces();
     this.shard = shard;
   }
 
   /** What one KIND of agent needs. The observation type is not here: the backlog store owns it. */
-  public record Dependencies(AgentType agentType, Instructions instructions, Traces traces) {}
+  public record Dependencies(AgentType agentType, EffectWorker effectWorker, Traces traces) {}
 
   public static Behavior<NessyMessage> create(
       Dependencies deps, AgentId agentId, ActorRef<ClusterSharding.ShardCommand> shard) {
@@ -152,7 +152,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           // actor's own thread, which is also carrying sharding and cluster gossip, so a claim
           // read against a remote database here would slow the cluster down and look like
           // anything but storage.
-          instructions.performAll(agentId, next, decision.then(), carried);
+          effectWorker.performAll(agentId, next, decision.then(), carried);
         });
   }
 

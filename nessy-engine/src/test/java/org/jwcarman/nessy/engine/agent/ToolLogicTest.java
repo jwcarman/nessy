@@ -46,7 +46,7 @@ class ToolLogicTest {
 
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("a"), new CallState.Running("send_email"));
-      assertThat(decision.then()).contains(new Instruction.RunTool(CallId.of("a"), "send_email"));
+      assertThat(decision.then()).contains(new Effect.RunTool(CallId.of("a"), "send_email"));
     }
 
     @Test
@@ -64,7 +64,7 @@ class ToolLogicTest {
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("a"), new CallState.Completed());
       assertThat(decision.then()).isNotEmpty();
-      assertThat(decision.then()).noneMatch(Instruction.RunTool.class::isInstance);
+      assertThat(decision.then()).noneMatch(Effect.RunTool.class::isInstance);
     }
 
     @Test
@@ -80,7 +80,7 @@ class ToolLogicTest {
               new Input.ApprovalGiven(CallId.of("a"), "send_email", ApprovalResult.denied("no")));
 
       assertThat(decision.next().busy()).isTrue();
-      assertThat(decision.then()).noneMatch(Instruction.Release.class::isInstance);
+      assertThat(decision.then()).noneMatch(Effect.Release.class::isInstance);
     }
   }
 
@@ -97,7 +97,7 @@ class ToolLogicTest {
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("a"), new CallState.Parked());
       assertThat(decision.then())
-          .containsExactly(new Instruction.SetAlarm(CallId.of("a"), java.time.Instant.EPOCH));
+          .containsExactly(new Effect.SetAlarm(CallId.of("a"), java.time.Instant.EPOCH));
     }
 
     @Test
@@ -107,7 +107,7 @@ class ToolLogicTest {
               working(Map.of(CallId.of("a"), new CallState.Parked())),
               new Input.ToolCompleted(CallId.of("a")));
 
-      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
     }
   }
 
@@ -127,7 +127,7 @@ class ToolLogicTest {
               new Input.ToolCompleted(CallId.of("b")));
 
       assertThat(decision.next().phase()).isInstanceOf(Phase.CallingModel.class);
-      assertThat(decision.then()).contains(new Instruction.CallModel());
+      assertThat(decision.then()).contains(new Effect.CallModel());
     }
 
     @Test
@@ -145,7 +145,7 @@ class ToolLogicTest {
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("b"), new CallState.Running("read_file"));
       assertThat(decision.then()).isNotEmpty();
-      assertThat(decision.then()).noneMatch(Instruction.CallModel.class::isInstance);
+      assertThat(decision.then()).noneMatch(Effect.CallModel.class::isInstance);
     }
 
     @Test
@@ -184,7 +184,7 @@ class ToolLogicTest {
               new Input.ApprovalGiven(
                   CallId.of("a"), "prune_images", ApprovalResult.denied("not tonight")));
 
-      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
     }
 
     @Test
@@ -195,7 +195,7 @@ class ToolLogicTest {
               working(Map.of(CallId.of("a"), new CallState.Parked())),
               new Input.DeadlinePassed(CallId.of("a")));
 
-      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
     }
 
     @Test
@@ -205,7 +205,7 @@ class ToolLogicTest {
               working(Map.of(CallId.of("a"), new CallState.Running("send_email"))),
               new Input.ToolCompleted(CallId.of("a")));
 
-      assertThat(decision.then()).contains(new Instruction.CancelAlarm(CallId.of("a")));
+      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
     }
 
     @Test
@@ -219,10 +219,10 @@ class ToolLogicTest {
       // The positive assertion first, so the negative one cannot pass against an empty list.
       assertThat(decision.then())
           .as("an approval runs the tool")
-          .contains(new Instruction.RunTool(CallId.of("a"), "long_job"));
+          .contains(new Effect.RunTool(CallId.of("a"), "long_job"));
       assertThat(decision.then())
           .as("an approved call is still outstanding, so its deadline still means something")
-          .doesNotContain(new Instruction.CancelAlarm(CallId.of("a")));
+          .doesNotContain(new Effect.CancelAlarm(CallId.of("a")));
     }
   }
 

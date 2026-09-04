@@ -51,10 +51,10 @@ class ModelLogicTest {
       assertThat(decision.next().busy()).isFalse();
       assertThat(decision.then())
           .containsExactly(
-              new Instruction.Remember.Answer(),
-              new Instruction.Narrate.TurnEnded(new TurnResult.Completed(), NOTHING_MEASURED),
-              new Instruction.Release(),
-              new Instruction.TakeWork());
+              new Effect.Remember.Answer(),
+              new Effect.Narrate.TurnEnded(new TurnResult.Completed(), NOTHING_MEASURED),
+              new Effect.Release(),
+              new Effect.TakeWork());
     }
 
     @Test
@@ -62,8 +62,7 @@ class ModelLogicTest {
       Decision decision = answered(StopReason.MAX_TOKENS);
 
       assertThat(decision.then())
-          .contains(
-              new Instruction.Narrate.TurnEnded(new TurnResult.Truncated(), NOTHING_MEASURED));
+          .contains(new Effect.Narrate.TurnEnded(new TurnResult.Truncated(), NOTHING_MEASURED));
     }
 
     @Test
@@ -73,10 +72,10 @@ class ModelLogicTest {
 
     @Test
     void remembering_happens_before_releasing_the_claims_it_is_written_from() {
-      List<Instruction> then = answered(StopReason.END_TURN).then();
+      List<Effect> then = answered(StopReason.END_TURN).then();
 
-      assertThat(then.indexOf(new Instruction.Remember.Answer()))
-          .isLessThan(then.indexOf(new Instruction.Release()));
+      assertThat(then.indexOf(new Effect.Remember.Answer()))
+          .isLessThan(then.indexOf(new Effect.Release()));
     }
   }
 
@@ -104,14 +103,14 @@ class ModelLogicTest {
     void asking_the_approver_is_what_it_does_about_each_one() {
       assertThat(asked().then())
           .contains(
-              new Instruction.AskApprover(CallId.of("a"), "send_email"),
-              new Instruction.AskApprover(CallId.of("b"), "read_file"));
+              new Effect.AskApprover(CallId.of("a"), "send_email"),
+              new Effect.AskApprover(CallId.of("b"), "read_file"));
     }
 
     @Test
     void a_turn_working_tools_has_not_ended() {
       assertThat(asked().next().busy()).isTrue();
-      assertThat(asked().then()).noneMatch(Instruction.Release.class::isInstance);
+      assertThat(asked().then()).noneMatch(Effect.Release.class::isInstance);
     }
   }
 
@@ -128,7 +127,7 @@ class ModelLogicTest {
       assertThat(decision.next().busy()).isFalse();
       assertThat(decision.then())
           .contains(
-              new Instruction.Narrate.TurnEnded(
+              new Effect.Narrate.TurnEnded(
                   new TurnResult.Refused("safety", "not going to do that"), NOTHING_MEASURED));
     }
 
@@ -139,7 +138,7 @@ class ModelLogicTest {
       assertThat(decision.next().busy()).isFalse();
       assertThat(decision.then())
           .contains(
-              new Instruction.Narrate.TurnEnded(
+              new Effect.Narrate.TurnEnded(
                   new TurnResult.Failed("connection reset"), Usage.unreported()));
     }
   }

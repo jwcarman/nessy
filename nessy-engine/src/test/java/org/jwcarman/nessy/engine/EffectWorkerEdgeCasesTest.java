@@ -39,18 +39,18 @@ import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentState;
-import org.jwcarman.nessy.engine.agent.Instruction;
+import org.jwcarman.nessy.engine.agent.Effect;
 
 /**
- * The narrow branches inside {@code Instructions} that a full turn cannot be made to hit — not
+ * The narrow branches inside {@code EffectWorker} that a full turn cannot be made to hit — not
  * because they are unreachable in production, but because reaching them from the outside would mean
  * contriving the very failure they exist to handle (a claim deleted from under a running call, a
- * deployment with no durable-state plugin configured). {@code Instructions} is package-visible for
- * exactly this: driving one instruction directly, against the real dependencies {@link Engines}
- * builds, without needing the decision that would ordinarily have produced it.
+ * deployment with no durable-state plugin configured). {@code EffectWorker} is package-visible for
+ * exactly this: driving one effect directly, against the real dependencies {@link Engines} builds,
+ * without needing the decision that would ordinarily have produced it.
  */
-@DisplayName("Instructions, driven directly at the seams a full turn cannot reach")
-class InstructionsEdgeCasesTest {
+@DisplayName("EffectWorker, driven directly at the seams a full turn cannot reach")
+class EffectWorkerEdgeCasesTest {
 
   @Nested
   @DisplayName("a call whose asking message is gone")
@@ -73,7 +73,7 @@ class InstructionsEdgeCasesTest {
                       context ->
                           AgentActor.create(
                               new AgentActor.Dependencies(
-                                  type, parts.instructions(), Traces.noop()),
+                                  type, parts.effectWorker(), Traces.noop()),
                               AgentId.of(context.getEntityId()),
                               context.getShard()))
                   .withStopMessage(new NessyMessage.Stop(Map.of())));
@@ -98,8 +98,8 @@ class InstructionsEdgeCasesTest {
       CallId callId = CallId.of("missing-call");
 
       parts
-          .instructions()
-          .perform(agentId, state, new Instruction.AskApprover(callId, "some_tool"), Map.of());
+          .effectWorker()
+          .perform(agentId, state, new Effect.AskApprover(callId, "some_tool"), Map.of());
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -115,8 +115,8 @@ class InstructionsEdgeCasesTest {
       CallId callId = CallId.of("missing-call-2");
 
       parts
-          .instructions()
-          .perform(agentId, state, new Instruction.RunTool(callId, "some_tool"), Map.of());
+          .effectWorker()
+          .perform(agentId, state, new Effect.RunTool(callId, "some_tool"), Map.of());
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -127,7 +127,7 @@ class InstructionsEdgeCasesTest {
     private static ToolResult decodedResult(
         Engines.Parts parts, AgentId agentId, TurnId turnId, CallId callId) {
       byte[] payload =
-          parts.claims().get(agentId, turnId, Instructions.resultKey(callId)).orElseThrow();
+          parts.claims().get(agentId, turnId, EffectWorker.resultKey(callId)).orElseThrow();
       return JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class).decode(payload);
     }
 
@@ -143,8 +143,8 @@ class InstructionsEdgeCasesTest {
       AgentId neverWorked = AgentId.of("house-never-worked");
 
       parts
-          .instructions()
-          .perform(neverWorked, AgentState.idle(), new Instruction.Remember.Input(), Map.of());
+          .effectWorker()
+          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), Map.of());
 
       assertThat(parts.remembered().of(neverWorked))
           .as("nothing was ever claimed under a null key, so nothing was remembered")
@@ -184,7 +184,7 @@ class InstructionsEdgeCasesTest {
       parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
       parts.remembered().add(agentId, answer());
 
-      parts.instructions().perform(agentId, AgentState.idle(), new Instruction.Forget(), Map.of());
+      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), Map.of());
 
       assertThat(parts.remembered().of(agentId)).as("memory").isEmpty();
       assertThat(backlogRowCount(parts, agentId)).as("backlog rows").isZero();

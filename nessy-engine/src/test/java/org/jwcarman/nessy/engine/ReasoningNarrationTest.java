@@ -45,7 +45,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 /**
  * A provider that shows its reasoning as it streams.
  *
- * <p>{@code Instructions.narrateChunk} paints a {@link ModelEvent.ReasoningChunk} the same way it
+ * <p>{@code EffectWorker.narrateChunk} paints a {@link ModelEvent.ReasoningChunk} the same way it
  * paints prose — as it arrives, on the thread draining the stream. {@link Scripts}, used by every
  * other test here, only ever produces prose and tool calls, so nothing before this test built a
  * stream carrying reasoning. Reasoning is narration only: it is never assembled into the message
@@ -101,7 +101,7 @@ class ReasoningNarrationTest {
                     context ->
                         AgentActor.create(
                             new AgentActor.Dependencies(
-                                WATCHMAN, parts.instructions(), Traces.noop()),
+                                WATCHMAN, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             context.getShard()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

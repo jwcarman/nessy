@@ -36,7 +36,7 @@ class ForgetLogicTest {
   void a_poisoned_take_forgets() {
     Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
 
-    assertThat(decision.then()).containsExactly(new Instruction.Forget());
+    assertThat(decision.then()).containsExactly(new Effect.Forget());
   }
 
   @Test
@@ -59,6 +59,6 @@ class ForgetLogicTest {
     Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
 
     assertThat(decision.then()).isNotEmpty();
-    assertThat(decision.then()).doesNotContain(new Instruction.TakeWork());
+    assertThat(decision.then()).doesNotContain(new Effect.TakeWork());
   }
 }

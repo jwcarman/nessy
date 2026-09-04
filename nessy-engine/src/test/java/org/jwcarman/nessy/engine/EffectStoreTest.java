@@ -44,10 +44,10 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
  * A durable obligation.
  *
  * <p>Three properties, and none of them is "a row goes in and comes out". Claiming hands work back
- * in DECISION order, because a decision's instructions are ordered and running them shuffled writes
- * an empty exchange. Claiming twice hands nothing back the second time, because at-least-once is
- * the contract and at-least-twice-immediately is not. And an expired row comes back to whoever
- * asks, because the node that claimed it is the one that died.
+ * in DECISION order, because a decision's effects are ordered and running them shuffled writes an
+ * empty exchange. Claiming twice hands nothing back the second time, because at-least-once is the
+ * contract and at-least-twice-immediately is not. And an expired row comes back to whoever asks,
+ * because the node that claimed it is the one that died.
  */
 @DisplayName("A durable effect")
 class EffectsTest {
@@ -64,12 +64,12 @@ class EffectsTest {
   private static final int ROWS_PER_TRIAL = 3000;
 
   private EmbeddedDatabase database;
-  private Effects effects;
+  private EffectStore effects;
 
   @BeforeEach
   void fresh() {
     database = TestDatabase.fresh();
-    effects = new Effects(database);
+    effects = new EffectStore(database);
   }
 
   @AfterEach
@@ -89,7 +89,7 @@ class EffectsTest {
     effects.insert(TYPE, AGENT, TURN, 1, bytes("release"), null);
     effects.insert(TYPE, AGENT, TURN, 0, bytes("remember"), null);
 
-    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
     assertThat(claimed)
         .extracting(effect -> text(effect.payload()))
@@ -102,7 +102,7 @@ class EffectsTest {
     effects.insert(TYPE, AGENT, TURN, 0, bytes("mine"), null);
     effects.insert(TYPE, OTHER, TURN, 0, bytes("theirs"), null);
 
-    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
     assertThat(claimed).isNotEmpty();
     assertThat(claimed).allMatch(effect -> "mine".equals(text(effect.payload())));
@@ -140,8 +140,10 @@ class EffectsTest {
     CountDownLatch startGate = new CountDownLatch(1);
     ExecutorService threads = Executors.newFixedThreadPool(2);
     try {
-      Future<List<Effects.Claimed>> first = threads.submit(() -> awaitAndClaim(agent, startGate));
-      Future<List<Effects.Claimed>> second = threads.submit(() -> awaitAndClaim(agent, startGate));
+      Future<List<EffectStore.Claimed>> first =
+          threads.submit(() -> awaitAndClaim(agent, startGate));
+      Future<List<EffectStore.Claimed>> second =
+          threads.submit(() -> awaitAndClaim(agent, startGate));
       startGate.countDown();
 
       Set<EffectId> firstIds = idsOf(first.get(10, TimeUnit.SECONDS));
@@ -175,7 +177,7 @@ class EffectsTest {
     effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
     effects.claim(TYPE, AGENT, Instant.now().minus(Duration.ofSeconds(1)));
 
-    List<Effects.Claimed> expired = effects.claimExpired(TYPE, Instant.now(), 10);
+    List<EffectStore.Claimed> expired = effects.claimExpired(TYPE, Instant.now(), 10);
 
     assertThat(expired).extracting(effect -> text(effect.payload())).containsExactly("call-model");
     assertThat(expired).allMatch(effect -> effect.attempts() == 2);
@@ -208,7 +210,7 @@ class EffectsTest {
   void an_effect_with_no_turn_round_trips_null() {
     effects.insert(TYPE, AGENT, null, 0, bytes("take-work"), null);
 
-    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
     assertThat(claimed).extracting(effect -> text(effect.payload())).containsExactly("take-work");
     assertThat(claimed).allMatch(effect -> effect.turnId() == null);
@@ -220,9 +222,9 @@ class EffectsTest {
     String carrier = "{\"traceparent\":\"00-4bf92f-00f067-01\"}";
     effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), carrier);
 
-    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
-    assertThat(claimed).extracting(Effects.Claimed::observability).containsExactly(carrier);
+    assertThat(claimed).extracting(EffectStore.Claimed::observability).containsExactly(carrier);
   }
 
   @Test
@@ -230,20 +232,20 @@ class EffectsTest {
   void observability_is_null_when_there_was_no_trace() {
     effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
 
-    List<Effects.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Claimed> claimed = effects.claim(TYPE, AGENT, SOON);
 
-    assertThat(claimed).extracting(Effects.Claimed::payload).isNotEmpty();
+    assertThat(claimed).extracting(EffectStore.Claimed::payload).isNotEmpty();
     assertThat(claimed).allMatch(effect -> effect.observability() == null);
   }
 
-  private List<Effects.Claimed> awaitAndClaim(AgentId agent, CountDownLatch startGate)
+  private List<EffectStore.Claimed> awaitAndClaim(AgentId agent, CountDownLatch startGate)
       throws InterruptedException {
     startGate.await();
     return effects.claim(TYPE, agent, SOON);
   }
 
-  private static Set<EffectId> idsOf(List<Effects.Claimed> claimed) {
-    return claimed.stream().map(Effects.Claimed::id).collect(Collectors.toSet());
+  private static Set<EffectId> idsOf(List<EffectStore.Claimed> claimed) {
+    return claimed.stream().map(EffectStore.Claimed::id).collect(Collectors.toSet());
   }
 
   private String payloadOf(EffectId id) {

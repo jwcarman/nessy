@@ -24,52 +24,52 @@ import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.Usage;
-import org.jwcarman.nessy.engine.agent.Instruction;
+import org.jwcarman.nessy.engine.agent.Effect;
 
 /**
- * Which instructions become rows, and which never do.
+ * Which effects become rows, and which never do.
  *
  * <p>Three answers, and each mistake has its own shape. A durable one treated as narration is work
  * silently lost to a crash. A narration treated as durable is a row per token. And an alarm treated
  * as durable is a deadline that is armed AFTER the decision that armed it commits -- a window in
  * which a settled call still holds a live reminder.
  */
-@DisplayName("What an instruction is made of")
+@DisplayName("What an effect is made of")
 class DispositionTest {
 
   @Test
   @DisplayName("external work is durable")
   void work_that_leaves_the_process_is_durable() {
-    assertThat(Disposition.of(new Instruction.CallModel())).isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.RunTool(CallId.of("c"), "look")))
+    assertThat(Disposition.of(new Effect.CallModel())).isEqualTo(Disposition.DURABLE);
+    assertThat(Disposition.of(new Effect.RunTool(CallId.of("c"), "look")))
         .isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.AskApprover(CallId.of("c"), "look")))
+    assertThat(Disposition.of(new Effect.AskApprover(CallId.of("c"), "look")))
         .isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.TakeWork())).isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.Remember.Exchange())).isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.Release())).isEqualTo(Disposition.DURABLE);
-    assertThat(Disposition.of(new Instruction.Forget())).isEqualTo(Disposition.DURABLE);
+    assertThat(Disposition.of(new Effect.TakeWork())).isEqualTo(Disposition.DURABLE);
+    assertThat(Disposition.of(new Effect.Remember.Exchange())).isEqualTo(Disposition.DURABLE);
+    assertThat(Disposition.of(new Effect.Release())).isEqualTo(Disposition.DURABLE);
+    assertThat(Disposition.of(new Effect.Forget())).isEqualTo(Disposition.DURABLE);
   }
 
   @Test
   @DisplayName("a deadline is written inside the transition that decided it")
   void alarms_are_transactional() {
-    assertThat(Disposition.of(new Instruction.SetAlarm(CallId.of("c"), Instant.EPOCH)))
+    assertThat(Disposition.of(new Effect.SetAlarm(CallId.of("c"), Instant.EPOCH)))
         .isEqualTo(Disposition.TRANSACTIONAL);
-    assertThat(Disposition.of(new Instruction.CancelAlarm(CallId.of("c"))))
+    assertThat(Disposition.of(new Effect.CancelAlarm(CallId.of("c"))))
         .isEqualTo(Disposition.TRANSACTIONAL);
   }
 
   @Test
   @DisplayName("narration is never a row")
   void narration_is_fire_and_forget() {
-    assertThat(Disposition.of(new Instruction.Narrate.TurnStarted(TurnId.of("t"))))
+    assertThat(Disposition.of(new Effect.Narrate.TurnStarted(TurnId.of("t"))))
         .isEqualTo(Disposition.NARRATION);
     assertThat(
             Disposition.of(
-                new Instruction.Narrate.TurnEnded(new TurnResult.Completed(), Usage.unreported())))
+                new Effect.Narrate.TurnEnded(new TurnResult.Completed(), Usage.unreported())))
         .isEqualTo(Disposition.NARRATION);
-    assertThat(Disposition.of(new Instruction.Narrate.ToolCallCompleted(CallId.of("c"))))
+    assertThat(Disposition.of(new Effect.Narrate.ToolCallCompleted(CallId.of("c"))))
         .isEqualTo(Disposition.NARRATION);
   }
 }

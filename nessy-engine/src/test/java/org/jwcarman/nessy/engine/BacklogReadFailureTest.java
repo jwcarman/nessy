@@ -45,7 +45,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 /**
  * A backlog table that cannot be reached when {@code take} runs.
  *
- * <p>Nothing before this test drove {@code Instructions.takeWork}'s failure branch: an agent asking
+ * <p>Nothing before this test drove {@code EffectWorker.takeWork}'s failure branch: an agent asking
  * for work reports a FAILED turn — narrated, not silent — when the store cannot answer, rather than
  * hanging forever with no explanation reaching anyone watching. The failure is real SQL against a
  * real, now-unreachable, database, not a stand-in that only claims to fail.
@@ -86,7 +86,7 @@ class BacklogReadFailureTest {
                     context ->
                         AgentActor.create(
                             new AgentActor.Dependencies(
-                                WATCHMAN, parts.instructions(), Traces.noop()),
+                                WATCHMAN, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             context.getShard()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

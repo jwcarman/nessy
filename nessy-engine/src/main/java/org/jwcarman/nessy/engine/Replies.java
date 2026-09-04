@@ -95,7 +95,7 @@ public final class Replies {
     claims.put(
         where.agentId(),
         where.turnId(),
-        Instructions.resultKey(where.callId()),
+        EffectWorker.resultKey(where.callId()),
         RESULTS.encode(result));
     return ask(
         where,
@@ -115,13 +115,13 @@ public final class Replies {
     }
     // A denial arriving from a desk is claimed here for the same reason an immediate one is: it is
     // the call's RESULT, and the agent is only ever told an id.
-    Instructions.denialResult(result)
+    EffectWorker.denialResult(result)
         .ifPresent(
             denied ->
                 claims.put(
                     where.agentId(),
                     where.turnId(),
-                    Instructions.resultKey(where.callId()),
+                    EffectWorker.resultKey(where.callId()),
                     RESULTS.encode(denied)));
     return ask(
         where,

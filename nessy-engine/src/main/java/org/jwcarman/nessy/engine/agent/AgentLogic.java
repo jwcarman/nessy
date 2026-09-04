@@ -31,8 +31,8 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
  * three-day parked approval and a crash mid-model-call be ordinary unit tests rather than a
  * cluster, a race and a fifteen-second timeout.
  *
- * <p><b>There is no Sleep.</b> Passivation was an instruction because an actor had to be told to
- * unload. A thread that finishes simply returns, and the agent is a row that was always there.
+ * <p><b>There is no Sleep.</b> Passivation was an effect because an actor had to be told to unload.
+ * A thread that finishes simply returns, and the agent is a row that was always there.
  */
 public final class AgentLogic {
 
@@ -45,7 +45,7 @@ public final class AgentLogic {
       case Input.Recovered() -> onRecovered(state);
       case Input.NoWork() -> Decision.nothing(state.finished());
       case Input.ModelAnswered.Answered(var stopReason, var usage) ->
-          endTurn(state.spending(usage), resultOf(stopReason), new Instruction.Remember.Answer());
+          endTurn(state.spending(usage), resultOf(stopReason), new Effect.Remember.Answer());
       case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
       case Input.ModelAnswered.Refused(var category, var explanation, var usage) ->
           endTurn(state.spending(usage), new TurnResult.Refused(category, explanation));
@@ -54,9 +54,9 @@ public final class AgentLogic {
       case Input.ToolParked(var callId, var expiresAt) ->
           Decision.of(
               state.at(state.working().with(callId, new CallState.Parked())),
-              new Instruction.SetAlarm(callId, expiresAt));
+              new Effect.SetAlarm(callId, expiresAt));
       case Input.ToolCompleted(var callId) ->
-          settle(state, callId, new Instruction.Narrate.ToolCallCompleted(callId));
+          settle(state, callId, new Effect.Narrate.ToolCallCompleted(callId));
       case Input.DeadlinePassed(var callId) -> settle(state, callId);
       case Input.Poisoned() -> onPoisoned(state);
       default -> Decision.nothing(state);
@@ -71,7 +71,7 @@ public final class AgentLogic {
     // Only from Idle. Asking again while a take is already outstanding is the duplicate this
     // phase exists to prevent; a turn in flight will ask for itself when it ends.
     return state.phase() instanceof Phase.Idle
-        ? Decision.of(state.asking(), new Instruction.TakeWork())
+        ? Decision.of(state.asking(), new Effect.TakeWork())
         : Decision.nothing(state);
   }
 
@@ -87,16 +87,16 @@ public final class AgentLogic {
   private static Decision onPoisoned(AgentState state) {
     // Everything that was queued dies with it: an agent on its way out does not run its remaining
     // work, because those side effects would outlive the record of having caused them.
-    return Decision.of(state.finished(), new Instruction.Forget());
+    return Decision.of(state.finished(), new Effect.Forget());
   }
 
   /**
    * Starts a turn — unless one is already running.
    *
    * <p>The guard is not paranoia. Two takes can be in flight at once, because an agent asks for
-   * work on activation AND when told the backlog changed, and both instructions are issued before
-   * either answer comes back. The second take finds the row already marked taken and hands back the
-   * SAME one, exactly as it is meant to — so without this, one observation would start two turns.
+   * work on activation AND when told the backlog changed, and both effects are issued before either
+   * answer comes back. The second take finds the row already marked taken and hands back the SAME
+   * one, exactly as it is meant to — so without this, one observation would start two turns.
    */
   private static Decision onWorkTaken(AgentState state, Input.WorkTaken taken) {
     // Only a reply to an outstanding ask starts a turn. A reply arriving in any other phase is a
@@ -106,9 +106,9 @@ public final class AgentLogic {
     }
     return Decision.of(
         state.taking(taken.turnId(), taken.observationClaim()),
-        new Instruction.Narrate.TurnStarted(taken.turnId()),
-        new Instruction.Remember.Input(),
-        new Instruction.CallModel());
+        new Effect.Narrate.TurnStarted(taken.turnId()),
+        new Effect.Remember.Input(),
+        new Effect.CallModel());
   }
 
   /**
@@ -118,10 +118,10 @@ public final class AgentLogic {
    */
   private static Decision onAsked(AgentState state, Input.ModelAnswered.Asked asked) {
     Map<CallId, CallState> calls = new LinkedHashMap<>();
-    List<Instruction> then = new ArrayList<>();
+    List<Effect> then = new ArrayList<>();
     for (Input.CallSummary call : asked.calls()) {
       calls.put(call.callId(), new CallState.Approving(call.toolName()));
-      then.add(new Instruction.AskApprover(call.callId(), call.toolName()));
+      then.add(new Effect.AskApprover(call.callId(), call.toolName()));
     }
     return new Decision(state.at(new Phase.WorkingTools(calls)), then);
   }
@@ -133,13 +133,13 @@ public final class AgentLogic {
    * and take again at the end, because an agent that finishes without asking for the next piece of
    * work is an agent that needs a nudge to notice work it already has.
    */
-  private static Decision endTurn(AgentState state, TurnResult result, Instruction... remembering) {
-    List<Instruction> then = new ArrayList<>(List.of(remembering));
-    then.add(new Instruction.Narrate.TurnEnded(result, state.usage()));
-    then.add(new Instruction.Release());
+  private static Decision endTurn(AgentState state, TurnResult result, Effect... remembering) {
+    List<Effect> then = new ArrayList<>(List.of(remembering));
+    then.add(new Effect.Narrate.TurnEnded(result, state.usage()));
+    then.add(new Effect.Release());
     // The one place a busy agent's forget is honoured: it asked to go, and now it can.
     // Always take. A forget is a row this take will find, not a flag this decision has to check.
-    then.add(new Instruction.TakeWork());
+    then.add(new Effect.TakeWork());
     return new Decision(state.asking(), then);
   }
 
@@ -162,12 +162,12 @@ public final class AgentLogic {
     if (!awaiting(state, given.callId())) {
       return Decision.nothing(state);
     }
-    Instruction narrate = new Instruction.Narrate.ApprovalDecided(given.callId(), given.result());
+    Effect narrate = new Effect.Narrate.ApprovalDecided(given.callId(), given.result());
     if (given.result() instanceof ApprovalResult.Approved) {
       return Decision.of(
           state.at(state.working().with(given.callId(), new CallState.Running(given.toolName()))),
           narrate,
-          new Instruction.RunTool(given.callId(), given.toolName()));
+          new Effect.RunTool(given.callId(), given.toolName()));
     }
     // A denial is a COMPLETED call with a result of its own, not a failed turn: the model is told
     // it was refused and gets to decide what to do about that.
@@ -205,17 +205,17 @@ public final class AgentLogic {
    * forget is the place that ends it. Cancelling an alarm that was never armed is silent, so the
    * paths that never parked pay nothing.
    */
-  private static Decision settle(AgentState state, CallId callId, Instruction... also) {
+  private static Decision settle(AgentState state, CallId callId, Effect... also) {
     if (!awaiting(state, callId)) {
       return Decision.nothing(state);
     }
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
-    List<Instruction> then = new ArrayList<>();
-    then.add(new Instruction.CancelAlarm(callId));
+    List<Effect> then = new ArrayList<>();
+    then.add(new Effect.CancelAlarm(callId));
     then.addAll(List.of(also));
     if (next.allSettled()) {
-      then.add(new Instruction.Remember.Exchange());
-      then.add(new Instruction.CallModel());
+      then.add(new Effect.Remember.Exchange());
+      then.add(new Effect.CallModel());
       return new Decision(state.at(new Phase.CallingModel()), then);
     }
     return new Decision(state.at(next), then);
@@ -233,17 +233,17 @@ public final class AgentLogic {
    */
   private static Decision onRecovered(AgentState state) {
     return switch (state.phase()) {
-      case Phase.Idle() -> Decision.of(state.asking(), new Instruction.TakeWork());
+      case Phase.Idle() -> Decision.of(state.asking(), new Effect.TakeWork());
       // The ask itself did not survive the crash, so ask again. Safe because take is
       // stranded-first: it hands back the row this agent already holds rather than a new one.
-      case Phase.AwaitingWork() -> Decision.of(state, new Instruction.TakeWork());
-      case Phase.CallingModel() -> Decision.of(state, new Instruction.CallModel());
+      case Phase.AwaitingWork() -> Decision.of(state, new Effect.TakeWork());
+      case Phase.CallingModel() -> Decision.of(state, new Effect.CallModel());
       case Phase.WorkingTools working -> new Decision(state, resume(working));
     };
   }
 
-  private static List<Instruction> resume(Phase.WorkingTools working) {
-    List<Instruction> then = new ArrayList<>();
+  private static List<Effect> resume(Phase.WorkingTools working) {
+    List<Effect> then = new ArrayList<>();
     working
         .calls()
         .forEach(
@@ -251,10 +251,10 @@ public final class AgentLogic {
               switch (call) {
                 // Asking is idempotent, so ask again.
                 case CallState.Approving(var toolName) ->
-                    then.add(new Instruction.AskApprover(callId, toolName));
+                    then.add(new Effect.AskApprover(callId, toolName));
                 // Nobody else will answer this one. Tool execution is at-least-once by contract.
                 case CallState.Running(var toolName) ->
-                    then.add(new Instruction.RunTool(callId, toolName));
+                    then.add(new Effect.RunTool(callId, toolName));
                 // Someone holds a reply token and an alarm is armed. Re-asking would mint a second.
                 case CallState.Parked() -> {
                   // deliberately nothing

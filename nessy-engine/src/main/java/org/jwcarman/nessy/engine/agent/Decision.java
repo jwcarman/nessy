@@ -22,10 +22,10 @@ import java.util.List;
  *
  * <p>Order matters, and it is the reverse of what the engine used to do. Persist, THEN instruct:
  * content is checked in before the agent is told about it, so a state referencing something must
- * find it there. The standing rule for any instruction added later is that a state referencing
- * something missing must be RECOVERABLE, not stuck.
+ * find it there. The standing rule for any effect added later is that a state referencing something
+ * missing must be RECOVERABLE, not stuck.
  */
-public record Decision(AgentState next, List<Instruction> then) {
+public record Decision(AgentState next, List<Effect> then) {
 
   public Decision {
     then = List.copyOf(then);
@@ -36,7 +36,7 @@ public record Decision(AgentState next, List<Instruction> then) {
     return new Decision(state, List.of());
   }
 
-  public static Decision of(AgentState next, Instruction... then) {
+  public static Decision of(AgentState next, Effect... then) {
     return new Decision(next, List.of(then));
   }
 }

@@ -45,7 +45,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 /**
  * Being forgotten while the last turn is still writing itself down.
  *
- * <p>An instruction batch is one task on the blocking executor, and nothing orders two of them. The
+ * <p>An effect batch is one task on the blocking executor, and nothing orders two of them. The
  * engine's own state does not help: {@code finished()} is applied when a turn's decision is
  * RETURNED, so an agent calls itself idle while its answer is still on its way to the transcript. A
  * forget arriving in that window took the idle path and its delete raced the write it should have
@@ -143,7 +143,7 @@ class ForgetRaceTest {
                     key,
                     context ->
                         AgentActor.create(
-                            new AgentActor.Dependencies(type, parts.instructions(), Traces.noop()),
+                            new AgentActor.Dependencies(type, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             shard.ref()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

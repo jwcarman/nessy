@@ -221,10 +221,10 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             config.backlogCoalescer(),
             clock);
 
-    Instructions instructions =
-        new Instructions(
+    EffectWorker effectWorker =
+        new EffectWorker(
             system,
-            new Instructions.Dependencies(
+            new EffectWorker.Dependencies(
                 type,
                 memory,
                 model,
@@ -240,7 +240,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                 traces,
                 backlog));
 
-    AgentActor.Dependencies deps = new AgentActor.Dependencies(type, instructions, traces);
+    AgentActor.Dependencies deps = new AgentActor.Dependencies(type, effectWorker, traces);
 
     EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
     sharding.init(

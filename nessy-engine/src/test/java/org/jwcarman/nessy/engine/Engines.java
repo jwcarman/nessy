@@ -57,7 +57,7 @@ final class Engines {
       DataSource dataSource,
       Claims claims,
       BacklogStore<HouseEvent> backlog,
-      Instructions instructions,
+      EffectWorker effectWorker,
       Remembered remembered,
       Narrated narrated) {}
 
@@ -117,9 +117,9 @@ final class Engines {
   /**
    * The same, with the blocking executor handed in.
    *
-   * <p>Instruction batches are one task each on this executor, so a test that owns it owns the
-   * order they run in — which is the only way to reproduce a race between two batches on purpose
-   * rather than one run in five.
+   * <p>Effect batches are one task each on this executor, so a test that owns it owns the order
+   * they run in — which is the only way to reproduce a race between two batches on purpose rather
+   * than one run in five.
    */
   static Parts of(
       ActorSystem<?> system,
@@ -140,10 +140,10 @@ final class Engines {
             Clock.systemUTC());
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
-    Instructions instructions =
-        new Instructions(
+    EffectWorker effectWorker =
+        new EffectWorker(
             system,
-            new Instructions.Dependencies(
+            new EffectWorker.Dependencies(
                 type,
                 recording(remembered),
                 model,
@@ -161,7 +161,7 @@ final class Engines {
                 blocking,
                 Traces.noop(),
                 backlog));
-    return new Parts(dataSource, claims, backlog, instructions, remembered, narrated);
+    return new Parts(dataSource, claims, backlog, effectWorker, remembered, narrated);
   }
 
   /** A transcript that keeps everything and hands it all back. */

@@ -42,7 +42,7 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  *
  * <p>A refusal arrives as a normal HTTP 200 — the provider's own guidance is to check WHY the turn
  * stopped before reading anything else out of it. Nothing before this test exercised the path a
- * real refusal actually takes: {@code Instructions.answerOf} turning a {@link ModelResult.Refused}
+ * real refusal actually takes: {@code EffectWorker.answerOf} turning a {@link ModelResult.Refused}
  * into {@code NessyMessage.ModelRefused}, and the turn closing as {@link TurnResult.Refused} rather
  * than hanging or being mistaken for a normal answer.
  */
@@ -74,7 +74,7 @@ class ModelRefusalTest {
                     context ->
                         AgentActor.create(
                             new AgentActor.Dependencies(
-                                WATCHMAN, parts.instructions(), Traces.noop()),
+                                WATCHMAN, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             context.getShard()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

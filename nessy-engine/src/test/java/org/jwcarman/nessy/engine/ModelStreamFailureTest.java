@@ -43,7 +43,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * A model call that never even starts streaming.
  *
  * <p>A provider client can throw before it produces a single event — a bad request, a closed
- * connection pool, a serialization bug in the request builder. {@code Instructions.callModel} runs
+ * connection pool, a serialization bug in the request builder. {@code EffectWorker.callModel} runs
  * the whole call, request-building included, on the blocking executor precisely so a synchronous
  * throw there is caught the same way a failure mid-stream would be. This is the throw-before-any-
  * event case; nothing before this test drove it.
@@ -83,7 +83,7 @@ class ModelStreamFailureTest {
                     context ->
                         AgentActor.create(
                             new AgentActor.Dependencies(
-                                WATCHMAN, parts.instructions(), Traces.noop()),
+                                WATCHMAN, parts.effectWorker(), Traces.noop()),
                             AgentId.of(context.getEntityId()),
                             context.getShard()))
                 .withStopMessage(new NessyMessage.Stop(Map.of())));

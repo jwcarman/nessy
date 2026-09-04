@@ -55,8 +55,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentState;
+import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
-import org.jwcarman.nessy.engine.agent.Instruction;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -77,15 +77,15 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  * makes a persisted state safe to reference them: a state saying a call completed cannot point at a
  * result that is not there.
  */
-final class Instructions {
+final class EffectWorker {
 
-  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(Instructions.class);
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(EffectWorker.class);
 
   private static final String ASKED_KEY = "asked";
   private static final String ANSWER_KEY = "answer";
 
   /**
-   * What performing an instruction needs.
+   * What performing an effect needs.
    *
    * <p>Flat rather than layered, because there is no longer a hierarchy to hand things down: one
    * actor does the whole turn, so one record holds what the whole turn needs.
@@ -114,7 +114,7 @@ final class Instructions {
   private final Codec<AnswerMessage> answerCodec;
   private final Codec<UserMessage> inputCodec;
 
-  Instructions(ActorSystem<?> system, Dependencies deps) {
+  EffectWorker(ActorSystem<?> system, Dependencies deps) {
     this.system = Objects.requireNonNull(system, "system must not be null");
     this.deps = Objects.requireNonNull(deps, "deps must not be null");
     this.key = EntityTypeKey.create(NessyMessage.class, deps.agentType().name());
@@ -126,59 +126,54 @@ final class Instructions {
   }
 
   /**
-   * Performs a decision's instructions, IN ORDER, on the blocking executor.
+   * Performs a decision's effects, IN ORDER, on the blocking executor.
    *
-   * <p>One hop for the whole list rather than one per instruction, because the order is load
-   * bearing: a turn remembers before it releases, since releasing drops the claims the exchange is
-   * written from. Firing each instruction independently would let the release win that race.
+   * <p>One hop for the whole list rather than one per effect, because the order is load bearing: a
+   * turn remembers before it releases, since releasing drops the claims the exchange is written
+   * from. Firing each effect independently would let the release win that race.
    *
-   * <p>The hop is why the instructions below may block. They read claims, write the transcript and
-   * arm alarms — all JDBC, and none of it belongs on an actor's thread, which is also the thread
-   * running sharding and cluster gossip. Instructions that wait on something SLOW (a model, a tool,
-   * an approver) hand that off again and return, so one long call never occupies this worker.
+   * <p>The hop is why the effects below may block. They read claims, write the transcript and arm
+   * alarms — all JDBC, and none of it belongs on an actor's thread, which is also the thread
+   * running sharding and cluster gossip. Effects that wait on something SLOW (a model, a tool, an
+   * approver) hand that off again and return, so one long call never occupies this worker.
    *
    * <p>Returns immediately: the caller is an actor, and an actor waiting on storage is the thing
    * this exists to prevent.
    */
   void performAll(
-      AgentId agentId,
-      AgentState state,
-      List<Instruction> instructions,
-      Map<String, String> carried) {
-    if (instructions.isEmpty()) {
+      AgentId agentId, AgentState state, List<Effect> effects, Map<String, String> carried) {
+    if (effects.isEmpty()) {
       return;
     }
     CompletableFuture.runAsync(
-            () ->
-                instructions.forEach(instruction -> perform(agentId, state, instruction, carried)),
+            () -> effects.forEach(effect -> perform(agentId, state, effect, carried)),
             deps.blocking())
         .exceptionally(
             failure -> {
               // Nothing downstream is waiting on these, so a failure here would otherwise be a
               // silent no-op: the turn simply stops, with no message and no log line.
               LOG.error(
-                  "[{}] instructions failed for turn {}", agentId.value(), state.turnId(), failure);
+                  "[{}] effects failed for turn {}", agentId.value(), state.turnId(), failure);
               return null;
             });
   }
 
-  /** Performs one instruction. May block: {@link #performAll} put it on the right thread. */
-  void perform(
-      AgentId agentId, AgentState state, Instruction instruction, Map<String, String> carried) {
-    switch (instruction) {
-      case Instruction.TakeWork() -> takeWork(agentId, state, carried);
-      case Instruction.CallModel() -> callModel(agentId, state, carried);
-      case Instruction.AskApprover ask -> askApprover(agentId, state, ask, carried);
-      case Instruction.RunTool run -> runTool(agentId, state, run, carried);
-      case Instruction.Remember.Input() -> rememberInput(agentId, state);
-      case Instruction.Remember.Answer() -> rememberAnswer(agentId, state);
-      case Instruction.Remember.Exchange() -> rememberExchange(agentId, state);
-      case Instruction.Release() -> deps.claims().deleteTurn(agentId, state.turnId());
-      case Instruction.SetAlarm alarm -> setAlarm(agentId, alarm);
-      case Instruction.CancelAlarm(var callId) ->
+  /** Performs one effect. May block: {@link #performAll} put it on the right thread. */
+  void perform(AgentId agentId, AgentState state, Effect effect, Map<String, String> carried) {
+    switch (effect) {
+      case Effect.TakeWork() -> takeWork(agentId, state, carried);
+      case Effect.CallModel() -> callModel(agentId, state, carried);
+      case Effect.AskApprover ask -> askApprover(agentId, state, ask, carried);
+      case Effect.RunTool run -> runTool(agentId, state, run, carried);
+      case Effect.Remember.Input() -> rememberInput(agentId, state);
+      case Effect.Remember.Answer() -> rememberAnswer(agentId, state);
+      case Effect.Remember.Exchange() -> rememberExchange(agentId, state);
+      case Effect.Release() -> deps.claims().deleteTurn(agentId, state.turnId());
+      case Effect.SetAlarm alarm -> setAlarm(agentId, alarm);
+      case Effect.CancelAlarm(var callId) ->
           deps.reminders().cancel(deps.agentType(), agentId, callId);
-      case Instruction.Forget() -> forget(agentId);
-      case Instruction.Narrate narrate -> narrate(agentId, state, narrate);
+      case Effect.Forget() -> forget(agentId);
+      case Effect.Narrate narrate -> narrate(agentId, state, narrate);
     }
   }
 
@@ -274,7 +269,7 @@ final class Instructions {
   }
 
   private void askApprover(
-      AgentId agentId, AgentState state, Instruction.AskApprover ask, Map<String, String> carried) {
+      AgentId agentId, AgentState state, Effect.AskApprover ask, Map<String, String> carried) {
     ToolCall call = callOf(agentId, state, ask.callId());
     if (call == null) {
       completed(
@@ -289,7 +284,7 @@ final class Instructions {
         .ifPresentOrElse(
             binding -> {
               // Rendered ONCE, here, and used for both the narration and the question. It used to
-              // be rendered again from a Narrate instruction, which meant reading the asking claim
+              // be rendered again from a Narrate effect, which meant reading the asking claim
               // back to find the call first.
               String action = deps.bindings().actionOf(binding, call.arguments());
               narrator(agentId)
@@ -363,7 +358,7 @@ final class Instructions {
   }
 
   private void runTool(
-      AgentId agentId, AgentState state, Instruction.RunTool run, Map<String, String> carried) {
+      AgentId agentId, AgentState state, Effect.RunTool run, Map<String, String> carried) {
     ToolCall call = callOf(agentId, state, run.callId());
     if (call == null) {
       completed(
@@ -511,22 +506,22 @@ final class Instructions {
         plugin);
   }
 
-  private void setAlarm(AgentId agentId, Instruction.SetAlarm alarm) {
+  private void setAlarm(AgentId agentId, Effect.SetAlarm alarm) {
     deps.reminders().remind(deps.agentType(), agentId, alarm.callId(), alarm.expiresAt());
   }
 
-  private void narrate(AgentId agentId, AgentState state, Instruction.Narrate narrate) {
+  private void narrate(AgentId agentId, AgentState state, Effect.Narrate narrate) {
     switch (narrate) {
-      case Instruction.Narrate.TurnStarted(_) ->
+      case Effect.Narrate.TurnStarted(_) ->
           narrator(agentId).narrate(new AgentEvent.TurnStarted(Identifiers.next()));
-      case Instruction.Narrate.TurnEnded(var result, var usage) ->
+      case Effect.Narrate.TurnEnded(var result, var usage) ->
           narrator(agentId).narrate(new AgentEvent.TurnEnded(Identifiers.next(), result, usage));
-      case Instruction.Narrate.ApprovalDecided(var callId, var result) ->
+      case Effect.Narrate.ApprovalDecided(var callId, var result) ->
           narrator(agentId)
               .narrate(
                   new AgentEvent.ApprovalDecided(
                       Identifiers.next(), callId, nameOf(agentId, state, callId), result));
-      case Instruction.Narrate.ToolCallCompleted(var callId) ->
+      case Effect.Narrate.ToolCallCompleted(var callId) ->
           narrator(agentId)
               .narrate(
                   new AgentEvent.ToolCallCompleted(

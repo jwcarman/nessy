@@ -52,7 +52,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * decision produced, and discharges the effect a decision completed, all as one commit, and that
  * atomicity is the property the durability design rests on.
  */
-final class Effects {
+final class EffectStore {
 
   private static final String PENDING = "PENDING";
   private static final String EXECUTING = "EXECUTING";
@@ -84,10 +84,10 @@ final class Effects {
    *
    * <p>{@code observability} is the W3C propagation carrier -- traceparent, tracestate, and any
    * intentionally propagated baggage -- as the JSON the caller of {@link #insert} serialized it to.
-   * {@code Effects} stores and returns it verbatim; it neither parses nor interprets it. A claiming
-   * node restores the trace context from it before performing the work, which is what keeps a
-   * turn's distributed trace from fragmenting at the effect boundary. May be {@code null}: an
-   * effect created outside any trace has no context to carry.
+   * {@code EffectStore} stores and returns it verbatim; it neither parses nor interprets it. A
+   * claiming node restores the trace context from it before performing the work, which is what
+   * keeps a turn's distributed trace from fragmenting at the effect boundary. May be {@code null}:
+   * an effect created outside any trace has no context to carry.
    *
    * <p>The generated equality a record gives you compares {@code payload} by IDENTITY, so two
    * {@code Claimed} values read from the same database would differ. Written out explicitly for the
@@ -152,7 +152,7 @@ final class Effects {
   private final JdbcClient jdbc;
   private final TransactionTemplate claiming;
 
-  Effects(DataSource dataSource) {
+  EffectStore(DataSource dataSource) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.claiming = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
@@ -200,7 +200,7 @@ final class Effects {
                 .param(agentType.name())
                 .param(agentId.value())
                 .param(PENDING)
-                .query(Effects::claimed)
+                .query(EffectStore::claimed)
                 .list()
                 .stream()
                 .map(effect -> take(effect, watchdogAt))
@@ -222,7 +222,7 @@ final class Effects {
                 .param(agentType.name())
                 .param(EXECUTING)
                 .param(now)
-                .query(Effects::claimed)
+                .query(EffectStore::claimed)
                 .list()
                 .stream()
                 .limit(limit)

@@ -33,7 +33,7 @@ class IdleLogicTest {
       Decision decision = AgentLogic.decide(AgentState.idle(), new Input.BacklogUpdated());
 
       assertThat(decision.next().busy()).isFalse();
-      assertThat(decision.then()).containsExactly(new Instruction.TakeWork());
+      assertThat(decision.then()).containsExactly(new Effect.TakeWork());
     }
 
     @Test
@@ -72,9 +72,9 @@ class IdleLogicTest {
 
       assertThat(decision.then())
           .containsExactly(
-              new Instruction.Narrate.TurnStarted(TurnId.of("turn-7")),
-              new Instruction.Remember.Input(),
-              new Instruction.CallModel());
+              new Effect.Narrate.TurnStarted(TurnId.of("turn-7")),
+              new Effect.Remember.Input(),
+              new Effect.CallModel());
     }
 
     @Test

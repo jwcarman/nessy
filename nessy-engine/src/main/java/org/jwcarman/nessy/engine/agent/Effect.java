@@ -26,50 +26,50 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 /**
  * What to do. Executed by the shell, never by the logic.
  *
- * <p>There is no READ instruction. Reads happen in the shell before an input is fed, which is what
- * keeps {@link AgentLogic#decide} pure and testable without a database, a model or a cluster.
+ * <p>There is no READ effect. Reads happen in the shell before an input is fed, which is what keeps
+ * {@link AgentLogic#decide} pure and testable without a database, a model or a cluster.
  *
- * <p><b>Wire names are a compatibility surface.</b> An instruction outlives the process that
- * decided it -- it is a row in nessy_effect until the work is done -- so a rename here orphans
- * every obligation already committed under the old name. Never change one.
+ * <p><b>Wire names are a compatibility surface.</b> An effect outlives the process that decided it
+ * -- it is a row in nessy_effect until the work is done -- so a rename here orphans every
+ * obligation already committed under the old name. Never change one.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "do")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = Instruction.TakeWork.class, name = "take-work"),
-  @JsonSubTypes.Type(value = Instruction.CallModel.class, name = "call-model"),
-  @JsonSubTypes.Type(value = Instruction.AskApprover.class, name = "ask-approver"),
-  @JsonSubTypes.Type(value = Instruction.RunTool.class, name = "run-tool"),
-  @JsonSubTypes.Type(value = Instruction.Remember.Input.class, name = "remember-input"),
-  @JsonSubTypes.Type(value = Instruction.Remember.Answer.class, name = "remember-answer"),
-  @JsonSubTypes.Type(value = Instruction.Remember.Exchange.class, name = "remember-exchange"),
-  @JsonSubTypes.Type(value = Instruction.Release.class, name = "release"),
-  @JsonSubTypes.Type(value = Instruction.SetAlarm.class, name = "set-alarm"),
-  @JsonSubTypes.Type(value = Instruction.CancelAlarm.class, name = "cancel-alarm"),
-  @JsonSubTypes.Type(value = Instruction.Forget.class, name = "forget"),
-  @JsonSubTypes.Type(value = Instruction.Narrate.TurnStarted.class, name = "narrate-turn-started"),
-  @JsonSubTypes.Type(value = Instruction.Narrate.TurnEnded.class, name = "narrate-turn-ended"),
+  @JsonSubTypes.Type(value = Effect.TakeWork.class, name = "take-work"),
+  @JsonSubTypes.Type(value = Effect.CallModel.class, name = "call-model"),
+  @JsonSubTypes.Type(value = Effect.AskApprover.class, name = "ask-approver"),
+  @JsonSubTypes.Type(value = Effect.RunTool.class, name = "run-tool"),
+  @JsonSubTypes.Type(value = Effect.Remember.Input.class, name = "remember-input"),
+  @JsonSubTypes.Type(value = Effect.Remember.Answer.class, name = "remember-answer"),
+  @JsonSubTypes.Type(value = Effect.Remember.Exchange.class, name = "remember-exchange"),
+  @JsonSubTypes.Type(value = Effect.Release.class, name = "release"),
+  @JsonSubTypes.Type(value = Effect.SetAlarm.class, name = "set-alarm"),
+  @JsonSubTypes.Type(value = Effect.CancelAlarm.class, name = "cancel-alarm"),
+  @JsonSubTypes.Type(value = Effect.Forget.class, name = "forget"),
+  @JsonSubTypes.Type(value = Effect.Narrate.TurnStarted.class, name = "narrate-turn-started"),
+  @JsonSubTypes.Type(value = Effect.Narrate.TurnEnded.class, name = "narrate-turn-ended"),
   @JsonSubTypes.Type(
-      value = Instruction.Narrate.ApprovalDecided.class,
+      value = Effect.Narrate.ApprovalDecided.class,
       name = "narrate-approval-decided"),
   @JsonSubTypes.Type(
-      value = Instruction.Narrate.ToolCallCompleted.class,
+      value = Effect.Narrate.ToolCallCompleted.class,
       name = "narrate-tool-call-completed")
 })
-public sealed interface Instruction {
+public sealed interface Effect {
 
   /** Ask the backlog store for the next row. Answers with {@code WorkTaken} or {@code NoWork}. */
-  record TakeWork() implements Instruction {}
+  record TakeWork() implements Effect {}
 
   /**
    * Send the exchange to the model. Answers with a {@code ModelAnswered} or {@code ModelFailed}.
    */
-  record CallModel() implements Instruction {}
+  record CallModel() implements Effect {}
 
   /** Ask the approver about one call. */
-  record AskApprover(CallId callId, String toolName) implements Instruction {}
+  record AskApprover(CallId callId, String toolName) implements Effect {}
 
   /** Run one tool. */
-  record RunTool(CallId callId, String toolName) implements Instruction {}
+  record RunTool(CallId callId, String toolName) implements Effect {}
 
   /**
    * Write to the transcript. Three different writes, because they are three different moments.
@@ -79,7 +79,7 @@ public sealed interface Instruction {
    * safe: whatever the turn was doing, asking the model again from what IS recorded is a correct
    * continuation.
    */
-  sealed interface Remember extends Instruction {
+  sealed interface Remember extends Effect {
 
     /** The observation that started this turn, redeemed from its claim. */
     record Input() implements Remember {}
@@ -92,13 +92,13 @@ public sealed interface Instruction {
   }
 
   /** Release everything this turn claimed. */
-  record Release() implements Instruction {}
+  record Release() implements Effect {}
 
   /** Arm a durable deadline for one call, so it outlives the process that set it. */
-  record SetAlarm(CallId callId, java.time.Instant expiresAt) implements Instruction {}
+  record SetAlarm(CallId callId, java.time.Instant expiresAt) implements Effect {}
 
   /** Disarm it. */
-  record CancelAlarm(CallId callId) implements Instruction {}
+  record CancelAlarm(CallId callId) implements Effect {}
 
   /**
    * Erase this agent: its memory, its backlog rows, its claims, and the state that records it
@@ -107,10 +107,10 @@ public sealed interface Instruction {
    * <p>Issued only when the agent is idle — {@code AgentLogic} holds a busy agent's request until
    * its turn ends — so nothing is deleted from under work in flight.
    */
-  record Forget() implements Instruction {}
+  record Forget() implements Effect {}
 
   /** Tell the narrator. The shell redeems whatever claim an event needs before it narrates. */
-  sealed interface Narrate extends Instruction {
+  sealed interface Narrate extends Effect {
 
     record TurnStarted(TurnId turnId) implements Narrate {}
 

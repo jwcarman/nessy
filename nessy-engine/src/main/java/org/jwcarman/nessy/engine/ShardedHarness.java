@@ -100,10 +100,10 @@ final class ShardedHarness<O> implements Harness<O> {
    * Leaves a forget where the agent will find it, and nudges.
    *
    * <p>The same two steps as {@link #observe}, and for the same reason: COMMIT, then signal. A
-   * message straight to the actor would be ordered against nothing — instruction batches are one
-   * task each, and an agent calls itself idle when a turn's decision is returned rather than when
-   * that decision's writes have landed, so a delete could overtake the answer it followed. A row
-   * cannot overtake anything, and the agent finds it by taking it.
+   * message straight to the actor would be ordered against nothing — effect batches are one task
+   * each, and an agent calls itself idle when a turn's decision is returned rather than when that
+   * decision's writes have landed, so a delete could overtake the answer it followed. A row cannot
+   * overtake anything, and the agent finds it by taking it.
    *
    * <p>It also survives what a message does not: a crash before it is read, a rebalance, and an
    * agent nobody has spoken to in a week.
