@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -91,12 +90,12 @@ final class AgentStore {
   AgentState lockAndLoad(AgentType agentType, AgentId agentId) {
     Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
-    Optional<String> held = read(agentType, agentId);
+    Optional<byte[]> held = read(agentType, agentId);
     if (held.isPresent()) {
-      return decode(held.get());
+      return codec.decode(held.get());
     }
     create(agentType, agentId);
-    return read(agentType, agentId).map(this::decode).orElseGet(AgentState::idle);
+    return read(agentType, agentId).map(codec::decode).orElseGet(AgentState::idle);
   }
 
   void save(AgentType agentType, AgentId agentId, AgentState state) {
@@ -128,31 +127,31 @@ final class AgentStore {
         .sql(STALLED)
         .param(agentType.name())
         .param(before)
-        .query((rs, row) -> new Stalled(rs.getString("agent_id"), rs.getString("state")))
+        .query((rs, row) -> new Stalled(rs.getString("agent_id"), rs.getBytes("state")))
         .list()
         .stream()
-        .filter(candidate -> decode(candidate.state()).busy())
+        .filter(candidate -> codec.decode(candidate.state()).busy())
         .limit(limit)
         .map(candidate -> AgentId.of(candidate.agentId()))
         .toList();
   }
 
-  private record Stalled(String agentId, String state) {}
+  private record Stalled(String agentId, byte[] state) {}
 
   private int update(AgentType agentType, AgentId agentId, AgentState state) {
     return jdbc.sql(UPDATE)
-        .param(encode(state))
+        .param(codec.encode(state))
         .param(Instant.now())
         .param(agentType.name())
         .param(agentId.value())
         .update();
   }
 
-  private Optional<String> read(AgentType agentType, AgentId agentId) {
+  private Optional<byte[]> read(AgentType agentType, AgentId agentId) {
     return jdbc.sql(LOCK)
         .param(agentType.name())
         .param(agentId.value())
-        .query(String.class)
+        .query(byte[].class)
         .optional();
   }
 
@@ -188,20 +187,11 @@ final class AgentStore {
                   .param(agentType.name())
                   .param(agentId.value())
                   .param(0L)
-                  .param(encode(AgentState.idle()))
+                  .param(codec.encode(AgentState.idle()))
                   .param(Instant.now())
                   .update());
     } catch (DuplicateKeyException | TransientDataAccessException _) {
       // Another node met this agent first, or is still inserting it. Its row is the one we want.
     }
-  }
-
-  /** The codec speaks bytes; the column is TEXT, so JSON's own UTF-8 bytes are the bridge. */
-  private String encode(AgentState state) {
-    return new String(codec.encode(state), StandardCharsets.UTF_8);
-  }
-
-  private AgentState decode(String state) {
-    return codec.decode(state.getBytes(StandardCharsets.UTF_8));
   }
 }

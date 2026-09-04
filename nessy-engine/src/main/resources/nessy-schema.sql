@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent (
   agent_type      TEXT                     NOT NULL,
   agent_id        TEXT                     NOT NULL,
   version         BIGINT                   NOT NULL,
-  state           TEXT                     NOT NULL,
+  state           BYTEA                    NOT NULL,
   last_touched_at TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (agent_type, agent_id)
 );
