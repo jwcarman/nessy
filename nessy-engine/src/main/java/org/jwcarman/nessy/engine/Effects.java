@@ -25,6 +25,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Work the agent decided on, and who is doing it.
@@ -36,6 +38,18 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * <p><b>{@code SKIP LOCKED} rather than a queue.</b> Every node may reap at once and none of them
  * contends: a claimer takes what it can lock and steps over the rest. No leader election, no
  * singleton scheduler. Measured to behave correctly on H2 as well as PostgreSQL.
+ *
+ * <p><b>Two different transaction contracts, on purpose.</b> {@link #claim(AgentType, AgentId,
+ * Instant)} and {@link #claimExpired(AgentType, Instant, int)} manage their OWN transaction: {@code
+ * SELECT ... FOR UPDATE} holds its row locks only until commit, so unless the SELECT and every
+ * {@code take()} UPDATE that follows it share one transaction, the lock is gone before it means
+ * anything and two claimers can both take the same row. Their {@link TransactionTemplate} uses
+ * default {@code PROPAGATION_REQUIRED} rather than {@code REQUIRES_NEW}, so a caller that already
+ * has a transaction open is joined rather than shadowed by a second one. {@link #insert}, {@link
+ * #complete} and {@link #fail}, by contrast, take NO transaction of their own and must keep joining
+ * whichever one the caller already has open: {@code Transition} writes state, inserts the effects a
+ * decision produced, and discharges the effect a decision completed, all as one commit, and that
+ * atomicity is the property the durability design rests on.
  */
 final class Effects {
 
@@ -60,17 +74,19 @@ final class Effects {
           + " WHERE effect_id = ?";
   private static final String DELETE = "DELETE FROM nessy_effect WHERE effect_id = ?";
   private static final String RETIRE =
-      "UPDATE nessy_effect SET status = ?, payload = ?, expires_at = NULL WHERE effect_id = ?";
+      "UPDATE nessy_effect SET status = ?, reason = ?, expires_at = NULL WHERE effect_id = ?";
 
   /** One claimed obligation, and what it says to do. */
   record Claimed(
       EffectId id, AgentId agentId, TurnId turnId, int ordinal, String payload, int attempts) {}
 
   private final JdbcClient jdbc;
+  private final TransactionTemplate claiming;
 
   Effects(DataSource dataSource) {
-    this.jdbc =
-        JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
+    Objects.requireNonNull(dataSource, "dataSource must not be null");
+    this.jdbc = JdbcClient.create(dataSource);
+    this.claiming = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
   }
 
   EffectId insert(
@@ -96,19 +112,24 @@ final class Effects {
    * Takes this agent's pending work, in decision order, arming a watchdog on each.
    *
    * <p>The watchdog is written by the SAME statement that marks the row executing. Split in two, a
-   * crash between them leaves a row nobody will ever reap.
+   * crash between them leaves a row nobody will ever reap. The SELECT and every {@code take()} run
+   * in ONE transaction (see the class javadoc), which is what makes the lock this statement takes
+   * still be held when the UPDATE that depends on it runs.
    */
   List<Claimed> claim(AgentType agentType, AgentId agentId, Instant watchdogAt) {
     Objects.requireNonNull(watchdogAt, "watchdogAt must not be null");
-    List<Claimed> found =
-        jdbc.sql(SELECT_PENDING)
-            .param(agentType.name())
-            .param(agentId.value())
-            .param(PENDING)
-            .query(Effects::claimed)
-            .list();
-    found.forEach(effect -> take(effect.id(), watchdogAt));
-    return found;
+    return claiming.execute(
+        status ->
+            jdbc
+                .sql(SELECT_PENDING)
+                .param(agentType.name())
+                .param(agentId.value())
+                .param(PENDING)
+                .query(Effects::claimed)
+                .list()
+                .stream()
+                .map(effect -> take(effect, watchdogAt))
+                .toList());
   }
 
   /**
@@ -119,19 +140,19 @@ final class Effects {
    */
   List<Claimed> claimExpired(AgentType agentType, Instant now, int limit) {
     Objects.requireNonNull(now, "now must not be null");
-    List<Claimed> found =
-        jdbc
-            .sql(SELECT_EXPIRED)
-            .param(agentType.name())
-            .param(EXECUTING)
-            .param(now)
-            .query(Effects::claimed)
-            .list()
-            .stream()
-            .limit(limit)
-            .toList();
-    found.forEach(effect -> take(effect.id(), now.plusSeconds(60)));
-    return found;
+    return claiming.execute(
+        status ->
+            jdbc
+                .sql(SELECT_EXPIRED)
+                .param(agentType.name())
+                .param(EXECUTING)
+                .param(now)
+                .query(Effects::claimed)
+                .list()
+                .stream()
+                .limit(limit)
+                .map(effect -> take(effect, now.plusSeconds(60)))
+                .toList());
   }
 
   /** The obligation is discharged. The row goes: it is not history, and history is not here. */
@@ -140,24 +161,29 @@ final class Effects {
     jdbc.sql(DELETE).param(id.value()).update();
   }
 
-  /** Retired without being discharged. Kept, with its reason, because someone will ask. */
+  /**
+   * Retired without being discharged. The payload survives untouched, in its own column: {@code
+   * reason} is where the failure goes, so the row that could tell an operator what the agent was
+   * trying to do still can.
+   */
   void fail(EffectId id, String reason) {
     Objects.requireNonNull(id, "id must not be null");
     jdbc.sql(RETIRE).param(FAILED).param(reason == null ? "" : reason).param(id.value()).update();
   }
 
-  private void take(EffectId id, Instant watchdogAt) {
-    jdbc.sql(TAKE).param(EXECUTING).param(watchdogAt).param(id.value()).update();
+  /**
+   * Marks a row taken and returns it as the caller will see it: with {@code attempts} incremented,
+   * because that is what this UPDATE is about to make true.
+   */
+  private Claimed take(Claimed raw, Instant watchdogAt) {
+    jdbc.sql(TAKE).param(EXECUTING).param(watchdogAt).param(raw.id().value()).update();
+    return new Claimed(
+        raw.id(), raw.agentId(), raw.turnId(), raw.ordinal(), raw.payload(), raw.attempts() + 1);
   }
 
   /**
-   * Reads a row as claimed.
-   *
-   * <p>{@code attempts + 1}, not {@code attempts}: this mapping runs at SELECT time, before the
-   * {@link #take(EffectId, Instant)} that follows it increments the column, so the raw value would
-   * be one attempt stale. Every caller of this method calls {@code take} on the row it returns, so
-   * reporting the post-increment count here is what makes the returned {@link Claimed} describe the
-   * row as it actually ends up.
+   * Reads a row exactly as it is right now. {@code attempts} here is the count BEFORE this claim;
+   * {@link #take(Claimed, Instant)} is what turns it into the count after.
    */
   private static Claimed claimed(ResultSet rs, int row) throws SQLException {
     String turnId = rs.getString("turn_id");
@@ -167,6 +193,6 @@ final class Effects {
         turnId == null ? null : TurnId.of(turnId),
         rs.getInt("ordinal"),
         rs.getString("payload"),
-        rs.getInt("attempts") + 1);
+        rs.getInt("attempts"));
   }
 }

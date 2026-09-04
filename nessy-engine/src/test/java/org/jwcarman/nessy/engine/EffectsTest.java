@@ -19,7 +19,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +36,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 
 /**
@@ -47,6 +56,11 @@ class EffectsTest {
   private static final AgentId OTHER = AgentId.of("house-2");
   private static final TurnId TURN = TurnId.of("turn-1");
   private static final Instant SOON = Instant.now().plus(Duration.ofMinutes(1));
+
+  // See concurrent_claims_never_double_claim: trial count and row count both widen the chance a
+  // real overlap is caught, without making any single trial's own pass/fail timing-dependent.
+  private static final int TRIALS = 6;
+  private static final int ROWS_PER_TRIAL = 3000;
 
   private EmbeddedDatabase database;
   private Effects effects;
@@ -101,6 +115,47 @@ class EffectsTest {
   }
 
   @Test
+  @DisplayName("two concurrent claimers never both take the same effect")
+  void concurrent_claims_never_double_claim() throws Exception {
+    // Repeated trials, each with enough rows that ONE claimer's transaction -- a SELECT plus this
+    // many sequential take() UPDATEs -- stays open long enough for a genuinely concurrent second
+    // claimer to run its own SELECT while the first is still mid-flight. A single trial's overlap
+    // window is real but not guaranteed by any one run of the JVM's thread scheduler; several
+    // trials make the chance of a broken (per-statement-autocommit) claim() passing by dumb luck
+    // negligible without making a single trial's pass/fail timing-dependent on its own.
+    for (int trial = 0; trial < TRIALS; trial++) {
+      raceOneClaim(AgentId.of("house-race-" + trial));
+    }
+  }
+
+  private void raceOneClaim(AgentId agent) throws Exception {
+    int total = ROWS_PER_TRIAL;
+    for (int i = 0; i < total; i++) {
+      effects.insert(TYPE, agent, TURN, i, "effect-" + i);
+    }
+
+    CountDownLatch startGate = new CountDownLatch(1);
+    ExecutorService threads = Executors.newFixedThreadPool(2);
+    try {
+      Future<List<Effects.Claimed>> first = threads.submit(() -> awaitAndClaim(agent, startGate));
+      Future<List<Effects.Claimed>> second = threads.submit(() -> awaitAndClaim(agent, startGate));
+      startGate.countDown();
+
+      Set<EffectId> firstIds = idsOf(first.get(10, TimeUnit.SECONDS));
+      Set<EffectId> secondIds = idsOf(second.get(10, TimeUnit.SECONDS));
+
+      Set<EffectId> overlap = new HashSet<>(firstIds);
+      overlap.retainAll(secondIds);
+
+      assertThat(overlap).isEmpty();
+      assertThat(firstIds.size() + secondIds.size()).isEqualTo(total);
+    } finally {
+      threads.shutdownNow();
+      assertThat(threads.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  @Test
   @DisplayName("a completed effect is gone for good")
   void completing_removes_it() {
     EffectId id = effects.insert(TYPE, AGENT, TURN, 0, "call-model");
@@ -133,7 +188,7 @@ class EffectsTest {
   }
 
   @Test
-  @DisplayName("a failed effect stops being work and stops being reaped")
+  @DisplayName("a failed effect stops being work, stops being reaped, and keeps its payload")
   void failing_retires_it() {
     EffectId id = effects.insert(TYPE, AGENT, TURN, 0, "call-model");
     effects.claim(TYPE, AGENT, Instant.now().minus(Duration.ofSeconds(1)));
@@ -142,6 +197,7 @@ class EffectsTest {
 
     assertThat(effects.claimExpired(TYPE, Instant.now(), 10)).isEmpty();
     assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
+    assertThat(payloadOf(id)).isEqualTo("call-model");
   }
 
   @Test
@@ -153,5 +209,23 @@ class EffectsTest {
 
     assertThat(claimed).extracting(Effects.Claimed::payload).containsExactly("take-work");
     assertThat(claimed).allMatch(effect -> effect.turnId() == null);
+  }
+
+  private List<Effects.Claimed> awaitAndClaim(AgentId agent, CountDownLatch startGate)
+      throws InterruptedException {
+    startGate.await();
+    return effects.claim(TYPE, agent, SOON);
+  }
+
+  private static Set<EffectId> idsOf(List<Effects.Claimed> claimed) {
+    return claimed.stream().map(Effects.Claimed::id).collect(Collectors.toSet());
+  }
+
+  private String payloadOf(EffectId id) {
+    return JdbcClient.create(database)
+        .sql("SELECT payload FROM nessy_effect WHERE effect_id = ?")
+        .param(id.value())
+        .query(String.class)
+        .single();
   }
 }

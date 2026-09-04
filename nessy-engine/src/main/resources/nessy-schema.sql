@@ -126,6 +126,10 @@ CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_
 -- turn_id is nullable: an effect can be inserted before the agent has ever started a turn (the
 -- first TakeWork of an agent's life), and a null column means exactly that -- no turn yet -- not
 -- an empty string standing in for one.
+--
+-- reason is separate from payload. A failed effect is retired, not discharged, and the payload is
+-- still the obligation it never got to keep -- overwriting it with why it stopped would leave the
+-- one row that could tell an operator what the agent was trying to do saying only why it gave up.
 CREATE TABLE IF NOT EXISTS nessy_effect (
   effect_id   TEXT                     NOT NULL,
   agent_type  TEXT                     NOT NULL,
@@ -135,6 +139,7 @@ CREATE TABLE IF NOT EXISTS nessy_effect (
   payload     TEXT                     NOT NULL,
   status      TEXT                     NOT NULL,
   attempts    INTEGER                  NOT NULL,
+  reason      TEXT,
   expires_at  TIMESTAMP WITH TIME ZONE,
   created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (effect_id)
@@ -145,5 +150,7 @@ CREATE INDEX IF NOT EXISTS nessy_effect_pending
   ON nessy_effect (agent_type, agent_id, status, ordinal);
 
 -- The reaper reads the front of this and stops at the first row not yet expired, so its cost is
--- the number of ABANDONED effects rather than the number outstanding.
-CREATE INDEX IF NOT EXISTS nessy_effect_expires ON nessy_effect (status, expires_at);
+-- the number of ABANDONED effects rather than the number outstanding. agent_type leads because
+-- SELECT_EXPIRED always filters by it -- without it here, one type's reap scans every other
+-- type's expired rows too.
+CREATE INDEX IF NOT EXISTS nessy_effect_expires ON nessy_effect (agent_type, status, expires_at);
