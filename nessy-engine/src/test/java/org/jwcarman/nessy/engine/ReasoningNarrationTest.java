@@ -28,7 +28,6 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -52,7 +51,6 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * stream carrying reasoning. Reasoning is narration only: it is never assembled into the message
  * {@code Memory} is told about, which this test also pins by checking what got remembered.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A model that streams its reasoning before its answer")
 class ReasoningNarrationTest {
 

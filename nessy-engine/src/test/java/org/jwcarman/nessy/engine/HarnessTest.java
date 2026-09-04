@@ -25,7 +25,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -53,7 +52,6 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * is implemented rather than merely implementable — which is a different claim from anything the
  * other tests make, since they all reach past the front door to wire sharding by hand.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A harness, used the way an application would")
 class HarnessTest {
 

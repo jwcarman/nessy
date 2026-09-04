@@ -130,6 +130,38 @@ final class Engines {
       Model model,
       List<ToolBinding<?>> bindings,
       Executor blocking) {
+    return of(system, type, model, bindings, blocking, defaultDispatcher(system, type));
+  }
+
+  /**
+   * A {@link Dispatcher} that routes through a sharded entity, the same bridge {@code
+   * PekkoHarnessFactory.dispatcherFor} carries in main code.
+   *
+   * <p>Provisional and incomplete on purpose, like that one: it implements neither half of the
+   * contract a real {@link Dispatcher} owes — {@code completing} is dropped, so nothing it routes
+   * through ever discharges an effect, and {@code observability} is dropped too, so no trace
+   * carrier survives this bridge. A test that needs either uses a capturing {@link Dispatcher}
+   * instead (see the six-argument {@link #of}), not this one.
+   */
+  private static Dispatcher defaultDispatcher(ActorSystem<?> system, AgentType type) {
+    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
+    return (agentId, input, completing, observability) ->
+        ClusterSharding.get(system)
+            .entityRefFor(agentKey, agentId.value())
+            .tell(AgentActor.messageOf(input, Map.of()));
+  }
+
+  /**
+   * The same, with the {@link Dispatcher} handed in — for a test that needs to see what an effect
+   * dispatched, rather than have it silently absorbed by the default bridge above.
+   */
+  static Parts of(
+      ActorSystem<?> system,
+      AgentType type,
+      Model model,
+      List<ToolBinding<?>> bindings,
+      Executor blocking,
+      Dispatcher dispatcher) {
     DataSource dataSource = TestDatabase.fresh();
     Claims claims = new Claims(dataSource);
     BacklogStore<HouseEvent> backlog =
@@ -143,12 +175,6 @@ final class Engines {
             Clock.systemUTC());
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
-    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
-    Dispatcher dispatcher =
-        (agentId, input, completing, observability) ->
-            ClusterSharding.get(system)
-                .entityRefFor(agentKey, agentId.value())
-                .tell(AgentActor.messageOf(input, Map.of()));
     EffectWorker effectWorker =
         new EffectWorker(
             new EffectWorker.Dependencies(

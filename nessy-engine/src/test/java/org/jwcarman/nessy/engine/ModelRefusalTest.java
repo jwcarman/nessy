@@ -27,7 +27,6 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -47,7 +46,6 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * into {@code NessyMessage.ModelRefused}, and the turn closing as {@link TurnResult.Refused} rather
  * than hanging or being mistaken for a normal answer.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A model that refuses instead of answering")
 class ModelRefusalTest {
 

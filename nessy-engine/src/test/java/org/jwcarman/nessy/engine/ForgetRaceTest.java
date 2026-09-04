@@ -29,7 +29,6 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -55,7 +54,6 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>Against a real executor that is about one run in five. Here the test owns the executor, so it
  * is every run.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A forget arriving while a turn is still writing")
 class ForgetRaceTest {
 

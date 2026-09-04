@@ -498,8 +498,13 @@ final class EffectWorker {
    * into Pekko's durable-state registry to delete it, which is why this class held an {@code
    * ActorSystem}. That reference is gone with the seam this class now answers through, so a
    * forgotten agent's Pekko-persisted row survives until Task 11 deletes the journal machinery that
-   * wrote it — dead weight in a store nothing reads back, not a correctness gap in the engine this
-   * design is replacing it with.
+   * wrote it. That row is not inert: {@code AgentActor} extends {@code DurableStateBehavior} and
+   * recovers its state from exactly this store, so an agent forgotten here and later reached again
+   * comes back holding its PRE-FORGET {@code AgentState} — turn id, phase, in-flight call map — set
+   * against memory, claims and backlog rows that are all now gone underneath it. (Task 3 removed
+   * this actor's own passivation, so this is not a passivate-then-readdress cycle reaching it on a
+   * timer; whatever else still addresses the entity is what reaches it.) Acceptable only because
+   * this whole actor is deleted in Task 11 along with the store it recovers from.
    */
   private void forget(AgentId agentId) {
     deps.memory().forget(agentId);

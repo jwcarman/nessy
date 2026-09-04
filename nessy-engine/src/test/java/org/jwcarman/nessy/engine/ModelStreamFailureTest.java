@@ -27,7 +27,6 @@ import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
 import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -49,7 +48,6 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * throw there is caught the same way a failure mid-stream would be. This is the throw-before-any-
  * event case; nothing before this test drove it.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A model provider that throws before it streams anything")
 class ModelStreamFailureTest {
 
