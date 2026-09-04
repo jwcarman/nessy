@@ -106,3 +106,44 @@ CREATE TABLE IF NOT EXISTS nessy_agent (
 );
 
 CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_touched_at);
+
+-- Work the agent decided on, committed with the decision that caused it.
+--
+-- An effect is an OBLIGATION, never proof that the work happened. It is inserted in the same
+-- transaction as the state it came from, so it cannot exist without its cause and cannot be lost
+-- after it -- which is the whole reason a crash between "decided to call the model" and "called
+-- the model" is now recoverable rather than silent.
+--
+-- ordinal is load bearing, not cosmetic. A decision's instructions are ORDERED: endTurn remembers
+-- before it releases, because releasing drops the claims the exchange is written from. Executing
+-- them out of order writes an empty exchange.
+--
+-- expires_at is the watchdog, written by the same transaction that marks a row EXECUTING. It
+-- covers the window where a node dies after starting external work and before its outcome is
+-- durably observed. A row that expires does not mean the work FAILED -- only that nobody saw it
+-- finish.
+--
+-- turn_id is nullable: an effect can be inserted before the agent has ever started a turn (the
+-- first TakeWork of an agent's life), and a null column means exactly that -- no turn yet -- not
+-- an empty string standing in for one.
+CREATE TABLE IF NOT EXISTS nessy_effect (
+  effect_id   TEXT                     NOT NULL,
+  agent_type  TEXT                     NOT NULL,
+  agent_id    TEXT                     NOT NULL,
+  turn_id     TEXT,
+  ordinal     INTEGER                  NOT NULL,
+  payload     TEXT                     NOT NULL,
+  status      TEXT                     NOT NULL,
+  attempts    INTEGER                  NOT NULL,
+  expires_at  TIMESTAMP WITH TIME ZONE,
+  created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+  PRIMARY KEY (effect_id)
+);
+
+-- The claim reads pending work for ONE agent in decision order.
+CREATE INDEX IF NOT EXISTS nessy_effect_pending
+  ON nessy_effect (agent_type, agent_id, status, ordinal);
+
+-- The reaper reads the front of this and stops at the first row not yet expired, so its cost is
+-- the number of ABANDONED effects rather than the number outstanding.
+CREATE INDEX IF NOT EXISTS nessy_effect_expires ON nessy_effect (status, expires_at);
