@@ -32,11 +32,11 @@ import org.junit.jupiter.api.Test;
 class ForgetLogicTest {
 
   @Test
-  @DisplayName("wipes the agent and then asks to be unloaded")
-  void a_poisoned_take_forgets_and_sleeps() {
+  @DisplayName("wipes the agent")
+  void a_poisoned_take_forgets() {
     Decision decision = AgentLogic.decide(AgentState.idle().asking(), new Input.Poisoned());
 
-    assertThat(decision.then()).containsExactly(new Instruction.Forget(), new Instruction.Sleep());
+    assertThat(decision.then()).containsExactly(new Instruction.Forget());
   }
 
   @Test

@@ -30,6 +30,9 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
  * <p>Pure by construction: no clock, no store, no actor, no Pekko import. That is what lets a
  * three-day parked approval and a crash mid-model-call be ordinary unit tests rather than a
  * cluster, a race and a fifteen-second timeout.
+ *
+ * <p><b>There is no Sleep.</b> Passivation was an instruction because an actor had to be told to
+ * unload. A thread that finishes simply returns, and the agent is a row that was always there.
  */
 public final class AgentLogic {
 
@@ -40,7 +43,7 @@ public final class AgentLogic {
       case Input.BacklogUpdated() -> onBacklogUpdated(state);
       case Input.WorkTaken taken -> onWorkTaken(state, taken);
       case Input.Recovered() -> onRecovered(state);
-      case Input.NoWork() -> Decision.of(state.finished(), new Instruction.Sleep());
+      case Input.NoWork() -> Decision.nothing(state.finished());
       case Input.ModelAnswered.Answered(var stopReason, var usage) ->
           endTurn(state.spending(usage), resultOf(stopReason), new Instruction.Remember.Answer());
       case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
@@ -84,7 +87,7 @@ public final class AgentLogic {
   private static Decision onPoisoned(AgentState state) {
     // Everything that was queued dies with it: an agent on its way out does not run its remaining
     // work, because those side effects would outlive the record of having caused them.
-    return Decision.of(state.finished(), new Instruction.Forget(), new Instruction.Sleep());
+    return Decision.of(state.finished(), new Instruction.Forget());
   }
 
   /**

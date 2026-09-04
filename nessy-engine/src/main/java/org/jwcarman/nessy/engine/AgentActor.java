@@ -34,7 +34,6 @@ import org.jwcarman.nessy.engine.agent.AgentLogic;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Decision;
 import org.jwcarman.nessy.engine.agent.Input;
-import org.jwcarman.nessy.engine.agent.Instruction;
 
 /**
  * One agent, one actor, one document.
@@ -154,18 +153,7 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           // read against a remote database here would slow the cluster down and look like
           // anything but storage.
           instructions.performAll(agentId, next, decision.then(), carried);
-          sleepIfAsked(next, decision);
         });
-  }
-
-  /**
-   * Sleeping is the one instruction the shell cannot perform, because it needs this actor's own
-   * handle — the shard is told to unload THIS incarnation, and nothing outside holds it.
-   */
-  private void sleepIfAsked(AgentState state, Decision decision) {
-    if (!state.busy() && decision.then().stream().anyMatch(Instruction.Sleep.class::isInstance)) {
-      shard.tell(new ClusterSharding.Passivate<>(context.getSelf()));
-    }
   }
 
   /**

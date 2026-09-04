@@ -178,9 +178,6 @@ final class Instructions {
       case Instruction.CancelAlarm(var callId) ->
           deps.reminders().cancel(deps.agentType(), agentId, callId);
       case Instruction.Forget() -> forget(agentId);
-      case Instruction.Sleep() -> {
-        // The agent asks the shard to unload it; that lives on the actor, which owns the handle.
-      }
       case Instruction.Narrate narrate -> narrate(agentId, state, narrate);
     }
   }

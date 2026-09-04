@@ -78,11 +78,11 @@ class IdleLogicTest {
     }
 
     @Test
-    void an_empty_backlog_puts_the_agent_to_sleep() {
+    void an_empty_backlog_leaves_the_agent_idle_with_nothing_to_do() {
       Decision decision = AgentLogic.decide(asked(), new Input.NoWork());
 
       assertThat(decision.next().phase()).isInstanceOf(Phase.Idle.class);
-      assertThat(decision.then()).containsExactly(new Instruction.Sleep());
+      assertThat(decision.then()).isEmpty();
     }
 
     /**

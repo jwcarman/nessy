@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.agent;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnResult;
@@ -26,7 +28,33 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
  *
  * <p>There is no READ instruction. Reads happen in the shell before an input is fed, which is what
  * keeps {@link AgentLogic#decide} pure and testable without a database, a model or a cluster.
+ *
+ * <p><b>Wire names are a compatibility surface.</b> An instruction outlives the process that
+ * decided it -- it is a row in nessy_effect until the work is done -- so a rename here orphans
+ * every obligation already committed under the old name. Never change one.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "do")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Instruction.TakeWork.class, name = "take-work"),
+  @JsonSubTypes.Type(value = Instruction.CallModel.class, name = "call-model"),
+  @JsonSubTypes.Type(value = Instruction.AskApprover.class, name = "ask-approver"),
+  @JsonSubTypes.Type(value = Instruction.RunTool.class, name = "run-tool"),
+  @JsonSubTypes.Type(value = Instruction.Remember.Input.class, name = "remember-input"),
+  @JsonSubTypes.Type(value = Instruction.Remember.Answer.class, name = "remember-answer"),
+  @JsonSubTypes.Type(value = Instruction.Remember.Exchange.class, name = "remember-exchange"),
+  @JsonSubTypes.Type(value = Instruction.Release.class, name = "release"),
+  @JsonSubTypes.Type(value = Instruction.SetAlarm.class, name = "set-alarm"),
+  @JsonSubTypes.Type(value = Instruction.CancelAlarm.class, name = "cancel-alarm"),
+  @JsonSubTypes.Type(value = Instruction.Forget.class, name = "forget"),
+  @JsonSubTypes.Type(value = Instruction.Narrate.TurnStarted.class, name = "narrate-turn-started"),
+  @JsonSubTypes.Type(value = Instruction.Narrate.TurnEnded.class, name = "narrate-turn-ended"),
+  @JsonSubTypes.Type(
+      value = Instruction.Narrate.ApprovalDecided.class,
+      name = "narrate-approval-decided"),
+  @JsonSubTypes.Type(
+      value = Instruction.Narrate.ToolCallCompleted.class,
+      name = "narrate-tool-call-completed")
+})
 public sealed interface Instruction {
 
   /** Ask the backlog store for the next row. Answers with {@code WorkTaken} or {@code NoWork}. */
@@ -71,9 +99,6 @@ public sealed interface Instruction {
 
   /** Disarm it. */
   record CancelAlarm(CallId callId) implements Instruction {}
-
-  /** Go to sleep. */
-  record Sleep() implements Instruction {}
 
   /**
    * Erase this agent: its memory, its backlog rows, its claims, and the state that records it
