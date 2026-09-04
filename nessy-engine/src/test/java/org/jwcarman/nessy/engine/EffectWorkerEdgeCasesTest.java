@@ -55,11 +55,12 @@ class EffectWorkerEdgeCasesTest {
     private static ActorTestKit testKit;
     private static Engines.Parts parts;
     private static AgentId agentId;
+    private static AgentType type;
 
     @BeforeAll
     static void start() {
       testKit = ClusterOfOne.start();
-      AgentType type = AgentType.of("orphaned-call");
+      type = AgentType.of("orphaned-call");
       parts = Engines.of(testKit.system(), type, Engines.stalled());
       EntityTypeKey<NessyMessage> key = EntityTypeKey.create(NessyMessage.class, type.name());
       ClusterSharding.get(testKit.system())
@@ -137,15 +138,30 @@ class EffectWorkerEdgeCasesTest {
     @DisplayName("remembering the input of a turn that never took a row redeems nothing")
     void remembering_input_with_no_observation_claim_redeems_nothing() {
       AgentId neverWorked = AgentId.of("house-never-worked");
+      EffectId effectId = claimedEffect(parts, type, neverWorked, null);
 
       parts
           .effectWorker()
-          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), EffectId.next());
+          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), effectId);
 
       assertThat(parts.remembered().of(neverWorked))
           .as("nothing was ever claimed under a null key, so nothing was remembered")
           .isEmpty();
     }
+  }
+
+  /**
+   * A genuinely EXECUTING effect row, so {@code EffectStore#complete} — which now raises if it
+   * discharges nothing (see {@code EffectStoreTest}) — has something real to discharge. {@code
+   * EffectId.next()} alone, as the legacy {@code AgentActor} path still uses, names no row at all.
+   */
+  private static EffectId claimedEffect(
+      Engines.Parts parts, AgentType type, AgentId agentId, TurnId turnId) {
+    EffectId id = parts.effects().insert(type, agentId, turnId, 0, new byte[] {0}, null);
+    parts
+        .effects()
+        .claim(type, agentId, java.time.Instant.now().plus(java.time.Duration.ofMinutes(1)));
+    return id;
   }
 
   @Nested
@@ -179,18 +195,74 @@ class EffectWorkerEdgeCasesTest {
 
       parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
       parts.remembered().add(agentId, answer());
+      EffectId effectId = claimedEffect(parts, type, agentId, null);
 
-      parts
-          .effectWorker()
-          .perform(agentId, AgentState.idle(), new Effect.Forget(), EffectId.next());
+      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), effectId);
 
       assertThat(parts.remembered().of(agentId)).as("memory").isEmpty();
       assertThat(backlogRowCount(parts, agentId)).as("backlog rows").isZero();
     }
 
+    /**
+     * C3: forgetting used to leave the agent's own {@code nessy_agent} row and every {@code
+     * nessy_effect} row it still owed untouched, so a reaper would claim and re-perform those
+     * effects -- calling tools and models for an agent whose memory and claims were already gone --
+     * forever. This drives {@code forget} against an agent that genuinely HAS a state row (via
+     * {@link AgentStore#save}, reached through the package it lives in) and an outstanding PENDING
+     * effect nobody has claimed yet, and proves neither survives: the state row is gone, and a
+     * subsequent claim finds nothing -- not the outstanding effect that predates the forget, and
+     * not even the {@code Forget} effect's own row, which {@code deleteAgent} sweeps up right along
+     * with it.
+     */
+    @Test
+    @DisplayName(
+        "an outstanding effect and the state row are both gone, and a subsequent claim finds nothing")
+    void forgetting_leaves_no_claimable_effect_and_no_state_row() {
+      testKit = ClusterOfOne.start();
+      AgentType type = AgentType.of("effect-laden");
+      Engines.Parts parts = Engines.of(testKit.system(), type, Engines.stalled());
+      AgentId agentId = AgentId.of("house-effect-laden");
+      java.time.Instant soon = java.time.Instant.now().plus(java.time.Duration.ofMinutes(1));
+
+      parts.store().save(type, agentId, AgentState.idle().taking(TurnId.of("turn-1"), "obs-claim"));
+      // An outstanding obligation nobody has claimed -- exactly what a reaper would otherwise find
+      // and re-perform against an agent forgetting just erased everything else for.
+      parts.effects().insert(type, agentId, TurnId.of("turn-1"), 0, new byte[] {0}, null);
+      EffectId forgetEffectId = claimedEffect(parts, type, agentId, null);
+
+      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), forgetEffectId);
+
+      assertThat(parts.effects().claim(type, agentId, soon))
+          .as("no effect this agent owed is left to claim")
+          .isEmpty();
+      assertThat(effectRowCount(parts, agentId)).as("nessy_effect rows").isZero();
+      assertThat(agentRowCount(parts, type, agentId)).as("nessy_agent rows").isZero();
+    }
+
     private org.jwcarman.nessy.api.message.AnswerMessage answer() {
       return new org.jwcarman.nessy.api.message.AnswerMessage(
           List.of(new org.jwcarman.nessy.api.block.TextBlock("noted")));
+    }
+
+    private int effectRowCount(Engines.Parts parts, AgentId agentId) {
+      Integer rows =
+          org.springframework.jdbc.core.simple.JdbcClient.create(parts.dataSource())
+              .sql("SELECT count(*) FROM nessy_effect WHERE agent_id = ?")
+              .param(agentId.value())
+              .query(Integer.class)
+              .single();
+      return rows == null ? 0 : rows;
+    }
+
+    private int agentRowCount(Engines.Parts parts, AgentType type, AgentId agentId) {
+      Integer rows =
+          org.springframework.jdbc.core.simple.JdbcClient.create(parts.dataSource())
+              .sql("SELECT count(*) FROM nessy_agent WHERE agent_type = ? AND agent_id = ?")
+              .param(type.name())
+              .param(agentId.value())
+              .query(Integer.class)
+              .single();
+      return rows == null ? 0 : rows;
     }
 
     private int backlogRowCount(Engines.Parts parts, AgentId agentId) {

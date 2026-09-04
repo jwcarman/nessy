@@ -47,6 +47,8 @@ final class AgentStore {
 
   private static final String LOCK =
       "SELECT state FROM nessy_agent WHERE agent_type = ? AND agent_id = ? FOR UPDATE";
+  private static final String PEEK =
+      "SELECT state FROM nessy_agent WHERE agent_type = ? AND agent_id = ?";
   private static final String INSERT =
       "INSERT INTO nessy_agent (agent_type, agent_id, version, state, last_touched_at)"
           + " VALUES (?, ?, ?, ?, ?)";
@@ -96,6 +98,26 @@ final class AgentStore {
     }
     create(agentType, agentId);
     return read(agentType, agentId).map(codec::decode).orElseGet(AgentState::idle);
+  }
+
+  /**
+   * What this agent's row says right now, taking no lock and creating nothing.
+   *
+   * <p>For a reader that has no business writing: a lock it does not need is exclusivity it does
+   * not want, and {@link #lockAndLoad} conjuring an idle row for a stranger is exactly wrong for a
+   * caller that only wants to know whether anyone is home. Empty here means "nobody has ever heard
+   * of this agent" -- distinct from {@code AgentState.idle()}, which {@link #lockAndLoad} hands
+   * back for the SAME question when it is also the one bringing the row into existence.
+   */
+  Optional<AgentState> peek(AgentType agentType, AgentId agentId) {
+    Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    return jdbc.sql(PEEK)
+        .param(agentType.name())
+        .param(agentId.value())
+        .query(byte[].class)
+        .optional()
+        .map(codec::decode);
   }
 
   void save(AgentType agentType, AgentId agentId, AgentState state) {

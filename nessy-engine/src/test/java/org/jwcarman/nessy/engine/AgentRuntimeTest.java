@@ -18,6 +18,10 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,7 +37,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
@@ -82,9 +88,10 @@ class AgentRuntimeTest {
             TYPE,
             transition,
             effects,
-            (agentId, state, effect, effectId) -> performed.add(effect),
+            (agentId, state, turnId, effect, effectId) -> performed.add(effect),
             sameThread,
-            Duration.ofMinutes(1));
+            Duration.ofMinutes(1),
+            Traces.noop());
   }
 
   @AfterEach
@@ -112,13 +119,14 @@ class AgentRuntimeTest {
             TYPE,
             transition,
             effects,
-            (agentId, state, effect, effectId) -> {
+            (agentId, state, turnId, effect, effectId) -> {
               awaitQuietly(release, Duration.ofSeconds(5));
               performedAsync.add(effect);
               done.countDown();
             },
             Executors.newVirtualThreadPerTaskExecutor(),
-            Duration.ofMinutes(1));
+            Duration.ofMinutes(1),
+            Traces.noop());
 
     // If drive() ran work() on the calling thread instead of handing it to the executor, this
     // call would block on the still-held latch and this assertion would time out and fail --
@@ -149,9 +157,10 @@ class AgentRuntimeTest {
             TYPE,
             transition,
             effects,
-            (agentId, state, effect, effectId) -> phaseWhenPerformed.add(readPhase()),
+            (agentId, state, turnId, effect, effectId) -> phaseWhenPerformed.add(readPhase()),
             Runnable::run,
-            Duration.ofMinutes(1));
+            Duration.ofMinutes(1),
+            Traces.noop());
 
     observing.drive(AGENT, new Input.BacklogUpdated(), null, null);
 
@@ -215,11 +224,12 @@ class AgentRuntimeTest {
             TYPE,
             transition,
             effects,
-            (agentId, state, effect, effectId) -> {
+            (agentId, state, turnId, effect, effectId) -> {
               throw new IllegalStateException("this node just died");
             },
             Runnable::run,
-            Duration.ofMillis(-1));
+            Duration.ofMillis(-1),
+            Traces.noop());
 
     dying.drive(AGENT, new Input.BacklogUpdated(), null, null);
 
@@ -236,6 +246,114 @@ class AgentRuntimeTest {
 
     assertThat(seen.phase()).isInstanceOf(Phase.AwaitingWork.class);
     assertThat(performed).isEmpty();
+  }
+
+  @Test
+  @DisplayName("draining an agent nobody has ever heard of creates no row and performs nothing")
+  void work_on_an_unknown_agent_creates_no_row() {
+    AgentId stranger = AgentId.of("house-stranger");
+
+    runtime.work(stranger);
+
+    assertThat(performed).isEmpty();
+    assertThat(transition.peek(stranger))
+        .as("peek still finds nobody -- work() did not conjure a row to drain")
+        .isEmpty();
+  }
+
+  /**
+   * C2's whole defect, driven honestly: an obligation decided in one turn is performed against THAT
+   * turn even though the agent it belongs to has since moved to a different one. The mismatch is
+   * arranged, not assumed -- the two turn ids below are asserted distinct, and the assertion on
+   * what the performer actually received is what would fail if {@code work} fell back to reading
+   * the turn off current state instead of the claimed effect.
+   */
+  @Test
+  @DisplayName(
+      "an effect decided in an earlier turn is performed against that turn, not whichever turn the agent is in now")
+  void a_stale_effect_is_performed_against_its_own_turn_not_the_current_one() {
+    runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
+    runtime.drive(
+        AGENT, new Input.WorkTaken(TurnId.of("turn-current"), "claim-current"), null, null);
+    performed.clear();
+
+    // An obligation from an EARLIER turn than the one this agent is in now -- exactly what the
+    // recovery path leaves behind when an effect outlives its turn.
+    TurnId staleTurn = TurnId.of("turn-stale");
+    effects.insert(
+        TYPE, AGENT, staleTurn, 0, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+
+    List<TurnId> turnIdsSeen = new ArrayList<>();
+    AgentRuntime capturing =
+        new AgentRuntime(
+            TYPE,
+            transition,
+            effects,
+            (agentId, state, turnId, effect, effectId) -> turnIdsSeen.add(turnId),
+            Runnable::run,
+            Duration.ofMinutes(1),
+            Traces.noop());
+
+    capturing.work(AGENT);
+
+    TurnId currentTurn = capturing.inspect(AGENT).turnId();
+    assertThat(currentTurn)
+        .as("the mismatch this test relies on: the agent has genuinely moved on")
+        .isNotEqualTo(staleTurn);
+    assertThat(turnIdsSeen).isNotEmpty();
+    assertThat(turnIdsSeen)
+        .as("the performer was addressed at the STALE turn, never the agent's current one")
+        .containsOnly(staleTurn);
+  }
+
+  @Test
+  @DisplayName("an answer-shaped input that changes nothing is reported, not silently absorbed")
+  void a_dropped_answer_is_logged_and_tagged() {
+    Logger logger = (Logger) org.slf4j.LoggerFactory.getLogger(AgentRuntime.class);
+    ListAppender<ILoggingEvent> appended = new ListAppender<>();
+    appended.start();
+    logger.addAppender(appended);
+    try {
+      // A fresh, idle agent is not awaiting any call, so AgentLogic.decide drops this and returns
+      // Decision.nothing -- the exact "an event tied to an unresolvable address" shape C5 names.
+      runtime.drive(
+          AGENT,
+          new Input.ApprovalGiven(
+              CallId.of("call-nobody-asked"), "some-tool", ApprovalResult.approved()),
+          null,
+          null);
+
+      assertThat(appended.list).isNotEmpty();
+      assertThat(appended.list)
+          .anyMatch(
+              event ->
+                  event.getLevel() == Level.WARN
+                      && event.getFormattedMessage().contains("dropped"));
+    } finally {
+      logger.detachAppender(appended);
+    }
+  }
+
+  @Test
+  @DisplayName("an answer-shaped input that DID change something is not reported as dropped")
+  void an_effective_answer_is_not_reported_as_dropped() {
+    Logger logger = (Logger) org.slf4j.LoggerFactory.getLogger(AgentRuntime.class);
+    ListAppender<ILoggingEvent> appended = new ListAppender<>();
+    appended.start();
+    logger.addAppender(appended);
+    try {
+      // WorkTaken while genuinely AwaitingWork changes the agent -- not a drop.
+      runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
+      runtime.drive(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
+
+      assertThat(appended.list)
+          .noneMatch(
+              event ->
+                  event.getLevel() == Level.WARN
+                      && event.getFormattedMessage().contains("dropped"));
+    } finally {
+      logger.detachAppender(appended);
+    }
   }
 
   private Phase readPhase() {

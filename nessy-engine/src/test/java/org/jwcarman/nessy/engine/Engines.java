@@ -62,7 +62,9 @@ final class Engines {
       BacklogStore<HouseEvent> backlog,
       EffectWorker effectWorker,
       Remembered remembered,
-      Narrated narrated) {}
+      Narrated narrated,
+      EffectStore effects,
+      AgentStore store) {}
 
   /**
    * What a test's memory was told, per agent.
@@ -175,6 +177,8 @@ final class Engines {
             Clock.systemUTC());
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
+    EffectStore effects = new EffectStore(dataSource);
+    AgentStore store = new AgentStore(dataSource);
     EffectWorker effectWorker =
         new EffectWorker(
             new EffectWorker.Dependencies(
@@ -195,9 +199,11 @@ final class Engines {
                 blocking,
                 Traces.noop(),
                 backlog,
-                new EffectStore(dataSource),
-                dispatcher));
-    return new Parts(dataSource, claims, backlog, effectWorker, remembered, narrated);
+                effects,
+                dispatcher,
+                store));
+    return new Parts(
+        dataSource, claims, backlog, effectWorker, remembered, narrated, effects, store);
   }
 
   /** A transcript that keeps everything and hands it all back. */

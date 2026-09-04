@@ -57,6 +57,14 @@ import org.jwcarman.nessy.engine.agent.Input;
  */
 public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentState> {
 
+  // Plain SLF4J, deliberately not context.getLog(): the one place below that logs off the actor's
+  // own thread (a per-effect catch running on the blocking executor) measured a HANG when it used
+  // context.getLog() instead -- an ActorContext's logger is documented for use from the actor's own
+  // thread, and calling it from a virtual thread doing async effect work is exactly the misuse that
+  // produced it. Every OTHER log call in this class still runs on the actor's own thread and keeps
+  // using context.getLog(), which is what carries the actor's own MDC-like context.
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(AgentActor.class);
+
   private final ActorContext<NessyMessage> context;
   private final AgentType agentType;
   private final AgentId agentId;
@@ -156,29 +164,36 @@ public final class AgentActor extends DurableStateBehavior<NessyMessage, AgentSt
           //
           // No row in nessy_effect backs any of these ids: the durable claim-and-run path is
           // AgentRuntime's (Task 6), which this legacy actor never becomes. A freshly minted id
-          // per effect is discharged against a row that was never inserted -- EffectStore.complete
-          // is a DELETE, harmless against a key that never matched -- which is enough to keep this
-          // class, already marked for deletion in Task 11, compiling against the new seam.
+          // per effect used to be discharged against a row that was never inserted, and {@code
+          // EffectStore.complete} being a bare DELETE made that harmless -- nothing checked how
+          // many rows it removed. It now raises when it discharges nothing (a considered
+          // correction: completing an effect twice, or one nobody claimed, used to be silent), so
+          // EVERY effect performed through this legacy path now throws on its way out of {@code
+          // settle}. Each is caught HERE, per effect, exactly as {@link AgentRuntime#perform}
+          // already isolates its own claimed effects -- without this, one effect's phantom
+          // discharge failure would abort {@code forEach} and silently skip every effect after it
+          // in the same decision, which is a far worse defect than the noisy log line this leaves
+          // instead. Acceptable only because this whole actor, and the ids it invents, are deleted
+          // in Task 11 along with the store it recovers from.
           CompletableFuture.runAsync(
-                  () ->
-                      decision
-                          .then()
-                          .forEach(
-                              effectToRun ->
-                                  effectWorker.perform(
-                                      agentId, next, effectToRun, EffectId.next(), carried)),
-                  effectWorker.blocking())
-              .exceptionally(
-                  failure -> {
-                    context
-                        .getLog()
-                        .error(
-                            "[{}] effects failed for turn {}",
-                            agentId.value(),
-                            next.turnId(),
-                            failure);
-                    return null;
-                  });
+              () ->
+                  decision
+                      .then()
+                      .forEach(
+                          effectToRun -> {
+                            try {
+                              effectWorker.perform(
+                                  agentId, next, effectToRun, EffectId.next(), carried);
+                            } catch (RuntimeException failure) {
+                              LOG.error(
+                                  "[{}] effect {} failed for turn {}",
+                                  agentId.value(),
+                                  effectToRun,
+                                  next.turnId(),
+                                  failure);
+                            }
+                          }),
+              effectWorker.blocking());
         });
   }
 

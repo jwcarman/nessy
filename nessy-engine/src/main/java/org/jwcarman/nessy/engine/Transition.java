@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.agent.AgentLogic;
@@ -52,8 +53,13 @@ final class Transition {
    * <p>Effects are deliberately not here. They are rows, and the caller claims them rather than
    * being handed them -- which is what lets another node pick them up if this one dies between
    * commit and claim.
+   *
+   * @param changed whether the fold actually moved the agent -- {@code false} is the "I have
+   *     already had this news" answer {@link #apply} otherwise keeps to itself. A caller that fed
+   *     an answer-shaped input (an approval, a tool completion, a deadline, a claimed take) and got
+   *     {@code false} back is looking at an answer nobody was waiting on.
    */
-  record Applied(AgentState next, List<Effect> narrations) {
+  record Applied(AgentState next, List<Effect> narrations, boolean changed) {
     Applied {
       narrations = List.copyOf(narrations);
     }
@@ -98,13 +104,14 @@ final class Transition {
           // Five of the logic's answers are "I have already had this news". Persisting an
           // identical document costs a write and a version bump for nothing, and a busy agent is
           // nudged on every observation it is offered -- so this is the common path.
-          if (!decision.next().equals(current)) {
+          boolean changed = !decision.next().equals(current);
+          if (changed) {
             store.save(agentType, agentId, decision.next());
           }
           if (completing != null) {
             effects.complete(completing);
           }
-          return new Applied(decision.next(), record(agentId, decision, observability));
+          return new Applied(decision.next(), record(agentId, decision, observability), changed);
         });
   }
 
@@ -117,6 +124,18 @@ final class Transition {
   AgentState read(AgentId agentId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     return transactions.execute(status -> store.lockAndLoad(agentType, agentId));
+  }
+
+  /**
+   * What this agent's row says right now, or empty if nobody has ever heard of it. No lock, no
+   * fold, and no idle row conjured for a stranger.
+   *
+   * <p>For a caller that only wants to know whether there is anyone to drain work for -- the effect
+   * drain, chiefly. It never writes, so it needs no transaction of its own.
+   */
+  Optional<AgentState> peek(AgentId agentId) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    return store.peek(agentType, agentId);
   }
 
   /**

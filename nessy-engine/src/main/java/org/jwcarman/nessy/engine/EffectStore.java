@@ -80,7 +80,10 @@ final class EffectStore {
   private static final String TAKE =
       "UPDATE nessy_effect SET status = ?, attempts = attempts + 1, expires_at = ?"
           + " WHERE effect_id = ?";
-  private static final String DELETE = "DELETE FROM nessy_effect WHERE effect_id = ?";
+  private static final String COMPLETE =
+      "DELETE FROM nessy_effect WHERE effect_id = ? AND status = ?";
+  private static final String DELETE_AGENT =
+      "DELETE FROM nessy_effect WHERE agent_type = ? AND agent_id = ?";
   private static final String RETIRE =
       "UPDATE nessy_effect SET status = ?, reason = ?, expires_at = NULL WHERE effect_id = ?";
 
@@ -235,10 +238,33 @@ final class EffectStore {
                 .toList());
   }
 
-  /** The obligation is discharged. The row goes: it is not history, and history is not here. */
+  /**
+   * The obligation is discharged. The row goes: it is not history, and history is not here.
+   *
+   * <p>Only ever discharges a row that is EXECUTING -- claimed, not merely inserted -- because that
+   * is the one status a genuine completion can find. A bare {@code DELETE FROM ... WHERE effect_id
+   * = ?} with no status check and no row-count assertion made completing an effect twice, or one
+   * that was never claimed, silently succeed at deleting nothing: nobody could tell "discharged"
+   * and "already gone" apart from the outside.
+   *
+   * @throws IllegalStateException if no EXECUTING row matched {@code id} -- nothing was discharged
+   */
   void complete(EffectId id) {
     Objects.requireNonNull(id, "id must not be null");
-    jdbc.sql(DELETE).param(id.value()).update();
+    int discharged = jdbc.sql(COMPLETE).param(id.value()).param(EXECUTING).update();
+    if (discharged == 0) {
+      throw new IllegalStateException(
+          "effect " + id.value() + " was not EXECUTING; nothing was discharged");
+    }
+  }
+
+  /**
+   * Every obligation this agent has outstanding, claimed or not. Only forgetting goes this wide.
+   */
+  void deleteAgent(AgentType agentType, AgentId agentId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    jdbc.sql(DELETE_AGENT).param(agentType.name()).param(agentId.value()).update();
   }
 
   /**

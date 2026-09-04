@@ -19,9 +19,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
@@ -47,10 +50,17 @@ final class AgentRuntime implements Dispatcher {
 
   private static final Logger LOG = LoggerFactory.getLogger(AgentRuntime.class);
 
-  /** What performs one obligation. {@link EffectWorker#perform} in production. */
+  /**
+   * What performs one obligation. {@link EffectWorker#perform} in production.
+   *
+   * <p>{@code turnId} travels separately from {@code state} on purpose: {@code state} is whatever
+   * this agent is NOW, and an obligation claimed off the effect table belongs to whichever turn
+   * decided it, which may not be the same turn any more. See {@link #work}.
+   */
   @FunctionalInterface
   interface Performer {
-    void perform(AgentId agentId, AgentState state, Effect effect, EffectId effectId);
+    void perform(
+        AgentId agentId, AgentState state, TurnId turnId, Effect effect, EffectId effectId);
   }
 
   private final AgentType agentType;
@@ -59,6 +69,7 @@ final class AgentRuntime implements Dispatcher {
   private final Performer performer;
   private final Executor threads;
   private final Duration watchdog;
+  private final Traces traces;
 
   AgentRuntime(
       AgentType agentType,
@@ -66,13 +77,15 @@ final class AgentRuntime implements Dispatcher {
       EffectStore effects,
       Performer performer,
       Executor threads,
-      Duration watchdog) {
+      Duration watchdog,
+      Traces traces) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.transition = Objects.requireNonNull(transition, "transition must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
     this.performer = Objects.requireNonNull(performer, "performer must not be null");
     this.threads = Objects.requireNonNull(threads, "threads must not be null");
     this.watchdog = Objects.requireNonNull(watchdog, "watchdog must not be null");
+    this.traces = Objects.requireNonNull(traces, "traces must not be null");
   }
 
   /**
@@ -102,6 +115,9 @@ final class AgentRuntime implements Dispatcher {
       LOG.error("[{}] transition failed for {}", agentId.value(), input, failure);
       return;
     }
+    if (!applied.changed() && answerShaped(input)) {
+      reportDropped(agentId, input, applied);
+    }
     narrate(agentId, applied);
     // Hand off. The transition thread's job ended at COMMIT: the obligations are durable rows and
     // whoever drains them does not have to be this thread. Running them inline here would tie a
@@ -129,6 +145,13 @@ final class AgentRuntime implements Dispatcher {
   /**
    * Claims and performs whatever this agent owes, oldest decision first.
    *
+   * <p><b>Peeks the state rather than locking it.</b> The drain never writes -- state is written by
+   * {@link #drive}, before this ever runs -- so taking {@code lockAndLoad}'s exclusive {@code
+   * SELECT ... FOR UPDATE} here would serialize a read-only pass against every other transition for
+   * no reason, and {@code lockAndLoad} conjuring an idle row for an agent nobody has ever heard of
+   * would create one purely because its effect table was asked about. An agent with no row has no
+   * work to drain, full stop.
+   *
    * <p><b>Reads the state itself rather than being handed one.</b> No lock spans the gap between a
    * transition committing and its effects being drained, so a state captured before the claim can
    * already describe a different turn by the time an effect runs. That window existed when this ran
@@ -136,11 +159,14 @@ final class AgentRuntime implements Dispatcher {
    * rather than narrowing it.
    */
   void work(AgentId agentId) {
-    AgentState state = transition.read(agentId);
+    Optional<AgentState> state = transition.peek(agentId);
+    if (state.isEmpty()) {
+      return;
+    }
     List<EffectStore.Claimed> claimed =
         effects.claim(agentType, agentId, Instant.now().plus(watchdog));
     for (EffectStore.Claimed effect : claimed) {
-      perform(agentId, state, effect);
+      perform(agentId, state.get(), effect);
     }
   }
 
@@ -149,10 +175,23 @@ final class AgentRuntime implements Dispatcher {
     return transition.read(agentId);
   }
 
-  /** One claimed obligation, performed. Package-private because the reaper retries through it. */
+  /**
+   * One claimed obligation, performed. Package-private because the reaper retries through it.
+   *
+   * <p>{@code effect.turnId()} travels to the performer, not {@code state.turnId()} -- see {@link
+   * Performer}. An effect decided in turn T must be performed against turn T, whether or not this
+   * agent has since moved on to T+1: the coordinates a reply token names are {@code (agentType,
+   * agentId, turnId, callId)} (see {@code ReplyTokens.Coordinates}), never "whatever turn is
+   * current when the answer happens to arrive".
+   */
   void perform(AgentId agentId, AgentState state, EffectStore.Claimed effect) {
     try {
-      performer.perform(agentId, state, EffectStore.PAYLOADS.decode(effect.payload()), effect.id());
+      performer.perform(
+          agentId,
+          state,
+          effect.turnId(),
+          EffectStore.PAYLOADS.decode(effect.payload()),
+          effect.id());
     } catch (RuntimeException failure) {
       // Left outstanding on purpose, with its watchdog armed. An obligation that threw is one
       // somebody should try again -- and deciding here that it never will is exactly the judgment
@@ -172,10 +211,48 @@ final class AgentRuntime implements Dispatcher {
   private void narrate(AgentId agentId, Transition.Applied applied) {
     for (Effect effect : applied.narrations()) {
       try {
-        performer.perform(agentId, applied.next(), effect, null);
+        performer.perform(agentId, applied.next(), applied.next().turnId(), effect, null);
       } catch (RuntimeException failure) {
         LOG.warn("[{}] narration failed and was dropped", agentId.value(), failure);
       }
     }
+  }
+
+  /** An input whose whole reason to exist is answering a call this agent was waiting on. */
+  private static boolean answerShaped(Input input) {
+    return input instanceof Input.ApprovalGiven
+        || input instanceof Input.ToolCompleted
+        || input instanceof Input.DeadlinePassed
+        || input instanceof Input.WorkTaken;
+  }
+
+  /**
+   * An answer-shaped input that moved nothing: a person clicking a stale approval button, a vendor
+   * answering after its deadline denied the call, a backlog take answering an agent that already
+   * heard from a different one. {@code AgentLogic} correctly drops it and returns {@code
+   * Decision.nothing} -- this is the shell noticing that happened, without re-deriving {@code
+   * AgentLogic.awaiting} or keeping a second opinion about what "still waiting" means.
+   */
+  private void reportDropped(AgentId agentId, Input input, Transition.Applied applied) {
+    LOG.warn("[{}] dropped: {} answered nothing this agent was waiting on", agentId.value(), input);
+    traces.tag("nessy.effect.dropped", "true");
+    traces.detail("nessy.agent.id", agentId.value());
+    TurnId turnId = applied.next().turnId();
+    if (turnId != null) {
+      traces.detail("nessy.turn.id", turnId.value());
+    }
+    CallId callId = callIdOf(input);
+    if (callId != null) {
+      traces.detail("nessy.call.id", callId.value());
+    }
+  }
+
+  private static CallId callIdOf(Input input) {
+    return switch (input) {
+      case Input.ApprovalGiven given -> given.callId();
+      case Input.ToolCompleted done -> done.callId();
+      case Input.DeadlinePassed passed -> passed.callId();
+      default -> null;
+    };
   }
 }

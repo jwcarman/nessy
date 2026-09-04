@@ -90,6 +90,55 @@ class AgentStoreTest {
   }
 
   @Test
+  @DisplayName("peeking a stranger finds nobody, and creates nobody")
+  void peeking_an_unknown_agent_is_empty_and_conjures_no_row() {
+    assertThat(store.peek(TYPE, ONE)).isEmpty();
+
+    // The property lockAndLoad does NOT have: peek must never bring the row it just failed to
+    // find into existence. Read straight, with no transaction of peek's own -- proof it took no
+    // lock either, since a second FOR UPDATE from another thread would otherwise have to wait.
+    assertThat(store.stalled(TYPE, Instant.now().plus(Duration.ofMinutes(10)), 10)).isEmpty();
+    AgentState afterPeek = transactions.execute(status -> store.lockAndLoad(TYPE, ONE));
+    assertThat(afterPeek)
+        .as("lockAndLoad on a fresh read sees no row peek left behind")
+        .isEqualTo(AgentState.idle());
+  }
+
+  @Test
+  @DisplayName("peeking a known agent reads what is there, taking no lock")
+  void peeking_a_known_agent_reads_it_without_locking() throws Exception {
+    AgentState working = AgentState.idle().taking(TurnId.of("turn-1"), "claim-1");
+    transactions.executeWithoutResult(status -> store.save(TYPE, ONE, working));
+
+    assertThat(store.peek(TYPE, ONE)).contains(working);
+
+    // Proof it is genuinely lock-free: a peek running WHILE another transaction holds this same
+    // row's FOR UPDATE lock must still return promptly rather than waiting behind it.
+    CountDownLatch held = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService threads = Executors.newFixedThreadPool(1);
+    try {
+      threads.submit(
+          () ->
+              transactions.executeWithoutResult(
+                  status -> {
+                    store.lockAndLoad(TYPE, ONE);
+                    held.countDown();
+                    awaitQuietly(release);
+                  }));
+      assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+
+      assertThat(store.peek(TYPE, ONE))
+          .as("read while the row is locked elsewhere")
+          .contains(working);
+    } finally {
+      release.countDown();
+      threads.shutdownNow();
+      assertThat(threads.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  @Test
   @DisplayName("two agents do not contend: the lock is row-level, not table-level")
   void different_agents_never_block_each_other() throws Exception {
     // Committed rows, so each thread's FOR UPDATE contends on the SELECT lock itself rather than

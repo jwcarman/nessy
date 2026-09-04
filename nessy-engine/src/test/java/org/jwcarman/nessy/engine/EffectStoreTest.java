@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -172,6 +173,37 @@ class EffectsTest {
   }
 
   @Test
+  @DisplayName(
+      "completing the same effect twice raises the second time -- nothing was left to discharge")
+  void completing_twice_raises() {
+    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
+    effects.claim(TYPE, AGENT, SOON);
+    effects.complete(id);
+
+    assertThatThrownBy(() -> effects.complete(id)).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  @DisplayName("completing an effect nobody ever claimed raises -- PENDING is not a discharge")
+  void completing_an_unclaimed_effect_raises() {
+    EffectId id = effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
+
+    assertThatThrownBy(() -> effects.complete(id)).isInstanceOf(IllegalStateException.class);
+
+    // The row survives the failed discharge -- still there to be claimed and completed properly.
+    assertThat(effects.claim(TYPE, AGENT, SOON))
+        .extracting(effect -> text(effect.payload()))
+        .containsExactly("call-model");
+  }
+
+  @Test
+  @DisplayName("completing an id nobody ever inserted raises")
+  void completing_an_unknown_id_raises() {
+    assertThatThrownBy(() -> effects.complete(EffectId.next()))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
   @DisplayName("an effect whose watchdog expired comes back, with its attempt counted")
   void an_expired_effect_is_reclaimable() {
     effects.insert(TYPE, AGENT, TURN, 0, bytes("call-model"), null);
@@ -236,6 +268,36 @@ class EffectsTest {
 
     assertThat(claimed).extracting(EffectStore.Claimed::payload).isNotEmpty();
     assertThat(claimed).allMatch(effect -> effect.observability() == null);
+  }
+
+  @Test
+  @DisplayName(
+      "deleting an agent's effects removes every one, pending or claimed, and leaves another agent's alone")
+  void delete_agent_removes_every_row_for_that_agent_only() {
+    effects.insert(TYPE, AGENT, TURN, 0, bytes("pending"), null);
+    EffectId claimed = effects.insert(TYPE, AGENT, TURN, 1, bytes("claimed"), null);
+    effects.claim(TYPE, AGENT, SOON);
+    effects.insert(TYPE, OTHER, TURN, 0, bytes("theirs"), null);
+
+    effects.deleteAgent(TYPE, AGENT);
+
+    assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
+    assertThat(effects.claimExpired(TYPE, Instant.now().plus(Duration.ofHours(1)), 10)).isEmpty();
+    assertThat(payloadCount(claimed)).as("the claimed row is gone too").isZero();
+    assertThat(effects.claim(TYPE, OTHER, SOON))
+        .as("a different agent's effects are untouched")
+        .extracting(effect -> text(effect.payload()))
+        .containsExactly("theirs");
+  }
+
+  private int payloadCount(EffectId id) {
+    Integer rows =
+        JdbcClient.create(database)
+            .sql("SELECT count(*) FROM nessy_effect WHERE effect_id = ?")
+            .param(id.value())
+            .query(Integer.class)
+            .single();
+    return rows == null ? 0 : rows;
   }
 
   private List<EffectStore.Claimed> awaitAndClaim(AgentId agent, CountDownLatch startGate)

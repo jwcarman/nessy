@@ -243,7 +243,8 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                 traces,
                 backlog,
                 new EffectStore(dataSource),
-                dispatcherFor(sharding, agentKey)));
+                dispatcherFor(sharding, agentKey),
+                new AgentStore(dataSource)));
 
     AgentActor.Dependencies deps = new AgentActor.Dependencies(type, effectWorker, traces);
 

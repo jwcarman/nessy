@@ -102,7 +102,8 @@ final class EffectWorker {
       Traces traces,
       BacklogStore<?> backlog,
       EffectStore effects,
-      Dispatcher dispatcher) {}
+      Dispatcher dispatcher,
+      AgentStore store) {}
 
   private final Dependencies deps;
   private final Codec<List<ExchangeContentBlock>> askedCodec;
@@ -120,12 +121,68 @@ final class EffectWorker {
   }
 
   /**
-   * Does one obligation.
+   * Does one obligation, against the TURN it was decided in.
    *
    * <p>{@code effectId} travels with the work so that whoever answers can discharge it. Effects
    * that answer immediately discharge it themselves; ones that start external work -- a model call,
    * a tool -- hand it to the thread that will report back, and the effect stays outstanding with a
    * watchdog until that happens.
+   *
+   * <p><b>{@code turnId}, not {@code state.turnId()}, is what every turn-scoped operation below
+   * uses -- claim keys, reply-token minting, {@code ToolCallRequest} coordinates.</b> An effect
+   * decided in turn T must be performed against turn T even when this agent has since moved on to
+   * T+1, which is exactly what happens on the recovery path: a stale {@code Release} using the
+   * WRONG turn would run {@code claims().deleteTurn(agentId, T+1)} and wipe a live turn's rendered
+   * observation, asking message and every tool result out from under it. The address a reply token
+   * names is {@code (agentType, agentId, turnId, callId)} -- see {@code ReplyTokens.Coordinates} --
+   * never "whatever turn happens to be current when the answer arrives", and this is that same
+   * address applied here.
+   *
+   * <p><b>{@link Effect.TakeWork} is the one exception</b>, and deliberately does not take {@code
+   * turnId}: which backlog row to sweep is a question about NOW -- {@code state.busy()} and {@code
+   * state.observation()} -- never about the turn that happened to decide to ask. See {@link
+   * #takeWork}.
+   */
+  void perform(
+      AgentId agentId,
+      AgentState state,
+      TurnId turnId,
+      Effect effect,
+      EffectId effectId,
+      Map<String, String> carried) {
+    switch (effect) {
+      case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried);
+      case Effect.CallModel() -> callModel(agentId, turnId, effectId, carried);
+      case Effect.AskApprover ask -> askApprover(agentId, turnId, ask, effectId, carried);
+      case Effect.RunTool run -> runTool(agentId, turnId, run, effectId, carried);
+      case Effect.Remember.Input() -> settle(effectId, () -> rememberInput(agentId, state, turnId));
+      case Effect.Remember.Answer() -> settle(effectId, () -> rememberAnswer(agentId, turnId));
+      case Effect.Remember.Exchange() -> settle(effectId, () -> rememberExchange(agentId, turnId));
+      case Effect.Release() -> settle(effectId, () -> deps.claims().deleteTurn(agentId, turnId));
+      // NOT settle(): forget()'s own effects().deleteAgent() sweeps every row this agent owes,
+      // including the very row effectId names -- discharging it is a side effect of erasing the
+      // agent, not a separate step. Calling complete(effectId) afterward would try to discharge a
+      // row forget() had already deleted, which is indistinguishable from a double-completion and
+      // (correctly) raises. A failure inside forget() before it reaches deleteAgent() leaves this
+      // row EXECUTING with its watchdog armed, same as any other obligation that threw.
+      case Effect.Forget() -> forget(agentId);
+      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
+          throw new IllegalStateException("alarms are written by the transition: " + effect);
+      case Effect.Narrate narrate -> narrate(agentId, turnId, narrate);
+    }
+  }
+
+  /** Narration and reaper retries carry no trace headers of their own. */
+  void perform(AgentId agentId, AgentState state, TurnId turnId, Effect effect, EffectId effectId) {
+    perform(agentId, state, turnId, effect, effectId, Map.of());
+  }
+
+  /**
+   * Convenience for a caller with no claimed effect of its own to address against: the legacy Pekko
+   * actor's own turn, and any test that builds a {@code state} already at the turn it means.
+   * Derives the turn from {@code state.turnId()}, which is exactly right when {@code state} IS the
+   * turn in question -- and exactly the bug the {@code turnId}-carrying overload above exists to
+   * fix when it is not.
    */
   void perform(
       AgentId agentId,
@@ -133,24 +190,10 @@ final class EffectWorker {
       Effect effect,
       EffectId effectId,
       Map<String, String> carried) {
-    switch (effect) {
-      case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried);
-      case Effect.CallModel() -> callModel(agentId, state, effectId, carried);
-      case Effect.AskApprover ask -> askApprover(agentId, state, ask, effectId, carried);
-      case Effect.RunTool run -> runTool(agentId, state, run, effectId, carried);
-      case Effect.Remember.Input() -> settle(effectId, () -> rememberInput(agentId, state));
-      case Effect.Remember.Answer() -> settle(effectId, () -> rememberAnswer(agentId, state));
-      case Effect.Remember.Exchange() -> settle(effectId, () -> rememberExchange(agentId, state));
-      case Effect.Release() ->
-          settle(effectId, () -> deps.claims().deleteTurn(agentId, state.turnId()));
-      case Effect.Forget() -> settle(effectId, () -> forget(agentId));
-      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
-          throw new IllegalStateException("alarms are written by the transition: " + effect);
-      case Effect.Narrate narrate -> narrate(agentId, state, narrate);
-    }
+    perform(agentId, state, state.turnId(), effect, effectId, carried);
   }
 
-  /** Narration and reaper retries carry no trace headers of their own. */
+  /** As above, with no trace headers carried. */
   void perform(AgentId agentId, AgentState state, Effect effect, EffectId effectId) {
     perform(agentId, state, effect, effectId, Map.of());
   }
@@ -161,6 +204,23 @@ final class EffectWorker {
    * <p>These produce no Input -- nothing is waiting to hear that a claim was deleted -- so the
    * effect is retired directly rather than by a transition. A failure leaves the row outstanding
    * and its watchdog armed, which is exactly right: someone should try again.
+   *
+   * <p><b>Not one transaction with {@code work}, and that is a considered gap, not an
+   * oversight.</b> {@code work} for {@code Remember.*} and {@code Forget} runs through {@link
+   * org.jwcarman.nessy.api.memory.Memory#remember} / {@code #forget} -- an application-supplied SPI
+   * this engine does not own and must not assume is backed by the same database {@code
+   * EffectStore#complete} writes to, or backed by a database at all. Enclosing {@link
+   * EffectStore#complete} in the same transaction as an opaque collaborator's own writes would mean
+   * either inventing a transactional contract for {@code Memory} (a new SPI concept, not this
+   * correction's to make) or silently assuming every {@code Memory} shares the engine's {@code
+   * DataSource}, which is false in general and unenforceable. {@code Release}'s own work ({@code
+   * claims().deleteTurn}) is the one case that IS purely engine-owned SQL and could in principle
+   * share a transaction with {@code complete} -- but singling it out while leaving the other four
+   * call sites non-atomic would trade one small, well-understood gap for an inconsistent one.
+   * Today's failure direction stays the safe one this class was built around: if {@code complete}
+   * raises after {@code work} already committed, the work is done and stays done, and the effect
+   * row -- for a genuinely claimed effect -- survives to be retried by the watchdog rather than
+   * being marked done for work that never happened.
    */
   private void settle(EffectId effectId, Runnable work) {
     work.run();
@@ -198,6 +258,14 @@ final class EffectWorker {
    * <p>{@code state.observation()} survives a finished turn precisely for this: it is the id the
    * sweep has to name, and naming it is what distinguishes a turn that ended from a take the agent
    * never recorded.
+   *
+   * <p><b>Deliberately keyed off {@code state}, not off a claimed effect's {@code turnId}.</b>
+   * Every other effect in {@link #perform} is performed against the TURN that decided it; this one
+   * is the documented exception, because which backlog row to sweep is a question about NOW --
+   * {@code state.busy()} and {@code state.observation()} -- and never about which turn happened to
+   * decide to ask for work. A {@code TakeWork} re-driven after this agent has moved several turns
+   * past the one that emitted it should still sweep whatever it most recently finished, not the
+   * turn it was born in.
    */
   private void takeWork(
       AgentId agentId, AgentState state, EffectId effectId, Map<String, String> carried) {
@@ -227,7 +295,7 @@ final class EffectWorker {
    * for exactly that reason.
    */
   private void callModel(
-      AgentId agentId, AgentState state, EffectId effectId, Map<String, String> carried) {
+      AgentId agentId, TurnId turnId, EffectId effectId, Map<String, String> carried) {
     run(
         () ->
             deps.traces()
@@ -244,7 +312,7 @@ final class EffectWorker {
                                     deps.bindings().tools(),
                                     deps.capabilities())),
                             event -> narrateChunk(agentId, event))),
-        result -> answerOf(agentId, state, result),
+        result -> answerOf(agentId, turnId, result),
         failure -> new Input.ModelFailed(failure),
         agentId,
         effectId,
@@ -258,16 +326,16 @@ final class EffectWorker {
    * IDS: without it a recovered turn would have to ask the model again, get fresh ids, and re-run
    * tools whose answers it already had.
    */
-  private Input answerOf(AgentId agentId, AgentState state, ModelResult result) {
+  private Input answerOf(AgentId agentId, TurnId turnId, ModelResult result) {
     return switch (result) {
       case ModelResult.Refused(var category, var explanation, var usage) ->
           new Input.ModelAnswered.Refused(category, explanation, usage);
       case ModelResult.Answered(var message, var stopReason, var usage) -> {
-        deps.claims().put(agentId, state.turnId(), ANSWER_KEY, answerCodec.encode(message));
+        deps.claims().put(agentId, turnId, ANSWER_KEY, answerCodec.encode(message));
         yield new Input.ModelAnswered.Answered(stopReason, usage);
       }
       case ModelResult.Asked(var content, var usage) -> {
-        deps.claims().put(agentId, state.turnId(), ASKED_KEY, askedCodec.encode(content));
+        deps.claims().put(agentId, turnId, ASKED_KEY, askedCodec.encode(content));
         yield new Input.ModelAnswered.Asked(
             callsIn(content).stream()
                 .map(call -> new Input.CallSummary(call.id(), call.name()))
@@ -279,15 +347,15 @@ final class EffectWorker {
 
   private void askApprover(
       AgentId agentId,
-      AgentState state,
+      TurnId turnId,
       Effect.AskApprover ask,
       EffectId effectId,
       Map<String, String> carried) {
-    ToolCall call = callOf(agentId, state, ask.callId());
+    ToolCall call = callOf(agentId, turnId, ask.callId());
     if (call == null) {
       completed(
           agentId,
-          state,
+          turnId,
           ask.callId(),
           ToolResult.error("the asking message is gone; the call was not made"),
           effectId,
@@ -310,7 +378,7 @@ final class EffectWorker {
                   new ApprovalRequest(
                       deps.agentType(),
                       agentId,
-                      state.turnId(),
+                      turnId,
                       call.id(),
                       call.name(),
                       call.arguments(),
@@ -318,8 +386,7 @@ final class EffectWorker {
                       Instant.now(),
                       // Not minted unless somebody asks. An approver that answers on the spot —
                       // and most do — hands the address to nobody.
-                      () ->
-                          deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
+                      () -> deps.tokens().mint(deps.agentType(), agentId, turnId, call.id()));
               run(
                   () ->
                       deps.traces()
@@ -337,7 +404,7 @@ final class EffectWorker {
                           // recorded", which reads to the model as a broken tool rather than a
                           // person saying no. Measured in the browser.
                           denialResult(result)
-                              .ifPresent(denied -> hold(agentId, state, call.id(), denied));
+                              .ifPresent(denied -> hold(agentId, turnId, call.id(), denied));
                           yield new Input.ApprovalGiven(call.id(), call.name(), result);
                         }
                         case Awaited.Deferred<ApprovalResult>(var expiresAt) -> {
@@ -358,7 +425,7 @@ final class EffectWorker {
                   failure -> {
                     ApprovalResult broke = ApprovalResult.denied("the approver failed: " + failure);
                     denialResult(broke)
-                        .ifPresent(denied -> hold(agentId, state, call.id(), denied));
+                        .ifPresent(denied -> hold(agentId, turnId, call.id(), denied));
                     return new Input.ApprovalGiven(call.id(), call.name(), broke);
                   },
                   agentId,
@@ -368,7 +435,7 @@ final class EffectWorker {
             () ->
                 completed(
                     agentId,
-                    state,
+                    turnId,
                     call.id(),
                     ToolResult.error("no such tool: " + call.name() + "; the call was not made"),
                     effectId,
@@ -377,15 +444,15 @@ final class EffectWorker {
 
   private void runTool(
       AgentId agentId,
-      AgentState state,
+      TurnId turnId,
       Effect.RunTool run,
       EffectId effectId,
       Map<String, String> carried) {
-    ToolCall call = callOf(agentId, state, run.callId());
+    ToolCall call = callOf(agentId, turnId, run.callId());
     if (call == null) {
       completed(
           agentId,
-          state,
+          turnId,
           run.callId(),
           ToolResult.error("the asking message is gone; it was not run"),
           effectId,
@@ -403,11 +470,12 @@ final class EffectWorker {
                                 "tool " + call.name(),
                                 carried,
                                 () ->
-                                    deps.bindings().run(binding, requestFor(agentId, state, call))),
+                                    deps.bindings()
+                                        .run(binding, requestFor(agentId, turnId, call))),
                     answer ->
                         switch (answer) {
                           case Awaited.Ready<ToolResult>(var result) -> {
-                            hold(agentId, state, call.id(), result);
+                            hold(agentId, turnId, call.id(), result);
                             yield new Input.ToolCompleted(call.id());
                           }
                           case Awaited.Deferred<ToolResult>(var expiresAt) ->
@@ -416,7 +484,7 @@ final class EffectWorker {
                     failure -> {
                       hold(
                           agentId,
-                          state,
+                          turnId,
                           call.id(),
                           ToolResult.error(failure + "; it may have partially completed"));
                       return new Input.ToolCompleted(call.id());
@@ -437,26 +505,33 @@ final class EffectWorker {
   /** Writes a result and tells the agent — in that order, always. */
   private void completed(
       AgentId agentId,
-      AgentState state,
+      TurnId turnId,
       CallId callId,
       ToolResult result,
       EffectId effectId,
       Map<String, String> carried) {
-    hold(agentId, state, callId, result);
+    hold(agentId, turnId, callId, result);
     tell(agentId, new Input.ToolCompleted(callId), effectId, carried);
   }
 
-  private void hold(AgentId agentId, AgentState state, CallId callId, ToolResult result) {
-    deps.claims().put(agentId, state.turnId(), resultKey(callId), resultCodec.encode(result));
+  private void hold(AgentId agentId, TurnId turnId, CallId callId, ToolResult result) {
+    deps.claims().put(agentId, turnId, resultKey(callId), resultCodec.encode(result));
   }
 
-  private void rememberInput(AgentId agentId, AgentState state) {
-    redeem(agentId, state, state.observation(), inputCodec)
+  /**
+   * {@code state.observation()} is the CLAIM KEY the observation was rendered under, not
+   * turn-scoped data itself — {@code BacklogStore} always writes it under the same constant key,
+   * whichever turn is asking — so reading it off current state is safe even when {@code turnId}
+   * names an earlier turn than the one {@code state} is currently in. The claims LOOKUP that key
+   * addresses is what has to be turn-scoped, and that is what {@code turnId} fixes here.
+   */
+  private void rememberInput(AgentId agentId, AgentState state, TurnId turnId) {
+    redeem(agentId, turnId, state.observation(), inputCodec)
         .ifPresent(input -> deps.memory().remember(agentId, input));
   }
 
-  private void rememberAnswer(AgentId agentId, AgentState state) {
-    redeem(agentId, state, ANSWER_KEY, answerCodec)
+  private void rememberAnswer(AgentId agentId, TurnId turnId) {
+    redeem(agentId, turnId, ANSWER_KEY, answerCodec)
         .ifPresent(
             answer -> {
               narrator(agentId).narrate(new AgentEvent.Answered(Identifiers.next(), answer));
@@ -472,14 +547,14 @@ final class EffectWorker {
    * keeps a transcript from ever holding half an exchange, and therefore what makes re-driving
    * always safe.
    */
-  private void rememberExchange(AgentId agentId, AgentState state) {
-    redeem(agentId, state, ASKED_KEY, askedCodec)
+  private void rememberExchange(AgentId agentId, TurnId turnId) {
+    redeem(agentId, turnId, ASKED_KEY, askedCodec)
         .ifPresent(
             asked -> {
               List<ToolResultBlock> answers = new ArrayList<>();
               for (ToolCall call : callsIn(asked)) {
                 ToolResult result =
-                    redeem(agentId, state, resultKey(call.id()), resultCodec)
+                    redeem(agentId, turnId, resultKey(call.id()), resultCodec)
                         .orElseGet(() -> ToolResult.error("no result was recorded"));
                 answers.add(ToolResultBlock.of(call.id(), result));
               }
@@ -488,28 +563,34 @@ final class EffectWorker {
   }
 
   /**
-   * Erases an agent: everything it remembered, everything waiting for it, everything it held, and
-   * finally the record that it existed.
+   * Erases an agent: everything it remembered, everything waiting for it, everything it held, its
+   * pending obligations, and finally the record that it existed.
    *
    * <p><b>Only ever issued when idle.</b> {@code AgentLogic} holds a busy agent's request until the
    * turn ends, so nothing here races work in flight.
    *
-   * <p><b>The agent's own state row is not touched here.</b> {@link EffectWorker} used to reach
-   * into Pekko's durable-state registry to delete it, which is why this class held an {@code
-   * ActorSystem}. That reference is gone with the seam this class now answers through, so a
-   * forgotten agent's Pekko-persisted row survives until Task 11 deletes the journal machinery that
-   * wrote it. That row is not inert: {@code AgentActor} extends {@code DurableStateBehavior} and
-   * recovers its state from exactly this store, so an agent forgotten here and later reached again
-   * comes back holding its PRE-FORGET {@code AgentState} — turn id, phase, in-flight call map — set
-   * against memory, claims and backlog rows that are all now gone underneath it. (Task 3 removed
-   * this actor's own passivation, so this is not a passivate-then-readdress cycle reaching it on a
-   * timer; whatever else still addresses the entity is what reaches it.) Acceptable only because
-   * this whole actor is deleted in Task 11 along with the store it recovers from.
+   * <p><b>Effects are deleted BEFORE the state row, and that order is deliberate.</b> A crash
+   * between the two leaves a state row with no pending effects — which recovers cleanly, an agent
+   * simply idle again — rather than effect rows pointing at a state row that is gone, which a
+   * future claim would drain forever with nothing to fold their outcomes against.
+   *
+   * <p><b>{@link #deps}'s {@code store} is engine-owned SQL only.</b> {@code AgentActor}'s OWN
+   * Pekko-persisted document — a separate store entirely, written through {@code
+   * DurableStateBehavior} — is untouched here, exactly as before: that reference left this class
+   * along with the {@code ActorSystem} it used to hold, and the row it recovers from survives until
+   * Task 11 deletes the journal machinery that wrote it. An agent forgotten here and reached again
+   * through {@code AgentActor} in the meantime still comes back holding its PRE-FORGET {@code
+   * AgentState} set against memory, claims and backlog rows now gone underneath it — acceptable
+   * only because that whole actor is deleted in Task 11 along with the store it recovers from.
+   * {@code AgentRuntime}'s own read of "does this agent exist" (see {@code AgentStore#peek}) is
+   * answered by exactly the row this method now deletes.
    */
   private void forget(AgentId agentId) {
     deps.memory().forget(agentId);
     deps.backlog().deleteAgent(agentId);
     deps.claims().deleteAgent(agentId);
+    deps.effects().deleteAgent(deps.agentType(), agentId);
+    deps.store().delete(deps.agentType(), agentId);
     // LAST, and that ordering is the whole recovery story: everything above is idempotent, so a
     // crash before this leaves the pill, the next incarnation takes it, and the same work runs
     // again to the same end. Swallowing it first would lose a half-finished forget in silence.
@@ -517,7 +598,7 @@ final class EffectWorker {
     LOG.info("[{}] forgotten", agentId.value());
   }
 
-  private void narrate(AgentId agentId, AgentState state, Effect.Narrate narrate) {
+  private void narrate(AgentId agentId, TurnId turnId, Effect.Narrate narrate) {
     switch (narrate) {
       case Effect.Narrate.TurnStarted(_) ->
           narrator(agentId).narrate(new AgentEvent.TurnStarted(Identifiers.next()));
@@ -527,36 +608,36 @@ final class EffectWorker {
           narrator(agentId)
               .narrate(
                   new AgentEvent.ApprovalDecided(
-                      Identifiers.next(), callId, nameOf(agentId, state, callId), result));
+                      Identifiers.next(), callId, nameOf(agentId, turnId, callId), result));
       case Effect.Narrate.ToolCallCompleted(var callId) ->
           narrator(agentId)
               .narrate(
                   new AgentEvent.ToolCallCompleted(
                       Identifiers.next(),
                       callId,
-                      nameOf(agentId, state, callId),
-                      redeem(agentId, state, resultKey(callId), resultCodec)
+                      nameOf(agentId, turnId, callId),
+                      redeem(agentId, turnId, resultKey(callId), resultCodec)
                           .orElseGet(() -> ToolResult.error("no result was recorded"))));
     }
   }
 
-  private String nameOf(AgentId agentId, AgentState state, CallId callId) {
-    ToolCall call = callOf(agentId, state, callId);
+  private String nameOf(AgentId agentId, TurnId turnId, CallId callId) {
+    ToolCall call = callOf(agentId, turnId, callId);
     return call == null ? "" : call.name();
   }
 
-  private ToolCall callOf(AgentId agentId, AgentState state, CallId callId) {
-    return redeem(agentId, state, ASKED_KEY, askedCodec)
+  private ToolCall callOf(AgentId agentId, TurnId turnId, CallId callId) {
+    return redeem(agentId, turnId, ASKED_KEY, askedCodec)
         .flatMap(
             asked -> callsIn(asked).stream().filter(call -> call.id().equals(callId)).findFirst())
         .orElse(null);
   }
 
-  private <T> Optional<T> redeem(AgentId agentId, AgentState state, String key, Codec<T> codec) {
+  private <T> Optional<T> redeem(AgentId agentId, TurnId turnId, String key, Codec<T> codec) {
     if (key == null) {
       return Optional.empty();
     }
-    return deps.claims().get(agentId, state.turnId(), key).map(codec::decode);
+    return deps.claims().get(agentId, turnId, key).map(codec::decode);
   }
 
   /**
@@ -621,17 +702,17 @@ final class EffectWorker {
    * handed different views of the same call, so the pair had to be kept in step and an approver
    * could not see what the tool would be given.
    */
-  private ToolCallRequest<JsonNode> requestFor(AgentId agentId, AgentState state, ToolCall call) {
+  private ToolCallRequest<JsonNode> requestFor(AgentId agentId, TurnId turnId, ToolCall call) {
     return new ToolCallRequest(
         deps.agentType(),
         agentId,
-        state.turnId(),
+        turnId,
         call.id(),
         call.name(),
         call.arguments(),
         // Not minted here: a token is a capability, and most calls are answered on the spot and
         // never hand one out. ToolCallRequest mints on the first replyToken() and remembers it.
-        () -> deps.tokens().mint(deps.agentType(), agentId, state.turnId(), call.id()));
+        () -> deps.tokens().mint(deps.agentType(), agentId, turnId, call.id()));
   }
 
   static String resultKey(CallId callId) {
