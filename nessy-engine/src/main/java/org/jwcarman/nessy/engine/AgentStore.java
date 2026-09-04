@@ -26,7 +26,11 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Everything one agent durably is, and the lock that serializes it.
@@ -61,11 +65,14 @@ final class AgentStore {
 
   private final JdbcClient jdbc;
   private final Codec<AgentState> codec;
+  private final TransactionTemplate newTransaction;
 
   AgentStore(DataSource dataSource) {
-    this.jdbc =
-        JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
+    Objects.requireNonNull(dataSource, "dataSource must not be null");
+    this.jdbc = JdbcClient.create(dataSource);
     this.codec = JsonCodec.of(EngineMapper.INSTANCE, AgentState.class);
+    this.newTransaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
   }
 
   /**
@@ -144,17 +151,33 @@ final class AgentStore {
         .optional();
   }
 
+  /**
+   * Inserts the idle row in a transaction of its own.
+   *
+   * <p>PostgreSQL aborts the WHOLE transaction on any SQL error, and {@link JdbcClient} sets no
+   * savepoint -- so an insert that loses the duplicate-key race here would poison every statement
+   * the caller runs afterward in ITS transaction, on ITS connection, for the rest of it. {@code
+   * PROPAGATION_REQUIRES_NEW} keeps the blast radius of a lost race to a connection and a
+   * transaction this method opens and closes itself, leaving the caller's untouched.
+   *
+   * <p>Two shapes of "someone beat us to it" reach here depending on timing, and both mean the row
+   * we wanted now exists: {@link DuplicateKeyException} when the other insert had already
+   * committed, and a {@link TransientDataAccessException} (lock-wait timeout, e.g. {@code
+   * CannotAcquireLockException}) when it was still in flight and we gave up waiting on its lock.
+   */
   private void create(AgentType agentType, AgentId agentId) {
     try {
-      jdbc.sql(INSERT)
-          .param(agentType.name())
-          .param(agentId.value())
-          .param(0L)
-          .param(encode(AgentState.idle()))
-          .param(Instant.now())
-          .update();
-    } catch (DuplicateKeyException _) {
-      // Another node met this agent first. Its row is the one we want anyway.
+      newTransaction.executeWithoutResult(
+          status ->
+              jdbc.sql(INSERT)
+                  .param(agentType.name())
+                  .param(agentId.value())
+                  .param(0L)
+                  .param(encode(AgentState.idle()))
+                  .param(Instant.now())
+                  .update());
+    } catch (DuplicateKeyException | TransientDataAccessException _) {
+      // Another node met this agent first, or is still inserting it. Its row is the one we want.
     }
   }
 

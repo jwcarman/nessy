@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -91,6 +92,11 @@ class AgentStoreTest {
   @Test
   @DisplayName("two agents do not contend: the lock is row-level, not table-level")
   void different_agents_never_block_each_other() throws Exception {
+    // Committed rows, so each thread's FOR UPDATE contends on the SELECT lock itself rather than
+    // racing an INSERT of a row that does not exist yet -- see AgentStoreTest's own history.
+    transactions.executeWithoutResult(status -> store.save(TYPE, ONE, AgentState.idle()));
+    transactions.executeWithoutResult(status -> store.save(TYPE, TWO, AgentState.idle()));
+
     CountDownLatch held = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     ExecutorService threads = Executors.newFixedThreadPool(2);
@@ -119,8 +125,14 @@ class AgentStoreTest {
   @Test
   @DisplayName("one agent does contend: a second lock waits for the first to commit")
   void the_same_agent_serializes() throws Exception {
+    // A committed row, so the first thread's FOR UPDATE contends on the SELECT lock itself rather
+    // than racing an INSERT of a row that does not exist yet -- see AgentStoreTest's own history.
+    transactions.executeWithoutResult(status -> store.save(TYPE, ONE, AgentState.idle()));
+
     CountDownLatch held = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<Instant> beforeCommit = new AtomicReference<>();
+    AtomicReference<Instant> afterSecondLock = new AtomicReference<>();
     ExecutorService threads = Executors.newFixedThreadPool(2);
     try {
       threads.submit(
@@ -129,18 +141,28 @@ class AgentStoreTest {
                   status -> {
                     store.lockAndLoad(TYPE, ONE);
                     store.save(TYPE, ONE, AgentState.idle().taking(TurnId.of("t"), "c"));
+                    beforeCommit.set(Instant.now());
                     held.countDown();
                     awaitQuietly(release);
                   }));
       assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
 
       Future<AgentState> second =
-          threads.submit(() -> transactions.execute(status -> store.lockAndLoad(TYPE, ONE)));
-
-      assertThat(second).isNotDone();
+          threads.submit(
+              () ->
+                  transactions.execute(
+                      status -> {
+                        AgentState loaded = store.lockAndLoad(TYPE, ONE);
+                        afterSecondLock.set(Instant.now());
+                        return loaded;
+                      }));
       release.countDown();
 
       assertThat(second.get(5, TimeUnit.SECONDS).turnId()).isEqualTo(TurnId.of("t"));
+      // Proof that the second lock WAITED rather than merely finishing quickly: it could only
+      // have landed after the first thread's pre-commit timestamp, because a lock held across
+      // that commit is what forced the ordering.
+      assertThat(afterSecondLock.get()).isAfter(beforeCommit.get());
     } finally {
       release.countDown();
       threads.shutdownNow();
