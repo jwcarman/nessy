@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.testing.TestDatabase;
@@ -252,6 +254,86 @@ class EffectPollerTest {
         .isEqualTo("PENDING");
   }
 
+  @Test
+  @DisplayName(
+      "R-AH: an effect whose agent no longer exists is abandoned with a reason naming it -- the"
+          + " whole group at once, and its attempts stop climbing")
+  void an_effect_for_a_vanished_agent_is_abandoned() {
+    AgentId vanished = agent("house-vanished");
+    insert(vanished, 0, new Effect.Remember.Answer());
+    insert(vanished, 1, new Effect.Release());
+    insert(vanished, 2, new Effect.Narrate.ToolCallCompleted(CallId.of("call-1")));
+    // The race EffectWorker#forget can lose: it deletes an agent's effect rows BEFORE the agent
+    // itself, so a transition committing new effects in between leaves rows behind whose agent is
+    // already on its way out. peek() then finds nobody -- and it means GONE, never NOT YET:
+    // Transition#record is the only thing that ever inserts an effect, and it runs inside the same
+    // transaction as the lockAndLoad that brings the agent row into existence.
+    store.delete(TYPE, vanished);
+
+    CopyOnWriteArrayList<Effect> seen = new CopyOnWriteArrayList<>();
+    // A watchdog of a millisecond, so every later pass in this test finds these rows due again --
+    // which is exactly the condition under which TAKE's conditional increment charges a failure.
+    EffectPoller poller =
+        poller(
+            Runnable::run,
+            (agentId, state, turnId, effect, effectId, attempts) -> seen.add(effect),
+            Duration.ofMillis(1));
+
+    List<List<Integer>> attemptsAfterEachPass = new ArrayList<>();
+    for (int pass = 0; pass < 3; pass++) {
+      poller.pollOnce();
+      attemptsAfterEachPass.add(attemptsFor(vanished));
+      sleepQuietly(Duration.ofMillis(20)); // the millisecond watchdog lapses well within this
+    }
+
+    assertThat(seen)
+        .as("nothing was performed -- there is no state to perform it against")
+        .isEmpty();
+    assertThat(attemptsAfterEachPass)
+        .as(
+            "R-AH: abandoning charges the one failure it is (ABANDON increments), and then the"
+                + " row is terminal with a NULL actionable_at, so no later pass can find it and"
+                + " charge it again. Left RUNNING instead, all three rows come due on every"
+                + " watchdog lapse forever and TAKE charges each of them a fresh phantom failure"
+                + " every time, with giveUp unreachable above perform() to ever close them.")
+        .containsExactly(List.of(1, 1, 1), List.of(1, 1, 1), List.of(1, 1, 1));
+    assertThat(statusesFor(vanished))
+        .as(
+            "every row of the group is terminal, not just the head -- all are equally undeliverable")
+        .containsExactly("FAILED", "FAILED", "FAILED");
+    assertThat(reasonsFor(vanished))
+        .as(
+            "and the reason names the vanished agent, so an operator can tell 'forgotten out from"
+                + " under its work' from 'this obligation failed five times'")
+        .allSatisfy(
+            reason ->
+                assertThat(reason)
+                    .contains(vanished.value())
+                    .contains("no longer exists")
+                    .doesNotContain("gave up after"));
+  }
+
+  private List<Integer> attemptsFor(AgentId agentId) {
+    return columnFor(agentId, "attempts", Integer.class);
+  }
+
+  private List<String> statusesFor(AgentId agentId) {
+    return columnFor(agentId, "status", String.class);
+  }
+
+  private List<String> reasonsFor(AgentId agentId) {
+    return columnFor(agentId, "reason", String.class);
+  }
+
+  /** One column of every row this agent owes, in ordinal order. */
+  private <T> List<T> columnFor(AgentId agentId, String column, Class<T> type) {
+    return JdbcClient.create(database)
+        .sql("SELECT " + column + " FROM nessy_effect WHERE agent_id = ? ORDER BY ordinal")
+        .param(agentId.value())
+        .query(type)
+        .list();
+  }
+
   private EffectId effectIdFor(AgentId agentId, int ordinal) {
     String id =
         JdbcClient.create(database)
@@ -288,6 +370,12 @@ class EffectPollerTest {
   }
 
   private EffectPoller poller(Executor agentExecutor, AgentRuntime.Performer performer) {
+    return poller(agentExecutor, performer, TIMEOUT);
+  }
+
+  /** As above, with the watchdog a row is marked RUNNING with chosen by the caller. */
+  private EffectPoller poller(
+      Executor agentExecutor, AgentRuntime.Performer performer, Duration timeout) {
     return new EffectPoller(
         TYPE,
         effects,
@@ -295,7 +383,7 @@ class EffectPollerTest {
         new PollSchedule(Duration.ofMillis(10), Duration.ofSeconds(1), 2.0, 0.0, new Random(1)),
         agentExecutor,
         100,
-        TIMEOUT);
+        timeout);
   }
 
   private AgentRuntime runtimeWith(AgentRuntime.Performer performer) {

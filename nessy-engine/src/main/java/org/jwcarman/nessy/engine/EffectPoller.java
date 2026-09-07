@@ -155,15 +155,7 @@ final class EffectPoller {
   private void runAgent(AgentId agentId, List<EffectStore.Attempted> rows) {
     Optional<AgentState> state = runtime.peek(agentId);
     if (state.isEmpty()) {
-      // Rare and not a fault: the agent was forgotten between this row becoming due and this pass
-      // claiming it. Forget() deletes every effect row it owes BEFORE deleting the agent itself
-      // (see EffectWorker#forget), so ordinarily there is nothing left here to find; a row that
-      // still turns up belongs to a forget the poller raced and lost cleanly. Left RUNNING, it
-      // will be revisited once its watchdog lapses and found gone for good then.
-      LOG.debug(
-          "[{}] {} rows attempted for an agent with no state; skipped",
-          agentId.value(),
-          rows.size());
+      abandonVanished(agentId, rows);
       return;
     }
     for (EffectStore.Attempted attempted : rows) {
@@ -230,6 +222,45 @@ final class EffectPoller {
     // is right for a throw: the group's line is already broken, so the PENDING reset is what
     // matters, not the timing.
     return Optional.of(held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now());
+  }
+
+  /**
+   * Retires every row of a group whose agent is GONE, with a reason that says so.
+   *
+   * <p>R-AH (Task 7 fix round 5). Empty {@code peek} means forgotten, never "not written yet":
+   * {@code Transition#record} is the only thing in the engine that ever inserts an effect, and it
+   * runs inside the very transaction whose {@code lockAndLoad} brings the agent row into existence,
+   * so an effect cannot commit without its agent. What produces this state is the race {@code
+   * EffectWorker#forget} can lose -- it deletes an agent's effect rows BEFORE the agent itself, so
+   * a transition committing new effects in between leaves rows behind that name an agent already on
+   * its way out.
+   *
+   * <p><b>Abandoned, not skipped.</b> Skipping was C1's disease at a site C1 never looked at: this
+   * return is ABOVE {@link AgentRuntime#perform}, so {@code EffectWorker}'s {@code giveUp} is
+   * unreachable and nothing could ever close these rows -- they came due on every watchdog lapse
+   * forever while {@code TAKE}'s conditional increment charged each pass a failure, {@code
+   * attempts} rising without bound and no budget able to spend it. Abandoning applies the standing
+   * ruling for an event tied to an unresolvable address -- dropped, and recorded -- with a durable
+   * row instead of a log line that scrolls away.
+   *
+   * <p><b>The whole group, in this pass.</b> Every row here is equally undeliverable, and closing
+   * them one watchdog lapse at a time would charge a phantom failure on each lapse along the way --
+   * the very cost this exists to stop.
+   *
+   * <p>The reason names the agent, so {@code nessy_effect} distinguishes "this agent was forgotten
+   * out from under its work" from "this obligation failed five times". Those call for completely
+   * different responses.
+   */
+  private void abandonVanished(AgentId agentId, List<EffectStore.Attempted> rows) {
+    String reason =
+        "agent " + agentId.value() + " no longer exists; forgotten before this obligation ran";
+    for (EffectStore.Attempted attempted : rows) {
+      effects.abandon(attempted.id(), reason);
+    }
+    LOG.warn(
+        "[{}] {} obligation(s) abandoned: the agent was forgotten before this pass ran them",
+        agentId.value(),
+        rows.size());
   }
 
   /**
