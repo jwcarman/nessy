@@ -359,6 +359,45 @@ class EffectStoreTest {
         .isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("parking a row that is not RUNNING reports no update and leaves it untouched")
+  void parking_a_non_running_row_reports_false_and_changes_nothing() {
+    CallId callId = CallId.of("call-1");
+    // Freshly inserted, never attempt()-ed -- PENDING, not RUNNING. Unreachable through
+    // AgentLogic/Transition today (ToolParked only ever answers a row already RUNNING), but the
+    // contract has to hold anyway: a park racing a concurrent completion finds exactly this same
+    // shape (the row gone RUNNING -> deleted, or already PARKED), and silently doing nothing there
+    // is the bug this mechanism exists to remove.
+    EffectId pending = insert(AGENT, 0, "ask-approver", callId);
+    Instant originalActionableAt = actionableAtOf(pending);
+
+    boolean parked =
+        effects.park(TYPE, AGENT, TURN, callId, originalActionableAt.plus(Duration.ofDays(3)));
+
+    assertThat(parked).as("no RUNNING row matched, so nothing was moved to PARKED").isFalse();
+    assertThat(statusOf(pending)).as("still whatever it was, not PARKED").isEqualTo("PENDING");
+    assertThat(actionableAtOf(pending))
+        .as("untouched -- the row's short, original deadline still stands")
+        .isEqualTo(originalActionableAt);
+  }
+
+  private String statusOf(EffectId id) {
+    return JdbcClient.create(database)
+        .sql("SELECT status FROM nessy_effect WHERE effect_id = ?")
+        .param(id.value())
+        .query(String.class)
+        .single();
+  }
+
+  private Instant actionableAtOf(EffectId id) {
+    return JdbcClient.create(database)
+        .sql("SELECT actionable_at FROM nessy_effect WHERE effect_id = ?")
+        .param(id.value())
+        .query(java.sql.Timestamp.class)
+        .single()
+        .toInstant();
+  }
+
   private int payloadCount(EffectId id) {
     Integer rows =
         JdbcClient.create(database)

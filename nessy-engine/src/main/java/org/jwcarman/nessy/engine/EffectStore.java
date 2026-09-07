@@ -390,22 +390,35 @@ final class EffectStore {
    * #deleteForCall} discharges by -- see {@code nessy_effect_call}. Restricted to a row currently
    * {@code RUNNING}: only the {@code AskApprover}/{@code RunTool} attempt this call is IN,
    * deferring right now, is ever the one being parked.
+   *
+   * <p><b>Reports rather than raises when it matches nothing.</b> Not finding a RUNNING row is
+   * unreachable through today's paths, but it is exactly the shape of failure this mechanism exists
+   * to make loud rather than possible: land nothing here and the row keeps its short watchdog, the
+   * poller reattempts it on that schedule instead of the real term, and a human holding a reply
+   * token can see their tool re-run underneath them. A caller racing a legitimate concurrent
+   * completion (the row discharged out from under this write) is not a fault either, which is why
+   * this is a boolean for the caller to log, not an exception -- the same reasoning {@link
+   * #complete} already applies to a discharge that finds nothing RUNNING.
+   *
+   * @return whether a row was actually moved to PARKED
    */
-  void park(
+  boolean park(
       AgentType agentType, AgentId agentId, TurnId turnId, CallId callId, Instant actionableAt) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
-    jdbc.sql(PARK)
-        .param(PARKED)
-        .param(actionableAt)
-        .param(agentType.name())
-        .param(agentId.value())
-        .param(turnId == null ? null : turnId.value())
-        .param(callId.value())
-        .param(RUNNING)
-        .update();
+    int updated =
+        jdbc.sql(PARK)
+            .param(PARKED)
+            .param(actionableAt)
+            .param(agentType.name())
+            .param(agentId.value())
+            .param(turnId == null ? null : turnId.value())
+            .param(callId.value())
+            .param(RUNNING)
+            .update();
+    return updated > 0;
   }
 
   /**

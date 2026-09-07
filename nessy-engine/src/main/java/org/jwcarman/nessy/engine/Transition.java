@@ -30,6 +30,8 @@ import org.jwcarman.nessy.engine.agent.Decision;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.engine.agent.Phase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -50,6 +52,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * called from inside the same object silently runs with no transaction at all.
  */
 final class Transition {
+
+  private static final Logger LOG = LoggerFactory.getLogger(Transition.class);
 
   /**
    * What a transition produced for its caller: the state it left behind, and the narration to
@@ -116,8 +120,18 @@ final class Transition {
           // This IS the deadline now -- see EffectStore#park. Read straight off the input rather
           // than a Decision effect, because the fold that named the call does not get to know an
           // infrastructure row exists to update.
-          if (input instanceof Input.ToolParked(var callId, var expiresAt)) {
-            effects.park(agentType, agentId, decision.next().turnId(), callId, expiresAt);
+          if (input instanceof Input.ToolParked(var callId, var expiresAt)
+              && !effects.park(agentType, agentId, decision.next().turnId(), callId, expiresAt)) {
+            // Not a fault by itself -- a park racing a concurrent completion finds no RUNNING row
+            // for the same reason EffectStore#complete can legitimately discharge nothing -- but
+            // silent is exactly the wrong answer here: land nothing and the row keeps its OLD,
+            // short watchdog, so the poller reattempts it on that schedule instead of the real
+            // term, and a person holding a reply token can see their tool re-run underneath them.
+            LOG.warn(
+                "[{}] park found no RUNNING row for call {}; deadline {} was not applied",
+                agentId.value(),
+                callId.value(),
+                expiresAt);
           }
           // Every call the fold just settled discharges its own row here, whichever route brought
           // the news -- an answer, a denial, or a lapsed term alike. See settledCalls.
