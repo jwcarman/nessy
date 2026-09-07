@@ -241,15 +241,25 @@ class ToolCallTest {
   }
 
   /**
-   * Depends on {@link #narration_tells_the_turn_and_the_call} having already populated "house-99"'s
-   * narration -- it observes nothing of its own.
+   * Drives its own turn against its own agent id rather than relying on {@link
+   * #narration_tells_the_turn_and_the_call} having already populated one -- JUnit makes no ordering
+   * promise between test methods absent an explicit {@code @TestMethodOrder}, and a test that reads
+   * another test's leftovers passes for the wrong reason the moment that changes.
    */
   @Test
   @DisplayName("every narrated event carries a time-ordered id")
   void every_narrated_event_carries_a_time_ordered_id() {
-    assertThat(narrated("house-99")).isNotEmpty();
-    List<String> ids = narrated("house-99").stream().map(AgentEvent::id).toList();
+    observe("house-100", new HouseEvent("porch", "camera"));
 
+    await()
+        .atMost(15, SECONDS)
+        .untilAsserted(
+            () ->
+                assertThat(narrated("house-100")).anyMatch(AgentEvent.TurnEnded.class::isInstance));
+
+    List<String> ids = narrated("house-100").stream().map(AgentEvent::id).toList();
+
+    assertThat(ids).isNotEmpty();
     assertThat(ids).doesNotHaveDuplicates().isSorted();
   }
 
