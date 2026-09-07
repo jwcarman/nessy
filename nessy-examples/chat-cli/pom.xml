@@ -48,14 +48,6 @@
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
     </dependency>
-      <!-- Pekko's own BOM decides Pekko's versions; this module names artifacts, never versions. -->
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
     </dependencies>
   </dependencyManagement>
 

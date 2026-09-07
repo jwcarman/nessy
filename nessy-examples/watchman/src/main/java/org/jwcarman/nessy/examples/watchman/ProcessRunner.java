@@ -35,7 +35,7 @@ public final class ProcessRunner implements CommandRunner {
     }
     try {
       // Runs on a virtual thread (see BlockingWork), so blocking here costs a continuation,
-      // not a platform thread -- and never a Pekko dispatcher thread.
+      // not a platform thread.
       String stdout = read(process.getInputStream());
       String stderr = read(process.getErrorStream());
       if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {

@@ -33,8 +33,8 @@ services:
     volumes:
       - watchman-db:/var/lib/postgresql/data
       # Runs once, on first start of an empty volume: the schema this application is configured to
-      # use, and Pekko's tables, neither of which anything else creates. Without it a clone-and-run
-      # starts cleanly and then dies on its first round.
+      # use, which nothing else creates. Without it a clone-and-run starts cleanly and then dies on
+      # its first round.
       - ./db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U watchman"]

@@ -38,15 +38,6 @@
 
   <dependencyManagement>
     <dependencies>
-      <!-- Everything this repo has an opinion about is declared ABOVE Boot's BOM, so Boot only
-           decides what this repo has no opinion on. Same ordering rule the watchman documents. -->
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
@@ -94,13 +85,6 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
-    <!-- Where agent and turn state lives. In memory, because an example that needs a database
-         before it will say hello is an example nobody runs; see application.conf. -->
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
-    </dependency>
-
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>

@@ -57,13 +57,6 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -100,29 +93,6 @@
     <dependency>
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-observation</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-cluster-sharding-typed_2.13</artifactId>
-    </dependency>
-
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-testkit-typed_2.13</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.awaitility</groupId>

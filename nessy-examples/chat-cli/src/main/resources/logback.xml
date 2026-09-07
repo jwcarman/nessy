@@ -23,9 +23,6 @@
   </appender>
 
   <logger name="org.jwcarman.nessy" level="WARN"/>
-  <!-- The terminal IS this application's output. Pekko announcing its own startup over the top of
-       a conversation is noise, so everything below the app is silenced to WARN. -->
-  <logger name="org.apache.pekko" level="WARN"/>
 
   <root level="WARN">
     <appender-ref ref="CONSOLE"/>

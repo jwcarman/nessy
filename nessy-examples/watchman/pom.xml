@@ -29,10 +29,9 @@
   </parent>
 
   <artifactId>nessy-example-watchman</artifactId>
-  <name>Nessy Example: Watchman (Pekko port)</name>
-  <description>The watchman on the actor runtime. NO LONGER A SPIKE: as of 2026-08-28 this is where
-    Nessy's Pekko-based engine is being built, and the design here is the design of record rather
-    than a comparison. It depends on nessy-spi, nessy-agent and
+  <name>Nessy Example: Watchman</name>
+  <description>The watchman on the durable engine. NO LONGER A SPIKE: as of 2026-08-28 the design
+    here is the design of record rather than a comparison. It depends on nessy-spi, nessy-agent and
     nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
     Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
     both counts.</description>
@@ -40,19 +39,11 @@
   <properties>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
-    <pekko-persistence-jdbc.version>1.3.0</pekko-persistence-jdbc.version>
     <htmx.version>2.0.4</htmx.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <!-- Same ordering rule the sibling watchman documents at length: everything this repo pins
            is declared ABOVE Boot's BOM, so Boot only decides what this repo has no opinion on. -->
       <dependency>
@@ -139,33 +130,10 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- The actor runtime. -->
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-cluster-sharding-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-typed_2.13</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-jdbc_2.13</artifactId>
-      <version>${pekko-persistence-jdbc.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-slf4j_2.13</artifactId>
-    </dependency>
-
-    <!-- The BINDING behind pekko-slf4j. Without it SLF4J finds no provider, falls back to its
-         NOP logger, and every line this application and Pekko write goes nowhere — the first
-         soak attempt produced a running process and an empty log file. The original watchman
-         declares logback for the same reason; the starters used here do not drag it in. -->
+    <!-- Without a binding, SLF4J finds no provider, falls back to its NOP logger, and every line
+         this application writes goes nowhere — the first soak attempt produced a running process
+         and an empty log file. The original watchman declares logback for the same reason; the
+         starters used here do not drag it in. -->
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
@@ -174,8 +142,8 @@
 
     <!-- Jackson 2, DECLARED EXPLICITLY. Boot 4 ships Jackson 3 (tools.jackson) in its web
          starter, so com.fasterxml.jackson.databind is no longer transitively present at all.
-         StateSerializer and the model client both use Jackson 2 deliberately: it is the reactor's
-         pinned line, and because our serializer is ours, Pekko has no opinion about it either way. -->
+         The engine's own mapper and the model client both use Jackson 2 deliberately: it is the
+         reactor's pinned line. -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
@@ -270,21 +238,12 @@
       <scope>test</scope>
     </dependency>
     <!-- Lets TraceTreeTest assert the SHAPE of the trace rather than eyeball it in Grafana.
-         Trace context across actor messages is the highest-risk part of this port, so it gets a
-         test that fails if the tree ever flattens into orphans. -->
+         Trace context surviving the hop from a dispatch to the effect it produced is the
+         highest-risk part of this port, so it gets a test that fails if the tree ever flattens
+         into orphans. -->
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-sdk-testing</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-testkit-typed_2.13</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

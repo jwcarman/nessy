@@ -14,7 +14,7 @@
 -- limitations under the License.
 --
 
--- The DDL this application owns. pekko-persistence-jdbc creates nothing.
+-- The DDL this application owns.
 --
 -- A schema of its own so the ported watchman and the original can run side by side against one
 -- database without either seeing the other's tables:

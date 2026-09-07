@@ -42,13 +42,6 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <dependency>
-        <groupId>org.apache.pekko</groupId>
-        <artifactId>pekko-bom_2.13</artifactId>
-        <version>${pekko.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <!-- Spring Boot's BOM, imported HERE rather than in the parent, and imported LAST.
            Both halves of that are load-bearing:
 
@@ -141,12 +134,6 @@
       <artifactId>h2</artifactId>
       <scope>runtime</scope>
     </dependency>
-    <!-- The starter builds the ActorSystem the engine runs on, so it names Pekko directly rather
-         than relying on nessy-engine's own dependency leaking through. -->
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-actor-typed_2.13</artifactId>
-    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-autoconfigure</artifactId>
@@ -213,11 +200,6 @@
           <artifactId>mockito-junit-jupiter</artifactId>
         </exclusion>
       </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.pekko</groupId>
-      <artifactId>pekko-persistence-testkit_2.13</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
