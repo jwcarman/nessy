@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,7 +69,7 @@ class EffectPollerTest {
   void fresh() {
     database = TestDatabase.fresh();
     effects = new EffectStore(database);
-    store = new AgentStore(database);
+    store = new AgentStore(database, Clock.systemUTC());
     transition =
         new Transition(
             TYPE,

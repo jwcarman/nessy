@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -68,12 +69,14 @@ final class AgentStore {
 
   private final JdbcClient jdbc;
   private final Codec<AgentState> codec;
+  private final Clock clock;
   private final TransactionTemplate savepointTransaction;
 
-  AgentStore(DataSource dataSource) {
+  AgentStore(DataSource dataSource, Clock clock) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.codec = JsonCodec.of(EngineMapper.INSTANCE, AgentState.class);
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
     DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
     // Off by default -- without this, PROPAGATION_NESTED throws
     // NestedTransactionNotSupportedException
@@ -145,7 +148,11 @@ final class AgentStore {
   void touch(AgentType agentType, AgentId agentId) {
     Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
-    jdbc.sql(TOUCH).param(Instant.now()).param(agentType.name()).param(agentId.value()).update();
+    jdbc.sql(TOUCH)
+        .param(JdbcTimestamps.ts(clock.instant()))
+        .param(agentType.name())
+        .param(agentId.value())
+        .update();
   }
 
   void delete(AgentType agentType, AgentId agentId) {
@@ -166,7 +173,7 @@ final class AgentStore {
     return jdbc
         .sql(STALLED)
         .param(agentType.name())
-        .param(before)
+        .param(JdbcTimestamps.ts(before))
         .query((rs, row) -> new Stalled(rs.getString("agent_id"), rs.getBytes("state")))
         .list()
         .stream()
@@ -181,7 +188,7 @@ final class AgentStore {
   private int update(AgentType agentType, AgentId agentId, AgentState state) {
     return jdbc.sql(UPDATE)
         .param(codec.encode(state))
-        .param(Instant.now())
+        .param(JdbcTimestamps.ts(clock.instant()))
         .param(agentType.name())
         .param(agentId.value())
         .update();
@@ -228,7 +235,7 @@ final class AgentStore {
                   .param(agentId.value())
                   .param(0L)
                   .param(codec.encode(AgentState.idle()))
-                  .param(Instant.now())
+                  .param(JdbcTimestamps.ts(clock.instant()))
                   .update());
     } catch (DuplicateKeyException | TransientDataAccessException _) {
       // Another node met this agent first, or is still inserting it. Its row is the one we want.

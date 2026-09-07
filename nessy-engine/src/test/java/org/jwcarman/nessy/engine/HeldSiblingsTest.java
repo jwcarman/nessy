@@ -88,7 +88,7 @@ class HeldSiblingsTest {
     database = TestDatabase.fresh();
     claims = new Claims(database);
     effects = new EffectStore(database);
-    store = new AgentStore(database);
+    store = new AgentStore(database, Clock.systemUTC());
     transition =
         new Transition(
             TYPE,

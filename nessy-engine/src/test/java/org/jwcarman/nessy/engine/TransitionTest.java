@@ -24,6 +24,7 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -73,7 +74,7 @@ class TransitionTest {
   @BeforeEach
   void fresh() {
     database = TestDatabase.fresh();
-    store = new AgentStore(database);
+    store = new AgentStore(database, Clock.systemUTC());
     effects = new EffectStore(database);
     transition =
         new Transition(
@@ -344,7 +345,7 @@ class TransitionTest {
     Transition fragile =
         new Transition(
             TYPE,
-            new AgentStore(exploding),
+            new AgentStore(exploding, Clock.systemUTC()),
             new EffectStore(exploding),
             new TransactionTemplate(new DataSourceTransactionManager(exploding)));
 

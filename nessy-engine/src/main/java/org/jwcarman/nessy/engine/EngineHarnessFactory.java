@@ -200,7 +200,7 @@ public final class EngineHarnessFactory implements HarnessFactory, AutoCloseable
             config.backlogCoalescer(),
             clock);
 
-    AgentStore store = new AgentStore(dataSource);
+    AgentStore store = new AgentStore(dataSource, clock);
     EffectStore effects = new EffectStore(dataSource);
     TransactionTemplate transactions =
         new TransactionTemplate(new DataSourceTransactionManager(dataSource));

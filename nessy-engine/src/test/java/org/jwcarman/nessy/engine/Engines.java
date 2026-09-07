@@ -165,7 +165,7 @@ final class Engines {
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
     EffectStore effects = new EffectStore(dataSource);
-    AgentStore store = new AgentStore(dataSource);
+    AgentStore store = new AgentStore(dataSource, Clock.systemUTC());
     EffectWorker effectWorker =
         new EffectWorker(
             new EffectWorker.Dependencies(
@@ -237,7 +237,7 @@ final class Engines {
     Remembered remembered = new Remembered();
     Narrated narrated = new Narrated();
     EffectStore effects = new EffectStore(dataSource);
-    AgentStore store = new AgentStore(dataSource);
+    AgentStore store = new AgentStore(dataSource, Clock.systemUTC());
     Transition transition =
         new Transition(
             type,

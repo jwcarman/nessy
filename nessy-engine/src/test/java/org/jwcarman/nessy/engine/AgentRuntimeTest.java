@@ -22,6 +22,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -71,7 +72,7 @@ class AgentRuntimeTest {
   @BeforeEach
   void fresh() {
     database = TestDatabase.fresh();
-    store = new AgentStore(database);
+    store = new AgentStore(database, Clock.systemUTC());
     effects = new EffectStore(database);
     transition =
         new Transition(

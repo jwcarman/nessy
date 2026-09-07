@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
@@ -60,7 +61,7 @@ class AgentStoreTest {
   @BeforeEach
   void fresh() {
     database = TestDatabase.fresh();
-    store = new AgentStore(database);
+    store = new AgentStore(database, Clock.systemUTC());
     transactions = new TransactionTemplate(new DataSourceTransactionManager(database));
   }
 
