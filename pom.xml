@@ -104,12 +104,6 @@
          and Jackson 2 measured MUCH faster than 3 in James's benchmarks (2026-08-28). codec also
          ships codec-jackson (Jackson 3); we deliberately do not use it. -->
     <codec.version>0.9.0</codec.version>
-    <!-- org.jwcarman.continuum 0.4.0 (Central release): the durable-computation
-         library Nessy adopts for pending/deadline/expiry/memoized-outcome/outbox
-         (2026-08-24 continuum-adoption spec). 0.4.0 is the line whose
-         continuum-jdbc certifies PostgreSQL, MySQL and MariaDB on every build
-         and selects the dialect rather than merely refusing impostors. -->
-    <continuum.version>0.4.0</continuum.version>
     <!-- victools 5 migrated jsonschema-generator's ObjectNode return types from
          com.fasterxml.jackson.databind to tools.jackson.databind (Jackson 3),
          breaking Schemas.java's direct assignment to a Jackson 2 ObjectNode.
@@ -404,13 +398,6 @@
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-annotations</artifactId>
         <version>${jackson-annotations.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.jwcarman.continuum</groupId>
-        <artifactId>continuum-bom</artifactId>
-        <version>${continuum.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
       </dependency>
       <dependency>
         <groupId>org.jwcarman.codec</groupId>
