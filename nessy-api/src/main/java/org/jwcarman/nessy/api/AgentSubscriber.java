@@ -23,11 +23,13 @@ package org.jwcarman.nessy.api;
  * <p>A single method, so a watcher with one concern is a lambda. A watcher with several switches
  * over {@link AgentEvent}.
  *
- * <p><b>Throw semantics are asymmetric, deliberately.</b> A subscriber that throws while narrating
- * the model path aborts the call it is narrating — the subscriber is the caller's own code, so its
- * exception is the caller's exception. A subscriber that throws while narrating a tool is logged
- * and dropped instead: letting it propagate would misattribute a bug in the UI to the tool, killing
- * a call that was otherwise succeeding.
+ * <p><b>A subscriber that throws is ejected, uniformly.</b> Narration is at-least-once and never
+ * transactional with the record it is describing — nothing a subscriber does can roll back a model
+ * call or a tool call that already happened. So a throw is logged and the subscriber dropped from
+ * that point on, whether it happened on the model path or a tool path, and the turn continues
+ * either way. Anything else would hand a subscriber a veto over the agent it is only supposed to be
+ * watching: a broken or hostile watcher on the model path could abort every call it saw, which is a
+ * denial-of-service surface reachable from a UI.
  *
  * <p><b>Threading:</b> events arrive on whatever thread produced them, which need not be the thread
  * that drove the turn. A subscriber that only appends to a buffer it owns exclusively is fine
