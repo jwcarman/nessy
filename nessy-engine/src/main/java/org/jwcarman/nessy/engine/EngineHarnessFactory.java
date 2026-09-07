@@ -62,7 +62,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * for it: a thread pool for driving turns, and the periodic loops in {@link #startSweeps} that
  * replace what an actor scheduler used to trigger.
  */
-public final class EngineHarnessFactory implements HarnessFactory {
+public final class EngineHarnessFactory implements HarnessFactory, AutoCloseable {
 
   /**
    * The default memory's budget, in characters.
@@ -117,6 +117,7 @@ public final class EngineHarnessFactory implements HarnessFactory {
   private final Duration maxDeferral;
   private final ExecutorService threads;
   private final Narration narration;
+  private final Replies replies;
   private final List<Sweeps> sweeps = new CopyOnWriteArrayList<>();
   private final Map<AgentType, AgentRuntime> runtimes = new ConcurrentHashMap<>();
 
@@ -148,6 +149,8 @@ public final class EngineHarnessFactory implements HarnessFactory {
     this.threads =
         Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("nessy-", 0).factory());
     this.narration = new Narration();
+    this.replies =
+        new Replies(this.tokens, this.traces, this.claims, new EffectStore(this.dataSource));
   }
 
   /**
@@ -238,6 +241,7 @@ public final class EngineHarnessFactory implements HarnessFactory {
         new AgentRuntime(type, transition, effectWorker::perform, threads, traces);
     runtimeRef.set(runtime);
     runtimes.put(type, runtime);
+    replies.serving(type, runtime);
 
     startSweeps(type, store, effects, runtime);
 
@@ -286,6 +290,11 @@ public final class EngineHarnessFactory implements HarnessFactory {
     threads.shutdownNow();
   }
 
+  /** Where the outside world answers calls parked by any agent this factory serves. */
+  public Replies replies() {
+    return replies;
+  }
+
   /**
    * What the application asked for, or a default that keeps working.
    *
@@ -310,10 +319,10 @@ public final class EngineHarnessFactory implements HarnessFactory {
 
   /**
    * The plumbing a token-holding caller needs to answer a call from outside — engine-internal, and
-   * package-visible only so a test in this package can drive the same path {@code Replies} used to
-   * front with an ask-pattern. Not public: {@code Harness} deliberately names no door for returning
-   * approvals or tool results (design of record, {@code Harness} javadoc), and this factory does
-   * not build a replacement for {@code Replies} until an application needs one.
+   * package-visible only so a test in this package can drive the same path {@link #replies()} uses.
+   * Not exposed through {@code Harness} itself: it deliberately names no door for returning
+   * approvals or tool results (design of record, {@code Harness} javadoc); {@link #replies()} is
+   * the separate door this factory does build.
    */
   Claims claims() {
     return claims;

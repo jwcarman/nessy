@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.testing.ScriptedModel;
@@ -84,16 +83,7 @@ class ChatApprovalIntegrationTest {
 
   @Autowired private SendEmailTool email;
 
-  /**
-   * Disabled by the same seam Task 5 cut in the engine: {@code EffectWorker} no longer performs
-   * {@code SetAlarm}/{@code CancelAlarm} itself -- a transition writes them now -- and this
-   * example's autoconfiguration still wires the old {@code PekkoHarnessFactory}, whose actor never
-   * becomes that transition. Cancelling the reminder armed when the call parked throws before the
-   * approved tool ever runs. Re-enable once the starter's autoconfiguration points at the engine
-   * that replaces the actor path this app is still built on.
-   */
   @Test
-  @Disabled("blocked on the engine leaving Pekko: see EffectWorker's SetAlarm/CancelAlarm arms")
   void aGatedToolWaitsForAPersonAndThenRuns() {
     RestClient http = RestClient.create("http://localhost:" + port);
     String agentId = UUID.randomUUID().toString();

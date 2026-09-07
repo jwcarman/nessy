@@ -19,8 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
@@ -33,7 +31,7 @@ import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.engine.EngineHarnessFactory;
 import org.jwcarman.nessy.engine.Replies;
 import org.jwcarman.nessy.engine.ReplyTokens;
 import org.jwcarman.nessy.spi.model.Model;
@@ -67,7 +65,7 @@ class NessyAutoConfigurationTest {
     runner.run(
         context -> {
           assertThat(context).hasSingleBean(Harness.class);
-          assertThat(context).hasSingleBean(PekkoHarnessFactory.class);
+          assertThat(context).hasSingleBean(EngineHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
         });
@@ -167,14 +165,6 @@ class NessyAutoConfigurationTest {
   }
 
   @Test
-  @DisplayName("an application with its own seed-nodes forms its own cluster, so this steps aside")
-  void an_application_with_seed_nodes_configured_does_not_self_join() {
-    runner
-        .withUserConfiguration(ASeedNodesConfig.class)
-        .run(context -> assertThat(context).hasNotFailed());
-  }
-
-  @Test
   @DisplayName("with both a registry and meters present, model calls are observed")
   void an_application_with_observability_beans_gets_observed_models() {
     runner
@@ -235,19 +225,6 @@ class NessyAutoConfigurationTest {
     @Bean
     DataSource mine() {
       return dataSource;
-    }
-  }
-
-  @Configuration(proxyBeanMethods = false)
-  static class ASeedNodesConfig {
-
-    // Never actually reached — the point is that this branch does not try. A cluster with
-    // seed-nodes configured is a real cluster the application is joining itself, and the starter
-    // steps aside rather than joining it a second time.
-    @Bean
-    Config pekkoSeedNodes() {
-      return ConfigFactory.parseString(
-          "pekko.cluster.seed-nodes = [\"pekko://nessy@127.0.0.1:25520\"]");
     }
   }
 

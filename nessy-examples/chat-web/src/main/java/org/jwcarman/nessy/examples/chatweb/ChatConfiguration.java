@@ -25,7 +25,7 @@ import org.jwcarman.nessy.api.memory.Memory;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.engine.EngineHarnessFactory;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -105,7 +105,7 @@ public class ChatConfiguration {
    */
   @Bean
   public Harness<String> harness(
-      PekkoHarnessFactory factory,
+      EngineHarnessFactory factory,
       ChatProperties properties,
       SendEmailTool email,
       Approver desk,

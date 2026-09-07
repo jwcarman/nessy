@@ -15,24 +15,16 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
 import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import javax.sql.DataSource;
-import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.actor.typed.javadsl.Behaviors;
-import org.apache.pekko.cluster.MemberStatus;
-import org.apache.pekko.cluster.typed.Cluster;
-import org.apache.pekko.cluster.typed.Join;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
@@ -40,7 +32,7 @@ import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.engine.EngineHarnessFactory;
 import org.jwcarman.nessy.engine.Replies;
 import org.jwcarman.nessy.engine.ReplyTokens;
 import org.jwcarman.nessy.engine.Traces;
@@ -65,7 +57,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
  *
  * <p>Every bean here is {@code @ConditionalOnMissingBean}: the starter is a convenience over the
  * public API, never a different way of reaching it. An application that wants a different
- * substrate, actor system, or harness declares one and this backs off entirely.
+ * substrate, factory, or harness declares one and this backs off entirely.
  *
  * <p><b>The application supplies the {@link ModelProvider}, as a bean.</b> This requires one and
  * fails at startup when none exists, which is a better failure than a mystery at the first turn.
@@ -146,53 +138,6 @@ public class NessyAutoConfiguration {
   }
 
   /**
-   * One actor system for the whole application, shut down with the context.
-   *
-   * <p><b>It joins itself, and waits.</b> The engine always shards, and {@code ClusterSharding} on
-   * a node that has not joined leaves entities unreachable — a failure that looks like messages
-   * quietly going nowhere rather than like an error. So a single-node deployment forms its cluster
-   * here, before any harness is built, and blocks until the node is {@code Up}.
-   *
-   * <p>An application that configures {@code pekko.cluster.seed-nodes} is running a real cluster
-   * and joins through those instead; this steps aside rather than joining a second time.
-   */
-  @Bean(destroyMethod = "terminate")
-  @ConditionalOnMissingBean
-  public ActorSystem<Void> nessyActorSystem(ObjectProvider<Config> configs) {
-    // An application contributes Pekko config as a bean — credentials for a persistence plugin,
-    // say — so it can build them from the same properties Spring already read rather than
-    // repeating them in a second file. What it supplies wins; reference.conf is the fallback.
-    Config config =
-        configs.stream()
-            .reduce(Config::withFallback)
-            .orElseGet(ConfigFactory::empty)
-            .withFallback(ConfigFactory.load());
-    ActorSystem<Void> system = ActorSystem.create(Behaviors.empty(), "nessy", config);
-    if (system.settings().config().getStringList("pekko.cluster.seed-nodes").isEmpty()) {
-      Cluster cluster = Cluster.get(system);
-      cluster.manager().tell(Join.create(cluster.selfMember().address()));
-      awaitUp(cluster);
-    }
-    return system;
-  }
-
-  private static void awaitUp(Cluster cluster) {
-    Instant deadline = Instant.now().plusSeconds(30);
-    while (!cluster.selfMember().status().equals(MemberStatus.up())) {
-      if (Instant.now().isAfter(deadline)) {
-        throw new IllegalStateException(
-            "this node never reached Up, so sharding would silently drop every message");
-      }
-      try {
-        Thread.sleep(50);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException("interrupted while forming the cluster", e);
-      }
-    }
-  }
-
-  /**
    * Where blocking tool work runs. Virtual threads, because a tool that shells out or calls a slow
    * HTTP service should not consume a platform thread while it waits.
    *
@@ -223,10 +168,9 @@ public class NessyAutoConfiguration {
     return new Traces(registries.getIfAvailable(() -> ObservationRegistry.NOOP));
   }
 
-  @Bean
+  @Bean(destroyMethod = "close")
   @ConditionalOnMissingBean
-  public PekkoHarnessFactory nessyHarnessFactory(
-      ActorSystem<Void> system,
+  public EngineHarnessFactory nessyHarnessFactory(
       DataSource dataSource,
       ModelProvider models,
       ObjectProvider<ObservationRegistry> registries,
@@ -244,10 +188,9 @@ public class NessyAutoConfiguration {
     boolean observing = !ObservationRegistry.NOOP.equals(registry) && meters != null;
     ModelProvider provider =
         observing ? Observed.models(models, properties.provider(), registry, meters) : models;
-    return new PekkoHarnessFactory(
+    return new EngineHarnessFactory(
         engine ->
             engine
-                .system(system)
                 .models(provider)
                 .dataSource(dataSource)
                 .maxTokens(properties.maxTokens())
@@ -261,7 +204,7 @@ public class NessyAutoConfiguration {
   /** The door an application answers a parked call through. */
   @Bean
   @ConditionalOnMissingBean
-  public Replies nessyReplies(PekkoHarnessFactory factory) {
+  public Replies nessyReplies(EngineHarnessFactory factory) {
     return factory.replies();
   }
 
@@ -276,7 +219,7 @@ public class NessyAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public Harness<String> nessyHarness(
-      PekkoHarnessFactory factory,
+      EngineHarnessFactory factory,
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,

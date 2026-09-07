@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.tool.risk.RiskAssessment;
 import org.jwcarman.nessy.api.tool.risk.RiskAssessor;
 import org.jwcarman.nessy.api.tool.risk.RiskFactors;
 import org.jwcarman.nessy.api.tool.risk.RiskLevel;
-import org.jwcarman.nessy.engine.PekkoHarnessFactory;
+import org.jwcarman.nessy.engine.EngineHarnessFactory;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spring.boot.Observed;
@@ -44,12 +44,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * What is left of "where Spring meets Pekko" once the starter does it.
+ * What is left once the starter builds the engine.
  *
- * <p>There is no ActorSystem bean here, no cluster to form, no serializer bindings, no harness to
- * assemble. The starter owns all of that. What remains is what only this application can know: how
- * it reaches a model, what its tools are, which of them needs a person, and where that person is
- * asked.
+ * <p>There is no factory to construct here, no database wiring, no harness to assemble by hand. The
+ * starter owns all of that. What remains is what only this application can know: how it reaches a
+ * model, what its tools are, which of them needs a person, and where that person is asked.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(WatchmanProperties.class)
@@ -93,7 +92,7 @@ public class WatchmanConfiguration {
    */
   @Bean(name = "watchmanHarness")
   public Harness<String> harness(
-      PekkoHarnessFactory factory,
+      EngineHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
       Approver humanApprover,

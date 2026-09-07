@@ -25,7 +25,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.random.RandomGenerator;
 import javax.sql.DataSource;
-import org.apache.pekko.actor.typed.ActorSystem;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
@@ -38,18 +37,9 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  *
  * <p>One is required, because no default is honest: the {@link ModelProvider} the engine talks to.
  * Everything else has a default that works.
- *
- * <p><b>{@link #system} is a transitional field.</b> {@link EngineHarnessFactory} -- the engine
- * this config otherwise describes -- never reads it: an agent is a row now, not a cluster entity,
- * so nothing about the new engine needs an actor system. It stays here, and its setter stays
- * public, ONLY because {@code PekkoHarnessFactory} still reads it and is out of this task's scope
- * to touch -- deleting it, and every caller across the reactor that supplies {@code .system(...)},
- * is Task 11's one-piece removal of Pekko. Removing this field early would break that swap rather
- * than make it mechanical.
  */
 public final class EngineConfig {
 
-  private ActorSystem<?> system;
   private ModelProvider models;
   private DataSource dataSource;
   private int maxTokens = 4096;
@@ -61,15 +51,6 @@ public final class EngineConfig {
   private RetryPolicy retryPolicy;
   private RandomGenerator random;
   private Duration maxDeferral = Duration.ofDays(30);
-
-  /**
-   * The actor system {@code PekkoHarnessFactory} shards its agents across. Transitional -- see the
-   * class javadoc -- and unused by {@link EngineHarnessFactory}.
-   */
-  public EngineConfig system(ActorSystem<?> system) {
-    this.system = Objects.requireNonNull(system, "system must not be null");
-    return this;
-  }
 
   /** Where models come from. Required. */
   public EngineConfig models(ModelProvider models) {
@@ -191,10 +172,6 @@ public final class EngineConfig {
     }
     this.maxDeferral = maxDeferral;
     return this;
-  }
-
-  ActorSystem<?> system() {
-    return Objects.requireNonNull(system, "an engine cannot be built without an actor system");
   }
 
   ModelProvider models() {
