@@ -16,14 +16,23 @@
 package org.jwcarman.nessy.console;
 
 import java.time.Clock;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.message.UserMessage;
+import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.engine.EngineHarnessFactory;
 import org.jwcarman.nessy.engine.ReplyTokens;
-import org.jwcarman.nessy.model.discovery.ModelDiscovery;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 /**
  * A terminal agent, from one call in a {@code main}.
@@ -38,8 +47,12 @@ import org.jwcarman.nessy.model.discovery.ModelDiscovery;
  * }</pre>
  *
  * <p>Everything an engine needs is assembled here so an application does not have to: the model
- * comes from {@link ModelDiscovery}, which reads whichever credentials are in the environment, and
- * state lives in memory.
+ * comes from a Boot context this call raises and tears down around itself — {@code
+ * web-application-type} {@code NONE}, so nothing listens on a port — which is how a provider
+ * module's own {@code @AutoConfiguration} finds whichever API key is in the environment and
+ * contributes the {@link ModelProvider} bean. An application picks its vendor the ordinary Boot
+ * way: choose which provider jar rides the classpath, then set that vendor's key. State lives in
+ * memory.
  *
  * <p>Every one of those is a DEFAULT, not a fixture. Anything an application may need to hold a
  * reference to — the substrate above all, since a notebook or a plan is opened over one — it can
@@ -54,6 +67,9 @@ import org.jwcarman.nessy.model.discovery.ModelDiscovery;
  */
 public final class Repl {
 
+  /** The property {@code NESSY_MODEL} binds to under Boot's relaxed env-var rules. */
+  private static final String MODEL_PROPERTY = "nessy.model";
+
   private Repl() {}
 
   /**
@@ -64,7 +80,7 @@ public final class Repl {
    * @throws IllegalArgumentException if {@code customizer} is null
    */
   public static void run(ReplCustomizer customizer) {
-    java.util.Objects.requireNonNull(customizer, "customizer must not be null");
+    Objects.requireNonNull(customizer, "customizer must not be null");
     ReplConfig config = new ReplConfig();
     customizer.customize(config);
     run(config, ConsoleIo.standard());
@@ -72,35 +88,51 @@ public final class Repl {
 
   /** The seam a test drives: a configured REPL against a console that need not be real. */
   static void run(ReplConfig config, ConsoleIo io) {
-    ModelDiscovery.Selection chosen;
-    try {
-      chosen = ModelDiscovery.select();
-    } catch (IllegalStateException nothingToTalkTo) {
-      // Discovery's own message names every provider it knows and the variables each one reads, or
-      // says which two are ambiguous. That is the whole useful content of this failure, and a stack
-      // trace out of a main would only bury it. Caught around the ONE call that raises it, so a
-      // later IllegalStateException from the engine still surfaces in full.
-      io.write(nothingToTalkTo.getMessage() + System.lineSeparator());
-      io.flush();
-      return;
-    }
-    // Closed in reverse: the engine stops before the gateway it was calling, and the selection owns
-    // the vendor's HTTP client, so letting it go is what releases the connection pool.
-    try (ModelDiscovery.Selection selection = chosen;
-        ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
-        EngineHarnessFactory factory = factory(selection, blocking, config)) {
-      Harness<String> harness = harness(factory, selection, config);
-      new ReplLoop(harness, config.agentId(), config, io).run();
+    // web-application-type NONE: this call raises a context to let Boot's own mechanism find a
+    // ModelProvider bean, not to serve anything. Closed in the same try that closes everything
+    // else this call built, in reverse order: the engine stops before the gateway it was calling,
+    // and the context owns that gateway, so closing it is what releases the vendor's HTTP client.
+    try (ConfigurableApplicationContext context =
+        new SpringApplicationBuilder(ReplBootstrap.class).web(WebApplicationType.NONE).run()) {
+      ModelProvider models;
+      try {
+        models = context.getBean(ModelProvider.class);
+      } catch (NoSuchBeanDefinitionException noProvider) {
+        // Boot's own message already names the bean type it could not find (zero candidates) or
+        // every candidate it found (more than one) — the whole useful content of this failure, and
+        // a stack trace out of a main would only bury it.
+        io.write(noProvider.getMessage() + System.lineSeparator());
+        io.flush();
+        return;
+      }
+      ModelId modelId = modelId(context.getEnvironment());
+      if (modelId == null) {
+        io.write(
+            "no model id is configured: set NESSY_MODEL to the id your provider should use"
+                + System.lineSeparator());
+        io.flush();
+        return;
+      }
+      try (ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
+          EngineHarnessFactory factory = factory(models, blocking, config)) {
+        Harness<String> harness = harness(factory, modelId, config);
+        new ReplLoop(harness, config.agentId(), config, io).run();
+      }
     }
   }
 
+  private static ModelId modelId(Environment environment) {
+    String id = environment.getProperty(MODEL_PROPERTY);
+    return id == null || id.isBlank() ? null : ModelId.of(id);
+  }
+
   private static EngineHarnessFactory factory(
-      ModelDiscovery.Selection selection, Executor blocking, ReplConfig config) {
+      ModelProvider models, Executor blocking, ReplConfig config) {
     Clock clock = Clock.systemUTC();
     return new EngineHarnessFactory(
         engine ->
             engine
-                .models(selection.provider())
+                .models(models)
                 .dataSource(config.dataSource())
                 .maxTokens(config.maxTokens())
                 .blocking(blocking)
@@ -111,14 +143,14 @@ public final class Repl {
   }
 
   private static Harness<String> harness(
-      EngineHarnessFactory factory, ModelDiscovery.Selection selection, ReplConfig config) {
+      EngineHarnessFactory factory, ModelId modelId, ReplConfig config) {
     return factory.createHarness(
         String.class,
         harness -> {
           harness
               .type(config.type())
               .systemPrompt(config.systemPrompt())
-              .model(selection.model().id())
+              .model(modelId)
               .renderer(UserMessage::of);
           // Only when the caller said something: unset, the harness keeps its own default, and
           // setting it to that default here would just be a longer way of saying nothing.
@@ -126,4 +158,14 @@ public final class Repl {
           config.tools().forEach(grant -> grant.accept(harness));
         });
   }
+
+  /**
+   * The marker this call raises a Boot context from: no beans of its own, just the door
+   * {@code @EnableAutoConfiguration} opens onto every {@code AutoConfiguration.imports} on the
+   * runtime classpath — a provider module's registration among them. Package-private: nothing
+   * outside this class ever names it.
+   */
+  @Configuration(proxyBeanMethods = false)
+  @EnableAutoConfiguration
+  static class ReplBootstrap {}
 }

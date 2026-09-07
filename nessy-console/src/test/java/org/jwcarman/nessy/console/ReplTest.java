@@ -28,10 +28,10 @@ import org.junit.jupiter.api.Test;
 /**
  * The whole application in one call, when there is nothing to talk to.
  *
- * <p>This module deliberately depends on NO model adapters — discovery finds whatever the
- * application put on its classpath — so in its own tests there is never a provider to find. That
- * makes the unhappy path the one testable here, and it is worth testing: it is the first thing
- * somebody meets when they have not set a key.
+ * <p>This module deliberately depends on NO provider module, so the Boot context this call raises
+ * never finds a {@code @AutoConfiguration} contributing a {@code ModelProvider} bean — there is
+ * never a provider to find. That makes the unhappy path the one testable here, and it is worth
+ * testing: it is the first thing somebody meets when they have not set a key.
  */
 @DisplayName("A console application with no model configured")
 class ReplTest {
@@ -48,13 +48,13 @@ class ReplTest {
 
   @Test
   @DisplayName("the message names what to configure, since that is the whole useful content")
-  void the_message_is_discoverys_own() {
+  void the_message_names_the_missing_bean() {
     FakeConsole console = new FakeConsole();
 
     Repl.run(new ReplConfig(), console);
 
     assertThat(console.written().toLowerCase())
-        .as("discovery names every provider it knows and the variables each one reads")
+        .as("Boot names the bean type it could not find")
         .containsAnyOf("provider", "model", "api key", "api_key");
   }
 
@@ -88,13 +88,13 @@ class ReplTest {
     /**
      * Runs to completion without a model configured, same as {@link ReplTest} above, but through
      * the real one-argument entry point: the customizer is applied, a config is built from it, and
-     * discovery still fails the same way. Nothing here reads from or writes to a fake console — the
-     * real one is used, exactly as {@code main} would — so the only thing to assert is that it
-     * returns instead of hanging or throwing.
+     * the Boot context still finds no provider the same way. Nothing here reads from or writes to a
+     * fake console — the real one is used, exactly as {@code main} would — so the only thing to
+     * assert is that it returns instead of hanging or throwing.
      */
     @Test
     @DisplayName("the customizer is applied before the same 'nothing to talk to' failure appears")
-    void the_customizer_runs_and_then_discovery_still_fails_the_same_way() {
+    void the_customizer_runs_and_then_the_same_failure_appears() {
       List<String> customizedWith = new ArrayList<>();
 
       assertThatCode(() -> Repl.run(config -> customizedWith.add(config.systemPrompt())))

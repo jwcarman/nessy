@@ -48,16 +48,12 @@
       <artifactId>nessy-tool-mcp</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Speaks the OpenAI wire, which is what a local LM Studio serves. Discovery finds whatever
-         adapter is on the classpath, so this one line is the whole provider choice. -->
+    <!-- Speaks the OpenAI wire, which is what a local LM Studio serves. Its own @AutoConfiguration
+         is the whole provider choice: the Boot context Repl.run() raises finds OPENAI_API_KEY and
+         contributes the ModelProvider bean. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-discovery</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- The JSON binding the MCP SDK speaks. mcp-core is transport and protocol only. -->

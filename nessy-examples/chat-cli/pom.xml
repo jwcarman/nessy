@@ -30,7 +30,7 @@
 
   <artifactId>nessy-example-chat-cli</artifactId>
   <name>Nessy Example: Chat CLI</name>
-  <description>The smallest thing that talks to an agent: no Spring, no database, one terminal</description>
+  <description>The smallest thing that talks to an agent: one terminal, one call</description>
 
   <properties>
     <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
@@ -67,10 +67,12 @@
       <artifactId>nessy-memory-plan</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Discovery picks the provider; the adapters on the classpath are what it can pick FROM.
-         Three of them, so one command runs against any of four vendors (xAI rides in the OpenAI
-         module, being that wire at a different URL). Bedrock is deliberately not discoverable:
-         ambient AWS credentials mean someone once deployed something, not that they chose it. -->
+    <!-- Each of these ships its own @AutoConfiguration, so this is the whole provider choice: the
+         Boot context Repl.run() raises finds whichever one's API key is in the environment and
+         contributes the ModelProvider bean. Three of them, so one command runs against any of four
+         vendors (xAI rides in the OpenAI module, being that wire at a different URL). Bedrock is
+         deliberately not a Boot citizen here: ambient AWS credentials mean someone once deployed
+         something, not that they chose it. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>
@@ -85,6 +87,15 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-gemini</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <!-- No Boot BOM import here: see nessy-console/pom.xml's comment on the same tradeoff.
+           Already on this module's classpath transitively through nessy-console; declared directly
+           because it is what Repl.run() needs underneath it, the same way the provider adapters
+           above are declared directly rather than left to a transitive accident. -->
+      <version>${spring-boot.version}</version>
     </dependency>
 
   </dependencies>
