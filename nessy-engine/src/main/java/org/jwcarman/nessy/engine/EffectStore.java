@@ -134,10 +134,28 @@ final class EffectStore {
   // time it comes due, even though it never ran at all. PENDING + a future actionable_at is
   // exactly "scheduled, not yet due" -- the same meaning actionable_at already carries for a
   // fresh row, keeping the three meanings of that column coherent.
+  //
+  // F3: COALESCE rather than "turn_id = ?". Bound to null, that read as "turn_id = NULL", which
+  // matches NOTHING in SQL -- so a group stopped by an agent's first-ever TakeWork, the one effect
+  // decided before any turn exists, released not one sibling. The turn-less rows are a turn of
+  // their own here, which is what the empty string stands for; it can never collide with a real
+  // turn id (Identifier rejects empty).
   private static final String DEFER_SIBLINGS =
-      "UPDATE nessy_effect SET status = ?, actionable_at = ?"
-          + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND ordinal > ?"
-          + " AND status IN (?, ?)";
+      "UPDATE nessy_effect SET status = :pending, actionable_at = :at"
+          + " WHERE agent_type = :type AND agent_id = :agent AND status IN (:pending, :running)"
+          + " AND (COALESCE(turn_id, '') = :turn AND ordinal > :ordinal)";
+  // F3: the same statement, widened to name rows outright. The clause above is turn-scoped and the
+  // poller groups by AGENT, so a group holding two turns' rows -- which the throw path makes
+  // reachable, TakeWork running past an outstanding turn-T row and starting T+1 -- left every
+  // turn-(T+1) row this pass claimed RUNNING and un-run. Naming them is exact where a second
+  // ordering predicate would not be: it needs no comparison between turn ids, whose order is a
+  // property of how Identifiers mints them (UUIDv7) and not one to make a database collation
+  // responsible for.
+  private static final String DEFER_SIBLINGS_AND_ROWS =
+      "UPDATE nessy_effect SET status = :pending, actionable_at = :at"
+          + " WHERE agent_type = :type AND agent_id = :agent AND status IN (:pending, :running)"
+          + " AND ((COALESCE(turn_id, '') = :turn AND ordinal > :ordinal)"
+          + " OR effect_id IN (:ids))";
   private static final String ABANDON =
       "UPDATE nessy_effect SET status = ?, reason = ?, actionable_at = NULL,"
           + " attempts = attempts + 1 WHERE effect_id = ?";
@@ -441,12 +459,22 @@ final class EffectStore {
   record Held(boolean held, Instant deferSiblingsTo) {}
 
   /**
-   * Pushes every still-outstanding row of ONE agent's SAME turn, above {@code afterOrdinal}, back
-   * to {@code PENDING} with {@code actionable_at} set to {@code actionableAt} -- called by {@code
-   * EffectPoller} the instant an earlier row in this pass's group stops it -- by retrying, by being
-   * abandoned, or by throwing -- so a sibling ordinal after it (already marked {@code RUNNING} by
-   * THIS pass's own {@link #attempt}) does not come due on its own, unrelated watchdog before the
-   * retry does, and run past a row that has not run yet -- see C2 in the Task 7 fix round.
+   * Pushes every still-outstanding row of ONE agent's SAME turn above {@code afterOrdinal}, plus
+   * every row {@code alsoNamed} names, back to {@code PENDING} with {@code actionable_at} set to
+   * {@code actionableAt} -- called by {@code EffectPoller} the instant an earlier row in this
+   * pass's group stops it -- by retrying, by being abandoned, or by throwing -- so a sibling
+   * ordinal after it (already marked {@code RUNNING} by THIS pass's own {@link #attempt}) does not
+   * come due on its own, unrelated watchdog before the retry does, and run past a row that has not
+   * run yet -- see C2 in the Task 7 fix round.
+   *
+   * <p><b>Two reaches, because there are two ways to be behind the stopping row.</b> F3. The turn
+   * clause reaches rows this pass never even saw -- an ordinal left outside the batch by the LIMIT,
+   * which would otherwise still be due at its ORIGINAL instant and sort in front of the retried row
+   * next pass. {@code alsoNamed} reaches the rest of THIS pass's group, whatever turn each row
+   * belongs to: the poller groups by agent, and a group holding two turns is reachable (a {@code
+   * TakeWork} that ran past an outstanding turn-T row starts T+1, and a watchdog later both turns
+   * come due together). A row matching both is updated once and counted once, because it is one
+   * statement.
    *
    * <p><b>Sets {@code status} back to {@code PENDING}, not only {@code actionable_at}</b> -- R-AC,
    * the defect C1 and C2 created together. Left {@code RUNNING}, {@link #take}'s conditional
@@ -464,20 +492,29 @@ final class EffectStore {
    * @return how many sibling rows were pushed out
    */
   int deferSiblings(
-      AgentType agentType, AgentId agentId, TurnId turnId, int afterOrdinal, Instant actionableAt) {
+      AgentType agentType,
+      AgentId agentId,
+      TurnId turnId,
+      int afterOrdinal,
+      List<EffectId> alsoNamed,
+      Instant actionableAt) {
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(alsoNamed, "alsoNamed must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
-    return jdbc.sql(DEFER_SIBLINGS)
-        .param(PENDING)
-        .param(actionableAt)
-        .param(agentType.name())
-        .param(agentId.value())
-        .param(turnId == null ? null : turnId.value())
-        .param(afterOrdinal)
-        .param(PENDING)
-        .param(RUNNING)
-        .update();
+    JdbcClient.StatementSpec statement =
+        jdbc.sql(alsoNamed.isEmpty() ? DEFER_SIBLINGS : DEFER_SIBLINGS_AND_ROWS)
+            .param("pending", PENDING)
+            .param("running", RUNNING)
+            .param("at", actionableAt)
+            .param("type", agentType.name())
+            .param("agent", agentId.value())
+            .param("turn", turnId == null ? "" : turnId.value())
+            .param("ordinal", afterOrdinal);
+    if (!alsoNamed.isEmpty()) {
+      statement = statement.param("ids", alsoNamed.stream().map(EffectId::value).toList());
+    }
+    return statement.update();
   }
 
   /**

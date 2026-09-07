@@ -28,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,11 +128,20 @@ final class EffectPoller {
   }
 
   /**
-   * Groups a batch by agent, and sorts each group by {@code ordinal} -- NOT the order {@code
-   * attempt} happened to return, which is {@code actionable_at} order across every agent in the
-   * batch and says nothing about one agent's own decision order. Getting this sort wrong is
+   * Groups a batch by agent, and sorts each group by {@code (turnId, ordinal)} -- NOT the order
+   * {@code attempt} happened to return, which is {@code actionable_at} order across every agent in
+   * the batch and says nothing about one agent's own decision order. Getting this sort wrong is
    * indistinguishable from getting it right on any batch where every agent has at most one row, so
    * {@code EffectPollerTest} deliberately exercises an agent with several.
+   *
+   * <p><b>By agent, not by turn</b> -- F3 does not change that, and must not. One agent's rows run
+   * on ONE thread because {@code Release} deletes the claims {@code Remember} writes an exchange
+   * from; two turns of one agent running in parallel would lose a turn exactly the way two effects
+   * of one turn would. What F3 changes is the sort WITHIN that group: ordinal alone ran turn T+1's
+   * ordinal 1 ahead of turn T's ordinal 3, which was order-by-accident. Ordering by turn first says
+   * what was always meant -- an agent's decisions run in the order it made them -- and turn ids
+   * really do carry that order, because {@code Identifiers} mints them as UUIDv7. A turn-less row
+   * (a {@code TakeWork} decided before any turn exists) sorts first, which is when it was decided.
    */
   private static Map<AgentId, List<EffectStore.Attempted>> groupByAgent(
       List<EffectStore.Attempted> batch) {
@@ -139,11 +149,15 @@ final class EffectPoller {
     for (EffectStore.Attempted attempted : batch) {
       byAgent.computeIfAbsent(attempted.agentId(), key -> new ArrayList<>()).add(attempted);
     }
-    byAgent
-        .values()
-        .forEach(rows -> rows.sort(Comparator.comparingInt(EffectStore.Attempted::ordinal)));
+    byAgent.values().forEach(rows -> rows.sort(BY_TURN_THEN_ORDINAL));
     return byAgent;
   }
+
+  private static final Comparator<EffectStore.Attempted> BY_TURN_THEN_ORDINAL =
+      Comparator.comparing(
+              EffectStore.Attempted::turnId,
+              Comparator.nullsFirst(Comparator.comparing(TurnId::value)))
+          .thenComparingInt(EffectStore.Attempted::ordinal);
 
   /**
    * One agent's rows, strictly in order, on whichever thread {@code agentExecutor} handed this
@@ -158,10 +172,11 @@ final class EffectPoller {
       abandonVanished(agentId, rows);
       return;
     }
-    for (EffectStore.Attempted attempted : rows) {
+    for (int index = 0; index < rows.size(); index++) {
+      EffectStore.Attempted attempted = rows.get(index);
       Optional<Instant> stop = stoppedAt(agentId, state.get(), attempted);
       if (stop.isPresent()) {
-        stopGroup(agentId, attempted, stop.get());
+        stopGroup(agentId, attempted, rows.subList(index + 1, rows.size()), stop.get());
         return;
       }
     }
@@ -277,6 +292,13 @@ final class EffectPoller {
    * Stops one agent's group at {@code stoppedAt} and releases the siblings behind it in the same
    * breath -- R-AF: there is exactly one way to do the first, and it always does the second.
    *
+   * <p>F3: {@code unrun} is the rest of this pass's group -- every row after the one that stopped
+   * it, in the order they were going to run. It is passed EXPLICITLY rather than left to a
+   * turn-and-ordinal predicate because this group is keyed by AGENT and can hold more than one
+   * turn, and a turn-scoped predicate silently leaves the other turn's claimed rows RUNNING and
+   * un-run. See {@link EffectStore#deferSiblings}, which reaches both those rows and the ones this
+   * pass never saw.
+   *
    * <p>Those siblings were marked RUNNING by THIS pass's own {@link EffectStore#attempt} and then
    * deliberately not run, which is not a failure and must not be charged as one: left RUNNING,
    * {@code TAKE}'s conditional increment reads their next pickup as "found still RUNNING past its
@@ -284,9 +306,19 @@ final class EffectPoller {
    * effect is abandoned and the agent stalls in silence. {@link EffectStore#deferSiblings} puts
    * them back to PENDING, which is what "claimed, then let go" actually means.
    */
-  private void stopGroup(AgentId agentId, EffectStore.Attempted attempted, Instant deferTo) {
+  private void stopGroup(
+      AgentId agentId,
+      EffectStore.Attempted attempted,
+      List<EffectStore.Attempted> unrun,
+      Instant deferTo) {
     int deferred =
-        effects.deferSiblings(agentType, agentId, attempted.turnId(), attempted.ordinal(), deferTo);
+        effects.deferSiblings(
+            agentType,
+            agentId,
+            attempted.turnId(),
+            attempted.ordinal(),
+            unrun.stream().map(EffectStore.Attempted::id).toList(),
+            deferTo);
     LOG.debug(
         "[{}] {} stopped this pass's group; released {} un-run sibling(s) back to PENDING",
         agentId.value(),

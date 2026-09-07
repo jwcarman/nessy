@@ -54,6 +54,11 @@ class EffectPollerTest {
   private static final AgentType TYPE = AgentType.of("watchman");
   private static final Duration TIMEOUT = Duration.ofMinutes(1);
 
+  /** Two turns of one agent, named so that their order is the order they were minted in. */
+  private static final TurnId EARLIER_TURN = TurnId.of("turn-1");
+
+  private static final TurnId LATER_TURN = TurnId.of("turn-2");
+
   private EmbeddedDatabase database;
   private EffectStore effects;
   private AgentStore store;
@@ -321,6 +326,90 @@ class EffectPollerTest {
                     .doesNotContain("gave up after"));
   }
 
+  @Test
+  @DisplayName(
+      "F3: a group spanning two turns is stopped whole -- the later turn's rows this pass claimed"
+          + " are released too, not left RUNNING for TAKE to charge a phantom failure")
+  void a_group_spanning_two_turns_releases_every_un_run_row() {
+    AgentId agent = agent("house-1");
+    // One agent, two turns, all due at once -- what the throw path makes reachable: TakeWork runs
+    // past an outstanding turn-1 row and starts turn 2, and a watchdog later both turns' rows land
+    // in the SAME group.
+    insert(agent, EARLIER_TURN, 0, new Effect.Remember.Input());
+    insert(agent, EARLIER_TURN, 1, new Effect.Release());
+    insert(agent, LATER_TURN, 0, new Effect.Remember.Answer());
+    insert(agent, LATER_TURN, 1, new Effect.Release());
+    CopyOnWriteArrayList<Effect> seen = new CopyOnWriteArrayList<>();
+    EffectPoller poller =
+        poller(
+            (agentId, state, turnId, effect, effectId, attempts) -> {
+              seen.add(effect);
+              // giveUp()'s synchronous abandon on the FIRST row of the FIRST turn: the group stops
+              // here, and every row after it -- in either turn -- was claimed and not run.
+              if (effect instanceof Effect.Remember.Input) {
+                effects.abandon(effectId, "gave up after 3 failures");
+              }
+            });
+
+    int found = poller.pollOnce();
+
+    assertThat(found).isEqualTo(4);
+    assertThat(seen).as("the group stopped on its first row").hasSize(1);
+    assertThat(statusesFor(agent))
+        .as(
+            "every un-run row is back to PENDING, whichever turn it belongs to. A turn-scoped"
+                + " deferral leaves the later turn's rows RUNNING and un-run, and TAKE's"
+                + " conditional increment charges each of them a failure it never made the next"
+                + " time its watchdog lapses.")
+        .containsExactly("FAILED", "PENDING", "PENDING", "PENDING");
+  }
+
+  @Test
+  @DisplayName(
+      "F3: a group spanning two turns runs the EARLIER turn's rows first -- ordinal alone would"
+          + " run the later turn's ordinal 0 in front of the earlier turn's ordinal 3")
+  void a_group_spanning_two_turns_runs_the_earlier_turn_first() {
+    AgentId agent = agent("house-1");
+    // Inserted so that actionable_at order (which is what attempt() returns) puts the LATER turn
+    // first, and its ordinal is lower too: only a sort that knows about turns can get this right.
+    // Turn ids really are ordered -- Identifiers mints UUIDv7 -- and these two stand in for that.
+    insert(agent, LATER_TURN, 0, new Effect.Remember.Answer());
+    insert(agent, EARLIER_TURN, 3, new Effect.Release());
+    List<TurnId> turnsInOrder = new CopyOnWriteArrayList<>();
+    EffectPoller poller =
+        poller((agentId, state, turnId, effect, effectId, attempts) -> turnsInOrder.add(turnId));
+
+    poller.pollOnce();
+
+    assertThat(turnsInOrder).containsExactly(EARLIER_TURN, LATER_TURN);
+  }
+
+  @Test
+  @DisplayName(
+      "F3: a turn-less row stops its group like any other -- turn_id = NULL matches nothing in"
+          + " SQL, so a group stopped by an agent's first-ever TakeWork used to release nobody")
+  void a_turnless_row_still_releases_its_siblings() {
+    AgentId agent = agent("house-1");
+    // What an agent's first activation commits: TakeWork before any turn exists, so turn_id is
+    // NULL. AgentLogic emits one effect there, but a decision with a narration between two durable
+    // effects leaves gaps in the ordinals, so a turn-less group of two is not a shape to rule out.
+    insert(agent, null, 0, new Effect.TakeWork());
+    insert(agent, null, 1, new Effect.Release());
+    EffectPoller poller =
+        poller(
+            (agentId, state, turnId, effect, effectId, attempts) -> {
+              if (effect instanceof Effect.TakeWork) {
+                effects.abandon(effectId, "the backlog is unreadable");
+              }
+            });
+
+    poller.pollOnce();
+
+    assertThat(statusesFor(agent))
+        .as("the turn-less sibling is released, not left RUNNING to be charged a phantom failure")
+        .containsExactly("FAILED", "PENDING");
+  }
+
   private List<Integer> attemptsFor(AgentId agentId) {
     return columnFor(agentId, "attempts", Integer.class);
   }
@@ -333,10 +422,13 @@ class EffectPollerTest {
     return columnFor(agentId, "reason", String.class);
   }
 
-  /** One column of every row this agent owes, in ordinal order. */
+  /** One column of every row this agent owes, in (turn, ordinal) order. */
   private <T> List<T> columnFor(AgentId agentId, String column, Class<T> type) {
     return JdbcClient.create(database)
-        .sql("SELECT " + column + " FROM nessy_effect WHERE agent_id = ? ORDER BY ordinal")
+        .sql(
+            "SELECT "
+                + column
+                + " FROM nessy_effect WHERE agent_id = ? ORDER BY COALESCE(turn_id, ''), ordinal")
         .param(agentId.value())
         .query(type)
         .list();
@@ -363,14 +455,12 @@ class EffectPollerTest {
   }
 
   private void insert(AgentId agentId, int ordinal, Effect effect) {
-    effects.insert(
-        TYPE,
-        agentId,
-        TurnId.of("turn-1"),
-        null,
-        ordinal,
-        EffectStore.PAYLOADS.encode(effect),
-        null);
+    insert(agentId, EARLIER_TURN, ordinal, effect);
+  }
+
+  /** As above, for the tests that care WHICH turn a row belongs to. */
+  private void insert(AgentId agentId, TurnId turnId, int ordinal, Effect effect) {
+    effects.insert(TYPE, agentId, turnId, null, ordinal, EffectStore.PAYLOADS.encode(effect), null);
   }
 
   private EffectPoller poller(AgentRuntime.Performer performer) {
