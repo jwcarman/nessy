@@ -81,8 +81,21 @@ final class EffectStore {
           + " FROM nessy_effect"
           + " WHERE agent_type = ? AND actionable_at <= ?"
           + " ORDER BY actionable_at LIMIT ? FOR UPDATE SKIP LOCKED";
+
+  /**
+   * The conditional increment is evaluated against the PRE-update row on both H2 and PostgreSQL --
+   * measured, not assumed, by {@code EffectStoreTest}. A row already {@code RUNNING} or {@code
+   * PARKED} when this UPDATE finds it (both only possible because {@code SELECT_DUE} already proved
+   * {@code actionable_at <= now}) is evidence nobody else recorded that this obligation's last
+   * attempt failed -- see the class javadoc on {@code attempts} counting failures, and C1 in the
+   * Task 7 fix round. A {@code PENDING} row's previous attempt already recorded its OWN failure on
+   * the way out (via {@link #retry}), so incrementing here too would double-count it.
+   */
   private static final String TAKE =
-      "UPDATE nessy_effect SET status = ?, actionable_at = ? WHERE effect_id = ?";
+      "UPDATE nessy_effect SET status = ?, actionable_at = ?,"
+          + " attempts = attempts + CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END"
+          + " WHERE effect_id = ?";
+
   private static final String COMPLETE =
       "DELETE FROM nessy_effect WHERE effect_id = ? AND status = ?";
   private static final String DELETE_AGENT =
@@ -287,10 +300,10 @@ final class EffectStore {
                 .param(agentType.name())
                 .param(now)
                 .param(batchSize)
-                .query(EffectStore::attempted)
+                .query(EffectStore::row)
                 .list()
                 .stream()
-                .map(effect -> take(effect, watchdogAt))
+                .map(due -> take(due, watchdogAt))
                 .toList());
   }
 
@@ -433,23 +446,57 @@ final class EffectStore {
   }
 
   /**
-   * Marks a row RUNNING with a fresh watchdog. {@code attempts} is untouched -- pickup is not a
-   * failure, so it counts nothing; see the class javadoc and {@code nessy_effect.attempts} in the
-   * schema.
+   * Marks a row RUNNING with a fresh watchdog, and increments {@code attempts} in the SAME
+   * statement -- but ONLY when {@code due} was already {@code RUNNING} or {@code PARKED}: a fresh
+   * pickup of a row that was still {@code PENDING} counts nothing, because {@code PENDING} means
+   * either "never attempted" or "its previous attempt already recorded its own failure on the way
+   * out" (see {@link #retry}), and double-counting that would be wrong in the other direction. See
+   * C1 in the Task 7 fix round -- before this, {@code attempts} was untouched by every pickup, so a
+   * row whose worker died could loop at the poll interval forever without {@link RetryPolicy} ever
+   * being consulted with a rising count.
    */
-  private Attempted take(Attempted raw, Instant watchdogAt) {
-    jdbc.sql(TAKE).param(RUNNING).param(watchdogAt).param(raw.id().value()).update();
-    return raw;
+  private Attempted take(Row due, Instant watchdogAt) {
+    jdbc.sql(TAKE)
+        .param(RUNNING)
+        .param(watchdogAt)
+        .param(RUNNING)
+        .param(PARKED)
+        .param(due.id().value())
+        .update();
+    boolean wasOutstanding = RUNNING.equals(due.status()) || PARKED.equals(due.status());
+    return new Attempted(
+        due.id(),
+        due.agentId(),
+        due.turnId(),
+        due.callId(),
+        due.ordinal(),
+        due.payload(),
+        due.observability(),
+        wasOutstanding ? due.attempts() + 1 : due.attempts(),
+        PARKED.equals(due.status()));
   }
 
   /**
-   * Reads a row exactly as it is right now, {@code attempts} included -- {@link #take} changes
-   * nothing about it, so what this reads back IS what the caller sees.
+   * One row exactly as {@code SELECT_DUE} found it, BEFORE {@link #take} touches it -- {@code
+   * status} travels only this far; {@link Attempted} exposes {@code parked} (derived from it) but
+   * not the raw value, because nothing past {@link #take} needs to tell {@code RUNNING} and {@code
+   * PENDING} apart.
    */
-  private static Attempted attempted(ResultSet rs, int row) throws SQLException {
+  private record Row(
+      EffectId id,
+      AgentId agentId,
+      TurnId turnId,
+      CallId callId,
+      int ordinal,
+      byte[] payload,
+      String observability,
+      int attempts,
+      String status) {}
+
+  private static Row row(ResultSet rs, int rowNum) throws SQLException {
     String turnId = rs.getString("turn_id");
     String callId = rs.getString("call_id");
-    return new Attempted(
+    return new Row(
         EffectId.of(rs.getString("effect_id")),
         AgentId.of(rs.getString("agent_id")),
         turnId == null ? null : TurnId.of(turnId),
@@ -458,6 +505,6 @@ final class EffectStore {
         rs.getBytes("payload"),
         rs.getString("observability"),
         rs.getInt("attempts"),
-        PARKED.equals(rs.getString("status")));
+        rs.getString("status"));
   }
 }

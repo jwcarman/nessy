@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -50,8 +51,10 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
  * {@code EffectPoller}'s job, tested there. Attempting twice hands back an already-RUNNING row only
  * once its watchdog has lapsed, because at-least-once is the contract and
  * at-least-twice-immediately is not. And {@code attempts} counts FAILURES, not starts: a row picked
- * up, timed out, and picked up again with nothing ever writing {@code retry}/{@code abandon} still
- * reads {@code 0}.
+ * up while still {@code PENDING} (never attempted, or its previous attempt already recorded its own
+ * failure on the way out) counts nothing, but a row found still {@code RUNNING} or expired {@code
+ * PARKED} -- proof nobody else recorded that its last attempt failed -- counts one, in the SAME
+ * UPDATE that re-claims it. See C1 in the Task 7 fix round.
  */
 @DisplayName("A durable effect")
 class EffectStoreTest {
@@ -132,9 +135,9 @@ class EffectStoreTest {
 
   @Test
   @DisplayName(
-      "an attempted effect whose watchdog lapsed comes back, with attempts UNCHANGED -- pickup"
-          + " counts nothing")
-  void a_lapsed_watchdog_is_attempted_again_with_attempts_unchanged() {
+      "an attempted effect whose watchdog lapsed comes back, with attempts INCREMENTED -- the"
+          + " lapsed watchdog IS the failure nobody else recorded")
+  void a_lapsed_watchdog_is_attempted_again_with_attempts_incremented() {
     insert(AGENT, 0, "call-model", null);
     List<EffectStore.Attempted> first =
         effects.attempt(TYPE, 10, Instant.now(), Duration.ofMillis(-1));
@@ -145,9 +148,63 @@ class EffectStoreTest {
 
     assertThat(second).extracting(effect -> text(effect.payload())).containsExactly("call-model");
     assertThat(second)
-        .as("pickup is not a failure write-back: attempts is untouched by re-attempting")
+        .as("C1: a row found still RUNNING past its watchdog counts as a failure on re-pickup")
         .extracting(EffectStore.Attempted::attempts)
-        .containsExactly(0);
+        .containsExactly(1);
+  }
+
+  @Test
+  @DisplayName("C1: a timed-out effect -- found RUNNING past its watchdog -- counts a failure")
+  void a_timed_out_effect_counts_a_failure() {
+    EffectId id = insertRunning(AGENT, 0, "call-model", Instant.now().minus(Duration.ofMinutes(5)));
+
+    List<EffectStore.Attempted> retaken = attempt();
+
+    assertThat(retaken).extracting(EffectStore.Attempted::id).containsExactly(id);
+    assertThat(retaken).extracting(EffectStore.Attempted::attempts).containsExactly(1);
+  }
+
+  @Test
+  @DisplayName(
+      "C1: a row picked up from PENDING does not double-count its already-recorded failure")
+  void a_pending_effect_does_not_double_count() {
+    EffectId id = insertPendingWithAttempts(AGENT, 0, "call-model", 3);
+
+    List<EffectStore.Attempted> taken = attempt();
+
+    assertThat(taken).extracting(EffectStore.Attempted::id).containsExactly(id);
+    assertThat(taken).extracting(EffectStore.Attempted::attempts).containsExactly(3);
+  }
+
+  @Test
+  @DisplayName(
+      "C1: a worker that keeps dying before it ever writes retry/abandon still exhausts the"
+          + " RetryPolicy budget -- the loop C1 says cannot terminate, falsified")
+  void a_repeatedly_timing_out_effect_reaches_giveUp() {
+    insert(AGENT, 0, "call-model", null);
+    RetryPolicy budget =
+        RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofSeconds(1), 3);
+    Random random = new Random(0);
+
+    // Every pass "picks up" the row and simply abandons it where it lies -- no retry(), no
+    // abandon() write-back -- exactly a worker whose JVM was killed mid-attempt, over and over.
+    // Before C1's fix this loop runs forever: attempts never leaves 0, and RetryPolicy.decide(0,
+    // ...) with maxAttempts=3 always answers RetryAfter, never GiveUp. A hard cap on the loop
+    // count is what turns "hangs forever" into an assertable failure instead of an actual hang.
+    int attemptsMade = 0;
+    RetryPolicy.RetryDecision decision = null;
+    for (int pass = 0; pass < 10; pass++) {
+      List<EffectStore.Attempted> taken =
+          effects.attempt(TYPE, 10, Instant.now(), Duration.ofMillis(-1));
+      attemptsMade = taken.get(0).attempts();
+      decision = budget.decide(attemptsMade, random);
+      if (decision instanceof RetryPolicy.RetryDecision.GiveUp) {
+        break;
+      }
+    }
+
+    assertThat(attemptsMade).as("the failure count actually rose pass over pass").isEqualTo(3);
+    assertThat(decision).isInstanceOf(RetryPolicy.RetryDecision.GiveUp.class);
   }
 
   @Test
@@ -430,6 +487,58 @@ class EffectStoreTest {
 
   private EffectId insert(AgentId agentId, int ordinal, String payload, CallId callId) {
     return effects.insert(TYPE, agentId, TURN, callId, ordinal, bytes(payload), null);
+  }
+
+  /**
+   * A row planted directly as {@code RUNNING} with a watchdog already in the past -- the shape of a
+   * worker that died mid-attempt, which {@link EffectStore#insert} has no way to produce (it always
+   * starts a row {@code PENDING}). Raw SQL, deliberately: this is simulating a crash, not
+   * exercising the store's own API for getting a row into this state.
+   */
+  private EffectId insertRunning(AgentId agentId, int ordinal, String payload, Instant watchdogAt) {
+    EffectId id = EffectId.next();
+    Instant now = Instant.now();
+    JdbcClient.create(database)
+        .sql(
+            "INSERT INTO nessy_effect (effect_id, agent_type, agent_id, turn_id, call_id, ordinal,"
+                + " payload, observability, status, attempts, actionable_at, created_at) VALUES (?,"
+                + " ?, ?, ?, NULL, ?, ?, NULL, 'RUNNING', 0, ?, ?)")
+        .param(id.value())
+        .param(TYPE.name())
+        .param(agentId.value())
+        .param(TURN.value())
+        .param(ordinal)
+        .param(bytes(payload))
+        .param(watchdogAt)
+        .param(now)
+        .update();
+    return id;
+  }
+
+  /**
+   * A row planted directly {@code PENDING} with a chosen {@code attempts}, for C1's double-count
+   * test.
+   */
+  private EffectId insertPendingWithAttempts(
+      AgentId agentId, int ordinal, String payload, int attempts) {
+    EffectId id = EffectId.next();
+    Instant now = Instant.now();
+    JdbcClient.create(database)
+        .sql(
+            "INSERT INTO nessy_effect (effect_id, agent_type, agent_id, turn_id, call_id, ordinal,"
+                + " payload, observability, status, attempts, actionable_at, created_at) VALUES (?,"
+                + " ?, ?, ?, NULL, ?, ?, NULL, 'PENDING', ?, ?, ?)")
+        .param(id.value())
+        .param(TYPE.name())
+        .param(agentId.value())
+        .param(TURN.value())
+        .param(ordinal)
+        .param(bytes(payload))
+        .param(attempts)
+        .param(now)
+        .param(now)
+        .update();
+    return id;
   }
 
   private List<EffectStore.Attempted> attempt() {
