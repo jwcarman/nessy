@@ -411,7 +411,18 @@ final class EffectStore {
                         // Abandoned: terminal, with no natural "next" moment of its own --
                         // actionable_at is NULL by construction (see ABANDON).
                         new Held(true, null);
-                    default -> new Held(false, null);
+                    case RUNNING ->
+                        // NOT held -- the outcome has not landed -- but the moment is reported all
+                        // the same: F1. A row that THREW is left RUNNING deliberately, and its
+                        // watchdog is when it will be attempted again, so it is exactly what a
+                        // sibling released by that throw has to wait behind. The caller decides
+                        // whether it has any use for this; heldAt() only reports what the row says.
+                        new Held(false, actionableAt.toInstant());
+                    default ->
+                        // PARKED. actionable_at here is a person's deadline, days out, and never a
+                        // sibling's place in a queue -- a parked call is a hand-off, so the group
+                        // carries on and nothing is deferred behind it at all.
+                        new Held(false, null);
                   };
                 })
             .list();
@@ -419,8 +430,13 @@ final class EffectStore {
   }
 
   /**
-   * Whether an obligation's outcome landed synchronously, and if so, the moment its siblings should
-   * be deferred to. See {@link #heldAt}.
+   * Whether an obligation's outcome landed synchronously, and the moment this row is next
+   * actionable -- which is the moment any sibling released on its account must wait behind. See
+   * {@link #heldAt}.
+   *
+   * <p>{@code deferSiblingsTo} is null exactly when there is nothing to wait behind: an abandoned
+   * row (terminal, {@code actionable_at} NULL), a parked one (whose {@code actionable_at} is a
+   * person's deadline, not a queue position), and a row already discharged and gone.
    */
   record Held(boolean held, Instant deferSiblingsTo) {}
 

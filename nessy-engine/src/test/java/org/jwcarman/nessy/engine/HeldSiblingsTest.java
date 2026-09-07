@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -222,8 +223,15 @@ class HeldSiblingsTest {
     // Ordinal 0's payload is not valid JSON at all -- EffectStore.PAYLOADS.decode throws inside
     // AgentRuntime#perform, before EffectWorker ever sees it. C1's own archetype: a deploy that
     // changed Effect's JSON shape out from under an in-flight row.
-    effects.insert(
-        TYPE, AGENT, turnId, null, 0, "not a valid payload".getBytes(StandardCharsets.UTF_8), null);
+    EffectId lead =
+        effects.insert(
+            TYPE,
+            AGENT,
+            turnId,
+            null,
+            0,
+            "not a valid payload".getBytes(StandardCharsets.UTF_8),
+            null);
     EffectId sibling =
         effects.insert(
             TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
@@ -242,6 +250,7 @@ class HeldSiblingsTest {
                 + " this pass's own attempt() made it -- TAKE charges it a failure it never made"
                 + " the next time its watchdog lapses.")
         .contains(PENDING);
+    assertReleasedBehindTheStopper(Outcome.THROW, lead, sibling);
   }
 
   /**
@@ -255,20 +264,34 @@ class HeldSiblingsTest {
    * -- releasing them there would be just as wrong as leaving them RUNNING here.
    */
   private enum Outcome {
-    SYNC_SUCCESS(true),
-    SYNC_RETRY(false),
-    SYNC_ABANDON(false),
-    ASYNC_HANDOFF(true),
-    THROW(false);
+    SYNC_SUCCESS(true, false),
+    SYNC_RETRY(false, true),
+    SYNC_ABANDON(false, false),
+    ASYNC_HANDOFF(true, false),
+    THROW(false, true);
 
     private final boolean groupContinues;
+    private final boolean stopperStaysOutstanding;
 
-    Outcome(boolean groupContinues) {
+    Outcome(boolean groupContinues, boolean stopperStaysOutstanding) {
       this.groupContinues = groupContinues;
+      this.stopperStaysOutstanding = stopperStaysOutstanding;
     }
 
     boolean groupContinues() {
       return groupContinues;
+    }
+
+    /**
+     * Whether the row that stopped the group WILL be attempted again -- a retry with its backoff, a
+     * throw with its watchdog. F1: those are exactly the cases where the siblings' new
+     * actionable_at has to be the stopping row's own, because SELECT_DUE orders by (actionable_at,
+     * ordinal) and anything earlier puts a released sibling back in front of the row it was
+     * released from. {@code SYNC_ABANDON} is the one stop that is genuinely terminal: ABANDON nulls
+     * actionable_at, there is nothing left to wait behind, and Instant.now() is right.
+     */
+    boolean stopperStaysOutstanding() {
+      return stopperStaysOutstanding;
     }
   }
 
@@ -285,7 +308,7 @@ class HeldSiblingsTest {
         turnId,
         ANSWER_CLAIM_KEY,
         answerCodec.encode(new AnswerMessage(List.of(new TextBlock("hi")))));
-    effects.insert(TYPE, AGENT, turnId, null, 0, leadPayloadFor(outcome), null);
+    EffectId lead = effects.insert(TYPE, AGENT, turnId, null, 0, leadPayloadFor(outcome), null);
     EffectId sibling =
         effects.insert(
             TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
@@ -319,6 +342,7 @@ class HeldSiblingsTest {
                   + " pass's own attempt() made it -- TAKE charges it a failure it never made the"
                   + " next time its watchdog lapses.")
           .contains(PENDING);
+      assertReleasedBehindTheStopper(outcome, lead, sibling);
     }
   }
 
@@ -367,6 +391,47 @@ class HeldSiblingsTest {
       case ASYNC_HANDOFF -> task -> Thread.ofVirtual().start(task);
       case SYNC_SUCCESS, SYNC_RETRY, SYNC_ABANDON, THROW -> Runnable::run;
     };
+  }
+
+  /**
+   * F1: a released sibling is released to BEHIND the row that stopped it, never ahead of it.
+   *
+   * <p>Asserting only that a sibling went back to PENDING enforces "released" and nothing more --
+   * which is how the throw branch shipped deferring its siblings to {@code Instant.now()} while
+   * leaving itself RUNNING five minutes out. {@code SELECT_DUE} orders by {@code (actionable_at,
+   * ordinal)}, so the two instants must be byte-identical for the ordinal to decide -- comparing
+   * them as they read back out of the SAME column through the SAME driver is the only honest way to
+   * say that.
+   */
+  private void assertReleasedBehindTheStopper(Outcome outcome, EffectId lead, EffectId sibling) {
+    Optional<Instant> stopper = actionableOf(lead);
+    if (!outcome.stopperStaysOutstanding()) {
+      assertThat(stopper).as("an abandoned row is terminal: ABANDON nulls actionable_at").isEmpty();
+      return;
+    }
+    assertThat(stopper).as("the row that stopped the group is still to be attempted").isPresent();
+    assertThat(actionableOf(sibling))
+        .as(
+            "the sibling is due at the stopping row's OWN moment. Anything earlier -- Instant.now()"
+                + " against a five-minute watchdog, say -- runs it AHEAD of the row it was released"
+                + " from, which is the ordering the whole deferral exists to keep.")
+        .isEqualTo(stopper);
+  }
+
+  /** When one row next becomes actionable, or empty when it is gone or terminal. */
+  private Optional<Instant> actionableOf(EffectId id) {
+    // Read as a Timestamp and mapped here rather than asked for as an Instant: the column is
+    // nullable by design (ABANDON writes NULL), and a single-column query for a value type has no
+    // way to hand back "the row is there and the value is null".
+    List<java.sql.Timestamp> found =
+        JdbcClient.create(database)
+            .sql("SELECT actionable_at FROM nessy_effect WHERE effect_id = ?")
+            .param(id.value())
+            .query((rs, rowNum) -> rs.getTimestamp("actionable_at"))
+            .list();
+    return found.isEmpty()
+        ? Optional.empty()
+        : Optional.ofNullable(found.getFirst()).map(java.sql.Timestamp::toInstant);
   }
 
   /** The status of one row, or empty once it has been discharged and deleted. */

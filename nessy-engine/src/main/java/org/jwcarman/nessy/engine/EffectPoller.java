@@ -199,29 +199,39 @@ final class EffectPoller {
       // "threw" apart from "handed off to async work", so C2's exact continue-instead-of-break
       // shape survived a throw even after the settle/giveUp paths were fixed. THIS row is left
       // RUNNING on purpose -- it IS still outstanding, its watchdog is the right recovery, and C1
-      // counts its next pickup as the failure this one genuinely was. Its SIBLINGS are a different
-      // question, and the answer is the same as everywhere else: Instant.now(), because a throw
-      // never reached EffectStore at all, so there is no instant to inherit and nothing left to
-      // wait behind.
+      // counts its next pickup as the failure this one genuinely was.
       LOG.error(
           "[{}] obligation {} threw and stays outstanding; held back the rest of this pass's group",
           agentId.value(),
           attempted.id(),
           failure);
-      return Optional.of(Instant.now());
+      return Optional.of(deferralOf(effects.heldAt(attempted.id())));
     }
     EffectStore.Held held = effects.heldAt(attempted.id());
-    if (!held.held()) {
-      return Optional.empty();
-    }
-    // A retry read its deferral instant BACK OUT of the row EffectWorker just wrote, rather than
-    // recomputing Instant.now().plus(delay): after driver truncation the two are not the same
-    // value, and SELECT_DUE's "ORDER BY actionable_at, ordinal" only puts the retried row ahead of
-    // its siblings if their instants are byte-identical. An abandonment has no such instant to
-    // inherit (ABANDON nulls actionable_at) -- Instant.now() is right there for the same reason it
-    // is right for a throw: the group's line is already broken, so the PENDING reset is what
-    // matters, not the timing.
-    return Optional.of(held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now());
+    return held.held() ? Optional.of(deferralOf(held)) : Optional.empty();
+  }
+
+  /**
+   * The moment the siblings of a stopped group must wait behind: the stopping row's OWN {@code
+   * actionable_at}, read back out of the row rather than recomputed.
+   *
+   * <p>F1, and the reason the retry branch was right all along. {@code SELECT_DUE} orders by {@code
+   * (actionable_at, ordinal)}, so the ordinal only decides between a stopping row and its siblings
+   * when their instants are byte-identical -- and after driver truncation, {@code Instant.now()
+   * .plus(delay)} recomputed here is NOT the value {@code EffectWorker} wrote. The throw branch
+   * used to hand back {@code Instant.now()} instead, which is worse than imprecise: it leaves the
+   * throwing row RUNNING a watchdog out and its siblings due in {@code POLL_FLOOR}, so the next
+   * pass runs {@code Release} -- deleting the claims -- while the {@code Remember} that was
+   * supposed to precede it has not run, and five minutes later that {@code Remember} finds nothing
+   * to redeem, retires as a success, and the exchange is lost with nothing thrown and nothing
+   * logged.
+   *
+   * <p>{@code Instant.now()} is correct for exactly one stop: an ABANDON, which nulls {@code
+   * actionable_at} because that row is genuinely terminal. There is then nothing left to wait
+   * behind, and only the PENDING reset matters.
+   */
+  private static Instant deferralOf(EffectStore.Held held) {
+    return held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now();
   }
 
   /**
