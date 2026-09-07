@@ -204,7 +204,8 @@ final class Engines {
                 store,
                 RetryPolicy.exponential(
                     java.time.Duration.ofMillis(1), 2.0, java.time.Duration.ofSeconds(1), 3),
-                new java.util.Random(0)));
+                new java.util.Random(0),
+                java.time.Duration.ofDays(30)));
     return new Parts(
         dataSource, claims, backlog, effectWorker, remembered, narrated, effects, store);
   }

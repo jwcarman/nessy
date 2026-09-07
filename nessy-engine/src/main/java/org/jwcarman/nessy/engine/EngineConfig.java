@@ -52,6 +52,7 @@ public final class EngineConfig {
   private Traces traces = Traces.noop();
   private RetryPolicy retryPolicy;
   private RandomGenerator random;
+  private Duration maxDeferral = Duration.ofDays(30);
 
   /** The actor system the engine shards its agents across. Required. */
   public EngineConfig system(ActorSystem<?> system) {
@@ -160,6 +161,27 @@ public final class EngineConfig {
     return this;
   }
 
+  /**
+   * How far into the future a deferral -- {@code Awaited.Deferred(expiresAt)}, from a parked
+   * approval or a parked tool alike -- may push its watchdog. {@code actionable_at} for a parked
+   * effect IS the deferral's own deadline (design of record 2026-09-04, Task 7), so an unbounded
+   * deferral is now an unbounded row nothing will ever look at again -- worse than before this
+   * task, when a stray far-future deadline was merely inert rather than durably unreachable. A tool
+   * that asks for longer than this gets this instead, and a warning naming both numbers, so the
+   * clamp firing is visible rather than a silent surprise for whoever parked the call.
+   *
+   * <p>Defaults to 30 days -- long enough for a genuinely slow human process, short enough that a
+   * misbehaving tool's {@code Instant.MAX} does not become a row this engine carries forever.
+   */
+  public EngineConfig maxDeferral(Duration maxDeferral) {
+    Objects.requireNonNull(maxDeferral, "maxDeferral must not be null");
+    if (maxDeferral.isNegative() || maxDeferral.isZero()) {
+      throw new IllegalArgumentException("maxDeferral must be positive");
+    }
+    this.maxDeferral = maxDeferral;
+    return this;
+  }
+
   ActorSystem<?> system() {
     return Objects.requireNonNull(system, "an engine cannot be built without an actor system");
   }
@@ -206,5 +228,9 @@ public final class EngineConfig {
 
   RandomGenerator random() {
     return random == null ? RandomGenerator.getDefault() : random;
+  }
+
+  Duration maxDeferral() {
+    return maxDeferral;
   }
 }

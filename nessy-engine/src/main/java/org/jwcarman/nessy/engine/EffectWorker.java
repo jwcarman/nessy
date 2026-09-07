@@ -107,7 +107,8 @@ final class EffectWorker {
       Dispatcher dispatcher,
       AgentStore store,
       RetryPolicy retryPolicy,
-      RandomGenerator random) {}
+      RandomGenerator random,
+      Duration maxDeferral) {}
 
   private final Dependencies deps;
   private final Codec<List<ExchangeContentBlock>> askedCodec;
@@ -528,18 +529,18 @@ final class EffectWorker {
                           yield new Input.ApprovalGiven(call.id(), call.name(), result);
                         }
                         case Awaited.Deferred<ApprovalResult>(var expiresAt) -> {
+                          // Clamped BEFORE it is narrated or folded, so the desk, the narration
+                          // and the alarm this eventually arms all agree on the SAME deadline --
+                          // never the approver's raw, possibly-unbounded request.
+                          Instant clamped = clampDeferral(agentId, call.id(), expiresAt);
                           // Narrated HERE and nowhere else: an ungated tool answers on the spot,
                           // and only a deferral means a person is actually being asked. The desk
                           // needs the deadline, which is knowable at exactly this moment.
                           narrator(agentId)
                               .narrate(
                                   new AgentEvent.ApprovalRequested(
-                                      Identifiers.next(),
-                                      call.id(),
-                                      call.name(),
-                                      action,
-                                      expiresAt));
-                          yield new Input.ToolParked(call.id(), expiresAt);
+                                      Identifiers.next(), call.id(), call.name(), action, clamped));
+                          yield new Input.ToolParked(call.id(), clamped);
                         }
                       },
                   failure -> {
@@ -601,7 +602,8 @@ final class EffectWorker {
                             yield new Input.ToolCompleted(call.id());
                           }
                           case Awaited.Deferred<ToolResult>(var expiresAt) ->
-                              new Input.ToolParked(call.id(), expiresAt);
+                              new Input.ToolParked(
+                                  call.id(), clampDeferral(agentId, call.id(), expiresAt));
                         },
                     failure -> {
                       hold(
@@ -615,6 +617,29 @@ final class EffectWorker {
                     effectId,
                     carried,
                     retryDelay));
+  }
+
+  /**
+   * The one place both kinds of deferral -- a parked approval and a parked tool alike -- are
+   * clamped, because {@code actionable_at} for a parked effect IS its deadline (see the class
+   * javadoc on {@code EngineConfig#maxDeferral}): an unbounded deferral is now an unbounded row
+   * nothing will ever revisit, not merely an inert far-future timer the way it used to be. Warns
+   * only when the clamp actually fires -- a tool that stayed inside its own bound never causes a
+   * log line, because the clamp firing means a tool ignored a bound, and that is the case worth
+   * being loud about.
+   */
+  private Instant clampDeferral(AgentId agentId, CallId callId, Instant requested) {
+    Instant max = Instant.now().plus(deps.maxDeferral());
+    if (requested.isAfter(max)) {
+      LOG.warn(
+          "[{}] deferral for {} clamped: asked for {}, granted {}",
+          agentId.value(),
+          callId.value(),
+          requested,
+          max);
+      return max;
+    }
+    return requested;
   }
 
   /** What a denied call answers with, or empty when it was approved and will answer for itself. */

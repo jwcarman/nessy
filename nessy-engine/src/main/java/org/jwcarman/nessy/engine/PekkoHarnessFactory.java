@@ -92,6 +92,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
   private final Replies replies;
   private final RetryPolicy retryPolicy;
   private final java.util.random.RandomGenerator random;
+  private final java.time.Duration maxDeferral;
 
   /**
    * Builds an engine from {@code customizer}'s settings.
@@ -116,6 +117,7 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     this.traces = config.traces();
     this.retryPolicy = config.retryPolicy();
     this.random = config.random();
+    this.maxDeferral = config.maxDeferral();
     this.dataSource = config.dataSource().orElseGet(PekkoHarnessFactory::ownDatabase);
     this.claims = new Claims(this.dataSource);
     this.replies =
@@ -250,7 +252,8 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                 dispatcherFor(sharding, agentKey),
                 new AgentStore(dataSource),
                 retryPolicy,
-                random));
+                random,
+                maxDeferral));
 
     AgentActor.Dependencies deps = new AgentActor.Dependencies(type, effectWorker, traces);
 
