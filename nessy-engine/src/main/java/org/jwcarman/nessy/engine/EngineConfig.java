@@ -36,8 +36,16 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * build()}. It replaced a nine-argument constructor whose parameters could only be told apart by
  * counting, and which grew every time the engine needed one more thing.
  *
- * <p>Two are required, because no default is honest: the {@link ActorSystem} the engine runs on,
- * and the {@link ModelProvider} it talks to. Everything else has a default that works.
+ * <p>One is required, because no default is honest: the {@link ModelProvider} the engine talks to.
+ * Everything else has a default that works.
+ *
+ * <p><b>{@link #system} is a transitional field.</b> {@link EngineHarnessFactory} -- the engine
+ * this config otherwise describes -- never reads it: an agent is a row now, not a cluster entity,
+ * so nothing about the new engine needs an actor system. It stays here, and its setter stays
+ * public, ONLY because {@code PekkoHarnessFactory} still reads it and is out of this task's scope
+ * to touch -- deleting it, and every caller across the reactor that supplies {@code .system(...)},
+ * is Task 11's one-piece removal of Pekko. Removing this field early would break that swap rather
+ * than make it mechanical.
  */
 public final class EngineConfig {
 
@@ -54,7 +62,10 @@ public final class EngineConfig {
   private RandomGenerator random;
   private Duration maxDeferral = Duration.ofDays(30);
 
-  /** The actor system the engine shards its agents across. Required. */
+  /**
+   * The actor system {@code PekkoHarnessFactory} shards its agents across. Transitional -- see the
+   * class javadoc -- and unused by {@link EngineHarnessFactory}.
+   */
   public EngineConfig system(ActorSystem<?> system) {
     this.system = Objects.requireNonNull(system, "system must not be null");
     return this;
