@@ -566,10 +566,14 @@ final class EffectWorker {
                   agentId,
                   effectId,
                   carried,
-                  // R-AB: never retried. An approver has RUN the moment it throws -- exactly one
-                  // attempt, always, whatever attempts/retryDelay the top of #perform computed for
-                  // a stalled-worker pickup (see EffectStore#take / C1). Null here means a throw
-                  // folds immediately through #run's own broke-path above, same as runTool below.
+                  // R-AB: a THROW is never retried. An approver has RUN the moment it throws, so
+                  // null here means that throw folds immediately through #run's own broke-path
+                  // above, same as runTool below -- whatever attempts/retryDelay the top of
+                  // #perform computed from a real row is not consulted for this outcome. A worker
+                  // that simply died mid-call is a different story: the row stays RUNNING, and
+                  // its own watchdog is what re-attempts it (see EffectStore#take / C1) -- that is
+                  // still at-least-once, same as before this fix; only a genuine throw is now
+                  // exactly-once.
                   null);
             },
             () ->
@@ -633,13 +637,16 @@ final class EffectWorker {
                     agentId,
                     effectId,
                     carried,
-                    // R-AB: never retried. A tool has RUN the moment it throws -- its outcome is a
-                    // failure RESULT the model is entitled to see and reason about, not an
-                    // unfinished obligation, and tools are not idempotent in general: re-invoking
-                    // one that may already have had a side effect is worse than not retrying at
-                    // all. Exactly one attempt, always -- null forces #run's broke-path above
-                    // regardless of what attempts/retryDelay the top of #perform computed for a
-                    // stalled-worker pickup (see EffectStore#take / C1).
+                    // R-AB: a THROW is never retried. A tool has RUN the moment it throws -- its
+                    // outcome is a failure RESULT the model is entitled to see and reason about,
+                    // not an unfinished obligation, and tools are not idempotent in general:
+                    // re-invoking one that may already have had a side effect is worse than not
+                    // retrying at all. Null forces #run's broke-path above for that throw,
+                    // regardless of what attempts/retryDelay the top of #perform computed from a
+                    // real row. A worker that simply died mid-call is different: the row stays
+                    // RUNNING and its own watchdog re-attempts it (see EffectStore#take / C1) --
+                    // still at-least-once, unchanged by this fix; only a genuine throw is now
+                    // exactly-once.
                     null));
   }
 

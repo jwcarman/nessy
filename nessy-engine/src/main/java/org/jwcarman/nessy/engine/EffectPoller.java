@@ -167,7 +167,27 @@ final class EffectPoller {
       return;
     }
     for (EffectStore.Attempted attempted : rows) {
-      runtime.perform(agentId, state.get(), attempted);
+      try {
+        runtime.perform(agentId, state.get(), attempted);
+      } catch (RuntimeException failure) {
+        // R-AD (Task 7 fix round 3): a throw out of perform() -- an undecodable payload, or any
+        // other failure the performer did not itself catch -- stops this pass's group HERE, same
+        // as a synchronous retry or abandon does. Deleting AgentRuntime's own catch and catching
+        // it here instead is what makes that possible: a bare boolean/void return could not tell
+        // "threw" apart from "handed off to async work", so C2's exact continue-instead-of-break
+        // shape survived a throw even after the settle/giveUp paths were fixed. The row is left
+        // RUNNING on purpose -- it IS still outstanding, its watchdog is the right recovery, and
+        // C1 counts its next pickup as the failure this one genuinely was. No deferSiblings call:
+        // an exception this deep never reached EffectStore at all, so there is nothing to defer
+        // that the group's existing watchdogs do not already cover on their own schedule.
+        LOG.error(
+            "[{}] obligation {} threw and stays outstanding; held back the rest of this pass's"
+                + " group",
+            agentId.value(),
+            attempted.id(),
+            failure);
+        return;
+      }
       EffectStore.Held held = effects.heldAt(attempted.id());
       if (held.held()) {
         // C2: a retried or abandoned row must not be overtaken by its own not-yet-run siblings --
@@ -175,14 +195,19 @@ final class EffectPoller {
         // RUNNING (this pass's own attempt() already claimed them); deferring them, rather than
         // leaving their existing watchdog stand, is what stops a SHORT watchdog from making them
         // due again before the retry is, reopening the very race from the other side.
+        // F1 (Task 7 fix round 3): the abandon branch (held.deferSiblingsTo() == null, since
+        // ABANDON clears actionable_at) is R-AC a third time -- these siblings were marked
+        // RUNNING by THIS pass's own attempt() and deliberately not run, exactly the condition
+        // deferSiblings exists to correct. Left RUNNING, TAKE charges them a phantom failure the
+        // next time they come due, same as an un-deferred retry sibling would be. Instant.now()
+        // is the right target here (not a scheduled backoff): the group's line is already broken
+        // by the abandonment, so there is nothing left to wait behind -- only the PENDING reset
+        // matters.
+        Instant deferTo = held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now();
+        int deferred =
+            effects.deferSiblings(
+                agentType, agentId, attempted.turnId(), attempted.ordinal(), deferTo);
         if (held.deferSiblingsTo() != null) {
-          int deferred =
-              effects.deferSiblings(
-                  agentType,
-                  agentId,
-                  attempted.turnId(),
-                  attempted.ordinal(),
-                  held.deferSiblingsTo());
           LOG.debug(
               "[{}] {} retried; held back and deferred {} sibling(s) in this pass",
               agentId.value(),
@@ -190,9 +215,10 @@ final class EffectPoller {
               deferred);
         } else {
           LOG.debug(
-              "[{}] {} was abandoned; held back the rest of this pass's group",
+              "[{}] {} was abandoned; held back and deferred {} sibling(s) in this pass",
               agentId.value(),
-              attempted.id());
+              attempted.id(),
+              deferred);
         }
         return;
       }

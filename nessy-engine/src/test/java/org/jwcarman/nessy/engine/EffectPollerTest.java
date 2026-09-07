@@ -222,6 +222,47 @@ class EffectPollerTest {
         .isEmpty();
   }
 
+  @Test
+  @DisplayName(
+      "F1: an abandoned effect holds back and defers its siblings, same as a retried one -- being"
+          + " held back is not a failure, whichever way the line broke")
+  void an_abandoned_effect_defers_its_siblings_too() {
+    AgentId agent = agent("house-1");
+    insert(agent, 0, new Effect.Remember.Input());
+    insert(agent, 1, new Effect.Release());
+    EffectPoller poller =
+        poller(
+            (agentId, state, turnId, effect, effectId, attempts) -> {
+              // Simulates giveUp()'s synchronous abandon -- ordinal 0's obligation is exhausted
+              // on this very pass, synchronously, exactly as EffectWorker#giveUp does before any
+              // external work runs. Ordinal 1 (Release) is never performed in this pass at all.
+              if (effect instanceof Effect.Remember.Input) {
+                effects.abandon(effectId, "gave up after 3 failures");
+              }
+            });
+
+    int found = poller.pollOnce();
+
+    assertThat(found).isEqualTo(2);
+    EffectId siblingId = effectIdFor(agent, 1);
+    assertThat(statusOf(siblingId))
+        .as(
+            "F1: the abandon branch defers siblings too -- left RUNNING, the sibling's next"
+                + " pickup would be charged a phantom failure by TAKE's conditional increment")
+        .isEqualTo("PENDING");
+  }
+
+  private EffectId effectIdFor(AgentId agentId, int ordinal) {
+    String id =
+        JdbcClient.create(database)
+            .sql("SELECT effect_id FROM nessy_effect WHERE agent_id = ? AND ordinal = ?")
+            .param(agentId.value())
+            .param(ordinal)
+            .query(String.class)
+            .single();
+    return EffectId.of(id);
+  }
+
   private AgentId agent(String value) {
     AgentId agentId = AgentId.of(value);
     // read(), not apply(): conjures the idle nessy_agent row (see Transition#read) WITHOUT

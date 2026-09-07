@@ -164,9 +164,8 @@ class HeldSiblingsTest {
         0,
         EffectStore.PAYLOADS.encode(new Effect.Remember.Answer()),
         null);
-    EffectId siblingId =
-        effects.insert(
-            TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+    effects.insert(
+        TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
 
     AtomicBoolean failedOnce = new AtomicBoolean(false);
     // A performer that RECORDS the attempts count Release is actually performed with, chained
@@ -199,6 +198,42 @@ class HeldSiblingsTest {
             "Release genuinely ran for the first time here -- being held back earlier must not"
                 + " have charged it a failure")
         .containsExactly(0);
+  }
+
+  @Test
+  @DisplayName(
+      "R-AD: a throwing obligation holds back its siblings -- an undecodable payload stops the"
+          + " group exactly like a synchronous retry or abandon does")
+  void a_throwing_obligation_holds_back_its_siblings() {
+    TurnId turnId = TurnId.of("turn-3");
+    transition.read(AGENT);
+    claims.put(
+        AGENT,
+        turnId,
+        ANSWER_CLAIM_KEY,
+        answerCodec.encode(new AnswerMessage(List.of(new TextBlock("hi")))));
+    // Ordinal 0's payload is not valid JSON at all -- EffectStore.PAYLOADS.decode throws inside
+    // AgentRuntime#perform, before EffectWorker ever sees it. C1's own archetype: a deploy that
+    // changed Effect's JSON shape out from under an in-flight row.
+    effects.insert(
+        TYPE,
+        AGENT,
+        turnId,
+        null,
+        0,
+        "not a valid payload".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        null);
+    effects.insert(
+        TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+
+    EffectPoller poller = poller(throwOnceThenRecord(new AtomicBoolean(true)));
+
+    int firstPass = poller.pollOnce();
+
+    assertThat(firstPass).isEqualTo(2);
+    assertThat(claims.get(AGENT, turnId, ANSWER_CLAIM_KEY))
+        .as("Release must not have run past a sibling that threw -- the claim survives")
+        .isPresent();
   }
 
   /** Throws once for an {@link AnswerMessage}, then records every one after that. */

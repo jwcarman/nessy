@@ -177,21 +177,22 @@ final class AgentRuntime implements Dispatcher {
       dispatch(agentId, new Input.DeadlinePassed(effect.callId()), null, null);
       return;
     }
-    try {
-      performer.perform(
-          agentId,
-          state,
-          effect.turnId(),
-          EffectStore.PAYLOADS.decode(effect.payload()),
-          effect.id(),
-          effect.attempts());
-    } catch (RuntimeException failure) {
-      // Left outstanding on purpose, with its watchdog armed. An obligation that threw is one
-      // somebody should try again -- and deciding here that it never will is not this method's
-      // judgment to make; that is EffectPoller and RetryPolicy's, on a LATER attempt.
-      LOG.error(
-          "[{}] obligation {} threw and stays outstanding", agentId.value(), effect.id(), failure);
-    }
+    // R-AD (Task 7 fix round 3): PROPAGATES, deliberately -- this used to catch and log here,
+    // which meant a throw (a poison payload PAYLOADS.decode cannot read, or any other failure
+    // from the performer) was indistinguishable from an ordinary async hand-off to EffectPoller:
+    // heldAt found the row still RUNNING either way, so the group carried on to the NEXT sibling
+    // -- the exact continue-instead-of-break shape C2 was raised about, reached through decode
+    // rather than settle. The row is left outstanding on purpose, with its watchdog armed, same
+    // as before: someone should try again, and deciding here that it never will is not this
+    // method's judgment to make. What changed is who catches the throw and what they do about the
+    // GROUP -- see EffectPoller#runAgent, the one place that owns sequencing a batch.
+    performer.perform(
+        agentId,
+        state,
+        effect.turnId(),
+        EffectStore.PAYLOADS.decode(effect.payload()),
+        effect.id(),
+        effect.attempts());
   }
 
   /**

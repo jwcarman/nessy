@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -188,8 +189,11 @@ class AgentRuntimeTest {
   }
 
   @Test
-  @DisplayName("a performer that throws leaves the obligation outstanding rather than propagating")
-  void a_thrown_performer_leaves_the_row_outstanding_and_does_not_propagate() {
+  @DisplayName(
+      "a performer that throws leaves the obligation outstanding, and PROPAGATES -- R-AD, Task 7"
+          + " fix round 3: EffectPoller, not AgentRuntime, is what has to know a throw happened,"
+          + " so it can stop the rest of its group")
+  void a_thrown_performer_leaves_the_row_outstanding_and_propagates() {
     AgentRuntime dying =
         new AgentRuntime(
             TYPE,
@@ -203,8 +207,9 @@ class AgentRuntimeTest {
     AgentState state = dying.peek(AGENT).orElseThrow();
     EffectStore.Attempted attempted = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).get(0);
 
-    // Does not throw -- perform() catches and logs, exactly as the javadoc promises.
-    dying.perform(AGENT, state, attempted);
+    assertThatThrownBy(() -> dying.perform(AGENT, state, attempted))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("this node just died");
 
     // The row is untouched (still RUNNING, watchdog armed by attempt() above) -- neither
     // completed nor abandoned -- so it is reclaimable once that watchdog lapses.
