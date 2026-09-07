@@ -896,7 +896,7 @@ final class EffectWorker {
    * could not see what the tool would be given.
    */
   private ToolCallRequest<JsonNode> requestFor(AgentId agentId, TurnId turnId, ToolCall call) {
-    return new ToolCallRequest(
+    return new ToolCallRequest<>(
         deps.agentType(),
         agentId,
         turnId,

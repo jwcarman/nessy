@@ -144,6 +144,63 @@ class HeldSiblingsTest {
         .isEmpty();
   }
 
+  @Test
+  @DisplayName(
+      "R-AC: a held sibling is not charged a failure -- it was deliberately not run, and being"
+          + " held is not a failure")
+  void a_held_sibling_is_not_charged_a_failure() {
+    TurnId turnId = TurnId.of("turn-2");
+    transition.read(AGENT);
+    claims.put(
+        AGENT,
+        turnId,
+        ANSWER_CLAIM_KEY,
+        answerCodec.encode(new AnswerMessage(List.of(new TextBlock("hi")))));
+    effects.insert(
+        TYPE,
+        AGENT,
+        turnId,
+        null,
+        0,
+        EffectStore.PAYLOADS.encode(new Effect.Remember.Answer()),
+        null);
+    EffectId siblingId =
+        effects.insert(
+            TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+
+    AtomicBoolean failedOnce = new AtomicBoolean(false);
+    // A performer that RECORDS the attempts count Release is actually performed with, chained
+    // to the real EffectWorker -- because by the time Release's OWN pass finishes, a genuinely
+    // successful run has already deleted the row (settle -> complete), so a raw SQL read taken
+    // AFTER the pass cannot observe what attempts read the moment take() handed it over. That is
+    // the one moment this defect is visible in.
+    List<Integer> releaseAttempts = new ArrayList<>();
+    EffectPoller poller =
+        poller(
+            throwOnceThenRecord(failedOnce),
+            (effect, attempts) -> {
+              if (effect instanceof Effect.Release) {
+                releaseAttempts.add(attempts);
+              }
+            });
+
+    poller.pollOnce();
+
+    assertThat(releaseAttempts)
+        .as("Release was not performed at all in the pass that held it back")
+        .isEmpty();
+
+    // The retry succeeds and the deferred sibling finally runs.
+    sleepQuietly(Duration.ofMillis(50));
+    poller.pollOnce();
+
+    assertThat(releaseAttempts)
+        .as(
+            "Release genuinely ran for the first time here -- being held back earlier must not"
+                + " have charged it a failure")
+        .containsExactly(0);
+  }
+
   /** Throws once for an {@link AnswerMessage}, then records every one after that. */
   private Memory throwOnceThenRecord(AtomicBoolean failedOnce) {
     return new Memory() {
@@ -168,6 +225,16 @@ class HeldSiblingsTest {
   }
 
   private EffectPoller poller(Memory memory) {
+    return poller(memory, (effect, attempts) -> {});
+  }
+
+  /**
+   * As above, with {@code onPerform} called immediately before every real performance -- the ONLY
+   * way to observe the {@code attempts} count a row was actually performed with when a genuinely
+   * successful run deletes its own row before this test's assertions get to run (see R-AC's
+   * falsification test).
+   */
+  private EffectPoller poller(Memory memory, java.util.function.ObjIntConsumer<Effect> onPerform) {
     Executor direct = Runnable::run;
     AgentRuntime[] runtimeHolder = new AgentRuntime[1];
     Dispatcher dispatcherProxy =
@@ -207,8 +274,13 @@ class HeldSiblingsTest {
                 RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofMillis(100), 5),
                 new Random(0),
                 Duration.ofDays(1)));
+    AgentRuntime.Performer recordingPerformer =
+        (agentId, state, turnId, effect, effectId, attempts) -> {
+          onPerform.accept(effect, attempts);
+          effectWorker.perform(agentId, state, turnId, effect, effectId, attempts);
+        };
     AgentRuntime runtime =
-        new AgentRuntime(TYPE, transition, effectWorker::perform, direct, Traces.noop());
+        new AgentRuntime(TYPE, transition, recordingPerformer, direct, Traces.noop());
     runtimeHolder[0] = runtime;
     return new EffectPoller(
         TYPE,

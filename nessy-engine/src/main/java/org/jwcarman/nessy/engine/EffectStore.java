@@ -118,8 +118,15 @@ final class EffectStore {
           + " WHERE effect_id = ?";
   private static final String STATUS_AND_ACTIONABLE =
       "SELECT status, actionable_at FROM nessy_effect WHERE effect_id = ?";
+  // R-AC (Task 7 fix round 2): SETS status back to PENDING, not just actionable_at. A sibling
+  // this pass's own attempt() already marked RUNNING, and that C2's fix then held back, is
+  // deliberately NOT RUNNING -- left RUNNING, TAKE's conditional increment (see its own javadoc)
+  // would read that as "found still RUNNING past its watchdog" and charge it a failure the next
+  // time it comes due, even though it never ran at all. PENDING + a future actionable_at is
+  // exactly "scheduled, not yet due" -- the same meaning actionable_at already carries for a
+  // fresh row, keeping the three meanings of that column coherent.
   private static final String DEFER_SIBLINGS =
-      "UPDATE nessy_effect SET actionable_at = ?"
+      "UPDATE nessy_effect SET status = ?, actionable_at = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND ordinal > ?"
           + " AND status IN (?, ?)";
   private static final String ABANDON =
@@ -392,13 +399,25 @@ final class EffectStore {
   record Held(boolean held, Instant deferSiblingsTo) {}
 
   /**
-   * Pushes every still-outstanding row of ONE agent's SAME turn, above {@code afterOrdinal}, out to
-   * {@code actionableAt} -- called by {@code EffectPoller} the instant it finds that an earlier row
-   * in this pass's group retried or was abandoned, so a sibling ordinal after it (already marked
-   * {@code RUNNING} by THIS pass's own {@link #attempt}) does not come due on its own, unrelated
-   * watchdog before the retry does, and run past a row that has not run yet -- see C2 in the Task 7
-   * fix round. Restricted to {@code PENDING}/{@code RUNNING}: a {@code PARKED} row's {@code
-   * actionable_at} is a human's deadline, never this mechanism's to move.
+   * Pushes every still-outstanding row of ONE agent's SAME turn, above {@code afterOrdinal}, back
+   * to {@code PENDING} with {@code actionable_at} set to {@code actionableAt} -- called by {@code
+   * EffectPoller} the instant it finds that an earlier row in this pass's group retried or was
+   * abandoned, so a sibling ordinal after it (already marked {@code RUNNING} by THIS pass's own
+   * {@link #attempt}) does not come due on its own, unrelated watchdog before the retry does, and
+   * run past a row that has not run yet -- see C2 in the Task 7 fix round.
+   *
+   * <p><b>Sets {@code status} back to {@code PENDING}, not only {@code actionable_at}</b> -- R-AC,
+   * the defect C1 and C2 created together. Left {@code RUNNING}, {@link #take}'s conditional
+   * increment (see its own javadoc) reads a held sibling's later pickup as "found still RUNNING
+   * past its watchdog" and charges it a failure it never earned: it was deliberately not run, and
+   * being held is not a failure. {@code PENDING} plus a future {@code actionable_at} is exactly
+   * "scheduled, not yet due" -- the same thing those two columns already mean for a fresh row,
+   * which is what keeps {@code actionable_at}'s three meanings (backoff / deadline / park term)
+   * coherent rather than adding a fourth, PENDING-flavored deadline nothing else recognizes.
+   *
+   * <p>Restricted to {@code PENDING}/{@code RUNNING} in the WHERE clause -- a {@code PARKED} row's
+   * {@code actionable_at} is a human's deadline, never this mechanism's to move, and this SET
+   * clause moving it to {@code PENDING} would be exactly that kind of overreach.
    *
    * @return how many sibling rows were pushed out
    */
@@ -408,6 +427,7 @@ final class EffectStore {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
     return jdbc.sql(DEFER_SIBLINGS)
+        .param(PENDING)
         .param(actionableAt)
         .param(agentType.name())
         .param(agentId.value())
