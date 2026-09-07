@@ -335,13 +335,29 @@ class EffectStoreTest {
     EffectId id = insert(AGENT, 0, "call-model", null);
     attempt();
 
-    effects.retry(id, Instant.now().plus(Duration.ofHours(1)));
+    effects.retry(id, Instant.now().plus(Duration.ofHours(1)), "connection reset");
 
     assertThat(attempt()).as("not due yet -- the backoff has not elapsed").isEmpty();
     assertThat(effects.attempt(TYPE, 10, Instant.now().plus(Duration.ofHours(2)), TIMEOUT))
         .as("due once the scheduled moment passes")
         .extracting(EffectStore.Attempted::attempts)
         .containsExactly(1);
+  }
+
+  @Test
+  @DisplayName("lastFailure reads the most recent retry's reason, empty before any attempt failed")
+  void last_failure_reads_the_most_recent_retry_reason() {
+    EffectId id = insert(AGENT, 0, "call-model", null);
+
+    assertThat(effects.lastFailure(id)).as("no attempt has failed yet").isEmpty();
+
+    effects.retry(id, Instant.now().plus(Duration.ofHours(1)), "connection reset");
+    assertThat(effects.lastFailure(id)).contains("connection reset");
+
+    effects.retry(id, Instant.now().plus(Duration.ofHours(1)), "timed out");
+    assertThat(effects.lastFailure(id))
+        .as("overwritten by the MOST RECENT attempt's reason")
+        .contains("timed out");
   }
 
   @Test

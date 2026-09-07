@@ -224,28 +224,43 @@ final class EffectWorker {
 
   /**
    * The {@link RetryPolicy} said stop: retires the obligation, logs it loudly (I4, Task 7 fix
-   * round), and folds an outcome into the agent ONLY for the two call-shaped effects, {@code
-   * AskApprover} and {@code RunTool} -- reusing the very {@link Input} each already answers with
-   * when its external call fails, so exhaustion reads to {@code AgentLogic} like any other failed
-   * call rather than a new case it has to learn. Every other kind folds NOTHING: {@code TakeWork}
-   * and {@code CallModel} used to dispatch {@code Input.ModelFailed} here, which made {@code
-   * endTurn} emit a fresh {@code TakeWork} with {@code attempts} reset to zero -- an unreadable
-   * backlog row or a chronically broken model call then looped forever, narrating turns that never
-   * started. {@code Remember.*}, {@code Release} and {@code Forget} produce no {@link Input} on
-   * success either -- they {@link #settle} rather than {@link #tell} -- so there was never anything
-   * to fold for them. For all of these, the abandoned row and its logged reason ARE the whole
-   * story: an agent whose backlog or model call is chronically broken stalls visibly rather than
-   * spinning invisibly.
+   * round), and folds an outcome into the agent for every effect EXCEPT {@code TakeWork}, whose
+   * exhaustion folds nothing.
+   *
+   * <p><b>{@code TakeWork} is the one case that must never fold, and the reason is specific to it,
+   * not a property of "engine-owned effects" in general (an earlier version of this javadoc claimed
+   * exactly that, uniformly, and was wrong to).</b> A backlog row that cannot be read has not
+   * started a turn -- {@code state.busy()} is still false, nothing is narrated yet -- so
+   * dispatching {@code Input.ModelFailed} here would make {@code endTurn} emit a FRESH {@code
+   * TakeWork} at {@code attempts=0}, and the SAME unreadable row loops forever, narrating turns
+   * that never started. Folding nothing and leaving the abandoned row's reason as the whole story
+   * is what breaks that cycle.
+   *
+   * <p>{@code CallModel} has no such cycle: it always runs INSIDE a turn {@code TakeWork} already
+   * started, and {@code endTurn} never emits another {@code CallModel} -- only {@code Remember.*},
+   * {@code Release} and a {@code TakeWork} for whatever the backlog holds NEXT. So a model call
+   * that is chronically broken fails the CURRENT turn once and moves on to the next backlog item,
+   * rather than spinning on the same row; dispatching {@code Input.ModelFailed} here is exactly
+   * what makes that happen, and carries the provider's own last message ({@code
+   * EffectStore#lastFailure}, read off the row before {@code abandon} overwrites it) rather than a
+   * generic "gave up after N failures" -- the same text a single un-retried failure would have
+   * produced via {@link #run}'s {@code broke} path. {@code AskApprover} and {@code RunTool} fold
+   * the same way, reusing the {@link Input} each already answers with when its external call fails.
+   * {@code Remember.*}, {@code Release} and {@code Forget} produce no {@link Input} on success
+   * either -- they {@link #settle} rather than {@link #tell} -- so there is nothing to fold for
+   * them regardless.
    *
    * <p>Called BEFORE any external work is attempted, from the top of {@link #perform} -- so a spent
    * effect closes without making the call it would otherwise have retried one time too many.
    */
   private void giveUp(
       AgentId agentId, TurnId turnId, Effect effect, EffectId effectId, String reason) {
+    // Read BEFORE abandon() below overwrites this same column: a real provider message from the
+    // most recent retry, if one was ever made -- see #lastFailure and CallModel's own case.
+    String lastFailure = deps.effects().lastFailure(effectId).orElse(reason);
     deps.effects().abandon(effectId, reason);
-    // I4 (Task 7 fix round), applied uniformly: exhaustion of ANY effect is loud on its own,
-    // whether or not the switch below also folds something into the agent -- an operator reading
-    // logs should never have to infer abandonment from its absence.
+    // Loud on its own, whether or not the switch below also folds something into the agent -- an
+    // operator reading logs should never have to infer abandonment from its absence.
     LOG.error(
         "[{}] obligation {} ({}) exhausted its retry budget and was abandoned: {}",
         agentId.value(),
@@ -253,16 +268,20 @@ final class EffectWorker {
         effect,
         reason);
     switch (effect) {
-      // I4's ruling: exhaustion of an engine-owned effect ABANDONS the row and folds NOTHING --
-      // it does not dispatch ModelFailed (which used to make endTurn emit a FRESH TakeWork with
-      // attempts=0, so an unreadable backlog row looped forever narrating turns that never
-      // started) and does not invent an Input arm to say so (a new arm is a public-API concept
-      // needing sign-off this round does not have). The abandoned row with its reason IS the
-      // operator's signal; an agent whose backlog or model call is chronically broken stalls
-      // visibly rather than spinning invisibly.
-      case Effect.TakeWork _, Effect.CallModel _ -> {
+      // The ONE case that folds nothing -- see the method javadoc for why this is TakeWork-specific
+      // rather than a property shared with CallModel. The abandoned row with its reason IS the
+      // operator's signal; a chronically unreadable backlog stalls visibly rather than spinning
+      // invisibly.
+      case Effect.TakeWork _ -> {
         // Folds nothing -- see above.
       }
+      // lastFailure, not the generic "gave up after N failures" reason: a model that throws the
+      // SAME error on every attempt should fail the turn with that error, exactly as a single
+      // un-retried failure already does via #run's own broke path -- not with a policy verdict
+      // about how many times it was asked. null, not effectId, for the same reason giveUpCall's
+      // own dispatch does: abandon() above already discharged this row.
+      case Effect.CallModel _ ->
+          deps.dispatcher().dispatch(agentId, new Input.ModelFailed(lastFailure), null, null);
       case Effect.AskApprover ask ->
           giveUpCall(agentId, turnId, ask.callId(), reason + "; the call was not made");
       case Effect.RunTool run ->
@@ -320,7 +339,7 @@ final class EffectWorker {
         throw failure;
       }
       LOG.warn("[{}] settle failed, retrying in {}", effectId, retryDelay, failure);
-      deps.effects().retry(effectId, Instant.now().plus(retryDelay));
+      deps.effects().retry(effectId, Instant.now().plus(retryDelay), describe(failure));
       return;
     }
     deps.effects().complete(effectId);
@@ -834,7 +853,7 @@ final class EffectWorker {
                   effectId,
                   retryDelay,
                   description);
-              deps.effects().retry(effectId, Instant.now().plus(retryDelay));
+              deps.effects().retry(effectId, Instant.now().plus(retryDelay), description);
             });
   }
 

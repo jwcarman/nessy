@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
@@ -114,8 +115,9 @@ final class EffectStore {
       "UPDATE nessy_effect SET status = ?, actionable_at = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ? AND status = ?";
   private static final String RETRY =
-      "UPDATE nessy_effect SET status = ?, actionable_at = ?, attempts = attempts + 1"
+      "UPDATE nessy_effect SET status = ?, actionable_at = ?, attempts = attempts + 1, reason = ?"
           + " WHERE effect_id = ?";
+  private static final String REASON = "SELECT reason FROM nessy_effect WHERE effect_id = ?";
   private static final String STATUS_AND_ACTIONABLE =
       "SELECT status, actionable_at FROM nessy_effect WHERE effect_id = ?";
   // R-AC (Task 7 fix round 2): SETS status back to PENDING, not just actionable_at. A sibling
@@ -346,14 +348,31 @@ final class EffectStore {
 
   /**
    * The failure write-back: back to PENDING, actionable at the given moment, {@code attempts}
-   * incremented -- this failure is now counted. Called by {@code EffectWorker} the moment it
-   * observes a genuine failure and has already asked {@link RetryPolicy} for a delay, rather than
-   * leaving the row to be revisited only when its watchdog lapses.
+   * incremented -- this failure is now counted -- and {@code reason} recorded. Called by {@code
+   * EffectWorker} the moment it observes a genuine failure and has already asked {@link
+   * RetryPolicy} for a delay, rather than leaving the row to be revisited only when its watchdog
+   * lapses.
+   *
+   * <p>{@code reason} is overwritten on every retry, so the row always carries the MOST RECENT
+   * attempt's failure -- which is what lets {@link #lastFailure} hand a chronically failing {@code
+   * CallModel} obligation's real provider message forward to {@code giveUp}, rather than only the
+   * generic "gave up after N failures" a policy's own verdict produces.
    */
-  void retry(EffectId id, Instant actionableAt) {
+  void retry(EffectId id, Instant actionableAt, String reason) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
-    jdbc.sql(RETRY).param(PENDING).param(actionableAt).param(id.value()).update();
+    jdbc.sql(RETRY).param(PENDING).param(actionableAt).param(reason).param(id.value()).update();
+  }
+
+  /**
+   * What the last recorded attempt at {@code id} failed with, if any attempt has failed yet --
+   * empty for a row still on its first attempt. Read by {@code giveUp} BEFORE it overwrites this
+   * same column with the exhaustion's own reason, so a real provider message survives to the fold
+   * an exhausted {@code CallModel} produces instead of being replaced by a generic one.
+   */
+  Optional<String> lastFailure(EffectId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    return jdbc.sql(REASON).param(id.value()).query(String.class).optional();
   }
 
   /**

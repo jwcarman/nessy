@@ -19,6 +19,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -26,12 +27,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * A model call that never even starts streaming.
@@ -41,13 +42,13 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * the whole call, request-building included, on the blocking executor precisely so a synchronous
  * throw there is caught the same way a failure mid-stream would be.
  *
- * <p>{@code CallModel} is engine-owned, so a provider that throws on EVERY attempt is retried
- * against {@link RetryPolicy} exactly like {@code TakeWork} (design of record 2026-09-04, Task 7,
- * I4) -- it does not fold {@code Input.ModelFailed} and end the turn; it retries, then abandons the
- * obligation with a reason recorded on the row and a loud log line, folding nothing. The backlog
- * read that started this turn DID succeed, so unlike a {@code TakeWork} exhaustion, {@code
- * TurnStarted} IS narrated -- what never arrives is a {@code TurnEnded}, because there is no path
- * left that produces one.
+ * <p>{@code CallModel} is engine-owned, so a throw that keeps happening is retried against {@link
+ * RetryPolicy} rather than folded on the first attempt -- but unlike {@code TakeWork}, its
+ * exhaustion still ends the turn as {@link TurnResult.Failed}, carrying the provider's own message
+ * (design of record 2026-09-04, Task 7's I4, corrected: the loop I4 exists to prevent is {@code
+ * TakeWork}-specific, not a property every engine-owned effect shares -- see {@code
+ * EffectWorker#giveUp}'s javadoc). The message it carries is the LAST real attempt's, read off the
+ * effect row before it is abandoned, not a generic "gave up after N failures".
  */
 @DisplayName("A model provider that throws before it streams anything")
 class ModelStreamFailureTest {
@@ -81,38 +82,24 @@ class ModelStreamFailureTest {
   }
 
   @Test
-  @DisplayName(
-      "a persistently throwing model is retried, then the call is abandoned -- the turn never ends,"
-          + " and it never spins forever either")
-  void a_persistently_throwing_model_call_is_retried_then_abandoned() {
+  @DisplayName("the turn closes as failed, carrying the provider's own message")
+  void the_turn_reports_the_thrown_message_as_its_failure_reason() {
     AgentId agentId = AgentId.of("house-brokenmodel");
     Engines.observe(parts, agentId, new HouseEvent("porch", "bell"));
 
     await()
         .atMost(15, SECONDS)
-        .untilAsserted(() -> assertThat(statusOf(agentId)).isEqualTo("FAILED"));
-    assertThat(reasonOf(agentId)).contains("gave up after");
-
-    assertThat(parts.narrated().of(agentId))
-        .as("the backlog read succeeded, so the turn DID start")
-        .anyMatch(AgentEvent.TurnStarted.class::isInstance)
-        .as("CallModel exhaustion folds nothing (I4) -- no TurnEnded ever arrives")
-        .noneMatch(AgentEvent.TurnEnded.class::isInstance);
-  }
-
-  private static String statusOf(AgentId agentId) {
-    return JdbcClient.create(parts.dataSource())
-        .sql("SELECT status FROM nessy_effect WHERE agent_id = ? AND status = 'FAILED'")
-        .param(agentId.value())
-        .query(String.class)
-        .single();
-  }
-
-  private static String reasonOf(AgentId agentId) {
-    return JdbcClient.create(parts.dataSource())
-        .sql("SELECT reason FROM nessy_effect WHERE agent_id = ? AND status = 'FAILED'")
-        .param(agentId.value())
-        .query(String.class)
-        .single();
+        .untilAsserted(
+            () -> {
+              List<AgentEvent.TurnEnded> ended =
+                  parts.narrated().of(agentId).stream()
+                      .filter(AgentEvent.TurnEnded.class::isInstance)
+                      .map(AgentEvent.TurnEnded.class::cast)
+                      .toList();
+              assertThat(ended).hasSize(1);
+              assertThat(ended.getFirst().outcome()).isInstanceOf(TurnResult.Failed.class);
+              TurnResult.Failed failed = (TurnResult.Failed) ended.getFirst().outcome();
+              assertThat(failed.reason()).isEqualTo("connection pool exhausted");
+            });
   }
 }

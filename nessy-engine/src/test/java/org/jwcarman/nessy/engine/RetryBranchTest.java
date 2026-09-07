@@ -98,8 +98,8 @@ class RetryBranchTest {
   }
 
   @Test
-  @DisplayName("a failure at budget abandons the row with a reason recorded, and no call is made")
-  void a_failure_at_budget_abandons_the_row_with_a_reason_recorded() {
+  @DisplayName("a failure at budget abandons the row, folds ModelFailed, and no call is made")
+  void a_failure_at_budget_abandons_the_row_and_ends_the_turn_failed() {
     AgentType type = AgentType.of("retry-at-budget");
     List<Captured> seen = new ArrayList<>();
     java.util.concurrent.atomic.AtomicBoolean modelCalled =
@@ -136,7 +136,16 @@ class RetryBranchTest {
             "giveUp closes the obligation before making the call it would"
                 + " otherwise retry one time too many")
         .isFalse();
-    assertThat(seen).as("I4: exhaustion of an engine-owned effect folds nothing").isEmpty();
+    // CallModel is the corrected half of I4 (Task 7 fix round): unlike TakeWork, its exhaustion
+    // DOES fold -- endTurn never emits another CallModel, so there is no loop to protect against,
+    // and folding is what lets the turn actually end as Failed instead of hanging forever.
+    assertThat(seen).isNotEmpty();
+    assertThat(seen)
+        .extracting(Captured::input)
+        .singleElement()
+        .isInstanceOf(Input.ModelFailed.class)
+        .extracting(input -> ((Input.ModelFailed) input).reason())
+        .isEqualTo("gave up after 3 failures");
     assertThat(statusOf(parts, effectId)).isEqualTo("FAILED");
     assertThat(reasonOf(parts, effectId)).contains("gave up after 3 failures");
   }
