@@ -85,19 +85,22 @@ public interface Harness<O> {
   AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber);
 
   /**
-   * Listens from where a previous listener left off, if this implementation can manage it.
+   * Listens from where a previous listener left off, replaying whatever this process still
+   * remembers.
    *
    * <p>{@code lastEventId} is the {@link AgentEvent#id()} of the last event that listener actually
    * received. This is the shape a browser hands you: SSE reconnects carry a {@code Last-Event-ID}
    * header holding exactly this, so a controller can pass it straight through. Event ids are UUIDv7
    * and therefore time-ordered, which is what lets one double as a cursor.
    *
-   * <p><b>Replay is optional.</b> Producing it needs a durable, ordered record of past events to
-   * replay FROM, which not every implementation has. One that does not MUST throw {@link
-   * UnsupportedOperationException} for a non-null {@code lastEventId} rather than silently starting
-   * the listener at "now" and looking like it worked. A null {@code lastEventId} means "start from
-   * now" and is what {@link #subscribe(AgentId, AgentSubscriber)} passes — every implementation
-   * accepts that.
+   * <p><b>Replay is bounded, per-node, and ephemeral — not a durable log.</b> A reconnecting
+   * subscriber is replayed whatever THIS process still remembers of that agent's recent events, and
+   * no more: it exists so a browser does not lose a sentence mid-word across a brief reconnect, not
+   * so history can be replayed from cold after a restart or from a different node. A {@code
+   * lastEventId} older than what this process still holds, or naming an agent this node has not
+   * heard from since it started, replays only what survived. A null {@code lastEventId} means
+   * "start from now" and replays nothing, which is what {@link #subscribe(AgentId,
+   * AgentSubscriber)} passes.
    */
   AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber, String lastEventId);
 }
