@@ -182,9 +182,10 @@ final class EffectWorker {
     switch (effect) {
       case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried, retryDelay);
       case Effect.CallModel() -> callModel(agentId, turnId, effectId, carried, retryDelay);
-      case Effect.AskApprover ask ->
-          askApprover(agentId, turnId, ask, effectId, carried, retryDelay);
-      case Effect.RunTool run -> runTool(agentId, turnId, run, effectId, carried, retryDelay);
+      // R-AB: AskApprover and RunTool take no retryDelay -- a thrown tool or approver has RUN;
+      // its outcome is a failure result the model sees on the spot, never a retried obligation.
+      case Effect.AskApprover ask -> askApprover(agentId, turnId, ask, effectId, carried);
+      case Effect.RunTool run -> runTool(agentId, turnId, run, effectId, carried);
       case Effect.Remember.Input() ->
           settle(effectId, () -> rememberInput(agentId, state, turnId), retryDelay);
       case Effect.Remember.Answer() ->
@@ -464,8 +465,7 @@ final class EffectWorker {
       TurnId turnId,
       Effect.AskApprover ask,
       EffectId effectId,
-      Map<String, String> carried,
-      Duration retryDelay) {
+      Map<String, String> carried) {
     ToolCall call = callOf(agentId, turnId, ask.callId());
     if (call == null) {
       completed(
@@ -538,15 +538,24 @@ final class EffectWorker {
                         }
                       },
                   failure -> {
-                    ApprovalResult broke = ApprovalResult.denied("the approver failed: " + failure);
-                    denialResult(broke)
-                        .ifPresent(denied -> hold(agentId, turnId, call.id(), denied));
-                    return new Input.ApprovalGiven(call.id(), call.name(), broke);
+                    // R-AB: a thrown approver is NOT a denial -- do not synthesize one. The call
+                    // simply failed, exactly like a thrown tool below, and the model is told so as
+                    // a ToolResult.Failure, not handed an ApprovalResult nobody actually decided.
+                    hold(
+                        agentId,
+                        turnId,
+                        call.id(),
+                        ToolResult.error("the approver failed: " + failure));
+                    return new Input.ToolCompleted(call.id());
                   },
                   agentId,
                   effectId,
                   carried,
-                  retryDelay);
+                  // R-AB: never retried. An approver has RUN the moment it throws -- exactly one
+                  // attempt, always, whatever attempts/retryDelay the top of #perform computed for
+                  // a stalled-worker pickup (see EffectStore#take / C1). Null here means a throw
+                  // folds immediately through #run's own broke-path above, same as runTool below.
+                  null);
             },
             () ->
                 completed(
@@ -563,8 +572,7 @@ final class EffectWorker {
       TurnId turnId,
       Effect.RunTool run,
       EffectId effectId,
-      Map<String, String> carried,
-      Duration retryDelay) {
+      Map<String, String> carried) {
     ToolCall call = callOf(agentId, turnId, run.callId());
     if (call == null) {
       completed(
@@ -610,7 +618,14 @@ final class EffectWorker {
                     agentId,
                     effectId,
                     carried,
-                    retryDelay));
+                    // R-AB: never retried. A tool has RUN the moment it throws -- its outcome is a
+                    // failure RESULT the model is entitled to see and reason about, not an
+                    // unfinished obligation, and tools are not idempotent in general: re-invoking
+                    // one that may already have had a side effect is worse than not retrying at
+                    // all. Exactly one attempt, always -- null forces #run's broke-path above
+                    // regardless of what attempts/retryDelay the top of #perform computed for a
+                    // stalled-worker pickup (see EffectStore#take / C1).
+                    null));
   }
 
   /**
