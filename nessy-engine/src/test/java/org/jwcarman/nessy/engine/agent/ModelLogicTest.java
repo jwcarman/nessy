@@ -52,6 +52,7 @@ class ModelLogicTest {
       assertThat(decision.then())
           .containsExactly(
               new Effect.Remember.Answer(),
+              new Effect.Narrate.Answered(),
               new Effect.Narrate.TurnEnded(new TurnResult.Completed(), NOTHING_MEASURED),
               new Effect.Release(),
               new Effect.TakeWork());

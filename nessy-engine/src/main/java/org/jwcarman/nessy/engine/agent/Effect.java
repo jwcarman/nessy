@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
   @JsonSubTypes.Type(value = Effect.Release.class, name = "release"),
   @JsonSubTypes.Type(value = Effect.Forget.class, name = "forget"),
   @JsonSubTypes.Type(value = Effect.Narrate.TurnStarted.class, name = "narrate-turn-started"),
+  @JsonSubTypes.Type(value = Effect.Narrate.Answered.class, name = "narrate-answered"),
   @JsonSubTypes.Type(value = Effect.Narrate.TurnEnded.class, name = "narrate-turn-ended"),
   @JsonSubTypes.Type(
       value = Effect.Narrate.ApprovalDecided.class,
@@ -105,6 +106,18 @@ public sealed interface Effect {
   sealed interface Narrate extends Effect {
 
     record TurnStarted(TurnId turnId) implements Narrate {}
+
+    /**
+     * The model settled on an answer -- narrated as its own effect, ordered ahead of {@link
+     * TurnEnded}, because it is decided at the same moment {@code TurnEnded} is and must not wait
+     * on the durable write {@link Remember.Answer} makes of the same fact.
+     *
+     * <p>Carries nothing: the shell redeems the same claim {@link Remember.Answer} redeems, which
+     * is already written by the time this effect is decided (see {@code EffectWorker#answerOf}) --
+     * so narrating never depends on whether the durable write has run, only on whether the model
+     * actually answered.
+     */
+    record Answered() implements Narrate {}
 
     record TurnEnded(TurnResult result, Usage usage) implements Narrate {}
 

@@ -59,6 +59,7 @@ class EffectSerializationTest {
         new Case(new Effect.Release(), "release"),
         new Case(new Effect.Forget(), "forget"),
         new Case(new Effect.Narrate.TurnStarted(TurnId.of("t1")), "narrate-turn-started"),
+        new Case(new Effect.Narrate.Answered(), "narrate-answered"),
         new Case(
             new Effect.Narrate.TurnEnded(new TurnResult.Completed(), Usage.unreported()),
             "narrate-turn-ended"),

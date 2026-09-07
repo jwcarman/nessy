@@ -45,7 +45,11 @@ public final class AgentLogic {
       case Input.Recovered() -> onRecovered(state);
       case Input.NoWork() -> Decision.nothing(state.finished());
       case Input.ModelAnswered.Answered(var stopReason, var usage) ->
-          endTurn(state.spending(usage), resultOf(stopReason), new Effect.Remember.Answer());
+          endTurn(
+              state.spending(usage),
+              resultOf(stopReason),
+              new Effect.Remember.Answer(),
+              new Effect.Narrate.Answered());
       case Input.ModelAnswered.Asked asked -> onAsked(state.spending(asked.usage()), asked);
       case Input.ModelAnswered.Refused(var category, var explanation, var usage) ->
           endTurn(state.spending(usage), new TurnResult.Refused(category, explanation));
@@ -133,9 +137,15 @@ public final class AgentLogic {
    * <p>Remember before release, because releasing drops the claims the exchange is written from;
    * and take again at the end, because an agent that finishes without asking for the next piece of
    * work is an agent that needs a nudge to notice work it already has.
+   *
+   * <p>{@code before} carries whatever this exit needs ordered ahead of {@link
+   * Effect.Narrate.TurnEnded} -- a genuine answer adds {@code Remember.Answer()} AND {@code
+   * Narrate.Answered()}, in that order, so the durable write is issued first but the narration does
+   * not wait on it: {@code Narrate} is its own disposition, performed synchronously the moment this
+   * decision commits, never behind a row {@link Remember.Answer} leaves for the poller.
    */
-  private static Decision endTurn(AgentState state, TurnResult result, Effect... remembering) {
-    List<Effect> then = new ArrayList<>(List.of(remembering));
+  private static Decision endTurn(AgentState state, TurnResult result, Effect... before) {
+    List<Effect> then = new ArrayList<>(List.of(before));
     then.add(new Effect.Narrate.TurnEnded(result, state.usage()));
     then.add(new Effect.Release());
     // The one place a busy agent's forget is honoured: it asked to go, and now it can.

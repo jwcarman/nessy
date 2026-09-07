@@ -709,13 +709,17 @@ final class EffectWorker {
         .ifPresent(input -> deps.memory().remember(agentId, input));
   }
 
+  /**
+   * The durable write alone -- narrating {@code Answered} is {@link Effect.Narrate.Answered}'s job
+   * now, not this one's. Hanging the narration off this write used to make it exactly transactional
+   * with the record: a retried write narrated late, and an abandoned one never narrated at all,
+   * even though the model genuinely answered. {@code Narrator}'s own contract is that narration is
+   * at-least-once and never transactional with the record -- so the two are separate effects,
+   * decided together but performed on their own schedules.
+   */
   private void rememberAnswer(AgentId agentId, TurnId turnId) {
     redeem(agentId, turnId, ANSWER_KEY, answerCodec)
-        .ifPresent(
-            answer -> {
-              narrator(agentId).narrate(new AgentEvent.Answered(Identifiers.next(), answer));
-              deps.memory().remember(agentId, answer);
-            });
+        .ifPresent(answer -> deps.memory().remember(agentId, answer));
   }
 
   /**
@@ -781,6 +785,12 @@ final class EffectWorker {
     switch (narrate) {
       case Effect.Narrate.TurnStarted(_) ->
           narrator(agentId).narrate(new AgentEvent.TurnStarted(Identifiers.next()));
+      case Effect.Narrate.Answered() ->
+          redeem(agentId, turnId, ANSWER_KEY, answerCodec)
+              .ifPresent(
+                  answer ->
+                      narrator(agentId)
+                          .narrate(new AgentEvent.Answered(Identifiers.next(), answer)));
       case Effect.Narrate.TurnEnded(var result, var usage) ->
           narrator(agentId).narrate(new AgentEvent.TurnEnded(Identifiers.next(), result, usage));
       case Effect.Narrate.ApprovalDecided(var callId, var result) ->
