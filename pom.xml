@@ -90,14 +90,20 @@
          property so each artifact resolves to a version that actually
          exists. -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
-    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.7.0 is the first release
-         carrying codec-transforms, codec-crypto, codec-zstd and codec-lz4 — the appendable
-         byte[] -> byte[] set the shared codec pipeline composes.
+    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
+         TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
+         Without them a TypeRef for a generic container cannot be built at runtime: the
+         anonymous-subclass capture throws on a type variable — deliberately, rather than
+         silently degrading to Object — so a caller's observation type could not be composed
+         into the agent document's own type. That is a hard requirement, not a convenience.
+
+         The appendable byte[] -> byte[] set the shared codec pipeline composes (codec-transforms,
+         codec-crypto, codec-zstd, codec-lz4) has been present since 0.7.0.
 
          The VALUE codec stays codec-jackson2. Not inertia: our types carry Jackson annotations,
-         and Jackson 2 measured MUCH faster than 3 in James's benchmarks (2026-08-28). 0.7.0 also
+         and Jackson 2 measured MUCH faster than 3 in James's benchmarks (2026-08-28). codec also
          ships codec-jackson (Jackson 3); we deliberately do not use it. -->
-    <codec.version>0.7.0</codec.version>
+    <codec.version>0.9.0</codec.version>
     <!-- org.jwcarman.continuum 0.4.0 (Central release): the durable-computation
          library Nessy adopts for pending/deadline/expiry/memoized-outcome/outbox
          (2026-08-24 continuum-adoption spec). 0.4.0 is the line whose
