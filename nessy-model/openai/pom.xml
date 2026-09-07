@@ -41,6 +41,19 @@
       <groupId>com.openai</groupId>
       <artifactId>openai-java</artifactId>
     </dependency>
+    <!-- The @AutoConfiguration door: no Boot BOM import here (see nessy-console/pom.xml's comment
+         on the same tradeoff) — the one Boot artifact this module actually uses, pinned directly. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
+      <version>${spring-boot.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-test</artifactId>
+      <version>${spring-boot.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

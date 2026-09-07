@@ -61,14 +61,12 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
  *
  * <p><b>The application supplies the {@link ModelProvider}, as a bean.</b> This requires one and
  * fails at startup when none exists, which is a better failure than a mystery at the first turn.
- *
- * <p>{@code nessy-model-discovery} exists and would build a provider from whatever credentials are
- * in the environment, and this starter deliberately does not use it (ruled 2026-08-31). Declaring a
- * bean IS how a Spring application says which collaborator it wants; a starter that instead went
- * looking at the process environment would be a second, quieter way to answer the same question,
- * and the answer would depend on the shell it was launched from. An application that WANTS
- * environment-driven selection has the ordinary way to say so — call {@code ModelDiscovery} in its
- * own {@code @Bean} method — and then the choice is written down where a reader can find it.
+ * That bean can come from either of two ordinary Boot mechanisms: the application declares one
+ * itself (as {@code WatchmanConfiguration} does), or a provider module's own
+ * {@code @AutoConfiguration} contributes it once its vendor's API key is in the environment (ruled
+ * 2026-09-04: Boot is the host, so a separate discovery library has nobody left to serve). Either
+ * way the choice is written down where a reader can find it — the application's own {@code @Bean},
+ * or the one provider jar it chose to put on the classpath.
  */
 // AFTER Boot's own JDBC auto-configuration. Ordering is not cosmetic here: the approvals
 // projection is @ConditionalOnBean(JdbcTemplate), and a condition evaluated before Boot has

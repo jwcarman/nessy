@@ -122,8 +122,8 @@
     </dependency>
     <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
          that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
-         that talks to it, pointed at a different base URL, exactly as XaiModelProviderBootstrap
-         points it at x.ai. -->
+         that talks to it, pointed at a different base URL, exactly as this module's own xAI
+         auto-configuration points it at x.ai. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>

@@ -95,10 +95,10 @@ public final class OpenAiProviderConfig {
   /**
    * The semconv {@code gen_ai.provider.name} every {@link org.jwcarman.nessy.spi.model.Model} the
    * finished gateway mints will report (agentic-o11y spec §1.1) — package-private, because it is
-   * for this module's own bootstraps and not for application code. This class is shared by every
-   * OpenAI-compatible vendor, so {@code XaiModelProviderBootstrap} sets {@code x_ai} here where the
-   * OpenAI bootstrap leaves the {@code openai} default alone; a turn against api.x.ai must not be
-   * reported as an OpenAI one.
+   * for this module's own factories and not for application code. This class is shared by every
+   * OpenAI-compatible vendor, so {@link OpenAiAutoConfiguration#xaiModelProvider} sets {@code x_ai}
+   * here where the OpenAI path leaves the {@code openai} default alone; a turn against api.x.ai
+   * must not be reported as an OpenAI one.
    */
   OpenAiProviderConfig provider(String provider) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");

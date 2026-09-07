@@ -31,9 +31,10 @@ import org.jwcarman.nessy.spi.model.Model;
  * construction rather than a constant, otherwise every xAI turn would be reported, and billed in a
  * dashboard, as an OpenAI one.
  *
- * <p>The xAI half of that is UNTESTED at present: it was pinned through {@code
- * XaiModelProviderBootstrap}, and ServiceLoader discovery has no counterpart in the new SPI. When a
- * discovery seam returns, so should a test that an xAI-built gateway reports {@code x_ai}.
+ * <p>The xAI half of that is UNTESTED at present: it is pinned through {@code
+ * OpenAiAutoConfiguration#xaiModelProvider}, exercised by {@code OpenAiAutoConfigurationTest}'s
+ * bean-wiring assertions, but nothing there makes a call and inspects what got reported. When
+ * something does, so should a test that an xAI-built gateway reports {@code x_ai}.
  */
 class OpenAiProviderNameTest {
 
