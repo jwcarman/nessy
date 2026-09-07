@@ -112,6 +112,12 @@ final class EffectStore {
   private static final String RETRY =
       "UPDATE nessy_effect SET status = ?, actionable_at = ?, attempts = attempts + 1"
           + " WHERE effect_id = ?";
+  private static final String STATUS_AND_ACTIONABLE =
+      "SELECT status, actionable_at FROM nessy_effect WHERE effect_id = ?";
+  private static final String DEFER_SIBLINGS =
+      "UPDATE nessy_effect SET actionable_at = ?"
+          + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND ordinal > ?"
+          + " AND status IN (?, ?)";
   private static final String ABANDON =
       "UPDATE nessy_effect SET status = ?, reason = ?, actionable_at = NULL,"
           + " attempts = attempts + 1 WHERE effect_id = ?";
@@ -337,6 +343,75 @@ final class EffectStore {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
     jdbc.sql(RETRY).param(PENDING).param(actionableAt).param(id.value()).update();
+  }
+
+  /**
+   * Whether {@code id}'s outcome was already decided SYNCHRONOUSLY, inside the {@code perform} call
+   * that just returned -- read by {@code EffectPoller} the instant it does, to decide whether the
+   * rest of this agent's group should keep running this pass. See C2 in the Task 7 fix round.
+   *
+   * <p>A synchronous {@code settle} failure writes {@code retry} (the row goes {@code PENDING}) or
+   * {@code giveUp} writes {@code abandon} (the row goes {@code FAILED}) before {@code perform}
+   * returns -- both are the outcome landing IN, and both {@link Held#held()}. Asynchronous work (a
+   * model call, a tool, an approver) answers later, on a different thread entirely, so the row this
+   * reads is still {@code RUNNING} the moment {@code perform} returns -- same as a row that quietly
+   * succeeded and was {@link #complete}d (gone entirely). Both of those are NOT held: keep going.
+   */
+  Held heldAt(EffectId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    List<Held> rows =
+        jdbc.sql(STATUS_AND_ACTIONABLE)
+            .param(id.value())
+            .query(
+                (rs, rowNum) -> {
+                  String status = rs.getString("status");
+                  java.sql.Timestamp actionableAt = rs.getTimestamp("actionable_at");
+                  return switch (status) {
+                    case PENDING ->
+                        // A real retry -- actionable_at is the backoff EffectWorker just scheduled.
+                        new Held(true, actionableAt.toInstant());
+                    case FAILED ->
+                        // Abandoned: terminal, with no natural "next" moment of its own --
+                        // actionable_at is NULL by construction (see ABANDON).
+                        new Held(true, null);
+                    default -> new Held(false, null);
+                  };
+                })
+            .list();
+    return rows.isEmpty() ? new Held(false, null) : rows.get(0);
+  }
+
+  /**
+   * Whether an obligation's outcome landed synchronously, and if so, the moment its siblings should
+   * be deferred to. See {@link #heldAt}.
+   */
+  record Held(boolean held, Instant deferSiblingsTo) {}
+
+  /**
+   * Pushes every still-outstanding row of ONE agent's SAME turn, above {@code afterOrdinal}, out to
+   * {@code actionableAt} -- called by {@code EffectPoller} the instant it finds that an earlier row
+   * in this pass's group retried or was abandoned, so a sibling ordinal after it (already marked
+   * {@code RUNNING} by THIS pass's own {@link #attempt}) does not come due on its own, unrelated
+   * watchdog before the retry does, and run past a row that has not run yet -- see C2 in the Task 7
+   * fix round. Restricted to {@code PENDING}/{@code RUNNING}: a {@code PARKED} row's {@code
+   * actionable_at} is a human's deadline, never this mechanism's to move.
+   *
+   * @return how many sibling rows were pushed out
+   */
+  int deferSiblings(
+      AgentType agentType, AgentId agentId, TurnId turnId, int afterOrdinal, Instant actionableAt) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(actionableAt, "actionableAt must not be null");
+    return jdbc.sql(DEFER_SIBLINGS)
+        .param(actionableAt)
+        .param(agentType.name())
+        .param(agentId.value())
+        .param(turnId == null ? null : turnId.value())
+        .param(afterOrdinal)
+        .param(PENDING)
+        .param(RUNNING)
+        .update();
   }
 
   /**

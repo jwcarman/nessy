@@ -168,6 +168,34 @@ final class EffectPoller {
     }
     for (EffectStore.Attempted attempted : rows) {
       runtime.perform(agentId, state.get(), attempted);
+      EffectStore.Held held = effects.heldAt(attempted.id());
+      if (held.held()) {
+        // C2: a retried or abandoned row must not be overtaken by its own not-yet-run siblings --
+        // ordinal order only means anything if a failure stops the line. The siblings stay marked
+        // RUNNING (this pass's own attempt() already claimed them); deferring them, rather than
+        // leaving their existing watchdog stand, is what stops a SHORT watchdog from making them
+        // due again before the retry is, reopening the very race from the other side.
+        if (held.deferSiblingsTo() != null) {
+          int deferred =
+              effects.deferSiblings(
+                  agentType,
+                  agentId,
+                  attempted.turnId(),
+                  attempted.ordinal(),
+                  held.deferSiblingsTo());
+          LOG.debug(
+              "[{}] {} retried; held back and deferred {} sibling(s) in this pass",
+              agentId.value(),
+              attempted.id(),
+              deferred);
+        } else {
+          LOG.debug(
+              "[{}] {} was abandoned; held back the rest of this pass's group",
+              agentId.value(),
+              attempted.id());
+        }
+        return;
+      }
     }
   }
 }
