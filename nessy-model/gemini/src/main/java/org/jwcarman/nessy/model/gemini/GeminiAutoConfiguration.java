@@ -16,34 +16,34 @@
 package org.jwcarman.nessy.model.gemini;
 
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Gemini as a Boot citizen: {@code GEMINI_API_KEY} present (Boot's relaxed binding reads it as
- * {@code gemini.api-key}) contributes a {@link GeminiModelProvider} bean built from that key.
+ * Gemini as a Boot citizen: {@code GEMINI_API_KEY} or {@code GOOGLE_API_KEY} present — Google's own
+ * documented fallback pair, Boot's relaxed binding reading them as {@code gemini.api-key} / {@code
+ * google.api-key} — contributes a {@link GeminiModelProvider} bean built from {@link
+ * GeminiProviderConfig#fromEnv()}, which is what actually reads both variables, in that order.
  *
- * <p>Google's documented fallback pair also reads {@code GOOGLE_API_KEY} when {@code
- * GEMINI_API_KEY} is unset; this bean is gated on {@code gemini.api-key} specifically, since Boot's
- * {@code @ConditionalOnProperty} names one property. An application that authenticates only through
- * {@code GOOGLE_API_KEY} declares its own {@code ModelProvider} bean — {@code
- * GeminiModelProvider.create(GeminiProviderConfig::fromEnv)} still reads both variables, in that
- * order, exactly as it always has.
+ * <p>The gate has to name both properties, not just {@code gemini.api-key}: a condition narrower
+ * than the factory it guards is a trap — an application setting {@code GOOGLE_API_KEY} alone would
+ * set a key the factory demonstrably reads and get no bean, with nothing to explain why. {@code
+ * fromEnv()} is the one already correct here; widening it to match a narrower gate would have been
+ * the wrong fix.
  *
  * <p>{@code @ConditionalOnMissingBean} rather than a hard requirement: an application that declares
  * its own {@link ModelProvider} bean is choosing one explicitly, and this backs off entirely — the
  * same convention {@code NessyAutoConfiguration} follows.
  */
 @AutoConfiguration
-@ConditionalOnProperty(name = "gemini.api-key")
+@ConditionalOnExpression("'${gemini.api-key:}' != '' or '${google.api-key:}' != ''")
 public class GeminiAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean(ModelProvider.class)
-  public ModelProvider geminiModelProvider(@Value("${gemini.api-key}") String apiKey) {
-    return GeminiModelProvider.create(c -> c.apiKey(apiKey));
+  public ModelProvider geminiModelProvider() {
+    return GeminiModelProvider.create(GeminiProviderConfig::fromEnv);
   }
 }
