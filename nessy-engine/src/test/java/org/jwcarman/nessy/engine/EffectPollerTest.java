@@ -71,7 +71,8 @@ class EffectPollerTest {
             effects,
             new TransactionTemplate(new DataSourceTransactionManager(database)));
     // Every agent this test uses must have a real nessy_agent row, or AgentRuntime#peek finds
-    // nobody and the poller skips the row entirely -- see EffectPoller#runAgent.
+    // nobody and the poller abandons the row rather than performing it -- see
+    // EffectPoller#runAgent.
   }
 
   @AfterEach
@@ -203,8 +204,8 @@ class EffectPollerTest {
   }
 
   @Test
-  @DisplayName("an agent forgotten between due and attempted is skipped, not thrown")
-  void a_forgotten_agent_is_skipped_without_throwing() {
+  @DisplayName("an agent forgotten between due and attempted is abandoned, not thrown")
+  void a_forgotten_agent_is_abandoned_without_throwing() {
     // A row naming an agent that never got a nessy_agent row at all -- the sharpest version of
     // "forgotten before this pass got to it": peek() finds nobody.
     AgentId ghost = AgentId.of("house-ghost");
@@ -222,6 +223,13 @@ class EffectPollerTest {
     assertThat(seen)
         .as("but never performed, since no state exists to perform it against")
         .isEmpty();
+    assertThat(statusesFor(ghost))
+        .as("abandoned, not left for a later pass to find again")
+        .containsExactly("FAILED");
+    assertThat(reasonsFor(ghost))
+        .as("the reason names the ghost, not a generic exhaustion")
+        .allSatisfy(
+            reason -> assertThat(reason).contains(ghost.value()).contains("no longer exists"));
   }
 
   @Test
