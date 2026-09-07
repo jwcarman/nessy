@@ -70,8 +70,8 @@ durable, and the answer is **narrated** rather than returned. Hand the engine
 no `DataSource` and it builds an in-memory H2 and initializes it, so nothing
 else is required to run this.
 
-For a terminal agent, one call does the whole bootstrap — actor system,
-cluster, harness and loop:
+For a terminal agent, one call does the whole bootstrap — database, engine,
+harness and loop:
 
 ```java
 public static void main(String[] args) {
@@ -195,7 +195,7 @@ environment; a non-Spring application constructs one directly.
 
 | Capability | Site page |
 |---|---|
-| Agent as scope — one actor per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
+| Agent as scope — one locked row per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
 | Durable computation — parked calls, deadlines as rows, recovery on every activation | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
 | Tools — structured calls, sealed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization — approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |

@@ -13,7 +13,7 @@ harness.observe(AgentId.of("house-12"), "the porch light came on");
 
 There is no handle in between. An earlier design handed you a transient
 `Agent<O>` per id; it was deleted, because a handle is a thing that can go
-stale and sharding already knows where an agent lives.
+stale and a row lock already knows where an agent lives.
 
 ## Exactly one worker per id
 
@@ -57,9 +57,9 @@ sealed interface Phase {
 transition you can assert on instead of a stale-snapshot check bolted onto
 something else.
 
-The actor itself is a thin shell. It translates a message into an input,
-calls a **pure function**, persists what comes back, and runs the
-instructions:
+The engine itself is a thin shell around that row. It translates a message
+into an input, calls a **pure function**, persists what comes back, and
+runs the instructions:
 
 ```java
 Decision decide(AgentState state, Input input);
