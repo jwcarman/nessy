@@ -16,12 +16,14 @@
 package org.jwcarman.nessy.engine;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.random.RandomGenerator;
 import javax.sql.DataSource;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -48,6 +50,8 @@ public final class EngineConfig {
   private Clock clock = Clock.systemUTC();
   private ReplyTokens tokens;
   private Traces traces = Traces.noop();
+  private RetryPolicy retryPolicy;
+  private RandomGenerator random;
 
   /** The actor system the engine shards its agents across. Required. */
   public EngineConfig system(ActorSystem<?> system) {
@@ -132,6 +136,30 @@ public final class EngineConfig {
     return this;
   }
 
+  /**
+   * How many more times an obligation may be tried, and how long to wait before the next one, for
+   * every effect that names no binding of its own -- {@code CallModel}, {@code TakeWork}, {@code
+   * Remember.*} and {@code Release} (design of record 2026-09-04, Task 7). Per-binding policies for
+   * {@code AskApprover} and {@code RunTool} are a later task's wiring; every effect uses this
+   * default today.
+   *
+   * <p>Defaults to five attempts, doubling from one second, capped at five minutes.
+   */
+  public EngineConfig retryPolicy(RetryPolicy retryPolicy) {
+    this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy must not be null");
+    return this;
+  }
+
+  /**
+   * The source of jitter {@link #retryPolicy} and the effect poller's own backoff read from.
+   * Defaults to a generator seeded from the platform's own entropy source; supply one seeded
+   * yourself only to make a test deterministic.
+   */
+  public EngineConfig random(RandomGenerator random) {
+    this.random = Objects.requireNonNull(random, "random must not be null");
+    return this;
+  }
+
   ActorSystem<?> system() {
     return Objects.requireNonNull(system, "an engine cannot be built without an actor system");
   }
@@ -168,5 +196,15 @@ public final class EngineConfig {
 
   Traces traces() {
     return traces;
+  }
+
+  RetryPolicy retryPolicy() {
+    return retryPolicy == null
+        ? RetryPolicy.exponential(Duration.ofSeconds(1), 2.0, Duration.ofMinutes(5), 5)
+        : retryPolicy;
+  }
+
+  RandomGenerator random() {
+    return random == null ? RandomGenerator.getDefault() : random;
   }
 }

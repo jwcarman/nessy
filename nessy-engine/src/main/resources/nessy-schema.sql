@@ -118,14 +118,34 @@ CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_
 -- before it releases, because releasing drops the claims the exchange is written from. Executing
 -- them out of order writes an empty exchange.
 --
--- expires_at is the watchdog, written by the same transaction that marks a row EXECUTING. It
--- covers the window where a node dies after starting external work and before its outcome is
--- durably observed. A row that expires does not mean the work FAILED -- only that nobody saw it
--- finish.
+-- actionable_at is ONE column with THREE meanings, decided by status (design of record
+-- 2026-09-04, Task 7): PENDING -- when this may next be attempted, first try or a backoff;
+-- RUNNING -- the deadline for the CURRENT attempt, and passing it is a timeout failure, not a
+-- special case -- it goes through the same retry policy as any other failure; RUNNING far in the
+-- future -- a deferral, parked on a person and correctly untouched until the term lapses. There is
+-- no separate reaper: the same poller query that finds newly-actionable PENDING rows also finds
+-- RUNNING rows whose deadline has quietly passed, because both are just "actionable_at <= now()".
+-- Nullable: FAILED is a fourth status, retired rather than actionable at all, and its row's
+-- actionable_at is cleared to NULL -- "never due again" rather than a sentinel far-future value a
+-- reader might mistake for a very long deferral.
 --
 -- turn_id is nullable: an effect can be inserted before the agent has ever started a turn (the
 -- first TakeWork of an agent's life), and a null column means exactly that -- no turn yet -- not
 -- an empty string standing in for one.
+--
+-- call_id is nullable: only AskApprover and RunTool name one, and it exists so a settled call can
+-- discharge its OWN effect row directly. AgentLogic.settle always emits CancelAlarm(callId)
+-- whichever way a call ends, so Transition, processing CancelAlarm, deletes this call's effect row
+-- in the same transaction it cancels the reminder in. Without this, a tool that defers for days
+-- and then answers leaves its row RUNNING with an actionable_at now in the past, and the next
+-- poller re-runs a tool whose call was already settled.
+--
+-- attempts counts FAILURES, not starts -- how many times this obligation has already failed, not
+-- how many times it has been picked up. Picking a row up (the poller's SELECT+UPDATE) never
+-- touches it; only the failure write-back does (EffectStore#retry, EffectStore#complete's sibling
+-- EffectStore#abandon), which is also where RetryPolicy is consulted. A bare column name gives no
+-- hint of direction, and the natural wrong guess is "attempts so far including the one in
+-- flight" -- it is not that. A first-ever attempt reads 0.
 --
 -- reason is separate from payload. A failed effect is retired, not discharged, and the payload is
 -- still the obligation it never got to keep -- overwriting it with why it stopped would leave the
@@ -148,27 +168,32 @@ CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_
 -- only reason to store it. It is nullable: an effect created outside any trace has no context to
 -- carry.
 CREATE TABLE IF NOT EXISTS nessy_effect (
-  effect_id     TEXT                     NOT NULL,
-  agent_type    TEXT                     NOT NULL,
-  agent_id      TEXT                     NOT NULL,
-  turn_id       TEXT,
-  ordinal       INTEGER                  NOT NULL,
-  payload       BYTEA                    NOT NULL,
-  observability TEXT,
-  status        TEXT                     NOT NULL,
-  attempts      INTEGER                  NOT NULL,
-  reason        TEXT,
-  expires_at    TIMESTAMP WITH TIME ZONE,
-  created_at    TIMESTAMP WITH TIME ZONE NOT NULL,
+  effect_id      TEXT                     NOT NULL,
+  agent_type     TEXT                     NOT NULL,
+  agent_id       TEXT                     NOT NULL,
+  turn_id        TEXT,
+  call_id        TEXT,
+  ordinal        INTEGER                  NOT NULL,
+  payload        BYTEA                    NOT NULL,
+  observability  TEXT,
+  status         TEXT                     NOT NULL,
+  attempts       INTEGER                  NOT NULL,
+  reason         TEXT,
+  actionable_at  TIMESTAMP WITH TIME ZONE,
+  created_at     TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (effect_id)
 );
 
--- The claim reads pending work for ONE agent in decision order.
-CREATE INDEX IF NOT EXISTS nessy_effect_pending
-  ON nessy_effect (agent_type, agent_id, status, ordinal);
+-- The poller reads the front of this and stops at the first row not yet actionable, so its cost is
+-- the number of due effects rather than the number outstanding. agent_type leads because the
+-- poller always filters by it -- without it here, one type's pass scans every other type's rows
+-- too. This ONE index now serves both what nessy_effect_pending and nessy_effect_expires used to
+-- serve separately: attempt() no longer distinguishes PENDING-due from RUNNING-expired, so there
+-- is no longer a second query shape to index for.
+CREATE INDEX IF NOT EXISTS nessy_effect_actionable
+  ON nessy_effect (agent_type, actionable_at);
 
--- The reaper reads the front of this and stops at the first row not yet expired, so its cost is
--- the number of ABANDONED effects rather than the number outstanding. agent_type leads because
--- SELECT_EXPIRED always filters by it -- without it here, one type's reap scans every other
--- type's expired rows too.
-CREATE INDEX IF NOT EXISTS nessy_effect_expires ON nessy_effect (agent_type, status, expires_at);
+-- CancelAlarm discharges a call's effect row directly, by (agent_type, agent_id, turn_id,
+-- call_id) -- see EffectStore#deleteForCall.
+CREATE INDEX IF NOT EXISTS nessy_effect_call
+  ON nessy_effect (agent_type, agent_id, turn_id, call_id);

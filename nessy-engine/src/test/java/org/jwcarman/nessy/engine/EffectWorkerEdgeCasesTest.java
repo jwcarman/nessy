@@ -157,10 +157,8 @@ class EffectWorkerEdgeCasesTest {
    */
   private static EffectId claimedEffect(
       Engines.Parts parts, AgentType type, AgentId agentId, TurnId turnId) {
-    EffectId id = parts.effects().insert(type, agentId, turnId, 0, new byte[] {0}, null);
-    parts
-        .effects()
-        .claim(type, agentId, java.time.Instant.now().plus(java.time.Duration.ofMinutes(1)));
+    EffectId id = parts.effects().insert(type, agentId, turnId, null, 0, new byte[] {0}, null);
+    parts.effects().attempt(type, 100, java.time.Instant.now(), java.time.Duration.ofMinutes(1));
     return id;
   }
 
@@ -222,17 +220,19 @@ class EffectWorkerEdgeCasesTest {
       AgentType type = AgentType.of("effect-laden");
       Engines.Parts parts = Engines.of(testKit.system(), type, Engines.stalled());
       AgentId agentId = AgentId.of("house-effect-laden");
-      java.time.Instant soon = java.time.Instant.now().plus(java.time.Duration.ofMinutes(1));
 
       parts.store().save(type, agentId, AgentState.idle().taking(TurnId.of("turn-1"), "obs-claim"));
       // An outstanding obligation nobody has claimed -- exactly what a reaper would otherwise find
       // and re-perform against an agent forgetting just erased everything else for.
-      parts.effects().insert(type, agentId, TurnId.of("turn-1"), 0, new byte[] {0}, null);
+      parts.effects().insert(type, agentId, TurnId.of("turn-1"), null, 0, new byte[] {0}, null);
       EffectId forgetEffectId = claimedEffect(parts, type, agentId, null);
 
       parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), forgetEffectId);
 
-      assertThat(parts.effects().claim(type, agentId, soon))
+      assertThat(
+              parts
+                  .effects()
+                  .attempt(type, 100, java.time.Instant.now(), java.time.Duration.ofMinutes(1)))
           .as("no effect this agent owed is left to claim")
           .isEmpty();
       assertThat(effectRowCount(parts, agentId)).as("nessy_effect rows").isZero();

@@ -62,6 +62,7 @@ class TransitionTest {
   private static final AgentType TYPE = AgentType.of("watchman");
   private static final AgentId AGENT = AgentId.of("house-1");
   private static final Instant SOON = Instant.now().plus(Duration.ofMinutes(1));
+  private static final Duration TIMEOUT = Duration.ofMinutes(1);
 
   private EmbeddedDatabase database;
   private AgentStore store;
@@ -94,7 +95,7 @@ class TransitionTest {
   void a_nudge_becomes_a_durable_effect() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
 
-    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Attempted> pending = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
 
     assertThat(pending).isNotEmpty();
     assertThat(pending)
@@ -118,14 +119,14 @@ class TransitionTest {
   @DisplayName("effects keep the order the decision put them in")
   void effects_keep_decision_order() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    effects.claim(TYPE, AGENT, SOON);
+    effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
     transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
 
-    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Attempted> pending = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
 
     assertThat(pending).isNotEmpty();
     assertThat(pending)
-        .isSortedAccordingTo(java.util.Comparator.comparingInt(EffectStore.Claimed::ordinal));
+        .isSortedAccordingTo(java.util.Comparator.comparingInt(EffectStore.Attempted::ordinal));
     assertThat(EffectStore.PAYLOADS.decode(pending.get(0).payload()))
         .isInstanceOf(Effect.Remember.Input.class);
   }
@@ -134,14 +135,14 @@ class TransitionTest {
   @DisplayName("narration comes back to be delivered, and is never a row")
   void narration_is_returned_not_stored() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    effects.claim(TYPE, AGENT, SOON);
+    effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
 
     Transition.Applied started =
         transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
 
     assertThat(started.narrations()).isNotEmpty();
     assertThat(started.narrations()).allMatch(Effect.Narrate.class::isInstance);
-    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Attempted> pending = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
     assertThat(pending).isNotEmpty();
     assertThat(pending)
         .noneMatch(
@@ -152,12 +153,12 @@ class TransitionTest {
   @DisplayName("a decision that changes nothing writes nothing")
   void an_unchanged_decision_is_not_persisted() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    effects.claim(TYPE, AGENT, SOON);
+    effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
 
     Transition.Applied repeat = transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
 
     assertThat(repeat.narrations()).isEmpty();
-    assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
+    assertThat(effects.attempt(TYPE, 100, Instant.now(), TIMEOUT)).isEmpty();
     assertThat(repeat.next().phase()).isInstanceOf(Phase.AwaitingWork.class);
   }
 
@@ -165,11 +166,11 @@ class TransitionTest {
   @DisplayName("the effect that produced this input is discharged by the same transaction")
   void the_completing_effect_is_closed() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    EffectStore.Claimed take = effects.claim(TYPE, AGENT, SOON).get(0);
+    EffectStore.Attempted take = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).get(0);
 
     transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), take.id(), null);
 
-    assertThat(effects.claimExpired(TYPE, Instant.now().plus(Duration.ofHours(1)), 10))
+    assertThat(effects.attempt(TYPE, 10, Instant.now().plus(Duration.ofHours(1)), TIMEOUT))
         .noneMatch(effect -> effect.id().equals(take.id()));
   }
 
@@ -200,11 +201,46 @@ class TransitionTest {
   }
 
   @Test
+  @DisplayName(
+      "a settled call discharges its OWN lingering effect row, not just the reminder -- CancelAlarm"
+          + " deletes what AskApprover/RunTool left RUNNING while parked")
+  void a_settled_call_discharges_its_own_lingering_row() {
+    CallId callId = CallId.of("call-1");
+
+    transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
+    transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
+    transition.apply(
+        AGENT,
+        new Input.ModelAnswered.Asked(
+            List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
+        null,
+        null);
+    List<EffectStore.Attempted> askEffects =
+        effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).stream()
+            .filter(
+                effect ->
+                    EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.AskApprover)
+            .toList();
+    assertThat(askEffects).as("the ask-approver row this test relies on existing").isNotEmpty();
+    transition.apply(AGENT, new Input.ToolParked(callId, SOON), null, null);
+
+    // The parked row stays RUNNING -- ToolParked does not discharge it -- so a naive re-attempt
+    // once its watchdog lapses would re-run a tool whose call is about to be settled. This is
+    // exactly what a fresh call to attempt() with a past watchdog would find, if CancelAlarm did
+    // not delete the row below.
+    transition.apply(AGENT, new Input.ToolCompleted(callId), null, null);
+
+    assertThat(effects.attempt(TYPE, 100, Instant.now().plus(Duration.ofHours(1)), TIMEOUT))
+        .as("the settled call's own effect row is gone, not merely its reminder")
+        .noneMatch(effect -> askEffects.get(0).id().equals(effect.id()));
+  }
+
+  @Test
   @DisplayName("the observability carrier is stamped on every durable effect a decision emits")
   void observability_round_trips_through_the_stored_effect() {
     transition.apply(AGENT, new Input.BacklogUpdated(), null, "traceparent=00-abc-def-01");
 
-    List<EffectStore.Claimed> pending = effects.claim(TYPE, AGENT, SOON);
+    List<EffectStore.Attempted> pending = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
 
     assertThat(pending).isNotEmpty();
     assertThat(pending)
@@ -230,7 +266,7 @@ class TransitionTest {
     // attempt had survived (a partial commit), this agent would already be AwaitingWork rather
     // than a row that has never been touched.
     assertThat(transition.read(AGENT).phase()).isInstanceOf(Phase.Idle.class);
-    assertThat(effects.claim(TYPE, AGENT, SOON)).isEmpty();
+    assertThat(effects.attempt(TYPE, 100, Instant.now(), TIMEOUT)).isEmpty();
   }
 
   /**

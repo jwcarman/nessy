@@ -15,9 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -35,13 +32,14 @@ import org.slf4j.LoggerFactory;
  * The loop that was a mailbox: transition, then do what it committed.
  *
  * <p><b>The caller drives.</b> Whoever brought the input runs the turn on its own virtual thread --
- * an HTTP request, a queue consumer, a reaper. Nothing is resident, nothing is addressed, and an
- * agent nobody is talking to costs a row.
+ * an HTTP request, a queue consumer, {@link EffectPoller}. Nothing is resident, nothing is
+ * addressed, and an agent nobody is talking to costs a row.
  *
- * <p><b>The committing thread claims its own work.</b> Not because correctness needs it -- any node
- * may claim any pending effect -- but because it is already here and does not have to poll. The
- * reaper's floor sits above normal hand-off latency, so this thread wins that race essentially
- * always and the reaper only picks up what was genuinely abandoned.
+ * <p><b>{@link #drive} never performs an effect.</b> It commits the fold and returns; {@link
+ * EffectPoller} is the ONLY path that attempts a durable obligation. Two mechanisms racing to
+ * perform the same freshly-committed row were never a correctness problem -- {@code SKIP LOCKED}
+ * already prevented double-performing -- but they were two answers to one question, and the poller,
+ * running continuously rather than only after abandonment, is the one answer this engine keeps.
  *
  * <p><b>Effects run after commit, never inside the lock.</b> The transition is microseconds; a
  * model call is seconds. Holding the row across one would serialize an agent against the network.
@@ -54,38 +52,46 @@ final class AgentRuntime implements Dispatcher {
    * What performs one obligation. {@link EffectWorker#perform} in production.
    *
    * <p>{@code turnId} travels separately from {@code state} on purpose: {@code state} is whatever
-   * this agent is NOW, and an obligation claimed off the effect table belongs to whichever turn
-   * decided it, which may not be the same turn any more. See {@link #work}.
+   * this agent is NOW, and an obligation attempted off the effect table belongs to whichever turn
+   * decided it, which may not be the same turn any more. See {@link #perform}.
+   *
+   * <p>{@code attempts} is how many times this obligation has already FAILED -- {@code
+   * EffectStore.Attempted#attempts()}, verbatim -- or {@code -1} for narration, which is never a
+   * row and never consults a {@link RetryPolicy}.
    */
   @FunctionalInterface
   interface Performer {
     void perform(
-        AgentId agentId, AgentState state, TurnId turnId, Effect effect, EffectId effectId);
+        AgentId agentId,
+        AgentState state,
+        TurnId turnId,
+        Effect effect,
+        EffectId effectId,
+        int attempts);
   }
 
   private final AgentType agentType;
   private final Transition transition;
-  private final EffectStore effects;
   private final Performer performer;
   private final Executor threads;
-  private final Duration watchdog;
   private final Traces traces;
 
   AgentRuntime(
       AgentType agentType,
       Transition transition,
-      EffectStore effects,
       Performer performer,
       Executor threads,
-      Duration watchdog,
       Traces traces) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.transition = Objects.requireNonNull(transition, "transition must not be null");
-    this.effects = Objects.requireNonNull(effects, "effects must not be null");
     this.performer = Objects.requireNonNull(performer, "performer must not be null");
     this.threads = Objects.requireNonNull(threads, "threads must not be null");
-    this.watchdog = Objects.requireNonNull(watchdog, "watchdog must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
+  }
+
+  /** What kind of agent this runtime drives -- the wiring key {@link EffectPoller} pairs it by. */
+  AgentType agentType() {
+    return agentType;
   }
 
   /**
@@ -96,16 +102,14 @@ final class AgentRuntime implements Dispatcher {
    * stop the turn with no message and no line -- and the obligations are rows, so another node
    * finishes what this one dropped.
    *
-   * <p><b>This method hands off to {@code threads} even though {@link #dispatch} already did.</b>
-   * The two hops protect different callers and neither is redundant. {@code dispatch}'s hop
-   * protects whoever is delivering an outcome from outside -- an HTTP handler must return after the
-   * fold, not after the model call its own effect may start. {@code drive}'s own hop protects
-   * whoever calls it DIRECTLY, which {@code dispatch} is not involved in: {@link #recover}, called
-   * by the effect reaper and the stall sweep on every pass. Without this second hop, a sweep would
-   * run whatever obligation it just re-armed inline, and a model call on one stalled agent would
-   * stall every sweep behind it in the same loop. A virtual thread costs on the order of a
-   * microsecond, so paying for a hop that is sometimes redundant is far cheaper than the loop it
-   * would otherwise be possible to serialize. Do not collapse this into one hop.
+   * <p><b>Commits and returns, full stop.</b> There used to be a hand-off here to drain this
+   * agent's new obligations inline, on {@code threads}. That is deleted: {@link EffectPoller} is
+   * now the ONLY path that performs a durable effect, so this thread's job ends at commit. Running
+   * effects from two places that can both race to claim the same row was never a correctness
+   * problem -- {@code SKIP LOCKED} already prevented that -- but it was two mechanisms doing one
+   * job, and the local hand-off's only advantage (usually winning the race to perform its own
+   * freshly-committed work before a reaper's floor kicked in) evaporates once there is no reaper
+   * floor to beat: the poller is not idle-until-abandoned, it is running continuously.
    */
   void drive(AgentId agentId, Input input, EffectId completing, String observability) {
     Transition.Applied applied;
@@ -119,11 +123,6 @@ final class AgentRuntime implements Dispatcher {
       reportDropped(agentId, input, applied);
     }
     narrate(agentId, applied);
-    // Hand off. The transition thread's job ended at COMMIT: the obligations are durable rows and
-    // whoever drains them does not have to be this thread. Running them inline here would tie a
-    // short transaction to a model call that may take seconds, and would mean the thread that
-    // accepted an observation is still busy when the tool it started finally answers.
-    threads.execute(() -> work(agentId));
   }
 
   @Override
@@ -142,41 +141,24 @@ final class AgentRuntime implements Dispatcher {
     drive(agentId, new Input.Recovered(), null, null);
   }
 
-  /**
-   * Claims and performs whatever this agent owes, oldest decision first.
-   *
-   * <p><b>Peeks the state rather than locking it.</b> The drain never writes -- state is written by
-   * {@link #drive}, before this ever runs -- so taking {@code lockAndLoad}'s exclusive {@code
-   * SELECT ... FOR UPDATE} here would serialize a read-only pass against every other transition for
-   * no reason, and {@code lockAndLoad} conjuring an idle row for an agent nobody has ever heard of
-   * would create one purely because its effect table was asked about. An agent with no row has no
-   * work to drain, full stop.
-   *
-   * <p><b>Reads the state itself rather than being handed one.</b> No lock spans the gap between a
-   * transition committing and its effects being drained, so a state captured before the claim can
-   * already describe a different turn by the time an effect runs. That window existed when this ran
-   * inline and merely widened when the drain became a hand-off; reading inside the drain closes it
-   * rather than narrowing it.
-   */
-  void work(AgentId agentId) {
-    Optional<AgentState> state = transition.peek(agentId);
-    if (state.isEmpty()) {
-      return;
-    }
-    List<EffectStore.Claimed> claimed =
-        effects.claim(agentType, agentId, Instant.now().plus(watchdog));
-    for (EffectStore.Claimed effect : claimed) {
-      perform(agentId, state.get(), effect);
-    }
-  }
-
   /** What the agent is, right now. A read, and it changes nothing. */
   AgentState inspect(AgentId agentId) {
     return transition.read(agentId);
   }
 
   /**
-   * One claimed obligation, performed. Package-private because the reaper retries through it.
+   * The state an agent is in right now, or empty if nobody has ever heard of it -- no lock, no
+   * fold, no idle row conjured for a stranger. For {@link EffectPoller}: a batch it attempted names
+   * agents, not states, and every row in one agent's group is performed against the SAME read of
+   * that agent, taken once per group rather than once per row.
+   */
+  Optional<AgentState> peek(AgentId agentId) {
+    return transition.peek(agentId);
+  }
+
+  /**
+   * One attempted obligation, performed. Package-private because {@link EffectPoller} is the only
+   * caller.
    *
    * <p>{@code effect.turnId()} travels to the performer, not {@code state.turnId()} -- see {@link
    * Performer}. An effect decided in turn T must be performed against turn T, whether or not this
@@ -184,18 +166,19 @@ final class AgentRuntime implements Dispatcher {
    * agentId, turnId, callId)} (see {@code ReplyTokens.Coordinates}), never "whatever turn is
    * current when the answer happens to arrive".
    */
-  void perform(AgentId agentId, AgentState state, EffectStore.Claimed effect) {
+  void perform(AgentId agentId, AgentState state, EffectStore.Attempted effect) {
     try {
       performer.perform(
           agentId,
           state,
           effect.turnId(),
           EffectStore.PAYLOADS.decode(effect.payload()),
-          effect.id());
+          effect.id(),
+          effect.attempts());
     } catch (RuntimeException failure) {
       // Left outstanding on purpose, with its watchdog armed. An obligation that threw is one
-      // somebody should try again -- and deciding here that it never will is exactly the judgment
-      // a reaper is forbidden from making.
+      // somebody should try again -- and deciding here that it never will is not this method's
+      // judgment to make; that is EffectPoller and RetryPolicy's, on a LATER attempt.
       LOG.error(
           "[{}] obligation {} threw and stays outstanding", agentId.value(), effect.id(), failure);
     }
@@ -211,7 +194,7 @@ final class AgentRuntime implements Dispatcher {
   private void narrate(AgentId agentId, Transition.Applied applied) {
     for (Effect effect : applied.narrations()) {
       try {
-        performer.perform(agentId, applied.next(), applied.next().turnId(), effect, null);
+        performer.perform(agentId, applied.next(), applied.next().turnId(), effect, null, -1);
       } catch (RuntimeException failure) {
         LOG.warn("[{}] narration failed and was dropped", agentId.value(), failure);
       }

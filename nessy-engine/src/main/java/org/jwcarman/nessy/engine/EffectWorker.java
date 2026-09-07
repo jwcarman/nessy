@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.UncheckedIOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
@@ -103,7 +105,9 @@ final class EffectWorker {
       BacklogStore<?> backlog,
       EffectStore effects,
       Dispatcher dispatcher,
-      AgentStore store) {}
+      AgentStore store,
+      RetryPolicy retryPolicy,
+      RandomGenerator random) {}
 
   private final Dependencies deps;
   private final Codec<List<ExchangeContentBlock>> askedCodec;
@@ -142,6 +146,21 @@ final class EffectWorker {
    * turnId}: which backlog row to sweep is a question about NOW -- {@code state.busy()} and {@code
    * state.observation()} -- never about the turn that happened to decide to ask. See {@link
    * #takeWork}.
+   *
+   * <p><b>{@code attempts}</b> is how many times this obligation has ALREADY failed -- {@code
+   * EffectStore.Attempted#attempts()}, verbatim, no adjustment -- or {@code -1} for a caller with
+   * no real row to count against (a test driving one effect directly, or the legacy Pekko actor's
+   * own turn, which uses a freshly-minted {@link EffectId} naming no row at all). {@code -1} is the
+   * sentinel that turns the {@link RetryPolicy} consultation below OFF entirely and restores the
+   * pre-Task-7 behavior of folding any failure into the agent immediately: a policy consulted
+   * against a count that means nothing would be worse than not consulting one.
+   *
+   * <p>For a real count, the policy is asked BEFORE any work runs: {@link RetryPolicy#decide}
+   * either says {@code GiveUp} -- this obligation closes right here, via {@link #giveUp}, with no
+   * external call made -- or hands back a {@code RetryAfter} delay that is threaded down into
+   * {@link #run} / {@link #settle} and applied ONLY if the attempt about to be made also fails,
+   * exactly the way a genuine timeout is discovered: not by this method, but by a LATER attempt
+   * finding the row still there.
    */
   void perform(
       AgentId agentId,
@@ -149,22 +168,37 @@ final class EffectWorker {
       TurnId turnId,
       Effect effect,
       EffectId effectId,
-      Map<String, String> carried) {
+      Map<String, String> carried,
+      int attempts) {
+    Duration retryDelay = null;
+    if (attempts >= 0) {
+      RetryPolicy.RetryDecision decision = deps.retryPolicy().decide(attempts, deps.random());
+      if (decision instanceof RetryPolicy.RetryDecision.GiveUp) {
+        giveUp(agentId, turnId, effect, effectId, "gave up after " + attempts + " failures");
+        return;
+      }
+      retryDelay = ((RetryPolicy.RetryDecision.RetryAfter) decision).delay();
+    }
     switch (effect) {
-      case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried);
-      case Effect.CallModel() -> callModel(agentId, turnId, effectId, carried);
-      case Effect.AskApprover ask -> askApprover(agentId, turnId, ask, effectId, carried);
-      case Effect.RunTool run -> runTool(agentId, turnId, run, effectId, carried);
-      case Effect.Remember.Input() -> settle(effectId, () -> rememberInput(agentId, state, turnId));
-      case Effect.Remember.Answer() -> settle(effectId, () -> rememberAnswer(agentId, turnId));
-      case Effect.Remember.Exchange() -> settle(effectId, () -> rememberExchange(agentId, turnId));
-      case Effect.Release() -> settle(effectId, () -> deps.claims().deleteTurn(agentId, turnId));
+      case Effect.TakeWork() -> takeWork(agentId, state, effectId, carried, retryDelay);
+      case Effect.CallModel() -> callModel(agentId, turnId, effectId, carried, retryDelay);
+      case Effect.AskApprover ask ->
+          askApprover(agentId, turnId, ask, effectId, carried, retryDelay);
+      case Effect.RunTool run -> runTool(agentId, turnId, run, effectId, carried, retryDelay);
+      case Effect.Remember.Input() ->
+          settle(effectId, () -> rememberInput(agentId, state, turnId), retryDelay);
+      case Effect.Remember.Answer() ->
+          settle(effectId, () -> rememberAnswer(agentId, turnId), retryDelay);
+      case Effect.Remember.Exchange() ->
+          settle(effectId, () -> rememberExchange(agentId, turnId), retryDelay);
+      case Effect.Release() ->
+          settle(effectId, () -> deps.claims().deleteTurn(agentId, turnId), retryDelay);
       // NOT settle(): forget()'s own effects().deleteAgent() sweeps every row this agent owes,
       // including the very row effectId names -- discharging it is a side effect of erasing the
       // agent, not a separate step. Calling complete(effectId) afterward would try to discharge a
       // row forget() had already deleted, which is indistinguishable from a double-completion and
       // (correctly) raises. A failure inside forget() before it reaches deleteAgent() leaves this
-      // row EXECUTING with its watchdog armed, same as any other obligation that threw.
+      // row RUNNING with its watchdog armed, same as any other obligation that threw.
       case Effect.Forget() -> forget(agentId);
       case Effect.SetAlarm _, Effect.CancelAlarm _ ->
           throw new IllegalStateException("alarms are written by the transition: " + effect);
@@ -172,9 +206,72 @@ final class EffectWorker {
     }
   }
 
-  /** Narration and reaper retries carry no trace headers of their own. */
-  void perform(AgentId agentId, AgentState state, TurnId turnId, Effect effect, EffectId effectId) {
-    perform(agentId, state, turnId, effect, effectId, Map.of());
+  /**
+   * The shape {@link AgentRuntime.Performer} calls through: no trace headers of its own to carry (a
+   * re-attempted effect does not reconstruct the trace it was decided under -- see {@code
+   * AgentRuntime#perform}), and {@code attempts} passed straight through from whichever caller
+   * knows it -- {@link AgentRuntime#perform} for a real row, {@code -1} from {@link
+   * AgentRuntime#narrate}, which is never a row.
+   */
+  void perform(
+      AgentId agentId,
+      AgentState state,
+      TurnId turnId,
+      Effect effect,
+      EffectId effectId,
+      int attempts) {
+    perform(agentId, state, turnId, effect, effectId, Map.of(), attempts);
+  }
+
+  /**
+   * The {@link RetryPolicy} said stop: retires the obligation and, for the four effect shapes that
+   * hand an outcome to the fold on success, tells the agent the same way a real failure would --
+   * reusing the very {@link Input} each already answers with when its external call fails, so
+   * exhaustion reads to {@code AgentLogic} like any other failed call rather than a new case it has
+   * to learn. {@code Remember.*}, {@code Release} and {@code Forget} produce no {@link Input} on
+   * success either -- they {@link #settle} rather than {@link #tell} -- so there is nothing to fold
+   * for them: the row's abandonment is the whole story, exactly as a thrown exception from {@link
+   * #settle} already leaves it (outstanding, to be revisited, until abandoned in its turn).
+   *
+   * <p>Called BEFORE any external work is attempted, from the top of {@link #perform} -- so a spent
+   * effect closes without making the call it would otherwise have retried one time too many.
+   */
+  private void giveUp(
+      AgentId agentId, TurnId turnId, Effect effect, EffectId effectId, String reason) {
+    deps.effects().abandon(effectId, reason);
+    switch (effect) {
+      case Effect.TakeWork() ->
+          deps.dispatcher()
+              .dispatch(
+                  agentId,
+                  new Input.ModelFailed("the backlog could not be read: " + reason),
+                  null,
+                  null);
+      case Effect.CallModel() ->
+          deps.dispatcher().dispatch(agentId, new Input.ModelFailed(reason), null, null);
+      case Effect.AskApprover ask ->
+          giveUpCall(agentId, turnId, ask.callId(), reason + "; the call was not made");
+      case Effect.RunTool run ->
+          giveUpCall(agentId, turnId, run.callId(), reason + "; it may have partially completed");
+      case Effect.Remember.Input _,
+          Effect.Remember.Answer _,
+          Effect.Remember.Exchange _,
+          Effect.Release _,
+          Effect.Forget _ -> {
+        // No Input exists for these on success either -- see the method javadoc. Abandoning the
+        // row above is the whole story.
+      }
+      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
+          throw new IllegalStateException(
+              "alarms are TRANSACTIONAL and never reach a durable retry: " + effect);
+      case Effect.Narrate _ ->
+          throw new IllegalStateException("narrations are never durable rows: " + effect);
+    }
+  }
+
+  private void giveUpCall(AgentId agentId, TurnId turnId, CallId callId, String message) {
+    hold(agentId, turnId, callId, ToolResult.error(message));
+    deps.dispatcher().dispatch(agentId, new Input.ToolCompleted(callId), null, null);
   }
 
   /**
@@ -190,7 +287,7 @@ final class EffectWorker {
       Effect effect,
       EffectId effectId,
       Map<String, String> carried) {
-    perform(agentId, state, state.turnId(), effect, effectId, carried);
+    perform(agentId, state, state.turnId(), effect, effectId, carried, -1);
   }
 
   /** As above, with no trace headers carried. */
@@ -222,8 +319,20 @@ final class EffectWorker {
    * row -- for a genuinely claimed effect -- survives to be retried by the watchdog rather than
    * being marked done for work that never happened.
    */
-  private void settle(EffectId effectId, Runnable work) {
-    work.run();
+  private void settle(EffectId effectId, Runnable work, Duration retryDelay) {
+    try {
+      work.run();
+    } catch (RuntimeException failure) {
+      if (retryDelay == null) {
+        // No real RetryPolicy count to have consulted (attempts was the -1 sentinel): unchanged
+        // pre-Task-7 behavior -- propagate, and leave the row outstanding for AgentRuntime#perform
+        // to log and abandon-in-place.
+        throw failure;
+      }
+      LOG.warn("[{}] settle failed, retrying in {}", effectId, retryDelay, failure);
+      deps.effects().retry(effectId, Instant.now().plus(retryDelay));
+      return;
+    }
     deps.effects().complete(effectId);
   }
 
@@ -268,7 +377,11 @@ final class EffectWorker {
    * turn it was born in.
    */
   private void takeWork(
-      AgentId agentId, AgentState state, EffectId effectId, Map<String, String> carried) {
+      AgentId agentId,
+      AgentState state,
+      EffectId effectId,
+      Map<String, String> carried,
+      Duration retryDelay) {
     // The TURN id, which is the backlog row's id — not the claim key. Null until this agent has
     // finished one, and null while it is busy, because a turn in flight is nobody's to sweep.
     TurnId finished = state.busy() ? null : state.turnId();
@@ -284,7 +397,8 @@ final class EffectWorker {
         failure -> new Input.ModelFailed("the backlog could not be read: " + failure),
         agentId,
         effectId,
-        carried);
+        carried,
+        retryDelay);
   }
 
   /**
@@ -295,7 +409,11 @@ final class EffectWorker {
    * for exactly that reason.
    */
   private void callModel(
-      AgentId agentId, TurnId turnId, EffectId effectId, Map<String, String> carried) {
+      AgentId agentId,
+      TurnId turnId,
+      EffectId effectId,
+      Map<String, String> carried,
+      Duration retryDelay) {
     run(
         () ->
             deps.traces()
@@ -316,7 +434,8 @@ final class EffectWorker {
         failure -> new Input.ModelFailed(failure),
         agentId,
         effectId,
-        carried);
+        carried,
+        retryDelay);
   }
 
   /**
@@ -350,7 +469,8 @@ final class EffectWorker {
       TurnId turnId,
       Effect.AskApprover ask,
       EffectId effectId,
-      Map<String, String> carried) {
+      Map<String, String> carried,
+      Duration retryDelay) {
     ToolCall call = callOf(agentId, turnId, ask.callId());
     if (call == null) {
       completed(
@@ -430,7 +550,8 @@ final class EffectWorker {
                   },
                   agentId,
                   effectId,
-                  carried);
+                  carried,
+                  retryDelay);
             },
             () ->
                 completed(
@@ -447,7 +568,8 @@ final class EffectWorker {
       TurnId turnId,
       Effect.RunTool run,
       EffectId effectId,
-      Map<String, String> carried) {
+      Map<String, String> carried,
+      Duration retryDelay) {
     ToolCall call = callOf(agentId, turnId, run.callId());
     if (call == null) {
       completed(
@@ -491,7 +613,8 @@ final class EffectWorker {
                     },
                     agentId,
                     effectId,
-                    carried));
+                    carried,
+                    retryDelay));
   }
 
   /** What a denied call answers with, or empty when it was approved and will answer for itself. */
@@ -646,6 +769,14 @@ final class EffectWorker {
    * <p>This is the whole safety property in one method: nothing here holds a reference to anything
    * that can go away, so work that outlives the process that started it is simply picked up by
    * whatever answers on {@code agentId}'s behalf next.
+   *
+   * <p><b>{@code retryDelay}</b> is what {@link #perform} already asked {@link RetryPolicy} for,
+   * before this work even started -- {@code null} means the {@code -1}-sentinel legacy path, where
+   * a failure ALWAYS folds into the agent via {@code broke}, exactly as before Task 7. A real delay
+   * means a failure here goes through {@code EffectStore#retry} instead: the row goes back to
+   * PENDING, {@code attempts} increments as part of that write-back, and the agent hears nothing
+   * about it -- this obligation was retryable-subject-to-policy, which is not the agent's business
+   * until the policy actually gives up.
    */
   private <T> void run(
       Supplier<T> work,
@@ -653,15 +784,28 @@ final class EffectWorker {
       Function<String, Input> broke,
       AgentId agentId,
       EffectId effectId,
-      Map<String, String> carried) {
+      Map<String, String> carried,
+      Duration retryDelay) {
     CompletableFuture.supplyAsync(work, deps.blocking())
         .whenComplete(
-            (value, failure) ->
-                tell(
-                    agentId,
-                    failure == null ? answer.apply(value) : broke.apply(describe(failure)),
-                    effectId,
-                    carried));
+            (value, failure) -> {
+              if (failure == null) {
+                tell(agentId, answer.apply(value), effectId, carried);
+                return;
+              }
+              String description = describe(failure);
+              if (retryDelay == null) {
+                tell(agentId, broke.apply(description), effectId, carried);
+                return;
+              }
+              LOG.warn(
+                  "[{}] obligation {} failed, retrying in {}: {}",
+                  agentId.value(),
+                  effectId,
+                  retryDelay,
+                  description);
+              deps.effects().retry(effectId, Instant.now().plus(retryDelay));
+            });
   }
 
   /**

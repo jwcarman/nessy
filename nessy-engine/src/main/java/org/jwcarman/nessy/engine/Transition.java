@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.engine.agent.AgentLogic;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.agent.Decision;
@@ -151,13 +152,14 @@ final class Transition {
     for (int ordinal = 0; ordinal < then.size(); ordinal++) {
       Effect effect = then.get(ordinal);
       switch (Disposition.of(effect)) {
-        case TRANSACTIONAL -> alarm(agentId, effect);
+        case TRANSACTIONAL -> alarm(agentId, decision, effect);
         case NARRATION -> narrations.add(effect);
         case DURABLE ->
             effects.insert(
                 agentType,
                 agentId,
                 decision.next().turnId(),
+                callIdOf(effect),
                 ordinal,
                 EffectStore.PAYLOADS.encode(effect),
                 observability);
@@ -166,11 +168,35 @@ final class Transition {
     return narrations;
   }
 
-  private void alarm(AgentId agentId, Effect effect) {
+  /**
+   * A settled call discharges its OWN effect row here, in the same transaction that cancels its
+   * reminder -- not by ever being attempted again. {@code AgentLogic.settle} always emits {@code
+   * CancelAlarm(callId)} whichever way a call ends, so by the time this runs the call is over; see
+   * {@code EffectStore#deleteForCall}. {@code decision.next().turnId()} is the right turn to
+   * address it against: {@code CancelAlarm} is folded from an input arriving for the CURRENT turn,
+   * never a stale one.
+   */
+  /**
+   * The call an effect names, for the two shapes that name one -- {@code null} for everything else.
+   * Not a general accessor on {@link Effect}: the fold stays ignorant of which of its own effects a
+   * shell column happens to index.
+   */
+  private static CallId callIdOf(Effect effect) {
+    return switch (effect) {
+      case Effect.AskApprover ask -> ask.callId();
+      case Effect.RunTool run -> run.callId();
+      default -> null;
+    };
+  }
+
+  private void alarm(AgentId agentId, Decision decision, Effect effect) {
     switch (effect) {
       case Effect.SetAlarm(var callId, var expiresAt) ->
           reminders.remind(agentType, agentId, callId, expiresAt);
-      case Effect.CancelAlarm(var callId) -> reminders.cancel(agentType, agentId, callId);
+      case Effect.CancelAlarm(var callId) -> {
+        reminders.cancel(agentType, agentId, callId);
+        effects.deleteForCall(agentType, agentId, decision.next().turnId(), callId);
+      }
       default -> throw new IllegalStateException("not a transactional effect: " + effect);
     }
   }

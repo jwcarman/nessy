@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -26,11 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,17 +45,20 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * The loop that used to be a mailbox.
+ * The loop that was a mailbox.
  *
- * <p>EffectWorker are recorded rather than really performed here, because what this class owns is
- * the ORDER: transition first, effects claimed only after it commits, and each one performed in the
- * order the decision put them in. Whether a model call works is EffectWorker' problem.
+ * <p>{@link EffectWorker} is recorded rather than really performed here, because what this class
+ * owns is ORDER and DECOUPLING: transition commits and returns without performing anything, an
+ * obligation attempted off the store is performed against the TURN it was decided in, and a failure
+ * thrown out of a performer leaves the row outstanding rather than crashing the caller. Whether a
+ * model call works is {@code EffectWorker}'s problem.
  */
 @DisplayName("The drive loop")
 class AgentRuntimeTest {
 
   private static final AgentType TYPE = AgentType.of("watchman");
   private static final AgentId AGENT = AgentId.of("house-1");
+  private static final Duration TIMEOUT = Duration.ofMinutes(1);
 
   private EmbeddedDatabase database;
   private AgentStore store;
@@ -87,10 +85,8 @@ class AgentRuntimeTest {
         new AgentRuntime(
             TYPE,
             transition,
-            effects,
-            (agentId, state, turnId, effect, effectId) -> performed.add(effect),
+            (agentId, state, turnId, effect, effectId, attempts) -> performed.add(effect),
             sameThread,
-            Duration.ofMinutes(1),
             Traces.noop());
   }
 
@@ -100,69 +96,39 @@ class AgentRuntimeTest {
   }
 
   @Test
-  @DisplayName("driving a nudge performs the obligation the fold committed")
-  void effects_run_after_the_transition() {
+  @DisplayName("drive commits the fold and delivers narration, but performs no durable effect")
+  void drive_never_performs_a_durable_effect() {
     runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
 
-    assertThat(performed).isNotEmpty();
-    assertThat(performed).allMatch(Effect.TakeWork.class::isInstance);
+    // The narration this decision produced IS delivered (TurnStarted is NARRATION-disposition on
+    // some inputs, but a bare BacklogUpdated on an idle agent produces none) -- what matters here
+    // is that nothing DURABLE was performed: the TakeWork this decision committed is still sitting
+    // in nessy_effect, unclaimed, because drive() no longer hands off to anything that performs it.
+    assertThat(performed).noneMatch(Effect.TakeWork.class::isInstance);
+    assertThat(effects.attempt(TYPE, 100, Instant.now(), TIMEOUT))
+        .as("the committed TakeWork is still there, waiting for a poller")
+        .anyMatch(
+            effect -> EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.TakeWork);
   }
 
   @Test
-  @DisplayName("drive hands the drain to the executor rather than running it inline")
-  void drive_returns_before_a_blocked_performer_finishes() {
-    CountDownLatch release = new CountDownLatch(1);
-    CountDownLatch done = new CountDownLatch(1);
-    List<Effect> performedAsync = new CopyOnWriteArrayList<>();
-    AgentRuntime asyncRuntime =
-        new AgentRuntime(
-            TYPE,
-            transition,
-            effects,
-            (agentId, state, turnId, effect, effectId) -> {
-              awaitQuietly(release, Duration.ofSeconds(5));
-              performedAsync.add(effect);
-              done.countDown();
-            },
-            Executors.newVirtualThreadPerTaskExecutor(),
-            Duration.ofMinutes(1),
-            Traces.noop());
-
-    // If drive() ran work() on the calling thread instead of handing it to the executor, this
-    // call would block on the still-held latch and this assertion would time out and fail --
-    // it cannot pass because the collection below happens to be empty; it can only pass because
-    // drive() actually returned control to this thread while the performer was still blocked.
-    assertTimeoutPreemptively(
-        Duration.ofSeconds(5),
-        () -> asyncRuntime.drive(AGENT, new Input.BacklogUpdated(), null, null));
-
-    // Proof the drain is genuinely elsewhere: the obligation is claimed and its performer has
-    // been entered on another thread, but that thread is still parked on the latch, so nothing
-    // has been recorded yet.
-    assertThat(performedAsync).isEmpty();
-
-    release.countDown();
-
-    assertThat(awaitQuietly(done, Duration.ofSeconds(5))).isTrue();
-    assertThat(performedAsync).isNotEmpty();
-    assertThat(performedAsync).allMatch(Effect.TakeWork.class::isInstance);
-  }
-
-  @Test
-  @DisplayName("the state is committed before any obligation runs")
-  void the_transition_commits_first() {
+  @DisplayName("the state is already committed by the time perform() runs")
+  void the_transition_commits_before_perform_runs() {
     List<Phase> phaseWhenPerformed = new ArrayList<>();
     AgentRuntime observing =
         new AgentRuntime(
             TYPE,
             transition,
-            effects,
-            (agentId, state, turnId, effect, effectId) -> phaseWhenPerformed.add(readPhase()),
+            (agentId, state, turnId, effect, effectId, attempts) ->
+                phaseWhenPerformed.add(readPhase()),
             Runnable::run,
-            Duration.ofMinutes(1),
             Traces.noop());
 
     observing.drive(AGENT, new Input.BacklogUpdated(), null, null);
+    AgentState state = observing.peek(AGENT).orElseThrow();
+    for (EffectStore.Attempted attempted : effects.attempt(TYPE, 100, Instant.now(), TIMEOUT)) {
+      observing.perform(AGENT, state, attempted);
+    }
 
     assertThat(phaseWhenPerformed).isNotEmpty();
     assertThat(phaseWhenPerformed).allMatch(Phase.AwaitingWork.class::isInstance);
@@ -172,22 +138,28 @@ class AgentRuntimeTest {
   @DisplayName("obligations are performed in the order the decision put them in")
   void effects_run_in_decision_order() {
     runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
+    effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
     performed.clear();
 
     runtime.drive(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
 
-    // Narration is delivered BEFORE the drain is handed off, so it leads the recording. That is
-    // the decoupling's visible consequence and worth pinning rather than filtering away silently.
+    // Narration is delivered from drive() itself, so it leads the recording; the durable effects
+    // this decision committed are performed separately, in the order attempt() hands them back --
+    // which is decision order because there is exactly one agent and effects.attempt sorts by
+    // actionable_at, all equal here, breaking no ties that matter within one agent's own batch.
     assertThat(performed).isNotEmpty();
     assertThat(performed.get(0)).isInstanceOf(Effect.Narrate.TurnStarted.class);
 
-    // The ordering that carries meaning is among the DURABLE effects: they are the ones that
-    // become rows with an ordinal, and endTurn's Remember-before-Release depends on it.
-    List<Effect> durable =
-        performed.stream().filter(effect -> Disposition.of(effect) == Disposition.DURABLE).toList();
-    assertThat(durable).isNotEmpty();
-    assertThat(durable.get(0)).isInstanceOf(Effect.Remember.Input.class);
-    assertThat(durable.get(durable.size() - 1)).isInstanceOf(Effect.CallModel.class);
+    performed.clear();
+    AgentState state = runtime.peek(AGENT).orElseThrow();
+    List<EffectStore.Attempted> durableRows = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
+    for (EffectStore.Attempted attempted : durableRows) {
+      runtime.perform(AGENT, state, attempted);
+    }
+
+    assertThat(performed).isNotEmpty();
+    assertThat(performed.get(0)).isInstanceOf(Effect.Remember.Input.class);
+    assertThat(performed.get(performed.size() - 1)).isInstanceOf(Effect.CallModel.class);
   }
 
   @Test
@@ -200,7 +172,7 @@ class AgentRuntimeTest {
 
     assertThat(performed).isNotEmpty();
     assertThat(performed).anyMatch(Effect.Narrate.TurnStarted.class::isInstance);
-    assertThat(effects.claim(TYPE, AGENT, Instant.now().plus(Duration.ofMinutes(1))))
+    assertThat(effects.attempt(TYPE, 100, Instant.now(), TIMEOUT))
         .noneMatch(
             effect -> EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.Narrate);
   }
@@ -217,23 +189,40 @@ class AgentRuntimeTest {
   }
 
   @Test
-  @DisplayName("an obligation abandoned by a dead node is reclaimable")
-  void abandoned_work_stays_claimable() {
+  @DisplayName("a performer that throws leaves the obligation outstanding rather than propagating")
+  void a_thrown_performer_leaves_the_row_outstanding_and_does_not_propagate() {
     AgentRuntime dying =
         new AgentRuntime(
             TYPE,
             transition,
-            effects,
-            (agentId, state, turnId, effect, effectId) -> {
+            (agentId, state, turnId, effect, effectId, attempts) -> {
               throw new IllegalStateException("this node just died");
             },
             Runnable::run,
-            Duration.ofMillis(-1),
             Traces.noop());
-
     dying.drive(AGENT, new Input.BacklogUpdated(), null, null);
+    AgentState state = dying.peek(AGENT).orElseThrow();
+    EffectStore.Attempted attempted = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).get(0);
 
-    assertThat(effects.claimExpired(TYPE, Instant.now(), 10)).isNotEmpty();
+    // Does not throw -- perform() catches and logs, exactly as the javadoc promises.
+    dying.perform(AGENT, state, attempted);
+
+    // The row is untouched (still RUNNING, watchdog armed by attempt() above) -- neither
+    // completed nor abandoned -- so it is reclaimable once that watchdog lapses.
+    assertThat(effects.attempt(TYPE, 100, Instant.now().plus(Duration.ofHours(1)), TIMEOUT))
+        .anyMatch(row -> row.id().equals(attempted.id()));
+  }
+
+  @Test
+  @DisplayName("peek reads the stored state without changing it, and finds nobody for a stranger")
+  void peek_is_a_read_and_finds_nobody_for_a_stranger() {
+    runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
+    performed.clear();
+
+    assertThat(runtime.peek(AGENT)).isPresent();
+    assertThat(runtime.peek(AGENT).orElseThrow().phase()).isInstanceOf(Phase.AwaitingWork.class);
+    assertThat(runtime.peek(AgentId.of("house-stranger"))).isEmpty();
+    assertThat(performed).isEmpty();
   }
 
   @Test
@@ -248,25 +237,12 @@ class AgentRuntimeTest {
     assertThat(performed).isEmpty();
   }
 
-  @Test
-  @DisplayName("draining an agent nobody has ever heard of creates no row and performs nothing")
-  void work_on_an_unknown_agent_creates_no_row() {
-    AgentId stranger = AgentId.of("house-stranger");
-
-    runtime.work(stranger);
-
-    assertThat(performed).isEmpty();
-    assertThat(transition.peek(stranger))
-        .as("peek still finds nobody -- work() did not conjure a row to drain")
-        .isEmpty();
-  }
-
   /**
    * C2's whole defect, driven honestly: an obligation decided in one turn is performed against THAT
    * turn even though the agent it belongs to has since moved to a different one. The mismatch is
    * arranged, not assumed -- the two turn ids below are asserted distinct, and the assertion on
-   * what the performer actually received is what would fail if {@code work} fell back to reading
-   * the turn off current state instead of the claimed effect.
+   * what the performer actually received is what would fail if {@code perform} fell back to reading
+   * the turn off current state instead of the attempted effect.
    */
   @Test
   @DisplayName(
@@ -275,26 +251,35 @@ class AgentRuntimeTest {
     runtime.drive(AGENT, new Input.BacklogUpdated(), null, null);
     runtime.drive(
         AGENT, new Input.WorkTaken(TurnId.of("turn-current"), "claim-current"), null, null);
+    // Drains turn-current's own obligations first, through the ORIGINAL runtime -- otherwise they
+    // would still be sitting due when capturing.perform runs below, and this test would see every
+    // turn id they carry mixed in with the stale one it actually means to isolate.
+    AgentState currentState = runtime.peek(AGENT).orElseThrow();
+    for (EffectStore.Attempted attempted : effects.attempt(TYPE, 100, Instant.now(), TIMEOUT)) {
+      runtime.perform(AGENT, currentState, attempted);
+    }
     performed.clear();
 
     // An obligation from an EARLIER turn than the one this agent is in now -- exactly what the
     // recovery path leaves behind when an effect outlives its turn.
     TurnId staleTurn = TurnId.of("turn-stale");
     effects.insert(
-        TYPE, AGENT, staleTurn, 0, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+        TYPE, AGENT, staleTurn, null, 0, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
 
     List<TurnId> turnIdsSeen = new ArrayList<>();
     AgentRuntime capturing =
         new AgentRuntime(
             TYPE,
             transition,
-            effects,
-            (agentId, state, turnId, effect, effectId) -> turnIdsSeen.add(turnId),
+            (agentId, state, turnId, effect, effectId, attempts) -> turnIdsSeen.add(turnId),
             Runnable::run,
-            Duration.ofMinutes(1),
             Traces.noop());
 
-    capturing.work(AGENT);
+    AgentState state = capturing.peek(AGENT).orElseThrow();
+    List<EffectStore.Attempted> due = effects.attempt(TYPE, 100, Instant.now(), TIMEOUT);
+    for (EffectStore.Attempted attempted : due) {
+      capturing.perform(AGENT, state, attempted);
+    }
 
     TurnId currentTurn = capturing.inspect(AGENT).turnId();
     assertThat(currentTurn)
@@ -360,15 +345,5 @@ class AgentRuntimeTest {
     return new TransactionTemplate(new DataSourceTransactionManager(database))
         .execute(status -> store.lockAndLoad(TYPE, AGENT))
         .phase();
-  }
-
-  /** A bounded wait with no checked exception to smuggle out of a lambda. */
-  private static boolean awaitQuietly(CountDownLatch latch, Duration timeout) {
-    try {
-      return latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
-    } catch (InterruptedException interrupted) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
   }
 }
