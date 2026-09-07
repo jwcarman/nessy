@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -277,7 +276,9 @@ public final class BacklogStore<O> {
     transactions.execute(
         status -> {
           jdbc.sql(SWALLOW).param(agentId.value()).update();
-          return jdbc.sql(POISON).params(agentId.value(), Timestamp.from(clock.instant())).update();
+          return jdbc.sql(POISON)
+              .params(agentId.value(), JdbcTimestamps.ts(clock.instant()))
+              .update();
         });
   }
 
@@ -335,7 +336,7 @@ public final class BacklogStore<O> {
               agentId.value(),
               item.id().value(),
               ordinal,
-              Timestamp.from(item.receivedAt()),
+              JdbcTimestamps.ts(item.receivedAt()),
               codec.encode(item.observation()))
           .update();
     }

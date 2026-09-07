@@ -723,13 +723,13 @@ final class EffectStore {
   }
 
   /**
-   * Every {@code actionable_at}/{@code created_at} parameter is bound as a {@link Timestamp}, never
-   * a bare {@link Instant} -- measured against real PostgreSQL by {@code
-   * EffectStorePostgresCertificationTest}: pgjdbc's {@code setObject} cannot infer a SQL type for
-   * {@code java.time.Instant} and throws, where H2 had silently tolerated it. This is exactly the
-   * class of silent H2/PostgreSQL divergence the certification module exists to catch.
+   * Every {@code actionable_at}/{@code created_at} parameter goes through {@link
+   * JdbcTimestamps#ts(Instant)}, never a bare {@link Instant} -- measured against real PostgreSQL
+   * by {@code EffectStorePostgresCertificationTest}: pgjdbc's {@code setObject} cannot infer a SQL
+   * type for {@code java.time.Instant} and throws, where H2 had silently tolerated it. This is
+   * exactly the class of silent H2/PostgreSQL divergence the certification module exists to catch.
    */
   private static Timestamp ts(Instant instant) {
-    return Timestamp.from(instant);
+    return JdbcTimestamps.ts(instant);
   }
 }
