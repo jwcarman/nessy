@@ -14,11 +14,13 @@ public static void main(String[] args) {
 That is a complete program. `Repl` assembles everything an engine needs so an
 application does not have to:
 
-- **The model** comes from `ModelDiscovery`, which reads whichever credentials
-  are in the environment — set `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-  `XAI_API_KEY`, or `OPENAI_API_KEY` (with `OPENAI_BASE_URL` for a local
-  runtime). Two providers with no `NESSY_PROVIDER` is refused rather than
-  guessed. Put the adapters you want discoverable on your classpath; this
+- **The model** comes from a minimal Spring Boot context this call raises and
+  tears down around itself: a provider module's own `@AutoConfiguration`
+  contributes a `ModelProvider` bean once its vendor's API key is in the
+  environment — set `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (or
+  `GOOGLE_API_KEY`), `XAI_API_KEY`, or `OPENAI_API_KEY` (with
+  `OPENAI_BASE_URL` for a local runtime) — and the model id comes from
+  `NESSY_MODEL`. Put the provider jars you want on your classpath; this
   module deliberately drags none of them in.
 - **State** is in memory — substrate, agent and turn state, and reply tokens
   alike.

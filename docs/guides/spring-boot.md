@@ -31,8 +31,10 @@ nessy:
   system-prompt: You are a terse assistant.
 ```
 
-Add a `ModelProvider` bean (or `nessy-model-discovery` and the matching
-environment), and you have a `Harness<String>`.
+Add a `ModelProvider` bean — your own, or the one a provider module's own
+`@AutoConfiguration` contributes once its vendor's API key is in the
+environment (see [Providers](providers.md#boot-auto-configuration)) — and you
+have a `Harness<String>`.
 
 ## Properties
 

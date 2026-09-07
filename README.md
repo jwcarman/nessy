@@ -187,8 +187,9 @@ agent depends on `nessy-engine`, which pulls both in.
 A model provider module sits alongside `nessy-engine` in every application:
 `nessy-model-anthropic`, `nessy-model-openai` (which also speaks to any
 OpenAI-compatible endpoint), `nessy-model-gemini`, or `nessy-model-bedrock`.
-`nessy-model-discovery` resolves whichever one you shipped from the
-environment.
+In a Spring Boot application, each of these (Bedrock excepted) contributes
+its own `ModelProvider` bean once its vendor's API key is in the
+environment; a non-Spring application constructs one directly.
 
 ## What Nessy gives you
 

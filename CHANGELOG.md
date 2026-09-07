@@ -228,8 +228,10 @@ in its current vocabulary — not the sequence of designs that produced it.
   starter follows and what lets an application take the beans without the
   starter's transitive opinions.
 - **Model providers** for Anthropic, OpenAI (and any OpenAI-compatible
-  endpoint), Gemini and Bedrock, with `nessy-model-discovery` resolving from
-  the environment.
+  endpoint), Gemini and Bedrock. In a Spring Boot application, each provider
+  module (Bedrock excepted) ships its own `@AutoConfiguration` contributing a
+  `ModelProvider` bean once its vendor's API key is in the environment; a
+  non-Spring application constructs one directly.
 - **`nessy-tool-mcp`** imports a remote MCP server's tools as ordinary tools.
 
 ### Not yet

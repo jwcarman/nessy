@@ -47,8 +47,10 @@ var models = AnthropicModelProvider.fromEnv();   // reads ANTHROPIC_API_KEY
 Every provider module ships one: `AnthropicModelProvider`,
 `OpenAiModelProvider` (which also speaks to any OpenAI-compatible endpoint,
 including a local LM Studio), `GeminiModelProvider`, `BedrockModelProvider`.
-If you would rather resolve whichever one you shipped from the environment,
-add `nessy-model-discovery`.
+In a Spring Boot application, each of these (Bedrock excepted) also ships its
+own `@AutoConfiguration` that contributes a `ModelProvider` bean once its
+vendor's API key is in the environment — no wiring code needed; see
+[Providers](providers.md#boot-auto-configuration).
 
 ## A tool
 

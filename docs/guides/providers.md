@@ -27,12 +27,14 @@ vendor-wide guess: a lineup's thinking support, context size, and schema
 support vary model to model, even at the same vendor.
 
 Four native gateway modules ship today — `nessy-model-anthropic`,
-`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock` — and
-a fifth, `nessy-model-discovery`, resolves a bound `Model` from whichever of
-them is on the classpath, configured by that provider's key. Add the provider
-jar you want and set its key; switch providers by swapping the jar.
-`OpenAiModelProvider` also reaches every service that speaks OpenAI's wire
-protocol, covered below.
+`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock`. Each
+of the first three (Bedrock is deliberately the exception — see
+[Bedrock](#bedrock)) also ships its own Spring Boot `@AutoConfiguration`
+that contributes a `ModelProvider` bean once that provider's key is in the
+environment — see [Boot auto-configuration](#boot-auto-configuration) below.
+Add the provider jar you want and set its key; switch providers by swapping
+the jar. `OpenAiModelProvider` also reaches every service that speaks
+OpenAI's wire protocol, covered below.
 
 All four native gateways are live-validated against their real APIs —
 Gemini on 2026-08-15 including the tool-call round trip with real thought
@@ -100,168 +102,57 @@ SDK's own resolution; for Bedrock, `fromEnv()` uses the AWS SDK's own
 default credentials chain (env vars, shared profile files, container/instance
 metadata) and resolves the region by reading `AWS_REGION` then, if unset,
 `AWS_DEFAULT_REGION` itself — see [Bedrock](#bedrock) below. Reach for
-`create(...)` directly whenever one of those matters; `nessy-model-discovery`,
-below, only ever reads the API key (and, for OpenAI, `OPENAI_BASE_URL`).
+`create(...)` directly whenever one of those matters; the Boot
+auto-configuration below only ever reads the API key (and, for OpenAI,
+`OPENAI_BASE_URL`).
 
-## Discovery: the provider follows the classpath
+## Boot auto-configuration
 
-`nessy-model-discovery` depends on no provider module. Each provider module
-registers a `ModelProviderBootstrap` through `java.util.ServiceLoader`;
-discovery loads every registration on the classpath, asks each to bootstrap
-from the environment, and hands back the one that applies:
+There is no discovery library. In a Spring Boot application, each provider
+module (Bedrock excepted — see [Bedrock](#bedrock)) ships its own
+`@AutoConfiguration`, gated on that provider's API key, that contributes a
+`ModelProvider` bean:
 
-```java
-Model model = ModelDiscovery.fromEnv();
-```
+- **`nessy-model-anthropic`**: `ANTHROPIC_API_KEY` (read as `anthropic.api-key`
+  under Boot's relaxed env-var binding) → `AnthropicModelProvider.create(c ->
+  c.apiKey(key))`.
+- **`nessy-model-openai`**: `OPENAI_API_KEY` (`openai.api-key`) →
+  `OpenAiModelProvider`, with `OPENAI_BASE_URL` (`openai.base-url`) layered on
+  when present — see
+  [The OpenAI-compatible universe](#the-openai-compatible-universe).
+  `XAI_API_KEY` (`xai.api-key`) contributes a second, independent bean at
+  xAI's fixed base URL — Grok, via the same module, with zero extra code.
+- **`nessy-model-gemini`**: `GEMINI_API_KEY` or `GOOGLE_API_KEY`
+  (`gemini.api-key` / `google.api-key`) → `GeminiModelProvider.create(GeminiProviderConfig::fromEnv)`,
+  which reads both, in that order — Google's own documented pair.
 
-Two steps, then, and the first is the one that used to be hidden:
+Every one of these beans is `@ConditionalOnMissingBean(ModelProvider.class)`:
+declare your own `ModelProvider` bean and every auto-configuration above
+backs off entirely, the same convention `nessy-spring-boot-autoconfigure`
+follows for everything else it wires. Setting two different vendors' keys at
+once resolves to whichever bean Spring's container reaches first rather than
+a named ambiguity error; an application that means to run against a specific
+vendor sets only that vendor's key, or declares the bean itself.
 
-1. **Add the provider jar.** `nessy-model-anthropic`, `nessy-model-openai`,
-   or `nessy-model-gemini` — one, or more than one if you mean to switch
-   between them.
-2. **Set its key.** `ANTHROPIC_API_KEY`; `OPENAI_API_KEY` (plus
-   `OPENAI_BASE_URL` for a compatible endpoint — see
-   [The OpenAI-compatible universe](#the-openai-compatible-universe));
-   `XAI_API_KEY` (Grok, via the OpenAI module); `GEMINI_API_KEY` or
-   `GOOGLE_API_KEY`.
+The model id is not resolved by any of this — it comes from `nessy.model`
+(`NESSY_MODEL` under relaxed binding), same as every other Boot-wired
+harness; see [Spring Boot](spring-boot.md).
 
-Three outcomes and nothing in between:
+**`nessy-console`'s `Repl.run(customizer)` uses exactly this mechanism.** The
+call raises a minimal Boot context (`web-application-type` `NONE`) around
+itself so these auto-configurations run, looks up the `ModelProvider` bean,
+and tears the context down when the REPL ends — a caller writes the same one
+call it always has; see the [Getting Started](getting-started.md) and
+`nessy-console`'s own README.
 
-- **None** of the registered providers finds its key → `IllegalStateException`
-  listing, per provider on the classpath, its name and the variables it
-  reads — `anthropic [ANTHROPIC_API_KEY]; openai [OPENAI_API_KEY, OPENAI_BASE_URL]; xai [XAI_API_KEY]`.
-  Only providers actually present are named. No provider module at all is a
-  different message, naming the three modules that register one.
-- **One** finds its key → chosen, silently. `NESSY_PROVIDER` is ignored here
-  whatever it says: it exists to break ties, and one candidate has none.
-- **Two or more** find their keys → `NESSY_PROVIDER` (`anthropic`/`openai`/
-  `xai`/`gemini`, case-insensitive) naming one of them chooses it silently.
-  Anything else — unset, or naming a provider that did not bootstrap — fails
-  with `IllegalStateException` naming every candidate: two providers that
-  both bootstrap means you shipped two jars and set two keys, and that
-  ambiguity is a configuration error, not something to resolve with a log
-  line nobody reads.
+**A non-Spring application constructs a provider directly** —
+`Provider.create(c -> c.apiKey(key))` or that provider's own `fromEnv()`, as
+shown above. Tests do the same: hand-assemble the provider you need rather
+than reaching for any environment-driven mechanism.
 
-Each gateway is built the same way its own module builds one from an
-explicit key — `Provider.create(c -> c.apiKey(key))`, not that provider's
-own `fromEnv()`. The key discovery saw is the key that gets built, and no
-other SDK-level environment variable is read underneath it. Construct the
-gateway directly when one of those matters.
-
-**Bedrock is not discovered.** It registers no bootstrap, so it never enters
-the candidate list — see [Bedrock](#bedrock) below for why, and for the one
-line that constructs it.
-
-### Picking a model too — `select()`
-
-`fromEnv()` returns only the bound `Model`. `select()` returns a
-`Selection` — the gateway, the model handle, and the winning provider's
-registered name (`"anthropic"`/`"openai"`/`"xai"`/`"gemini"`, the same
-vocabulary `NESSY_PROVIDER` accepts) — so an application that wants to show
-or log what was picked doesn't re-derive it via `instanceof`:
-
-```java
-try (ModelDiscovery.Selection selection = ModelDiscovery.select()) {
-    Model model = selection.model();
-    String vendor = selection.providerName();
-    // ... run the harness ...
-}
-```
-
-**A `Selection` is `AutoCloseable`, and a long-running process should use
-it that way.** A `ModelProvider` is `AutoCloseable` too: it owns an SDK
-client, a connection pool, and the threads that service it, and every vendor
-SDK here has a `close()`. Discovery *builds* that gateway, so the selection
-carries it and closing the selection closes it. `close()` defaults to a
-no-op, so a gateway holding nothing — or a test double — needs none of its
-own, and a gateway handed a client through its config's `client(...)` door
-never closes it: it did not open it.
-
-`fromEnv()` hands back a bare `Model` with nothing to close, and therefore
-keeps its gateway for the life of the process. That is right for a CLI and
-for a process that builds exactly one; anything longer-lived wants
-`select()`. In Spring Boot, `nessy-spring-boot-starter` registers the
-selection as a bean with `destroyMethod = "close"`, so the container does it.
-
-The model comes from `NESSY_MODEL` when that variable is set and non-blank —
-it wins outright, whichever provider was chosen. That is the one way to name
-a model whose gateway can't reveal it on its own: a Grok, OpenRouter, or LM
-Studio model reached through `OpenAiModelProvider`'s base-url override looks,
-by type, exactly like an OpenAI model. Without `NESSY_MODEL`, the winner's
-own default applies: Anthropic's `claude-haiku-4-5-20251001`, OpenAI's
-`gpt-4o-mini`, xAI's `grok-4.6`, Gemini's `gemini-3.6-flash`.
-
-`ApprovalPlayground` (an IDE-run tinker door in the engine's test sources)
-is this in practice: one `main`, no `if` branch for which provider to
-import, because discovery already decided both the vendor and the model:
-
-```java
-ModelDiscovery.Selection selection;
-try {
-    selection = ModelDiscovery.select();
-} catch (IllegalStateException e) {
-    System.out.println(e.getMessage());
-    System.exit(1);
-    return;
-}
-
-var harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("assistant"))
-        .model(selection.modelId())
-        .systemPrompt("You are a terse assistant.")
-        .renderer(UserMessage::of));
-```
-
-### Writing your own provider
-
-A provider module joins discovery by implementing `ModelProviderBootstrap`
-(in `nessy-spi`) and registering it. Do this **only** when the presence of
-your credentials in the environment signals intent to use you — a vendor API
-key, not an ambient cloud identity. Bedrock is the worked example of a
-provider that must not register: AWS credentials are on far too many
-machines to mean "talk to Bedrock".
-
-```java
-public final class AcmeModelProviderBootstrap implements ModelProviderBootstrap {
-
-  @Override
-  public String name() {
-    return "acme";
-  }
-
-  @Override
-  public Set<String> environmentVariables() {
-    return Set.of("ACME_API_KEY");
-  }
-
-  @Override
-  public String defaultModelId() {
-    return "acme-small";
-  }
-
-  @Override
-  public Optional<ModelProvider> bootstrap(Map<String, String> env) {
-    Objects.requireNonNull(env, "env must not be null");
-    var key = env.get("ACME_API_KEY");
-    return key == null ? Optional.empty() : Optional.of(AcmeModelProvider.create(c -> c.apiKey(key)));
-  }
-}
-```
-
-Then one line in `src/main/resources/META-INF/services/org.jwcarman.nessy.spi.model.ModelProviderBootstrap`:
-
-```
-com.acme.nessy.AcmeModelProviderBootstrap
-```
-
-The class is `public final` with a public no-arg constructor — `ServiceLoader`
-needs both. Read only the `env` map you are handed, never `System.getenv()`;
-return empty for an absent key and throw for a present key you cannot honour.
-Write one test that `ServiceLoader.load(ModelProviderBootstrap.class)` finds
-your class: the services file is a resource, and a typo in it fails at runtime
-with no compiler to notice. `name()` is lowercase, non-blank, and unique
-across the classpath — discovery fails fast at startup, naming your class, if
-it is not.
+**Bedrock contributes no bean.** It ships no `@AutoConfiguration` at all —
+see [Bedrock](#bedrock) below for why, and for the one line that constructs
+it.
 
 ## Retrying: `RetryingModel`
 
@@ -365,14 +256,13 @@ handed in via `.client(...)` is the caller's own to close, on whatever
 lifecycle the caller built it against — the gateway never closes it, since
 it never opened it either.
 
-**Not discovered.** `nessy-model-bedrock` registers no
-`ModelProviderBootstrap`, so `ModelDiscovery` never sees it — not by key,
-not by classpath presence, not as a tiebreak participant. This is deliberate:
-AWS credentials (and, on some platforms, `AWS_REGION` itself — Lambda sets it
-automatically) are ambient on a large fraction of machines, so any mechanism
-that let their presence choose Bedrock would silently route an application
-with a stray AWS profile to it. An application that wants Bedrock says so in
-code:
+**No Boot auto-configuration.** `nessy-model-bedrock` ships none, so no
+environment variable — not a key, since Bedrock has none; not `AWS_REGION`
+itself, which some platforms (Lambda) set automatically — ever makes a
+`ModelProvider` bean appear on its own. This is deliberate: AWS credentials
+are ambient on a large fraction of machines, so any mechanism that let their
+presence choose Bedrock would silently route an application with a stray AWS
+profile to it. An application that wants Bedrock says so in code:
 
 ```java
 Model model = BedrockModelProvider.fromEnv().model("us.anthropic.claude-haiku-4-5-20251001-v1:0");
@@ -421,9 +311,9 @@ ModelProvider provider =
     OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.x.ai/v1"));
 ```
 
-`XAI_API_KEY` is a first-class discovery citizen — with `nessy-model-openai`
-on the classpath, set it alone and `ModelDiscovery.fromEnv()` wires Grok with
-no other code.
+`XAI_API_KEY` is a first-class Boot citizen — with `nessy-model-openai` on
+the classpath, set it alone in a Spring Boot application and `OpenAiAutoConfiguration`'s
+xAI bean wires Grok with no other code.
 
 **OpenRouter** (validated live 2026-08-16 against `openai/gpt-4o-mini`: a
 streamed text turn and an approval-gated tool round trip; note OpenRouter
@@ -484,8 +374,8 @@ Note the `/v1` suffix on the base URL — the OpenAI SDK does not append it
 itself.
 
 `OPENAI_BASE_URL`, set alongside `OPENAI_API_KEY`, makes any of these a
-zero-code env citizen too: `ModelDiscovery.fromEnv()` layers it onto the
-OpenAI gateway exactly as shown above, the same way it wires Grok.
+zero-code Boot citizen too: `OpenAiAutoConfiguration` layers it onto the
+OpenAI bean exactly as shown above, the same way it wires Grok.
 
 ### Anthropic-compatible endpoints
 
@@ -505,43 +395,6 @@ ModelProvider provider =
     OpenAI example above, produces a `.../v1/v1/messages` double path that
     fails. Use the bare origin for `AnthropicModelProvider.baseUrl(...)`,
     and keep the `/v1` suffix for `OpenAiModelProvider.baseUrl(...)`.
-
-## Running `ApprovalPlayground`
-
-`ApprovalPlayground` builds its model choice from `ModelDiscovery.select()`,
-and the engine's test classpath carries every keyed provider, so any of
-the env setups above just works — set the key and run the class's `main`
-from an IDE (it carries no `@Test` methods, so surefire never picks it up):
-
-```console
-$ GEMINI_API_KEY=... # then run ApprovalPlayground.main from the IDE
-```
-
-xAI has no small/cheap alias, so `select()`'s built-in Grok default may not
-be the model you want — name one explicitly with `NESSY_MODEL`, the same
-override described above:
-
-```console
-$ XAI_API_KEY=... NESSY_MODEL=<your-grok-model> # then run ApprovalPlayground.main
-```
-
-The same `NESSY_MODEL` override reaches any OpenAI-compatible local runtime
-wired through `OPENAI_BASE_URL` — LM Studio, for instance, once a model is
-loaded there:
-
-```console
-$ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
-    NESSY_MODEL=<loaded-model> # then run ApprovalPlayground.main
-```
-
-Whichever provider answers, the wait itself looks the same: type an
-observation, and the moment the model asks to restart something,
-`ApprovalPlayground`'s own approver defers and prints `[parked] restart
-<target>` before returning control to the prompt. Nothing blocks — the
-turn is genuinely suspended on a durable computation, not a spinner — so
-the same terminal is still free to type `approve` or `deny <reason>`,
-which resolves the ticket at the front of the queue and lets the turn's
-reply print once the tool runs.
 
 ## Where next
 

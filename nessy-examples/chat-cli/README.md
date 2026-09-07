@@ -1,8 +1,8 @@
 # Nessy Example: Chat CLI
 
 The smallest complete Nessy application: a conversation in a terminal, with
-one tool. No Spring, no database, no HTTP — two Java files, one of which is
-the tool.
+one tool. No database, no HTTP, no Spring code of your own to write — two
+Java files, one of which is the tool.
 
 It used to be four, and one of those was eighty lines of engine assembly. That
 moved into `nessy-console`, where it is library code rather than an example of
@@ -19,10 +19,10 @@ Repl.run(config -> config
     .tool(new DaysUntilTool()));
 ```
 
-`nessy-console` owns everything else — discovering the model, forming the actor
-system's cluster of one, the in-memory substrate and reply tokens, and the loop
-that streams an answer as it arrives. What is left here is the only part that is
-about THIS program: what it is for, and what it can do.
+`nessy-console` owns everything else — raising the Boot context that finds the
+model, the in-memory substrate and reply tokens, and the loop that streams an
+answer as it arrives. What is left here is the only part that is about THIS
+program: what it is for, and what it can do.
 
 - **A tool worth having.** `days_until` counts days to a date: something a model
   is bad at and a tool is trivially good at.
@@ -49,9 +49,10 @@ typed into. Point `chat-web` at a database to see the other half.
 
 ## Run it
 
-Which model it talks to is not written down here. `ModelDiscovery` reads the
-environment and picks whichever provider has credentials, so the same command
-runs against any of them — and says which one it chose in the banner.
+Which model it talks to is not written down here. Each provider module on
+this example's classpath ships its own Boot `@AutoConfiguration`, so setting
+that vendor's key is the whole choice — the same command runs against any of
+them.
 
 Against [LM Studio](https://lmstudio.ai) or any other OpenAI-compatible local
 runtime, which costs nothing:
@@ -72,12 +73,12 @@ XAI_API_KEY=…       ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:jav
 OPENAI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-`NESSY_MODEL` names a specific model instead of the winning provider's default.
-Set two providers' keys and discovery refuses to guess — it names both and asks
-for `NESSY_PROVIDER`, because a coin toss over which vendor gets billed is not
-a default anyone wants. Set none and it lists every variable it looked at.
+`NESSY_MODEL` names the model to use — required, since a provider's
+`@AutoConfiguration` names no default. Set no key and the Boot context finds
+no `ModelProvider` bean at all, and the program says so instead of a stack
+trace out of `main`.
 
-Bedrock is deliberately not discoverable: ambient AWS credentials mean someone
+Bedrock ships no `@AutoConfiguration`: ambient AWS credentials mean someone
 once deployed something to AWS, not that they chose Bedrock for this. An
 application that wants it constructs it explicitly.
 

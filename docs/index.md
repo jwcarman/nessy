@@ -155,8 +155,10 @@ See [Authorization](concepts/authorization.md).
 
 A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
 `nessy-model-gemini`, or `nessy-model-bedrock`) sits alongside
-`nessy-engine` in every application's dependency list;
-`nessy-model-discovery` resolves the one you shipped from the environment.
+`nessy-engine` in every application's dependency list. In a Spring Boot
+application, each of these (Bedrock excepted) contributes its own
+`ModelProvider` bean once its vendor's API key is in the environment; a
+non-Spring application constructs one directly.
 
 ## Where to go next
 
