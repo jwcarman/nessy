@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 /**
- * The mapper persisted state and transcripts are written with. Pekko has no say in how it is built.
+ * The mapper persisted state and transcripts are written with.
  *
  * <p>{@code FAIL_ON_UNKNOWN_PROPERTIES} is off, and that is a migration decision rather than
  * laziness. A durable-state document is REWRITTEN in place, so there is no event log to replay and

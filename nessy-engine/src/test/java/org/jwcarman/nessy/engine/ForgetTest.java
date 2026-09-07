@@ -19,18 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.engine.agent.Input;
 
 /**
  * An agent being forgotten, against a real database.
@@ -42,33 +35,16 @@ import org.jwcarman.nessy.api.AgentType;
 @DisplayName("Forgetting an agent")
 class ForgetTest {
 
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
-
-  private static AgentId shardedAgent(
-      String name, Engines.Parts parts, TestProbe<ClusterSharding.ShardCommand> shard) {
-    AgentType type = AgentType.of(name);
-    EntityTypeKey<NessyMessage> key = EntityTypeKey.create(NessyMessage.class, type.name());
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    key,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(type, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            shard.ref()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
-    return AgentId.of(name + "-1");
+  private static Engines.Parts parts(String typeName) {
+    return Engines.of(
+        AgentType.of(typeName),
+        Engines.saying(
+            java.util.List.of(
+                new org.jwcarman.nessy.api.model.ModelResult.Answered(
+                    new org.jwcarman.nessy.api.message.AnswerMessage(
+                        java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
+                    org.jwcarman.nessy.api.model.StopReason.END_TURN,
+                    org.jwcarman.nessy.api.model.Usage.unreported()))));
   }
 
   /** Straight at the table: the point of this test is which rows survive. */
@@ -93,37 +69,20 @@ class ForgetTest {
     return rows == null ? 0 : rows;
   }
 
-  private static void tell(String typeName, AgentId agentId, NessyMessage message) {
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(EntityTypeKey.create(NessyMessage.class, typeName), agentId.value())
-        .tell(message);
-  }
-
   @Test
   @DisplayName("an idle agent's memory, backlog and claims are gone afterwards")
   void forgetting_an_idle_agent_leaves_nothing() {
-    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    Engines.Parts parts =
-        Engines.of(
-            testKit.system(),
-            AgentType.of("ephemeral"),
-            Engines.saying(
-                java.util.List.of(
-                    new org.jwcarman.nessy.api.model.ModelResult.Answered(
-                        new org.jwcarman.nessy.api.message.AnswerMessage(
-                            java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
-                        org.jwcarman.nessy.api.model.StopReason.END_TURN,
-                        org.jwcarman.nessy.api.model.Usage.unreported()))));
-    AgentId agentId = shardedAgent("ephemeral", parts, shard);
+    Engines.Parts parts = parts("ephemeral");
+    AgentId agentId = AgentId.of("ephemeral-1");
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
-    tell("ephemeral", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(() -> assertThat(parts.remembered().of(agentId)).isNotEmpty());
 
     parts.backlog().poison(agentId);
-    tell("ephemeral", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -139,24 +98,13 @@ class ForgetTest {
   void forgetting_a_busy_agent_does_not_strand_the_turn() {
     // The failure this design exists to avoid: deleting under a running turn leaves the model's
     // answer arriving at a dead incarnation with nobody left to finish anything.
-    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    Engines.Parts parts =
-        Engines.of(
-            testKit.system(),
-            AgentType.of("mid-turn"),
-            Engines.saying(
-                java.util.List.of(
-                    new org.jwcarman.nessy.api.model.ModelResult.Answered(
-                        new org.jwcarman.nessy.api.message.AnswerMessage(
-                            java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
-                        org.jwcarman.nessy.api.model.StopReason.END_TURN,
-                        org.jwcarman.nessy.api.model.Usage.unreported()))));
-    AgentId agentId = shardedAgent("mid-turn", parts, shard);
+    Engines.Parts parts = parts("mid-turn");
+    AgentId agentId = AgentId.of("mid-turn-1");
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
-    tell("mid-turn", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
     parts.backlog().poison(agentId);
-    tell("mid-turn", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -174,28 +122,17 @@ class ForgetTest {
     // crash before it leaves the pill behind. Leaving it forever has no visible cause of its own —
     // the next incarnation of a reusable id would simply never work, poisoned by a forget nobody
     // watching it would ever connect to the symptom.
-    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    Engines.Parts parts =
-        Engines.of(
-            testKit.system(),
-            AgentType.of("reusable"),
-            Engines.saying(
-                java.util.List.of(
-                    new org.jwcarman.nessy.api.model.ModelResult.Answered(
-                        new org.jwcarman.nessy.api.message.AnswerMessage(
-                            java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
-                        org.jwcarman.nessy.api.model.StopReason.END_TURN,
-                        org.jwcarman.nessy.api.model.Usage.unreported()))));
-    AgentId agentId = shardedAgent("reusable", parts, shard);
+    Engines.Parts parts = parts("reusable");
+    AgentId agentId = AgentId.of("reusable-1");
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
-    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(() -> assertThat(parts.remembered().of(agentId)).isNotEmpty());
 
     parts.backlog().poison(agentId);
-    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
@@ -212,7 +149,7 @@ class ForgetTest {
     // take would find it poisoned again and this agent would never run — silently, with nothing in
     // this test's view pointing at why.
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened again"));
-    tell("reusable", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -226,22 +163,11 @@ class ForgetTest {
   @Test
   @DisplayName("forgetting an agent that never existed is silent")
   void forgetting_nothing_is_not_an_error() {
-    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    Engines.Parts parts =
-        Engines.of(
-            testKit.system(),
-            AgentType.of("stranger"),
-            Engines.saying(
-                java.util.List.of(
-                    new org.jwcarman.nessy.api.model.ModelResult.Answered(
-                        new org.jwcarman.nessy.api.message.AnswerMessage(
-                            java.util.List.of(new org.jwcarman.nessy.api.block.TextBlock("done"))),
-                        org.jwcarman.nessy.api.model.StopReason.END_TURN,
-                        org.jwcarman.nessy.api.model.Usage.unreported()))));
-    AgentId agentId = shardedAgent("stranger", parts, shard);
+    Engines.Parts parts = parts("stranger");
+    AgentId agentId = AgentId.of("stranger-1");
 
     parts.backlog().poison(agentId);
-    tell("stranger", agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     await()
         .atMost(Duration.ofSeconds(10))

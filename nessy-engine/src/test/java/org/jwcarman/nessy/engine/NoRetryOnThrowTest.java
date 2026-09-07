@@ -21,9 +21,6 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -61,18 +58,6 @@ class NoRetryOnThrowTest {
 
   record Args() {}
 
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
-
   private record Captured(AgentId agentId, Input input) {}
 
   @Test
@@ -86,7 +71,6 @@ class NoRetryOnThrowTest {
     List<Captured> seen = new ArrayList<>();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
             type,
             Engines.stalled(),
             List.of(binding),
@@ -147,7 +131,6 @@ class NoRetryOnThrowTest {
     List<Captured> seen = new ArrayList<>();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
             type,
             Engines.stalled(),
             List.of(binding),

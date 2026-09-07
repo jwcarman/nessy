@@ -20,58 +20,48 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
-import org.jwcarman.nessy.engine.agent.AgentState;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
+import org.jwcarman.nessy.engine.agent.Input;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * A backlog table that cannot be reached when {@code take} runs.
  *
- * <p>Nothing before this test drove {@code EffectWorker.takeWork}'s failure branch: an agent asking
- * for work reports a FAILED turn — narrated, not silent — when the store cannot answer, rather than
- * hanging forever with no explanation reaching anyone watching. The failure is real SQL against a
- * real, now-unreachable, database, not a stand-in that only claims to fail.
+ * <p>Nothing before this test drove a REAL SQL failure through {@code EffectWorker.takeWork} on the
+ * durable pipeline: {@code TakeWork} is engine-owned, so a failed attempt is retried against {@link
+ * RetryPolicy} exactly like any other engine-owned effect (design of record 2026-09-04, Task 7) --
+ * it does not end the turn as {@code Failed}, because the turn never even started (see {@code
+ * AgentLogic#onWorkTaken}: {@code TurnStarted} is narrated only once a row is actually taken). What
+ * this proves is I4's ruling reached honestly through a real backlog exception rather than a
+ * synthetic exhaustion: the obligation retries, then abandons with a reason recorded on the row and
+ * a loud log line -- never silently forever, and never a phantom {@code TurnEnded} for a turn that
+ * never began.
  *
- * <p>The agent is settled to {@code Idle} — proven by {@code Inspect}, not assumed — BEFORE the
- * database goes down. Activation issues its own {@code TakeWork} independent of the one a {@code
- * BacklogUpdated} sends, and cutting the database first would let both race the same failure and
- * narrate it twice, which is a fact about startup rather than about the thing this test means to
- * pin.
+ * <p>Only the backlog table is dropped. Claims, effects and the agent row all stay reachable, since
+ * retrying and finally abandoning the obligation -- the very things this test proves -- themselves
+ * need a working database underneath them.
  */
 @DisplayName("A backlog the store cannot read")
 class BacklogReadFailureTest {
 
   private static final AgentType WATCHMAN = AgentType.of("unreachable");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
     parts =
         Engines.of(
-            testKit.system(),
             WATCHMAN,
             Engines.saying(
                 List.of(
@@ -79,67 +69,48 @@ class BacklogReadFailureTest {
                         new AnswerMessage(List.of(new TextBlock("unreachable"))),
                         StopReason.END_TURN,
                         Usage.unreported()))));
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
-  }
-
-  private static AgentState inspect(AgentId agentId) {
-    TestProbe<AgentState> probe = testKit.createTestProbe();
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.Inspect(probe.ref(), Map.of()));
-    return probe.receiveMessage();
+    parts.close();
   }
 
   @Test
-  @DisplayName("asking for work reports a failed turn instead of going silent")
-  void a_take_that_cannot_reach_the_database_ends_the_turn_as_failed() {
+  @DisplayName(
+      "asking for work it cannot read is retried, then abandoned -- never silently forever, and"
+          + " never a turn that never started")
+  void a_take_that_cannot_reach_the_database_is_retried_then_abandoned() {
     AgentId agentId = AgentId.of("house-unreachable");
 
-    // Settle the agent first, against the real (still up) database: activation's own take finds
-    // an empty backlog and the agent goes idle, exactly once, before the database is touched.
-    await().atMost(15, SECONDS).until(() -> !inspect(agentId).busy());
+    // Down for good, deliberately, and ONLY the table this obligation reads: the point is a
+    // `take` that cannot complete, not a database that cannot do anything at all.
+    JdbcClient.create(parts.dataSource()).sql("DROP TABLE nessy_backlog").update();
 
-    // Down for good, deliberately: the point is a `take` that cannot complete, not one that is
-    // merely slow.
-    ((EmbeddedDatabase) parts.dataSource()).shutdown();
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
-
-    // Not exactly one: endTurn always issues another TakeWork, and against a database that is
-    // down FOR GOOD every retry fails the same way and ends another (also failed) turn -- a
-    // pre-existing gap this legacy actor has no backoff for, unmasked rather than caused by the
-    // per-effect isolation Correction C4 required (see EffectWorker.settle's javadoc). What this
-    // test still proves is the property it names: the FIRST failure is reported, not swallowed.
     await()
         .atMost(15, SECONDS)
-        .untilAsserted(
-            () -> {
-              List<AgentEvent.TurnEnded> ended =
-                  parts.narrated().of(agentId).stream()
-                      .filter(AgentEvent.TurnEnded.class::isInstance)
-                      .map(AgentEvent.TurnEnded.class::cast)
-                      .toList();
-              assertThat(ended).isNotEmpty();
-              assertThat(ended.getFirst().outcome()).isInstanceOf(TurnResult.Failed.class);
-              TurnResult.Failed failed = (TurnResult.Failed) ended.getFirst().outcome();
-              assertThat(failed.reason()).contains("the backlog could not be read");
-            });
+        .untilAsserted(() -> assertThat(statusOf(agentId)).isEqualTo("FAILED"));
+    assertThat(reasonOf(agentId)).contains("gave up after");
+    assertThat(parts.narrated().of(agentId))
+        .as("TakeWork exhaustion folds nothing (I4) -- the turn never started, so nothing narrates")
+        .isEmpty();
+  }
+
+  private static String statusOf(AgentId agentId) {
+    return JdbcClient.create(parts.dataSource())
+        .sql("SELECT status FROM nessy_effect WHERE agent_id = ?")
+        .param(agentId.value())
+        .query(String.class)
+        .single();
+  }
+
+  private static String reasonOf(AgentId agentId) {
+    return JdbcClient.create(parts.dataSource())
+        .sql("SELECT reason FROM nessy_effect WHERE agent_id = ?")
+        .param(agentId.value())
+        .query(String.class)
+        .single();
   }
 }

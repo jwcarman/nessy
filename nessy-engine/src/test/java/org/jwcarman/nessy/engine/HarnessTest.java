@@ -22,7 +22,6 @@ import static org.awaitility.Awaitility.await;
 import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +31,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelId;
@@ -58,13 +56,11 @@ class HarnessTest {
   private static final AgentType WATCHMAN = AgentType.of("watchman");
   private static final AgentId HOUSE = AgentId.of("house-12");
 
-  private static ActorTestKit testKit;
+  private static EngineHarnessFactory factory;
   private static Harness<HouseEvent> harness;
 
   @BeforeAll
   static void wireEverything() {
-    testKit = ClusterOfOne.start();
-
     ModelProvider models =
         id ->
             new Model() {
@@ -86,11 +82,10 @@ class HarnessTest {
               }
             };
 
-    HarnessFactory factory =
-        new PekkoHarnessFactory(
+    factory =
+        new EngineHarnessFactory(
             engine ->
                 engine
-                    .system(testKit.system())
                     .models(models)
                     .dataSource(TestDatabase.fresh())
                     .maxTokens(4096)
@@ -112,7 +107,7 @@ class HarnessTest {
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    factory.close();
   }
 
   @Test

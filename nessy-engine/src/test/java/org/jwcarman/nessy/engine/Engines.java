@@ -19,15 +19,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
-import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -51,13 +47,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * An engine's worth of parts, assembled for a test.
  *
  * <p>There used to be a {@code Turns} factory to stub, which made "an agent with a turn that never
- * finishes" a one-liner. One actor does the whole turn now, so a test stubs the MODEL instead —
+ * finishes" a one-liner. One method does the whole turn now, so a test stubs the MODEL instead --
  * which is closer to the truth anyway: a turn that never finishes is a provider that never answers.
  *
- * <p><b>Two families of {@code of(...)} overload.</b> The {@link ActorSystem}-taking ones are the
- * legacy shape: they wire {@link EffectWorker} alone and leave a test to call {@link
- * EffectWorker#perform} directly, exactly as they did before this migration. The ones below that
- * take no {@link ActorSystem} are new: they wire the durable pipeline whole -- {@link Transition},
+ * <p><b>Two families of {@code of(...)} overload.</b> The ones taking a {@link Dispatcher} wire
+ * {@link EffectWorker} alone and leave a test to call {@link EffectWorker#perform} directly,
+ * driving one effect at a time against a dispatcher that only ever captures what it was told. The
+ * ones below that take no {@link Dispatcher} are the durable pipeline, whole -- {@link Transition},
  * {@link AgentRuntime}, and a continuously running {@link EffectPoller} -- the same parts {@link
  * EngineHarnessFactory#createHarness} assembles, so a test that dispatches a {@link
  * Dispatcher#dispatch} sees a turn actually run rather than commit and stop.
@@ -72,8 +68,8 @@ final class Engines {
   /**
    * Everything one agent type needs, over a database nobody else is using.
    *
-   * <p>{@code runtime} and {@code poll} are null for a {@code Parts} built from one of the {@link
-   * ActorSystem}-taking overloads, which never run the durable pipeline; {@link #close} is a no-op
+   * <p>{@code runtime} and {@code poll} are null for a {@code Parts} built from the {@link
+   * Dispatcher}-taking overload, which never runs the durable pipeline; {@link #close} is a no-op
    * for one of those.
    */
   record Parts(
@@ -141,55 +137,15 @@ final class Engines {
     }
   }
 
-  static Parts of(ActorSystem<?> system, AgentType type, Model model) {
-    return of(system, type, model, List.of());
-  }
-
-  static Parts of(
-      ActorSystem<?> system, AgentType type, Model model, List<ToolBinding<?>> bindings) {
-    return of(system, type, model, bindings, BLOCKING);
-  }
-
   /**
-   * The same, with the blocking executor handed in.
+   * {@link EffectWorker} alone, against a {@link Dispatcher} a test supplies -- for driving one
+   * effect directly with {@link EffectWorker#perform} and asserting on what the dispatcher was
+   * told, rather than on a turn actually running to completion.
    *
-   * <p>Effect batches are one task each on this executor, so a test that owns it owns the order
-   * they run in — which is the only way to reproduce a race between two batches on purpose rather
-   * than one run in five.
+   * <p>No {@link AgentRuntime}, no {@link Transition}, no {@link EffectPoller}: {@link
+   * Parts#runtime()} and {@link Parts#poll()} are null, and {@link Parts#close} is a no-op.
    */
   static Parts of(
-      ActorSystem<?> system,
-      AgentType type,
-      Model model,
-      List<ToolBinding<?>> bindings,
-      Executor blocking) {
-    return of(system, type, model, bindings, blocking, defaultDispatcher(system, type));
-  }
-
-  /**
-   * A {@link Dispatcher} that routes through a sharded entity, the same bridge {@code
-   * PekkoHarnessFactory.dispatcherFor} carries in main code.
-   *
-   * <p>Provisional and incomplete on purpose, like that one: it implements neither half of the
-   * contract a real {@link Dispatcher} owes — {@code completing} is dropped, so nothing it routes
-   * through ever discharges an effect, and {@code observability} is dropped too, so no trace
-   * carrier survives this bridge. A test that needs either uses a capturing {@link Dispatcher}
-   * instead (see the six-argument {@link #of}), not this one.
-   */
-  private static Dispatcher defaultDispatcher(ActorSystem<?> system, AgentType type) {
-    EntityTypeKey<NessyMessage> agentKey = EntityTypeKey.create(NessyMessage.class, type.name());
-    return (agentId, input, completing, observability) ->
-        ClusterSharding.get(system)
-            .entityRefFor(agentKey, agentId.value())
-            .tell(AgentActor.messageOf(input, Map.of()));
-  }
-
-  /**
-   * The same, with the {@link Dispatcher} handed in — for a test that needs to see what an effect
-   * dispatched, rather than have it silently absorbed by the default bridge above.
-   */
-  static Parts of(
-      ActorSystem<?> system,
       AgentType type,
       Model model,
       List<ToolBinding<?>> bindings,
@@ -255,9 +211,8 @@ final class Engines {
    * wires one kind of agent, but with the pieces a test needs (the transcript a {@link Memory}
    * recorded, every event narrated) kept at hand rather than hidden behind {@code Harness}.
    *
-   * <p>No {@link ActorSystem}: {@link Dispatcher#dispatch} drives {@link AgentRuntime} directly, so
-   * a turn actually runs rather than committing and stopping — the property the eight tests this
-   * overload family exists for are named after.
+   * <p>{@link Dispatcher#dispatch} drives {@link AgentRuntime} directly, so a turn actually runs
+   * rather than committing and stopping.
    */
   static Parts of(AgentType type, Model model) {
     return of(type, model, List.of());

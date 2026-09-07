@@ -21,9 +21,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -43,18 +40,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 @DisplayName("An exhausted engine-owned effect")
 class EffectExhaustionTest {
 
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
-
   private record Captured(AgentId agentId, Input input) {}
 
   @Test
@@ -66,7 +51,6 @@ class EffectExhaustionTest {
     List<Captured> seen = new ArrayList<>();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
             type,
             Engines.stalled(),
             List.of(),

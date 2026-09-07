@@ -27,9 +27,9 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 /**
  * Every rule about what an agent does next, and no way to do any of it.
  *
- * <p>Pure by construction: no clock, no store, no actor, no Pekko import. That is what lets a
- * three-day parked approval and a crash mid-model-call be ordinary unit tests rather than a
- * cluster, a race and a fifteen-second timeout.
+ * <p>Pure by construction: no clock, no store, no actor, no messaging framework import. That is
+ * what lets a three-day parked approval and a crash mid-model-call be ordinary unit tests rather
+ * than a cluster, a race and a fifteen-second timeout.
  *
  * <p><b>There is no Sleep.</b> Passivation was an effect because an actor had to be told to unload.
  * A thread that finishes simply returns, and the agent is a row that was always there.
@@ -226,7 +226,7 @@ public final class AgentLogic {
   }
 
   /**
-   * There is no "should we re-drive?" decision anywhere in the engine. Pekko reads the document
+   * There is no "should we re-drive?" decision anywhere in the engine. The engine reads the row
    * before any command, and the agent feeds itself this on EVERY activation — so the rare path is
    * the common path, exercised constantly rather than only after a crash.
    *

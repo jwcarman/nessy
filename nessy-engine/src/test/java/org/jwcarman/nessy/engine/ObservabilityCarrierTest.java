@@ -25,9 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -46,13 +43,11 @@ import org.jwcarman.nessy.engine.agent.Input;
  * argument.
  *
  * <p>Neither {@code DispatcherSeamTest} (a bare lambda, no {@code EffectWorker} involved) nor
- * {@code EffectWorkerEdgeCasesTest} (only ever calls the 4-arg overload, whose carrier is always
- * {@code Map.of()}) touches this. A {@link Dispatcher} that ignores {@code observability} entirely
- * would pass every other test in this module — which is exactly what both of the module's own
- * {@code Dispatcher} adapters, {@code PekkoHarnessFactory.dispatcherFor} and {@code Engines}'
- * default, do. This test drives {@link EffectWorker} directly against a CAPTURING {@link
- * Dispatcher} instead, so the serialized carrier is a value someone actually asserted on rather
- * than a parameter nothing reads.
+ * {@code EffectWorkerEdgeCasesTest} (only ever calls the overload whose carrier defaults to {@code
+ * Map.of()}) touches this. A {@link Dispatcher} that ignores {@code observability} entirely would
+ * pass every other test in this module. This test drives {@link EffectWorker} directly against a
+ * CAPTURING {@link Dispatcher} instead, so the serialized carrier is a value someone actually
+ * asserted on rather than a parameter nothing reads.
  *
  * <p><b>Two boundaries, not one.</b> The first two cases drive {@code AskApprover} for a call whose
  * asking message was never claimed, which answers SYNCHRONOUSLY through {@code completed()} --
@@ -66,18 +61,6 @@ import org.jwcarman.nessy.engine.agent.Input;
  */
 @DisplayName("The trace carrier riding an effect's outcome out")
 class ObservabilityCarrierTest {
-
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
 
   private record Captured(
       AgentId agentId, Input input, EffectId completing, String observability) {}
@@ -95,17 +78,23 @@ class ObservabilityCarrierTest {
         (agentId, input, completing, observability) ->
             seen.add(new Captured(agentId, input, completing, observability));
     AgentType type = AgentType.of("carrier-present");
-    Engines.Parts parts =
-        Engines.of(testKit.system(), type, Engines.stalled(), List.of(), Runnable::run, capturing);
+    Engines.Parts parts = Engines.of(type, Engines.stalled(), List.of(), Runnable::run, capturing);
     AgentId agentId = AgentId.of("house-carrier-present");
-    AgentState state = AgentState.idle().taking(TurnId.of("turn-carrier"), "obs-claim");
+    TurnId turnId = TurnId.of("turn-carrier");
+    AgentState state = AgentState.idle().taking(turnId, "obs-claim");
     CallId callId = CallId.of("missing-call");
     Map<String, String> carried = Map.of("traceparent", "00-4bf92f-1-01");
 
     parts
         .effectWorker()
         .perform(
-            agentId, state, new Effect.AskApprover(callId, "some_tool"), EffectId.next(), carried);
+            agentId,
+            state,
+            turnId,
+            new Effect.AskApprover(callId, "some_tool"),
+            EffectId.next(),
+            carried,
+            0);
 
     assertThat(seen).hasSize(1);
     assertThat(seen.getFirst().observability())
@@ -125,15 +114,21 @@ class ObservabilityCarrierTest {
         (agentId, input, completing, observability) ->
             seen.add(new Captured(agentId, input, completing, observability));
     AgentType type = AgentType.of("carrier-absent");
-    Engines.Parts parts =
-        Engines.of(testKit.system(), type, Engines.stalled(), List.of(), Runnable::run, capturing);
+    Engines.Parts parts = Engines.of(type, Engines.stalled(), List.of(), Runnable::run, capturing);
     AgentId agentId = AgentId.of("house-carrier-absent");
-    AgentState state = AgentState.idle().taking(TurnId.of("turn-no-carrier"), "obs-claim");
+    TurnId turnId = TurnId.of("turn-no-carrier");
+    AgentState state = AgentState.idle().taking(turnId, "obs-claim");
     CallId callId = CallId.of("missing-call");
 
     parts
         .effectWorker()
-        .perform(agentId, state, new Effect.AskApprover(callId, "some_tool"), EffectId.next());
+        .perform(
+            agentId,
+            state,
+            turnId,
+            new Effect.AskApprover(callId, "some_tool"),
+            EffectId.next(),
+            0);
 
     assertThat(seen).hasSize(1);
     assertThat(seen.getFirst().observability()).isNull();
@@ -164,7 +159,6 @@ class ObservabilityCarrierTest {
     Executor realBlocking = Executors.newVirtualThreadPerTaskExecutor();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
             type,
             Engines.saying(
                 List.of(
@@ -174,10 +168,13 @@ class ObservabilityCarrierTest {
             realBlocking,
             capturing);
     AgentId agentId = AgentId.of("house-carrier-across-run");
-    AgentState state = AgentState.idle().taking(TurnId.of("turn-across-run"), "obs-claim");
+    TurnId turnId = TurnId.of("turn-across-run");
+    AgentState state = AgentState.idle().taking(turnId, "obs-claim");
     Map<String, String> carried = Map.of("traceparent", "00-1234ef-2-01");
 
-    parts.effectWorker().perform(agentId, state, new Effect.CallModel(), EffectId.next(), carried);
+    parts
+        .effectWorker()
+        .perform(agentId, state, turnId, new Effect.CallModel(), EffectId.next(), carried, 0);
 
     await()
         .atMost(15, SECONDS)

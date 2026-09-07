@@ -87,7 +87,7 @@ public final class Traces {
     // "send Observe" said what was sent and never to whom, which in a system of four actor kinds
     // is the half that matters.
     Observation.createNotStarted("send " + destination + " " + what, () -> sending, registry)
-        .lowCardinalityKeyValue("messaging.system", "pekko")
+        .lowCardinalityKeyValue("messaging.system", "nessy")
         .lowCardinalityKeyValue("messaging.operation.name", "send")
         .lowCardinalityKeyValue("messaging.destination.name", destination)
         .lowCardinalityKeyValue("messaging.message.type", what)

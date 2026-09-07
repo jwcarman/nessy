@@ -21,11 +21,6 @@ import static org.awaitility.Awaitility.await;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -55,10 +50,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 class ReasoningNarrationTest {
 
   private static final AgentType WATCHMAN = AgentType.of("thinker");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   private static Model reasoningThenAnswering() {
@@ -92,34 +84,19 @@ class ReasoningNarrationTest {
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
-    parts = Engines.of(testKit.system(), WATCHMAN, reasoningThenAnswering());
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
+    parts = Engines.of(WATCHMAN, reasoningThenAnswering());
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
   @DisplayName("the reasoning is narrated, and never remembered as part of the answer")
   void reasoning_chunks_narrate_and_the_answer_alone_is_remembered() {
     AgentId agentId = AgentId.of("house-thinker");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "motion detected"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "motion detected"));
 
     await()
         .atMost(15, SECONDS)

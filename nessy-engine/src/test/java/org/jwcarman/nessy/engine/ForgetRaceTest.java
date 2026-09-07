@@ -20,15 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.actor.testkit.typed.javadsl.TestProbe;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -38,6 +30,7 @@ import org.jwcarman.nessy.api.message.AnswerMessage;
 import org.jwcarman.nessy.api.model.ModelResult;
 import org.jwcarman.nessy.api.model.StopReason;
 import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -57,19 +50,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 @DisplayName("A forget arriving while a turn is still writing")
 class ForgetRaceTest {
 
-  private static ActorTestKit testKit;
-
   private HandBrake brake;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
 
   @AfterEach
   void release() {
@@ -80,14 +61,12 @@ class ForgetRaceTest {
   @DisplayName("does not leave the answer behind it")
   void the_write_does_not_land_inside_the_delete() {
     brake = new HandBrake();
-    TestProbe<ClusterSharding.ShardCommand> shard = testKit.createTestProbe();
-    Engines.Parts parts =
-        Engines.of(
-            testKit.system(), AgentType.of("racing"), answeringThenHolding(), List.of(), brake);
-    AgentId agentId = shardedAgent("racing", parts, shard);
+    AgentType type = AgentType.of("racing");
+    Engines.Parts parts = Engines.of(type, answeringThenHolding(), List.of(), brake);
+    AgentId agentId = AgentId.of("racing-1");
 
     parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
-    tell(agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     // The turn has decided how it ends; its answer is not written yet -- that batch is held.
     await().atMost(Duration.ofSeconds(10)).until(() -> brake.pending() >= 1);
@@ -96,7 +75,7 @@ class ForgetRaceTest {
     // take is already outstanding and is correctly ignored -- there is no second batch to race,
     // which is the point.
     parts.backlog().poison(agentId);
-    tell(agentId, new NessyMessage.BacklogUpdated(Map.of()));
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
 
     brake.releaseTogether();
 
@@ -131,28 +110,5 @@ class ForgetRaceTest {
         return answering;
       }
     };
-  }
-
-  private static AgentId shardedAgent(
-      String name, Engines.Parts parts, TestProbe<ClusterSharding.ShardCommand> shard) {
-    AgentType type = AgentType.of(name);
-    EntityTypeKey<NessyMessage> key = EntityTypeKey.create(NessyMessage.class, type.name());
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    key,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(type, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            shard.ref()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
-    return AgentId.of(name + "-1");
-  }
-
-  private static void tell(AgentId agentId, NessyMessage message) {
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(EntityTypeKey.create(NessyMessage.class, "racing"), agentId.value())
-        .tell(message);
   }
 }

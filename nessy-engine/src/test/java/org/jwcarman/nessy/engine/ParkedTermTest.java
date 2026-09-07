@@ -24,9 +24,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -59,18 +56,6 @@ class ParkedTermTest {
 
   record Args() {}
 
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
-
   private record Captured(AgentId agentId, Input input) {}
 
   @Test
@@ -90,7 +75,6 @@ class ParkedTermTest {
     List<Captured> seen = new ArrayList<>();
     Engines.Parts parts =
         Engines.of(
-            testKit.system(),
             type,
             Engines.stalled(),
             List.of(binding),
@@ -120,8 +104,10 @@ class ParkedTermTest {
         .perform(
             agentId,
             AgentState.idle().taking(turnId, "obs"),
+            turnId,
             new Effect.RunTool(callId, "defer_tool"),
-            effectId);
+            effectId,
+            0);
     assertThat(seen).hasSize(1);
     assertThat(seen.get(0).input()).isInstanceOf(Input.ToolParked.class);
     boolean parked = parts.effects().park(type, agentId, turnId, callId, term);

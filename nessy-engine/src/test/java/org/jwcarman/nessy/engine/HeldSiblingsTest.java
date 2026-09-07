@@ -62,8 +62,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * {@link EffectWorker} and {@link AgentRuntime}, deliberately -- {@link EffectPollerTest} tests
  * grouping and sequencing against a fake performer, but this defect is specifically about what a
  * real {@code settle} failure does to the rows after it, which a fake performer cannot reproduce
- * honestly. No Pekko cluster is needed: {@link AgentRuntime} is its own {@link Dispatcher}, so it
- * is wired to itself directly.
+ * honestly. No cluster is needed: {@link AgentRuntime} is its own {@link Dispatcher}, so it is
+ * wired to itself directly.
  */
 @DisplayName("A retried effect and its siblings")
 class HeldSiblingsTest {

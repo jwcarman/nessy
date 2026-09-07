@@ -27,10 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -73,18 +70,6 @@ class DeferralClampTest {
   // for this one test class.
   private static final Duration MAX_DEFERRAL = Duration.ofDays(30);
 
-  private static ActorTestKit testKit;
-
-  @BeforeAll
-  static void start() {
-    testKit = ClusterOfOne.start();
-  }
-
-  @AfterAll
-  static void stop() {
-    testKit.shutdownTestKit();
-  }
-
   private record Captured(AgentId agentId, Input input) {}
 
   private Logger workerLogger;
@@ -123,8 +108,10 @@ class DeferralClampTest {
         .perform(
             agentId,
             AgentState.idle().taking(turnId, "obs"),
+            turnId,
             new Effect.RunTool(callId, "defer_tool"),
-            EffectId.next());
+            EffectId.next(),
+            0);
 
     assertThat(seen).hasSize(1);
     Input.ToolParked parked = (Input.ToolParked) seen.get(0).input();
@@ -157,8 +144,10 @@ class DeferralClampTest {
         .perform(
             agentId,
             AgentState.idle().taking(turnId, "obs"),
+            turnId,
             new Effect.RunTool(callId, "defer_tool"),
-            EffectId.next());
+            EffectId.next(),
+            0);
 
     assertThat(seen).hasSize(1);
     Input.ToolParked parked = (Input.ToolParked) seen.get(0).input();
@@ -187,8 +176,10 @@ class DeferralClampTest {
         .perform(
             agentId,
             AgentState.idle().taking(turnId, "obs"),
+            turnId,
             new Effect.AskApprover(callId, "gated_tool"),
-            EffectId.next());
+            EffectId.next(),
+            0);
 
     assertThat(seen).hasSize(1);
     Input.ToolParked parked = (Input.ToolParked) seen.get(0).input();
@@ -227,8 +218,7 @@ class DeferralClampTest {
   private Engines.Parts partsWith(
       String agentTypeName, ToolBinding<Args> binding, Dispatcher dispatcher) {
     AgentType type = AgentType.of(agentTypeName);
-    return Engines.of(
-        testKit.system(), type, Engines.stalled(), List.of(binding), Runnable::run, dispatcher);
+    return Engines.of(type, Engines.stalled(), List.of(binding), Runnable::run, dispatcher);
   }
 
   /** Writes the claim {@code callOf} reads back, so a real call is found rather than "gone". */

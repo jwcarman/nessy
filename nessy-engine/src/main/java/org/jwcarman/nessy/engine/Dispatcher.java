@@ -21,10 +21,10 @@ import org.jwcarman.nessy.engine.agent.Input;
 /**
  * Where an effect's outcome goes.
  *
- * <p>This was {@code tell(agentId, NessyMessage)} into a sharded entity -- an address, a
- * serializer, and a cluster to route it. It is now one method taking the thing the agent actually
- * reasons about, which is why {@link EffectWorker} no longer imports Pekko and why a test can watch
- * an effect's outcome with a lambda.
+ * <p>This used to be a message sent into a cluster entity's mailbox -- an address, a serializer,
+ * and a cluster to route it. It is now one method taking the thing the agent actually reasons
+ * about, which is why {@link EffectWorker} imports no messaging framework at all and why a test can
+ * watch an effect's outcome with a lambda.
  */
 @FunctionalInterface
 public interface Dispatcher {

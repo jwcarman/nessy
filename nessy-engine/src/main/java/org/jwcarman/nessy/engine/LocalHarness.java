@@ -85,19 +85,16 @@ final class LocalHarness<O> implements Harness<O> {
   }
 
   /**
-   * Replay from a cursor needs a durable narration stream, and this one is a map.
-   *
-   * <p>Thrown rather than silently ignored: a caller passing a cursor is asking for something only
-   * a durable stream can give, and quietly starting them at "now" would look like it worked. Phase
-   * 3's Substrate journal is where the cursor becomes real.
+   * Replays from {@link Narration}'s own bounded, in-memory recent-events buffer -- the same
+   * bargain {@code NarrationActor} struck, and no bigger a promise: a cursor from BEFORE this
+   * process started, or from further back than the buffer holds, replays only what survived.
+   * Durable, cross-restart replay is Phase 3's Substrate journal, not this.
    */
   @Override
   public AgentSubscription subscribe(
       AgentId agentId, AgentSubscriber subscriber, String lastEventId) {
-    if (lastEventId != null) {
-      throw new UnsupportedOperationException(
-          "replay from a cursor needs a durable narration stream; none is configured");
-    }
-    return subscribe(agentId, subscriber);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    Objects.requireNonNull(subscriber, "subscriber must not be null");
+    return narration.subscribe(agentId, subscriber, lastEventId);
   }
 }

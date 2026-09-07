@@ -19,12 +19,6 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -32,12 +26,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnResult;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * A model call that never even starts streaming.
@@ -45,17 +39,21 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>A provider client can throw before it produces a single event — a bad request, a closed
  * connection pool, a serialization bug in the request builder. {@code EffectWorker.callModel} runs
  * the whole call, request-building included, on the blocking executor precisely so a synchronous
- * throw there is caught the same way a failure mid-stream would be. This is the throw-before-any-
- * event case; nothing before this test drove it.
+ * throw there is caught the same way a failure mid-stream would be.
+ *
+ * <p>{@code CallModel} is engine-owned, so a provider that throws on EVERY attempt is retried
+ * against {@link RetryPolicy} exactly like {@code TakeWork} (design of record 2026-09-04, Task 7,
+ * I4) -- it does not fold {@code Input.ModelFailed} and end the turn; it retries, then abandons the
+ * obligation with a reason recorded on the row and a loud log line, folding nothing. The backlog
+ * read that started this turn DID succeed, so unlike a {@code TakeWork} exhaustion, {@code
+ * TurnStarted} IS narrated -- what never arrives is a {@code TurnEnded}, because there is no path
+ * left that produces one.
  */
 @DisplayName("A model provider that throws before it streams anything")
 class ModelStreamFailureTest {
 
   private static final AgentType WATCHMAN = AgentType.of("brokenmodel");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   private static Model throwing() {
@@ -74,48 +72,47 @@ class ModelStreamFailureTest {
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
-    parts = Engines.of(testKit.system(), WATCHMAN, throwing());
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
+    parts = Engines.of(WATCHMAN, throwing());
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
-  @DisplayName("the turn closes as failed, carrying the provider's own message")
-  void the_turn_reports_the_thrown_message_as_its_failure_reason() {
+  @DisplayName(
+      "a persistently throwing model is retried, then the call is abandoned -- the turn never ends,"
+          + " and it never spins forever either")
+  void a_persistently_throwing_model_call_is_retried_then_abandoned() {
     AgentId agentId = AgentId.of("house-brokenmodel");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "bell"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "bell"));
 
     await()
         .atMost(15, SECONDS)
-        .untilAsserted(
-            () -> {
-              List<AgentEvent.TurnEnded> ended =
-                  parts.narrated().of(agentId).stream()
-                      .filter(AgentEvent.TurnEnded.class::isInstance)
-                      .map(AgentEvent.TurnEnded.class::cast)
-                      .toList();
-              assertThat(ended).hasSize(1);
-              assertThat(ended.getFirst().outcome()).isInstanceOf(TurnResult.Failed.class);
-              TurnResult.Failed failed = (TurnResult.Failed) ended.getFirst().outcome();
-              assertThat(failed.reason()).isEqualTo("connection pool exhausted");
-            });
+        .untilAsserted(() -> assertThat(statusOf(agentId)).isEqualTo("FAILED"));
+    assertThat(reasonOf(agentId)).contains("gave up after");
+
+    assertThat(parts.narrated().of(agentId))
+        .as("the backlog read succeeded, so the turn DID start")
+        .anyMatch(AgentEvent.TurnStarted.class::isInstance)
+        .as("CallModel exhaustion folds nothing (I4) -- no TurnEnded ever arrives")
+        .noneMatch(AgentEvent.TurnEnded.class::isInstance);
+  }
+
+  private static String statusOf(AgentId agentId) {
+    return JdbcClient.create(parts.dataSource())
+        .sql("SELECT status FROM nessy_effect WHERE agent_id = ? AND status = 'FAILED'")
+        .param(agentId.value())
+        .query(String.class)
+        .single();
+  }
+
+  private static String reasonOf(AgentId agentId) {
+    return JdbcClient.create(parts.dataSource())
+        .sql("SELECT reason FROM nessy_effect WHERE agent_id = ? AND status = 'FAILED'")
+        .param(agentId.value())
+        .query(String.class)
+        .single();
   }
 }

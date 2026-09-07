@@ -16,16 +16,16 @@
 package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentSubscriber;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.testing.TestDatabase;
@@ -47,6 +47,7 @@ class LocalHarnessTest {
   private EmbeddedDatabase database;
   private BacklogStore<String> backlog;
   private List<Input> driven;
+  private Narration narration;
   private LocalHarness<String> harness;
 
   @BeforeEach
@@ -54,12 +55,13 @@ class LocalHarnessTest {
     database = TestDatabase.fresh();
     backlog = Backlogs.ofStrings(database);
     driven = new ArrayList<>();
+    narration = new Narration();
     harness =
         new LocalHarness<>(
             TYPE,
             backlog,
             (agentId, input, completing, observability) -> driven.add(input),
-            new Narration());
+            narration);
   }
 
   @AfterEach
@@ -92,12 +94,31 @@ class LocalHarnessTest {
   }
 
   @Test
-  @DisplayName("a cursor is refused rather than silently ignored")
-  void replay_from_a_cursor_is_not_available() {
-    AgentId agent = AGENT;
-    AgentSubscriber subscriber = event -> {};
+  @DisplayName("a listener that comes back with a cursor is replayed the events it missed")
+  void a_cursor_replays_the_gap_from_narrations_own_buffer() {
+    Narrator narrator = narration.narratorFor(AGENT);
+    narrator.narrate(new AgentEvent.TextDelta(Identifiers.next(), "missed-1"));
+    String lastSeen = Identifiers.next();
+    narrator.narrate(new AgentEvent.TextDelta(lastSeen, "missed-2"));
+    narrator.narrate(new AgentEvent.TextDelta(Identifiers.next(), "missed-3"));
 
-    assertThat(catchThrowable(() -> harness.subscribe(agent, subscriber, "event-7")))
-        .isInstanceOf(UnsupportedOperationException.class);
+    List<AgentEvent> replayed = new CopyOnWriteArrayList<>();
+    harness.subscribe(AGENT, replayed::add, lastSeen);
+
+    assertThat(replayed).isNotEmpty();
+    assertThat(replayed)
+        .extracting(event -> ((AgentEvent.TextDelta) event).text())
+        .containsExactly("missed-3");
+  }
+
+  @Test
+  @DisplayName("a cursor of null replays nothing, even with events already narrated")
+  void a_null_cursor_replays_nothing() {
+    narration.narratorFor(AGENT).narrate(new AgentEvent.TextDelta(Identifiers.next(), "missed"));
+
+    List<AgentEvent> replayed = new CopyOnWriteArrayList<>();
+    harness.subscribe(AGENT, replayed::add, null);
+
+    assertThat(replayed).isEmpty();
   }
 }

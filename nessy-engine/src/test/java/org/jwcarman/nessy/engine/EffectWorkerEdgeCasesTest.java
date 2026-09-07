@@ -18,13 +18,6 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -40,8 +33,9 @@ import org.jwcarman.nessy.engine.agent.Effect;
 /**
  * The narrow branches inside {@code EffectWorker} that a full turn cannot be made to hit — not
  * because they are unreachable in production, but because reaching them from the outside would mean
- * contriving the very failure they exist to handle (a claim deleted from under a running call, a
- * deployment with no durable-state plugin configured). {@code EffectWorker} is package-visible for
+ * contriving the very failure they exist to handle (a claim deleted from under a running call).
+ * Each effect here is driven with a real attempt count (0, its first) rather than the sentinel that
+ * used to turn {@link RetryPolicy} consultation off. {@code EffectWorker} is package-visible for
  * exactly this: driving one effect directly, against the real dependencies {@link Engines} builds,
  * without needing the decision that would ordinarily have produced it.
  */
@@ -52,34 +46,15 @@ class EffectWorkerEdgeCasesTest {
   @DisplayName("a call whose asking message is gone")
   class TheAskingMessageIsGone {
 
-    private static ActorTestKit testKit;
     private static Engines.Parts parts;
     private static AgentId agentId;
     private static AgentType type;
 
     @BeforeAll
     static void start() {
-      testKit = ClusterOfOne.start();
       type = AgentType.of("orphaned-call");
-      parts = Engines.of(testKit.system(), type, Engines.stalled());
-      EntityTypeKey<NessyMessage> key = EntityTypeKey.create(NessyMessage.class, type.name());
-      ClusterSharding.get(testKit.system())
-          .init(
-              Entity.of(
-                      key,
-                      context ->
-                          AgentActor.create(
-                              new AgentActor.Dependencies(
-                                  type, parts.effectWorker(), Traces.noop()),
-                              AgentId.of(context.getEntityId()),
-                              context.getShard()))
-                  .withStopMessage(new NessyMessage.Stop(Map.of())));
+      parts = Engines.of(type, Engines.stalled());
       agentId = AgentId.of("house-orphaned");
-    }
-
-    @AfterAll
-    static void stop() {
-      testKit.shutdownTestKit();
     }
 
     /**
@@ -96,7 +71,13 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(agentId, state, new Effect.AskApprover(callId, "some_tool"), EffectId.next());
+          .perform(
+              agentId,
+              state,
+              turnId,
+              new Effect.AskApprover(callId, "some_tool"),
+              EffectId.next(),
+              0);
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -113,7 +94,8 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(agentId, state, new Effect.RunTool(callId, "some_tool"), EffectId.next());
+          .perform(
+              agentId, state, turnId, new Effect.RunTool(callId, "some_tool"), EffectId.next(), 0);
 
       ToolResult result = decodedResult(parts, agentId, turnId, callId);
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
@@ -142,7 +124,7 @@ class EffectWorkerEdgeCasesTest {
 
       parts
           .effectWorker()
-          .perform(neverWorked, AgentState.idle(), new Effect.Remember.Input(), effectId);
+          .perform(neverWorked, AgentState.idle(), null, new Effect.Remember.Input(), effectId, 0);
 
       assertThat(parts.remembered().of(neverWorked))
           .as("nothing was ever claimed under a null key, so nothing was remembered")
@@ -152,8 +134,7 @@ class EffectWorkerEdgeCasesTest {
 
   /**
    * A genuinely EXECUTING effect row, so {@code EffectStore#complete} — which now raises if it
-   * discharges nothing (see {@code EffectStoreTest}) — has something real to discharge. {@code
-   * EffectId.next()} alone, as the legacy {@code AgentActor} path still uses, names no row at all.
+   * discharges nothing (see {@code EffectStoreTest}) — has something real to discharge.
    */
   private static EffectId claimedEffect(
       Engines.Parts parts, AgentType type, AgentId agentId, TurnId turnId) {
@@ -166,36 +147,25 @@ class EffectWorkerEdgeCasesTest {
   @DisplayName("forgetting an agent")
   class Forgetting {
 
-    private ActorTestKit testKit;
-
-    @AfterEach
-    void shutdown() {
-      if (testKit != null) {
-        testKit.shutdownTestKit();
-      }
-    }
-
     /**
-     * {@code forget} no longer reaches into Pekko's durable-state registry to delete a persisted
-     * state row -- that required the {@code ActorSystem} reference {@link EffectWorker} gave up
-     * when it started answering through {@link Dispatcher} instead of a cluster entity, and the row
-     * it used to delete survives until Task 11 removes the journal machinery that wrote it. What
-     * this proves is narrower than the old test's name claimed and no less real: the SQL-backed
-     * participants -- memory and the backlog -- are still wiped.
+     * {@code forget} is the only place an agent's state lives now, so there is no second,
+     * actor-owned document left to reconcile: wiping the SQL-backed participants -- memory, the
+     * backlog, and the state row itself -- IS the whole story.
      */
     @Test
     @DisplayName("memory and the backlog are wiped")
     void forgetting_wipes_memory_and_backlog() {
-      testKit = ClusterOfOne.start();
       AgentType type = AgentType.of("stateless");
-      Engines.Parts parts = Engines.of(testKit.system(), type, Engines.stalled());
+      Engines.Parts parts = Engines.of(type, Engines.stalled());
       AgentId agentId = AgentId.of("house-stateless");
 
       parts.backlog().offer(agentId, new HouseEvents.HouseEvent("kitchen", "door opened"));
       parts.remembered().add(agentId, answer());
       EffectId effectId = claimedEffect(parts, type, agentId, null);
 
-      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), effectId);
+      parts
+          .effectWorker()
+          .perform(agentId, AgentState.idle(), null, new Effect.Forget(), effectId, 0);
 
       assertThat(parts.remembered().of(agentId)).as("memory").isEmpty();
       assertThat(backlogRowCount(parts, agentId)).as("backlog rows").isZero();
@@ -216,9 +186,8 @@ class EffectWorkerEdgeCasesTest {
     @DisplayName(
         "an outstanding effect and the state row are both gone, and a subsequent claim finds nothing")
     void forgetting_leaves_no_claimable_effect_and_no_state_row() {
-      testKit = ClusterOfOne.start();
       AgentType type = AgentType.of("effect-laden");
-      Engines.Parts parts = Engines.of(testKit.system(), type, Engines.stalled());
+      Engines.Parts parts = Engines.of(type, Engines.stalled());
       AgentId agentId = AgentId.of("house-effect-laden");
 
       parts.store().save(type, agentId, AgentState.idle().taking(TurnId.of("turn-1"), "obs-claim"));
@@ -227,7 +196,9 @@ class EffectWorkerEdgeCasesTest {
       parts.effects().insert(type, agentId, TurnId.of("turn-1"), null, 0, new byte[] {0}, null);
       EffectId forgetEffectId = claimedEffect(parts, type, agentId, null);
 
-      parts.effectWorker().perform(agentId, AgentState.idle(), new Effect.Forget(), forgetEffectId);
+      parts
+          .effectWorker()
+          .perform(agentId, AgentState.idle(), null, new Effect.Forget(), forgetEffectId, 0);
 
       assertThat(
               parts

@@ -23,7 +23,6 @@ import java.time.Clock;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -57,12 +56,11 @@ class StreamingNarrationTest {
   private static final AgentType WATCHMAN = AgentType.of("watchman");
   private static final AgentId HOUSE = AgentId.of("house-12");
 
-  private static ActorTestKit testKit;
+  private static EngineHarnessFactory factory;
   private static Harness<HouseEvent> harness;
 
   @BeforeAll
   static void wire() {
-    testKit = ClusterOfOne.start();
     ModelProvider models =
         id ->
             new Model() {
@@ -93,31 +91,31 @@ class StreamingNarrationTest {
               }
             };
 
+    factory =
+        new EngineHarnessFactory(
+            engine ->
+                engine
+                    .models(models)
+                    .dataSource(TestDatabase.fresh())
+                    .maxTokens(4096)
+                    .capabilities(java.util.Set.of())
+                    .blocking(Runnable::run)
+                    .clock(Clock.systemUTC())
+                    .replyTokens(ReplyTokens.ephemeral()));
     harness =
-        new PekkoHarnessFactory(
-                engine ->
-                    engine
-                        .system(testKit.system())
-                        .models(models)
-                        .dataSource(TestDatabase.fresh())
-                        .maxTokens(4096)
-                        .capabilities(java.util.Set.of())
-                        .blocking(Runnable::run)
-                        .clock(Clock.systemUTC())
-                        .replyTokens(ReplyTokens.ephemeral()))
-            .createHarness(
-                HouseEvent.class,
-                config ->
-                    config
-                        .type(WATCHMAN)
-                        .systemPrompt("You watch the house.")
-                        .model(ModelId.of("scripted"))
-                        .renderer(HouseEvents.RENDERER));
+        factory.createHarness(
+            HouseEvent.class,
+            config ->
+                config
+                    .type(WATCHMAN)
+                    .systemPrompt("You watch the house.")
+                    .model(ModelId.of("scripted"))
+                    .renderer(HouseEvents.RENDERER));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    factory.close();
   }
 
   @Test

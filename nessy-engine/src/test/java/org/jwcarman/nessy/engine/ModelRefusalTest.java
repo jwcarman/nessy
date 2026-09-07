@@ -20,11 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -43,56 +38,37 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * <p>A refusal arrives as a normal HTTP 200 — the provider's own guidance is to check WHY the turn
  * stopped before reading anything else out of it. Nothing before this test exercised the path a
  * real refusal actually takes: {@code EffectWorker.answerOf} turning a {@link ModelResult.Refused}
- * into {@code NessyMessage.ModelRefused}, and the turn closing as {@link TurnResult.Refused} rather
- * than hanging or being mistaken for a normal answer.
+ * into a failed dispatch, and the turn closing as {@link TurnResult.Refused} rather than hanging or
+ * being mistaken for a normal answer.
  */
 @DisplayName("A model that refuses instead of answering")
 class ModelRefusalTest {
 
   private static final AgentType WATCHMAN = AgentType.of("refuser");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
     parts =
         Engines.of(
-            testKit.system(),
             WATCHMAN,
             Engines.saying(
                 List.of(
                     new ModelResult.Refused(
                         "harassment", "will not help with that", Usage.unreported()))));
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
   @DisplayName("the turn closes as refused, and nothing is remembered as though it answered")
   void a_refusal_ends_the_turn_without_a_recorded_answer() {
     AgentId agentId = AgentId.of("house-refused");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "someone at the door"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "someone at the door"));
 
     await()
         .atMost(15, SECONDS)
