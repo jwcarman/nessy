@@ -75,12 +75,16 @@ final class EffectStore {
           + " (effect_id, agent_type, agent_id, turn_id, call_id, ordinal, payload, observability,"
           + " status, attempts, actionable_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?,"
           + " ?)";
+  // I3 (Task 7 fix round): ordered by ordinal too, not actionable_at alone -- a same-instant tie
+  // could otherwise cut one agent's group at the LIMIT boundary with an earlier ordinal left
+  // outside the batch and a later one inside it, which is C2's failure by another road (a group
+  // this pass never sees in full is a group EffectPoller cannot sequence correctly).
   private static final String SELECT_DUE =
       "SELECT effect_id, agent_id, turn_id, call_id, ordinal, payload, observability, attempts,"
           + " status"
           + " FROM nessy_effect"
           + " WHERE agent_type = ? AND actionable_at <= ?"
-          + " ORDER BY actionable_at LIMIT ? FOR UPDATE SKIP LOCKED";
+          + " ORDER BY actionable_at, ordinal LIMIT ? FOR UPDATE SKIP LOCKED";
 
   /**
    * The conditional increment is evaluated against the PRE-update row on both H2 and PostgreSQL --

@@ -125,6 +125,43 @@ class EffectStoreTest {
   }
 
   @Test
+  @DisplayName(
+      "I3: a same-instant tie breaks by ordinal, so a LIMIT-truncated batch never cuts a group in"
+          + " the middle")
+  void a_same_instant_tie_breaks_by_ordinal() {
+    Instant sameInstant = Instant.now();
+    // Planted directly, all at the SAME actionable_at, and inserted in DESCENDING ordinal order --
+    // insertion order must not be what makes this pass.
+    insertAt(AGENT, 2, "third", sameInstant);
+    insertAt(AGENT, 0, "first", sameInstant);
+    insertAt(AGENT, 1, "second", sameInstant);
+
+    List<EffectStore.Attempted> batch = effects.attempt(TYPE, 2, sameInstant, TIMEOUT);
+
+    assertThat(batch)
+        .as("the two LOWEST ordinals, not an arbitrary pair straddling the group")
+        .extracting(effect -> text(effect.payload()))
+        .containsExactly("first", "second");
+  }
+
+  private void insertAt(AgentId agentId, int ordinal, String payload, Instant actionableAt) {
+    JdbcClient.create(database)
+        .sql(
+            "INSERT INTO nessy_effect (effect_id, agent_type, agent_id, turn_id, call_id, ordinal,"
+                + " payload, observability, status, attempts, actionable_at, created_at) VALUES (?,"
+                + " ?, ?, ?, NULL, ?, ?, NULL, 'PENDING', 0, ?, ?)")
+        .param(EffectId.next().value())
+        .param(TYPE.name())
+        .param(agentId.value())
+        .param(TURN.value())
+        .param(ordinal)
+        .param(bytes(payload))
+        .param(actionableAt)
+        .param(actionableAt)
+        .update();
+  }
+
+  @Test
   @DisplayName("an attempted effect is not due again while its watchdog is still live")
   void an_attempted_effect_is_not_immediately_due_again() {
     insert(AGENT, 0, "call-model", null);
