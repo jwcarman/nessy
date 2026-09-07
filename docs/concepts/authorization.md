@@ -169,7 +169,7 @@ Tokens are minted with the **first** key and read by trying **every** one, so
 a rotation does not invalidate a token already sitting in somebody's inbox:
 
 ```java
-new PekkoHarnessFactory(engine -> engine
+new EngineHarnessFactory(engine -> engine
         .replyTokens(ReplyTokens.withKeys(currentKey, previousKey)));   // byte[32] each
 ```
 

@@ -30,10 +30,11 @@ whole reason the type is not a boolean.
 
 ## Recovery is not a mode
 
-There is no "should we re-drive?" decision anywhere. Pekko reads the
-document before any command runs, and the agent then feeds itself a
-`Recovered` input on **every** activation — so the rare path is the common
-path, exercised constantly rather than only after a crash.
+There is no "should we re-drive?" decision anywhere. The engine reads the row
+before any command runs, and a stall sweep periodically feeds a `Recovered`
+input to any agent left mid-turn — so the rare path (a node that vanished
+mid-turn) is exercised by the same fold every other input goes through,
+rather than a special case bolted on beside it.
 
 | State | On recovery | Why |
 |---|---|---|

@@ -20,17 +20,15 @@ application does not have to:
   runtime). Two providers with no `NESSY_PROVIDER` is refused rather than
   guessed. Put the adapters you want discoverable on your classpath; this
   module deliberately drags none of them in.
-- **The actor system** forms a cluster of one and waits for it, because the
-  engine always shards and sharding on a node that has not joined drops
-  messages silently rather than failing.
-- **State** is in memory — substrate, durable state, and reply tokens alike.
+- **State** is in memory — substrate, agent and turn state, and reply tokens
+  alike.
 
 ## What it is not
 
 Nothing survives the process, on purpose. A conversation typed into a terminal
 has no reason to outlive the terminal. An application that must survive a
-restart is not a console application: assemble a `PekkoHarnessFactory` yourself,
-or use `nessy-spring-boot-starter`.
+restart is not a console application: assemble an `EngineHarnessFactory`
+yourself, or use `nessy-spring-boot-starter`.
 
 There is no provider override. An application that wants to name its own
 gateway is not reaching for an easy button, and has the ordinary way to say so.

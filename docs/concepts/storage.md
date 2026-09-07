@@ -5,10 +5,10 @@ how it is read.
 
 | What | Where | Lives for |
 |---|---|---|
-| What an agent is doing | Pekko's `durable_state` | until the turn ends |
+| What an agent is doing | `nessy_agent` | until the agent is forgotten |
 | What is waiting to become a turn | `nessy_backlog` | until it is taken and swept |
 | Content a turn needs and no longer | `nessy_claim` | the turn |
-| A deadline that outlives its process | `nessy_reminder` | until the call settles |
+| An obligation in flight, and any deadline it is parked against | `nessy_effect` | until it completes or is abandoned |
 | The conversation | `nessy_transcript` | forever, unless your `Memory` says otherwise |
 
 Notes, plans and intent each get a table too, from whichever module
@@ -37,13 +37,12 @@ apparatus for a seam with one thing behind it.
 
 ## The engine needs it, so the engine provides it
 
-Claims and reminders are engine bookkeeping. Nothing outside the engine
-reads either, so neither is an extension point and neither is something an
+Claims and effects are engine bookkeeping. Nothing outside the engine reads
+either, so neither is an extension point and neither is something an
 application should have to wire.
 
 ```java
-new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+new EngineHarnessFactory(engine -> engine
         .models(models));            // no dataSource: the engine makes its own
 ```
 
@@ -51,8 +50,7 @@ Hand it no `DataSource` and it builds an in-memory H2 and initializes it.
 Hand it one and it uses that — and **does not touch it**:
 
 ```java
-new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+new EngineHarnessFactory(engine -> engine
         .models(models)
         .dataSource(yourDataSource));
 ```

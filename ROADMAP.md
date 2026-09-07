@@ -116,7 +116,7 @@ shipped early, but *policy* is still per-tool and binary. These close the gap:
 ## Platform & developer experience
 
 - **DSL coherence** *(ruled)* — one construction idiom everywhere:
-  customizers over configs (`new PekkoHarnessFactory(engine -> ...)`,
+  customizers over configs (`new EngineHarnessFactory(engine -> ...)`,
   `factory.createHarness(Type.class, config -> ...)`), no `build()` in the
   public surface.
 - **Loop maturity** — re-parking shipped with subagents v2; parallel tool

@@ -53,15 +53,13 @@ CHAT_MODEL_ID=gpt-4o-mini \
 
 ## What it does not do
 
-Two things are in memory, and the application says so at startup rather than
-letting you find out:
-
-- **Transcripts and backlogs.** No `DataSource` bean means the starter falls
-  back to an in-memory substrate and warns loudly. Add one and it uses it.
-- **Agent and turn state.** `application.conf` picks Pekko's in-memory
-  durable-state store, because an example that needs a database before it will
-  say hello is an example nobody runs. The `watchman` example next door
-  answers both with Postgres, which is what a deployment does.
+**Everything is in memory** — transcripts, backlogs, and agent and turn
+state alike, since all of it lives in the one engine-owned database. No
+`DataSource` bean means the starter falls back to an in-memory substrate and
+warns loudly, because an example that needs a database before it will say
+hello is an example nobody runs. Add one and it uses it for all of it. The
+`watchman` example next door answers this with Postgres, which is what a
+deployment does.
 
 The reply key IS fixed, in `application.yml`, because ephemeral keys and
 parked approvals do not mix: a token minted before a restart cannot be read

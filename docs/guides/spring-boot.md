@@ -59,9 +59,8 @@ find it.
 | `DataSource` | an in-memory H2, **loudly announced** |
 | `Clock` | `Clock.systemUTC()` |
 | `ReplyTokens` | ephemeral keys |
-| `ActorSystem` | a cluster-of-one, terminated on shutdown |
 | `Traces` | wired to your `ObservationRegistry` if there is one |
-| `PekkoHarnessFactory` | built from the above |
+| `EngineHarnessFactory` | built from the above, closed on shutdown |
 | `Replies` | the door outside answers park calls through |
 | `Harness<String>` | built from `nessy.*` and every `Tool` bean |
 | `PendingApprovalsRepository` | when a `JdbcTemplate` is present |

@@ -21,13 +21,13 @@ in its current vocabulary — not the sequence of designs that produced it.
   an `AgentId`. `harness.observe(agentId, observation)` is how work arrives.
   There is no per-agent handle: sharding already knows where an agent lives,
   and a handle is a thing that can go stale.
-- **Exactly one actor per id**, cluster-wide, from Pekko cluster sharding —
-  so two callers cannot corrupt one agent's state.
+- **Exactly one actor per id**, cluster-wide, from the actor runtime's
+  cluster sharding — so two callers cannot corrupt one agent's state.
 - **One actor works the whole turn.** It translates a message into an
   `Input`, calls a pure `decide(AgentState, Input) -> Decision`, persists
   what comes back, and runs the instructions. Every rule lives in a function
-  with no way to *do* anything — no clock, no store, no actor, no Pekko
-  import — and every effect lives in a shell that decides nothing. A
+  with no way to *do* anything — no clock, no store, no actor, no messaging
+  framework import — and every effect lives in a shell that decides nothing. A
   three-day parked approval and a crash mid-model-call are ordinary unit
   tests rather than a cluster, a race and a fifteen-second timeout.
 - **Phases are data**: `Idle`, `CallingModel`, `WorkingTools`. `Idle` is an
@@ -62,8 +62,8 @@ in its current vocabulary — not the sequence of designs that produced it.
   they travel in pairs and adjacent strings can be transposed in silence. One
   shared rule: at most 256 characters, and ASCII letters, digits and `-_.:@+=`.
   Those are primary-key columns and actor addresses — an over-long id fails in
-  a PostgreSQL index, data-dependently, because index entries are compressed;
-  a `|` is rejected by Pekko inside a persistence id. Each serializes as its
+  a PostgreSQL index, data-dependently, because index entries are compressed.
+  Each serializes as its
   own bare string, so a policy engine reads `input.callId` and stored state is
   unchanged. A provider's call id is checked in the adapter that read it off
   the wire.
@@ -217,7 +217,7 @@ in its current vocabulary — not the sequence of designs that produced it.
 
 ### Doors
 
-- **`PekkoHarnessFactory`** with `EngineConfig` (per process) and
+- **`EngineHarnessFactory`** with `EngineConfig` (per process) and
   `HarnessConfig` (per agent type).
 - **`Repl.run(customizer)`** builds a whole terminal application — actor
   system, cluster, harness, loop — in one call.

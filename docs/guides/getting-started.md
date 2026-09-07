@@ -80,8 +80,7 @@ Two configurations, and the difference matters. **The engine** is one per
 process:
 
 ```java
-var factory = new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+var factory = new EngineHarnessFactory(engine -> engine
         .models(models));
 ```
 
@@ -119,8 +118,7 @@ conversation.
 Hand it one and it uses that — and never touches it uninvited:
 
 ```java
-new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+new EngineHarnessFactory(engine -> engine
         .models(models)
         .dataSource(dataSource));
 ```

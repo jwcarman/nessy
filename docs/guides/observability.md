@@ -68,28 +68,24 @@ gets the live feed — what this fixes is the case that actually loses events:
 the last listener leaves, the subscription goes, and something comes back to
 find a gap.
 
-### Narration has its own lifecycle
+### Narration outlives a quiet agent
 
-Narration for one agent is its own entity, and it decides for itself when to
-go: when the last subscriber leaves it starts a short countdown, cancelled
-the moment anyone subscribes again.
+Subscribers are a plain in-process map, kept for exactly as long as this
+process runs — there is no idle timeout that drops them, and a reconnecting
+listener replays from a small bounded buffer of recent events rather than
+losing everything between polls.
 
-That is not an optimisation, it is a bug fix. Pekko's default unloads an
-entity after two minutes without **messages**, and narration's whole state is
-a set of live subscribers — unloading it does not free state to be read back
-later, it destroys it, and every listener goes deaf with no error anywhere.
-Measured breaking a real session: somebody read a long answer and typed a
-reply, the turn that followed ran perfectly, finished, and published into an
-empty set while the terminal waited out its patience. **An agent is allowed
-to think for longer than its audience takes to type.**
+That matters because a long-thinking agent is ordinary, not exceptional:
+somebody reads a long answer and types a reply, the turn that follows takes
+its time, and nothing about that gap should cost a listener its subscription.
+**An agent is allowed to think for longer than its audience takes to type.**
 
 ## Traces
 
 Supply an `ObservationRegistry` and the engine opens spans:
 
 ```java
-new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+new EngineHarnessFactory(engine -> engine
         .models(models)
         .traces(new Traces(observationRegistry)));
 ```

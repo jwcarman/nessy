@@ -46,8 +46,7 @@ class AddTool implements Tool<Add> {
     }
 }
 
-var factory = new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)
+var factory = new EngineHarnessFactory(engine -> engine
         .models(AnthropicModelProvider.fromEnv()));
 
 Harness<String> harness = factory.createHarness(String.class, config -> config
@@ -171,7 +170,7 @@ agent depends on `nessy-engine`, which pulls both in.
 |---|---|
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, messages, `AgentEvent` |
 | `nessy-spi` | adapter authors — a custom `Memory` or `Model`, and `Schemas` |
-| `nessy-engine` | the engine: `PekkoHarnessFactory`, the actor, the stores |
+| `nessy-engine` | the engine: `EngineHarnessFactory`, the durable stores |
 | `nessy-console` | terminal applications — `Repl.run` |
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and the approvals projection |

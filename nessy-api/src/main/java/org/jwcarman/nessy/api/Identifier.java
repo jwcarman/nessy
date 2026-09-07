@@ -46,14 +46,12 @@ final class Identifier {
    * ASCII letters and digits, plus the punctuation real identifiers actually use.
    *
    * <p>Covers a UUID, {@code house-12}, {@code PROJ-123}, {@code acme:user-7}, and an email-shaped
-   * id. Three deliberate exclusions:
+   * id. Two deliberate exclusions:
    *
    * <ul>
-   *   <li>{@code |} — Pekko reserves it as the separator inside a persistence id, and rejects an
-   *       entity id containing it.
-   *   <li>{@code /} and whitespace — not a technical requirement (Pekko sharding URL-encodes an
-   *       entity id, so these route perfectly well) but a legibility one: an id is read by people
-   *       in logs, URLs and approval pages.
+   *   <li>{@code |}, {@code /} and whitespace — not a technical requirement (an id is stored as
+   *       plain text and routes perfectly well with any of these) but a legibility one: an id is
+   *       read by people in logs, URLs and approval pages.
    *   <li>everything non-ASCII — two different Unicode normalizations can look identical and key
    *       differently, which is the last property an identity should have.
    * </ul>

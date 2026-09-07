@@ -36,8 +36,7 @@ asked for a harness.
 **`EngineConfig`** is the engine: one per process.
 
 ```java
-var factory = new PekkoHarnessFactory(engine -> engine
-        .system(actorSystem)          // required
+var factory = new EngineHarnessFactory(engine -> engine
         .models(modelProvider)        // required
         .dataSource(dataSource));     // optional — see below
 ```
