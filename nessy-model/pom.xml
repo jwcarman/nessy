@@ -47,7 +47,6 @@
     <module>openai</module>
     <module>gemini</module>
     <module>bedrock</module>
-    <module>discovery</module>
   </modules>
 
 </project>
