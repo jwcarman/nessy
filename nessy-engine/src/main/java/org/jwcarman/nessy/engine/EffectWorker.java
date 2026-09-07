@@ -98,7 +98,6 @@ final class EffectWorker {
       Set<Capability> capabilities,
       Function<AgentId, Narrator> narrators,
       Claims claims,
-      Reminders reminders,
       ReplyTokens tokens,
       Executor blocking,
       Traces traces,
@@ -201,8 +200,6 @@ final class EffectWorker {
       // (correctly) raises. A failure inside forget() before it reaches deleteAgent() leaves this
       // row RUNNING with its watchdog armed, same as any other obligation that threw.
       case Effect.Forget() -> forget(agentId);
-      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
-          throw new IllegalStateException("alarms are written by the transition: " + effect);
       case Effect.Narrate narrate -> narrate(agentId, turnId, narrate);
     }
   }
@@ -262,9 +259,6 @@ final class EffectWorker {
         // No Input exists for these on success either -- see the method javadoc. Abandoning the
         // row above is the whole story.
       }
-      case Effect.SetAlarm _, Effect.CancelAlarm _ ->
-          throw new IllegalStateException(
-              "alarms are TRANSACTIONAL and never reach a durable retry: " + effect);
       case Effect.Narrate _ ->
           throw new IllegalStateException("narrations are never durable rows: " + effect);
     }

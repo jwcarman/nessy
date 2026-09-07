@@ -17,7 +17,6 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.CallId;
@@ -29,10 +28,8 @@ import org.jwcarman.nessy.engine.agent.Effect;
 /**
  * Which effects become rows, and which never do.
  *
- * <p>Three answers, and each mistake has its own shape. A durable one treated as narration is work
- * silently lost to a crash. A narration treated as durable is a row per token. And an alarm treated
- * as durable is a deadline that is armed AFTER the decision that armed it commits -- a window in
- * which a settled call still holds a live reminder.
+ * <p>Two answers, and each mistake has its own shape. A durable one treated as narration is work
+ * silently lost to a crash. A narration treated as durable is a row per token.
  */
 @DisplayName("What an effect is made of")
 class DispositionTest {
@@ -49,15 +46,6 @@ class DispositionTest {
     assertThat(Disposition.of(new Effect.Remember.Exchange())).isEqualTo(Disposition.DURABLE);
     assertThat(Disposition.of(new Effect.Release())).isEqualTo(Disposition.DURABLE);
     assertThat(Disposition.of(new Effect.Forget())).isEqualTo(Disposition.DURABLE);
-  }
-
-  @Test
-  @DisplayName("a deadline is written inside the transition that decided it")
-  void alarms_are_transactional() {
-    assertThat(Disposition.of(new Effect.SetAlarm(CallId.of("c"), Instant.EPOCH)))
-        .isEqualTo(Disposition.TRANSACTIONAL);
-    assertThat(Disposition.of(new Effect.CancelAlarm(CallId.of("c"))))
-        .isEqualTo(Disposition.TRANSACTIONAL);
   }
 
   @Test

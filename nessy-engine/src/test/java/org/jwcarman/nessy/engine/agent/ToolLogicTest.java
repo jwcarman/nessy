@@ -88,7 +88,8 @@ class ToolLogicTest {
   class Parking {
 
     @Test
-    void a_parked_call_arms_an_alarm_that_outlives_this_process() {
+    @DisplayName("a parked call only moves its own state -- arming its deadline is the shell's job")
+    void a_parked_call_names_no_effect_of_its_own() {
       Decision decision =
           AgentLogic.decide(
               working(Map.of(CallId.of("a"), new CallState.Running("send_email"))),
@@ -96,18 +97,25 @@ class ToolLogicTest {
 
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("a"), new CallState.Parked());
-      assertThat(decision.then())
-          .containsExactly(new Effect.SetAlarm(CallId.of("a"), java.time.Instant.EPOCH));
+      assertThat(decision.then()).isEmpty();
     }
 
     @Test
-    void an_answer_that_finally_arrives_disarms_it() {
+    void an_answer_that_finally_arrives_completes_the_call() {
+      // A second call still running, so the turn does not end and decision.next() is still
+      // WorkingTools to inspect -- the same reason Finishing's own tests pair a call with another.
       Decision decision =
           AgentLogic.decide(
-              working(Map.of(CallId.of("a"), new CallState.Parked())),
+              working(
+                  Map.of(
+                      CallId.of("a"),
+                      new CallState.Parked(),
+                      CallId.of("b"),
+                      new CallState.Running("read_file"))),
               new Input.ToolCompleted(CallId.of("a")));
 
-      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
+      assertThat(decision.next().working().calls())
+          .containsEntry(CallId.of("a"), new CallState.Completed());
     }
   }
 
@@ -163,66 +171,6 @@ class ToolLogicTest {
       assertThat(decision.next().working().calls())
           .containsEntry(CallId.of("a"), new CallState.Completed());
       assertThat(decision.next().busy()).isTrue();
-    }
-  }
-
-  @Nested
-  @DisplayName("a call that has ended has no deadline, whichever way it ended")
-  class Alarms {
-
-    // A parked call armed an alarm. Every way that call can now end must disarm it, because
-    // ReminderSweep RE-ARMS what it fires: a row that outlives its call wakes this agent about a
-    // settled decision every backoff, forever. Measured on a live watchman -- an approval denied
-    // at 11:00 still held an alarm for three days later.
-
-    @Test
-    @DisplayName("a denial from a desk cancels the alarm the park armed")
-    void a_denied_call_disarms_its_alarm() {
-      Decision decision =
-          AgentLogic.decide(
-              working(Map.of(CallId.of("a"), new CallState.Parked())),
-              new Input.ApprovalGiven(
-                  CallId.of("a"), "prune_images", ApprovalResult.denied("not tonight")));
-
-      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
-    }
-
-    @Test
-    @DisplayName("a deadline that passes deletes its own row rather than being re-armed")
-    void a_deadline_that_passes_disarms_its_alarm() {
-      Decision decision =
-          AgentLogic.decide(
-              working(Map.of(CallId.of("a"), new CallState.Parked())),
-              new Input.DeadlinePassed(CallId.of("a")));
-
-      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
-    }
-
-    @Test
-    void a_completed_tool_still_cancels_as_it_always_did() {
-      Decision decision =
-          AgentLogic.decide(
-              working(Map.of(CallId.of("a"), new CallState.Running("send_email"))),
-              new Input.ToolCompleted(CallId.of("a")));
-
-      assertThat(decision.then()).contains(new Effect.CancelAlarm(CallId.of("a")));
-    }
-
-    @Test
-    @DisplayName("an approval does NOT cancel: the tool has not run yet and may take its time")
-    void an_approved_call_keeps_its_alarm_until_the_tool_finishes() {
-      Decision decision =
-          AgentLogic.decide(
-              working(Map.of(CallId.of("a"), new CallState.Parked())),
-              new Input.ApprovalGiven(CallId.of("a"), "long_job", ApprovalResult.approved()));
-
-      // The positive assertion first, so the negative one cannot pass against an empty list.
-      assertThat(decision.then())
-          .as("an approval runs the tool")
-          .contains(new Effect.RunTool(CallId.of("a"), "long_job"));
-      assertThat(decision.then())
-          .as("an approved call is still outstanding, so its deadline still means something")
-          .doesNotContain(new Effect.CancelAlarm(CallId.of("a")));
     }
   }
 

@@ -71,14 +71,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
    */
   private static final int DEFAULT_MEMORY_CHARACTERS = 100_000;
 
-  /**
-   * How often to look for expired deadlines.
-   *
-   * <p>Half of {@link ReminderSweep#BACKOFF}, so a reminder that fires and is not settled is looked
-   * at again soon after it becomes due rather than drifting a whole backoff behind.
-   */
-  private static final java.time.Duration SWEEP_INTERVAL = java.time.Duration.ofSeconds(30);
-
   private final ActorSystem<?> system;
   private final DataSource dataSource;
   private final ModelProvider models;
@@ -127,40 +119,13 @@ public final class PekkoHarnessFactory implements HarnessFactory {
             tokens,
             this.traces,
             this.claims,
-            new Reminders(this.dataSource));
-    startSweepingReminders();
-  }
-
-  /**
-   * Starts looking for deadlines that have passed.
-   *
-   * <p>Without this a durable deadline is a row nothing ever reads. {@link ReminderSweep} was
-   * written, tested and then never given a caller, so an approval parked for a three-day term
-   * waited for a person indefinitely instead -- measured on a real soak, where a call sat ten
-   * minutes past an expiry it should have been denied at. The term meant nothing because nothing
-   * was watching the clock.
-   *
-   * <p>Here rather than in an application, because {@code ReminderSweep} is the engine's own and an
-   * approval that never expires is a property of the engine rather than of whoever configured it.
-   * Every node sweeps; a reminder for a type this node does not serve is skipped and stays at the
-   * front of the index for one that does.
-   */
-  private void startSweepingReminders() {
-    ReminderSweep sweep =
-        new ReminderSweep(
-            new Reminders(dataSource),
-            clock,
-            (where, expired) -> replies.tell(where.agentType(), where.agentId(), expired));
-    system
-        .scheduler()
-        .scheduleAtFixedRate(
-            SWEEP_INTERVAL, SWEEP_INTERVAL, sweep::sweep, system.executionContext());
+            new EffectStore(this.dataSource));
   }
 
   /**
    * The engine's own database, when an application supplied none.
    *
-   * <p>The engine needs claims and reminders, so the engine provides them: nothing outside reads
+   * <p>The engine needs claims and effect rows, so the engine provides them: nothing outside reads
    * either, so neither is an extension point and neither should be something an application has to
    * wire. In memory here, and initialized because it is OURS — a {@link DataSource} an application
    * supplies is never touched uninvited, which is the whole reason our DDL is named {@code
@@ -191,7 +156,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
     Codec<O> codec = Codecs.factory().create(observationType);
 
     Memory memory = memoryFor(config, type);
-    Reminders reminders = new Reminders(dataSource);
     Model model = models.model(config.modelId());
     ToolBindings bindings = new ToolBindings(config.toolBindings(), EngineMapper.INSTANCE);
 
@@ -243,7 +207,6 @@ public final class PekkoHarnessFactory implements HarnessFactory {
                 capabilities,
                 agentId -> narratorFor(sharding, narrationKey, agentId),
                 claims,
-                reminders,
                 tokens,
                 blocking,
                 traces,

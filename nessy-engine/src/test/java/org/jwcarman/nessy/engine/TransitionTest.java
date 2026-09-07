@@ -32,12 +32,14 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.model.Usage;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.engine.agent.Phase;
@@ -61,13 +63,11 @@ class TransitionTest {
 
   private static final AgentType TYPE = AgentType.of("watchman");
   private static final AgentId AGENT = AgentId.of("house-1");
-  private static final Instant SOON = Instant.now().plus(Duration.ofMinutes(1));
   private static final Duration TIMEOUT = Duration.ofMinutes(1);
 
   private EmbeddedDatabase database;
   private AgentStore store;
   private EffectStore effects;
-  private Reminders reminders;
   private Transition transition;
 
   @BeforeEach
@@ -75,13 +75,11 @@ class TransitionTest {
     database = TestDatabase.fresh();
     store = new AgentStore(database);
     effects = new EffectStore(database);
-    reminders = new Reminders(database);
     transition =
         new Transition(
             TYPE,
             store,
             effects,
-            reminders,
             new TransactionTemplate(new DataSourceTransactionManager(database)));
   }
 
@@ -174,65 +172,157 @@ class TransitionTest {
         .noneMatch(effect -> effect.id().equals(take.id()));
   }
 
-  @Test
-  @DisplayName("a parked call arms a live alarm, and settling it disarms the same one")
-  void alarms_are_armed_and_disarmed_by_the_right_effect() {
-    CallId callId = CallId.of("call-1");
+  /**
+   * A parked call's deadline is written straight to the ROW that was already RUNNING for it --
+   * {@code EffectStore#park} -- and read back through the exact same query a poller uses: {@link
+   * EffectStore#attempt}. There is no second mechanism to ask, which is the whole point; these
+   * tests would fail for the right reason if {@code Transition} stopped calling {@code park} (the
+   * row would come due on its OLD, short watchdog instead of its real term) or if it called it with
+   * the wrong coordinates (the row would never come due at all).
+   */
+  @Nested
+  @DisplayName("a parked call's own deadline")
+  class ParkedDeadline {
 
-    transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
-    transition.apply(
-        AGENT,
-        new Input.ModelAnswered.Asked(
-            List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
-        null,
-        null);
+    @Test
+    @DisplayName("is not due before its term, even once its original watchdog would have lapsed")
+    void is_not_due_before_its_term() {
+      CallId callId = CallId.of("call-1");
+      Instant now = Instant.now();
+      Instant term = now.plus(Duration.ofMinutes(30));
+      EffectStore.Attempted askEffect = askApproverRow(callId);
 
-    // TRANSACTIONAL, not a row: Effect.SetAlarm never reaches nessy_effect, so the only way to
-    // observe it is to ask Reminders whether it armed the RIGHT half of the pair. A swap of
-    // remind/cancel inside Transition.alarm fails this line: nothing would be armed.
-    transition.apply(AGENT, new Input.ToolParked(callId, SOON), null, null);
-    assertThat(reminders.find(TYPE, AGENT, callId)).isPresent();
+      transition.apply(AGENT, new Input.ToolParked(callId, term), null, null);
 
-    // And a swap fails this line the other way: CancelAlarm would have called remind again
-    // instead of cancel, and the alarm set above would still be sitting there.
-    transition.apply(AGENT, new Input.ToolCompleted(callId), null, null);
-    assertThat(reminders.find(TYPE, AGENT, callId)).isEmpty();
+      // Well past the ORIGINAL watchdog attempt() armed above (TIMEOUT, one minute) but still
+      // short of the 30-minute term ToolParked just granted -- due here is what park() failing
+      // to run, or running against the wrong row, would look like. Matched by id, not emptiness:
+      // askApproverRow's own setup leaves OTHER rows (TakeWork, Remember.Input, CallModel)
+      // outstanding too, and this call's own row is the only one this property is about.
+      assertThat(effects.attempt(TYPE, 100, now.plus(Duration.ofMinutes(5)), TIMEOUT))
+          .as("the call's own row, still short of its term")
+          .noneMatch(effect -> effect.id().equals(askEffect.id()));
+    }
+
+    @Test
+    @DisplayName("is due once its term passes, and is told apart from an ordinary timeout")
+    void is_due_after_its_term() {
+      CallId callId = CallId.of("call-1");
+      Instant now = Instant.now();
+      Instant term = now.plus(Duration.ofMinutes(30));
+      EffectStore.Attempted askEffect = askApproverRow(callId);
+
+      transition.apply(AGENT, new Input.ToolParked(callId, term), null, null);
+
+      List<EffectStore.Attempted> due = effects.attempt(TYPE, 100, term.plusSeconds(1), TIMEOUT);
+      assertThat(due)
+          .as("the same row -- its own AskApprover payload, never re-decided")
+          .anyMatch(effect -> effect.id().equals(askEffect.id()));
+      assertThat(due)
+          .as(
+              "marked as a lapsed TERM, not an ordinary watchdog timeout -- a caller that missed"
+                  + " this would re-run the tool while a person or webhook may still answer it")
+          .filteredOn(effect -> effect.id().equals(askEffect.id()))
+          .allMatch(EffectStore.Attempted::parked);
+    }
+
+    /** Gets an {@code AskApprover} row to RUNNING, the only status {@code park} matches. */
+    private EffectStore.Attempted askApproverRow(CallId callId) {
+      transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
+      transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
+      transition.apply(
+          AGENT,
+          new Input.ModelAnswered.Asked(
+              List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
+          null,
+          null);
+      List<EffectStore.Attempted> askEffects =
+          effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).stream()
+              .filter(
+                  effect ->
+                      EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.AskApprover)
+              .toList();
+      assertThat(askEffects).as("the ask-approver row this test relies on existing").hasSize(1);
+      return askEffects.get(0);
+    }
   }
 
-  @Test
-  @DisplayName(
-      "a settled call discharges its OWN lingering effect row, not just the reminder -- CancelAlarm"
-          + " deletes what AskApprover/RunTool left RUNNING while parked")
-  void a_settled_call_discharges_its_own_lingering_row() {
-    CallId callId = CallId.of("call-1");
+  /**
+   * The property that matters most: however a call ends, its effect row goes with it. Without this,
+   * a tool that defers for three days and then answers gets re-run once its (unrelated,
+   * already-discharged-by-answer) term passes -- the exact bug two disagreeing deadline mechanisms
+   * used to cause. Each of these would fail for the right reason if {@code Transition} stopped
+   * diffing the call maps (see {@code settledCalls}): the row would still be sitting there for a
+   * later {@code attempt()} to find.
+   */
+  @Nested
+  @DisplayName("a call that settles, by any route, leaves no effect row behind")
+  class Discharge {
 
-    transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
-    transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
-    transition.apply(
-        AGENT,
-        new Input.ModelAnswered.Asked(
-            List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
-        null,
-        null);
-    List<EffectStore.Attempted> askEffects =
-        effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).stream()
-            .filter(
-                effect ->
-                    EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.AskApprover)
-            .toList();
-    assertThat(askEffects).as("the ask-approver row this test relies on existing").isNotEmpty();
-    transition.apply(AGENT, new Input.ToolParked(callId, SOON), null, null);
+    @Test
+    @DisplayName("an answer that finally arrives discharges the parked call's own row")
+    void an_answer_discharges_it() {
+      CallId callId = CallId.of("call-1");
+      EffectStore.Attempted askEffect = park(callId);
 
-    // The parked row stays RUNNING -- ToolParked does not discharge it -- so a naive re-attempt
-    // once its watchdog lapses would re-run a tool whose call is about to be settled. This is
-    // exactly what a fresh call to attempt() with a past watchdog would find, if CancelAlarm did
-    // not delete the row below.
-    transition.apply(AGENT, new Input.ToolCompleted(callId), null, null);
+      transition.apply(AGENT, new Input.ToolCompleted(callId), null, null);
 
-    assertThat(effects.attempt(TYPE, 100, Instant.now().plus(Duration.ofHours(1)), TIMEOUT))
-        .as("the settled call's own effect row is gone, not merely its reminder")
-        .noneMatch(effect -> askEffects.get(0).id().equals(effect.id()));
+      assertGone(askEffect);
+    }
+
+    @Test
+    @DisplayName("a denial from a desk discharges the parked call's own row")
+    void a_denial_discharges_it() {
+      CallId callId = CallId.of("call-1");
+      EffectStore.Attempted askEffect = park(callId);
+
+      transition.apply(
+          AGENT,
+          new Input.ApprovalGiven(callId, "some-tool", ApprovalResult.denied("not tonight")),
+          null,
+          null);
+
+      assertGone(askEffect);
+    }
+
+    @Test
+    @DisplayName("a lapsed term discharges the parked call's own row")
+    void a_lapsed_term_discharges_it() {
+      CallId callId = CallId.of("call-1");
+      EffectStore.Attempted askEffect = park(callId);
+
+      transition.apply(AGENT, new Input.DeadlinePassed(callId), null, null);
+
+      assertGone(askEffect);
+    }
+
+    /** Puts one call's {@code AskApprover} row into PARKED, RUNNING for a good long while. */
+    private EffectStore.Attempted park(CallId callId) {
+      transition.apply(AGENT, new Input.BacklogUpdated(), null, null);
+      transition.apply(AGENT, new Input.WorkTaken(TurnId.of("turn-1"), "claim-1"), null, null);
+      transition.apply(
+          AGENT,
+          new Input.ModelAnswered.Asked(
+              List.of(new Input.CallSummary(callId, "some-tool")), Usage.unreported()),
+          null,
+          null);
+      List<EffectStore.Attempted> askEffects =
+          effects.attempt(TYPE, 100, Instant.now(), TIMEOUT).stream()
+              .filter(
+                  effect ->
+                      EffectStore.PAYLOADS.decode(effect.payload()) instanceof Effect.AskApprover)
+              .toList();
+      assertThat(askEffects).as("the ask-approver row this test relies on existing").hasSize(1);
+      transition.apply(
+          AGENT, new Input.ToolParked(callId, Instant.now().plus(Duration.ofDays(3))), null, null);
+      return askEffects.get(0);
+    }
+
+    private void assertGone(EffectStore.Attempted askEffect) {
+      assertThat(effects.attempt(TYPE, 100, Instant.now().plus(Duration.ofDays(4)), TIMEOUT))
+          .as("the settled call's own effect row is gone, not merely re-labelled")
+          .noneMatch(effect -> effect.id().equals(askEffect.id()));
+    }
   }
 
   @Test
@@ -256,7 +346,6 @@ class TransitionTest {
             TYPE,
             new AgentStore(exploding),
             new EffectStore(exploding),
-            new Reminders(exploding),
             new TransactionTemplate(new DataSourceTransactionManager(exploding)));
 
     assertThatThrownBy(() -> fragile.apply(AGENT, new Input.BacklogUpdated(), null, null))

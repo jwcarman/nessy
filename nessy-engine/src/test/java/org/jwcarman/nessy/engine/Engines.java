@@ -191,7 +191,6 @@ final class Engines {
                 Set.of(),
                 agentId -> event -> narrated.add(agentId, event),
                 claims,
-                new Reminders(dataSource),
                 ReplyTokens.ephemeral(),
                 // A REAL executor, not Runnable::run. Slow work now runs from the agent's own
                 // thread rather than a child actor's, so a model that blocks would block the

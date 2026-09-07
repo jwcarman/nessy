@@ -167,6 +167,16 @@ final class AgentRuntime implements Dispatcher {
    * current when the answer happens to arrive".
    */
   void perform(AgentId agentId, AgentState state, EffectStore.Attempted effect) {
+    if (effect.parked()) {
+      // This row's own TERM lapsed, not its watchdog: somebody was still holding a reply token
+      // when the deadline this call was granted ran out. Tell the agent directly rather than
+      // re-attempting the AskApprover/RunTool payload underneath -- re-running that is exactly
+      // the defect this replaces, a tool executed twice because a reminder row and an effect's
+      // own watchdog could disagree about the same deadline. Transition discharges this very row,
+      // by call id, once the fold marks the call Completed -- see Transition#settledCalls.
+      dispatch(agentId, new Input.DeadlinePassed(effect.callId()), null, null);
+      return;
+    }
     try {
       performer.perform(
           agentId,

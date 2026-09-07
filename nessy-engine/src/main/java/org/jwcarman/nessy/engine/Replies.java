@@ -58,7 +58,7 @@ public final class Replies {
   private final Duration patience;
   private final ReplyTokens tokens;
   private final Map<AgentType, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
-  private final Reminders reminders;
+  private final EffectStore effects;
 
   private final Traces traces;
 
@@ -68,8 +68,8 @@ public final class Replies {
       ReplyTokens tokens,
       Traces traces,
       Claims claims,
-      Reminders reminders) {
-    this.reminders = reminders;
+      EffectStore effects) {
+    this.effects = effects;
     this.claims = claims;
     this.system = system;
     this.patience = patience;
@@ -155,10 +155,10 @@ public final class Replies {
   /**
    * Whether that call is still open, WITHOUT waking the agent to ask.
    *
-   * <p>A reminder exists for exactly the window in which a call can be answered from outside: it is
-   * armed in one place (a parked call) and cancelled in one place (that call settling), and the
-   * sweep re-arms rather than deletes, so it survives an expiry nobody has settled yet. Present
-   * means open; absent means done.
+   * <p>The call's own effect row exists for exactly the window in which it can be answered from
+   * outside: {@code AskApprover}/{@code RunTool} inserts it, and {@code Transition} deletes it the
+   * moment the call settles, whichever route brought the news (see {@code EffectStore
+   * #deleteForCall}). Present means open; absent means done.
    *
    * <p><b>Why this is worth a query.</b> Delivering to a sharded entity CREATES it. Without this,
    * an answer clicked minutes late — for a call the deadline already denied, or an agent since
@@ -170,7 +170,8 @@ public final class Replies {
    * be conclusive, and the agent's own Ack remains the authority for everything this lets through.
    */
   private boolean stillOpen(ReplyTokens.Coordinates where) {
-    return reminders.find(where.agentType(), where.agentId(), where.callId()).isPresent();
+    return effects.existsForCall(
+        where.agentType(), where.agentId(), where.turnId(), where.callId());
   }
 
   private static final NessyMessage.Ack SETTLED =

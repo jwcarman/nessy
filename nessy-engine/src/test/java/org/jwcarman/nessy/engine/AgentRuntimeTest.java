@@ -77,7 +77,6 @@ class AgentRuntimeTest {
             TYPE,
             store,
             effects,
-            new Reminders(database),
             new TransactionTemplate(new DataSourceTransactionManager(database)));
     performed = new ArrayList<>();
     Executor sameThread = Runnable::run;

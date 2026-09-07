@@ -97,7 +97,6 @@ class PostgresStoreCertificationTest {
       assertThat(tables())
           .contains(
               "nessy_claim",
-              "nessy_reminder",
               "nessy_note",
               "nessy_plan_task",
               "nessy_transcript",

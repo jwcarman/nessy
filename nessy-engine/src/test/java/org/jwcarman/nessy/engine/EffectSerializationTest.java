@@ -18,7 +18,6 @@ package org.jwcarman.nessy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,8 +57,6 @@ class EffectSerializationTest {
         new Case(new Effect.Remember.Answer(), "remember-answer"),
         new Case(new Effect.Remember.Exchange(), "remember-exchange"),
         new Case(new Effect.Release(), "release"),
-        new Case(new Effect.SetAlarm(CallId.of("c1"), Instant.EPOCH), "set-alarm"),
-        new Case(new Effect.CancelAlarm(CallId.of("c1")), "cancel-alarm"),
         new Case(new Effect.Forget(), "forget"),
         new Case(new Effect.Narrate.TurnStarted(TurnId.of("t1")), "narrate-turn-started"),
         new Case(

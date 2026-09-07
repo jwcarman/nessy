@@ -51,10 +51,11 @@ public final class AgentLogic {
           endTurn(state.spending(usage), new TurnResult.Refused(category, explanation));
       case Input.ModelFailed(var reason) -> endTurn(state, new TurnResult.Failed(reason));
       case Input.ApprovalGiven given -> onApproval(state, given);
-      case Input.ToolParked(var callId, var expiresAt) ->
-          Decision.of(
-              state.at(state.working().with(callId, new CallState.Parked())),
-              new Effect.SetAlarm(callId, expiresAt));
+      // No effect: the fold only names what changed. Arming this call's deadline is the shell's
+      // job -- it reads expiresAt straight off this very input and writes it to the call's own
+      // effect row (see Transition), never a second table the fold would have to know exists.
+      case Input.ToolParked(var callId, var _) ->
+          Decision.of(state.at(state.working().with(callId, new CallState.Parked())));
       case Input.ToolCompleted(var callId) ->
           settle(state, callId, new Effect.Narrate.ToolCallCompleted(callId));
       case Input.DeadlinePassed(var callId) -> settle(state, callId);
@@ -194,25 +195,18 @@ public final class AgentLogic {
    * One call reaches its end. When it is the last one, the exchange goes back to the model — which
    * is the only way a turn moves from working tools to calling the model.
    *
-   * <p><b>Cancelling the alarm belongs HERE, not at the call sites.</b> It used to be passed in by
-   * the one path that remembered — tool completion — so a call that ended any other way kept its
-   * deadline. A denial from a desk was the visible case: the row outlived the decision, and because
-   * {@code ReminderSweep} RE-ARMS every reminder it fires, that row would wake this agent about a
-   * settled call every backoff, forever. Measured on a live watchman: an approval denied at 11:00
-   * still held an alarm for three days later.
-   *
-   * <p>A call that has ended has no deadline, whichever way it ended, so the only place that cannot
-   * forget is the place that ends it. Cancelling an alarm that was never armed is silent, so the
-   * paths that never parked pay nothing.
+   * <p>Whatever deadline this call held dies with it, but that is not this method's business to
+   * say: the fold marks the call {@code Completed} and nothing more, and the shell -- {@code
+   * Transition} -- notices the call left the "not yet Completed" set and discharges its effect row
+   * on that basis alone, whichever route brought the news. A second signal from here naming the
+   * same fact could only drift from what the fold already recorded.
    */
   private static Decision settle(AgentState state, CallId callId, Effect... also) {
     if (!awaiting(state, callId)) {
       return Decision.nothing(state);
     }
     Phase.WorkingTools next = state.working().with(callId, new CallState.Completed());
-    List<Effect> then = new ArrayList<>();
-    then.add(new Effect.CancelAlarm(callId));
-    then.addAll(List.of(also));
+    List<Effect> then = new ArrayList<>(List.of(also));
     if (next.allSettled()) {
       then.add(new Effect.Remember.Exchange());
       then.add(new Effect.CallModel());

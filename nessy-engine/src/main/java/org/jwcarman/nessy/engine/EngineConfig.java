@@ -67,7 +67,7 @@ public final class EngineConfig {
   }
 
   /**
-   * Where the engine keeps its own bookkeeping — claims and reminders.
+   * Where the engine keeps its own bookkeeping — claims and effects.
    *
    * <p>Unset, the engine builds an in-memory database of its own and initializes it, because that
    * database is ITS. A {@link DataSource} supplied here is never initialized uninvited: run {@code

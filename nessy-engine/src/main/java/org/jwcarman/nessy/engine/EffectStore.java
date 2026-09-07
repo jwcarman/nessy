@@ -67,6 +67,7 @@ final class EffectStore {
 
   private static final String PENDING = "PENDING";
   private static final String RUNNING = "RUNNING";
+  private static final String PARKED = "PARKED";
   private static final String FAILED = "FAILED";
 
   private static final String INSERT =
@@ -75,7 +76,8 @@ final class EffectStore {
           + " status, attempts, actionable_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?,"
           + " ?)";
   private static final String SELECT_DUE =
-      "SELECT effect_id, agent_id, turn_id, call_id, ordinal, payload, observability, attempts"
+      "SELECT effect_id, agent_id, turn_id, call_id, ordinal, payload, observability, attempts,"
+          + " status"
           + " FROM nessy_effect"
           + " WHERE agent_type = ? AND actionable_at <= ?"
           + " ORDER BY actionable_at LIMIT ? FOR UPDATE SKIP LOCKED";
@@ -88,6 +90,12 @@ final class EffectStore {
   private static final String DELETE_FOR_CALL =
       "DELETE FROM nessy_effect"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ?";
+  private static final String EXISTS_FOR_CALL =
+      "SELECT COUNT(*) FROM nessy_effect"
+          + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ?";
+  private static final String PARK =
+      "UPDATE nessy_effect SET status = ?, actionable_at = ?"
+          + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ? AND status = ?";
   private static final String RETRY =
       "UPDATE nessy_effect SET status = ?, actionable_at = ?, attempts = attempts + 1"
           + " WHERE effect_id = ?";
@@ -117,6 +125,14 @@ final class EffectStore {
    * {@code Attempted} values read from the same database would differ. Written out explicitly for
    * the same reason {@code BacklogStore.Row} is: nothing here relies on that today, but the day
    * something does, the failure is silent otherwise.
+   *
+   * <p>{@code parked} is the row's status as {@link #attempt} found it, BEFORE the very same call
+   * marks it {@code RUNNING} again with a fresh watchdog -- {@code true} only for a call whose own
+   * TERM just lapsed, never for an ordinary watchdog timeout. It is how the caller tells the two
+   * apart: a parked row come due is a deadline that ran out while somebody still held a reply
+   * token, and re-attempting the {@code AskApprover}/{@code RunTool} payload underneath would
+   * re-run a tool a person or a webhook may still answer -- exactly the defect a second,
+   * disagreeing deadline mechanism used to cause. See {@code AgentRuntime#perform}.
    */
   record Attempted(
       EffectId id,
@@ -126,7 +142,8 @@ final class EffectStore {
       int ordinal,
       byte[] payload,
       String observability,
-      int attempts) {
+      int attempts,
+      boolean parked) {
 
     @Override
     public boolean equals(Object other) {
@@ -143,7 +160,8 @@ final class EffectStore {
                   int otherOrdinal,
                   byte[] otherPayload,
                   String otherObservability,
-                  int otherAttempts)
+                  int otherAttempts,
+                  boolean otherParked)
           && Objects.equals(id, otherId)
           && Objects.equals(agentId, otherAgentId)
           && Objects.equals(turnId, otherTurnId)
@@ -151,29 +169,47 @@ final class EffectStore {
           && ordinal == otherOrdinal
           && Arrays.equals(payload, otherPayload)
           && Objects.equals(observability, otherObservability)
-          && attempts == otherAttempts;
+          && attempts == otherAttempts
+          && parked == otherParked;
     }
 
     @Override
     public int hashCode() {
       return Objects.hash(
-          id, agentId, turnId, callId, ordinal, Arrays.hashCode(payload), observability, attempts);
+          id,
+          agentId,
+          turnId,
+          callId,
+          ordinal,
+          Arrays.hashCode(payload),
+          observability,
+          attempts,
+          parked);
     }
 
-    /** The payload is codec-encoded content, so it is measured rather than printed. */
+    /**
+     * The payload is codec-encoded content, so it is measured rather than printed.
+     *
+     * <p>The format string is parenthesized before {@code .formatted} is called -- {@code "a" + "b"
+     * .formatted(args)} binds the method call to {@code "b"} ALONE, per Java's ordinary precedence,
+     * silently matching every conversion in the trailing fragment against the WRONG prefix of
+     * {@code args}. Measured: it previously threw {@code IllegalFormatConversionException} the one
+     * time something actually printed this record on a failure path.
+     */
     @Override
     public String toString() {
-      return "Attempted[id=%s, agentId=%s, turnId=%s, callId=%s, ordinal=%d, payload=%d bytes,"
-          + " observability=%s, attempts=%d]"
-              .formatted(
-                  id,
-                  agentId,
-                  turnId,
-                  callId,
-                  ordinal,
-                  payload == null ? 0 : payload.length,
-                  observability,
-                  attempts);
+      return ("Attempted[id=%s, agentId=%s, turnId=%s, callId=%s, ordinal=%d, payload=%d bytes,"
+              + " observability=%s, attempts=%d, parked=%b]")
+          .formatted(
+              id,
+              agentId,
+              turnId,
+              callId,
+              ordinal,
+              payload == null ? 0 : payload.length,
+              observability,
+              attempts,
+              parked);
     }
   }
 
@@ -224,10 +260,12 @@ final class EffectStore {
    * writes the exchange from, so two effects of the SAME agent running concurrently can write an
    * empty exchange and lose a turn silently.
    *
-   * <p>"Due" is deliberately one test -- {@code actionable_at <= now} -- covering three different
-   * histories at once: a fresh PENDING row, a PENDING row coming back from a scheduled backoff, and
-   * a RUNNING row whose watchdog quietly expired. There is no separate reaper query; see {@code
-   * nessy_effect}'s schema comment.
+   * <p>"Due" is deliberately one test -- {@code actionable_at <= now} -- covering four different
+   * histories at once: a fresh PENDING row, a PENDING row coming back from a scheduled backoff, a
+   * RUNNING row whose watchdog quietly expired, and a PARKED row whose TERM ran out. There is no
+   * separate reaper query; see {@code nessy_effect}'s schema comment. The caller tells a lapsed
+   * term apart from an ordinary timeout by {@link Attempted#parked()}, read from this row's status
+   * BEFORE {@link #take} overwrites it -- see that field's own javadoc.
    *
    * <p>The watchdog is written by the SAME statement that marks the row RUNNING. Split in two, a
    * crash between them leaves a row nobody will ever revisit. The SELECT and every {@link #take}
@@ -300,13 +338,13 @@ final class EffectStore {
   /**
    * A settled call discharges its own effect row directly, without ever being attempted again.
    *
-   * <p>{@code AgentLogic.settle} always emits {@code CancelAlarm(callId)} whichever way a call ends
-   * -- a late answer, a denial, or a lapsed term -- so by the time {@code Transition} sees that
-   * effect, the call is over. A gated tool parked on a person leaves its {@code AskApprover} or
-   * {@code RunTool} row RUNNING for as long as the deferral lasts (see {@code Dispatcher} / {@code
-   * EffectWorker#tell}: {@code ToolParked} does not discharge it), and without this, the poller
-   * would re-run a tool whose call was already settled once its watchdog next lapsed. Turn-scoped,
-   * because a {@link CallId} alone is only unique within one turn.
+   * <p>{@code Transition} calls this for every call its fold just marked {@code Completed} --
+   * whichever route brought the news: a late answer, a denial, or a lapsed term -- so by the time
+   * this runs, the call really is over. A gated tool parked on a person leaves its {@code
+   * AskApprover} or {@code RunTool} row outstanding for as long as the deferral lasts (see {@code
+   * Dispatcher} / {@code EffectWorker#tell}: {@code ToolParked} does not discharge it), and without
+   * this, the poller would re-run a tool whose call was already settled once its row next came due.
+   * Turn-scoped, because a {@link CallId} alone is only unique within one turn.
    */
   void deleteForCall(AgentType agentType, AgentId agentId, TurnId turnId, CallId callId) {
     Objects.requireNonNull(agentType, "agentType must not be null");
@@ -317,6 +355,56 @@ final class EffectStore {
         .param(agentId.value())
         .param(turnId == null ? null : turnId.value())
         .param(callId.value())
+        .update();
+  }
+
+  /**
+   * Whether a call still has an outstanding effect row -- what {@code Replies} asks before waking
+   * an agent to answer it, so a late answer for a call that already settled is refused rather than
+   * resurrecting a forgotten or finished agent purely to say so. Replaces asking {@code Reminders}
+   * whether a deadline was still armed: the effect row IS the call's whole remaining obligation
+   * now, so there is exactly one place to ask, not two that could disagree about the answer.
+   */
+  boolean existsForCall(AgentType agentType, AgentId agentId, TurnId turnId, CallId callId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
+    Integer count =
+        jdbc.sql(EXISTS_FOR_CALL)
+            .param(agentType.name())
+            .param(agentId.value())
+            .param(turnId == null ? null : turnId.value())
+            .param(callId.value())
+            .query(Integer.class)
+            .single();
+    return count != null && count > 0;
+  }
+
+  /**
+   * Moves a parked call's own outstanding row to its deadline: {@code RUNNING} becomes {@code
+   * PARKED}, and {@code actionable_at} becomes {@code actionableAt} -- the clamped term a deferring
+   * tool or approver was granted. This IS what makes {@code actionable_at} the row's one durable
+   * deadline: no second table tracks it, and nothing here can disagree with what the poller reads.
+   *
+   * <p>Matches by {@code (agent_type, agent_id, turn_id, call_id)}, the same coordinates {@link
+   * #deleteForCall} discharges by -- see {@code nessy_effect_call}. Restricted to a row currently
+   * {@code RUNNING}: only the {@code AskApprover}/{@code RunTool} attempt this call is IN,
+   * deferring right now, is ever the one being parked.
+   */
+  void park(
+      AgentType agentType, AgentId agentId, TurnId turnId, CallId callId, Instant actionableAt) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(actionableAt, "actionableAt must not be null");
+    jdbc.sql(PARK)
+        .param(PARKED)
+        .param(actionableAt)
+        .param(agentType.name())
+        .param(agentId.value())
+        .param(turnId == null ? null : turnId.value())
+        .param(callId.value())
+        .param(RUNNING)
         .update();
   }
 
@@ -356,6 +444,7 @@ final class EffectStore {
         rs.getInt("ordinal"),
         rs.getBytes("payload"),
         rs.getString("observability"),
-        rs.getInt("attempts"));
+        rs.getInt("attempts"),
+        PARKED.equals(rs.getString("status")));
   }
 }

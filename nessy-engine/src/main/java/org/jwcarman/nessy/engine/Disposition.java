@@ -26,20 +26,17 @@ import org.jwcarman.nessy.engine.agent.Effect;
 public enum Disposition {
 
   /**
-   * Written inside the transition, with the state it belongs to.
-   *
-   * <p>Only the reminder table. A deadline armed after its decision commits leaves a window where a
-   * settled call still holds a live alarm, and {@code ReminderSweep} re-arms what it fires -- so
-   * that window becomes a wakeup every backoff, forever. Measured on a live watchman: an approval
-   * denied at 11:00 still held an alarm three days later.
-   */
-  TRANSACTIONAL,
-
-  /**
    * A row in {@code nessy_effect}, claimed and executed after commit.
    *
    * <p>Everything that leaves the process or must survive one. The test is not "is it slow" but "if
    * this node dies now, must someone else finish it?"
+   *
+   * <p>There used to be a third disposition here -- TRANSACTIONAL, written inside the transition
+   * rather than as a row, for {@code SetAlarm}/{@code CancelAlarm} and the {@code nessy_reminder}
+   * table they wrote to. It is gone: a parked call's deadline is now the SAME row this disposition
+   * already governs -- {@code actionable_at} on the call's own {@code AskApprover}/{@code RunTool}
+   * effect -- so there is one durable deadline per call, not two mechanisms that could disagree
+   * about it.
    */
   DURABLE,
 
@@ -54,7 +51,6 @@ public enum Disposition {
   /** Exhaustive over the grammar, with no default arm: a new effect must choose. */
   public static Disposition of(Effect effect) {
     return switch (effect) {
-      case Effect.SetAlarm _, Effect.CancelAlarm _ -> TRANSACTIONAL;
       case Effect.Narrate _ -> NARRATION;
       case Effect.TakeWork _,
           Effect.CallModel _,

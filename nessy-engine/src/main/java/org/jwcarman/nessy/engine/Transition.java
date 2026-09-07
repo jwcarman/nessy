@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
@@ -24,9 +25,11 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.engine.agent.AgentLogic;
 import org.jwcarman.nessy.engine.agent.AgentState;
+import org.jwcarman.nessy.engine.agent.CallState;
 import org.jwcarman.nessy.engine.agent.Decision;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.engine.agent.Input;
+import org.jwcarman.nessy.engine.agent.Phase;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -36,8 +39,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * model call inside it would make every other transition for that agent wait on a network round
  * trip, and a crash would hold the row until the database noticed.
  *
- * <p><b>One transaction, four writes.</b> State, alarms, new effects, and the discharge of the
- * effect that caused this input all commit together. That is the property the whole design rests
+ * <p><b>One transaction, four writes.</b> State, a parked call's deadline, new effects, and the
+ * discharge of every effect this input retires -- the one that caused it, and any call the fold
+ * just marked {@code Completed} -- all commit together. That is the property the whole design rests
  * on: an obligation cannot exist without its cause, and cannot outlive being met.
  *
  * <p><b>A TransactionTemplate rather than {@code @Transactional}.</b> Same guarantees, and this
@@ -69,19 +73,16 @@ final class Transition {
   private final AgentType agentType;
   private final AgentStore store;
   private final EffectStore effects;
-  private final Reminders reminders;
   private final TransactionTemplate transactions;
 
   Transition(
       AgentType agentType,
       AgentStore store,
       EffectStore effects,
-      Reminders reminders,
       TransactionTemplate transactions) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
-    this.reminders = Objects.requireNonNull(reminders, "reminders must not be null");
     this.transactions = Objects.requireNonNull(transactions, "transactions must not be null");
   }
 
@@ -112,6 +113,17 @@ final class Transition {
           if (completing != null) {
             effects.complete(completing);
           }
+          // This IS the deadline now -- see EffectStore#park. Read straight off the input rather
+          // than a Decision effect, because the fold that named the call does not get to know an
+          // infrastructure row exists to update.
+          if (input instanceof Input.ToolParked(var callId, var expiresAt)) {
+            effects.park(agentType, agentId, decision.next().turnId(), callId, expiresAt);
+          }
+          // Every call the fold just settled discharges its own row here, whichever route brought
+          // the news -- an answer, a denial, or a lapsed term alike. See settledCalls.
+          for (CallId settledCall : settledCalls(current, decision.next())) {
+            effects.deleteForCall(agentType, agentId, decision.next().turnId(), settledCall);
+          }
           return new Applied(decision.next(), record(agentId, decision, observability), changed);
         });
   }
@@ -140,7 +152,7 @@ final class Transition {
   }
 
   /**
-   * Sorts a decision's effects into the three things they are, keeping their order.
+   * Sorts a decision's effects into the two things they are, keeping their order.
    *
    * <p>The ordinal is the effect's position in the decision, not its position among the durable
    * ones -- so a narration between two effects leaves a gap, and the effects still sort correctly.
@@ -152,7 +164,6 @@ final class Transition {
     for (int ordinal = 0; ordinal < then.size(); ordinal++) {
       Effect effect = then.get(ordinal);
       switch (Disposition.of(effect)) {
-        case TRANSACTIONAL -> alarm(agentId, decision, effect);
         case NARRATION -> narrations.add(effect);
         case DURABLE ->
             effects.insert(
@@ -169,14 +180,6 @@ final class Transition {
   }
 
   /**
-   * A settled call discharges its OWN effect row here, in the same transaction that cancels its
-   * reminder -- not by ever being attempted again. {@code AgentLogic.settle} always emits {@code
-   * CancelAlarm(callId)} whichever way a call ends, so by the time this runs the call is over; see
-   * {@code EffectStore#deleteForCall}. {@code decision.next().turnId()} is the right turn to
-   * address it against: {@code CancelAlarm} is folded from an input arriving for the CURRENT turn,
-   * never a stale one.
-   */
-  /**
    * The call an effect names, for the two shapes that name one -- {@code null} for everything else.
    * Not a general accessor on {@link Effect}: the fold stays ignorant of which of its own effects a
    * shell column happens to index.
@@ -189,15 +192,32 @@ final class Transition {
     };
   }
 
-  private void alarm(AgentId agentId, Decision decision, Effect effect) {
-    switch (effect) {
-      case Effect.SetAlarm(var callId, var expiresAt) ->
-          reminders.remind(agentType, agentId, callId, expiresAt);
-      case Effect.CancelAlarm(var callId) -> {
-        reminders.cancel(agentType, agentId, callId);
-        effects.deleteForCall(agentType, agentId, decision.next().turnId(), callId);
-      }
-      default -> throw new IllegalStateException("not a transactional effect: " + effect);
+  /**
+   * Every call that just ended, whichever route brought the news -- an answer, a denial, or a
+   * lapsed term alike. A call ends the moment the fold marks it {@link CallState.Completed}, so
+   * comparing the calls this agent was working BEFORE this input against what it is working (or has
+   * moved past) AFTER finds every one that did, without this method asking which {@link Input}
+   * caused it -- which is what makes it correct for a route nobody has invented yet, too.
+   *
+   * <p>{@link Phase#WorkingTools} disappearing entirely between {@code current} and {@code next} --
+   * the turn moving on to {@link Phase.CallingModel} -- only ever happens once EVERY call there has
+   * settled (see {@code AgentLogic.settle}'s {@code allSettled()} check), so every call {@code
+   * before} still names at that point is completed by construction, not merely presumed.
+   */
+  private static List<CallId> settledCalls(AgentState current, AgentState next) {
+    if (!(current.phase() instanceof Phase.WorkingTools(var before))) {
+      return List.of();
     }
+    if (next.phase() instanceof Phase.WorkingTools(var after)) {
+      return before.entrySet().stream()
+          .filter(entry -> !(entry.getValue() instanceof CallState.Completed))
+          .filter(entry -> after.get(entry.getKey()) instanceof CallState.Completed)
+          .map(Map.Entry::getKey)
+          .toList();
+    }
+    return before.entrySet().stream()
+        .filter(entry -> !(entry.getValue() instanceof CallState.Completed))
+        .map(Map.Entry::getKey)
+        .toList();
   }
 }

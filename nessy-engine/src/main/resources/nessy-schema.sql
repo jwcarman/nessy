@@ -16,28 +16,6 @@ CREATE TABLE IF NOT EXISTS nessy_claim (
   PRIMARY KEY (agent_id, turn_id, claim_key)
 );
 
--- A deadline that outlives the actor which set it.
---
--- An in-memory timer dies with its actor, which is why an approval parked on a person for three
--- days used to require the agent to stay resident for three days. A row does not.
--- Columns rather than a composed key and an opaque payload, which is what this was.
---
--- It held the agent and the call TWICE: concatenated into a primary key so a settled call could
--- cancel its own alarm, and again as JSON so the sweep knew who to tell. That is a key-value
--- store's shape, and it brought a key-value store's hazard — an agent id containing the separator
--- collides with a different call, and the collision lands in a PRIMARY KEY.
-CREATE TABLE IF NOT EXISTS nessy_reminder (
-  agent_type TEXT                     NOT NULL,
-  agent_id   TEXT                     NOT NULL,
-  call_id    TEXT                     NOT NULL,
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  PRIMARY KEY (agent_type, agent_id, call_id)
-);
-
--- The sweep reads from the front of this index and stops at the first row not yet due, so its cost
--- is the number of EXPIRED reminders rather than the number outstanding.
-CREATE INDEX IF NOT EXISTS nessy_reminder_expires_at ON nessy_reminder (expires_at);
-
 -- What is waiting to become a turn.
 --
 -- Out of the agent's document on purpose: a document holding a queue is rewritten every time
@@ -78,7 +56,7 @@ CREATE INDEX IF NOT EXISTS nessy_backlog_waiting ON nessy_backlog (agent_id, ord
 -- take cannot arrive before the batch that asked for it has finished.
 --
 -- Keyed like nessy_backlog, which it is checked alongside. NOTE that nessy_backlog and nessy_claim
--- are keyed on agent_id alone with no agent_type, unlike nessy_reminder -- so two agent types
+-- are keyed on agent_id alone with no agent_type, unlike nessy_effect -- so two agent types
 -- sharing a database share their backlogs. Giving this table a type column alone would imply an
 -- isolation the table it guards does not provide.
 CREATE TABLE IF NOT EXISTS nessy_poison (
@@ -118,27 +96,32 @@ CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_
 -- before it releases, because releasing drops the claims the exchange is written from. Executing
 -- them out of order writes an empty exchange.
 --
--- actionable_at is ONE column with THREE meanings, decided by status (design of record
--- 2026-09-04, Task 7): PENDING -- when this may next be attempted, first try or a backoff;
--- RUNNING -- the deadline for the CURRENT attempt, and passing it is a timeout failure, not a
--- special case -- it goes through the same retry policy as any other failure; RUNNING far in the
--- future -- a deferral, parked on a person and correctly untouched until the term lapses. There is
--- no separate reaper: the same poller query that finds newly-actionable PENDING rows also finds
--- RUNNING rows whose deadline has quietly passed, because both are just "actionable_at <= now()".
--- Nullable: FAILED is a fourth status, retired rather than actionable at all, and its row's
--- actionable_at is cleared to NULL -- "never due again" rather than a sentinel far-future value a
--- reader might mistake for a very long deferral.
+-- actionable_at is ONE column with FOUR meanings, decided by status (design of record
+-- 2026-09-04, Task 7; PARKED added Task 7.5): PENDING -- when this may next be attempted, first
+-- try or a backoff; RUNNING -- the deadline for the CURRENT attempt, and passing it is a timeout
+-- failure, not a special case -- it goes through the same retry policy as any other failure;
+-- PARKED -- a deferral, granted to a person or a webhook and correctly untouched until the TERM
+-- lapses, at which point it is a lapsed deadline rather than a timeout and the poller tells the
+-- agent so instead of re-attempting the payload underneath (see EffectStore.Attempted#parked).
+-- There is no separate reaper: the same poller query that finds newly-actionable PENDING rows
+-- also finds RUNNING rows whose watchdog quietly passed and PARKED rows whose term did, because
+-- all three are just "actionable_at <= now()". Nullable: FAILED is a fifth status, retired rather
+-- than actionable at all, and its row's actionable_at is cleared to NULL -- "never due again"
+-- rather than a sentinel far-future value a reader might mistake for a very long deferral.
 --
 -- turn_id is nullable: an effect can be inserted before the agent has ever started a turn (the
 -- first TakeWork of an agent's life), and a null column means exactly that -- no turn yet -- not
 -- an empty string standing in for one.
 --
 -- call_id is nullable: only AskApprover and RunTool name one, and it exists so a settled call can
--- discharge its OWN effect row directly. AgentLogic.settle always emits CancelAlarm(callId)
--- whichever way a call ends, so Transition, processing CancelAlarm, deletes this call's effect row
--- in the same transaction it cancels the reminder in. Without this, a tool that defers for days
--- and then answers leaves its row RUNNING with an actionable_at now in the past, and the next
--- poller re-runs a tool whose call was already settled.
+-- discharge its OWN effect row directly. Transition compares the calls an agent was working
+-- BEFORE an input against what it is working AFTER, and deletes the row for every call that just
+-- became Completed -- whichever route brought the news: an answer, a denial, or a lapsed term
+-- alike. Without this, a tool that defers for days and then answers leaves its row outstanding
+-- with an actionable_at now in the past, and the next poller re-runs a tool whose call was
+-- already settled. The same column is also how a parked call's own deadline is written: see
+-- EffectStore#park, which moves a RUNNING row to PARKED at the (clamped) term it was granted --
+-- there is no second table tracking that deadline, so there is nothing for it to disagree with.
 --
 -- attempts counts FAILURES, not starts -- how many times this obligation has already failed, not
 -- how many times it has been picked up. Picking a row up (the poller's SELECT+UPDATE) never
@@ -193,7 +176,9 @@ CREATE TABLE IF NOT EXISTS nessy_effect (
 CREATE INDEX IF NOT EXISTS nessy_effect_actionable
   ON nessy_effect (agent_type, actionable_at);
 
--- CancelAlarm discharges a call's effect row directly, by (agent_type, agent_id, turn_id,
--- call_id) -- see EffectStore#deleteForCall.
+-- A settled call discharges its own row directly, by (agent_type, agent_id, turn_id, call_id) --
+-- see EffectStore#deleteForCall. The same coordinates are how EffectStore#park finds the row to
+-- move to PARKED, and how EffectStore#existsForCall answers Replies asking whether a call is
+-- still open.
 CREATE INDEX IF NOT EXISTS nessy_effect_call
   ON nessy_effect (agent_type, agent_id, turn_id, call_id);

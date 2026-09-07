@@ -22,8 +22,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * What one tool call is waiting on.
  *
  * <p>These arms exist to answer exactly one question: what should happen if this process dies right
- * now? That is why {@link Parked} carries no deadline — the deadline is a reminder row, and a
- * second copy here could only drift from it.
+ * now? That is why {@link Parked} carries no deadline — the deadline is {@code actionable_at} on
+ * this call's own effect row, and a second copy here could only drift from it.
  *
  * <p>The distinction between {@link Running} and {@link Parked} is the whole reason there are four
  * arms rather than two. A running call is re-run on recovery because nobody else will answer it; a
@@ -52,7 +52,7 @@ public sealed interface CallState {
   /** Approved, and the tool is running. Running again is safe; tool execution is at-least-once. */
   record Running(String toolName) implements CallState {}
 
-  /** Waiting on the world: someone holds a reply token and an alarm is armed. */
+  /** Waiting on the world: someone holds a reply token and the call's own row carries the term. */
   record Parked() implements CallState {}
 
   /** Its result is in claims. Nothing to redo. */

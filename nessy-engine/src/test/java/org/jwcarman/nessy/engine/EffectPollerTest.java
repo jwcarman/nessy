@@ -67,7 +67,6 @@ class EffectPollerTest {
             TYPE,
             store,
             effects,
-            new Reminders(database),
             new TransactionTemplate(new DataSourceTransactionManager(database)));
     // Every agent this test uses must have a real nessy_agent row, or AgentRuntime#peek finds
     // nobody and the poller skips the row entirely -- see EffectPoller#runAgent.

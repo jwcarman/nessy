@@ -43,8 +43,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
   @JsonSubTypes.Type(value = Effect.Remember.Answer.class, name = "remember-answer"),
   @JsonSubTypes.Type(value = Effect.Remember.Exchange.class, name = "remember-exchange"),
   @JsonSubTypes.Type(value = Effect.Release.class, name = "release"),
-  @JsonSubTypes.Type(value = Effect.SetAlarm.class, name = "set-alarm"),
-  @JsonSubTypes.Type(value = Effect.CancelAlarm.class, name = "cancel-alarm"),
   @JsonSubTypes.Type(value = Effect.Forget.class, name = "forget"),
   @JsonSubTypes.Type(value = Effect.Narrate.TurnStarted.class, name = "narrate-turn-started"),
   @JsonSubTypes.Type(value = Effect.Narrate.TurnEnded.class, name = "narrate-turn-ended"),
@@ -93,12 +91,6 @@ public sealed interface Effect {
 
   /** Release everything this turn claimed. */
   record Release() implements Effect {}
-
-  /** Arm a durable deadline for one call, so it outlives the process that set it. */
-  record SetAlarm(CallId callId, java.time.Instant expiresAt) implements Effect {}
-
-  /** Disarm it. */
-  record CancelAlarm(CallId callId) implements Effect {}
 
   /**
    * Erase this agent: its memory, its backlog rows, its claims, and the state that records it
