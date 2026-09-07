@@ -28,10 +28,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -55,6 +53,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.engine.agent.AgentState;
+import org.jwcarman.nessy.engine.agent.CallState;
+import org.jwcarman.nessy.engine.agent.Input;
+import org.jwcarman.nessy.engine.agent.Phase;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -66,8 +68,13 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * <p>This is the case the old engine could not express at all: a deferred tool became an error
  * handed to the model, because execution ran on a pooled worker with no per-call identity and there
  * was nowhere for a late answer to arrive. The execution actor is that somewhere.
+ *
+ * <p>Answers itself, package-privately, the same way {@code Replies} used to: {@code Harness}
+ * deliberately names no door for returning an approval (its own javadoc), and {@link
+ * EngineHarnessFactory} builds no replacement for one yet -- so this test resolves the token and
+ * dispatches the answer through the same {@link AgentRuntime} the factory built, which is exactly
+ * what {@code Replies} did underneath its ask-pattern wrapper.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A tool that defers")
 class DeferredApprovalTest {
 
@@ -76,9 +83,8 @@ class DeferredApprovalTest {
   private static final AgentType WATCHMAN = AgentType.of("watchman");
   private static final AgentId HOUSE = AgentId.of("house-12");
 
-  private static ActorTestKit testKit;
+  private static EngineHarnessFactory factory;
   private static Harness<HouseEvent> harness;
-  private static Replies replies;
   private static final AtomicBoolean ran = new AtomicBoolean();
   private static final AtomicReference<String> asked = new AtomicReference<>();
 
@@ -117,7 +123,6 @@ class DeferredApprovalTest {
 
   @BeforeAll
   static void wireEverything() {
-    testKit = ClusterOfOne.start();
     ModelProvider models =
         id ->
             new Model() {
@@ -149,11 +154,10 @@ class DeferredApprovalTest {
               }
             };
 
-    PekkoHarnessFactory factory =
-        new PekkoHarnessFactory(
+    factory =
+        new EngineHarnessFactory(
             engine ->
                 engine
-                    .system(testKit.system())
                     .models(models)
                     .dataSource(TestDatabase.fresh())
                     .maxTokens(4096)
@@ -161,7 +165,6 @@ class DeferredApprovalTest {
                     .blocking(Runnable::run)
                     .clock(Clock.systemUTC())
                     .replyTokens(ReplyTokens.ephemeral()));
-    replies = factory.replies();
     harness =
         factory.createHarness(
             HouseEvent.class,
@@ -186,7 +189,42 @@ class DeferredApprovalTest {
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    factory.close();
+  }
+
+  /**
+   * The reply token resolved and answered directly against {@link AgentRuntime} -- see the class
+   * javadoc. A denial is claimed exactly as {@code Replies.approve} claimed one, because it is the
+   * call's RESULT and the agent is only ever told an id.
+   */
+  private static void answer(ReplyToken token, ApprovalResult result) {
+    ReplyTokens.Coordinates where = factory.replyTokens().read(token);
+    EffectWorker.denialResult(result)
+        .ifPresent(
+            denied ->
+                factory
+                    .claims()
+                    .put(
+                        where.agentId(),
+                        where.turnId(),
+                        EffectWorker.resultKey(where.callId()),
+                        JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class).encode(denied)));
+    AgentRuntime runtime = factory.runtimeFor(where.agentType());
+    runtime.dispatch(
+        where.agentId(),
+        new Input.ApprovalGiven(where.callId(), toolNameOf(runtime, where), result),
+        null,
+        null);
+  }
+
+  /** The tool name comes from the STATE, exactly as {@code AgentActor.nameOf} once read it. */
+  private static String toolNameOf(AgentRuntime runtime, ReplyTokens.Coordinates where) {
+    AgentState state = runtime.inspect(where.agentId());
+    if (state.phase() instanceof Phase.WorkingTools(var calls)
+        && calls.get(where.callId()) instanceof CallState.Approving(var toolName)) {
+      return toolName;
+    }
+    return "";
   }
 
   @Test
@@ -214,13 +252,8 @@ class DeferredApprovalTest {
     assertThat(asked.get()).isNotBlank();
 
     // A person says yes, addressed only by the token the approver was handed.
-    NessyMessage.Ack ack =
-        replies
-            .approve(handed.get(), ApprovalResult.approved())
-            .toCompletableFuture()
-            .get(10, java.util.concurrent.TimeUnit.SECONDS);
+    answer(handed.get(), ApprovalResult.approved());
 
-    assertThat(ack.accepted()).isTrue();
     await().atMost(15, SECONDS).untilAsserted(() -> assertThat(ran).isTrue());
     await()
         .atMost(15, SECONDS)

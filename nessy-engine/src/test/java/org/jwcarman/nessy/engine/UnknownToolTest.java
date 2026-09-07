@@ -20,14 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -51,23 +45,17 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * place that knows what this agent can actually do. This is the path nothing before it drove: a
  * model naming a tool with no binding at all, rather than one whose binding denies or fails.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A call for a tool nobody bound")
 class UnknownToolTest {
 
   private static final AgentType WATCHMAN = AgentType.of("toolless");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
     parts =
         Engines.of(
-            testKit.system(),
             WATCHMAN,
             Engines.saying(
                 List.of(
@@ -84,33 +72,18 @@ class UnknownToolTest {
                         StopReason.END_TURN,
                         Usage.unreported()))),
             List.of() /* no bindings at all */);
-
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
   @DisplayName("the model is told no such tool exists, and the call was never made")
   void an_unbound_tool_name_fails_the_call_without_asking_anyone() {
     AgentId agentId = AgentId.of("house-toolless");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "bell"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "bell"));
 
     await()
         .atMost(15, SECONDS)

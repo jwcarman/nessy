@@ -21,14 +21,8 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -58,22 +52,17 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * reply. This is the one path {@code DeniedCallTest} does not reach — a THROWING approver, not one
  * that answers with a denial.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("An approver that fails instead of deciding")
 class ApproverFailureTest {
 
   private static final AgentType WATCHMAN = AgentType.of("brokendesk");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   record Letter(@JsonProperty("to") String to) {}
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
     Tool<Letter> send =
         new Tool<>() {
           @Override
@@ -111,7 +100,6 @@ class ApproverFailureTest {
 
     parts =
         Engines.of(
-            testKit.system(),
             WATCHMAN,
             Engines.saying(
                 List.of(
@@ -129,33 +117,18 @@ class ApproverFailureTest {
                         StopReason.END_TURN,
                         Usage.unreported()))),
             List.of(binding));
-
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
   @DisplayName("the call settles as a failure instead of leaving the turn stuck")
   void a_throwing_approver_settles_the_call_as_a_failure() {
     AgentId agentId = AgentId.of("house-brokendesk");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "bell"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "bell"));
 
     await()
         .atMost(15, SECONDS)

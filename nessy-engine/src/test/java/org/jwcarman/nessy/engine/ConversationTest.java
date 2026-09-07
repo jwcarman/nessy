@@ -27,10 +27,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -39,7 +37,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.block.TextBlock;
 import org.jwcarman.nessy.api.block.ToolCallBlock;
 import org.jwcarman.nessy.api.message.AnswerMessage;
@@ -73,7 +70,6 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * and what a fast typist approximates. That combination lands an observation inside the window
  * between an agent asking to be passivated and the shard telling it to stop.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("An agent held in conversation")
 class ConversationTest {
 
@@ -93,13 +89,11 @@ class ConversationTest {
   /** Fresh call ids: a turn re-driven onto an old id would be answering a different question. */
   private static final AtomicInteger calls = new AtomicInteger();
 
-  private static ActorTestKit testKit;
+  private static EngineHarnessFactory factory;
   private static Harness<HouseEvent> harness;
 
   @BeforeAll
   static void wire() {
-    testKit = ClusterOfOne.start();
-
     ModelProvider models =
         id ->
             new Model() {
@@ -137,11 +131,10 @@ class ConversationTest {
               }
             };
 
-    HarnessFactory factory =
-        new PekkoHarnessFactory(
+    factory =
+        new EngineHarnessFactory(
             engine ->
                 engine
-                    .system(testKit.system())
                     .models(models)
                     .dataSource(TestDatabase.fresh())
                     .maxTokens(4096)
@@ -197,7 +190,7 @@ class ConversationTest {
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    factory.close();
   }
 
   @Test

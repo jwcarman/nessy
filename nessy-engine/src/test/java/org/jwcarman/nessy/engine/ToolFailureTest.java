@@ -21,14 +21,8 @@ import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
-import java.util.Map;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.Entity;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -60,22 +54,17 @@ import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
  * because whether the tool's code ran to any effect before it threw is exactly what nobody here can
  * know.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("An approved tool that throws instead of returning")
 class ToolFailureTest {
 
   private static final AgentType WATCHMAN = AgentType.of("brokentool");
-  private static final EntityTypeKey<NessyMessage> KEY =
-      EntityTypeKey.create(NessyMessage.class, WATCHMAN.name());
 
-  private static ActorTestKit testKit;
   private static Engines.Parts parts;
 
   record Letter(@JsonProperty("to") String to) {}
 
   @BeforeAll
   static void start() {
-    testKit = ClusterOfOne.start();
     Tool<Letter> send =
         new Tool<>() {
           @Override
@@ -108,7 +97,6 @@ class ToolFailureTest {
 
     parts =
         Engines.of(
-            testKit.system(),
             WATCHMAN,
             Engines.saying(
                 List.of(
@@ -126,33 +114,18 @@ class ToolFailureTest {
                         StopReason.END_TURN,
                         Usage.unreported()))),
             List.of(binding));
-
-    ClusterSharding.get(testKit.system())
-        .init(
-            Entity.of(
-                    KEY,
-                    context ->
-                        AgentActor.create(
-                            new AgentActor.Dependencies(
-                                WATCHMAN, parts.effectWorker(), Traces.noop()),
-                            AgentId.of(context.getEntityId()),
-                            context.getShard()))
-                .withStopMessage(new NessyMessage.Stop(Map.of())));
   }
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    parts.close();
   }
 
   @Test
   @DisplayName("the model is told it may have partially completed, not that it never ran")
   void a_throwing_tool_settles_the_call_as_possibly_partial() {
     AgentId agentId = AgentId.of("house-brokentool");
-    parts.backlog().offer(agentId, new HouseEvent("porch", "bell"));
-    ClusterSharding.get(testKit.system())
-        .entityRefFor(KEY, agentId.value())
-        .tell(new NessyMessage.BacklogUpdated(Map.of()));
+    Engines.observe(parts, agentId, new HouseEvent("porch", "bell"));
 
     await()
         .atMost(15, SECONDS)

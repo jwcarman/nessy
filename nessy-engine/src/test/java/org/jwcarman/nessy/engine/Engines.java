@@ -16,11 +16,14 @@
 package org.jwcarman.nessy.engine;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.apache.pekko.actor.typed.ActorSystem;
 import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
@@ -36,10 +39,13 @@ import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * An engine's worth of parts, assembled for a test.
@@ -47,6 +53,14 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * <p>There used to be a {@code Turns} factory to stub, which made "an agent with a turn that never
  * finishes" a one-liner. One actor does the whole turn now, so a test stubs the MODEL instead —
  * which is closer to the truth anyway: a turn that never finishes is a provider that never answers.
+ *
+ * <p><b>Two families of {@code of(...)} overload.</b> The {@link ActorSystem}-taking ones are the
+ * legacy shape: they wire {@link EffectWorker} alone and leave a test to call {@link
+ * EffectWorker#perform} directly, exactly as they did before this migration. The ones below that
+ * take no {@link ActorSystem} are new: they wire the durable pipeline whole -- {@link Transition},
+ * {@link AgentRuntime}, and a continuously running {@link EffectPoller} -- the same parts {@link
+ * EngineHarnessFactory#createHarness} assembles, so a test that dispatches a {@link
+ * Dispatcher#dispatch} sees a turn actually run rather than commit and stop.
  */
 final class Engines {
 
@@ -55,7 +69,13 @@ final class Engines {
 
   private Engines() {}
 
-  /** Everything one agent type needs, over a database nobody else is using. */
+  /**
+   * Everything one agent type needs, over a database nobody else is using.
+   *
+   * <p>{@code runtime} and {@code poll} are null for a {@code Parts} built from one of the {@link
+   * ActorSystem}-taking overloads, which never run the durable pipeline; {@link #close} is a no-op
+   * for one of those.
+   */
   record Parts(
       DataSource dataSource,
       Claims claims,
@@ -64,7 +84,18 @@ final class Engines {
       Remembered remembered,
       Narrated narrated,
       EffectStore effects,
-      AgentStore store) {}
+      AgentStore store,
+      AgentRuntime runtime,
+      Sweeps poll)
+      implements AutoCloseable {
+
+    @Override
+    public void close() {
+      if (poll != null) {
+        poll.close();
+      }
+    }
+  }
 
   /**
    * What a test's memory was told, per agent.
@@ -206,7 +237,125 @@ final class Engines {
                 new java.util.Random(0),
                 java.time.Duration.ofDays(30)));
     return new Parts(
-        dataSource, claims, backlog, effectWorker, remembered, narrated, effects, store);
+        dataSource,
+        claims,
+        backlog,
+        effectWorker,
+        remembered,
+        narrated,
+        effects,
+        store,
+        null,
+        null);
+  }
+
+  /**
+   * The durable pipeline, whole — {@link Transition}, {@link AgentRuntime} and a continuously
+   * running {@link EffectPoller} — wired the same way {@link EngineHarnessFactory#createHarness}
+   * wires one kind of agent, but with the pieces a test needs (the transcript a {@link Memory}
+   * recorded, every event narrated) kept at hand rather than hidden behind {@code Harness}.
+   *
+   * <p>No {@link ActorSystem}: {@link Dispatcher#dispatch} drives {@link AgentRuntime} directly, so
+   * a turn actually runs rather than committing and stopping — the property the eight tests this
+   * overload family exists for are named after.
+   */
+  static Parts of(AgentType type, Model model) {
+    return of(type, model, List.of());
+  }
+
+  static Parts of(AgentType type, Model model, List<ToolBinding<?>> bindings) {
+    return of(type, model, bindings, BLOCKING);
+  }
+
+  static Parts of(AgentType type, Model model, List<ToolBinding<?>> bindings, Executor blocking) {
+    DataSource dataSource = TestDatabase.fresh();
+    Claims claims = new Claims(dataSource);
+    BacklogStore<HouseEvent> backlog =
+        new BacklogStore<>(
+            dataSource,
+            claims,
+            HouseEvents.CODEC,
+            JsonCodec.of(EngineMapper.INSTANCE, UserMessage.class),
+            HouseEvents.RENDERER,
+            HouseEvents.KEEP_ALL,
+            Clock.systemUTC());
+    Remembered remembered = new Remembered();
+    Narrated narrated = new Narrated();
+    EffectStore effects = new EffectStore(dataSource);
+    AgentStore store = new AgentStore(dataSource);
+    Transition transition =
+        new Transition(
+            type,
+            store,
+            effects,
+            new TransactionTemplate(new DataSourceTransactionManager(dataSource)));
+
+    // Runtime and effectWorker reference each other, exactly as EngineHarnessFactory#createHarness
+    // breaks the same cycle: an explicit holder rather than a lambda over a non-final local.
+    AtomicReference<AgentRuntime> runtimeRef = new AtomicReference<>();
+    Dispatcher dispatcher =
+        (agentId, input, completing, observability) ->
+            runtimeRef.get().dispatch(agentId, input, completing, observability);
+
+    EffectWorker effectWorker =
+        new EffectWorker(
+            new EffectWorker.Dependencies(
+                type,
+                recording(remembered),
+                model,
+                "you watch a house",
+                256,
+                new ToolBindings(bindings, EngineMapper.INSTANCE),
+                Set.of(),
+                agentId -> event -> narrated.add(agentId, event),
+                claims,
+                ReplyTokens.ephemeral(),
+                blocking,
+                Traces.noop(),
+                backlog,
+                effects,
+                dispatcher,
+                store,
+                RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofSeconds(1), 3),
+                new Random(0),
+                Duration.ofDays(30)));
+
+    AgentRuntime runtime =
+        new AgentRuntime(type, transition, effectWorker::perform, blocking, Traces.noop());
+    runtimeRef.set(runtime);
+
+    // Effects are durable rows now, committed by Transition and picked up by EffectPoller — there
+    // is no actor to run them synchronously any more, so this fixture needs its own continuous
+    // poll for a turn to make any progress. A short, unjittered floor keeps a 15-second Awaitility
+    // budget comfortable.
+    PollSchedule schedule =
+        new PollSchedule(Duration.ofMillis(10), Duration.ofMillis(250), 2.0, 0.0, new Random(0));
+    EffectPoller poller =
+        new EffectPoller(type, effects, runtime, schedule, blocking, 50, Duration.ofSeconds(30));
+    Sweeps poll = new Sweeps(() -> schedule.next(poller.pollOnce()));
+    poll.start();
+
+    return new Parts(
+        dataSource,
+        claims,
+        backlog,
+        effectWorker,
+        remembered,
+        narrated,
+        effects,
+        store,
+        runtime,
+        poll);
+  }
+
+  /**
+   * Puts an observation where the backlog can see it, and wakes the agent — the same two steps
+   * {@code LocalHarness#observe} does, spelled out here because a test wants {@code backlog} and
+   * {@code runtime} kept apart.
+   */
+  static void observe(Parts parts, AgentId agentId, HouseEvent event) {
+    parts.backlog().offer(agentId, event);
+    parts.runtime().dispatch(agentId, new Input.BacklogUpdated());
   }
 
   /** A transcript that keeps everything and hands it all back. */

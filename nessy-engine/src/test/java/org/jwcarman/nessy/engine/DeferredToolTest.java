@@ -27,10 +27,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.pekko.actor.testkit.typed.javadsl.ActorTestKit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -53,6 +51,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.HouseEvents.HouseEvent;
+import org.jwcarman.nessy.engine.agent.Input;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -64,8 +63,13 @@ import org.jwcarman.nessy.testing.TestDatabase;
  * <p>This is the case the old engine could not express at all: a deferred tool became an error
  * handed to the model, because execution ran on a pooled worker with no per-call identity and there
  * was nowhere for a late answer to arrive. The execution actor is that somewhere.
+ *
+ * <p>Answers itself, package-privately, the same way {@code Replies} used to: {@code Harness}
+ * deliberately names no door for returning a tool result (its own javadoc), and {@link
+ * EngineHarnessFactory} builds no replacement for one yet -- so this test resolves the token and
+ * dispatches the answer through the same {@link AgentRuntime} the factory built, which is exactly
+ * what {@code Replies} did underneath its ask-pattern wrapper.
  */
-@Disabled("Pekko removed in Task 11")
 @DisplayName("A tool that defers")
 class DeferredToolTest {
 
@@ -74,9 +78,8 @@ class DeferredToolTest {
   private static final AgentType WATCHMAN = AgentType.of("watchman");
   private static final AgentId HOUSE = AgentId.of("house-12");
 
-  private static ActorTestKit testKit;
+  private static EngineHarnessFactory factory;
   private static Harness<HouseEvent> harness;
-  private static Replies replies;
 
   /** What the tool was told to answer on. */
   private static final AtomicReference<ReplyToken> handed = new AtomicReference<>();
@@ -115,7 +118,6 @@ class DeferredToolTest {
 
   @BeforeAll
   static void wireEverything() {
-    testKit = ClusterOfOne.start();
     ModelProvider models =
         id ->
             new Model() {
@@ -147,11 +149,10 @@ class DeferredToolTest {
               }
             };
 
-    PekkoHarnessFactory factory =
-        new PekkoHarnessFactory(
+    factory =
+        new EngineHarnessFactory(
             engine ->
                 engine
-                    .system(testKit.system())
                     .models(models)
                     .dataSource(TestDatabase.fresh())
                     .maxTokens(4096)
@@ -159,7 +160,6 @@ class DeferredToolTest {
                     .blocking(Runnable::run)
                     .clock(Clock.systemUTC())
                     .replyTokens(ReplyTokens.ephemeral()));
-    replies = factory.replies();
     harness =
         factory.createHarness(
             HouseEvent.class,
@@ -174,12 +174,31 @@ class DeferredToolTest {
 
   @AfterAll
   static void stop() {
-    testKit.shutdownTestKit();
+    factory.close();
+  }
+
+  /**
+   * The reply token resolved and answered directly against {@link AgentRuntime} -- see the class
+   * javadoc. The result is claimed exactly as {@code Replies.answer} claimed one, before the agent
+   * ever hears the call id that names it.
+   */
+  private static void answer(ReplyToken token, ToolResult result) {
+    ReplyTokens.Coordinates where = factory.replyTokens().read(token);
+    factory
+        .claims()
+        .put(
+            where.agentId(),
+            where.turnId(),
+            EffectWorker.resultKey(where.callId()),
+            JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class).encode(result));
+    factory
+        .runtimeFor(where.agentType())
+        .dispatch(where.agentId(), new Input.ToolCompleted(where.callId()), null, null);
   }
 
   @Test
   @DisplayName("the turn waits, then finishes when the world answers")
-  void a_deferred_call_is_completed_from_outside() throws Exception {
+  void a_deferred_call_is_completed_from_outside() {
     List<AgentEvent> heard = new CopyOnWriteArrayList<>();
     harness.subscribe(HOUSE, heard::add);
 
@@ -189,13 +208,8 @@ class DeferredToolTest {
     await().atMost(15, SECONDS).untilAsserted(() -> assertThat(handed.get()).isNotNull());
     assertThat(heard).noneMatch(AgentEvent.TurnEnded.class::isInstance);
 
-    NessyMessage.Ack ack =
-        replies
-            .answer(handed.get(), ToolResult.ok("job finished"))
-            .toCompletableFuture()
-            .get(10, java.util.concurrent.TimeUnit.SECONDS);
+    answer(handed.get(), ToolResult.ok("job finished"));
 
-    assertThat(ack.accepted()).isTrue();
     await()
         .atMost(15, SECONDS)
         .untilAsserted(
