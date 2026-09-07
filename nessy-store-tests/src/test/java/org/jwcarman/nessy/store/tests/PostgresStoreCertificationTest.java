@@ -102,7 +102,9 @@ class PostgresStoreCertificationTest {
               "nessy_transcript",
               "nessy_intent",
               "nessy_backlog",
-              "nessy_pending_approvals");
+              "nessy_pending_approvals",
+              "nessy_effect",
+              "nessy_agent");
     }
 
     /** Every statement is IF NOT EXISTS, which is what makes it safe to run on every start. */

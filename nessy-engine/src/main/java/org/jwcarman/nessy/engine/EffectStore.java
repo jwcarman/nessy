@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -43,7 +44,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>{@code SKIP LOCKED} rather than a queue.</b> Every node may poll at once and none of them
  * contends: an attempter takes what it can lock and steps over the rest. No leader election, no
- * singleton scheduler. Measured to behave correctly on H2 as well as PostgreSQL.
+ * singleton scheduler. The non-blocking CONCURRENCY this buys -- two attempters racing the same
+ * batch without one blocking on the other's lock -- is measured on H2 only, by {@code
+ * EffectStoreTest}. {@code EffectStorePostgresCertificationTest} runs the same statement against
+ * real PostgreSQL and proves the SQL itself is accepted there, but does not race two attempters
+ * against it, so PostgreSQL's own lock-skipping behavior under real contention remains unmeasured.
  *
  * <p><b>There is no reaper.</b> Recovery is the absence of an exclusion, not an action anyone
  * takes: a row whose {@code actionable_at} has passed is simply eligible again, and the same {@link
@@ -88,13 +93,16 @@ final class EffectStore {
           + " ORDER BY actionable_at, ordinal LIMIT ? FOR UPDATE SKIP LOCKED";
 
   /**
-   * The conditional increment is evaluated against the PRE-update row on both H2 and PostgreSQL --
-   * measured, not assumed, by {@code EffectStoreTest}. A row already {@code RUNNING} or {@code
-   * PARKED} when this UPDATE finds it (both only possible because {@code SELECT_DUE} already proved
-   * {@code actionable_at <= now}) is evidence nobody else recorded that this obligation's last
-   * attempt failed -- see the class javadoc on {@code attempts} counting failures, and C1 in the
-   * Task 7 fix round. A {@code PENDING} row's previous attempt already recorded its OWN failure on
-   * the way out (via {@link #retry}), so incrementing here too would double-count it.
+   * The conditional increment is evaluated against the PRE-update row -- measured, not assumed, by
+   * {@code EffectStoreTest} on H2 and by {@code EffectStorePostgresCertificationTest} on real
+   * PostgreSQL, where the same {@code CASE WHEN} was re-run against a row inserted directly as
+   * {@code RUNNING}: this is the single most load-bearing unverified claim the whole exhaustion
+   * guarantee rested on before that second measurement existed. A row already {@code RUNNING} or
+   * {@code PARKED} when this UPDATE finds it (both only possible because {@code SELECT_DUE} already
+   * proved {@code actionable_at <= now}) is evidence nobody else recorded that this obligation's
+   * last attempt failed -- see the class javadoc on {@code attempts} counting failures, and C1 in
+   * the Task 7 fix round. A {@code PENDING} row's previous attempt already recorded its OWN failure
+   * on the way out (via {@link #retry}), so incrementing here too would double-count it.
    */
   private static final String TAKE =
       "UPDATE nessy_effect SET status = ?, actionable_at = ?,"
@@ -291,7 +299,7 @@ final class EffectStore {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(payload, "payload must not be null");
     EffectId id = EffectId.next();
-    Instant now = Instant.now();
+    Timestamp now = ts(Instant.now());
     jdbc.sql(INSERT)
         .param(id.value())
         .param(agentType.name())
@@ -342,7 +350,7 @@ final class EffectStore {
             jdbc
                 .sql(SELECT_DUE)
                 .param(agentType.name())
-                .param(now)
+                .param(ts(now))
                 .param(batchSize)
                 .query(EffectStore::row)
                 .list()
@@ -386,7 +394,7 @@ final class EffectStore {
   void retry(EffectId id, Instant actionableAt, String reason) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(actionableAt, "actionableAt must not be null");
-    jdbc.sql(RETRY).param(PENDING).param(actionableAt).param(reason).param(id.value()).update();
+    jdbc.sql(RETRY).param(PENDING).param(ts(actionableAt)).param(reason).param(id.value()).update();
   }
 
   /**
@@ -506,7 +514,7 @@ final class EffectStore {
         jdbc.sql(alsoNamed.isEmpty() ? DEFER_SIBLINGS : DEFER_SIBLINGS_AND_ROWS)
             .param("pending", PENDING)
             .param("running", RUNNING)
-            .param("at", actionableAt)
+            .param("at", ts(actionableAt))
             .param("type", agentType.name())
             .param("agent", agentId.value())
             .param("turn", turnId == null ? "" : turnId.value())
@@ -630,7 +638,7 @@ final class EffectStore {
     int updated =
         jdbc.sql(PARK)
             .param(PARKED)
-            .param(actionableAt)
+            .param(ts(actionableAt))
             .param(agentType.name())
             .param(agentId.value())
             .param(turnId == null ? null : turnId.value())
@@ -664,7 +672,7 @@ final class EffectStore {
   private Attempted take(Row due, Instant watchdogAt) {
     jdbc.sql(TAKE)
         .param(RUNNING)
-        .param(watchdogAt)
+        .param(ts(watchdogAt))
         .param(RUNNING)
         .param(PARKED)
         .param(due.id().value())
@@ -712,5 +720,16 @@ final class EffectStore {
         rs.getString("observability"),
         rs.getInt("attempts"),
         rs.getString("status"));
+  }
+
+  /**
+   * Every {@code actionable_at}/{@code created_at} parameter is bound as a {@link Timestamp}, never
+   * a bare {@link Instant} -- measured against real PostgreSQL by {@code
+   * EffectStorePostgresCertificationTest}: pgjdbc's {@code setObject} cannot infer a SQL type for
+   * {@code java.time.Instant} and throws, where H2 had silently tolerated it. This is exactly the
+   * class of silent H2/PostgreSQL divergence the certification module exists to catch.
+   */
+  private static Timestamp ts(Instant instant) {
+    return Timestamp.from(instant);
   }
 }
