@@ -258,6 +258,13 @@ public final class EngineHarnessFactory implements HarnessFactory, AutoCloseable
    *
    * <p>The stall sweep wakes agents left mid-turn by a node that vanished -- not idle ones, which
    * the observe that gave them work already woke, and which take again at the end of every turn.
+   *
+   * <p><b>Candidates, not verdicts.</b> {@code stalled} can only ask {@code nessy_agent} what an
+   * agent IS, and "busy for longer than {@code STALL_AFTER}" describes a slow tool as accurately as
+   * a dead node. Whether an agent has actually LOST anything is a question about {@code
+   * nessy_effect}, and it is asked -- transactionally, under the agent's own lock -- by {@code
+   * Transition#redundantRecovery}, which is what keeps this loop from re-driving a live agent every
+   * {@code REAP_INTERVAL} for as long as its work takes.
    */
   private void startSweeps(
       AgentType type, AgentStore store, EffectStore effects, AgentRuntime runtime) {

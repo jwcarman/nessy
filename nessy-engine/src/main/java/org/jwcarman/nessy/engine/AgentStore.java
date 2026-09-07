@@ -55,6 +55,8 @@ final class AgentStore {
   private static final String UPDATE =
       "UPDATE nessy_agent SET version = version + 1, state = ?, last_touched_at = ?"
           + " WHERE agent_type = ? AND agent_id = ?";
+  private static final String TOUCH =
+      "UPDATE nessy_agent SET last_touched_at = ? WHERE agent_type = ? AND agent_id = ?";
   private static final String DELETE =
       "DELETE FROM nessy_agent WHERE agent_type = ? AND agent_id = ?";
   private static final String STALLED =
@@ -128,6 +130,22 @@ final class AgentStore {
       create(agentType, agentId);
       update(agentType, agentId, state);
     }
+  }
+
+  /**
+   * Says "this agent was looked at just now" and nothing else -- no state, no version bump.
+   *
+   * <p>F2: {@link #stalled} reads liveness off {@code last_touched_at}, which only {@link #save}
+   * moves -- and a recovery that decides an agent needs nothing has, by construction, nothing to
+   * save. Without this the agent stays in the sweep's result set forever: it is re-examined on
+   * every pass, and, being ordered oldest-first, it stands in front of the genuinely stalled agents
+   * a bounded pass is meant to reach. Touching says what actually happened -- somebody checked, and
+   * this agent is fine -- rather than persisting a state nothing changed just to move a timestamp.
+   */
+  void touch(AgentType agentType, AgentId agentId) {
+    Objects.requireNonNull(agentType, AGENT_TYPE_NOT_NULL);
+    Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
+    jdbc.sql(TOUCH).param(Instant.now()).param(agentType.name()).param(agentId.value()).update();
   }
 
   void delete(AgentType agentType, AgentId agentId) {

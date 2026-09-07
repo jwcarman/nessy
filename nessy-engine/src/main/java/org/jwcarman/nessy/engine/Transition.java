@@ -106,6 +106,9 @@ final class Transition {
     return transactions.execute(
         status -> {
           AgentState current = store.lockAndLoad(agentType, agentId);
+          if (redundantRecovery(agentId, input)) {
+            return new Applied(current, List.of(), false);
+          }
           Decision decision = AgentLogic.decide(current, input);
           // Five of the logic's answers are "I have already had this news". Persisting an
           // identical document costs a write and a version bump for nothing, and a busy agent is
@@ -140,6 +143,41 @@ final class Transition {
           }
           return new Applied(decision.next(), record(agentId, decision, observability), changed);
         });
+  }
+
+  /**
+   * Whether this is a recovery for an agent that has lost nothing -- and, when it is, the moment
+   * the sweep is told so.
+   *
+   * <p>F2. Recovery re-emits the effects a busy phase implies, because the point of it is to
+   * replace obligations a dead node took with it. An agent whose rows are still in {@code
+   * nessy_effect} took nothing with it: every one of those rows becomes due again on its own, so
+   * re-emitting is not recovery but duplication -- a second {@code RunTool} for a tool already
+   * running, a second {@code ReplyToken} for a call somebody is already holding an address to.
+   *
+   * <p><b>Why this is not the fold's business.</b> {@code AgentLogic} is pure and knows only what
+   * the agent IS; whether the work it implies is still on a table is a fact about this shell's
+   * storage, exactly like the parked call's deadline below. So the guard lives here, inside the
+   * transaction that already holds the agent's row -- which is what makes the answer still true
+   * when the caller acts on it.
+   *
+   * <p><b>Why the touch.</b> {@link AgentStore#stalled} finds agents by {@code last_touched_at},
+   * and returning early writes no state to move it. Left alone, a long-running agent is re-examined
+   * on every pass forever and, being oldest, crowds out the agents a bounded pass exists to reach.
+   * The touch says what happened -- somebody checked, and this one is fine.
+   *
+   * <p>An agent that really did lose its rows fails this test and is recovered exactly as before.
+   * That is the case the sweep exists for, and nothing here narrows it.
+   */
+  private boolean redundantRecovery(AgentId agentId, Input input) {
+    if (!(input instanceof Input.Recovered) || !effects.hasOutstanding(agentType, agentId)) {
+      return false;
+    }
+    LOG.debug(
+        "[{}] recovery skipped: this agent's obligations are all still outstanding",
+        agentId.value());
+    store.touch(agentType, agentId);
+    return true;
   }
 
   /**

@@ -111,6 +111,13 @@ final class EffectStore {
   private static final String EXISTS_FOR_CALL =
       "SELECT COUNT(*) FROM nessy_effect"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ?";
+  // F2: FAILED is deliberately excluded. An abandoned row keeps its place in the table as the
+  // record of a spent obligation, with actionable_at NULL -- nobody will ever attempt it again, so
+  // counting it as outstanding would tell recovery this agent still owes work it does not, and
+  // wedge it out of the one mechanism that could re-emit what it really lost.
+  private static final String OUTSTANDING =
+      "SELECT COUNT(*) FROM nessy_effect"
+          + " WHERE agent_type = ? AND agent_id = ? AND status IN (?, ?, ?)";
   private static final String PARK =
       "UPDATE nessy_effect SET status = ?, actionable_at = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id = ? AND call_id = ? AND status = ?";
@@ -487,6 +494,34 @@ final class EffectStore {
         .param(turnId == null ? null : turnId.value())
         .param(callId.value())
         .update();
+  }
+
+  /**
+   * Whether this agent still owes ANY obligation -- attempted, waiting, or parked on a person.
+   *
+   * <p>F2: what tells a recovery drive apart from a redundant one. Recovery exists to replace
+   * obligations that were LOST -- a node that died between committing a decision and its rows being
+   * run -- and an agent with rows still in this table has lost nothing: every one of them is
+   * already due, or due again the moment its watchdog or its term lapses. Re-folding {@code
+   * Recovered} over such an agent emits a SECOND row for work that is already outstanding, which
+   * for a running tool is a re-invocation and for a parked call is a second reply address.
+   *
+   * <p>Read inside {@code Transition}'s transaction, after the agent's row is locked, so a decision
+   * committing new effects cannot slip between the question and the answer.
+   */
+  boolean hasOutstanding(AgentType agentType, AgentId agentId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Integer count =
+        jdbc.sql(OUTSTANDING)
+            .param(agentType.name())
+            .param(agentId.value())
+            .param(PENDING)
+            .param(RUNNING)
+            .param(PARKED)
+            .query(Integer.class)
+            .single();
+    return count != null && count > 0;
   }
 
   /**
