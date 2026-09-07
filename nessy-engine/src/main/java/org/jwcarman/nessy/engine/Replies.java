@@ -15,21 +15,18 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.pekko.actor.typed.ActorSystem;
-import org.apache.pekko.actor.typed.javadsl.AskPattern;
-import org.apache.pekko.cluster.sharding.typed.javadsl.ClusterSharding;
-import org.apache.pekko.cluster.sharding.typed.javadsl.EntityTypeKey;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.engine.agent.Input;
 
 /**
  * Where the outside world answers a call that was parked.
@@ -39,14 +36,17 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * than on {@code Harness} because it is not one of the two things an application does with agents;
  * it is the return path for work an agent asked the world to do.
  *
- * <p><b>It resolves the token to coordinates and routes, holding no state of its own.</b> The
- * actors that were waiting need not still exist: routing wakes the agent, which respawns its turn
- * from the record, which respawns the call. That is why the token names logical coordinates rather
- * than an address.
+ * <p><b>It resolves the token to coordinates and routes, holding no state of its own.</b> Nothing
+ * is resident: an agent is a row, and routing wakes it by dispatching straight to a {@link
+ * Dispatcher}, the same door any other outcome arrives through. That is why the token names logical
+ * coordinates rather than an address.
  *
- * <p>Answering returns a stage that completes when the answer has actually REACHED the call, not
- * when it was sent — so an HTTP handler can wait before returning 200. An answer arriving too late,
- * for a call already settled or expired, is reported honestly rather than silently dropped.
+ * <p>Answering returns a stage that completes once the call is confirmed still open and the answer
+ * handed to its agent's {@link Dispatcher} — a dispatch is fire-and-forget by design (see {@link
+ * Dispatcher#dispatch}), so this is a weaker promise than the ask-pattern this replaced made: it
+ * says the answer was accepted for delivery, not that the fold it produces has committed. An answer
+ * arriving too late, for a call already settled or expired, is reported honestly rather than
+ * silently dropped.
  */
 public final class Replies {
 
@@ -54,40 +54,30 @@ public final class Replies {
       JsonCodec.of(EngineMapper.INSTANCE, ToolResult.class);
 
   private final Claims claims;
-  private final ActorSystem<?> system;
-  private final Duration patience;
   private final ReplyTokens tokens;
-  private final Map<AgentType, EntityTypeKey<NessyMessage>> agentTypes = new ConcurrentHashMap<>();
+  private final Map<AgentType, Dispatcher> dispatchers = new ConcurrentHashMap<>();
   private final EffectStore effects;
 
   private final Traces traces;
 
-  Replies(
-      ActorSystem<?> system,
-      Duration patience,
-      ReplyTokens tokens,
-      Traces traces,
-      Claims claims,
-      EffectStore effects) {
+  Replies(ReplyTokens tokens, Traces traces, Claims claims, EffectStore effects) {
     this.effects = effects;
     this.claims = claims;
-    this.system = system;
-    this.patience = patience;
     this.tokens = tokens;
     this.traces = traces;
   }
 
   /** Called by the factory as each kind of agent gains a harness. */
-  void serving(AgentType agentType, EntityTypeKey<NessyMessage> key) {
-    agentTypes.put(agentType, key);
+  void serving(AgentType agentType, Dispatcher dispatcher) {
+    dispatchers.put(agentType, dispatcher);
   }
 
   /** The answer a deferring tool promised. */
-  public CompletionStage<NessyMessage.Ack> answer(ReplyToken token, ToolResult result) {
+  public CompletionStage<Ack> answer(ReplyToken token, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
     if (!stillOpen(where)) {
-      return java.util.concurrent.CompletableFuture.completedFuture(SETTLED);
+      return CompletableFuture.completedFuture(SETTLED);
     }
     // Claimed BEFORE the agent hears about it, exactly as an in-process tool's result is. A vendor
     // answering on day three of a three-day term goes through the same door as one answering in two
@@ -97,21 +87,16 @@ public final class Replies {
         where.turnId(),
         EffectWorker.resultKey(where.callId()),
         RESULTS.encode(result));
-    return ask(
-        where,
-        replyTo ->
-            new NessyMessage.ToolAnswered(
-                where.callId(),
-                replyTo,
-                traces.capture(where.agentType().name(), where.agentId().value(), "Answer")));
+    dispatch(where, new Input.ToolCompleted(where.callId()));
+    return CompletableFuture.completedFuture(new Ack(true, null));
   }
 
   /** A person's decision on a call that was waiting for one. */
-  public CompletionStage<NessyMessage.Ack> approve(ReplyToken token, ApprovalResult result) {
+  public CompletionStage<Ack> approve(ReplyToken token, ApprovalResult result) {
     Objects.requireNonNull(result, "result must not be null");
     ReplyTokens.Coordinates where = tokens.read(token);
     if (!stillOpen(where)) {
-      return java.util.concurrent.CompletableFuture.completedFuture(SETTLED);
+      return CompletableFuture.completedFuture(SETTLED);
     }
     // A denial arriving from a desk is claimed here for the same reason an immediate one is: it is
     // the call's RESULT, and the agent is only ever told an id.
@@ -123,14 +108,10 @@ public final class Replies {
                     where.turnId(),
                     EffectWorker.resultKey(where.callId()),
                     RESULTS.encode(denied)));
-    return ask(
-        where,
-        replyTo ->
-            new NessyMessage.ApprovalAnswered(
-                where.callId(),
-                result,
-                replyTo,
-                traces.capture(where.agentType().name(), where.agentId().value(), "Answer")));
+    String toolName =
+        EffectWorker.askedToolName(claims, where.agentId(), where.turnId(), where.callId());
+    dispatch(where, new Input.ApprovalGiven(where.callId(), toolName, result));
+    return CompletableFuture.completedFuture(new Ack(true, null));
   }
 
   /**
@@ -143,12 +124,12 @@ public final class Replies {
    *
    * @return whether it went anywhere
    */
-  boolean tell(AgentType agentType, AgentId agentId, NessyMessage message) {
-    EntityTypeKey<NessyMessage> key = agentTypes.get(agentType);
-    if (key == null) {
+  boolean tell(AgentType agentType, AgentId agentId, Input input) {
+    Dispatcher dispatcher = dispatchers.get(agentType);
+    if (dispatcher == null) {
       return false;
     }
-    ClusterSharding.get(system).entityRefFor(key, agentId.value()).tell(message);
+    dispatcher.dispatch(agentId, input);
     return true;
   }
 
@@ -160,40 +141,37 @@ public final class Replies {
    * moment the call settles, whichever route brought the news (see {@code EffectStore
    * #deleteForCall}). Present means open; absent means done.
    *
-   * <p><b>Why this is worth a query.</b> Delivering to a sharded entity CREATES it. Without this,
+   * <p><b>Why this is worth a query.</b> Delivering to an agent CREATES a row for it. Without this,
    * an answer clicked minutes late — for a call the deadline already denied, or an agent since
-   * forgotten — brings that agent back into memory purely so it can refuse the message. A row
-   * lookup refuses it without resurrecting anything.
+   * forgotten — brings that agent back into being purely so it can refuse the message. A row lookup
+   * refuses it without resurrecting anything.
    *
-   * <p>Racy in one direction only, and deliberately so. A stale "open" costs a delivery the agent
-   * then rejects, which is harmless. A wrong "done" would swallow a real answer — so absence has to
-   * be conclusive, and the agent's own Ack remains the authority for everything this lets through.
+   * <p>Racy in one direction only, and deliberately so. A stale "open" costs a delivery {@code
+   * AgentLogic} then drops as answering nothing it was waiting on, which is harmless. A wrong
+   * "done" would swallow a real answer — so absence has to be conclusive.
    */
   private boolean stillOpen(ReplyTokens.Coordinates where) {
     return effects.existsForCall(
         where.agentType(), where.agentId(), where.turnId(), where.callId());
   }
 
-  private static final NessyMessage.Ack SETTLED =
-      new NessyMessage.Ack(false, "that call has already ended");
+  private static final Ack SETTLED = new Ack(false, "that call has already ended");
 
-  private CompletionStage<NessyMessage.Ack> ask(
-      ReplyTokens.Coordinates where,
-      java.util.function.Function<
-              org.apache.pekko.actor.typed.ActorRef<NessyMessage.Ack>, NessyMessage>
-          message) {
-    EntityTypeKey<NessyMessage> key = agentTypes.get(where.agentType());
-    if (key == null) {
+  private void dispatch(ReplyTokens.Coordinates where, Input input) {
+    Dispatcher dispatcher = dispatchers.get(where.agentType());
+    if (dispatcher == null) {
       throw new IllegalArgumentException(
           "no agent type \""
               + where.agentType()
               + "\" is served here: the token was issued by a"
               + " harness this process never created");
     }
-    return AskPattern.ask(
-        ClusterSharding.get(system).entityRefFor(key, where.agentId().value()),
-        message::apply,
-        patience,
-        system.scheduler());
+    Map<String, String> carried =
+        traces.capture(where.agentType().name(), where.agentId().value(), "Answer");
+    // An answer from outside discharges no obligation of its own -- null names none.
+    dispatcher.dispatch(where.agentId(), input, null, EffectWorker.observabilityOf(carried));
   }
+
+  /** Whether an answer actually reached an open call. */
+  public record Ack(boolean accepted, String detail) {}
 }

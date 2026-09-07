@@ -148,12 +148,12 @@ final class EffectWorker {
    * #takeWork}.
    *
    * <p><b>{@code attempts}</b> is how many times this obligation has ALREADY failed -- {@code
-   * EffectStore.Attempted#attempts()}, verbatim, no adjustment -- or {@code -1} for a caller with
-   * no real row to count against (a test driving one effect directly, or the legacy Pekko actor's
-   * own turn, which uses a freshly-minted {@link EffectId} naming no row at all). {@code -1} is the
-   * sentinel that turns the {@link RetryPolicy} consultation below OFF entirely and restores the
-   * pre-Task-7 behavior of folding any failure into the agent immediately: a policy consulted
-   * against a count that means nothing would be worse than not consulting one.
+   * EffectStore.Attempted#attempts()}, verbatim, no adjustment -- except {@code -1} from {@link
+   * AgentRuntime#narrate}, which is never a row and never consults a {@link RetryPolicy}: every
+   * other caller states the real count it means, down to a test driving one effect directly with
+   * {@code attempts=0} for its first attempt. {@code -1} is the sentinel that turns the {@link
+   * RetryPolicy} consultation below OFF entirely and folds any failure into the agent immediately:
+   * a policy consulted against a count that means nothing would be worse than not consulting one.
    *
    * <p>For a real count, the policy is asked BEFORE any work runs: {@link RetryPolicy#decide}
    * either says {@code GiveUp} -- this obligation closes right here, via {@link #giveUp}, with no
@@ -286,27 +286,6 @@ final class EffectWorker {
   }
 
   /**
-   * Convenience for a caller with no claimed effect of its own to address against: the legacy Pekko
-   * actor's own turn, and any test that builds a {@code state} already at the turn it means.
-   * Derives the turn from {@code state.turnId()}, which is exactly right when {@code state} IS the
-   * turn in question -- and exactly the bug the {@code turnId}-carrying overload above exists to
-   * fix when it is not.
-   */
-  void perform(
-      AgentId agentId,
-      AgentState state,
-      Effect effect,
-      EffectId effectId,
-      Map<String, String> carried) {
-    perform(agentId, state, state.turnId(), effect, effectId, carried, -1);
-  }
-
-  /** As above, with no trace headers carried. */
-  void perform(AgentId agentId, AgentState state, Effect effect, EffectId effectId) {
-    perform(agentId, state, effect, effectId, Map.of());
-  }
-
-  /**
    * Runs work that finishes here, and discharges its obligation.
    *
    * <p>These produce no Input -- nothing is waiting to hear that a claim was deleted -- so the
@@ -350,15 +329,6 @@ final class EffectWorker {
   /** Narration is per agent, so it is resolved per call: an entity ref is a routing decision. */
   private Narrator narrator(AgentId agentId) {
     return deps.narrators().apply(agentId);
-  }
-
-  /**
-   * The one executor the engine does agent work on. {@link AgentActor} -- provisional, and gone in
-   * Task 11 -- borrows it to run a decision's effects off its own thread, exactly as {@code
-   * performAll} used to.
-   */
-  Executor blocking() {
-    return deps.blocking();
   }
 
   /**
@@ -757,16 +727,10 @@ final class EffectWorker {
    * simply idle again — rather than effect rows pointing at a state row that is gone, which a
    * future claim would drain forever with nothing to fold their outcomes against.
    *
-   * <p><b>{@link #deps}'s {@code store} is engine-owned SQL only.</b> {@code AgentActor}'s OWN
-   * Pekko-persisted document — a separate store entirely, written through {@code
-   * DurableStateBehavior} — is untouched here, exactly as before: that reference left this class
-   * along with the {@code ActorSystem} it used to hold, and the row it recovers from survives until
-   * Task 11 deletes the journal machinery that wrote it. An agent forgotten here and reached again
-   * through {@code AgentActor} in the meantime still comes back holding its PRE-FORGET {@code
-   * AgentState} set against memory, claims and backlog rows now gone underneath it — acceptable
-   * only because that whole actor is deleted in Task 11 along with the store it recovers from.
-   * {@code AgentRuntime}'s own read of "does this agent exist" (see {@code AgentStore#peek}) is
-   * answered by exactly the row this method now deletes.
+   * <p><b>{@link #deps}'s {@code store} is the only place an agent's state lives now.</b> There is
+   * no second, actor-owned document to reconcile against: {@code AgentRuntime}'s own read of "does
+   * this agent exist" (see {@code AgentStore#peek}) is answered by exactly the row this method
+   * deletes.
    */
   private void forget(AgentId agentId) {
     deps.memory().forget(agentId);
@@ -880,8 +844,11 @@ final class EffectWorker {
    *
    * <p>Null when there is nothing to carry — an empty map is not a carrier that failed to
    * serialize, it is work with no ambient trace, which is legitimate and common.
+   *
+   * <p>Package-visible for {@link Replies}, which serializes a freshly captured span the same way
+   * when it answers a call from outside the effect pipeline.
    */
-  private static String observabilityOf(Map<String, String> carried) {
+  static String observabilityOf(Map<String, String> carried) {
     if (carried == null || carried.isEmpty()) {
       return null;
     }
@@ -927,6 +894,24 @@ final class EffectWorker {
 
   static String resultKey(CallId callId) {
     return "result-" + callId;
+  }
+
+  /**
+   * The tool name {@code callId}'s asking message named, or {@code ""} when that message is gone --
+   * the same lookup {@link #callOf} performs for {@code perform}'s own effects, exposed for {@link
+   * Replies}, which answers a call from OUTSIDE the effect pipeline and needs the same name to
+   * build the {@code Input.ApprovalGiven} it dispatches.
+   */
+  static String askedToolName(Claims claims, AgentId agentId, TurnId turnId, CallId callId) {
+    Codec<List<ExchangeContentBlock>> codec =
+        JsonCodec.ofList(EngineMapper.INSTANCE, ExchangeContentBlock.class);
+    return claims
+        .get(agentId, turnId, ASKED_KEY)
+        .map(codec::decode)
+        .flatMap(
+            asked -> callsIn(asked).stream().filter(call -> call.id().equals(callId)).findFirst())
+        .map(ToolCall::name)
+        .orElse("");
   }
 
   private static List<ToolCall> callsIn(List<ExchangeContentBlock> content) {
