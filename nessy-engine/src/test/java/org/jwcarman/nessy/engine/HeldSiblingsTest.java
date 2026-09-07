@@ -17,18 +17,23 @@ package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.ObjIntConsumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -42,6 +47,7 @@ import org.jwcarman.nessy.api.message.HistoryMessage;
 import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -65,6 +71,7 @@ class HeldSiblingsTest {
   private static final AgentType TYPE = AgentType.of("watchman");
   private static final AgentId AGENT = AgentId.of("house-1");
   private static final String ANSWER_CLAIM_KEY = "answer"; // mirrors EffectWorker's private key
+  private static final String PENDING = "PENDING"; // mirrors EffectStore's private status literals
 
   private EmbeddedDatabase database;
   private Claims claims;
@@ -216,15 +223,10 @@ class HeldSiblingsTest {
     // AgentRuntime#perform, before EffectWorker ever sees it. C1's own archetype: a deploy that
     // changed Effect's JSON shape out from under an in-flight row.
     effects.insert(
-        TYPE,
-        AGENT,
-        turnId,
-        null,
-        0,
-        "not a valid payload".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-        null);
-    effects.insert(
-        TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+        TYPE, AGENT, turnId, null, 0, "not a valid payload".getBytes(StandardCharsets.UTF_8), null);
+    EffectId sibling =
+        effects.insert(
+            TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
 
     EffectPoller poller = poller(throwOnceThenRecord(new AtomicBoolean(true)));
 
@@ -234,6 +236,146 @@ class HeldSiblingsTest {
     assertThat(claims.get(AGENT, turnId, ANSWER_CLAIM_KEY))
         .as("Release must not have run past a sibling that threw -- the claim survives")
         .isPresent();
+    assertThat(statusOf(sibling))
+        .as(
+            "F-NEW: the held sibling is released back to PENDING. Left RUNNING -- which is what"
+                + " this pass's own attempt() made it -- TAKE charges it a failure it never made"
+                + " the next time its watchdog lapses.")
+        .contains(PENDING);
+  }
+
+  /**
+   * Every way performing one row can END, so that the invariant is asserted once rather than
+   * rediscovered a branch at a time. Four review rounds each found ONE of these leaving a sibling
+   * behind (R-AC, F1, F-NEW); the enum exists so a fifth outcome cannot be added without the
+   * exhaustive switches below refusing to compile.
+   *
+   * <p>{@code groupContinues} is the distinction that must NOT be flattened: an effect that hands
+   * off to a model call, a tool or an approver has not failed, so its siblings are supposed to run
+   * -- releasing them there would be just as wrong as leaving them RUNNING here.
+   */
+  private enum Outcome {
+    SYNC_SUCCESS(true),
+    SYNC_RETRY(false),
+    SYNC_ABANDON(false),
+    ASYNC_HANDOFF(true),
+    THROW(false);
+
+    private final boolean groupContinues;
+
+    Outcome(boolean groupContinues) {
+      this.groupContinues = groupContinues;
+    }
+
+    boolean groupContinues() {
+      return groupContinues;
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(Outcome.class)
+  @DisplayName(
+      "R-AG: no outcome of performing a row leaves an un-run sibling RUNNING -- a sibling either"
+          + " ran, or was released back to PENDING")
+  void no_outcome_leaves_an_un_run_sibling_running(Outcome outcome) {
+    TurnId turnId = TurnId.of("turn-" + outcome);
+    transition.read(AGENT);
+    claims.put(
+        AGENT,
+        turnId,
+        ANSWER_CLAIM_KEY,
+        answerCodec.encode(new AnswerMessage(List.of(new TextBlock("hi")))));
+    effects.insert(TYPE, AGENT, turnId, null, 0, leadPayloadFor(outcome), null);
+    EffectId sibling =
+        effects.insert(
+            TYPE, AGENT, turnId, null, 1, EffectStore.PAYLOADS.encode(new Effect.Release()), null);
+
+    List<Integer> siblingRuns = new ArrayList<>();
+    EffectPoller poller =
+        poller(
+            memoryFor(outcome),
+            (effect, attempts) -> {
+              if (effect instanceof Effect.Release) {
+                siblingRuns.add(attempts);
+              }
+            },
+            retryPolicyFor(outcome),
+            blockingFor(outcome));
+
+    poller.pollOnce();
+
+    if (outcome.groupContinues()) {
+      assertThat(siblingRuns)
+          .as("nothing stopped this group, so the sibling ran -- at attempts 0, its first try")
+          .containsExactly(0);
+      assertThat(statusOf(sibling))
+          .as("a sibling that ran and succeeded discharged its own row")
+          .isEmpty();
+    } else {
+      assertThat(siblingRuns).as("the group stopped, so the sibling never ran").isEmpty();
+      assertThat(statusOf(sibling))
+          .as(
+              "an un-run sibling is released back to PENDING. Left RUNNING -- which is what this"
+                  + " pass's own attempt() made it -- TAKE charges it a failure it never made the"
+                  + " next time its watchdog lapses.")
+          .contains(PENDING);
+    }
+  }
+
+  /** What ordinal 0 must be for {@code outcome} to be the way performing it ends. */
+  private static byte[] leadPayloadFor(Outcome outcome) {
+    return switch (outcome) {
+      // A memory that accepts the write: settle succeeds and completes the row.
+      case SYNC_SUCCESS, SYNC_ABANDON -> EffectStore.PAYLOADS.encode(new Effect.Remember.Answer());
+      // A memory that throws once: settle catches it and schedules a retry.
+      case SYNC_RETRY -> EffectStore.PAYLOADS.encode(new Effect.Remember.Answer());
+      // A model that accepts the request and never answers: the row is still RUNNING when perform
+      // returns, exactly like a row that quietly succeeded -- which is why "still RUNNING" alone
+      // can never be the signal that a group must stop.
+      case ASYNC_HANDOFF -> EffectStore.PAYLOADS.encode(new Effect.CallModel());
+      // Not valid JSON at all: PAYLOADS.decode throws inside AgentRuntime#perform, before
+      // EffectWorker ever sees it -- a deploy that changed Effect's shape out from under an
+      // in-flight row.
+      case THROW -> "not a valid payload".getBytes(StandardCharsets.UTF_8);
+    };
+  }
+
+  private Memory memoryFor(Outcome outcome) {
+    return switch (outcome) {
+      case SYNC_RETRY -> throwOnceThenRecord(new AtomicBoolean(false));
+      case SYNC_SUCCESS, SYNC_ABANDON, ASYNC_HANDOFF, THROW ->
+          throwOnceThenRecord(new AtomicBoolean(true));
+    };
+  }
+
+  private static RetryPolicy retryPolicyFor(Outcome outcome) {
+    return switch (outcome) {
+      // A budget already spent: EffectWorker#perform consults the policy BEFORE doing any work,
+      // so this abandons the row without the memory ever being touched.
+      case SYNC_ABANDON -> (attemptsMade, random) -> new RetryPolicy.RetryDecision.GiveUp();
+      case SYNC_SUCCESS, SYNC_RETRY, ASYNC_HANDOFF, THROW ->
+          RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofMillis(100), 5);
+    };
+  }
+
+  private static Executor blockingFor(Outcome outcome) {
+    return switch (outcome) {
+      // The model call must NOT run on the polling thread: the point of this case is that perform
+      // returns while the work is still outstanding. A virtual thread, never joined and never
+      // interrupted -- the stalled model parks it for the life of the JVM, which costs nothing and
+      // keeps the hand-off deterministic where a shutdown race would not be.
+      case ASYNC_HANDOFF -> task -> Thread.ofVirtual().start(task);
+      case SYNC_SUCCESS, SYNC_RETRY, SYNC_ABANDON, THROW -> Runnable::run;
+    };
+  }
+
+  /** The status of one row, or empty once it has been discharged and deleted. */
+  private Optional<String> statusOf(EffectId id) {
+    return JdbcClient.create(database)
+        .sql("SELECT status FROM nessy_effect WHERE effect_id = ?")
+        .param(id.value())
+        .query(String.class)
+        .optional();
   }
 
   /** Throws once for an {@link AnswerMessage}, then records every one after that. */
@@ -269,7 +411,21 @@ class HeldSiblingsTest {
    * successful run deletes its own row before this test's assertions get to run (see R-AC's
    * falsification test).
    */
-  private EffectPoller poller(Memory memory, java.util.function.ObjIntConsumer<Effect> onPerform) {
+  private EffectPoller poller(Memory memory, ObjIntConsumer<Effect> onPerform) {
+    return poller(
+        memory,
+        onPerform,
+        RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofMillis(100), 5),
+        Runnable::run);
+  }
+
+  /**
+   * As above, with the {@link RetryPolicy} and the executor {@code EffectWorker} does external work
+   * on both chosen by the caller -- the two knobs that decide WHICH of {@link Outcome}'s five ways
+   * of ending a row this wiring produces.
+   */
+  private EffectPoller poller(
+      Memory memory, ObjIntConsumer<Effect> onPerform, RetryPolicy retryPolicy, Executor blocking) {
     Executor direct = Runnable::run;
     AgentRuntime[] runtimeHolder = new AgentRuntime[1];
     Dispatcher dispatcherProxy =
@@ -300,13 +456,13 @@ class HeldSiblingsTest {
                     },
                 claims,
                 ReplyTokens.ephemeral(),
-                direct,
+                blocking,
                 Traces.noop(),
                 backlog,
                 effects,
                 dispatcherProxy,
                 store,
-                RetryPolicy.exponential(Duration.ofMillis(1), 2.0, Duration.ofMillis(100), 5),
+                retryPolicy,
                 new Random(0),
                 Duration.ofDays(1)));
     AgentRuntime.Performer recordingPerformer =

@@ -167,61 +167,89 @@ final class EffectPoller {
       return;
     }
     for (EffectStore.Attempted attempted : rows) {
-      try {
-        runtime.perform(agentId, state.get(), attempted);
-      } catch (RuntimeException failure) {
-        // R-AD (Task 7 fix round 3): a throw out of perform() -- an undecodable payload, or any
-        // other failure the performer did not itself catch -- stops this pass's group HERE, same
-        // as a synchronous retry or abandon does. Deleting AgentRuntime's own catch and catching
-        // it here instead is what makes that possible: a bare boolean/void return could not tell
-        // "threw" apart from "handed off to async work", so C2's exact continue-instead-of-break
-        // shape survived a throw even after the settle/giveUp paths were fixed. The row is left
-        // RUNNING on purpose -- it IS still outstanding, its watchdog is the right recovery, and
-        // C1 counts its next pickup as the failure this one genuinely was. No deferSiblings call:
-        // an exception this deep never reached EffectStore at all, so there is nothing to defer
-        // that the group's existing watchdogs do not already cover on their own schedule.
-        LOG.error(
-            "[{}] obligation {} threw and stays outstanding; held back the rest of this pass's"
-                + " group",
-            agentId.value(),
-            attempted.id(),
-            failure);
-        return;
-      }
-      EffectStore.Held held = effects.heldAt(attempted.id());
-      if (held.held()) {
-        // C2: a retried or abandoned row must not be overtaken by its own not-yet-run siblings --
-        // ordinal order only means anything if a failure stops the line. The siblings stay marked
-        // RUNNING (this pass's own attempt() already claimed them); deferring them, rather than
-        // leaving their existing watchdog stand, is what stops a SHORT watchdog from making them
-        // due again before the retry is, reopening the very race from the other side.
-        // F1 (Task 7 fix round 3): the abandon branch (held.deferSiblingsTo() == null, since
-        // ABANDON clears actionable_at) is R-AC a third time -- these siblings were marked
-        // RUNNING by THIS pass's own attempt() and deliberately not run, exactly the condition
-        // deferSiblings exists to correct. Left RUNNING, TAKE charges them a phantom failure the
-        // next time they come due, same as an un-deferred retry sibling would be. Instant.now()
-        // is the right target here (not a scheduled backoff): the group's line is already broken
-        // by the abandonment, so there is nothing left to wait behind -- only the PENDING reset
-        // matters.
-        Instant deferTo = held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now();
-        int deferred =
-            effects.deferSiblings(
-                agentType, agentId, attempted.turnId(), attempted.ordinal(), deferTo);
-        if (held.deferSiblingsTo() != null) {
-          LOG.debug(
-              "[{}] {} retried; held back and deferred {} sibling(s) in this pass",
-              agentId.value(),
-              attempted.id(),
-              deferred);
-        } else {
-          LOG.debug(
-              "[{}] {} was abandoned; held back and deferred {} sibling(s) in this pass",
-              agentId.value(),
-              attempted.id(),
-              deferred);
-        }
+      Optional<Instant> stop = stoppedAt(agentId, state.get(), attempted);
+      if (stop.isPresent()) {
+        stopGroup(agentId, attempted, stop.get());
         return;
       }
     }
+  }
+
+  /**
+   * Performs one row and says whether this agent's group must STOP here -- and, if so, the moment
+   * its un-run siblings should be deferred to.
+   *
+   * <p>R-AF (Task 7 fix round 4): the ONLY way to stop a group. Every early exit used to be its own
+   * {@code return}, each of which had to REMEMBER to release the siblings this pass's own {@link
+   * EffectStore#attempt} had already marked RUNNING -- and three separate review rounds found one
+   * that had forgotten (R-AC's retry branch, F1's abandon branch, F-NEW's throw branch). Returning
+   * an {@link Optional} instead of returning-or-breaking makes that impossible to get wrong: the
+   * one caller that acts on a present value is {@link #stopGroup}, which cannot stop without
+   * releasing. A sixth way for a row to end has nowhere to say "stop" except here, and saying it
+   * costs the deferral instant it must supply.
+   *
+   * <p>An empty result is every outcome that leaves the line unbroken: a row that quietly succeeded
+   * and was {@link EffectStore#complete}d (gone entirely), a parked row whose term lapsed, and --
+   * the case that must NOT be flattened into a stop -- an asynchronous hand-off to a model call, a
+   * tool or an approver. That row is still RUNNING when {@code perform} returns, but it has not
+   * failed: its siblings are supposed to run, and deferring them would be exactly as wrong as
+   * leaving them RUNNING after a real failure.
+   */
+  private Optional<Instant> stoppedAt(
+      AgentId agentId, AgentState state, EffectStore.Attempted attempted) {
+    try {
+      runtime.perform(agentId, state, attempted);
+    } catch (RuntimeException failure) {
+      // R-AD (Task 7 fix round 3): a throw out of perform() -- an undecodable payload, or any
+      // other failure the performer did not itself catch -- stops this pass's group HERE, same as
+      // a synchronous retry or abandon does. Deleting AgentRuntime's own catch and catching it
+      // here instead is what makes that possible: a bare boolean/void return could not tell
+      // "threw" apart from "handed off to async work", so C2's exact continue-instead-of-break
+      // shape survived a throw even after the settle/giveUp paths were fixed. THIS row is left
+      // RUNNING on purpose -- it IS still outstanding, its watchdog is the right recovery, and C1
+      // counts its next pickup as the failure this one genuinely was. Its SIBLINGS are a different
+      // question, and the answer is the same as everywhere else: Instant.now(), because a throw
+      // never reached EffectStore at all, so there is no instant to inherit and nothing left to
+      // wait behind.
+      LOG.error(
+          "[{}] obligation {} threw and stays outstanding; held back the rest of this pass's group",
+          agentId.value(),
+          attempted.id(),
+          failure);
+      return Optional.of(Instant.now());
+    }
+    EffectStore.Held held = effects.heldAt(attempted.id());
+    if (!held.held()) {
+      return Optional.empty();
+    }
+    // A retry read its deferral instant BACK OUT of the row EffectWorker just wrote, rather than
+    // recomputing Instant.now().plus(delay): after driver truncation the two are not the same
+    // value, and SELECT_DUE's "ORDER BY actionable_at, ordinal" only puts the retried row ahead of
+    // its siblings if their instants are byte-identical. An abandonment has no such instant to
+    // inherit (ABANDON nulls actionable_at) -- Instant.now() is right there for the same reason it
+    // is right for a throw: the group's line is already broken, so the PENDING reset is what
+    // matters, not the timing.
+    return Optional.of(held.deferSiblingsTo() != null ? held.deferSiblingsTo() : Instant.now());
+  }
+
+  /**
+   * Stops one agent's group at {@code stoppedAt} and releases the siblings behind it in the same
+   * breath -- R-AF: there is exactly one way to do the first, and it always does the second.
+   *
+   * <p>Those siblings were marked RUNNING by THIS pass's own {@link EffectStore#attempt} and then
+   * deliberately not run, which is not a failure and must not be charged as one: left RUNNING,
+   * {@code TAKE}'s conditional increment reads their next pickup as "found still RUNNING past its
+   * watchdog" and charges each a failure it never made, eroding a budget until an engine-owned
+   * effect is abandoned and the agent stalls in silence. {@link EffectStore#deferSiblings} puts
+   * them back to PENDING, which is what "claimed, then let go" actually means.
+   */
+  private void stopGroup(AgentId agentId, EffectStore.Attempted attempted, Instant deferTo) {
+    int deferred =
+        effects.deferSiblings(agentType, agentId, attempted.turnId(), attempted.ordinal(), deferTo);
+    LOG.debug(
+        "[{}] {} stopped this pass's group; released {} un-run sibling(s) back to PENDING",
+        agentId.value(),
+        attempted.id(),
+        deferred);
   }
 }

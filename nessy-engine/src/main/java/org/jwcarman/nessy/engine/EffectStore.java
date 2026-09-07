@@ -401,10 +401,10 @@ final class EffectStore {
   /**
    * Pushes every still-outstanding row of ONE agent's SAME turn, above {@code afterOrdinal}, back
    * to {@code PENDING} with {@code actionable_at} set to {@code actionableAt} -- called by {@code
-   * EffectPoller} the instant it finds that an earlier row in this pass's group retried or was
-   * abandoned, so a sibling ordinal after it (already marked {@code RUNNING} by THIS pass's own
-   * {@link #attempt}) does not come due on its own, unrelated watchdog before the retry does, and
-   * run past a row that has not run yet -- see C2 in the Task 7 fix round.
+   * EffectPoller} the instant an earlier row in this pass's group stops it -- by retrying, by being
+   * abandoned, or by throwing -- so a sibling ordinal after it (already marked {@code RUNNING} by
+   * THIS pass's own {@link #attempt}) does not come due on its own, unrelated watchdog before the
+   * retry does, and run past a row that has not run yet -- see C2 in the Task 7 fix round.
    *
    * <p><b>Sets {@code status} back to {@code PENDING}, not only {@code actionable_at}</b> -- R-AC,
    * the defect C1 and C2 created together. Left {@code RUNNING}, {@link #take}'s conditional
