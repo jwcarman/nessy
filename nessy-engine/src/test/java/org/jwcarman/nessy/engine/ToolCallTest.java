@@ -24,7 +24,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -214,31 +213,7 @@ class ToolCallTest {
     return narrated(agentId).stream().filter(AgentEvent.TurnEnded.class::isInstance).count();
   }
 
-  /**
-   * DISABLED against the new engine -- reported in the Task 10 report, not silently routed around.
-   *
-   * <p>{@code endTurn} orders its effects {@code [Remember.Answer(), Narrate.TurnEnded(),
-   * Release(), TakeWork()]}, which is what made "Answered" narrate before "TurnEnded" true under
-   * the old actor: one turn ran every one of those effects synchronously, in that order, inside a
-   * single message handler. Under the durable engine, {@code Remember.Answer} is a DURABLE effect
-   * -- a row {@code EffectPoller} must pick up on a later pass -- while {@code Narrate.TurnEnded}
-   * is a NARRATION, performed synchronously by {@code AgentRuntime#narrate} the instant the SAME
-   * transition commits (see {@code Disposition}, {@code AgentRuntime#drive}). {@code TurnEnded}
-   * therefore fires before the poller ever reaches {@code Remember.Answer} -- confirmed by
-   * instrumenting {@code AgentRuntime#narrate}: {@code TurnEnded} narrates successfully, several
-   * milliseconds before {@code Remember.Answer}'s own {@code narrator(...).narrate(Answered)} runs.
-   * This is not timing flakiness; it is the documented shape of the split ({@code AgentRuntime}'s
-   * own class javadoc: "EffectPoller is now the ONLY path that performs a durable effect"), so it
-   * reproduces on every run and would reproduce identically through {@link EngineHarnessFactory} in
-   * production, not just in this test's fixture. Left disabled rather than weakened or deleted:
-   * whether "Answered" should itself become a synchronous narration, or whether a decision's
-   * narrations should wait behind its own durable effects, is a design call for Tasks 7-9's owner,
-   * not this task's to make.
-   */
   @Test
-  @Disabled(
-      "the durable engine narrates TurnEnded before Remember.Answer's Answered event -- see"
-          + " Task 10 report")
   @DisplayName("the engine narrates the whole story of the call")
   void narration_tells_the_turn_and_the_call() {
     observe("house-99", new HouseEvent("porch", "bell"));
@@ -267,12 +242,10 @@ class ToolCallTest {
 
   /**
    * Depends on {@link #narration_tells_the_turn_and_the_call} having already populated "house-99"'s
-   * narration -- it observes nothing of its own. Disabled alongside it for the same reason: with
-   * that test disabled, this one finds an empty list rather than exercising anything.
+   * narration -- it observes nothing of its own.
    */
   @Test
-  @Disabled(
-      "depends on narration_tells_the_turn_and_the_call, disabled above -- see Task 10 report")
+  @DisplayName("every narrated event carries a time-ordered id")
   void every_narrated_event_carries_a_time_ordered_id() {
     assertThat(narrated("house-99")).isNotEmpty();
     List<String> ids = narrated("house-99").stream().map(AgentEvent::id).toList();
