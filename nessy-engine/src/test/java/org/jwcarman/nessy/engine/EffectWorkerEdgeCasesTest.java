@@ -133,7 +133,7 @@ class EffectWorkerEdgeCasesTest {
   }
 
   /**
-   * A genuinely EXECUTING effect row, so {@code EffectStore#complete} — which now raises if it
+   * A genuinely RUNNING effect row, so {@code EffectStore#complete} — which now raises if it
    * discharges nothing (see {@code EffectStoreTest}) — has something real to discharge.
    */
   private static EffectId claimedEffect(
@@ -173,14 +173,15 @@ class EffectWorkerEdgeCasesTest {
 
     /**
      * C3: forgetting used to leave the agent's own {@code nessy_agent} row and every {@code
-     * nessy_effect} row it still owed untouched, so a reaper would claim and re-perform those
-     * effects -- calling tools and models for an agent whose memory and claims were already gone --
-     * forever. This drives {@code forget} against an agent that genuinely HAS a state row (via
-     * {@link AgentStore#save}, reached through the package it lives in) and an outstanding PENDING
-     * effect nobody has claimed yet, and proves neither survives: the state row is gone, and a
-     * subsequent claim finds nothing -- not the outstanding effect that predates the forget, and
-     * not even the {@code Forget} effect's own row, which {@code deleteAgent} sweeps up right along
-     * with it.
+     * nessy_effect} row it still owed untouched, so a LATER poll -- there is no reaper, only the
+     * same {@code attempt} that would retry a fresh row, see {@code EffectStore}'s class javadoc --
+     * would claim and re-perform those effects, calling tools and models for an agent whose memory
+     * and claims were already gone, forever. This drives {@code forget} against an agent that
+     * genuinely HAS a state row (via {@link AgentStore#save}, reached through the package it lives
+     * in) and an outstanding PENDING effect nobody has claimed yet, and proves neither survives:
+     * the state row is gone, and a subsequent claim finds nothing -- not the outstanding effect
+     * that predates the forget, and not even the {@code Forget} effect's own row, which {@code
+     * deleteAgent} sweeps up right along with it.
      */
     @Test
     @DisplayName(
@@ -191,8 +192,9 @@ class EffectWorkerEdgeCasesTest {
       AgentId agentId = AgentId.of("house-effect-laden");
 
       parts.store().save(type, agentId, AgentState.idle().taking(TurnId.of("turn-1"), "obs-claim"));
-      // An outstanding obligation nobody has claimed -- exactly what a reaper would otherwise find
-      // and re-perform against an agent forgetting just erased everything else for.
+      // An outstanding obligation nobody has claimed -- exactly what a later poll would otherwise
+      // find and re-perform (there is no reaper) against an agent forgetting just erased
+      // everything else for.
       parts.effects().insert(type, agentId, TurnId.of("turn-1"), null, 0, new byte[] {0}, null);
       EffectId forgetEffectId = claimedEffect(parts, type, agentId, null);
 
