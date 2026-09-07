@@ -223,14 +223,19 @@ final class EffectWorker {
   }
 
   /**
-   * The {@link RetryPolicy} said stop: retires the obligation and, for the four effect shapes that
-   * hand an outcome to the fold on success, tells the agent the same way a real failure would --
-   * reusing the very {@link Input} each already answers with when its external call fails, so
-   * exhaustion reads to {@code AgentLogic} like any other failed call rather than a new case it has
-   * to learn. {@code Remember.*}, {@code Release} and {@code Forget} produce no {@link Input} on
-   * success either -- they {@link #settle} rather than {@link #tell} -- so there is nothing to fold
-   * for them: the row's abandonment is the whole story, exactly as a thrown exception from {@link
-   * #settle} already leaves it (outstanding, to be revisited, until abandoned in its turn).
+   * The {@link RetryPolicy} said stop: retires the obligation, logs it loudly (I4, Task 7 fix
+   * round), and folds an outcome into the agent ONLY for the two call-shaped effects, {@code
+   * AskApprover} and {@code RunTool} -- reusing the very {@link Input} each already answers with
+   * when its external call fails, so exhaustion reads to {@code AgentLogic} like any other failed
+   * call rather than a new case it has to learn. Every other kind folds NOTHING: {@code TakeWork}
+   * and {@code CallModel} used to dispatch {@code Input.ModelFailed} here, which made {@code
+   * endTurn} emit a fresh {@code TakeWork} with {@code attempts} reset to zero -- an unreadable
+   * backlog row or a chronically broken model call then looped forever, narrating turns that never
+   * started. {@code Remember.*}, {@code Release} and {@code Forget} produce no {@link Input} on
+   * success either -- they {@link #settle} rather than {@link #tell} -- so there was never anything
+   * to fold for them. For all of these, the abandoned row and its logged reason ARE the whole
+   * story: an agent whose backlog or model call is chronically broken stalls visibly rather than
+   * spinning invisibly.
    *
    * <p>Called BEFORE any external work is attempted, from the top of {@link #perform} -- so a spent
    * effect closes without making the call it would otherwise have retried one time too many.
@@ -238,16 +243,26 @@ final class EffectWorker {
   private void giveUp(
       AgentId agentId, TurnId turnId, Effect effect, EffectId effectId, String reason) {
     deps.effects().abandon(effectId, reason);
+    // I4 (Task 7 fix round), applied uniformly: exhaustion of ANY effect is loud on its own,
+    // whether or not the switch below also folds something into the agent -- an operator reading
+    // logs should never have to infer abandonment from its absence.
+    LOG.error(
+        "[{}] obligation {} ({}) exhausted its retry budget and was abandoned: {}",
+        agentId.value(),
+        effectId,
+        effect,
+        reason);
     switch (effect) {
-      case Effect.TakeWork() ->
-          deps.dispatcher()
-              .dispatch(
-                  agentId,
-                  new Input.ModelFailed("the backlog could not be read: " + reason),
-                  null,
-                  null);
-      case Effect.CallModel() ->
-          deps.dispatcher().dispatch(agentId, new Input.ModelFailed(reason), null, null);
+      // I4's ruling: exhaustion of an engine-owned effect ABANDONS the row and folds NOTHING --
+      // it does not dispatch ModelFailed (which used to make endTurn emit a FRESH TakeWork with
+      // attempts=0, so an unreadable backlog row looped forever narrating turns that never
+      // started) and does not invent an Input arm to say so (a new arm is a public-API concept
+      // needing sign-off this round does not have). The abandoned row with its reason IS the
+      // operator's signal; an agent whose backlog or model call is chronically broken stalls
+      // visibly rather than spinning invisibly.
+      case Effect.TakeWork _, Effect.CallModel _ -> {
+        // Folds nothing -- see above.
+      }
       case Effect.AskApprover ask ->
           giveUpCall(agentId, turnId, ask.callId(), reason + "; the call was not made");
       case Effect.RunTool run ->
