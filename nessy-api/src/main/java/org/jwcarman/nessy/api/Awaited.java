@@ -50,8 +50,11 @@ public sealed interface Awaited<T> permits Awaited.Ready, Awaited.Deferred {
    * <p><b>Absolute, not a duration.</b> Three things follow. The engine stores the instant rather
    * than a start time plus a term, so a restart recomputes nothing. "Relative to which moment" —
    * the return, or the commit — stops being a question. And a time beyond the engine's ceiling is
-   * an impossible value that is REFUSED rather than silently shortened, so the deferring party
-   * always knows exactly what it was granted and can never promise a human something false.
+   * silently clamped to that ceiling, and a warning is logged. This creates a sharp edge: the
+   * deferring party is not told the clamping happened, so an approver promising a human thirty days
+   * when the ceiling is seven has already made a promise the engine will not keep. The warning
+   * reaches the operator's logs, not the deferring party. This sharp edge is provisional: a
+   * redesign is settled but not yet built.
    */
   record Deferred<T>(Instant expiresAt) implements Awaited<T> {
     public Deferred {
