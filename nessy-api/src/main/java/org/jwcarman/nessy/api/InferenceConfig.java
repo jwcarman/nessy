@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.api;
 
 import java.time.Duration;
+import java.util.Set;
 
 /**
  * How this agent type infers: what to call, what to send, how long to wait, how hard to try.
@@ -16,6 +17,19 @@ public interface InferenceConfig {
 
   /** How much answer it may have. Zero or unset leaves it to the provider. */
   InferenceConfig maxTokens(int maxTokens);
+
+  /**
+   * Asks for these, if the provider has them.
+   *
+   * <p>Additive, so several calls accumulate rather than replace: asking for one thing should not
+   * quietly withdraw another asked for elsewhere. Nothing here is a guarantee -- a provider that
+   * cannot oblige ignores what it does not recognise -- which is what lets the same configuration
+   * run against several vendors without branching on which one it got.
+   */
+  InferenceConfig requesting(Capability... capabilities);
+
+  /** The same, for a set assembled elsewhere -- configuration properties, most often. */
+  InferenceConfig requesting(Set<Capability> capabilities);
 
   /**
    * How many turns of the story to send, counting back from the newest, whole.

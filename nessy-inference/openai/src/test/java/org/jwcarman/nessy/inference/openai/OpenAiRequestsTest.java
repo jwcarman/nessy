@@ -36,7 +36,8 @@ import tools.jackson.databind.json.JsonMapper;
 class OpenAiRequestsTest {
 
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
-  private static final InferenceOptions OPTIONS = new InferenceOptions("gpt-4o", 1024);
+  private static final InferenceOptions OPTIONS =
+      new InferenceOptions("gpt-4o", 1024, java.util.Set.of());
 
   /** The schema parser this adapter is given; an application would hand over its own. */
   private static final JsonMapper MAPPER = JsonMapper.builder().build();

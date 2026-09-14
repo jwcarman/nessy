@@ -13,13 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.model.anthropic;
+package org.jwcarman.nessy.inference.anthropic;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import java.util.Objects;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link AnthropicModelProvider#create(AnthropicProviderCustomizer)} hands a customizer: a
+ * What {@link AnthropicInferenceProvider#create(AnthropicProviderCustomizer)} hands a customizer: a
  * CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public {@code
  * build()}.
  */
@@ -39,6 +41,15 @@ public final class AnthropicProviderConfig {
   private int thinkingBudget = DEFAULT_THINKING_BUDGET;
   private AnthropicClient client;
   private boolean useEnv;
+
+  /**
+   * Reads the JSON text that schemas, arguments and provider payloads travel as.
+   *
+   * <p>A default rather than a hidden global: it is one field here, so an application that has
+   * configured its own mapper hands that one over instead of discovering later that an adapter
+   * built its own behind its back.
+   */
+  private JsonMapper mapper = JsonMapper.builder().build();
 
   AnthropicProviderConfig() {}
 
@@ -88,26 +99,31 @@ public final class AnthropicProviderConfig {
    * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
    * baseUrl}.
    *
-   * <p><b>Ownership stays with the caller.</b> {@link AnthropicModelProvider#close()} closes only a
-   * client it built itself; a client supplied here is never closed by the provider.
+   * <p><b>Ownership stays with the caller.</b> {@link AnthropicInferenceProvider#close()} closes
+   * only a client it built itself; a client supplied here is never closed by the provider.
    */
   public AnthropicProviderConfig client(AnthropicClient client) {
     this.client = client;
     return this;
   }
 
+  public AnthropicProviderConfig mapper(JsonMapper mapper) {
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    return this;
+  }
+
   /**
-   * Turns this config into the {@link AnthropicModelProvider} it describes — the factory's own
+   * Turns this config into the {@link AnthropicInferenceProvider} it describes — the factory's own
    * step, never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
-   * AnthropicModelProvider#create(AnthropicProviderCustomizer)}, once {@code customize} has
+   * AnthropicInferenceProvider#create(AnthropicProviderCustomizer)}, once {@code customize} has
    * returned.
    */
-  AnthropicModelProvider build() {
+  AnthropicInferenceProvider build() {
     if (client != null) {
-      return new AnthropicModelProvider(client, thinkingBudget, false);
+      return new AnthropicInferenceProvider(client, thinkingBudget, false, mapper);
     }
     if (useEnv) {
-      return new AnthropicModelProvider(buildFromEnv(), thinkingBudget, true);
+      return new AnthropicInferenceProvider(buildFromEnv(), thinkingBudget, true, mapper);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -118,7 +134,7 @@ public final class AnthropicProviderConfig {
     if (baseUrl != null) {
       clientBuilder.baseUrl(baseUrl);
     }
-    return new AnthropicModelProvider(clientBuilder.build(), thinkingBudget, true);
+    return new AnthropicInferenceProvider(clientBuilder.build(), thinkingBudget, true, mapper);
   }
 
   /**

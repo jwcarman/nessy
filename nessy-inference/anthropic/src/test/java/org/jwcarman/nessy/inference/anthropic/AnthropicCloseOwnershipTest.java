@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.model.anthropic;
+package org.jwcarman.nessy.inference.anthropic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +21,7 @@ import com.anthropic.client.AnthropicClient;
 import java.lang.reflect.Proxy;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Who closes the SDK client (ruled 2026-08-26). A gateway must close the client it BUILT — its
@@ -39,7 +40,8 @@ class AnthropicCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     AnthropicClient supplied = recordingClient(closes);
 
-    AnthropicModelProvider provider = AnthropicModelProvider.create(c -> c.client(supplied));
+    AnthropicInferenceProvider provider =
+        AnthropicInferenceProvider.create(c -> c.client(supplied));
     provider.close();
 
     assertThat(closes).hasValue(0);
@@ -51,7 +53,8 @@ class AnthropicCloseOwnershipTest {
     AnthropicClient built = recordingClient(closes);
     // The apiKey path with the built client swapped in at the constructor — the same seam
     // AnthropicProviderConfig#build() reaches when it builds an AnthropicOkHttpClient itself.
-    AnthropicModelProvider provider = new AnthropicModelProvider(built, 1024, true);
+    AnthropicInferenceProvider provider =
+        new AnthropicInferenceProvider(built, 1024, true, JsonMapper.builder().build());
 
     provider.close();
 
@@ -62,8 +65,9 @@ class AnthropicCloseOwnershipTest {
   @Test
   void closing_an_owned_provider_twice_is_harmless() {
     AtomicInteger closes = new AtomicInteger();
-    AnthropicModelProvider provider =
-        new AnthropicModelProvider(recordingClient(closes), 1024, true);
+    AnthropicInferenceProvider provider =
+        new AnthropicInferenceProvider(
+            recordingClient(closes), 1024, true, JsonMapper.builder().build());
 
     provider.close();
     provider.close();

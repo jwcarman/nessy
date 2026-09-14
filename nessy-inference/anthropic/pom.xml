@@ -29,8 +29,8 @@
     <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-model-anthropic</artifactId>
-  <name>Nessy Model Anthropic</name>
+  <artifactId>nessy-inference-anthropic</artifactId>
+  <name>Nessy Inference Anthropic</name>
 
   <dependencies>
     <dependency>
@@ -64,7 +64,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.model.anthropic</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.inference.anthropic</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

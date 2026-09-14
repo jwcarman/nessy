@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 /** Anthropic model provider integration for Nessy. */
-package org.jwcarman.nessy.model.anthropic;
+package org.jwcarman.nessy.inference.anthropic;

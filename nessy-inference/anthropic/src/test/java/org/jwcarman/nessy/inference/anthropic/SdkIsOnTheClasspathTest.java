@@ -13,16 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.model.anthropic;
+package org.jwcarman.nessy.inference.anthropic;
 
-/**
- * The DSL-idiom name (design of record 2026-08-16 §1) for what {@link
- * AnthropicModelProvider#create(AnthropicProviderCustomizer)} hands a lambda: an {@link
- * AnthropicProviderConfig} to fill in.
- */
-@FunctionalInterface
-public interface AnthropicProviderCustomizer {
+import static org.assertj.core.api.Assertions.assertThat;
 
-  /** Fills in {@code config} — the only thing a customizer ever does. */
-  void customize(AnthropicProviderConfig config);
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import org.junit.jupiter.api.Test;
+
+class SdkIsOnTheClasspathTest {
+
+  @Test
+  void sdk_is_on_the_classpath() {
+    assertThat(AnthropicOkHttpClient.builder()).isNotNull();
+  }
 }

@@ -44,12 +44,12 @@
 
   <modules>
     <module>openai</module>
+    <module>anthropic</module>
 
     <!-- Held out while the adapters are ported to the inference SPI, one at a time. Each is
          written against the model SPI that was just replaced, so each comes back as it is
          ported rather than all at once.
 
-    <module>anthropic</module>
     <module>gemini</module>
     <module>bedrock</module>
     <module>openai-compatible</module>

@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.model.anthropic;
+package org.jwcarman.nessy.inference.anthropic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -39,17 +40,17 @@ class AnthropicAutoConfigurationTest {
           .withConfiguration(AutoConfigurations.of(AnthropicAutoConfiguration.class));
 
   @Test
-  @DisplayName("with an API key present, it contributes a ModelProvider")
+  @DisplayName("with an API key present, it contributes an InferenceProvider")
   void with_an_api_key_present_it_contributes_a_model_provider() {
     runner
         .withPropertyValues("anthropic.api-key=sk-ant-test")
-        .run(context -> assertThat(context).hasSingleBean(ModelProvider.class));
+        .run(context -> assertThat(context).hasSingleBean(InferenceProvider.class));
   }
 
   @Test
   @DisplayName("with no API key, it contributes nothing")
   void with_no_api_key_it_contributes_nothing() {
-    runner.run(context -> assertThat(context).doesNotHaveBean(ModelProvider.class));
+    runner.run(context -> assertThat(context).doesNotHaveBean(InferenceProvider.class));
   }
 
   @Nested
@@ -61,22 +62,24 @@ class AnthropicAutoConfigurationTest {
     void it_backs_off_entirely() {
       runner
           .withPropertyValues("anthropic.api-key=sk-ant-test")
-          .withUserConfiguration(AModelProvider.class)
+          .withUserConfiguration(AnInferenceProvider.class)
           .run(
               context -> {
-                assertThat(context).hasSingleBean(ModelProvider.class);
-                assertThat(context.getBean(ModelProvider.class)).isSameAs(AModelProvider.INSTANCE);
+                assertThat(context).hasSingleBean(InferenceProvider.class);
+                assertThat(context.getBean(InferenceProvider.class))
+                    .isSameAs(AnInferenceProvider.INSTANCE);
               });
     }
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class AModelProvider {
+  static class AnInferenceProvider {
 
-    static final ModelProvider INSTANCE = id -> null;
+    static final InferenceProvider INSTANCE =
+        (request, narrator) -> new InferenceResult.Refusal("this provider answers nothing");
 
     @Bean
-    ModelProvider models() {
+    InferenceProvider inference() {
       return INSTANCE;
     }
   }

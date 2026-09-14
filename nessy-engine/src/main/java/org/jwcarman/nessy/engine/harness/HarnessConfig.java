@@ -2,6 +2,7 @@ package org.jwcarman.nessy.engine.harness;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -11,6 +12,7 @@ import org.jwcarman.codec.spi.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.ObservationCoalescer;
@@ -333,6 +335,7 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
     private InferenceProvider provider;
     private String modelName;
     private int maxTokens;
+    private final Set<Capability> requested = EnumSet.noneOf(Capability.class);
     private int recentTurns = 20;
     private Duration timeout = Duration.ofMinutes(5);
     private RetryPolicy retryPolicy;
@@ -341,12 +344,24 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
       this.provider = defaults.provider();
       this.modelName = defaults.options().modelName();
       this.maxTokens = defaults.options().maxTokens();
+      this.requested.addAll(defaults.options().requested());
       this.retryPolicy = defaults.retryPolicy();
     }
 
     @Override
     public InferenceConfig model(String modelName) {
       this.modelName = modelName;
+      return this;
+    }
+
+    @Override
+    public InferenceConfig requesting(Capability... capabilities) {
+      return requesting(Set.of(capabilities));
+    }
+
+    @Override
+    public InferenceConfig requesting(Set<Capability> capabilities) {
+      this.requested.addAll(capabilities);
       return this;
     }
 
@@ -379,7 +394,7 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
     }
 
     InferenceOptions options() {
-      return new InferenceOptions(modelName, maxTokens);
+      return new InferenceOptions(modelName, maxTokens, requested);
     }
 
     int recentTurns() {
