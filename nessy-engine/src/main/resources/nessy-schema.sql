@@ -1,184 +1,99 @@
--- The engine's own bookkeeping. Not application data: nothing here outlives the turn that wrote it,
--- and nothing outside the engine reads it.
---
--- Two portability rules, enforced by SchemasTest running this against H2 rather than by anyone
--- remembering them: ANSI spellings only (TIMESTAMPTZ is a PostgreSQL alias H2 rejects), and no
--- reserved words as identifiers ("key" is reserved in H2 and merely unreserved in PostgreSQL).
+-- Every table is keyed by a meaningless version 7 UUID, and a given id has the same
+-- column name wherever it appears, primary key or foreign key. That is what lets a
+-- query say USING (agent_id) rather than spelling out a join condition.
 
--- What a turn must keep for its own duration and no longer: the message the model asked with, and
--- what each tool answered. Content-sized, so it cannot live on the turn's own document without
--- making that document grow with whatever a tool decided to hand back.
-CREATE TABLE IF NOT EXISTS nessy_claim (
-  agent_id   TEXT   NOT NULL,
-  turn_id    TEXT   NOT NULL,
-  claim_key  TEXT   NOT NULL,
-  payload    BYTEA  NOT NULL,
-  PRIMARY KEY (agent_id, turn_id, claim_key)
+-- The agent's current state. One row per agent; the row lock taken on it is what
+-- serializes transitions for that agent while leaving other agents free.
+--
+-- agent_id is the key rather than a separate surrogate because an agent has no natural
+-- identity to begin with -- it is already a minted UUID, so a second one would be inert.
+--
+-- version is maintained by Spring Data JDBC, and counts FOLDS -- not messages. A fold may
+-- record two messages, one, or none, so the story's seq is its own counter, minted by
+-- max(seq) + 1 under this row's lock. Conflating them would make a fold that recorded
+-- nothing look like a gap in the story.
+CREATE TABLE IF NOT EXISTS nessy_agent_state
+(
+    agent_id   UUID        PRIMARY KEY,
+    agent_type VARCHAR(64) NOT NULL,
+    version    BIGINT      NOT NULL,
+    state_type VARCHAR(64) NOT NULL,
+    payload    BYTEA       NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
--- What is waiting to become a turn.
+-- The story. One row per message, in the order it happened. Append-only.
 --
--- Out of the agent's document on purpose: a document holding a queue is rewritten every time
--- anything changes, and its size is whatever the application decided an observation is.
---
--- item_id is the TURN id. One observation is exactly one turn, so minting a second id would only
--- create something that can disagree with the first — and it is what makes a take idempotent
--- across a crash, since a retry finds the id already minted rather than inventing another.
---
--- taken_claim is NULL until the row is handed to an agent. A row that has one has been rendered
--- and held, and the next take either sweeps it (because the agent named it) or hands it back
--- unchanged (because the agent died before recording it). Those two histories are
--- indistinguishable from the agent's phase alone, which is why the sweep names an id rather than
--- inferring one.
--- ordinal is the coalescer's ORDER, not arrival order. The coalescer returns the list the backlog
--- becomes and may drop, merge or reorder it, so what comes next is its answer and not a timestamp
--- comparison the engine invented. received_at is data the coalescer reads, never a sort key.
-CREATE TABLE IF NOT EXISTS nessy_backlog (
-  agent_id    TEXT                     NOT NULL,
-  item_id     TEXT                     NOT NULL,
-  ordinal     INTEGER                  NOT NULL,
-  received_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  observation BYTEA                    NOT NULL,
-  taken_claim TEXT,
-  PRIMARY KEY (agent_id, item_id)
+-- turn_id is the seq of the observation that opened the turn, so a turn needs no identifier of
+-- its own: turns are ordered by comparing integers, and a turn's first message is the row where
+-- seq = turn_id. No discriminator column either -- the codec's payload names its own type.
+CREATE TABLE IF NOT EXISTS nessy_agent_history
+(
+    agent_type VARCHAR(64) NOT NULL,
+    agent_id   UUID        NOT NULL REFERENCES nessy_agent_state (agent_id),
+    seq        BIGINT      NOT NULL,
+    turn_id    BIGINT      NOT NULL,
+    -- Roughly what this message costs a model's context, estimated when it is written. Here so a
+    -- budget can be applied in the query -- a running sum over turns, stopping at the oldest that
+    -- fits -- rather than by loading a whole conversation to measure it. An estimate and never the
+    -- authority: the provider's tokenizer decides, and being wrong is survivable because a request
+    -- refused for length is retried rather than lost.
+    tokens     INT         NOT NULL,
+    payload    BYTEA       NOT NULL,
+    PRIMARY KEY (agent_type, agent_id, seq)
 );
 
-CREATE INDEX IF NOT EXISTS nessy_backlog_waiting ON nessy_backlog (agent_id, ordinal);
-
--- A forget, waiting to be taken.
+-- The outbox. Rows are written in the transition's transaction and performed later.
 --
--- Telling an agent to forget itself used to be a message straight to the actor, which meant it was
--- ordered against nothing: instruction batches are one task each on the blocking executor, and an
--- agent calls itself idle the moment a turn's decision is returned rather than when that decision's
--- writes have landed. So a delete could overtake the answer it was supposed to follow.
---
--- A row cannot overtake anything. The agent finds out it is doomed by TAKING it, and a reply to a
--- take cannot arrive before the batch that asked for it has finished.
---
--- Keyed like nessy_backlog, which it is checked alongside. NOTE that nessy_backlog and nessy_claim
--- are keyed on agent_id alone with no agent_type, unlike nessy_effect -- so two agent types
--- sharing a database share their backlogs. Giving this table a type column alone would imply an
--- isolation the table it guards does not provide.
-CREATE TABLE IF NOT EXISTS nessy_poison (
-  agent_id    TEXT                     NOT NULL,
-  offered_at  TIMESTAMP WITH TIME ZONE NOT NULL,
-  PRIMARY KEY (agent_id)
+-- An effect has no row naming its cause. The cause is the transition that emitted it, and
+-- the transaction that wrote state, story and effect together is what makes that hold --
+-- a foreign key would only have restated it, and could not have pointed anywhere true:
+-- a fold may emit an effect while recording no message at all.
+CREATE TABLE IF NOT EXISTS nessy_agent_effect
+(
+    effect_id   UUID        PRIMARY KEY,
+    agent_id    UUID        NOT NULL REFERENCES nessy_agent_state (agent_id),
+    agent_type  VARCHAR(64) NOT NULL,
+    payload     BYTEA       NOT NULL,
+    -- Attached at emit, from the binding for this effect. Here rather than looked up when
+    -- marking, because marking must not decode the payload: it happens before anything knows what
+    -- kind of work this is. Frozen at emit, so a timeout changed in configuration reaches work
+    -- emitted afterwards, not work already queued. It is how long the work gets once it starts,
+    -- and it is read again at the first claim to fix the deadline below.
+    timeout_millis BIGINT   NOT NULL,
+    -- What to tell the agent if this effect can never be dispatched at all -- written when the
+    -- effect is, in its own blob so that a payload which will not decode does not take the
+    -- handling of that failure down with it. Read only in that emergency; an ordinary failure
+    -- still produces its outcome the rich way, from the handler that knows what went wrong.
+    --
+    -- The case is not only corruption. A rolled-back deploy leaves rows naming an effect type the
+    -- running build has never heard of, which fails at decode identically -- and an agent hanging
+    -- forever on one of those is a deploy incident rather than a bad byte.
+    failure_payload BYTEA  NOT NULL,
+    -- When this effect stops being worth doing. The agent declaring how long it is willing to
+    -- wait for an answer, so it is measured from when the effect was written down rather than
+    -- from when somebody got round to it: time spent queued is time the agent spent waiting, and
+    -- a budget that ignored it would be bounding the wrong thing.
+    --
+    -- Frozen at emit like timeout_millis above, and never touched again, so retries spend one
+    -- budget rather than restarting it. Distinct from actionable_at, which moves with every
+    -- attempt; this never moves.
+    deadline    TIMESTAMPTZ NOT NULL,
+    status      VARCHAR(16) NOT NULL,
+    -- attempts_made is a fact the row records, and nothing yet judges it. actionable_at is the
+    -- one thing a query must see: before an attempt it is when to try, during one it is when the
+    -- attempt stops being believed. Either way it is when the row is due, which is why one column
+    -- serves both and no query needs to know which it is looking at.
+    --
+    -- It never runs past deadline. A row coming due at its deadline comes due to be given up on,
+    -- not to be tried again, and a backoff that would land beyond it is not a later retry.
+    attempts_made INT          NOT NULL CHECK (attempts_made >= 0),
+    actionable_at TIMESTAMPTZ   NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL,
+    updated_at  TIMESTAMPTZ
 );
 
--- One agent's whole durable self: a phase, a turn id, and two short strings.
---
--- Keyed on (agent_type, agent_id) rather than agent_id alone. nessy_backlog and nessy_claim are
--- keyed on the id by itself, so two agent types sharing a database share their backlogs; this
--- table does not repeat that, because a state document is the one thing that must never be
--- confused between two kinds of agent.
---
--- last_touched_at is not diagnostics. It is what lets a reaper find an agent that is mid-turn and
--- has not moved in minutes -- a stall detector needing no heartbeat and no leader election.
-CREATE TABLE IF NOT EXISTS nessy_agent (
-  agent_type      TEXT                     NOT NULL,
-  agent_id        TEXT                     NOT NULL,
-  version         BIGINT                   NOT NULL,
-  state           BYTEA                    NOT NULL,
-  last_touched_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  PRIMARY KEY (agent_type, agent_id)
-);
+-- Shaped for the one query that matters: due work of one agent type, oldest first.
+CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
+    ON nessy_agent_effect (agent_type, status, actionable_at);
 
-CREATE INDEX IF NOT EXISTS nessy_agent_touched ON nessy_agent (agent_type, last_touched_at);
-
--- Work the agent decided on, committed with the decision that caused it.
---
--- An effect is an OBLIGATION, never proof that the work happened. It is inserted in the same
--- transaction as the state it came from, so it cannot exist without its cause and cannot be lost
--- after it -- which is the whole reason a crash between "decided to call the model" and "called
--- the model" is now recoverable rather than silent.
---
--- ordinal is load bearing, not cosmetic. A decision's instructions are ORDERED: endTurn remembers
--- before it releases, because releasing drops the claims the exchange is written from. Executing
--- them out of order writes an empty exchange.
---
--- actionable_at is ONE column with FOUR meanings, decided by status (design of record
--- 2026-09-04, Task 7; PARKED added Task 7.5): PENDING -- when this may next be attempted, first
--- try or a backoff; RUNNING -- the deadline for the CURRENT attempt, and passing it is a timeout
--- failure, not a special case -- it goes through the same retry policy as any other failure;
--- PARKED -- a deferral, granted to a person or a webhook and correctly untouched until the TERM
--- lapses, at which point it is a lapsed deadline rather than a timeout and the poller tells the
--- agent so instead of re-attempting the payload underneath (see EffectStore.Attempted#parked).
--- There is no separate reaper: the same poller query that finds newly-actionable PENDING rows
--- also finds RUNNING rows whose watchdog quietly passed and PARKED rows whose term did, because
--- all three are just "actionable_at <= now()". Nullable: FAILED is a fifth status, retired rather
--- than actionable at all, and its row's actionable_at is cleared to NULL -- "never due again"
--- rather than a sentinel far-future value a reader might mistake for a very long deferral.
---
--- turn_id is nullable: an effect can be inserted before the agent has ever started a turn (the
--- first TakeWork of an agent's life), and a null column means exactly that -- no turn yet -- not
--- an empty string standing in for one.
---
--- call_id is nullable: only AskApprover and RunTool name one, and it exists so a settled call can
--- discharge its OWN effect row directly. Transition compares the calls an agent was working
--- BEFORE an input against what it is working AFTER, and deletes the row for every call that just
--- became Completed -- whichever route brought the news: an answer, a denial, or a lapsed term
--- alike. Without this, a tool that defers for days and then answers leaves its row outstanding
--- with an actionable_at now in the past, and the next poller re-runs a tool whose call was
--- already settled. The same column is also how a parked call's own deadline is written: see
--- EffectStore#park, which moves a RUNNING row to PARKED at the (clamped) term it was granted --
--- there is no second table tracking that deadline, so there is nothing for it to disagree with.
---
--- attempts counts FAILURES, not starts -- how many times this obligation has already failed, not
--- how many times it has been picked up. Picking a row up (the poller's SELECT+UPDATE) never
--- touches it; only the failure write-back does (EffectStore#retry, EffectStore#complete's sibling
--- EffectStore#abandon), which is also where RetryPolicy is consulted. A bare column name gives no
--- hint of direction, and the natural wrong guess is "attempts so far including the one in
--- flight" -- it is not that. A first-ever attempt reads 0.
---
--- reason is separate from payload. A failed effect is retired, not discharged, and the payload is
--- still the obligation it never got to keep -- overwriting it with why it stopped would leave the
--- one row that could tell an operator what the agent was trying to do saying only why it gave up.
--- reason itself stays TEXT: it is a human-readable message, not codec output.
---
--- payload is BYTEA, not TEXT, matching nessy_claim.payload and nessy_backlog.observation. It is
--- codec-encoded content: CodecPipeline frames its output with a binary magic header, and a
--- composed codec (compression, encryption) emits bytes a TEXT column would corrupt.
---
--- observability is TEXT, deliberately unlike payload -- and the two are TEXT/BYTEA for opposite
--- reasons, not the same reason as reason. payload is BYTEA because a CODEC OWNS IT: application
--- content, possibly compressed or encrypted, not guaranteed to be UTF-8, and never meant to be
--- read by a person. observability is TEXT because it is a W3C propagation CARRIER -- traceparent,
--- tracestate, and any intentionally propagated baggage, serialized as JSON by the caller and
--- stored verbatim: ASCII by specification, carrying no application content (no tool arguments, no
--- observations, no credentials), and it already travels in the clear in HTTP headers by design.
--- Its entire purpose is operational correlation -- an operator looking at a stuck effect row must
--- be able to read the trace id out and paste it into a trace viewer. Encoding it would defeat the
--- only reason to store it. It is nullable: an effect created outside any trace has no context to
--- carry.
-CREATE TABLE IF NOT EXISTS nessy_effect (
-  effect_id      TEXT                     NOT NULL,
-  agent_type     TEXT                     NOT NULL,
-  agent_id       TEXT                     NOT NULL,
-  turn_id        TEXT,
-  call_id        TEXT,
-  ordinal        INTEGER                  NOT NULL,
-  payload        BYTEA                    NOT NULL,
-  observability  TEXT,
-  status         TEXT                     NOT NULL,
-  attempts       INTEGER                  NOT NULL,
-  reason         TEXT,
-  actionable_at  TIMESTAMP WITH TIME ZONE,
-  created_at     TIMESTAMP WITH TIME ZONE NOT NULL,
-  PRIMARY KEY (effect_id)
-);
-
--- The poller reads the front of this and stops at the first row not yet actionable, so its cost is
--- the number of due effects rather than the number outstanding. agent_type leads because the
--- poller always filters by it -- without it here, one type's pass scans every other type's rows
--- too. This ONE index now serves both what nessy_effect_pending and nessy_effect_expires used to
--- serve separately: attempt() no longer distinguishes PENDING-due from RUNNING-expired, so there
--- is no longer a second query shape to index for.
-CREATE INDEX IF NOT EXISTS nessy_effect_actionable
-  ON nessy_effect (agent_type, actionable_at);
-
--- A settled call discharges its own row directly, by (agent_type, agent_id, turn_id, call_id) --
--- see EffectStore#deleteForCall. The same coordinates are how EffectStore#park finds the row to
--- move to PARKED, and how EffectStore#existsForCall answers Replies asking whether a call is
--- still open.
-CREATE INDEX IF NOT EXISTS nessy_effect_call
-  ON nessy_effect (agent_type, agent_id, turn_id, call_id);

@@ -1,60 +1,38 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api;
 
 import java.util.function.Consumer;
+import org.jwcarman.codec.spi.TypeRef;
 
 /**
- * Builds harnesses — one per kind of agent.
+ * Makes harnesses, holding the infrastructure every agent type is built from.
  *
- * <p>The infrastructure is given to an implementation ONCE, at construction: where state lives, how
- * models are reached, what runs the work. Each {@link #createHarness} call adds only what makes one
- * kind of agent different from another, which is why {@link HarnessConfig} names no infrastructure
- * at all.
+ * <p>The split is deliberate: a caller supplies what is theirs -- the agent type's name, what it
+ * is, how to read its observations -- and this supplies the stores, the transaction template, the
+ * scheduler, the codec factory, and the provider and model to use when an agent type does not care
+ * to choose. Nobody assembles a harness by hand, so nobody can assemble one wrongly.
  *
- * <p><b>The observation type must round-trip through JSON.</b> An agent's waiting backlog is part
- * of its persisted state, so an observation is stored as an observation — not as a rendered message
- * — and read back after a restart. Two things follow for an application's vocabulary:
- *
- * <ul>
- *   <li>A SEALED vocabulary carries its own standard Jackson {@code @JsonTypeInfo} /
- *       {@code @JsonSubTypes} annotations, exactly as this API's own sealed hierarchies do. Nothing
- *       here infers a discriminator on an application's behalf.
- *   <li>Those discriminator values are a COMPATIBILITY SURFACE. They are written into stored
- *       backlogs, so renaming one orphans every observation already waiting. Choose them boringly
- *       and leave them alone — the same rule this API follows for {@code tool-use} and friends.
- * </ul>
- *
- * <p>{@code observationType} is load-bearing rather than ceremony: erasure means the runtime needs
- * a class literal to key its own machinery on, and whatever stores a waiting backlog needs the type
- * to encode what it holds.
+ * <p><b>Shared infrastructure, not shared machinery.</b> Two harnesses use the same tables and the
+ * same scheduler the way they use the same JVM. Nothing else crosses between them: each gets its
+ * own codec, its own model, its own dispatcher, its own schedule and its own rows.
  */
 public interface HarnessFactory {
 
-  <O> Harness<O> createHarness(Class<O> observationType, Consumer<HarnessConfig<O>> configurer);
+  /** For observations that are already what a model should read. */
+  default Harness<String> create(Consumer<HarnessConfig<String>> customizer) {
+    return create(String.class, customizer);
+  }
+
+  /** For an observation type that is not itself generic, which is nearly all of them. */
+  default <O> Harness<O> create(Class<O> observationType, Consumer<HarnessConfig<O>> customizer) {
+    return create(TypeRef.of(observationType), customizer);
+  }
 
   /**
-   * A harness for an agent that is told things in plain text.
+   * The general form, for an observation type that is itself generic.
    *
-   * <p>{@code String} is the common case and the one every example here starts from, so it should
-   * not cost a class literal to say. Reach for the typed form the moment a string stops being the
-   * honest shape of what your domain observes — a record with named fields is worth more to a
-   * renderer, a coalescer and a reader than a string somebody has to parse back apart.
+   * <p>{@link TypeRef#parameterized} is why this exists: a {@code TypeRef} cannot be captured for a
+   * type variable, so the agent's own codec has to be composed from the caller's, and only a {@code
+   * TypeRef} can carry that through.
    */
-  default Harness<String> createHarness(Consumer<HarnessConfig<String>> configurer) {
-    return createHarness(String.class, configurer);
-  }
+  <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer);
 }

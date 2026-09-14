@@ -1,41 +1,40 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.api.message.UserMessage;
+import java.util.List;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * How an observation becomes something a model can read.
  *
- * <p>An observation is whatever the application's vocabulary says happened; the model only reads
- * messages. Rendering to a {@link UserMessage} rather than to text is what lets an observation
- * carry an image without a second door — and it is exactly what {@code Memory.remember} takes, so
- * what a renderer produces reaches the transcript without anything in between reshaping it.
+ * <p>An observation is whatever the application's vocabulary says happened -- a sensor reading, a
+ * webhook body, a typed message. The model only reads content. Rendering to blocks rather than to a
+ * string is what lets an observation carry more than text later without a second door being cut for
+ * it.
  *
- * <p><b>A renderer never declines.</b> By the time one runs, the observation has already survived
- * the {@code BacklogCoalescer}, which is where dropping, merging, and superseding happen — an
- * observation that should not become a turn is refused THERE, by not being returned into the
- * backlog. A renderer that could also decline would be the same judgment made a stage too late, at
- * the point where it silently breaks the turn lifecycle: nothing dispatches, so no turn ever ends,
- * so anything waiting on that turn waits forever.
+ * <p><b>This is where {@code <O>} ends.</b> Everything before a renderer is parameterised by the
+ * caller's own type; everything after it -- the story, the projection, the request, the result --
+ * is not. That containment is why only the agent's own document needs a codec built for the
+ * caller's type, and why every stored entry can share one.
+ *
+ * <p><b>A renderer never declines.</b> By the time one runs, the observation has been chosen: it
+ * came out of the backlog and a turn is opening on it. A renderer that could refuse would be
+ * deciding a stage too late, at the point where refusing breaks the turn lifecycle -- nothing
+ * dispatches, so no turn ever ends, so anything waiting on that turn waits forever. Dropping,
+ * merging and superseding are the backlog's business, and they happen before this.
+ *
+ * <p><b>It runs inside the fold, under the agent's row lock.</b> A renderer that formats is
+ * invisible; one that fetches holds that lock across a network call. When rendering stops being
+ * formatting it stops belonging here and becomes an effect with a state to wait in.
  *
  * @param <O> the observation type
  */
 @FunctionalInterface
 public interface ObservationRenderer<O> {
 
-  UserMessage render(O observation);
+  List<Block.ObservationContent> render(O observation);
+
+  /** For an observation that is already what the model should read. */
+  static <O> ObservationRenderer<O> asString() {
+    return observation -> List.of(new Block.Text(String.valueOf(observation)));
+  }
 }

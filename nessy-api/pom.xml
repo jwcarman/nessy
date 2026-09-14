@@ -33,7 +33,7 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
+      <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
     <dependency>
@@ -59,6 +59,12 @@
     <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-core</artifactId>
+    </dependency>
+    <!-- The Jackson binding, for tests that assert what a type looks like once written down. -->
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

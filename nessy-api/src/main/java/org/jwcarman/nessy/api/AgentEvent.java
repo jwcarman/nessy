@@ -1,208 +1,154 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
-import java.util.Objects;
-import org.jwcarman.nessy.api.message.AnswerMessage;
-import org.jwcarman.nessy.api.model.Usage;
-import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.ToolResult;
+import java.util.List;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
- * The live story of an agent's turns, for whoever is watching them happen.
+ * Something an agent did, announced to whoever is watching.
  *
- * <p>A TURN is one observation processed start to finish — the model may be called several times
- * along the way, asking for tools and being asked again, and all of that is the middle of one turn.
- * That is the sense the LLM world uses when it says "multi-turn": one exchange, not one message.
+ * <p><b>An event is not an entry.</b> {@code HistoryEntry} is what is durable -- written in the
+ * fold's transaction, re-read forever, and the thing a model is eventually shown. This is what is
+ * <em>announced</em>: delivered once, to whoever happens to be listening, and gone. Losing one
+ * costs a watcher a line; the fact it described is still in the story.
  *
- * <p><b>Narration, not record.</b> None of these ever folds into what the agent remembers — that is
- * {@code Memory}'s job, and it speaks messages.
+ * <p>That difference is what makes the two vocabularies diverge rather than mirror each other.
+ * Plenty here leaves no entry at all -- a call waiting on a person, a token arriving mid-sentence
+ * -- and plenty of entries are not worth announcing. Trying to derive one from the other would
+ * force both to be shaped by the other's needs.
  *
- * <p><b>No raw tool arguments appear anywhere.</b> Narration is serialized once per event and
- * delivered to a browser, and a tool's arguments may hold credentials or personal data. What a
- * watcher gets instead is the binding's {@code ActionRenderer} output — the sentence a person can
- * read, which is what a UI wanted to render anyway.
+ * <p><b>Two tiers, and the difference is who says them.</b> Facts come from the engine, after a
+ * fold has committed, so by the time one is announced it is true. Deltas come from a provider while
+ * a call is still in flight, and are true only of that attempt -- a call that fails and is retried
+ * narrates twice, and a watcher should treat deltas as what is being said rather than as what was
+ * said.
  *
- * <p><b>Every event carries an id</b> — a UUIDv7, so it is time-ordered as well as unique. That
- * makes it usable directly as an SSE {@code id:} and therefore as the {@code Last-Event-ID} cursor
- * a reconnecting browser sends. Because the id embeds a timestamp, a turn's duration is the
- * distance between its {@link TurnStarted} and {@link TurnEnded} ids — no extra field needed.
- *
- * <p><b>Narration is at-least-once, and the id does not change that.</b> A retried segment can
- * narrate the same thing twice, and because ids are minted at emit the two copies carry DIFFERENT
- * ids. Dedupe by the event's natural key; the id identifies a delivery, not a fact.
- *
- * <p>Sealed-grammar etiquette: core switches over this type are exhaustive with no {@code default}
- * arm. Rather than writing one, extend {@link AgentSubscriberAdapter} or compose through {@link
- * AgentSubscriber#of} — both stay silent on variants you did not ask for, and both inherit a no-op
- * for free when the grammar grows.
- *
- * <p>Wire names are a compatibility surface: an SSE stream's event names come from here.
+ * <p><b>No timestamp and no agent.</b> A sink stamps events if it cares, rather than every delta
+ * paying for a clock read; and identity is passed beside the event by {@link Narrator}, which is
+ * what lets a provider narrate without ever being told which agent it is serving.
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
-@JsonSubTypes({
-  @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
-  @JsonSubTypes.Type(value = AgentEvent.TextDelta.class, name = "text-delta"),
-  @JsonSubTypes.Type(value = AgentEvent.ReasoningDelta.class, name = "reasoning-delta"),
-  @JsonSubTypes.Type(value = AgentEvent.ToolCallRequested.class, name = "tool-call-requested"),
-  @JsonSubTypes.Type(value = AgentEvent.ApprovalRequested.class, name = "approval-requested"),
-  @JsonSubTypes.Type(value = AgentEvent.ApprovalDecided.class, name = "approval-decided"),
-  @JsonSubTypes.Type(value = AgentEvent.ToolCallCompleted.class, name = "tool-call-completed"),
-  @JsonSubTypes.Type(value = AgentEvent.Answered.class, name = "answered"),
-  @JsonSubTypes.Type(value = AgentEvent.TurnEnded.class, name = "turn-ended")
-})
 public sealed interface AgentEvent {
 
-  String ID_MUST_NOT_BE_NULL = "id must not be null";
-  String CALL_ID_MUST_NOT_BE_NULL = "callId must not be null";
-  String TOOL_NAME_MUST_NOT_BE_NULL = "toolName must not be null";
-  String DESCRIPTION_MUST_NOT_BE_NULL = "description must not be null";
+  // ---- facts: from the engine, after the fold commits ---------------------------------
 
-  /** This event's own id: a UUIDv7, unique and time-ordered. */
-  String id();
+  /** An observation was taken up and a turn opened on it. */
+  record TurnStarted(TurnId turn, String observation) implements AgentEvent {}
 
-  /**
-   * Work has begun on an observation.
-   *
-   * <p>Exists because the first thing a watcher shows is that something is happening, and a turn
-   * that opens with a tool call would otherwise narrate nothing for seconds.
-   */
-  record TurnStarted(String id) implements AgentEvent {
-    public TurnStarted {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-    }
-  }
-
-  /** A chunk of assistant prose arrived from the stream. */
-  record TextDelta(String id, String text) implements AgentEvent {
-    public TextDelta {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(text, "text must not be null");
-    }
-  }
-
-  /** A chunk of the model's visible reasoning arrived from the stream. */
-  record ReasoningDelta(String id, String text) implements AgentEvent {
-    public ReasoningDelta {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(text, "text must not be null");
-    }
-  }
+  /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
+  record Thinking() implements AgentEvent {}
 
   /**
-   * The model asked for a tool.
+   * The turn ended with an answer.
    *
-   * <p>{@code description} is the binding's {@code ActionRenderer} rendering of this call — "search
-   * orders for blue widgets" — and it is all a watcher gets. The arguments themselves never
-   * narrate.
+   * <p>Carries the text, unlike most facts here, because a watcher that cannot show the answer is
+   * not much of a watcher -- and a provider that does not stream has narrated no deltas, so this is
+   * the only place the answer appears. Text rather than blocks: the block grammar is the engine's
+   * business, and what a watcher wants is what a person would read.
    */
-  record ToolCallRequested(String id, CallId callId, String toolName, String description)
-      implements AgentEvent {
-    public ToolCallRequested {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(callId, CALL_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(toolName, TOOL_NAME_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(description, DESCRIPTION_MUST_NOT_BE_NULL);
+  record Answered(String text) implements AgentEvent {}
+
+  /** The turn ended without an answer, and might have gone otherwise. */
+  record TurnFailed() implements AgentEvent {}
+
+  /** The turn was declined, and would be declined again. */
+  record TurnRefused() implements AgentEvent {}
+
+  /**
+   * What the model said while asking for work -- "Let me look that up."
+   *
+   * <p>Its own event rather than a field on {@link ActionsRequested}, because it is a different
+   * kind of thing to show: prose a person reads, beside a list of machinery. A console prints one
+   * as a sentence and the other as a list, and a watcher that wants only one can take it.
+   *
+   * <p>Announced only when the model actually said something -- plenty of calls arrive with no
+   * prose at all, and an empty line is worse than none.
+   *
+   * <p>Needs no block kind of its own to be told apart from an answer: the same {@code Text} inside
+   * a request for actions is commentary and inside an answer is the answer. The grammar says which
+   * by where it sits.
+   */
+  record Commentary(String text) implements AgentEvent {}
+
+  /** The model asked for work before it would answer. */
+  record ActionsRequested(List<ToolName> toolNames) implements AgentEvent {
+    public ActionsRequested {
+      toolNames = List.copyOf(toolNames);
     }
   }
 
   /**
-   * A person is being waited on — the only event a watcher can ACT on.
+   * A call was allowed to run.
    *
-   * <p>Fires when an approver defers rather than deciding. Without it a UI shows "using tool X" and
-   * then silence, possibly for days, while the very person watching is what it is waiting for.
-   *
-   * <p>This is a deliberate reversal of the older rule that parking is never narrated. That rule
-   * was written for an unattended agent; it does not survive a chat interface.
-   *
-   * @param description what the person is being asked to allow — what the approve button is about
-   * @param expiresAt when the question stops standing, so a UI can show urgency and stop offering a
-   *     button that would no longer be honoured
+   * <p>Names the call and not the tool, because the entry this is derived from does not carry the
+   * tool's name and inventing a lookup to fill the field would make the announcement claim
+   * something the story does not. A watcher that wants the name heard it a moment ago in {@link
+   * ActionsRequested}.
    */
-  record ApprovalRequested(
-      String id, CallId callId, String toolName, String description, Instant expiresAt)
-      implements AgentEvent {
-    public ApprovalRequested {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(callId, CALL_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(toolName, TOOL_NAME_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(description, DESCRIPTION_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(expiresAt, "expiresAt must not be null");
-    }
-  }
+  record CallApproved(CallId callId) implements AgentEvent {}
+
+  /** A call was refused, and never ran. */
+  record CallDenied(CallId callId, String reason) implements AgentEvent {}
+
+  /** A call ran and produced something. */
+  record CallFinished(CallId callId) implements AgentEvent {}
+
+  /** A call did not produce something. The message is what the model will read. */
+  record CallFailed(CallId callId, String message) implements AgentEvent {}
+
+  /** The agent will accept nothing further. */
+  record Terminated() implements AgentEvent {}
+
+  // ---- waiting: the reason this channel exists ----------------------------------------
 
   /**
-   * The approver's answer for one call: approved, or denied with a reason.
+   * Somebody is being asked whether a call may run.
    *
-   * <p>Pairs with {@link ApprovalRequested}: a question was put to a person, and this is what they
-   * said.
-   *
-   * <p><b>WHEN this fires is not yet decided.</b> Every binding carries an approver — an ungated
-   * tool uses {@code Approver.always()} — so narrating every decision would put a line in a UI for
-   * every tool call forever. The candidates: only when a person decided (simple, but an immediate
-   * policy denial then narrates nothing and is only visible as a failed call), or on any denial
-   * plus any decision a person made (more informative, compound rule). Settle it before an engine
-   * implements against either.
+   * <p>Carries {@code action} -- the sentence a person is shown -- because an operator watching an
+   * agent wants to know what is being asked, not which call id is outstanding.
    */
-  record ApprovalDecided(String id, CallId callId, String toolName, ApprovalResult result)
-      implements AgentEvent {
-    public ApprovalDecided {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(callId, CALL_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(toolName, TOOL_NAME_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(result, "result must not be null");
-    }
-  }
-
-  /** One tool call settled — an answer in hand, or a failure. */
-  record ToolCallCompleted(String id, CallId callId, String toolName, ToolResult result)
-      implements AgentEvent {
-    public ToolCallCompleted {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(callId, CALL_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(toolName, TOOL_NAME_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(result, "result must not be null");
-    }
-  }
+  record ApprovalSought(CallId callId, String action) implements AgentEvent {}
 
   /**
-   * A settled assistant message — the deltas were the preview, this is the sentence.
+   * Nobody has answered yet, and the question stands until {@code until}.
    *
-   * <p>Fires once per model reply, so a turn that used tools emits SEVERAL: the reply asking for
-   * tools is still the model saying something. A watcher wanting prose alone filters for text.
+   * <p><b>The arm that pays for this whole channel.</b> "Awaiting a human" is the state an operator
+   * most wants to see, and the engine deliberately does not record it: the fold cannot tell a tool
+   * that takes three days from one that takes 200ms, and should not learn. So it is announced
+   * rather than stored, which is the one place it belongs.
    */
-  record Answered(String id, AnswerMessage message) implements AgentEvent {
-    public Answered {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(message, "message must not be null");
-    }
-  }
+  record ApprovalDeferred(CallId callId, String action, Instant until) implements AgentEvent {}
+
+  /** A tool started work and will report back. Same reasoning as {@link ApprovalDeferred}. */
+  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements AgentEvent {}
+
+  // ---- deltas: from a provider, while a call is in flight -------------------------------
 
   /**
-   * The turn's closing line — the only place a refusal or a failure reaches a watcher, and where
-   * what the turn cost is reported.
+   * A fragment of reasoning, as it arrives.
+   *
+   * <p><b>There is no thinking block, and there should not be one.</b> What is durable about
+   * reasoning is {@code Block.Provider}: vendor-tagged, opaque, signed or encrypted, and handed
+   * back byte-for-byte without anything here looking inside. That is the right way to keep it and a
+   * useless way to show it -- so this is the only form a watcher can read, and it exists only while
+   * the call is in flight.
+   *
+   * <p>Which is also why it is an event rather than anything stored. Reasoning is not portable: one
+   * vendor streams it as its own channel, another exposes only a summary, another encrypts it, and
+   * plenty of local models emit it inline in the content with no channel at all. An adapter whose
+   * wire has no such notion simply never narrates one, and nothing downstream is waiting. A block
+   * would have had to be stored and re-sent, and then portability binds.
+   *
+   * <p>The arm most likely to be filtered: an operator's console may want it and an end user's may
+   * not.
    */
-  record TurnEnded(String id, TurnResult outcome, Usage usage) implements AgentEvent {
-    public TurnEnded {
-      Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(outcome, "outcome must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
-    }
-  }
+  record ThinkingDelta(String text) implements AgentEvent {}
+
+  /**
+   * A fragment of the answer, as it arrives.
+   *
+   * <p>The same text that lands in the story a moment later as an answer, arriving early. Not a
+   * second copy of anything: a watcher that missed every delta still sees {@link Answered}.
+   */
+  record ContentDelta(String text) implements AgentEvent {}
 }

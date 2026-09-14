@@ -58,6 +58,11 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
+
+    <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
+         against the api that was just replaced, so each comes back as it is rewired rather than
+         all at once: a reactor that cannot build tells you nothing about which module is wrong.
+
     <module>nessy-testing</module>
     <module>nessy-store-tests</module>
     <module>nessy-model</module>
@@ -67,6 +72,7 @@
     <module>nessy-tool-mcp</module>
     <module>nessy-spring-boot</module>
     <module>nessy-examples</module>
+    -->
   </modules>
 
   <properties>
@@ -84,12 +90,12 @@
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
     <awssdk.version>2.46.7</awssdk.version>
-    <jackson.version>2.22.0</jackson.version>
+    <jackson.version>3.1.5</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
          property so each artifact resolves to a version that actually
          exists. -->
-    <jackson-annotations.version>2.22</jackson-annotations.version>
+    <jackson-annotations.version>2.21</jackson-annotations.version>
     <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
          TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
          Without them a TypeRef for a generic container cannot be built at runtime: the
@@ -100,16 +106,18 @@
          The appendable byte[] -> byte[] set the shared codec pipeline composes (codec-transforms,
          codec-crypto, codec-zstd, codec-lz4) has been present since 0.7.0.
 
-         The VALUE codec stays codec-jackson2. Not inertia: our types carry Jackson annotations,
-         and Jackson 2 measured MUCH faster than 3 in James's benchmarks (2026-08-28). codec also
-         ships codec-jackson (Jackson 3); we deliberately do not use it. -->
+         The VALUE codec is codec-jackson (Jackson 3), matching the engine's own types. It was
+         codec-jackson2 until the nessyng transplant: Jackson 2 measured faster in James's
+         benchmarks (2026-08-28), but the engine's types are Jackson 3 trees and running the
+         storage codec on a different major than the types it serialises is a seam nobody wants to
+         debug. Annotations are unaffected either way: Jackson 3 left them on the
+         com.fasterxml.jackson.annotation coordinates. -->
     <codec.version>0.9.0</codec.version>
-    <!-- victools 5 migrated jsonschema-generator's ObjectNode return types from
-         com.fasterxml.jackson.databind to tools.jackson.databind (Jackson 3),
-         breaking Schemas.java's direct assignment to a Jackson 2 ObjectNode.
-         Held at 4.38: victools 5 breaks Schemas.java (Jackson 2 -> 3 node type
-         migration) -->
-    <victools.version>4.38.0</victools.version>
+    <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
+         produces is handed on as InputSchema, which is text, so which node type it builds
+         internally never reaches an adapter. -->
+    <victools.version>5.0.0</victools.version>
+    <jakarta-validation.version>3.1.1</jakarta-validation.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
     <slf4j.version>2.0.16</slf4j.version>
     <logback.version>1.6.1</logback.version>
@@ -139,6 +147,7 @@
          org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-jdbc's container
          test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
+    <hikaricp.version>7.0.2</hikaricp.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <!-- Condition-based waiting for concurrency tests (S2925: no Thread.sleep in tests). Managed
          here directly, unlike nessy-autoconfigure, which inherits the version from its own Boot
@@ -280,6 +289,13 @@
         <artifactId>spring-jdbc</artifactId>
         <version>${spring-framework.version}</version>
       </dependency>
+      <!-- Pinned at the same line as spring-jdbc, per the policy above: the engine's effect
+           poller schedules through TaskScheduler, which spring-jdbc does not bring. -->
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-context</artifactId>
+        <version>${spring-framework.version}</version>
+      </dependency>
       <dependency>
         <groupId>com.h2database</groupId>
         <artifactId>h2</artifactId>
@@ -375,6 +391,11 @@
         <version>${postgresql.version}</version>
       </dependency>
       <dependency>
+        <groupId>com.zaxxer</groupId>
+        <artifactId>HikariCP</artifactId>
+        <version>${hikaricp.version}</version>
+      </dependency>
+      <dependency>
         <groupId>com.anthropic</groupId>
         <artifactId>anthropic-java</artifactId>
         <version>${anthropic.version}</version>
@@ -390,7 +411,7 @@
         <version>${google-genai.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
+        <groupId>tools.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
         <version>${jackson.version}</version>
       </dependency>
@@ -406,7 +427,7 @@
       </dependency>
       <dependency>
         <groupId>org.jwcarman.codec</groupId>
-        <artifactId>codec-jackson2</artifactId>
+        <artifactId>codec-jackson</artifactId>
         <version>${codec.version}</version>
       </dependency>
       <dependency>
@@ -418,6 +439,18 @@
         <groupId>com.github.victools</groupId>
         <artifactId>jsonschema-module-jackson</artifactId>
         <version>${victools.version}</version>
+      </dependency>
+      <!-- Test only: proves the generator honours a module an application adds, rather than
+           shipping one. -->
+      <dependency>
+        <groupId>com.github.victools</groupId>
+        <artifactId>jsonschema-module-jakarta-validation</artifactId>
+        <version>${victools.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>jakarta.validation</groupId>
+        <artifactId>jakarta.validation-api</artifactId>
+        <version>${jakarta-validation.version}</version>
       </dependency>
       <dependency>
         <groupId>org.junit.jupiter</groupId>

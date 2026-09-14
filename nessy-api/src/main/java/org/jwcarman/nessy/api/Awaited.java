@@ -1,72 +1,44 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api;
 
-import java.time.Instant;
-import java.util.Objects;
-
 /**
- * The outcome of something that might have to wait.
+ * An answer, or a promise that one is coming from somewhere else.
  *
- * <p>Two arms, no third: {@link Ready} is the answer in hand; {@link Deferred} says the answer
- * arrives later, through whatever the deferring party already told the world about.
+ * <p>The two ways anything the engine asks for can respond, and the only two. A tool that returns
+ * in a millisecond and an approver that waits three days for a person are the same shape from here
+ * -- which is deliberate, because the engine has no business knowing the difference. What changes
+ * is only whether the answer is in hand yet.
  *
- * <p>Deferring carries no callback. The return address exists BEFORE the deferring party runs — it
- * reads the handle from its context, tells the vendor, and returns — so there is nothing to run
- * afterwards and no id that does not exist yet.
+ * <p><b>{@link Deferred} is not "try again later".</b> It says the work is genuinely under way
+ * somewhere else -- a person has been asked, a job is queued -- and that the answer will arrive
+ * against the {@link org.jwcarman.nessy.api.tool.ReplyToken} that came with the request. Repeating
+ * the request would ask twice, which for a person is pestering and for a tool may be worse.
  *
- * @param <T> what the wait produces
+ * <p>Deferring carries an obligation: whatever defers must keep the reply address, because it is
+ * the only thing that can settle that call. An answer that arrives after the request's deadline has
+ * passed is refused -- the agent stopped waiting, and was told so.
+ *
+ * @param <T> what the answer will be, when there is one
  */
-public sealed interface Awaited<T> permits Awaited.Ready, Awaited.Deferred {
+public sealed interface Awaited<T> {
 
-  /** The wait finished in-process: {@code result} is the answer, in hand right now. */
-  record Ready<T>(T result) implements Awaited<T> {
-    public Ready {
-      Objects.requireNonNull(result, "result must not be null");
-    }
-  }
+  /** The answer, now. */
+  record Ready<T>(T value) implements Awaited<T> {}
 
   /**
-   * The wait outlives this call.
+   * Not yet, and not from here.
    *
-   * <p><b>A lease, not a promise.</b> {@code expiresAt} does not commit the deferring party to
-   * answering by then; it tells the engine when to stop waiting and release what it is holding for
-   * this call — the parked state, and the claim on the arguments. An answer arriving after it finds
-   * the call already settled and is rejected harmlessly.
-   *
-   * <p><b>Absolute, not a duration.</b> Three things follow. The engine stores the instant rather
-   * than a start time plus a term, so a restart recomputes nothing. "Relative to which moment" —
-   * the return, or the commit — stops being a question. And a time beyond the engine's ceiling is
-   * silently clamped to that ceiling, and a warning is logged. This creates a sharp edge: the
-   * deferring party is not told the clamping happened, so an approver promising a human thirty days
-   * when the ceiling is seven has already made a promise the engine will not keep. The warning
-   * reaches the operator's logs, not the deferring party. This sharp edge is provisional: a
-   * redesign is settled but not yet built.
+   * <p>Carries nothing -- not even how long it expects to take. The question's deadline was fixed
+   * when it was asked, from the binding's own configuration, so a deferral cannot extend it and
+   * there is nothing to negotiate.
    */
-  record Deferred<T>(Instant expiresAt) implements Awaited<T> {
-    public Deferred {
-      Objects.requireNonNull(expiresAt, "expiresAt must not be null");
-    }
+  record Deferred<T>() implements Awaited<T> {}
+
+  static <T> Awaited<T> ready(T value) {
+    return new Ready<>(value);
   }
 
-  static <T> Awaited<T> ready(T result) {
-    return new Ready<>(result);
-  }
-
-  static <T> Awaited<T> deferred(Instant expiresAt) {
-    return new Deferred<>(expiresAt);
+  /** Somebody else will answer. Keep the reply address; nothing else can settle the call. */
+  static <T> Awaited<T> deferred() {
+    return new Deferred<>();
   }
 }

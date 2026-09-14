@@ -1,87 +1,80 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api;
 
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.model.ModelId;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolBindingConfig;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 
 /**
- * What one kind of agent IS.
+ * How one agent type is set up.
  *
- * <p>Infrastructure is deliberately absent — no substrate, no model provider, no actor system.
- * Those are handed to the {@link HarnessFactory} once and shared by every harness it makes. What
- * lands here is only what could differ between two kinds of agent running side by side.
+ * <p>A CONFIG, not a builder: fluent setters and no public {@code build()}. What produces a harness
+ * is the factory, which holds the machinery a caller has no business assembling -- the stores, the
+ * codecs, the transaction manager, the scheduler, the provider. A caller says what is different
+ * about their agent type and nothing else.
  *
- * <p>The model is named, not supplied: a {@link ModelId} is a value an application can put in a
- * properties file, where handing over a bound model would force the choice into code.
+ * <p><b>Two things are required</b>, and they are the two that define an agent: what it is called
+ * and what it is. Everything else has a default, either here or from the factory. Forgetting a poll
+ * interval gets you 250ms; forgetting a system prompt would get you a generic assistant wearing
+ * your agent type's name, working perfectly and doing the wrong job, with nothing in the logs to
+ * say so.
  *
- * @param <O> the observation type
+ * @param <O> the observation type this agent takes
  */
 public interface HarnessConfig<O> {
 
-  /**
-   * What kind of agent this is. Required: it namespaces every agent id this harness serves, and
-   * qualifies what they persist.
-   */
-  HarnessConfig<O> type(AgentType type);
+  /** What this agent type is called. Names its rows and scopes its dispatcher's polling. */
+  HarnessConfig<O> agentType(AgentType agentType);
 
-  /** How a waiting backlog is groomed as observations arrive. */
-  HarnessConfig<O> coalescer(BacklogCoalescer<O> coalescer);
+  /** What this agent is, in the same words for every agent of the type. */
+  HarnessConfig<O> systemPrompt(String prompt);
 
-  /** The standing instruction every turn carries. */
-  HarnessConfig<O> systemPrompt(String systemPrompt);
-
-  /** Which model these agents talk to. */
-  HarnessConfig<O> model(ModelId modelId);
+  /** What this agent is, worked out per agent. May do I/O; it runs off the row lock. */
+  HarnessConfig<O> systemPrompt(SystemPromptSource source);
 
   /**
-   * Grants one tool, ungated and described by its input's {@code toString()}.
+   * How an observation becomes something a model can read.
    *
-   * <p>Sugar over {@link #tool(Tool, Consumer)} for the common case.
+   * <p>Defaults to {@link ObservationRenderer#asString()}, which is right for records and for
+   * anything with a considered {@code toString}, and quietly wrong for a class without one -- that
+   * sends {@code com.acme.Order@1a2b3c} to a model, and you pay for it.
    */
-  <I> HarnessConfig<O> tool(Tool<I> tool);
+  HarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer);
 
   /**
-   * Grants one tool, and says how it is governed and explained.
+   * What the backlog becomes when an observation arrives while the agent is busy.
    *
-   * <p>The type parameter is on the METHOD rather than on this interface, so one kind of agent can
-   * grant tools whose inputs differ — and so the compiler still ties a tool to its own action
-   * renderer, which a {@code ToolBinding<?>} list could not.
+   * <p>Defaults to {@link ObservationCoalescer#keepAll()} -- right for anything a person said,
+   * wrong for a sensor, and only the application knows which it has.
    */
-  <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolBindingConfig<I>> customizer);
+  HarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer);
+
+  /** Adjusts how this agent type infers, using the factory's provider. */
+  HarnessConfig<O> inference(Consumer<InferenceConfig> customizer);
+
+  /** Adjusts how this agent type performs the work it owes itself. */
+  HarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
 
   /**
-   * How an observation becomes inference content. Required for any {@code O} the factory cannot
-   * render on its own.
+   * Offers background the model should have in mind, asked afresh on every call.
+   *
+   * <p>The other half of a tool. A notebook the agent writes to is a tool and one of these; so is a
+   * plan it keeps, or a view of a system it is operating. Tool in, background out.
+   *
+   * <p>Two sources may not offer the same {@link Ambient#kind()} -- refused here rather than at
+   * render time, because an adapter would write two sections under one label and the model would
+   * see a contradiction with no way to tell which is current.
    */
-  HarnessConfig<O> renderer(ObservationRenderer<O> renderer);
+  HarnessConfig<O> ambient(AmbientSource source);
 
-  /**
-   * What this kind of agent remembers, and what it shows the model.
-   *
-   * <p>Unset, the engine supplies a bounded default and says so loudly at startup: the newest
-   * history that fits a character budget, and nothing else — no summarization, no retrieval, and
-   * the oldest turns forgotten. It exists so an agent keeps working, not because it is good.
-   *
-   * <p>Anything else is an implementation of {@link Memory}: a bigger budget, a summarizing
-   * bootstrap, a pipeline that adds ambient state such as a notebook index.
-   */
-  HarnessConfig<O> memory(Memory memory);
+  /** Background that is the same for every agent and every turn. */
+  default HarnessConfig<O> ambient(Ambient ambient) {
+    return ambient(AmbientSource.constant(ambient));
+  }
+
+  /** Offers a tool, and says what a call of it is worth. */
+  <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
+
+  default <I> HarnessConfig<O> tool(Tool<I> tool) {
+    return tool(tool, Customizers.withDefaults());
+  }
 }

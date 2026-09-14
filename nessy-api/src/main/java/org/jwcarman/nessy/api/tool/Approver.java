@@ -1,47 +1,46 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.api.tool;
+
+import static org.jwcarman.nessy.api.Awaited.ready;
+import static org.jwcarman.nessy.api.tool.ApprovalResult.approved;
 
 import org.jwcarman.nessy.api.Awaited;
 
+/**
+ * Decides whether one call may run, or says that somebody else will.
+ *
+ * <p>A facade over anything: a rule, a risk service, an OPA query, a Slack post, a four-eyes
+ * workflow, a person at a terminal. None of that is visible to the engine, and all of it is free to
+ * be slow -- an approver that needs a human returns {@link Awaited#deferred()} and answers later
+ * through {@link Replies}.
+ *
+ * <p><b>Deferring is not free, and it is worth saying so plainly.</b> "Just return deferred" reads
+ * easier than it is: an approver that defers takes on a ledger. It must keep the {@link
+ * ApprovalRequest#replyToken()}, because nothing else can ever settle that call; and it usually
+ * wants the deadline and whatever it sent -- a message id, a ticket -- so it can tidy up a question
+ * that expires unanswered. The engine keeps none of that on its behalf, deliberately: the thing
+ * that decided a person was needed is the only thing that knows which person, and a second ledger
+ * in the engine could only ever drift from the real one.
+ *
+ * <p>Nothing tells an approver that its question expired. The deadline it was given is the whole of
+ * what it knows, which is enough to sweep its own outstanding questions.
+ */
 public interface Approver {
+
   /**
-   * Decides, or says a person will.
-   *
-   * <p>An approver is the thing that knows a human is needed and where that question belongs — a
-   * queue, a page, a pager. {@code replyTo} is how it says where the answer comes back, handed down
-   * because only the engine can mint an address it will honour.
-   *
-   * <p>Beside the request rather than inside it, deliberately: {@link ApprovalRequest} describes
-   * the question and is exactly what an approvals page stores and renders, while {@code replyTo} is
-   * the authority to settle the call. Keeping them apart is what stops a credential ending up in a
-   * projection.
-   *
-   * @param request what is being asked
-   * @param context what else this decision offers — today, where a person's answer goes
+   * @param request what is being asked, including the sentence a person is to consent to and the
+   *     address a late answer goes to
+   * @return a verdict now, or {@link Awaited#deferred()} if one is coming later
    */
   Awaited<ApprovalResult> approve(ApprovalRequest request);
 
   /**
-   * The approver that always says yes — for a tool nobody gates.
+   * Always yes -- for a tool nobody gates.
    *
-   * <p>Exists so every {@link ToolBinding} carries an approver and the engine has one path rather
-   * than a branch on whether a gate is present.
+   * <p>A real approver rather than an absence to check for, so the engine has one path into a
+   * running tool rather than a branch on whether a gate is present. The path that is never
+   * exercised is the one a misconfiguration would take.
    */
-  static Approver always() {
-    return request -> Awaited.ready(ApprovalResult.approved());
+  static Approver allow() {
+    return _ -> ready(approved());
   }
 }
