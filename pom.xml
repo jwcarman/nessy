@@ -58,6 +58,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
+    <module>nessy-inference</module>
 
     <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
@@ -65,7 +66,6 @@
 
     <module>nessy-testing</module>
     <module>nessy-store-tests</module>
-    <module>nessy-model</module>
     <module>nessy-console</module>
     <module>nessy-memory</module>
     <module>nessy-approval</module>
