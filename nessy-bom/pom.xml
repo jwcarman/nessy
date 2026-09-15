@@ -34,6 +34,9 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Every library the reactor publishes, in reactor order. Examples are not
+                 libraries and are not here; a module held out of the reactor (nessy-testing,
+                 today) comes back here the day it comes back to the build. -->
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-api</artifactId>
@@ -42,11 +45,6 @@
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-spi</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-testing</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -61,7 +59,72 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-inference-openai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-inference-anthropic</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-spring-boot-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-memory-notebook</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-memory-plan</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-memory-summarizing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-tool-mcp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-narration-odyssey</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-approval-intent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-approval-policy</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-approval-policy-opa</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-approval-risk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-console</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
