@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.narration.odyssey;
+package org.jwcarman.nessy.spring.boot.narration;
 
 import java.time.Duration;
 import org.jwcarman.odyssey.core.TtlPolicy;

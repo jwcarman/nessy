@@ -116,7 +116,11 @@ public final class OpenAiProviderConfig {
    * here where the OpenAI path leaves the {@code openai} default alone; a turn against api.x.ai
    * must not be reported as an OpenAI one.
    */
-  OpenAiProviderConfig provider(String provider) {
+  /**
+   * The vendor name this provider reports in spans ({@code gen_ai.provider.name}): {@code openai}
+   * unless the same wire is being spoken to somebody else, as it is for xAI.
+   */
+  public OpenAiProviderConfig provider(String provider) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     return this;
   }

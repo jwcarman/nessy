@@ -13,12 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.inference.anthropic;
+package org.jwcarman.nessy.spring.boot.inference;
 
+import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
  * the same convention {@code NessyAutoConfiguration} follows.
  */
 @AutoConfiguration
+@ConditionalOnClass(AnthropicInferenceProvider.class)
 @ConditionalOnProperty(name = "anthropic.api-key")
 public class AnthropicAutoConfiguration {
 

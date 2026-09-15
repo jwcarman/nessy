@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.narration.odyssey;
+package org.jwcarman.nessy.spring.boot.narration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.narration.odyssey.AgentStreams;
+import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;
 import org.jwcarman.odyssey.core.Odyssey;

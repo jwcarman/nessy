@@ -144,6 +144,38 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-autoconfigure</artifactId>
     </dependency>
+    <!-- Every library this module knows how to configure, OPTIONAL: an application gets the
+         auto-configuration for what it put on its classpath and nothing for the rest. This is
+         Boot's own shape, and it keeps the libraries themselves free of Spring. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-inference-openai</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-inference-anthropic</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-narration-odyssey</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!-- Odyssey's SseEmitter is Spring MVC's; here only so the narration configuration compiles. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+      <optional>true</optional>
+    </dependency>
     <!-- The projection's only persistence tool. spring-jdbc rather than a JPA provider: one table,
          four statements, no session. -->
     <!-- Observability is instrumentation, not a requirement: an application with no

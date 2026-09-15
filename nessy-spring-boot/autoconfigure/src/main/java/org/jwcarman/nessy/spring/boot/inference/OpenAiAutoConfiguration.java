@@ -13,12 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.inference.openai;
+package org.jwcarman.nessy.spring.boot.inference;
 
+import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -44,6 +46,7 @@ import tools.jackson.databind.json.JsonMapper;
  * resolves to exactly one bean, in declaration order below, rather than an ambiguous context.
  */
 @AutoConfiguration
+@ConditionalOnClass(OpenAiInferenceProvider.class)
 public class OpenAiAutoConfiguration {
 
   /** xAI has no module of its own and never will; this wire, that vendor's URL. */

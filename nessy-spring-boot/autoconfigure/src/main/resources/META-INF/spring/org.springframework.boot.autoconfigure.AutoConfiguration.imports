@@ -1,1 +1,5 @@
 org.jwcarman.nessy.spring.boot.NessyAutoConfiguration
+org.jwcarman.nessy.spring.boot.inference.OpenAiAutoConfiguration
+org.jwcarman.nessy.spring.boot.inference.AnthropicAutoConfiguration
+org.jwcarman.nessy.spring.boot.narration.SubstrateCodecAutoConfiguration
+org.jwcarman.nessy.spring.boot.narration.OdysseyNarrationAutoConfiguration

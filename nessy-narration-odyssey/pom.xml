@@ -84,19 +84,9 @@
       <groupId>org.jwcarman.odyssey</groupId>
       <artifactId>odyssey</artifactId>
     </dependency>
-    <!-- Substrate needs a CodecFactory bean and no released artifact auto-configures one; this
-         module does, from the application's mapper, so that adding a backend is the whole setup. -->
-    <dependency>
-      <groupId>org.jwcarman.codec</groupId>
-      <artifactId>codec-jackson</artifactId>
-    </dependency>
     <dependency>
       <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-autoconfigure</artifactId>
     </dependency>
     <!-- Provided, as Odyssey has it: SseEmitter is Spring MVC's, and the application that serves
          pages already has MVC. Nothing here should decide which web stack an application runs. -->
@@ -113,11 +103,6 @@
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
