@@ -13,6 +13,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
+import org.jwcarman.nessy.api.Leases;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -25,7 +26,6 @@ import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.lease.JdbcLeases;
-import org.jwcarman.nessy.engine.lease.Leases;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
@@ -239,6 +239,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * does around its agents -- summarising, enriching -- kept in the same database, so they hold
    * across every process that shares it.
    */
+  @Override
   public Leases leases() {
     return leases;
   }
@@ -260,6 +261,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * holds one cannot say which kind of agent it belongs to and could never pick a harness. This
    * reads the agent type out of the token and routes on it.
    */
+  @Override
   public Replies replies() {
     return replies;
   }

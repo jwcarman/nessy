@@ -16,6 +16,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Leases;
 import org.jwcarman.nessy.engine.EngineUnderTest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 

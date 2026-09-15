@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.engine.lease;
+package org.jwcarman.nessy.api;
 
 import java.time.Duration;
 

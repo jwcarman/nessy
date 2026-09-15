@@ -2,6 +2,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.function.Consumer;
 import org.jwcarman.codec.spi.TypeRef;
+import org.jwcarman.nessy.api.tool.Replies;
 
 /**
  * Makes harnesses, holding the infrastructure every agent type is built from.
@@ -35,4 +36,17 @@ public interface HarnessFactory {
    * TypeRef} can carry that through.
    */
   <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer);
+
+  /**
+   * Where a late answer comes back in. One for the whole factory rather than one per harness: a
+   * reply token is opaque, so whoever holds one cannot say which kind of agent it belongs to.
+   */
+  Replies replies();
+
+  /**
+   * "Only one of us should do this right now": leases for the opportunistic work an application
+   * does around its agents -- summarising, enriching -- held wherever the agents are kept, so they
+   * hold across every process that shares them.
+   */
+  Leases leases();
 }

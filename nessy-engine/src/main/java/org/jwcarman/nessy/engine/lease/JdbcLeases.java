@@ -3,6 +3,7 @@ package org.jwcarman.nessy.engine.lease;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
+import org.jwcarman.nessy.api.Leases;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
