@@ -81,6 +81,12 @@
       <artifactId>nessy-memory-plan</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Long conversations: the head is summarised in the background, the tail stays verbatim. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-summarizing</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Narration journaled per agent and served as resumable SSE. Substrate's PostgreSQL backend
          keeps the journal in the same database the engine uses. -->
     <dependency>

@@ -51,4 +51,10 @@ public interface TurnHistory {
    * one.
    */
   List<Turn> lastTurnsAfter(TurnId through, int turns);
+
+  /**
+   * How many turns follow turn {@code through}, counted in the database rather than loaded. Zero
+   * counts them all, as {@link #turnsFrom(long)} reads them all from one.
+   */
+  long turnsAfter(long through);
 }

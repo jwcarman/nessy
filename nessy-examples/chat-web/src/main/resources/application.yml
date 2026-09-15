@@ -24,6 +24,9 @@ nessy:
   # unanswerable the moment the process bounces. A DEMO key: generate your own for anything real.
   reply-token-encryption-keys:
     - ${CHAT_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
+  summaries:
+    # How often the head summariser looks for conversations that have outgrown the tail.
+    sweep-interval: 30s
   system-prompt: |
     You are a helpful assistant in a chat window. Keep answers short unless asked for more.
     When the user tells you something worth keeping -- a preference, a name, a standing fact --

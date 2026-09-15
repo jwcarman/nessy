@@ -12,6 +12,10 @@ import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.memory.plan.JdbcPlanStore;
 import org.jwcarman.nessy.memory.plan.PlanStore;
 import org.jwcarman.nessy.memory.plan.PlanTools;
+import org.jwcarman.nessy.memory.summarizing.HeadSummarizer;
+import org.jwcarman.nessy.memory.summarizing.JdbcSummaries;
+import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,6 +47,36 @@ public class ChatConfiguration {
     return new JdbcPlanStore(dataSource, TYPE);
   }
 
+  private static final int MAX_TAIL = 20;
+  private static final int MIN_TAIL = 8;
+
+  @Bean
+  public JdbcSummaries summaries(DataSource dataSource) {
+    return new JdbcSummaries(dataSource, TYPE);
+  }
+
+  /**
+   * Summarises the head of a long conversation in the background, under a lease, on the starter's
+   * sweep. The model then sees the summaries and the last {@value #MAX_TAIL} turns; once more than
+   * that many follow the last summary, the oldest are summarised down to {@value #MIN_TAIL}.
+   */
+  @Bean
+  public HeadSummarizer headSummarizer(
+      DefaultHarnessFactory factory,
+      JdbcSummaries summaries,
+      InferenceProvider provider,
+      NessyProperties properties) {
+    return HeadSummarizer.create(
+        c ->
+            c.agentType(TYPE)
+                .summaries(summaries)
+                .histories(factory.histories())
+                .leases(factory.leases())
+                .inference(
+                    provider, new InferenceOptions(properties.model(), properties.maxTokens()))
+                .tail(MAX_TAIL, MIN_TAIL));
+  }
+
   @Bean
   public Harness<String> harness(
       DefaultHarnessFactory factory,
@@ -50,7 +84,8 @@ public class ChatConfiguration {
       SendEmailTool email,
       Approver desk,
       Notebook notebook,
-      PlanStore plans) {
+      PlanStore plans,
+      JdbcSummaries summaries) {
     return factory.create(
         String.class,
         config ->
@@ -64,7 +99,9 @@ public class ChatConfiguration {
                     in ->
                         in.context(
                             ctx ->
-                                ctx.ambient(NotebookTools.index(notebook))
+                                ctx.summaries(summaries)
+                                    .maxTail(MAX_TAIL)
+                                    .ambient(NotebookTools.index(notebook))
                                     .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
                 .tool(NotebookTools.remember(notebook))

@@ -103,6 +103,44 @@ class ContextAssemblerTest {
       List<Turn> after = turnsFrom(through.value() + 1);
       return after.size() <= turns ? after : after.subList(after.size() - turns, after.size());
     }
+
+    @Override
+    public long turnsAfter(long through) {
+      return turnsFrom(through + 1).size();
+    }
+
+    @Override
+    public List<AgentId> agents(AgentType agentType) {
+      return List.of();
+    }
+  }
+
+  /**
+   * A source that has summarised further than it chooses to show: the tail must begin after what it
+   * has summarised, not after what it showed, or the head it summarised comes back as turns.
+   */
+  @Test
+  void theTailBeginsAfterWhatWasSummarisedNotAfterWhatWasShown() {
+    RecordingHistories histories = new RecordingHistories(turns(1, 12));
+    SummarySource selective =
+        new SummarySource() {
+          @Override
+          public List<Summary> forAgent(AgentId agentId) {
+            // Shows only the first of its two summaries, as a relevance filter might.
+            return List.of(Summary.text(new TurnId(1), new TurnId(4), "the beginning"));
+          }
+
+          @Override
+          public Optional<TurnId> summarizedThrough(AgentId agentId) {
+            return Optional.of(new TurnId(8));
+          }
+        };
+
+    InferenceContext context = assembler(histories, List.of(selective), 20).assemble(invocation());
+
+    assertThat(context.summaries()).hasSize(1);
+    assertThat(ids(context.turns())).containsExactly(9L, 10L, 11L, 12L);
+    assertThat(histories.tailsAfter).containsExactly(8L);
   }
 
   private static ContextAssembler assembler(

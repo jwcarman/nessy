@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
+import java.util.Optional;
 import org.jwcarman.nessy.api.turn.Summary;
 
 /**
@@ -25,6 +26,17 @@ public interface SummarySource {
 
   /** This agent's summaries, oldest first. Empty when there are none. */
   List<Summary> forAgent(AgentId agentId);
+
+  /**
+   * The last turn this source has a summary through -- whether or not it chose to show that
+   * summary. The tail of verbatim turns begins after this, so a source that shows only the
+   * summaries it finds relevant does not drag the whole summarised head back in as turns. By
+   * default, the end of the last summary shown.
+   */
+  default Optional<TurnId> summarizedThrough(AgentId agentId) {
+    List<Summary> shown = forAgent(agentId);
+    return shown.isEmpty() ? Optional.empty() : Optional.of(shown.getLast().through());
+  }
 
   static SummarySource none() {
     return _ -> List.of();

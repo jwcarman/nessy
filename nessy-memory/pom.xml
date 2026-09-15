@@ -45,14 +45,12 @@
   <modules>
     <module>notebook</module>
     <module>plan</module>
+    <module>summarizing</module>
 
-    <!-- Held out until the context-assembly seam is settled. Both reshape what is SENT rather
-         than what is stored, which the old Memory SPI expressed and the new engine does not: the
-         engine owns history now, and the equivalent seam is InferenceContextAssembler, which is
-         not yet something an application can supply.
+    <!-- Held out: reshaped what was SENT under the old Memory SPI, which the engine no longer
+         has. Likely to be deleted rather than ported.
 
     <module>pipeline</module>
-    <module>summarizing</module>
     -->
   </modules>
 

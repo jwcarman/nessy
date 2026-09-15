@@ -59,7 +59,8 @@ public class ContextAssembler implements InferenceContextAssembler {
     List<Summary> covered = summariesFor(invocation.agentId());
     // Handed over as turns. Flattening here would pick a wire shape on every adapter's behalf,
     // and they do not agree on one.
-    return new InferenceContext(covered, tail(history, covered), ambientFor(invocation.agentId()));
+    return new InferenceContext(
+        covered, tail(history, through(invocation.agentId())), ambientFor(invocation.agentId()));
   }
 
   private List<Summary> summariesFor(AgentId agentId) {
@@ -79,15 +80,26 @@ public class ContextAssembler implements InferenceContextAssembler {
     return List.copyOf(gathered);
   }
 
-  private List<Turn> tail(TurnHistory history, List<Summary> covered) {
-    if (covered.isEmpty()) {
+  /**
+   * Where the verbatim tail begins: after the furthest any source has summarised, whether or not it
+   * chose to show that summary. Asked separately from what is shown so that a source showing only
+   * the relevant summaries does not pull the whole summarised head back in as turns.
+   */
+  private Optional<TurnId> through(AgentId agentId) {
+    return summaries.stream()
+        .map(source -> source.summarizedThrough(agentId))
+        .flatMap(Optional::stream)
+        .max(java.util.Comparator.comparingLong(TurnId::value));
+  }
+
+  private List<Turn> tail(TurnHistory history, Optional<TurnId> through) {
+    if (through.isEmpty()) {
       return history.lastTurns(maxTail);
     }
-    TurnId through = covered.getLast().through();
-    List<Turn> tail = history.lastTurnsAfter(through, maxTail);
+    List<Turn> tail = history.lastTurnsAfter(through.get(), maxTail);
     if (tail.isEmpty()) {
       throw new IllegalStateException(
-          "a summary reaches the turn being answered: nothing is left after turn " + through);
+          "a summary reaches the turn being answered: nothing is left after turn " + through.get());
     }
     return tail;
   }

@@ -30,12 +30,23 @@
 
   <artifactId>nessy-memory-summarizing</artifactId>
   <name>Nessy Memory: Summarizing</name>
-  <description>A memory that compresses old history instead of dropping it</description>
+  <description>Summaries of the head of a story, written in the background, so a long conversation is carried forward as a paragraph and a tail rather than as everything</description>
 
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- The story to summarise, and the lease that says whose turn it is to: both the engine's. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -45,13 +56,6 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-    </dependency>
-
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -64,8 +68,28 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
