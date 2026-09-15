@@ -172,6 +172,24 @@
       <optional>true</optional>
     </dependency>
     <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-prompt</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-prompt-spring</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-prompt-mustache</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson</artifactId>
       <optional>true</optional>

@@ -9,6 +9,8 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
+import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -163,11 +165,16 @@ public class NessyAutoConfiguration {
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,
-      ObjectProvider<ObservationRegistry> registries) {
+      ObjectProvider<ObservationRegistry> registries,
+      ObjectProvider<SystemPromptSource> prompts) {
 
     ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     List<Tool<?>> declared = tools.orderedStream().toList();
-    String systemPrompt = properties.resolveSystemPrompt();
+    // A templated prompt when an engine is on the classpath (PromptAutoConfiguration), or one
+    // the application declared; the plain property otherwise.
+    SystemPromptSource systemPrompt =
+        prompts.getIfAvailable(
+            () -> SystemPromptSource.constant(new SystemPrompt(properties.resolveSystemPrompt())));
     ObservationRenderer<String> renderer =
         renderers.getIfAvailable(() -> said -> List.of(new Block.Text(said)));
 

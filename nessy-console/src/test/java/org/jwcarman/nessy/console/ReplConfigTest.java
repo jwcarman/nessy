@@ -82,7 +82,8 @@ class ReplConfigTest {
     @Test
     void a_supplied_system_prompt_is_the_one_used() {
       config.systemPrompt("You are terse.");
-      assertThat(config.systemPrompt()).isEqualTo("You are terse.");
+      assertThat(config.systemPrompt().forAgent(new AgentId(UUID.randomUUID())).value())
+          .isEqualTo("You are terse.");
     }
 
     @Test
@@ -92,7 +93,8 @@ class ReplConfigTest {
 
     @Test
     void null_system_prompt_is_refused() {
-      assertThatThrownBy(() -> config.systemPrompt(null)).isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> config.systemPrompt((String) null))
+          .isInstanceOf(NullPointerException.class);
     }
   }
 

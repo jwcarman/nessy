@@ -12,6 +12,9 @@ import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.memory.plan.JdbcPlanStore;
 import org.jwcarman.nessy.memory.plan.PlanStore;
 import org.jwcarman.nessy.memory.plan.PlanTools;
+import org.jwcarman.nessy.prompt.PromptVariableSource;
+import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
+import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
@@ -20,20 +23,19 @@ public final class Chat {
 
   private static final AgentType TYPE = new AgentType("chat");
 
-  private static String systemPrompt(LocalDate today) {
-    return """
-        You are a concise, friendly assistant living in someone's terminal. Keep answers short \
-        unless asked for more.
-        Today is %s. When a question turns on counting days, use the days_until tool rather \
-        than working it out yourself -- and never assume the year.
+  /** A template: {@code ${today}} is filled in on every call, so the date is never stale. */
+  private static final String SYSTEM_PROMPT =
+      """
+      You are a concise, friendly assistant living in someone's terminal. Keep answers short \
+      unless asked for more.
+      Today is ${today}. When a question turns on counting days, use the days_until tool rather \
+      than working it out yourself -- and never assume the year.
         When you are told something worth keeping -- a preference, a name, a standing fact -- \
         remember it as a note. Your notes appear as an index every time; read one in full with \
         the recall tool when it is relevant, and change one with revise using the id from that \
         index. Never invent an id.
         For work that takes several steps, write a plan with the update_plan tool and keep it \
-        current as you go. The plan you are holding appears in every message."""
-        .formatted(today);
-  }
+      current as you go. The plan you are holding appears in every message.""";
 
   private static final int SHOWN_BODY_CHARACTERS = 240;
 
@@ -66,7 +68,12 @@ public final class Chat {
                 .banner("nessy chat -- type /exit or press Ctrl-D to leave")
                 .prompt("> ")
                 .farewell("bye.")
-                .systemPrompt(systemPrompt(LocalDate.now(clock)))
+                .systemPrompt(
+                    TemplatedSystemPrompt.of(
+                        new SpringPromptTemplateFactory(),
+                        SYSTEM_PROMPT,
+                        PromptVariableSource.supplied(
+                            "today", () -> LocalDate.now(clock).toString())))
                 .agent(TYPE)
                 .dataSource(database)
                 // Two sources of background: the notebook's index and the current plan. Both are

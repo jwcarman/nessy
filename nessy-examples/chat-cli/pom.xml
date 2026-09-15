@@ -53,6 +53,17 @@
       <artifactId>nessy-console</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The prompt is a template: ${today} is filled in per call, so the date is never stale. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-prompt</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-prompt-spring</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-memory-notebook</artifactId>

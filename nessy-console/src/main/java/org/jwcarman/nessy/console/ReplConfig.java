@@ -14,6 +14,8 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 
@@ -34,7 +36,9 @@ public final class ReplConfig {
   private String prompt = "> ";
   private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
   private String farewell = "";
-  private String systemPrompt = "You are a helpful assistant in someone's terminal.";
+  private SystemPromptSource systemPrompt =
+      SystemPromptSource.constant(
+          new SystemPrompt("You are a helpful assistant in someone's terminal."));
   private AgentType type = new AgentType("chat");
   private AgentId agentId = THE_TERMINAL;
   private int maxTokens = 4096;
@@ -69,6 +73,14 @@ public final class ReplConfig {
   }
 
   public ReplConfig systemPrompt(String systemPrompt) {
+    return systemPrompt(
+        SystemPromptSource.constant(
+            new SystemPrompt(
+                Objects.requireNonNull(systemPrompt, "systemPrompt must not be null"))));
+  }
+
+  /** A prompt that is decided per call -- a template, say. */
+  public ReplConfig systemPrompt(SystemPromptSource systemPrompt) {
     this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     return this;
   }
@@ -149,7 +161,7 @@ public final class ReplConfig {
     return farewell;
   }
 
-  String systemPrompt() {
+  SystemPromptSource systemPrompt() {
     return systemPrompt;
   }
 

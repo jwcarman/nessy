@@ -59,6 +59,7 @@
     <module>nessy-spi</module>
     <module>nessy-engine</module>
     <module>nessy-lease</module>
+    <module>nessy-prompt</module>
     <module>nessy-inference</module>
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>
@@ -79,7 +80,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
-    <anthropic.version>2.53.0</anthropic.version>
+    <anthropic.version>2.62.0</anthropic.version>
     <openai.version>4.50.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
@@ -90,13 +91,13 @@
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
-    <awssdk.version>2.46.7</awssdk.version>
+    <awssdk.version>2.54.17</awssdk.version>
     <jackson.version>3.1.5</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
          property so each artifact resolves to a version that actually
          exists. -->
-    <jackson-annotations.version>2.21</jackson-annotations.version>
+    <jackson-annotations.version>2.22</jackson-annotations.version>
     <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
          TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
          Without them a TypeRef for a generic container cannot be built at runtime: the
@@ -119,6 +120,7 @@
          CodecFactory/Codec/TypeRef the 0.9.0 line above is a strict superset of, so the codec
          this repo pins serves them too (checked signature by signature). -->
     <odyssey.version>0.10.0</odyssey.version>
+    <jmustache.version>1.16</jmustache.version>
     <substrate.version>0.7.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
@@ -126,8 +128,8 @@
     <victools.version>5.0.0</victools.version>
     <jakarta-validation.version>3.1.1</jakarta-validation.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
-    <slf4j.version>2.0.16</slf4j.version>
-    <logback.version>1.6.1</logback.version>
+    <slf4j.version>2.0.18</slf4j.version>
+    <logback.version>1.6.3</logback.version>
     <junit.version>6.1.3</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <!-- Bumped from 1.16.2 (agentic-o11y): micrometer-tracing-bridge-otel 1.7.1 (below) compiles
@@ -165,7 +167,7 @@
          plus the jackson2 backend explicitly rather than the `mcp` facade, which defaults
          to jackson3 (com.fasterxml.jackson.core's Jackson 2 line is what the rest of this
          repo, including ToolSpec's ObjectNode, is built on). -->
-    <mcp-sdk.version>2.0.0</mcp-sdk.version>
+    <mcp-sdk.version>2.0.1</mcp-sdk.version>
     <!-- Spring Boot, for nessy-spring-boot-starter (watchman spec §1). Current stable line on
          Maven Central as of this module's creation (2026-08-26); 4.2.0-M1 is a milestone, not a
          release. The version is pinned HERE, with every other version property, but the
@@ -220,14 +222,14 @@
 
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
-    <spotless.version>3.9.0</spotless.version>
+    <spotless.version>3.10.0</spotless.version>
     <license.plugin.version>5.1.1</license.plugin.version>
     <source.plugin.version>3.4.0</source.plugin.version>
     <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
     <gpg.plugin.version>3.2.8</gpg.plugin.version>
     <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
     <jacoco.version>0.8.15</jacoco.version>
-    <sonar.plugin.version>5.5.0.6356</sonar.plugin.version>
+    <sonar.plugin.version>5.7.0.6970</sonar.plugin.version>
     <exec.plugin.version>3.6.3</exec.plugin.version>
     <jar.plugin.version>3.4.2</jar.plugin.version>
     <!-- Populated by the jacoco-maven-plugin prepare-agent execution in the
@@ -300,6 +302,11 @@
       <dependency>
         <groupId>org.springframework</groupId>
         <artifactId>spring-context</artifactId>
+        <version>${spring-framework.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
         <version>${spring-framework.version}</version>
       </dependency>
       <dependency>
@@ -507,6 +514,11 @@
         <groupId>com.fasterxml.uuid</groupId>
         <artifactId>java-uuid-generator</artifactId>
         <version>${jug.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.samskivert</groupId>
+        <artifactId>jmustache</artifactId>
+        <version>${jmustache.version}</version>
       </dependency>
       <dependency>
         <groupId>org.jwcarman.odyssey</groupId>
