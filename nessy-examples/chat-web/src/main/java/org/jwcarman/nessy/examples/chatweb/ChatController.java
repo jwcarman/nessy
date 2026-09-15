@@ -17,6 +17,7 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.store.TurnHistories;
+import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -41,14 +43,14 @@ public class ChatController {
 
   private final Harness<String> harness;
   private final TurnHistories histories;
-  private final ChatStreams streams;
+  private final AgentStreams streams;
   private final ApprovalDesk desk;
   private final Replies replies;
 
   ChatController(
       Harness<String> harness,
       TurnHistories histories,
-      ChatStreams streams,
+      AgentStreams streams,
       ApprovalDesk desk,
       Replies replies) {
     this.harness = harness;
@@ -82,9 +84,16 @@ public class ChatController {
     return ResponseEntity.accepted().build();
   }
 
+  /**
+   * The agent's stream. A browser that reconnects hands back the id of the last event it saw, and
+   * gets everything since -- the journal is what makes a page that was closed catch up rather than
+   * rebuild.
+   */
   @GetMapping("/{id}/events")
-  public SseEmitter events(@PathVariable("id") String id) {
-    return streams.open(agent(id));
+  public SseEmitter events(
+      @PathVariable("id") String id,
+      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+    return streams.resume(ChatConfiguration.TYPE, agent(id), lastEventId);
   }
 
   @PostMapping("/{id}/approvals/{callId}")

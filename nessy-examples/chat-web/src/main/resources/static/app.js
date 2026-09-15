@@ -2,9 +2,9 @@
 //
 // The listening is the part worth reading. The stream is NOT the response to the message you
 // sent -- it is a standing subscription to one agent, opened when the page loads and held for as
-// long as the tab is. That is what the engine actually offers: a turn started in this tab is
-// narrated to every tab, an answer that lands while you are away is still there when you come
-// back, and a tool that finishes an hour later has somewhere to report.
+// long as the tab is. A turn started in this tab is narrated to every tab, and because the
+// narration is journaled (Odyssey), a connection that drops picks up where it left off: the
+// browser hands back the last event id it saw, and the server replays what came after.
 
 const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
@@ -17,6 +17,9 @@ let agentId = location.hash.slice(1) || localStorage.getItem("agentId") || crypt
 let events = null;
 let openBubble = null;
 let openThinking = null;
+// Whether this inference call has streamed: a provider that does says the answer delta by delta
+// and then whole, and drawing it twice would be wrong; one that does not says it whole, once.
+let streamed = false;
 
 function useAgent(id) {
   agentId = id;
@@ -85,39 +88,65 @@ function listen() {
   if (events) events.close();
   events = new EventSource(`/api/agents/${agentId}/events`);
 
-  events.addEventListener("busy", () => setBusy(true));
-  events.addEventListener("idle", () => {
-    openBubble = null;
-    openThinking = null;
-    setBusy(false);
-  });
-  events.addEventListener("delta", (e) => {
+  // The event names are the engine's own, as the Odyssey narrator journals them.
+  const said = (text) => {
     openThinking = null;
     if (!openBubble) openBubble = appendLine("assistant", "");
-    openBubble.textContent += JSON.parse(e.data).text;
+    openBubble.textContent += text;
     log.scrollTop = log.scrollHeight;
+  };
+  const idle = () => {
+    openBubble = null;
+    openThinking = null;
+    streamed = false;
+    setBusy(false);
+  };
+  events.addEventListener("turn-started", () => {
+    streamed = false;
+    setBusy(true);
   });
-  events.addEventListener("thinking", (e) => {
+  events.addEventListener("content-delta", (e) => {
+    streamed = true;
+    said(JSON.parse(e.data).text);
+  });
+  events.addEventListener("thinking-delta", (e) => {
     if (!openThinking) openThinking = appendLine("thinking", "");
     openThinking.textContent += JSON.parse(e.data).text;
     log.scrollTop = log.scrollHeight;
   });
+  events.addEventListener("commentary", (e) => {
+    if (!streamed) said(JSON.parse(e.data).text);
+  });
   // A request names the tools; what happens to each call is told later, by call id. Each is a
   // line of its own rather than an edit to the request's line, which is what the story shows too.
-  events.addEventListener("tool-requested", (e) => {
+  events.addEventListener("actions-requested", (e) => {
     openThinking = null;
     openBubble = null;
-    appendLine("tool", "🔧 " + JSON.parse(e.data).name);
+    streamed = false;
+    for (const name of JSON.parse(e.data).toolNames) appendLine("tool", "🔧 " + name);
   });
   events.addEventListener("approval", (e) => renderApproval(JSON.parse(e.data)));
-  events.addEventListener("tool-decided", (e) => {
-    const payload = JSON.parse(e.data);
-    appendLine("tool", payload.allowed ? "approved" : "denied: " + payload.reason);
+  events.addEventListener("call-approved", () => appendLine("tool", "approved"));
+  events.addEventListener("call-denied", (e) =>
+    appendLine("tool", "denied: " + JSON.parse(e.data).reason),
+  );
+  events.addEventListener("call-finished", () => appendLine("tool", "done"));
+  events.addEventListener("call-failed", (e) =>
+    appendLine("tool", "failed: " + JSON.parse(e.data).message),
+  );
+  events.addEventListener("answered", (e) => {
+    if (!streamed) said(JSON.parse(e.data).text);
+    idle();
   });
-  events.addEventListener("tool-completed", (e) => {
-    const payload = JSON.parse(e.data);
-    appendLine("tool", payload.error ? "failed: " + payload.message : "done");
+  events.addEventListener("turn-failed", () => {
+    appendLine("system", "the agent could not answer");
+    idle();
   });
+  events.addEventListener("turn-refused", () => {
+    appendLine("system", "the agent declined to answer");
+    idle();
+  });
+  events.addEventListener("terminated", idle);
   events.onerror = () => {
     // EventSource reconnects on its own; the input must not stay disabled while it does.
     setBusy(false);

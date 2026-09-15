@@ -12,9 +12,11 @@ import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.memory.plan.JdbcPlanStore;
 import org.jwcarman.nessy.memory.plan.PlanStore;
 import org.jwcarman.nessy.memory.plan.PlanTools;
+import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
@@ -87,15 +89,20 @@ public class ChatConfiguration {
   }
 
   /**
-   * Hands the question to the desk and tells the page. The engine narrates that an approval was
-   * sought BEFORE it asks the approver, so the page cannot be told from that event -- it would find
-   * a desk that has not heard yet. Told here, the card is complete when it arrives.
+   * Hands the question to the desk and tells the page, on the same stream the engine narrates on.
+   * The engine narrates that an approval was sought BEFORE it asks the approver, so the page cannot
+   * be told from that event -- it would find a desk that has not heard yet. Told here, the card is
+   * complete when it arrives, and journaled, so a page opened later still sees it.
    */
   @Bean
-  public Approver desk(ApprovalDesk desk, ChatStreams streams) {
+  public Approver desk(ApprovalDesk desk, AgentStreams streams, ObjectMapper mapper) {
     return request -> {
       desk.expecting(request);
-      streams.approval(request.agentId(), desk.card(request.callId()));
+      streams.publish(
+          request.agentType(),
+          request.agentId(),
+          "approval",
+          mapper.valueToTree(desk.card(request.callId())));
       return Awaited.deferred();
     };
   }

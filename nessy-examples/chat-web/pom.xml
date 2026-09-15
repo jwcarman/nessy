@@ -81,6 +81,17 @@
       <artifactId>nessy-memory-plan</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Narration journaled per agent and served as resumable SSE. Substrate's PostgreSQL backend
+         keeps the journal in the same database the engine uses. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-narration-odyssey</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.substrate</groupId>
+      <artifactId>substrate-postgresql</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
