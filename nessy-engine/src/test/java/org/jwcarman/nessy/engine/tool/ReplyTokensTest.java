@@ -48,16 +48,23 @@ class ReplyTokensTest {
         .isEqualTo(new ReplyTokens.Coordinates("chat", AGENT.value(), new Seq(42), CALL));
   }
 
-  /** A holder must not be able to see, let alone edit, which call they were given. */
+  /**
+   * A holder must not be able to see, let alone edit, which call they were given. Checked on the
+   * decoded bytes, with values long enough not to turn up in a random nonce by chance -- a
+   * two-digit sequence number does, about once in fifty runs.
+   */
   @Test
   void aTokenShowsTheHolderNothing() {
-    ReplyToken token = tokens.mint(TYPE, AGENT, new Seq(42), CALL);
+    Seq seq = new Seq(4_242_424_242L);
+    ReplyToken token = tokens.mint(TYPE, AGENT, seq, CALL);
 
-    assertThat(token.value())
+    String raw =
+        new String(Base64.getUrlDecoder().decode(token.value()), StandardCharsets.ISO_8859_1);
+    assertThat(raw)
         .doesNotContain("chat")
         .doesNotContain("call_1")
         .doesNotContain(AGENT.value().toString())
-        .doesNotContain("42");
+        .doesNotContain(Long.toString(seq.value()));
   }
 
   /**
