@@ -76,11 +76,19 @@ public final class JdbcNotebook implements Notebook {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
   }
 
+  /**
+   * The id as the TEXT column holds it. A bare UUID is not a String to PostgreSQL -- {@code text =
+   * uuid} has no operator -- and H2, which coerces it, is exactly why this was not caught sooner.
+   */
+  private static String key(AgentId agentId) {
+    return agentId.value().toString();
+  }
+
   @Override
   public List<Heading> headings(AgentId agentId) {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     return jdbc.sql(SELECT_HEADINGS)
-        .params(agentType, agentId.value())
+        .params(agentType, key(agentId))
         .query((row, number) -> new Heading(row.getString("note_id"), row.getString("hook")))
         .list();
   }
@@ -90,7 +98,7 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Objects.requireNonNull(id, ID_NOT_NULL);
     return jdbc.sql(SELECT_ONE)
-        .params(agentType, agentId.value(), id)
+        .params(agentType, key(agentId), id)
         .query(
             (row, number) ->
                 new Entry(row.getString("note_id"), row.getString("hook"), row.getString("body")))
@@ -103,7 +111,7 @@ public final class JdbcNotebook implements Notebook {
     // Constructed first, so a blank hook or body is refused before anything is written.
     Entry entry = new Entry(mintUnusedIn(agentId), hook, body);
     jdbc.sql(INSERT)
-        .params(agentType, agentId.value(), entry.id(), hook, body, nextOrdinal(agentId))
+        .params(agentType, key(agentId), entry.id(), hook, body, nextOrdinal(agentId))
         .update();
     return entry;
   }
@@ -114,7 +122,7 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(id, ID_NOT_NULL);
     Entry revised = new Entry(id, hook, body);
     // No ordinal touched: a revision replaces what a note says, never where it sits in the index.
-    int changed = jdbc.sql(UPDATE).params(hook, body, agentType, agentId.value(), id).update();
+    int changed = jdbc.sql(UPDATE).params(hook, body, agentType, key(agentId), id).update();
     return changed == 0 ? Optional.empty() : Optional.of(revised);
   }
 
@@ -122,11 +130,11 @@ public final class JdbcNotebook implements Notebook {
   public void forget(AgentId agentId, String id) {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     Objects.requireNonNull(id, ID_NOT_NULL);
-    jdbc.sql(DELETE).params(agentType, agentId.value(), id).update();
+    jdbc.sql(DELETE).params(agentType, key(agentId), id).update();
   }
 
   private long nextOrdinal(AgentId agentId) {
-    return jdbc.sql(NEXT_ORDINAL).params(agentType, agentId.value()).query(Long.class).single();
+    return jdbc.sql(NEXT_ORDINAL).params(agentType, key(agentId)).query(Long.class).single();
   }
 
   /**
@@ -149,7 +157,7 @@ public final class JdbcNotebook implements Notebook {
   }
 
   private boolean exists(AgentId agentId, String id) {
-    return jdbc.sql(EXISTS).params(agentType, agentId.value(), id).query(Long.class).single() > 0;
+    return jdbc.sql(EXISTS).params(agentType, key(agentId), id).query(Long.class).single() > 0;
   }
 
   private static String mint() {

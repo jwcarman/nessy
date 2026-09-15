@@ -59,12 +59,20 @@ public final class JdbcPlanStore implements PlanStore {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
   }
 
+  /**
+   * The id as the TEXT column holds it. A bare UUID is not a String to PostgreSQL -- {@code text =
+   * uuid} has no operator -- and H2, which coerces it, is exactly why this was not caught sooner.
+   */
+  private static String key(AgentId agentId) {
+    return agentId.value().toString();
+  }
+
   @Override
   public Optional<Plan> find(AgentId agentId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     List<Plan.Task> tasks =
         jdbc.sql(SELECT)
-            .params(agentType, agentId.value())
+            .params(agentType, key(agentId))
             .query(
                 (row, number) ->
                     new Plan.Task(
@@ -81,12 +89,12 @@ public final class JdbcPlanStore implements PlanStore {
     Objects.requireNonNull(plan, "plan must not be null");
     transactions.executeWithoutResult(
         status -> {
-          jdbc.sql(DELETE).params(agentType, agentId.value()).update();
+          jdbc.sql(DELETE).params(agentType, key(agentId)).update();
           List<Plan.Task> tasks = plan.tasks();
           for (int ordinal = 0; ordinal < tasks.size(); ordinal++) {
             Plan.Task task = tasks.get(ordinal);
             jdbc.sql(INSERT)
-                .params(agentType, agentId.value(), ordinal, task.title(), task.status().name())
+                .params(agentType, key(agentId), ordinal, task.title(), task.status().name())
                 .update();
           }
         });
