@@ -42,11 +42,4 @@ public interface HarnessFactory {
    * reply token is opaque, so whoever holds one cannot say which kind of agent it belongs to.
    */
   Replies replies();
-
-  /**
-   * "Only one of us should do this right now": leases for the opportunistic work an application
-   * does around its agents -- summarising, enriching -- held wherever the agents are kept, so they
-   * hold across every process that shares them.
-   */
-  Leases leases();
 }

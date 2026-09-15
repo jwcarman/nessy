@@ -13,7 +13,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
-import org.jwcarman.nessy.api.Leases;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -25,7 +24,6 @@ import org.jwcarman.nessy.engine.effect.ToolCallHandler;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.lease.JdbcLeases;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
@@ -75,7 +73,6 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final Clock clock = Clock.systemUTC();
 
   private final AgentStateRepository states;
-  private final Leases leases;
   private final JdbcHistoryStore history;
   private final JdbcEffectStore effectRows;
   private final TransactionTemplate transactions;
@@ -103,7 +100,6 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
     JdbcClient jdbc = JdbcClient.create(dataSource);
     this.states = new AgentStateRepository(jdbc);
-    this.leases = new JdbcLeases(jdbc);
     this.history = new JdbcHistoryStore(jdbc, codecs, new CharacterCountEstimator());
     this.effectRows = new JdbcEffectStore(jdbc, codecs);
     this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
@@ -232,16 +228,6 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    */
   public TurnHistories histories() {
     return history;
-  }
-
-  /**
-   * "Only one of us should do this right now": leases for the opportunistic work an application
-   * does around its agents -- summarising, enriching -- kept in the same database, so they hold
-   * across every process that shares it.
-   */
-  @Override
-  public Leases leases() {
-    return leases;
   }
 
   /**

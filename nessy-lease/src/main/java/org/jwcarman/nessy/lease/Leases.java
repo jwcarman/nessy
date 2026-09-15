@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.lease;
 
 import java.time.Duration;
 
@@ -9,8 +9,8 @@ import java.time.Duration;
  * whoever asks first, for at most the time they asked for. Anybody else asking meanwhile is told no
  * and does nothing: there is no waiting and no queue, because the work a lease guards is
  * opportunistic. Somebody will summarise this agent eventually; it does not matter who, and it
- * matters that it is not two of us at once. Work an agent is owed is not this; that is an effect,
- * and effects are guaranteed.
+ * matters that it is not two of us at once. Work somebody is owed is not this: that wants a
+ * guarantee, and a lease offers none.
  *
  * <p>A holder that finishes releases the lease. A holder that dies leaves it to expire, after which
  * the next caller takes it over -- which is also why the work should be idempotent, or at least

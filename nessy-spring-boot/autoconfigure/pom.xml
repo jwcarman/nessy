@@ -172,6 +172,12 @@
       <optional>true</optional>
     </dependency>
     <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-lease</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson</artifactId>
       <optional>true</optional>

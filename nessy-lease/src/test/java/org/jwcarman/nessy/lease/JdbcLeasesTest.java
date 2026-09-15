@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.engine.lease;
+package org.jwcarman.nessy.lease;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,19 +13,32 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Leases;
-import org.jwcarman.nessy.engine.EngineUnderTest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.store.Schemas;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @DisplayName("A lease")
 class JdbcLeasesTest {
 
-  private final EngineUnderTest engine =
-      new EngineUnderTest((request, narrator) -> new InferenceResult.Refusal("unused"));
-  private final Leases leases = engine.harnesses().leases();
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+
+  static {
+    POSTGRES.start();
+  }
+
+  private static DataSource database() {
+    DataSource database =
+        new DriverManagerDataSource(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    Schemas.initialize(database);
+    return database;
+  }
+
+  private final Leases leases = new JdbcLeases(database());
   private final ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor();
 
   /** A key nobody else in the shared database is using. */
@@ -34,7 +47,6 @@ class JdbcLeasesTest {
   @AfterEach
   void stop() {
     callers.shutdownNow();
-    engine.close();
   }
 
   @Test

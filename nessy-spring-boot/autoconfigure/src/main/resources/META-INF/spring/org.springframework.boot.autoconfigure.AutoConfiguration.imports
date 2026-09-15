@@ -4,3 +4,4 @@ org.jwcarman.nessy.spring.boot.inference.AnthropicAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.SubstrateCodecAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.OdysseyNarrationAutoConfiguration
 org.jwcarman.nessy.spring.boot.memory.SummarizingAutoConfiguration
+org.jwcarman.nessy.spring.boot.lease.LeaseAutoConfiguration

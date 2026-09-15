@@ -1,9 +1,9 @@
-package org.jwcarman.nessy.engine.lease;
+package org.jwcarman.nessy.lease;
 
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
-import org.jwcarman.nessy.api.Leases;
+import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -39,6 +39,10 @@ public class JdbcLeases implements Leases {
 
   public JdbcLeases(JdbcClient jdbc) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+  }
+
+  public JdbcLeases(DataSource dataSource) {
+    this(JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")));
   }
 
   @Override

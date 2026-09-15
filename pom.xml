@@ -58,6 +58,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
+    <module>nessy-lease</module>
     <module>nessy-inference</module>
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>

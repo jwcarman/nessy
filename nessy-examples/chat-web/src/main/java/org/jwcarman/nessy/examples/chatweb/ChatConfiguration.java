@@ -6,6 +6,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.lease.Leases;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -64,6 +65,7 @@ public class ChatConfiguration {
   public HeadSummarizer headSummarizer(
       DefaultHarnessFactory factory,
       JdbcSummaries summaries,
+      Leases leases,
       InferenceProvider provider,
       NessyProperties properties) {
     return HeadSummarizer.create(
@@ -71,7 +73,7 @@ public class ChatConfiguration {
             c.agentType(TYPE)
                 .summaries(summaries)
                 .histories(factory.histories())
-                .leases(factory.leases())
+                .leases(leases)
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
                 .tail(MAX_TAIL, MIN_TAIL));

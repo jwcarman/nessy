@@ -21,6 +21,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -95,7 +96,7 @@ class HeadSummarizerTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .leases(factory.leases())
+                    .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
   }
