@@ -1,4 +1,4 @@
-package org.jwcarman.nessy.memory.plan;
+package org.jwcarman.nessy.planning;
 
 import java.time.Instant;
 import java.util.UUID;

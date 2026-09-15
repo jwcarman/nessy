@@ -78,7 +78,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-plan</artifactId>
+      <artifactId>nessy-planning</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Long conversations: the head is summarised in the background, the tail stays verbatim. -->

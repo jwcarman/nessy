@@ -26,12 +26,12 @@
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
-    <relativePath>../../pom.xml</relativePath>
+    <relativePath>../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-memory-plan</artifactId>
-  <name>Nessy Memory Plan</name>
-  <description>A task list the model keeps and sticks to, carried in every context</description>
+  <artifactId>nessy-planning</artifactId>
+  <name>Nessy Planning</name>
+  <description>The Planning pattern: a plan the model writes, holds across turns, and works through, carried in every context.</description>
 
   <dependencies>
     <dependency>

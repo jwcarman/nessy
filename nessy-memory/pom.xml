@@ -44,7 +44,6 @@
 
   <modules>
     <module>notebook</module>
-    <module>plan</module>
     <module>summarizing</module>
   </modules>
 

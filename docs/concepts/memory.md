@@ -178,7 +178,7 @@ happened.
 heading. `headings()` is `SELECT note_id, hook`, so a body cannot reach the
 model by accident — the agent asks for a note when it wants one.
 
-`nessy-memory-plan` gives it a plan it holds across turns. The model resends
+`nessy-planning` gives it a plan it holds across turns. The model resends
 the **whole** list on every update rather than patching it, which is both
 what models are trained to do and what this engine needs: a durable re-drive
 is at-least-once, so a replayed wholesale write stores the identical list.

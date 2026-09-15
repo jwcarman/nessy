@@ -146,7 +146,8 @@ See [Authorization](concepts/authorization.md).
 | `nessy-console` | terminal applications — `Repl.run` |
 | `nessy-spring-boot-starter` | Boot applications — one dependency, no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans behind it, if you would rather assemble the starter yourself |
-| `nessy-memory-notebook`, `nessy-memory-plan` | agents that keep notes or hold a plan |
+| `nessy-memory-notebook` | agents that keep notes |
+| `nessy-planning` | agents that write a plan and work through it across turns |
 | `nessy-memory-summarizing` | long-lived agents — compresses older history instead of dropping it |
 | `nessy-approval-intent` | applications that want the declared-intent claim channel |
 | `nessy-approval-policy` | deciding a tool call by policy: `PolicyEngine`, `Verdict`, `PolicyApprover` |

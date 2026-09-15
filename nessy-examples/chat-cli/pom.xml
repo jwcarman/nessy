@@ -71,7 +71,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-plan</artifactId>
+      <artifactId>nessy-planning</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Each of these ships its own @AutoConfiguration, so this is the whole provider choice: the

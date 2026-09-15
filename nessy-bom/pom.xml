@@ -99,7 +99,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-memory-plan</artifactId>
+                <artifactId>nessy-planning</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

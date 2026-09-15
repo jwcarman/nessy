@@ -63,6 +63,7 @@
     <module>nessy-inference</module>
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>
+    <module>nessy-planning</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-narration-odyssey</module>
     <module>nessy-approval</module>

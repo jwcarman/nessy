@@ -175,8 +175,8 @@ agent depends on `nessy-engine`, which pulls both in.
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and the approvals projection |
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
-| `nessy-memory-plan` | a plan an agent holds across turns |
 | `nessy-memory-summarizing` | compressing an agent's older history rather than dropping it |
+| `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
 | `nessy-approval-intent` | the declared-intent claim channel |
 | `nessy-approval-policy` | deciding a tool call by policy — approve, deny, or delegate |
 | `nessy-approval-policy-opa` | an engine backed by Open Policy Agent |
