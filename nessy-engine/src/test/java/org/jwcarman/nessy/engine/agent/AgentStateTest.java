@@ -230,8 +230,8 @@ class AgentStateTest {
             new Failure.Transient("503"),
             new Failure.Unknown("read timed out"));
 
-    assertThat(failures).isNotEmpty();
     assertThat(failures)
+        .isNotEmpty()
         .allSatisfy(
             failure -> {
               Decision.Advance<String> decision =

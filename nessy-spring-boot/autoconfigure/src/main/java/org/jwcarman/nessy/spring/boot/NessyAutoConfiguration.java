@@ -52,13 +52,6 @@ public class NessyAutoConfiguration {
       org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class);
 
   /**
-   * <b>No in-memory fallback.</b> There used to be one: no {@code DataSource} meant an embedded H2
-   * and a loud warning. The warning was the tell -- every query this engine rests on is
-   * PostgreSQL's ({@code FOR UPDATE SKIP LOCKED} to claim work, {@code LEAST} to cap a deadline),
-   * so the fallback did not run a degraded Nessy, it ran one that fails on the first turn. Saying
-   * so at startup is kinder than an embedded database that looks like it worked.
-   */
-  /**
    * The schema, created where the application says so.
    *
    * <p>Opt-in on purpose: {@code nessy.initialize-schema} defaults to true because an application
@@ -68,14 +61,19 @@ public class NessyAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean(name = "nessySchema")
   public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
-    if (properties.initializeSchema()) {
+    boolean initialize = Boolean.TRUE.equals(properties.initializeSchema());
+    if (initialize) {
       Schemas.initialize(dataSource);
     }
-    return new NessySchema();
+    return new NessySchema(initialize);
   }
 
-  /** A marker, so every bean that needs tables can depend on the tables existing. */
-  public record NessySchema() {}
+  /**
+   * A marker, so every bean that needs tables can depend on the tables existing.
+   *
+   * @param initialized whether this starter ran the DDL, or left the tables to the application
+   */
+  public record NessySchema(boolean initialized) {}
 
   @Bean
   @ConditionalOnMissingBean

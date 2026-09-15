@@ -47,7 +47,7 @@ public interface ObservationCoalescer<O> {
 
   /** Every observation matters. The right answer for anything a person said. */
   static <O> ObservationCoalescer<O> keepAll() {
-    return (backlog, incoming) -> append(backlog, incoming);
+    return ObservationCoalescer::append;
   }
 
   /**

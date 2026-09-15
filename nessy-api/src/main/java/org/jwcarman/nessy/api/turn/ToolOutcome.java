@@ -35,7 +35,7 @@ public sealed interface ToolOutcome {
   record Succeeded(CallId callId, List<Block.ToolResultContent> blocks) implements ToolOutcome {
 
     public Succeeded {
-      Objects.requireNonNull(callId, "callId must not be null");
+      requireCallId(callId);
       Objects.requireNonNull(blocks, "blocks must not be null");
       if (blocks.isEmpty()) {
         throw new IllegalArgumentException("a result must have at least one block");
@@ -53,7 +53,7 @@ public sealed interface ToolOutcome {
   record Failed(CallId callId, String message) implements ToolOutcome {
 
     public Failed {
-      Objects.requireNonNull(callId, "callId must not be null");
+      requireCallId(callId);
       Objects.requireNonNull(message, "message must not be null");
     }
   }
@@ -67,8 +67,12 @@ public sealed interface ToolOutcome {
   record Denied(CallId callId, String reason) implements ToolOutcome {
 
     public Denied {
-      Objects.requireNonNull(callId, "callId must not be null");
+      requireCallId(callId);
       Objects.requireNonNull(reason, "reason must not be null");
     }
+  }
+
+  private static void requireCallId(CallId callId) {
+    Objects.requireNonNull(callId, "callId must not be null");
   }
 }

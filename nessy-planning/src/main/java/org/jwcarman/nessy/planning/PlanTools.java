@@ -73,13 +73,6 @@ public final class PlanTools {
   }
 
   /**
-   * The stage that carries the plan.
-   *
-   * <p>The WHOLE plan, unlike the notebook's index: a task list is small, and a plan you can only
-   * see the headings of is not a plan you can stick to. No plan, or an empty one, contributes
-   * nothing at all.
-   */
-  /**
    * The read half: the agent's own plan, in front of it on every turn.
    *
    * <p>Ambient rather than a message. A plan written into the story would be re-sent as it was when

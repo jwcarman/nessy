@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -41,12 +41,12 @@ class ConcurrentDispatchTest {
   private static final Duration POLL = Duration.ofSeconds(3);
 
   private final Rendezvous model = new Rendezvous();
-  private EngineUnderTest engine;
+  private EngineFixture engine;
   private Harness<String> harness;
 
   @BeforeEach
   void startEngine() {
-    engine = new EngineUnderTest(model);
+    engine = new EngineFixture(model);
     harness =
         engine
             .harnesses()

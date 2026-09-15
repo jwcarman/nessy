@@ -477,12 +477,9 @@ class AnthropicRequestsTest {
      */
     @Test
     void a_budget_with_no_headroom_under_the_ceiling_is_refused_before_the_call() {
-      assertThatThrownBy(
-              () ->
-                  AnthropicRequests.toParams(
-                      request(List.of(open(1, "hi"))),
-                      new Features(true, 1024, PromptCaching.OFF),
-                      MAPPER))
+      var request = request(List.of(open(1, "hi")));
+      var noHeadroom = new Features(true, 1024, PromptCaching.OFF);
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, noHeadroom, MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("1024");
     }

@@ -15,7 +15,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -32,7 +32,7 @@ import org.jwcarman.nessy.spi.narration.AgentNarrator;
  */
 class GiveUpTest {
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
 
   /**
    * One engine per test, and each built around the model that test needs.
@@ -41,7 +41,7 @@ class GiveUpTest {
    * out -- so a class that varies what the model does varies the engine, not the harness.
    */
   private void running(InferenceProvider model) {
-    engine = new EngineUnderTest(model);
+    engine = new EngineFixture(model);
   }
 
   @AfterEach

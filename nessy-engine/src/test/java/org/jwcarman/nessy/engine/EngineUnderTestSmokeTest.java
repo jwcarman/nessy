@@ -23,8 +23,8 @@ class EngineUnderTestSmokeTest {
 
   @Test
   void anEngineWiredByHandRunsATurn() {
-    try (EngineUnderTest engine =
-        new EngineUnderTest(
+    try (EngineFixture engine =
+        new EngineFixture(
             (request, narrator) ->
                 new InferenceResult.Answer(
                     HistoryEntry.InferenceAnswered.text("It is 1412 metres deep.")))) {

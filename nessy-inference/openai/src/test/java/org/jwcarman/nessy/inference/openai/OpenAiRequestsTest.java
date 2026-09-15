@@ -109,9 +109,16 @@ class OpenAiRequestsTest {
       assertThat(system)
           .as("the standing instruction first, then each section under its own label")
           .isEqualTo(
-              "you are a helpful assistant\n\n"
-                  + "<notebook>\nthe deploy is frozen\n</notebook>\n\n"
-                  + "<clock>\nit is Tuesday\n</clock>");
+              """
+              you are a helpful assistant
+
+              <notebook>
+              the deploy is frozen
+              </notebook>
+
+              <clock>
+              it is Tuesday
+              </clock>""");
     }
 
     /** A heading with nothing under it tells a model its notebook is empty, which is a claim. */

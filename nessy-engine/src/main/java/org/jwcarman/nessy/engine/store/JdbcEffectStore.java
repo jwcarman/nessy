@@ -129,13 +129,6 @@ public class JdbcEffectStore {
   }
 
   /**
-   * Written in the transition that owed it, so the obligation and its cause commit together.
-   *
-   * <p>{@code timeout} comes from the harness, which looked it up in the binding for this effect.
-   * It is stored rather than resolved later because marking a row running must not decode its
-   * payload -- at that moment nothing knows what kind of work it is.
-   */
-  /**
    * Writes down an effect to be performed later, and beside it the outcome to deliver if it never
    * can be.
    *
@@ -211,15 +204,6 @@ public class JdbcEffectStore {
         .list();
   }
 
-  /**
-   * Retires a finished obligation. False means this attempt was not the live one.
-   *
-   * <p>{@code attempts_made} is the fence. An attempt is handed the counter its marking set, and
-   * may only retire the row while the row still carries it -- so an attempt that overran its
-   * deadline, and whose work has since been taken over, changes nothing. There is no owner column
-   * and no lease; the counter every marking increments already identifies the attempt uniquely,
-   * which is what lets these writes name one attempt rather than one row.
-   */
   /**
    * Every claimed, unfinished row of one agent.
    *

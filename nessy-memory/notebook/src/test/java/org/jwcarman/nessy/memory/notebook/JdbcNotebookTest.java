@@ -29,8 +29,8 @@ import org.jwcarman.nessy.api.AgentId;
 class JdbcNotebookTest {
 
   // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
-  private final AgentId ONE = Calls.agent();
-  private final AgentId TWO = Calls.agent();
+  private final AgentId agentOne = Calls.agent();
+  private final AgentId agentTwo = Calls.agent();
 
   private Notebook notebook;
 
@@ -41,21 +41,22 @@ class JdbcNotebookTest {
 
   @Test
   void a_fresh_agent_has_written_nothing() {
-    assertThat(notebook.headings(ONE)).isEmpty();
-    assertThat(notebook.find(ONE, "anything")).isEmpty();
+    assertThat(notebook.headings(agentOne)).isEmpty();
+    assertThat(notebook.find(agentOne, "anything")).isEmpty();
   }
 
   @Test
   void a_written_note_comes_back_whole() {
-    Notebook.Entry written = notebook.write(ONE, "Prefers terse answers", "Short. Metric units.");
+    Notebook.Entry written =
+        notebook.write(agentOne, "Prefers terse answers", "Short. Metric units.");
 
-    assertThat(notebook.find(ONE, written.id())).contains(written);
+    assertThat(notebook.find(agentOne, written.id())).contains(written);
   }
 
   @Test
   @DisplayName("an id is minted, short, and never chosen by the caller")
   void ids_are_minted() {
-    Notebook.Entry written = notebook.write(ONE, "hook", "body");
+    Notebook.Entry written = notebook.write(agentOne, "hook", "body");
 
     assertThat(written.id()).hasSize(10).matches("[bcdfghjkmnpqrstvwxz23456789]+");
   }
@@ -66,47 +67,47 @@ class JdbcNotebookTest {
    */
   @Test
   void two_notes_that_say_the_same_thing_are_still_two_notes() {
-    Notebook.Entry first = notebook.write(ONE, "same hook", "same body");
-    Notebook.Entry second = notebook.write(ONE, "same hook", "same body");
+    Notebook.Entry first = notebook.write(agentOne, "same hook", "same body");
+    Notebook.Entry second = notebook.write(agentOne, "same hook", "same body");
 
     assertThat(first.id()).isNotEqualTo(second.id());
-    assertThat(notebook.headings(ONE)).hasSize(2);
+    assertThat(notebook.headings(agentOne)).hasSize(2);
   }
 
   @Test
   @DisplayName("revising replaces in place, keeping the id the model already has")
   void revising_replaces_the_note() {
-    Notebook.Entry written = notebook.write(ONE, "Prefers terse", "old");
+    Notebook.Entry written = notebook.write(agentOne, "Prefers terse", "old");
 
-    notebook.revise(ONE, written.id(), "Prefers terse", "new");
+    notebook.revise(agentOne, written.id(), "Prefers terse", "new");
 
-    assertThat(notebook.headings(ONE)).hasSize(1);
-    assertThat(notebook.find(ONE, written.id()).orElseThrow().body()).isEqualTo("new");
+    assertThat(notebook.headings(agentOne)).hasSize(1);
+    assertThat(notebook.find(agentOne, written.id()).orElseThrow().body()).isEqualTo("new");
   }
 
   @Test
   @DisplayName("revising a note that is gone says so rather than filing a new one")
   void revising_an_unknown_id_does_nothing() {
-    assertThat(notebook.revise(ONE, "nosuchid00", "hook", "body")).isEmpty();
-    assertThat(notebook.headings(ONE)).isEmpty();
+    assertThat(notebook.revise(agentOne, "nosuchid00", "hook", "body")).isEmpty();
+    assertThat(notebook.headings(agentOne)).isEmpty();
   }
 
   @Test
   void forgetting_removes_it() {
-    Notebook.Entry written = notebook.write(ONE, "Prefers terse", "body");
+    Notebook.Entry written = notebook.write(agentOne, "Prefers terse", "body");
 
-    notebook.forget(ONE, written.id());
+    notebook.forget(agentOne, written.id());
 
-    assertThat(notebook.find(ONE, written.id())).isEmpty();
-    assertThat(notebook.headings(ONE)).isEmpty();
+    assertThat(notebook.find(agentOne, written.id())).isEmpty();
+    assertThat(notebook.headings(agentOne)).isEmpty();
   }
 
   @Test
   @DisplayName("forgetting what was never there is not an error: forgetting twice is forgetting")
   void forgetting_an_absent_note_is_a_no_op() {
-    notebook.forget(ONE, "never-written");
+    notebook.forget(agentOne, "never-written");
 
-    assertThat(notebook.headings(ONE)).isEmpty();
+    assertThat(notebook.headings(agentOne)).isEmpty();
   }
 
   /**
@@ -116,11 +117,11 @@ class JdbcNotebookTest {
   @Test
   @DisplayName("headings keep the order the notes were written in")
   void headings_are_in_writing_order() {
-    notebook.write(ONE, "first", "a");
-    notebook.write(ONE, "second", "b");
-    notebook.write(ONE, "third", "c");
+    notebook.write(agentOne, "first", "a");
+    notebook.write(agentOne, "second", "b");
+    notebook.write(agentOne, "third", "c");
 
-    assertThat(notebook.headings(ONE))
+    assertThat(notebook.headings(agentOne))
         .extracting(Notebook.Heading::hook)
         .containsExactly("first", "second", "third");
   }
@@ -128,9 +129,9 @@ class JdbcNotebookTest {
   @Test
   @DisplayName("a heading carries the hook and NOT the body — that absence is the point")
   void headings_carry_no_bodies() {
-    notebook.write(ONE, "A hook", "a body nobody asked for yet");
+    notebook.write(agentOne, "A hook", "a body nobody asked for yet");
 
-    List<Notebook.Heading> headings = notebook.headings(ONE);
+    List<Notebook.Heading> headings = notebook.headings(agentOne);
 
     assertThat(headings).hasSize(1);
     assertThat(headings.getFirst().hook()).isEqualTo("A hook");
@@ -139,10 +140,10 @@ class JdbcNotebookTest {
 
   @Test
   void agents_do_not_read_each_others_notes() {
-    Notebook.Entry mine = notebook.write(ONE, "Mine", "private");
+    Notebook.Entry mine = notebook.write(agentOne, "Mine", "private");
 
-    assertThat(notebook.headings(TWO)).isEmpty();
-    assertThat(notebook.find(TWO, mine.id())).isEmpty();
+    assertThat(notebook.headings(agentTwo)).isEmpty();
+    assertThat(notebook.find(agentTwo, mine.id())).isEmpty();
   }
 
   @Nested

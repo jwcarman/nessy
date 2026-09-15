@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -43,7 +43,7 @@ import org.jwcarman.nessy.spi.narration.AgentNarrator;
  */
 class ToolCallingTest {
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
 
   /**
    * One engine per test, and each built around the model that test needs.
@@ -52,7 +52,7 @@ class ToolCallingTest {
    * out -- so a class that varies what the model asks for varies the engine, not the harness.
    */
   private void running(InferenceProvider model) {
-    engine = new EngineUnderTest(model);
+    engine = new EngineFixture(model);
   }
 
   @AfterEach

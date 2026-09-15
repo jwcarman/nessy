@@ -41,10 +41,10 @@ class HistoryEntryTest {
    */
   @Test
   void aRequestForActionsThatAsksForNothingIsRefused() {
-    assertThatThrownBy(
-            () ->
-                new HistoryEntry.InferenceRequestedActions(
-                    new Seq(2), new TurnId(1), List.of(new Block.Commentary("thinking out loud"))))
+    Seq seq = new Seq(2);
+    TurnId turn = new TurnId(1);
+    List<Block.ActionRequestContent> onlyProse = List.of(new Block.Commentary("thinking out loud"));
+    assertThatThrownBy(() -> new HistoryEntry.InferenceRequestedActions(seq, turn, onlyProse))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("at least one call");
   }
@@ -83,10 +83,11 @@ class HistoryEntryTest {
    */
   @Test
   void aSuccessWithNoContentIsRefused() {
-    assertThatThrownBy(
-            () ->
-                new HistoryEntry.ToolSucceeded(
-                    new Seq(3), new TurnId(1), new CallId("c1"), List.of()))
+    Seq seq = new Seq(3);
+    TurnId turn = new TurnId(1);
+    CallId call = new CallId("c1");
+    List<Block.ToolResultContent> nothing = List.of();
+    assertThatThrownBy(() -> new HistoryEntry.ToolSucceeded(seq, turn, call, nothing))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("at least one block");
   }
@@ -94,16 +95,20 @@ class HistoryEntryTest {
   /** The message is the entire content the model reads about what went wrong. */
   @Test
   void aFailureWithNothingToSayIsRefused() {
-    assertThatThrownBy(
-            () -> new HistoryEntry.ToolFailed(new Seq(3), new TurnId(1), new CallId("c1"), "  "))
+    Seq seq = new Seq(3);
+    TurnId turn = new TurnId(1);
+    CallId call = new CallId("c1");
+    assertThatThrownBy(() -> new HistoryEntry.ToolFailed(seq, turn, call, "  "))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("message");
   }
 
   @Test
   void aDenialWithNoReasonIsRefused() {
-    assertThatThrownBy(
-            () -> new HistoryEntry.ToolDenied(new Seq(3), new TurnId(1), new CallId("c1"), ""))
+    Seq seq = new Seq(3);
+    TurnId turn = new TurnId(1);
+    CallId call = new CallId("c1");
+    assertThatThrownBy(() -> new HistoryEntry.ToolDenied(seq, turn, call, ""))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("reason");
   }

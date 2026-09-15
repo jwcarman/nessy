@@ -37,7 +37,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>One container for the whole class, and agents are addressed by fresh random ids, so tests do
  * not have to clean up after each other.
  */
-public final class EngineUnderTest implements AutoCloseable {
+public final class EngineFixture implements AutoCloseable {
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -51,21 +51,21 @@ public final class EngineUnderTest implements AutoCloseable {
   private final JdbcClient jdbc;
   private final AgentStateRepository states;
 
-  public EngineUnderTest(InferenceProvider provider, AgentEventListener listener) {
+  public EngineFixture(InferenceProvider provider, AgentEventListener listener) {
     this(provider, listener, ObservationRegistry.NOOP);
   }
 
-  public EngineUnderTest(
+  public EngineFixture(
       InferenceProvider provider, AgentEventListener listener, ObservationRegistry observations) {
     this(provider, listener, observations, Optional.empty());
   }
 
   /** With something done to every stored byte, which the fixture's own reader must undo too. */
-  public EngineUnderTest(InferenceProvider provider, Codec<byte[]> storage) {
+  public EngineFixture(InferenceProvider provider, Codec<byte[]> storage) {
     this(provider, AgentEventListener.none(), ObservationRegistry.NOOP, Optional.of(storage));
   }
 
-  private EngineUnderTest(
+  private EngineFixture(
       InferenceProvider provider,
       AgentEventListener listener,
       ObservationRegistry observations,
@@ -104,7 +104,7 @@ public final class EngineUnderTest implements AutoCloseable {
             });
   }
 
-  public EngineUnderTest(InferenceProvider provider) {
+  public EngineFixture(InferenceProvider provider) {
     this(provider, AgentEventListener.none());
   }
 

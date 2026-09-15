@@ -5,12 +5,6 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.SystemPrompt;
 
 /**
- * Everything the wire needs, and nothing it does not.
- *
- * <p>No agent identity: which agent this is for was settled before the request was built, and a
- * provider that could see it could read something it has no business reading.
- */
-/**
  * Everything a provider needs for one call.
  *
  * <p>The system prompt sits beside the conversation rather than inside it, which is where most

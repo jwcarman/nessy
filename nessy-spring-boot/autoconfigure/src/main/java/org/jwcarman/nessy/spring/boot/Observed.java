@@ -70,6 +70,7 @@ public final class Observed {
 
   private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String FINISH_REASONS = "gen_ai.response.finish_reasons";
+  private static final String ERROR_TYPE = "error.type";
   private static final String DELEGATE_NOT_NULL = "delegate must not be null";
   private static final String OBSERVATIONS_NOT_NULL = "observations must not be null";
 
@@ -108,7 +109,7 @@ public final class Observed {
               // against others recorded under the same name, so a chat that only sometimes
               // carried a finish reason would be a different shape from one that did.
               .lowCardinalityKeyValue(FINISH_REASONS, "none")
-              .lowCardinalityKeyValue("error.type", "none")
+              .lowCardinalityKeyValue(ERROR_TYPE, "none")
               .start();
       try {
         InferenceResult result = delegate.infer(request, narrator);
@@ -117,7 +118,7 @@ public final class Observed {
         // this is the whole point of a total SPI: the failure is a value, and a value that
         // nothing recorded would be a call that looks successful in every dashboard.
         if (result instanceof InferenceResult.Fault(Failure failure)) {
-          observation.lowCardinalityKeyValue("error.type", failure.getClass().getSimpleName());
+          observation.lowCardinalityKeyValue(ERROR_TYPE, failure.getClass().getSimpleName());
           // The adapter's own account of what went wrong -- a provider's stop reason, an HTTP
           // status -- which is the one thing worth reading on the span. High cardinality, so it
           // reaches the trace and stays out of the metric.
@@ -125,7 +126,7 @@ public final class Observed {
         }
         return result;
       } catch (RuntimeException e) {
-        observation.lowCardinalityKeyValue("error.type", e.getClass().getSimpleName());
+        observation.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
         observation.error(e);
         throw e;
       } finally {

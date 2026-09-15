@@ -29,8 +29,8 @@ import org.jwcarman.nessy.api.AgentType;
 class JdbcPlanStoreTest {
 
   // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
-  private final AgentId ONE = Calls.agent();
-  private final AgentId TWO = Calls.agent();
+  private final AgentId agentOne = Calls.agent();
+  private final AgentId agentTwo = Calls.agent();
 
   private static final Plan.Task WRITE = new Plan.Task("Write the store", Plan.Status.IN_PROGRESS);
   private static final Plan.Task TEST = new Plan.Task("Test it", Plan.Status.PENDING);
@@ -44,25 +44,25 @@ class JdbcPlanStoreTest {
 
   @Test
   void an_agent_that_has_planned_nothing_has_no_plan() {
-    assertThat(plans.find(ONE)).isEmpty();
+    assertThat(plans.find(agentOne)).isEmpty();
   }
 
   @Test
   void a_saved_plan_comes_back_in_the_order_it_was_written() {
-    plans.save(ONE, new Plan(List.of(WRITE, TEST)));
+    plans.save(agentOne, new Plan(List.of(WRITE, TEST)));
 
-    assertThat(plans.find(ONE)).contains(new Plan(List.of(WRITE, TEST)));
+    assertThat(plans.find(agentOne)).contains(new Plan(List.of(WRITE, TEST)));
   }
 
   /** The whole point of wholesale replacement: what you save is what is there, entirely. */
   @Test
   @DisplayName("saving replaces the plan rather than adding to it")
   void a_second_save_wins_outright() {
-    plans.save(ONE, new Plan(List.of(WRITE, TEST)));
+    plans.save(agentOne, new Plan(List.of(WRITE, TEST)));
 
-    plans.save(ONE, new Plan(List.of(new Plan.Task("Something else", Plan.Status.PENDING))));
+    plans.save(agentOne, new Plan(List.of(new Plan.Task("Something else", Plan.Status.PENDING))));
 
-    assertThat(plans.find(ONE).orElseThrow().tasks()).hasSize(1);
+    assertThat(plans.find(agentOne).orElseThrow().tasks()).hasSize(1);
   }
 
   /**
@@ -73,27 +73,27 @@ class JdbcPlanStoreTest {
   void saving_the_same_plan_twice_leaves_the_same_plan() {
     Plan plan = new Plan(List.of(WRITE, TEST));
 
-    plans.save(ONE, plan);
-    plans.save(ONE, plan);
+    plans.save(agentOne, plan);
+    plans.save(agentOne, plan);
 
-    assertThat(plans.find(ONE)).contains(plan);
+    assertThat(plans.find(agentOne)).contains(plan);
   }
 
   @Test
   @DisplayName("an emptied plan reads as no plan, not as a plan with nothing in it")
   void clearing_returns_the_agent_to_having_none() {
-    plans.save(ONE, new Plan(List.of(WRITE)));
+    plans.save(agentOne, new Plan(List.of(WRITE)));
 
-    plans.save(ONE, Plan.empty());
+    plans.save(agentOne, Plan.empty());
 
-    assertThat(plans.find(ONE)).isEmpty();
+    assertThat(plans.find(agentOne)).isEmpty();
   }
 
   @Test
   void one_agent_cannot_see_another_agents_plan() {
-    plans.save(ONE, new Plan(List.of(WRITE)));
+    plans.save(agentOne, new Plan(List.of(WRITE)));
 
-    assertThat(plans.find(TWO)).isEmpty();
+    assertThat(plans.find(agentTwo)).isEmpty();
   }
 
   @Test
@@ -102,9 +102,9 @@ class JdbcPlanStoreTest {
     javax.sql.DataSource shared = Calls.database();
     PlanStore chat = new JdbcPlanStore(shared, new AgentType("chat"));
     PlanStore watchman = new JdbcPlanStore(shared, new AgentType("watchman"));
-    chat.save(ONE, new Plan(List.of(WRITE)));
+    chat.save(agentOne, new Plan(List.of(WRITE)));
 
-    assertThat(watchman.find(ONE)).isEmpty();
+    assertThat(watchman.find(agentOne)).isEmpty();
   }
 
   @Test

@@ -45,7 +45,8 @@ class SpringPromptTemplateFactoryTest {
   @DisplayName("a hole with no value and no default is refused rather than sent")
   void an_unfilled_hole_throws() {
     PromptTemplate template = engine.compile("You serve ${who}.");
-    assertThatThrownBy(() -> template.render(PromptVariables.none()))
+    PromptVariables none = PromptVariables.none();
+    assertThatThrownBy(() -> template.render(none))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("who");
   }

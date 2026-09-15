@@ -109,14 +109,6 @@ public final class OpenAiProviderConfig {
   }
 
   /**
-   * The semconv {@code gen_ai.provider.name} every {@link org.jwcarman.nessy.spi.model.Model} the
-   * finished gateway mints will report (agentic-o11y spec §1.1) — package-private, because it is
-   * for this module's own factories and not for application code. This class is shared by every
-   * OpenAI-compatible vendor, so {@link OpenAiAutoConfiguration#xaiModelProvider} sets {@code x_ai}
-   * here where the OpenAI path leaves the {@code openai} default alone; a turn against api.x.ai
-   * must not be reported as an OpenAI one.
-   */
-  /**
    * The vendor name this provider reports in spans ({@code gen_ai.provider.name}): {@code openai}
    * unless the same wire is being spoken to somebody else, as it is for xAI.
    */

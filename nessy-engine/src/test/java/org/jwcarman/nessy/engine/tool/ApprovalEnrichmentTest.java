@@ -25,10 +25,11 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
@@ -44,7 +45,7 @@ import tools.jackson.databind.node.JsonNodeFactory;
  */
 class ApprovalEnrichmentTest {
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
 
   /**
    * One engine per test, and each built around the model that test needs.
@@ -53,7 +54,7 @@ class ApprovalEnrichmentTest {
    * out -- so a class that varies what the model asks for varies the engine, not the harness.
    */
   private void running(InferenceProvider model) {
-    engine = new EngineUnderTest(model);
+    engine = new EngineFixture(model);
   }
 
   @AfterEach
@@ -157,10 +158,7 @@ class ApprovalEnrichmentTest {
                                         request -> {
                                           seen.add(request);
                                           int risk =
-                                              request
-                                                  .fact(RISK)
-                                                  .map(node -> node.asInt())
-                                                  .orElse(100);
+                                              request.fact(RISK).map(JsonNode::asInt).orElse(100);
                                           return Awaited.ready(
                                               risk >= 50
                                                   ? ApprovalResult.denied(
@@ -179,10 +177,10 @@ class ApprovalEnrichmentTest {
         .singleElement()
         .satisfies(
             request -> {
-              assertThat(request.fact(RISK)).get().extracting(node -> node.asInt()).isEqualTo(90);
+              assertThat(request.fact(RISK)).get().extracting(JsonNode::asInt).isEqualTo(90);
               assertThat(request.fact(PRINCIPAL))
                   .get()
-                  .extracting(node -> node.asString())
+                  .extracting(JsonNode::asString)
                   .isEqualTo("svc-deployer");
               assertThat(request.action())
                   .as("the sentence is there to be read before anything is added to it")
@@ -230,10 +228,7 @@ class ApprovalEnrichmentTest {
                                     .approver(
                                         request ->
                                             Awaited.ready(
-                                                request
-                                                            .fact(RISK)
-                                                            .map(node -> node.asInt())
-                                                            .orElse(100)
+                                                request.fact(RISK).map(JsonNode::asInt).orElse(100)
                                                         >= 50
                                                     ? ApprovalResult.denied("too risky")
                                                     : ApprovalResult.approved())))
@@ -287,8 +282,8 @@ class ApprovalEnrichmentTest {
     harness.observe(agentId, "go");
     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(seen).isNotEmpty());
 
-    assertThat(seen.peek().fact("first")).get().extracting(node -> node.asString()).isEqualTo("0");
-    assertThat(seen.peek().fact("second")).get().extracting(node -> node.asString()).isEqualTo("1");
+    assertThat(seen.peek().fact("first")).get().extracting(JsonNode::asString).isEqualTo("0");
+    assertThat(seen.peek().fact("second")).get().extracting(JsonNode::asString).isEqualTo("1");
   }
 
   /**

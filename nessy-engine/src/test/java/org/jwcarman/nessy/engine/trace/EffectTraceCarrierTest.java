@@ -18,7 +18,7 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 
@@ -88,8 +88,8 @@ class EffectTraceCarrierTest {
     CountDownLatch performing = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
 
-    try (EngineUnderTest engine =
-        new EngineUnderTest(
+    try (EngineFixture engine =
+        new EngineFixture(
             (_, _) -> {
               performing.countDown();
               try {
@@ -156,8 +156,8 @@ class EffectTraceCarrierTest {
     CountDownLatch performing = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
 
-    try (EngineUnderTest engine =
-        new EngineUnderTest(
+    try (EngineFixture engine =
+        new EngineFixture(
             (_, _) -> {
               performing.countDown();
               try {

@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -11,6 +12,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -94,17 +96,6 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
   }
 
   /**
-   * Puts this harness's own dispatcher on its own schedule.
-   *
-   * <p>Separate from the constructor because the dispatcher reports back through this object:
-   * building it here would mean handing out {@code this} before the constructor finished, and
-   * scheduling it here would mean a poll could fire against a half-built harness.
-   *
-   * <p>Nothing is shared with any other harness. There is no registry of dispatchers and no poller
-   * iterating one -- each harness drives its own work, and an agent type that stalls or throws
-   * costs nobody but itself.
-   */
-  /**
    * Hands this harness the dispatcher that reports back through it, so that closing one closes the
    * other.
    *
@@ -178,12 +169,12 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
           "InferenceRequestedActions(" + blocks.size() + " block(s))";
       // Named by call rather than by content: which call was discharged is the fact that
       // moves the agent, and a result's blocks are whatever a tool chose to return.
-      case EffectOutcome.ToolSucceeded(CallId callId, var _) -> "ToolSucceeded(" + callId + ")";
+      case EffectOutcome.ToolSucceeded(CallId callId, _) -> "ToolSucceeded(" + callId + ")";
       case EffectOutcome.ToolFailed(CallId callId, String message) ->
           "ToolFailed(" + callId + ": " + message + ")";
-      case EffectOutcome.ToolDenied(CallId callId, String reason, var _) ->
+      case EffectOutcome.ToolDenied(CallId callId, String reason, _) ->
           "ToolDenied(" + callId + ": " + reason + ")";
-      case EffectOutcome.ToolApproved(CallId callId, var _) -> "ToolApproved(" + callId + ")";
+      case EffectOutcome.ToolApproved(CallId callId, _) -> "ToolApproved(" + callId + ")";
     };
   }
 
@@ -197,48 +188,50 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
    */
   private void fold(AgentId agentId, String what, Function<AgentState<O>, Decision<O>> decide) {
     Optional<Folded> outcome =
-        transactions.execute(
-            status -> {
-              AgentStateStore.Locked<O> locked = states.lockOrCreate(agentId, clock.instant());
+        Objects.requireNonNull(
+            transactions.execute(
+                status -> {
+                  AgentStateStore.Locked<O> locked = states.lockOrCreate(agentId, clock.instant());
 
-              // Ignore is not "advance to the same state": it writes nothing at all, not even a
-              // version bump, because a record showing something happening when nothing did is
-              // worse
-              // than no record.
-              if (!(decide.apply(locked.state()) instanceof Decision.Advance<O> advance)) {
-                return Optional.<Folded>empty();
-              }
+                  // Ignore is not "advance to the same state": it writes nothing at all, not even a
+                  // version bump, because a record showing something happening when nothing did is
+                  // worse
+                  // than no record.
+                  if (!(decide.apply(locked.state()) instanceof Decision.Advance<O> advance)) {
+                    return Optional.<Folded>empty();
+                  }
 
-              AgentState<O> next = advance.next();
-              states.save(locked, next, clock.instant());
+                  AgentState<O> next = advance.next();
+                  states.save(locked, next, clock.instant());
 
-              // What the fold wrote itself, then the observation it could not write: rendering
-              // belongs to the store, and an opening always follows whatever closed the turn
-              // before it.
-              List<HistoryStore.Appended> appended =
-                  new ArrayList<>(history.append(agentId, advance.recorded()));
-              if (advance.opensTurn()) {
-                appended.add(history.open(agentId, advance.opening()));
-              }
+                  // What the fold wrote itself, then the observation it could not write: rendering
+                  // belongs to the store, and an opening always follows whatever closed the turn
+                  // before it.
+                  List<HistoryStore.Appended> appended =
+                      new ArrayList<>(history.append(agentId, advance.recorded()));
+                  if (advance.opensTurn()) {
+                    appended.add(history.open(agentId, advance.opening()));
+                  }
 
-              for (AgentEffect effect : advance.effects()) {
-                effects.insert(agentId, effect, clock.instant());
-              }
-              return Optional.of(
-                  new Folded(
-                      describe(locked.state()),
-                      describe(next),
-                      List.copyOf(appended),
-                      names(advance.effects()),
-                      Narrations.of(
-                          advance.recorded(), opening(advance), advance.effects(), next)));
-            });
+                  for (AgentEffect effect : advance.effects()) {
+                    effects.insert(agentId, effect, clock.instant());
+                  }
+                  return Optional.of(
+                      new Folded(
+                          describe(locked.state()),
+                          describe(next),
+                          List.copyOf(appended),
+                          names(advance.effects()),
+                          Narrations.of(
+                              advance.recorded(), opening(advance), advance.effects(), next)));
+                }),
+            "a fold always returns");
 
     // Past this line the transaction has committed, so everything below is true. Logging the
     // transition from inside would announce a fold that a rollback could still undo -- a lock
     // timeout, a constraint violation on the append, a dropped connection -- and leave the log
     // and the database telling different stories. The log is the one somebody reads first.
-    if (outcome == null || outcome.isEmpty()) {
+    if (outcome.isEmpty()) {
       log.info("[{}] agent {}: ignoring redelivered {}", agentType.value(), agentId.value(), what);
       return;
     }
@@ -301,7 +294,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
    */
   private static String describe(AgentState<?> state) {
     return switch (state) {
-      case AgentState.Idle<?> idle -> "Idle(seq=" + idle.lastSeq() + ")";
+      case AgentState.Idle<?>(Seq lastSeq) -> "Idle(seq=" + lastSeq + ")";
       case AgentState.Inferring<?> calling ->
           "Inferring(turn=" + calling.turn() + ", backlog=" + calling.backlog().size() + ")";
       // Counted by phase, because "three outstanding" hides the difference between three
@@ -316,7 +309,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
               + ", backlog="
               + awaiting.backlog().size()
               + ")";
-      case AgentState.Terminated<?> done -> "Terminated(seq=" + done.lastSeq() + ")";
+      case AgentState.Terminated<?>(Seq lastSeq) -> "Terminated(seq=" + lastSeq + ")";
     };
   }
 

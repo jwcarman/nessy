@@ -14,7 +14,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 
@@ -23,13 +23,13 @@ class InferenceContextsTest {
 
   private static final AgentType CHAT = new AgentType("chat");
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
   private Harness<String> harness;
 
   @BeforeEach
   void startEngine() {
     engine =
-        new EngineUnderTest(
+        new EngineFixture(
             (request, narrator) ->
                 new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
     harness =

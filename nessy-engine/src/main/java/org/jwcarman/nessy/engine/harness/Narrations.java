@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -100,9 +99,9 @@ final class Narrations {
   private static Optional<AgentEvent> of(HistoryEntry entry) {
     return Optional.ofNullable(
         switch (entry) {
-          case HistoryEntry.ObservationReceived(Seq _, TurnId turn, var blocks) ->
+          case HistoryEntry.ObservationReceived(_, TurnId turn, var blocks) ->
               new AgentEvent.TurnStarted(turn, text(blocks));
-          case HistoryEntry.InferenceAnswered(Seq _, TurnId _, var blocks) ->
+          case HistoryEntry.InferenceAnswered(_, _, var blocks) ->
               new AgentEvent.Answered(text(blocks));
           case HistoryEntry.InferenceFailed _ -> new AgentEvent.TurnFailed();
           case HistoryEntry.InferenceRefused _ -> new AgentEvent.TurnRefused();
@@ -110,13 +109,13 @@ final class Narrations {
               new AgentEvent.ActionsRequested(
                   request.calls().stream().map(Block.ToolCall::name).toList());
           // Announced by the name a person uses, not the one the table does.
-          case HistoryEntry.ToolApproved(Seq _, TurnId _, CallId callId, var _) ->
+          case HistoryEntry.ToolApproved(_, _, CallId callId, _) ->
               new AgentEvent.CallApproved(callId);
-          case HistoryEntry.ToolDenied(Seq _, TurnId _, CallId callId, String reason, var _) ->
+          case HistoryEntry.ToolDenied(_, _, CallId callId, String reason, _) ->
               new AgentEvent.CallDenied(callId, reason);
-          case HistoryEntry.ToolSucceeded(Seq _, TurnId _, CallId callId, var _) ->
+          case HistoryEntry.ToolSucceeded(_, _, CallId callId, _) ->
               new AgentEvent.CallFinished(callId);
-          case HistoryEntry.ToolFailed(Seq _, TurnId _, CallId callId, String message) ->
+          case HistoryEntry.ToolFailed(_, _, CallId callId, String message) ->
               new AgentEvent.CallFailed(callId, message);
         });
   }

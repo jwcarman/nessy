@@ -32,14 +32,23 @@ public record Attempt(
 
   @Override
   public boolean equals(Object o) {
-    return o instanceof Attempt that
-        && attemptsMade == that.attemptsMade
-        && Objects.equals(effectId, that.effectId)
-        && Objects.equals(agentId, that.agentId)
-        && Arrays.equals(payload, that.payload)
-        && Arrays.equals(failurePayload, that.failurePayload)
-        && Objects.equals(deadline, that.deadline)
-        && Objects.equals(traceContext, that.traceContext);
+    return o
+            instanceof
+            Attempt(
+                UUID thatEffectId,
+                AgentId thatAgentId,
+                byte[] thatPayload,
+                byte[] thatFailurePayload,
+                int thatAttemptsMade,
+                Instant thatDeadline,
+                String thatTraceContext)
+        && attemptsMade == thatAttemptsMade
+        && Objects.equals(effectId, thatEffectId)
+        && Objects.equals(agentId, thatAgentId)
+        && Arrays.equals(payload, thatPayload)
+        && Arrays.equals(failurePayload, thatFailurePayload)
+        && Objects.equals(deadline, thatDeadline)
+        && Objects.equals(traceContext, thatTraceContext);
   }
 
   @Override

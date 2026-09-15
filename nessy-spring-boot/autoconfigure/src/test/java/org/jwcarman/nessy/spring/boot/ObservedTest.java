@@ -141,7 +141,7 @@ class ObservedTest {
           (_, _) -> {
             throw new IllegalStateException("a bug in the adapter");
           });
-    } catch (IllegalStateException expected) {
+    } catch (IllegalStateException _) {
       // The point is that it propagates: only the adapter's own bugs reach here.
     }
 

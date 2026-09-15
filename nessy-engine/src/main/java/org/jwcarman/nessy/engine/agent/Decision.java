@@ -13,12 +13,6 @@ import org.jwcarman.nessy.engine.history.HistoryEntry;
 public sealed interface Decision<O> {
 
   /**
-   * @param recorded what this fold decided belongs in the story, appended in order and written in
-   *     the same transaction as the state. The fold chooses; the shell writes. Nothing reaches
-   *     history that the fold did not put here, which keeps assembled background out of it without
-   *     a rule anyone has to follow.
-   */
-  /**
    * @param recorded entries the fold made itself, in order. Everything that needs no renderer: an
    *     answer already arrived as blocks, and a failure or a refusal carries no content at all.
    * @param opening the one thing a fold cannot write down, or null. An observation has to be

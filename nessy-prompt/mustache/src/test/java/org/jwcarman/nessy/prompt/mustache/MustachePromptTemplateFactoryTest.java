@@ -38,7 +38,8 @@ class MustachePromptTemplateFactoryTest {
   @DisplayName("a hole nothing fills is refused rather than sent")
   void an_unfilled_hole_throws() {
     PromptTemplate template = engine.compile("You serve {{who}}.");
-    assertThatThrownBy(() -> template.render(PromptVariables.none()))
+    PromptVariables none = PromptVariables.none();
+    assertThatThrownBy(() -> template.render(none))
         .isInstanceOf(MustacheException.class)
         .hasMessageContaining("who");
   }

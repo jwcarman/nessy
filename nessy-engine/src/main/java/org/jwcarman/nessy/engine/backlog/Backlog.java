@@ -99,13 +99,6 @@ public sealed interface Backlog<O> {
   }
 
   /**
-   * Closed to new observations. Whatever remains is still handed out -- so an agent can be told to
-   * finish what it was given -- and once that runs out it offers the pill, forever.
-   *
-   * <p>Forever is the point: terminality is enforced by the backlog rather than relied upon from
-   * the fold, so no observation arriving late can ever be taken.
-   */
-  /**
    * Taking nothing more, and offering nothing more.
    *
    * <p>Carries no items: terminating abandons what was waiting. So {@link #next()} is unconditional

@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
@@ -44,11 +44,11 @@ import org.jwcarman.nessy.spi.inference.InferenceResult;
  */
 class DeferredToolTest {
 
-  private static EngineUnderTest engine;
+  private static EngineFixture engine;
 
   @BeforeAll
   static void startEngine() {
-    engine = new EngineUnderTest(MODEL);
+    engine = new EngineFixture(MODEL);
   }
 
   @AfterAll

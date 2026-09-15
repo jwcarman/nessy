@@ -80,12 +80,14 @@ final class ReplLoop {
       case REFUSED -> note("the model refused to answer");
       case FAILED -> note("the turn failed; the model could not be reached or did not finish");
       case TERMINATED -> note("the agent was terminated");
-      case ANSWERED -> {
-        if (!narration.spoke()) {
-          note("the model ended the turn without saying anything");
-        }
-        // Otherwise it said its piece: the answer IS the report.
-      }
+      case ANSWERED -> reportAnswer();
+    }
+  }
+
+  /** Nothing to add when the model spoke: the answer IS the report. */
+  private void reportAnswer() {
+    if (!narration.spoke()) {
+      note("the model ended the turn without saying anything");
     }
   }
 

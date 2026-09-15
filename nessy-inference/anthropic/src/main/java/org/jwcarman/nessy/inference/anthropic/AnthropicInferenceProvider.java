@@ -153,11 +153,12 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     if (block.isText()) {
       String text = block.text().orElseThrow().text();
       // Whitespace is not content in either position: an answer of it is an empty answer.
-      return text.isBlank()
-          // Formatting rather than the model talking: a block of whitespace is a dim empty line
-          // in every console and a wasted block in every later request.
-          ? Optional.empty()
-          : Optional.of(asking ? new Block.Commentary(text) : new Block.Text(text));
+      // Formatting rather than the model talking: a block of whitespace is a dim empty line
+      // in every console and a wasted block in every later request.
+      if (text.isBlank()) {
+        return Optional.empty();
+      }
+      return Optional.of(asking ? new Block.Commentary(text) : new Block.Text(text));
     }
     if (block.isThinking()) {
       var thinking = block.thinking().orElseThrow();

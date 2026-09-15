@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class NotebookToolsTest {
 
   // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
-  private final AgentId AGENT = Calls.agent();
+  private final AgentId thisAgent = Calls.agent();
 
   private Notebook notebook;
 
@@ -50,7 +50,7 @@ class NotebookToolsTest {
    * thing.
    */
   private <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
+    Awaited<ToolResult> answer = tool.call(Calls.by(thisAgent, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).value();
   }
@@ -71,9 +71,9 @@ class NotebookToolsTest {
               NotebookTools.remember(notebook),
               new NotebookTools.RememberNote("Prefers terse answers", "Short answers."));
 
-      String id = notebook.headings(AGENT).getFirst().id();
+      String id = notebook.headings(thisAgent).getFirst().id();
       assertThat(said(result)).contains(id);
-      assertThat(notebook.find(AGENT, id).orElseThrow().body()).isEqualTo("Short answers.");
+      assertThat(notebook.find(thisAgent, id).orElseThrow().body()).isEqualTo("Short answers.");
     }
 
     /**
@@ -86,7 +86,7 @@ class NotebookToolsTest {
       run(NotebookTools.remember(notebook), new NotebookTools.RememberNote("a hook", "one"));
       run(NotebookTools.remember(notebook), new NotebookTools.RememberNote("a hook", "two"));
 
-      assertThat(notebook.headings(AGENT)).hasSize(2);
+      assertThat(notebook.headings(thisAgent)).hasSize(2);
     }
 
     /**
@@ -122,14 +122,14 @@ class NotebookToolsTest {
 
     @Test
     void replaces_the_note_in_place() {
-      Notebook.Entry first = notebook.write(AGENT, "Prefers terse", "old");
+      Notebook.Entry first = notebook.write(thisAgent, "Prefers terse", "old");
 
       run(
           NotebookTools.revise(notebook),
           new NotebookTools.ReviseNote(first.id(), "Prefers terse", "new"));
 
-      assertThat(notebook.headings(AGENT)).hasSize(1);
-      assertThat(notebook.find(AGENT, first.id()).orElseThrow().body()).isEqualTo("new");
+      assertThat(notebook.headings(thisAgent)).hasSize(1);
+      assertThat(notebook.find(thisAgent, first.id()).orElseThrow().body()).isEqualTo("new");
     }
 
     @Test
@@ -140,7 +140,7 @@ class NotebookToolsTest {
 
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
       assertThat(((ToolResult.Failure) result).message()).contains("notebook index");
-      assertThat(notebook.headings(AGENT)).isEmpty();
+      assertThat(notebook.headings(thisAgent)).isEmpty();
     }
   }
 
@@ -149,7 +149,7 @@ class NotebookToolsTest {
 
     @Test
     void returns_the_body() {
-      Notebook.Entry plans = notebook.write(AGENT, "What we are doing", "Ship on Friday.");
+      Notebook.Entry plans = notebook.write(thisAgent, "What we are doing", "Ship on Friday.");
 
       ToolResult result =
           run(NotebookTools.recall(notebook), new NotebookTools.RecallNote(plans.id()));
@@ -175,11 +175,11 @@ class NotebookToolsTest {
 
     @Test
     void removes_the_note() {
-      Notebook.Entry stale = notebook.write(AGENT, "Old news", "body");
+      Notebook.Entry stale = notebook.write(thisAgent, "Old news", "body");
 
       run(NotebookTools.forget(notebook), new NotebookTools.ForgetNote(stale.id()));
 
-      assertThat(notebook.find(AGENT, stale.id())).isEmpty();
+      assertThat(notebook.find(thisAgent, stale.id())).isEmpty();
     }
 
     @Test
@@ -197,7 +197,7 @@ class NotebookToolsTest {
 
     /** What the harness would ask on the way into a turn. */
     private Optional<Ambient> index() {
-      return NotebookTools.index(notebook).forAgent(AGENT);
+      return NotebookTools.index(notebook).forAgent(thisAgent);
     }
 
     private String shown() {
@@ -218,7 +218,7 @@ class NotebookToolsTest {
 
     @Test
     void names_and_hooks_reach_the_model() {
-      Notebook.Entry note = notebook.write(AGENT, "Prefers terse answers", "body");
+      Notebook.Entry note = notebook.write(thisAgent, "Prefers terse answers", "body");
 
       assertThat(shown()).contains(note.id()).contains("Prefers terse answers");
     }
@@ -226,7 +226,7 @@ class NotebookToolsTest {
     @Test
     @DisplayName("bodies do not: the model asks for those, which is the whole design")
     void bodies_stay_out_of_the_context() {
-      notebook.write(AGENT, "Prefers terse", "THE SECRET BODY");
+      notebook.write(thisAgent, "Prefers terse", "THE SECRET BODY");
 
       assertThat(shown()).doesNotContain("THE SECRET BODY");
     }
@@ -243,10 +243,10 @@ class NotebookToolsTest {
     void the_index_reflects_the_notebook_as_it_stands() {
       assertThat(index()).isEmpty();
 
-      Notebook.Entry note = notebook.write(AGENT, "Just written", "body");
+      Notebook.Entry note = notebook.write(thisAgent, "Just written", "body");
       assertThat(shown()).contains("Just written");
 
-      notebook.forget(AGENT, note.id());
+      notebook.forget(thisAgent, note.id());
       assertThat(index()).as("and stops saying it the moment it stops being true").isEmpty();
     }
 

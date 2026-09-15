@@ -35,13 +35,21 @@ public record AgentStateRow(
 
   @Override
   public boolean equals(Object o) {
-    return o instanceof AgentStateRow that
-        && version == that.version
-        && Objects.equals(agentId, that.agentId)
-        && Objects.equals(agentType, that.agentType)
-        && Objects.equals(stateType, that.stateType)
-        && Arrays.equals(payload, that.payload)
-        && Objects.equals(updatedAt, that.updatedAt);
+    return o
+            instanceof
+            AgentStateRow(
+                UUID thatAgentId,
+                String thatAgentType,
+                long thatVersion,
+                String thatStateType,
+                byte[] thatPayload,
+                Instant thatUpdatedAt)
+        && version == thatVersion
+        && Objects.equals(agentId, thatAgentId)
+        && Objects.equals(agentType, thatAgentType)
+        && Objects.equals(stateType, thatStateType)
+        && Arrays.equals(payload, thatPayload)
+        && Objects.equals(updatedAt, thatUpdatedAt);
   }
 
   @Override

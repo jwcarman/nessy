@@ -73,12 +73,6 @@ public record NessyProperties(
   }
 
   /**
-   * The system prompt, from whichever source was configured.
-   *
-   * @throws IllegalStateException if both were given — silently preferring one would make a
-   *     misconfigured prompt very hard to notice
-   */
-  /**
    * The standing instruction, from whichever of the two places it was given.
    *
    * <p>Required rather than defaulted to nothing. An agent with no system prompt is a chat box, and

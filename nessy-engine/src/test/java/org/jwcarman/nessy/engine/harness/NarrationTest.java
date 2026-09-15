@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
@@ -36,7 +36,7 @@ import org.jwcarman.nessy.spi.inference.InferenceResult;
  */
 class NarrationTest {
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
 
   /**
    * A narrator is a factory-level seam, not a per-harness one, so varying it means varying the
@@ -46,7 +46,7 @@ class NarrationTest {
     if (engine != null) {
       engine.close();
     }
-    engine = new EngineUnderTest(callsThenAnswers(), narrator);
+    engine = new EngineFixture(callsThenAnswers(), narrator);
   }
 
   @AfterEach

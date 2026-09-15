@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class PlanToolsTest {
 
   // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
-  private final AgentId AGENT = Calls.agent();
+  private final AgentId thisAgent = Calls.agent();
 
   private PlanStore plans;
 
@@ -46,7 +46,7 @@ class PlanToolsTest {
 
   /** What the engine hands a running tool. No mocking library, and none needed. */
   private <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
+    Awaited<ToolResult> answer = tool.call(Calls.by(thisAgent, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).value();
   }
@@ -77,7 +77,7 @@ class PlanToolsTest {
               task("Read the spec", Plan.Status.DONE),
               task("Write the code", Plan.Status.IN_PROGRESS)));
 
-      assertThat(plans.find(AGENT).orElseThrow().tasks())
+      assertThat(plans.find(thisAgent).orElseThrow().tasks())
           .containsExactly(
               new Plan.Task("Read the spec", Plan.Status.DONE),
               new Plan.Task("Write the code", Plan.Status.IN_PROGRESS));
@@ -90,7 +90,7 @@ class PlanToolsTest {
 
       run(PlanTools.updatePlan(plans), sending(task("Second", Plan.Status.DONE)));
 
-      assertThat(plans.find(AGENT).orElseThrow().tasks())
+      assertThat(plans.find(thisAgent).orElseThrow().tasks())
           .containsExactly(new Plan.Task("Second", Plan.Status.DONE));
     }
 
@@ -101,7 +101,7 @@ class PlanToolsTest {
       ToolResult result = run(PlanTools.updatePlan(plans), sending());
 
       assertThat(result).isInstanceOf(ToolResult.Success.class);
-      assertThat(plans.find(AGENT)).isEmpty();
+      assertThat(plans.find(thisAgent)).isEmpty();
     }
 
     /** A re-drive executes the same call again; the plan must not double or drift. */
@@ -113,7 +113,7 @@ class PlanToolsTest {
       run(PlanTools.updatePlan(plans), call);
       run(PlanTools.updatePlan(plans), call);
 
-      assertThat(plans.find(AGENT).orElseThrow().tasks()).hasSize(2);
+      assertThat(plans.find(thisAgent).orElseThrow().tasks()).hasSize(2);
     }
 
     /** The model can read this and send a better list; a thrown exception would end the turn. */
@@ -123,7 +123,7 @@ class PlanToolsTest {
       ToolResult result = run(PlanTools.updatePlan(plans), sending(task(" ", Plan.Status.PENDING)));
 
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
-      assertThat(plans.find(AGENT)).isEmpty();
+      assertThat(plans.find(thisAgent)).isEmpty();
     }
 
     @Test
@@ -131,7 +131,7 @@ class PlanToolsTest {
       ToolResult result = run(PlanTools.updatePlan(plans), sending(task("Read", null)));
 
       assertThat(result).isInstanceOf(ToolResult.Failure.class);
-      assertThat(plans.find(AGENT)).isEmpty();
+      assertThat(plans.find(thisAgent)).isEmpty();
     }
 
     @Test
@@ -157,7 +157,7 @@ class PlanToolsTest {
       ToolResult result = run(PlanTools.updatePlan(plans), new PlanTools.UpdatePlan(null));
 
       assertThat(result).isInstanceOf(ToolResult.Success.class);
-      assertThat(plans.find(AGENT)).isEmpty();
+      assertThat(plans.find(thisAgent)).isEmpty();
     }
 
     /**
@@ -181,7 +181,7 @@ class PlanToolsTest {
 
     /** What the harness would ask on the way into a turn. */
     private Optional<Ambient> ambient() {
-      return PlanTools.plan(plans).forAgent(AGENT);
+      return PlanTools.plan(plans).forAgent(thisAgent);
     }
 
     private String shown() {

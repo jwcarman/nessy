@@ -13,7 +13,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -35,14 +35,14 @@ class InFlightLimitTest {
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
   private static List<HistoryEntry> story(
-      EngineUnderTest engine, AgentType agentType, AgentId agentId) {
+      EngineFixture engine, AgentType agentType, AgentId agentId) {
     return engine.history().entriesFrom(agentType, agentId, 0);
   }
 
   @Test
   void neverMoreThanTheLimitAreInFlightAtOnce() {
     Census census = new Census();
-    try (EngineUnderTest engine = new EngineUnderTest(census)) {
+    try (EngineFixture engine = new EngineFixture(census)) {
       Harness<String> harness =
           engine
               .harnesses()

@@ -72,10 +72,14 @@ final class RecordingOdyssey implements Odyssey {
       }
 
       @Override
-      public void complete() {}
+      public void complete() {
+        // a recording is never completed; it is read
+      }
 
       @Override
-      public void delete() {}
+      public void delete() {
+        // nor deleted
+      }
     };
   }
 }

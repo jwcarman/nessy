@@ -20,7 +20,7 @@ public sealed interface ApprovalResult {
   record Approved(Optional<String> reference) implements ApprovalResult {
 
     public Approved {
-      Objects.requireNonNull(reference, "reference must not be null");
+      requireReference(reference);
     }
   }
 
@@ -39,7 +39,7 @@ public sealed interface ApprovalResult {
 
     public Denied {
       Objects.requireNonNull(reason, "reason must not be null");
-      Objects.requireNonNull(reference, "reference must not be null");
+      requireReference(reference);
     }
   }
 
@@ -60,7 +60,7 @@ public sealed interface ApprovalResult {
    *     of an evidence bundle. Never interpreted here.
    */
   static ApprovalResult approvedBy(String reference) {
-    Objects.requireNonNull(reference, "reference must not be null");
+    requireReference(reference);
     return new Approved(Optional.of(reference));
   }
 
@@ -70,7 +70,12 @@ public sealed interface ApprovalResult {
 
   /** Refused, and here is where to read who refused it. */
   static ApprovalResult deniedBy(String reason, String reference) {
-    Objects.requireNonNull(reference, "reference must not be null");
+    requireReference(reference);
     return new Denied(reason, Optional.of(reference));
+  }
+
+  /** Either form of reference -- the value, or an {@code Optional} of it -- must be present. */
+  private static void requireReference(Object reference) {
+    Objects.requireNonNull(reference, "reference must not be null");
   }
 }

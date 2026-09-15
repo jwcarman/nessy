@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 
@@ -36,8 +36,8 @@ class VirtualThreadsTest {
     AgentType type = new AgentType("virtual");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    try (EngineUnderTest engine =
-        new EngineUnderTest(
+    try (EngineFixture engine =
+        new EngineFixture(
             (_, _) -> {
               virtual.set(Thread.currentThread().isVirtual());
               return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));

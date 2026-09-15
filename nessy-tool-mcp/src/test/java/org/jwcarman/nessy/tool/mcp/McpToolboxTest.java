@@ -74,10 +74,6 @@ class McpToolboxTest {
     return arguments;
   }
 
-  /**
-   * Where an answer would go if the tool deferred. An MCP {@code tools/call} is a single round trip
-   * and never defers, so nothing reads it.
-   */
   /** What the engine hands a running tool. No mocking library, and none needed. */
   private static ToolCallRequest<JsonNode> contextFor(JsonNode arguments) {
     return new ToolCallRequest<>() {

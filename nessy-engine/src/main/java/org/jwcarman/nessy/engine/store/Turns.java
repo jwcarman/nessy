@@ -3,7 +3,6 @@ package org.jwcarman.nessy.engine.store;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
@@ -35,7 +34,7 @@ final class Turns {
 
         // Opens one. A turn still open before it was left that way by a fold that ended
         // one turn and began the next, so it is finished and kept as it stands.
-        case HistoryEntry.ObservationReceived(Seq seq, TurnId _, var blocks) -> {
+        case HistoryEntry.ObservationReceived(Seq seq, _, var blocks) -> {
           if (current != null) {
             turns.add(current.build());
           }
@@ -45,28 +44,28 @@ final class Turns {
         // Close one. There is still no fourth way for a turn to end, and this switch is
         // what makes that true: a new kind of entry stops it compiling until somebody says
         // whether it ends a turn and what that ending is.
-        case HistoryEntry.InferenceAnswered(Seq seq, TurnId _, var blocks) ->
+        case HistoryEntry.InferenceAnswered(Seq seq, _, var blocks) ->
             require(current, entry).closedBy(new TurnResult.Answered(blocks), seq, row.tokens());
-        case HistoryEntry.InferenceFailed(Seq seq, TurnId _) ->
+        case HistoryEntry.InferenceFailed(Seq seq, _) ->
             require(current, entry).closedBy(new TurnResult.Failed(), seq, row.tokens());
-        case HistoryEntry.InferenceRefused(Seq seq, TurnId _) ->
+        case HistoryEntry.InferenceRefused(Seq seq, _) ->
             require(current, entry).closedBy(new TurnResult.Refused(), seq, row.tokens());
 
         // Opens a round inside the turn without closing the turn. The only entry from an
         // inference that is not terminal, because it is the one that takes on obligations
         // rather than settling them.
-        case HistoryEntry.InferenceRequestedActions(Seq seq, TurnId _, var blocks) ->
+        case HistoryEntry.InferenceRequestedActions(Seq seq, _, var blocks) ->
             require(current, entry).requested(blocks, seq, row.tokens());
 
         // Discharge one call each. Written separately as they arrive; gathered back
         // against the request they answer here, once, rather than by every adapter.
-        case HistoryEntry.ToolSucceeded(Seq seq, TurnId _, CallId callId, var blocks) ->
+        case HistoryEntry.ToolSucceeded(Seq seq, _, CallId callId, var blocks) ->
             require(current, entry)
                 .resolved(new ToolOutcome.Succeeded(callId, blocks), seq, row.tokens());
-        case HistoryEntry.ToolFailed(Seq seq, TurnId _, CallId callId, String message) ->
+        case HistoryEntry.ToolFailed(Seq seq, _, CallId callId, String message) ->
             require(current, entry)
                 .resolved(new ToolOutcome.Failed(callId, message), seq, row.tokens());
-        case HistoryEntry.ToolDenied(Seq seq, TurnId _, CallId callId, String reason, var _) ->
+        case HistoryEntry.ToolDenied(Seq seq, _, CallId callId, String reason, _) ->
             require(current, entry)
                 .resolved(new ToolOutcome.Denied(callId, reason), seq, row.tokens());
 

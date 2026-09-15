@@ -69,6 +69,7 @@
     <module>nessy-approval</module>
     <module>nessy-console</module>
     <module>nessy-examples</module>
+    <module>nessy-coverage</module>
 
     <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
@@ -256,39 +257,43 @@
          coverage number would mean writing tests for test helpers to satisfy an
          arithmetic that never described them. -->
     <sonar.exclusions>nessy-examples/**</sonar.exclusions>
+    <!-- Coverage is attributed to the module whose tests exercised the line, whichever module
+         owns it: the api and spi are exercised by the engine's tests, and this is where that
+         shows. Built by nessy-coverage, last in the reactor. -->
+    <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/nessy-coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 
     <!-- Accepted findings — review-ruled, recorded in docs/superpowers ledgers.
          Config documents them; code never suppresses. -->
-    <sonar.issue.ignore.multicriteria>e1,e2,e3,e4,e5,e6</sonar.issue.ignore.multicriteria>
+    <sonar.issue.ignore.multicriteria>e1,e2,e3,e4,e5,e6,e7</sonar.issue.ignore.multicriteria>
 
-    <!-- e1: demos are narrated tests, deliberately named, explicitly in
-         surefire's includes. -->
-    <sonar.issue.ignore.multicriteria.e1.ruleKey>java:S3577</sonar.issue.ignore.multicriteria.e1.ruleKey>
-    <sonar.issue.ignore.multicriteria.e1.resourceKey>**/*Demo.java</sonar.issue.ignore.multicriteria.e1.resourceKey>
+    <!-- e1: engine wiring. The handlers, the dispatcher, the harness and the tool binding are
+         built once, by the factory, from their collaborators; a parameter object would name a
+         grouping that exists nowhere else and reintroduce positional hazards. -->
+    <sonar.issue.ignore.multicriteria.e1.ruleKey>java:S107</sonar.issue.ignore.multicriteria.e1.ruleKey>
+    <sonar.issue.ignore.multicriteria.e1.resourceKey>nessy-engine/**</sonar.issue.ignore.multicriteria.e1.resourceKey>
 
-    <!-- e2: the 10-arg composition point is ruled (spec
-         docs/superpowers/specs/2026-08-18-agent-as-scope-design.md §10.11
-         amendment); a parameter object would reintroduce positional hazards. -->
-    <sonar.issue.ignore.multicriteria.e2.ruleKey>java:S107</sonar.issue.ignore.multicriteria.e2.ruleKey>
-    <sonar.issue.ignore.multicriteria.e2.resourceKey>**/Harness.java</sonar.issue.ignore.multicriteria.e2.resourceKey>
+    <!-- e2..e4: phantom-typed ADT markers. O is the observation type the implementations carry;
+         the sealed interface names it so a Decision<O> cannot be applied to another agent's state. -->
+    <sonar.issue.ignore.multicriteria.e2.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e2.ruleKey>
+    <sonar.issue.ignore.multicriteria.e2.resourceKey>**/Awaited.java</sonar.issue.ignore.multicriteria.e2.resourceKey>
+    <sonar.issue.ignore.multicriteria.e3.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e3.ruleKey>
+    <sonar.issue.ignore.multicriteria.e3.resourceKey>**/Decision.java</sonar.issue.ignore.multicriteria.e3.resourceKey>
+    <sonar.issue.ignore.multicriteria.e4.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e4.ruleKey>
+    <sonar.issue.ignore.multicriteria.e4.resourceKey>**/Pull.java</sonar.issue.ignore.multicriteria.e4.resourceKey>
 
-    <!-- e3: wildcard is correct; any fix forces machine doors public (review
-         ruling). -->
-    <sonar.issue.ignore.multicriteria.e3.ruleKey>java:S1452</sonar.issue.ignore.multicriteria.e3.ruleKey>
-    <sonar.issue.ignore.multicriteria.e3.resourceKey>**/AgentResolver.java</sonar.issue.ignore.multicriteria.e3.resourceKey>
+    <!-- e5: the console writes to the console. -->
+    <sonar.issue.ignore.multicriteria.e5.ruleKey>java:S106</sonar.issue.ignore.multicriteria.e5.ruleKey>
+    <sonar.issue.ignore.multicriteria.e5.resourceKey>**/ConsoleIo.java</sonar.issue.ignore.multicriteria.e5.resourceKey>
 
-    <!-- e4: record semantics would contradict the documented identity-equality
-         design. -->
-    <sonar.issue.ignore.multicriteria.e4.ruleKey>java:S6206</sonar.issue.ignore.multicriteria.e4.ruleKey>
-    <sonar.issue.ignore.multicriteria.e4.resourceKey>**/Key.java</sonar.issue.ignore.multicriteria.e4.resourceKey>
+    <!-- e6: a model that takes 250ms to answer is the fixture; the test measures what happens
+         while it is busy. -->
+    <sonar.issue.ignore.multicriteria.e6.ruleKey>java:S2925</sonar.issue.ignore.multicriteria.e6.ruleKey>
+    <sonar.issue.ignore.multicriteria.e6.resourceKey>**/InFlightLimitTest.java</sonar.issue.ignore.multicriteria.e6.resourceKey>
 
-    <!-- e5: deliberate phantom-typed ADT marker. -->
-    <sonar.issue.ignore.multicriteria.e5.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e5.ruleKey>
-    <sonar.issue.ignore.multicriteria.e5.resourceKey>**/Awaited.java</sonar.issue.ignore.multicriteria.e5.resourceKey>
-
-    <!-- e6: JVM main signature. -->
-    <sonar.issue.ignore.multicriteria.e6.ruleKey>java:S1172</sonar.issue.ignore.multicriteria.e6.ruleKey>
-    <sonar.issue.ignore.multicriteria.e6.resourceKey>**/ApprovalPlayground.java</sonar.issue.ignore.multicriteria.e6.resourceKey>
+    <!-- e7: the lambda dereferences an array cell that is filled in after the approver is built;
+         a method reference would capture null. -->
+    <sonar.issue.ignore.multicriteria.e7.ruleKey>java:S1612</sonar.issue.ignore.multicriteria.e7.ruleKey>
+    <sonar.issue.ignore.multicriteria.e7.resourceKey>**/PolicyApproverTest.java</sonar.issue.ignore.multicriteria.e7.resourceKey>
   </properties>
 
   <dependencyManagement>

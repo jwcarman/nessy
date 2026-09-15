@@ -60,7 +60,7 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public ObservationReceived {
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      requireBlocks(blocks);
       if (blocks.isEmpty()) {
         // Closing the other half of the same hole as the empty text block: an entry with
         // no blocks renders to nothing just as surely as a block with no text. Anthropic
@@ -91,7 +91,7 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public InferenceAnswered {
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      requireBlocks(blocks);
       if (blocks.isEmpty()) {
         throw new IllegalArgumentException("answer must have at least one block");
       }
@@ -156,7 +156,7 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public InferenceRequestedActions {
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      requireBlocks(blocks);
       if (blocks.stream().noneMatch(Block.ToolCall.class::isInstance)) {
         // Without a call this entry says a turn is outstanding while owing nothing, and
         // nothing will ever arrive to close it -- the agent waits forever on work it never
@@ -187,8 +187,8 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public ToolSucceeded {
-      callId = requireCallId(callId);
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      requireCallId(callId);
+      requireBlocks(blocks);
       if (blocks.isEmpty()) {
         // A tool that returns nothing still has to say so, because the wire requires a
         // result for every call and an empty one is not a result -- it is a request that
@@ -217,8 +217,8 @@ public sealed interface HistoryEntry {
   record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements HistoryEntry {
 
     public ToolFailed {
-      callId = requireCallId(callId);
-      message = requireMessage(message, "message");
+      requireCallId(callId);
+      requireMessage(message, "message");
     }
   }
 
@@ -245,7 +245,7 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public ToolApproved {
-      callId = requireCallId(callId);
+      requireCallId(callId);
       Objects.requireNonNull(reference, "reference must not be null");
     }
   }
@@ -262,14 +262,18 @@ public sealed interface HistoryEntry {
       implements HistoryEntry {
 
     public ToolDenied {
-      callId = requireCallId(callId);
-      reason = requireMessage(reason, "reason");
+      requireCallId(callId);
+      requireMessage(reason, "reason");
       Objects.requireNonNull(reference, "reference must not be null");
     }
 
     public ToolDenied(Seq seq, TurnId turn, CallId callId, String reason) {
       this(seq, turn, callId, reason, Optional.empty());
     }
+  }
+
+  private static void requireBlocks(List<?> blocks) {
+    Objects.requireNonNull(blocks, "blocks must not be null");
   }
 
   private static CallId requireCallId(CallId callId) {

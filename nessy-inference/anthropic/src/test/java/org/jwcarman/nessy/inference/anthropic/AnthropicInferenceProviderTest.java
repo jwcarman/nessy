@@ -654,7 +654,8 @@ class AnthropicInferenceProviderTest {
      */
     @Test
     void a_bug_in_the_adapter_is_not_dressed_up_as_the_model_failing() {
-      assertThatThrownBy(() -> inferFailing(new IllegalStateException("a bug in here")))
+      IllegalStateException bug = new IllegalStateException("a bug in here");
+      assertThatThrownBy(() -> inferFailing(bug))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("a bug in here");
     }

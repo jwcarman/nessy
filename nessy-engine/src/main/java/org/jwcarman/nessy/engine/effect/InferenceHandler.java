@@ -72,11 +72,6 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
   }
 
   /**
-   * Permanent by construction: a payload that will not decode in this build will not decode on the
-   * next attempt either, and a deadline that has passed will not come back. Whether a later build
-   * could read it is a different question, and not one this row can answer.
-   */
-  /**
    * Unknown, and honestly so. An inference that failed on its own terms never reaches here --
    * {@link InferenceService} is total for those and they arrive as {@link InferenceResult.Fault}
    * below. What lands here is anything else that threw: a fold that would not commit, a bug in this

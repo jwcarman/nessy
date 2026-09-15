@@ -89,15 +89,12 @@ class JdbcLeasesTest {
   @Test
   @DisplayName("is free again once the holder's work returns, however it returns")
   void released_after_the_work() {
-    assertThatThrownBy(
-            () ->
-                leases.tryRun(
-                    "summary",
-                    key,
-                    Duration.ofSeconds(30),
-                    () -> {
-                      throw new IllegalStateException("the work failed");
-                    }))
+    Duration ttl = Duration.ofSeconds(30);
+    Runnable failing =
+        () -> {
+          throw new IllegalStateException("the work failed");
+        };
+    assertThatThrownBy(() -> leases.tryRun("summary", key, ttl, failing))
         .isInstanceOf(IllegalStateException.class);
 
     AtomicInteger ran = new AtomicInteger();

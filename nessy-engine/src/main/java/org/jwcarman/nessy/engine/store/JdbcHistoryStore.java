@@ -14,7 +14,6 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.engine.token.TokenEstimator;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
-import org.jwcarman.nessy.engine.tool.ToolCalls.ResolvedCall;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -81,6 +80,8 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
                      ORDER BY turn_id DESC
                      LIMIT ?) recent
             """;
+
+  private static final String PAYLOAD = "payload";
 
   private final JdbcClient jdbc;
   private final Codec<HistoryEntry> codec;
@@ -176,7 +177,7 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
   public List<HistoryEntry> entriesFrom(AgentType agentType, AgentId agentId, long fromTurn) {
     return jdbc.sql(READ_FROM)
         .params(agentType.value(), agentId.value(), fromTurn)
-        .query((rs, n) -> codec.decode(rs.getBytes("payload")))
+        .query((rs, n) -> codec.decode(rs.getBytes(PAYLOAD)))
         .list();
   }
 
@@ -195,7 +196,7 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
   public Optional<HistoryEntry> entryAt(AgentType agentType, AgentId agentId, Seq seq) {
     return jdbc.sql(READ_AT)
         .params(agentType.value(), agentId.value(), seq.value())
-        .query((rs, n) -> codec.decode(rs.getBytes("payload")))
+        .query((rs, n) -> codec.decode(rs.getBytes(PAYLOAD)))
         .optional();
   }
 
@@ -209,7 +210,7 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
     return Turns.assemble(
         jdbc.sql(READ_FROM)
             .params(agentType.value(), agentId.value(), fromTurn)
-            .query((rs, n) -> new Stored(codec.decode(rs.getBytes("payload")), rs.getInt("tokens")))
+            .query((rs, n) -> new Stored(codec.decode(rs.getBytes(PAYLOAD)), rs.getInt("tokens")))
             .list());
   }
 

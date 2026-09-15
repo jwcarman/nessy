@@ -16,7 +16,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -38,7 +38,7 @@ class HarnessLoopTest {
   private static final AgentType CHAT = new AgentType("chat");
 
   private final RecordingModel model = new RecordingModel();
-  private EngineUnderTest engine;
+  private EngineFixture engine;
   private Harness<String> harness;
 
   /**
@@ -48,7 +48,7 @@ class HarnessLoopTest {
    */
   @BeforeEach
   void startEngine() {
-    engine = new EngineUnderTest(model);
+    engine = new EngineFixture(model);
     harness =
         engine
             .harnesses()

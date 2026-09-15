@@ -92,16 +92,14 @@ class ReplyTokensTest {
 
   @Test
   void somethingThatIsNotATokenAtAllIsRefused() {
-    assertThatThrownBy(() -> tokens.read(new ReplyToken("not base64 at all!!")))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(
-            () ->
-                tokens.read(
-                    new ReplyToken(
-                        Base64.getUrlEncoder()
-                            .withoutPadding()
-                            .encodeToString("short".getBytes(StandardCharsets.UTF_8)))))
-        .isInstanceOf(IllegalArgumentException.class);
+    ReplyToken notBase64 = new ReplyToken("not base64 at all!!");
+    ReplyToken tooShort =
+        new ReplyToken(
+            Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString("short".getBytes(StandardCharsets.UTF_8)));
+    assertThatThrownBy(() -> tokens.read(notBase64)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> tokens.read(tooShort)).isInstanceOf(IllegalArgumentException.class);
   }
 
   /**
@@ -135,7 +133,8 @@ class ReplyTokensTest {
     ReplyToken fresh = rotated.mint(TYPE, AGENT, new Seq(42), CALL);
 
     assertThat(ReplyTokens.withKey(KEY_B).read(fresh).callId()).isEqualTo(CALL);
-    assertThatThrownBy(() -> ReplyTokens.withKey(KEY_A).read(fresh))
+    ReplyTokens onlyTheOldKey = ReplyTokens.withKey(KEY_A);
+    assertThatThrownBy(() -> onlyTheOldKey.read(fresh))
         .as("dropping the outgoing key early is the only way to break outstanding tokens")
         .isInstanceOf(IllegalArgumentException.class);
   }
@@ -169,7 +168,8 @@ class ReplyTokensTest {
   void coordinatesThatCouldMoveABoundaryAreRefused() {
     AgentType sneaky = new AgentType("chat" + SEP + AGENT.value() + SEP + "42");
 
-    assertThatThrownBy(() -> tokens.mint(sneaky, AGENT, new Seq(42), CALL))
+    Seq seq = new Seq(42);
+    assertThatThrownBy(() -> tokens.mint(sneaky, AGENT, seq, CALL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unit separator");
   }

@@ -55,17 +55,15 @@ final class Listeners implements Narrator, AutoCloseable {
 
   private static void tell(
       AgentEventListener listener, AgentType agentType, AgentId agentId, AgentEvent event) {
-    {
-      try {
-        listener.on(agentType, agentId, event);
-      } catch (RuntimeException e) {
-        log.warn(
-            "[{}] agent {}: a listener threw on {}; carrying on",
-            agentType.value(),
-            agentId.value(),
-            event.getClass().getSimpleName(),
-            e);
-      }
+    try {
+      listener.on(agentType, agentId, event);
+    } catch (RuntimeException e) {
+      log.warn(
+          "[{}] agent {}: a listener threw on {}; carrying on",
+          agentType.value(),
+          agentId.value(),
+          event.getClass().getSimpleName(),
+          e);
     }
   }
 

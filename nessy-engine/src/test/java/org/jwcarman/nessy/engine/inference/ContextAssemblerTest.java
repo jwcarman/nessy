@@ -245,7 +245,9 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
       Summarizer confused = _ -> List.of(summary(1, 15), summary(10, 20));
 
-      assertThatThrownBy(() -> assembler(histories, List.of(confused), 50).assemble(invocation()))
+      var assembler = assembler(histories, List.of(confused), 50);
+      var invocation = invocation();
+      assertThatThrownBy(() -> assembler.assemble(invocation))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("overlap");
     }
@@ -260,7 +262,9 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
       Summarizer tooEager = _ -> List.of(summary(1, 30));
 
-      assertThatThrownBy(() -> assembler(histories, List.of(tooEager), 50).assemble(invocation()))
+      var assembler = assembler(histories, List.of(tooEager), 50);
+      var invocation = invocation();
+      assertThatThrownBy(() -> assembler.assemble(invocation))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("turn being answered");
     }
@@ -295,7 +299,9 @@ class ContextAssemblerTest {
   /** A cap of zero would send an empty context; refused where it is set, not where it is spent. */
   @Test
   void a_non_positive_cap_is_rejected_at_construction() {
-    assertThatThrownBy(() -> assembler(new RecordingHistories(List.of()), List.of(), 0))
+    RecordingHistories empty = new RecordingHistories(List.of());
+    List<Summarizer> noSummaries = List.of();
+    assertThatThrownBy(() -> assembler(empty, noSummaries, 0))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
   }

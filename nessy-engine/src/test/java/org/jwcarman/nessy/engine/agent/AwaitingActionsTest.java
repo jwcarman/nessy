@@ -114,14 +114,11 @@ class AwaitingActionsTest {
   /** An agent awaiting nothing would sit there forever, so the state cannot be built. */
   @Test
   void awaitingNothingIsNotAState() {
-    assertThatThrownBy(
-            () ->
-                new AgentState.AwaitingActions<>(
-                    new Seq(2),
-                    new TurnId(1),
-                    new Seq(2),
-                    Backlog.<String>empty(),
-                    Map.<CallId, Outstanding>of()))
+    Seq seq = new Seq(2);
+    TurnId turn = new TurnId(1);
+    Backlog<String> backlog = Backlog.empty();
+    Map<CallId, Outstanding> nothing = Map.of();
+    assertThatThrownBy(() -> new AgentState.AwaitingActions<>(seq, turn, seq, backlog, nothing))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

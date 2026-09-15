@@ -23,13 +23,6 @@ import org.jwcarman.nessy.api.turn.Turn;
  */
 public interface TurnHistory {
 
-  /**
-   * The most recent turns that fit in a token budget, whole. Two queries however many come back.
-   *
-   * <p>The boundary lands between turns, never inside one, and a single turn larger than the whole
-   * budget is still returned -- a conversation cannot proceed with no context, and an over-large
-   * request fails recoverably where an empty one just produces nonsense.
-   */
   /** The last {@code turns} turns, whole, most recent last. */
   List<Turn> lastTurns(int turns);
 

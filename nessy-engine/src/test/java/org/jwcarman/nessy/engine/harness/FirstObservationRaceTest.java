@@ -18,7 +18,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 
@@ -32,14 +32,14 @@ class FirstObservationRaceTest {
   private static final AgentType CHAT = new AgentType("chat");
   private static final int CALLERS = 8;
 
-  private EngineUnderTest engine;
+  private EngineFixture engine;
   private Harness<String> harness;
   private final ExecutorService callers = Executors.newFixedThreadPool(CALLERS);
 
   @BeforeEach
   void startEngine() {
     engine =
-        new EngineUnderTest(
+        new EngineFixture(
             (request, narrator) ->
                 new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
     harness =

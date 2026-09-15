@@ -95,12 +95,6 @@ public class EffectDispatcher {
   }
 
   /**
-   * Stops accepting work and waits for what is in flight.
-   *
-   * <p>Anything still running keeps its row marked; if the wait is cut short those rows come back
-   * when their watchdogs expire, which is the same recovery a crash gets.
-   */
-  /**
    * Puts this dispatcher on its own schedule.
    *
    * <p>How often to look for due work is this class's business and nobody else's. A harness folds;

@@ -13,7 +13,6 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
@@ -98,7 +97,7 @@ public final class DefaultReplies implements Replies {
     ReplyTokens.Coordinates where;
     try {
       where = tokens.read(token);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // Forged, edited, or minted under a key since dropped. Nothing distinguishes those
       // from here, and nothing should: all three mean this is not an address we honour.
       log.info("a reply arrived on an address this engine did not issue");
@@ -172,9 +171,9 @@ public final class DefaultReplies implements Replies {
   /** Whether an effect is for the call these coordinates name. */
   private static boolean names(AgentEffect effect, ReplyTokens.Coordinates where) {
     return switch (effect) {
-      case AgentEffect.Approve(Seq requestSeq, CallId callId, ToolName _) ->
+      case AgentEffect.Approve(Seq requestSeq, CallId callId, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
-      case AgentEffect.CallTool(Seq requestSeq, CallId callId, ToolName _) ->
+      case AgentEffect.CallTool(Seq requestSeq, CallId callId, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
       // Nothing else can be deferred, so nothing else can be answered late.
       case AgentEffect.Infer _ -> false;

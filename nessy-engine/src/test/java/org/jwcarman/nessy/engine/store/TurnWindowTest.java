@@ -13,7 +13,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 
@@ -27,11 +27,11 @@ import org.jwcarman.nessy.spi.inference.InferenceProvider;
  */
 class TurnWindowTest {
 
-  private static EngineUnderTest engine;
+  private static EngineFixture engine;
 
   @BeforeAll
   static void startEngine() {
-    engine = new EngineUnderTest(NO_MODEL);
+    engine = new EngineFixture(NO_MODEL);
   }
 
   @AfterAll
