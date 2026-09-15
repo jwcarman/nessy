@@ -10,6 +10,8 @@ import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
+import org.jwcarman.nessy.spring.boot.lease.LeaseAutoConfiguration;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -105,7 +107,12 @@ public final class Repl {
     io.flush();
   }
 
+  /**
+   * Enough Boot to find a provider, and no more. The engine's own auto-configuration is excluded --
+   * it would want a DataSource bean, a model and a system prompt to build a factory this class
+   * builds by hand -- and so is what depends on it.
+   */
   @Configuration(proxyBeanMethods = false)
-  @EnableAutoConfiguration
+  @EnableAutoConfiguration(exclude = {NessyAutoConfiguration.class, LeaseAutoConfiguration.class})
   static class ReplBootstrap {}
 }

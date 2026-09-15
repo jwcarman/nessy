@@ -109,9 +109,14 @@ public final class Chat {
           "set SPRING_DATASOURCE_URL (and SPRING_DATASOURCE_USERNAME/PASSWORD) to a PostgreSQL"
               + " database; the engine keeps its agents there");
     }
-    return new DriverManagerDataSource(
-        url,
-        System.getenv("SPRING_DATASOURCE_USERNAME"),
-        System.getenv("SPRING_DATASOURCE_PASSWORD"));
+    DriverManagerDataSource database =
+        new DriverManagerDataSource(
+            url,
+            System.getenv("SPRING_DATASOURCE_USERNAME"),
+            System.getenv("SPRING_DATASOURCE_PASSWORD"));
+    // Named rather than discovered: under exec:java the driver sits in a class loader that
+    // DriverManager's own lookup never sees, and "no suitable driver" is all it would say.
+    database.setDriverClassName("org.postgresql.Driver");
+    return database;
   }
 }

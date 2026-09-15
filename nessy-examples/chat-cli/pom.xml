@@ -44,11 +44,6 @@
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>runtime</scope>
-    </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -92,6 +87,12 @@
            because it is what Repl.run() needs underneath it, the same way the provider adapters
            above are declared directly rather than left to a transitive accident. -->
       <version>${spring-boot.version}</version>
+    </dependency>
+    <!-- The engine's schema is PostgreSQL's; the driver rides along at runtime. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
     </dependency>
 
   </dependencies>
