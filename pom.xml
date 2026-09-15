@@ -96,7 +96,7 @@
          starting with the 2.22 line (no patch digit) — kept as a separate
          property so each artifact resolves to a version that actually
          exists. -->
-    <jackson-annotations.version>2.21</jackson-annotations.version>
+    <jackson-annotations.version>2.22</jackson-annotations.version>
     <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
          TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
          Without them a TypeRef for a generic container cannot be built at runtime: the
