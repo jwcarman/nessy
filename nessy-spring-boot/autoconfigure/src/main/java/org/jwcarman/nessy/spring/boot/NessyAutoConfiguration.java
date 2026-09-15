@@ -11,7 +11,7 @@ import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -103,7 +103,7 @@ public class NessyAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public HarnessFactory nessyHarnessFactory(
+  public DefaultHarnessFactory nessyHarnessFactory(
       DataSource dataSource,
       Narrator narrator,
       ReplyTokens replyTokens,
@@ -121,7 +121,7 @@ public class NessyAutoConfiguration {
             ? models
             : Observed.inference(models, properties.provider(), observations);
 
-    return new HarnessFactory(
+    return new DefaultHarnessFactory(
         engine ->
             engine
                 .dataSource(dataSource)
@@ -139,13 +139,13 @@ public class NessyAutoConfiguration {
   /** The story, for an application that shows what its agents said. */
   @Bean
   @ConditionalOnMissingBean
-  public TurnHistories nessyHistories(HarnessFactory factory) {
+  public TurnHistories nessyHistories(DefaultHarnessFactory factory) {
     return factory.histories();
   }
 
   @Bean
   @ConditionalOnMissingBean
-  public Replies nessyReplies(HarnessFactory factory) {
+  public Replies nessyReplies(DefaultHarnessFactory factory) {
     return factory.replies();
   }
 
@@ -159,7 +159,7 @@ public class NessyAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public Harness<String> nessyHarness(
-      HarnessFactory factory,
+      DefaultHarnessFactory factory,
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,

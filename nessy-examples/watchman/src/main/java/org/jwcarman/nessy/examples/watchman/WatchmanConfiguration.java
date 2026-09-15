@@ -16,7 +16,7 @@ import org.jwcarman.nessy.approval.risk.RiskAssessment;
 import org.jwcarman.nessy.approval.risk.RiskAssessor;
 import org.jwcarman.nessy.approval.risk.RiskFactors;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spring.boot.Observed;
@@ -73,7 +73,7 @@ public class WatchmanConfiguration {
 
   @Bean(name = "watchmanHarness")
   public Harness<String> harness(
-      HarnessFactory factory,
+      DefaultHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
       ApprovalsDesk desk,

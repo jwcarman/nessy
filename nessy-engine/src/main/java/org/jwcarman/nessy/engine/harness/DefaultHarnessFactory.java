@@ -11,6 +11,8 @@ import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.codec.spi.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -58,7 +60,7 @@ import tools.jackson.databind.json.JsonMapper;
  * registry here holding the harnesses this made, and nothing that iterates all of them.
  */
 @Component
-public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, AutoCloseable {
+public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
 
   // The engine's own decisions, made once. A row is encoded by Jackson, a tool's arguments are
   // described by victools, a message costs about its characters, and time is UTC: none of that
@@ -77,7 +79,7 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, Au
   private final DefaultReplies replies;
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
-  private final HarnessConfig.Defaults defaults;
+  private final DefaultHarnessConfig.Defaults defaults;
   private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
 
   /**
@@ -86,7 +88,7 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, Au
    * -- the stores, the transaction manager, the one client they share -- so there is nothing for a
    * caller to assemble and nothing for two callers to assemble differently.
    */
-  public HarnessFactory(Consumer<EngineConfig> customizer) {
+  public DefaultHarnessFactory(Consumer<EngineConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     EngineConfig config = new EngineConfig();
     customizer.accept(config);
@@ -112,7 +114,7 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, Au
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
-        new HarnessConfig.Defaults(
+        new DefaultHarnessConfig.Defaults(
             config.requiredProvider(), config.requiredOptions(), config.retryPolicy());
   }
 
@@ -125,9 +127,9 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, Au
    * class never sees -- and it is why nothing above ever has to name {@code AgentState}.
    */
   @Override
-  public <O> Harness<O> create(
-      TypeRef<O> observationType, Consumer<org.jwcarman.nessy.api.HarnessConfig<O>> customizer) {
-    HarnessConfig<O> config = new HarnessConfig<>(observationType, defaults, mapper, schemas);
+  public <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer) {
+    DefaultHarnessConfig<O> config =
+        new DefaultHarnessConfig<>(observationType, defaults, mapper, schemas);
     customizer.accept(config);
 
     TypeRef<AgentState<O>> stateType =
@@ -136,8 +138,8 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory, Au
     AgentType agentType = config.requiredAgentType();
     Tools tools = config.tools();
     // Built here because it needs the store, which a caller has no handle on.
-    HarnessConfig.Inference inference = config.inference();
-    HarnessConfig.Inference.Context context = inference.context();
+    DefaultHarnessConfig.Inference inference = config.inference();
+    DefaultHarnessConfig.Inference.Context context = inference.context();
     InferenceContextAssembler assembler =
         new ContextAssembler(history, context.summaries(), context.maxTail(), context.ambient());
     // One registry, held by both halves: the store asks it what an effect is worth while

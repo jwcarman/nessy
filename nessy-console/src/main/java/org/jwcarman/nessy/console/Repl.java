@@ -7,7 +7,7 @@ import java.util.Set;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -72,8 +72,8 @@ public final class Repl {
 
       ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
       // Closed with the context: the factory owns the engine's timer and every harness it made.
-      try (HarnessFactory factory =
-          new HarnessFactory(
+      try (DefaultHarnessFactory factory =
+          new DefaultHarnessFactory(
               engine ->
                   engine
                       .dataSource(dataSource.get())

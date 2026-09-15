@@ -13,7 +13,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
@@ -61,7 +61,7 @@ class NessyAutoConfigurationTest {
     runner.run(
         context -> {
           assertThat(context).hasSingleBean(Harness.class);
-          assertThat(context).hasSingleBean(HarnessFactory.class);
+          assertThat(context).hasSingleBean(DefaultHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
           assertThat(context).hasSingleBean(Narrator.class);
@@ -183,7 +183,7 @@ class NessyAutoConfigurationTest {
   void an_application_with_a_registry_gets_its_provider_observed() {
     runner
         .withUserConfiguration(ARegistry.class)
-        .run(context -> assertThat(context).hasSingleBean(HarnessFactory.class));
+        .run(context -> assertThat(context).hasSingleBean(DefaultHarnessFactory.class));
   }
 
   // ---- what an application brings -------------------------------------------------------

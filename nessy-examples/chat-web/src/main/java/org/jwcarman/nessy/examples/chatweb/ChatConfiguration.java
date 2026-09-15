@@ -5,7 +5,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -45,7 +45,7 @@ public class ChatConfiguration {
 
   @Bean
   public Harness<String> harness(
-      HarnessFactory factory,
+      DefaultHarnessFactory factory,
       NessyProperties properties,
       SendEmailTool email,
       Approver desk,

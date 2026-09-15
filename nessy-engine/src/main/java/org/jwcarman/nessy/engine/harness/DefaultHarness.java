@@ -36,12 +36,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>Transactions are explicit.</b> A {@link TransactionTemplate} rather than
  * {@code @Transactional}, because the annotation only works through a Spring proxy and nothing
- * makes a harness a bean -- {@code HarnessFactory.create} is an ordinary method call, and its
- * result is transactional or not depending on what the caller did with it afterwards. The failure
- * mode there is a successful write with no transaction, silent until a crash lands between the
- * state and the story. Wrapping the folds here makes the harness correct however it was built, and
- * makes the self-invocation trap -- one method of this object calling another, bypassing the proxy
- * -- stop existing.
+ * makes a harness a bean -- {@code DefaultHarnessFactory.create} is an ordinary method call, and
+ * its result is transactional or not depending on what the caller did with it afterwards. The
+ * failure mode there is a successful write with no transaction, silent until a crash lands between
+ * the state and the story. Wrapping the folds here makes the harness correct however it was built,
+ * and makes the self-invocation trap -- one method of this object calling another, bypassing the
+ * proxy -- stop existing.
  *
  * @param <O> the observation type
  */

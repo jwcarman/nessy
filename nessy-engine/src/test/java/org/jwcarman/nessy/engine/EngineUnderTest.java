@@ -5,7 +5,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
@@ -42,7 +42,7 @@ public final class EngineUnderTest implements AutoCloseable {
   }
 
   private final HikariDataSource dataSource;
-  private final HarnessFactory harnesses;
+  private final DefaultHarnessFactory harnesses;
   private final JdbcHistoryStore history;
   private final JdbcClient jdbc;
   private final AgentStateRepository states;
@@ -75,7 +75,7 @@ public final class EngineUnderTest implements AutoCloseable {
             new CharacterCountEstimator());
 
     this.harnesses =
-        new HarnessFactory(
+        new DefaultHarnessFactory(
             engine ->
                 engine
                     .dataSource(dataSource)
@@ -88,7 +88,7 @@ public final class EngineUnderTest implements AutoCloseable {
     this(provider, Narrator.silent());
   }
 
-  public HarnessFactory harnesses() {
+  public DefaultHarnessFactory harnesses() {
     return harnesses;
   }
 

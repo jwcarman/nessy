@@ -15,6 +15,7 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.EffectsConfig;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
@@ -43,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * @param <O> the observation type
  */
-public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessConfig<O> {
+public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
 
   private static final Duration DEFAULT_TOOL_TIMEOUT = Duration.ofSeconds(30);
   private static final RetryPolicy DEFAULT_TOOL_RETRY_POLICY = new RetryPolicy.Never();
@@ -68,7 +69,7 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
   private final Effects effects = new Effects();
   private final List<ToolBinding<?>> tools = new ArrayList<>();
 
-  HarnessConfig(
+  DefaultHarnessConfig(
       TypeRef<O> observationType,
       Defaults defaults,
       ObjectMapper mapper,
@@ -83,42 +84,42 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
   record Defaults(InferenceProvider provider, InferenceOptions options, RetryPolicy retryPolicy) {}
 
   @Override
-  public HarnessConfig<O> agentType(AgentType agentType) {
+  public DefaultHarnessConfig<O> agentType(AgentType agentType) {
     this.agentType = agentType;
     return this;
   }
 
   @Override
-  public HarnessConfig<O> systemPrompt(String prompt) {
+  public DefaultHarnessConfig<O> systemPrompt(String prompt) {
     return systemPrompt(SystemPromptSource.constant(new SystemPrompt(prompt)));
   }
 
   @Override
-  public HarnessConfig<O> systemPrompt(SystemPromptSource source) {
+  public DefaultHarnessConfig<O> systemPrompt(SystemPromptSource source) {
     this.systemPrompt = source;
     return this;
   }
 
   @Override
-  public HarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer) {
+  public DefaultHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer) {
     this.renderer = renderer;
     return this;
   }
 
   @Override
-  public HarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer) {
+  public DefaultHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer) {
     this.coalescer = coalescer;
     return this;
   }
 
   @Override
-  public HarnessConfig<O> inference(Consumer<InferenceConfig> customizer) {
+  public DefaultHarnessConfig<O> inference(Consumer<InferenceConfig> customizer) {
     customizer.accept(inference);
     return this;
   }
 
   @Override
-  public HarnessConfig<O> effects(Consumer<EffectsConfig> customizer) {
+  public DefaultHarnessConfig<O> effects(Consumer<EffectsConfig> customizer) {
     customizer.accept(effects);
     return this;
   }
@@ -132,7 +133,7 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
    * would put a reflective walk of the input type on the path of every inference.
    */
   @Override
-  public <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
+  public <I> DefaultHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
     customizer.accept(terms);
     tools.add(
