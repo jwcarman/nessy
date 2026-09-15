@@ -1,77 +1,53 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.tool.mcp;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * One MCP server tool, wearing a nessy {@link Tool} face.
+ * One tool a remote MCP server advertised, as this engine sees a tool.
  *
- * <p>Arguments pass through untyped — {@link #inputType()} is {@link JsonNode}, exactly as the
- * server's own schema described them, so nothing here derives a record the server never promised to
- * honor. {@link #execute} is a single {@code tools/call} round trip: request/response, never a park
- * — the durable elicitation pairing is a later generation (design §6).
- *
- * <p>Package-private on purpose: the only supported way to get one is {@link
- * McpToolbox#tool(String)} or {@link McpToolbox#tools()}, so a granted MCP tool always came from a
- * live, initialized session.
- *
- * <p>MCP progress notifications are not forwarded to {@link ToolCallRequest#progress} in v1: the
- * SDK's sync client offers only a session-global progress consumer, not one scoped to a single
- * {@code tools/call}, so wiring one here would leak another call's progress into this tool's
- * context.
+ * <p><b>The schema is the server's, verbatim.</b> A generated schema would describe a Java type
+ * this module does not have; the server already said exactly what it accepts, so {@link
+ * #inputSchema(InputSchemaGenerator)} ignores the generator and hands the server's document through
+ * as text. Arguments arrive bound to a {@link JsonNode} for the same reason -- there is no type to
+ * bind to that the server did not define -- and go back out as the plain map the SDK wants.
  */
 final class McpTool implements Tool<JsonNode> {
 
-  private static final TypeReference<Map<String, Object>> ARGUMENTS_TYPE = new TypeReference<>() {};
+  private static final TypeReference<Map<String, Object>> ARGUMENTS = new TypeReference<>() {};
 
   private final McpSchema.Tool tool;
   private final McpSyncClient client;
-  private final ObjectMapper mapper;
+  private final JsonMapper mapper;
 
-  McpTool(McpSchema.Tool tool, McpSyncClient client, ObjectMapper mapper) {
+  McpTool(McpSchema.Tool tool, McpSyncClient client, JsonMapper mapper) {
     this.tool = tool;
     this.client = client;
     this.mapper = mapper;
   }
 
   @Override
-  public String name() {
-    return tool.name();
+  public ToolName name() {
+    return new ToolName(tool.name());
   }
 
-  /**
-   * The server's description, verbatim — {@code null} becomes {@code ""} since {@link Tool}
-   * requires non-null.
-   */
+  /** A server may omit the description; a tool may not, so absent becomes empty here. */
   @Override
   public String description() {
-    String description = tool.description();
-    return description == null ? "" : description;
+    return tool.description() == null ? "" : tool.description();
   }
 
   @Override
@@ -79,49 +55,46 @@ final class McpTool implements Tool<JsonNode> {
     return JsonNode.class;
   }
 
-  /**
-   * The server's advertised {@code inputSchema}, never one derived from a record — this is the
-   * whole reason an MCP tool cannot go through {@code Schemas.of}: only the server knows the shape
-   * it will honor.
-   */
   @Override
-  public ObjectNode inputSchema() {
-    return mapper.valueToTree(tool.inputSchema());
+  public InputSchema inputSchema(InputSchemaGenerator generator) {
+    return new InputSchema(mapper.writeValueAsString(tool.inputSchema()));
   }
 
+  /**
+   * A transport or protocol failure that keeps the call from completing at all propagates uncaught:
+   * it is not the server saying "that failed", it is the call never having been made, and the
+   * engine's own handling of a throwing tool is what turns that into an outcome.
+   */
   @Override
-  public Awaited<ToolResult> execute(ToolCallRequest<JsonNode> call) {
-    JsonNode input = call.input();
-    Map<String, Object> arguments = mapper.convertValue(input, ARGUMENTS_TYPE);
-    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(name(), arguments);
-    // A transport/protocol failure that keeps the call from completing at all propagates as a
-    // RuntimeException here, uncaught: the engine's own fail-closed handling turns it into an
-    // error ToolResult without this tool having to know that.
-    McpSchema.CallToolResult result = client.callTool(request);
+  public Awaited<ToolResult> call(ToolCallRequest<JsonNode> request) {
+    Map<String, Object> arguments = mapper.convertValue(request.input(), ARGUMENTS);
+    McpSchema.CallToolResult result =
+        client.callTool(new McpSchema.CallToolRequest(tool.name(), arguments));
     return Awaited.ready(toToolResult(result));
   }
 
+  /** The server's own error flag decides which shape this is; the text is the same either way. */
   private ToolResult toToolResult(McpSchema.CallToolResult result) {
-    String text = renderContent(result.content());
-    return Boolean.TRUE.equals(result.isError()) ? ToolResult.error(text) : ToolResult.ok(text);
+    String text = render(result.content());
+    return Boolean.TRUE.equals(result.isError())
+        ? new ToolResult.Failure(text)
+        : ToolResult.ok(new Block.Text(text));
   }
 
   /**
-   * Text content blocks join with newlines. Non-text content (images, embedded resources) has no
-   * text-shaped nessy analog yet: v1 degrades honestly by JSON-encoding the content object into the
-   * output rather than dropping it — a documented v1 limitation, tools-only and text-first.
+   * Text content joins with newlines; anything else degrades to its JSON rather than being dropped,
+   * so an image or a resource the model cannot see is at least something it can read about.
    */
-  private String renderContent(List<McpSchema.Content> content) {
+  private String render(List<McpSchema.Content> content) {
     StringBuilder text = new StringBuilder();
     for (McpSchema.Content item : content) {
       if (!text.isEmpty()) {
         text.append('\n');
       }
-      if (item instanceof McpSchema.TextContent textContent) {
-        text.append(textContent.text());
-      } else {
-        text.append(mapper.valueToTree(item).toString());
-      }
+      text.append(
+          item instanceof McpSchema.TextContent textContent
+              ? textContent.text()
+              : mapper.writeValueAsString(item));
     }
     return text.toString();
   }

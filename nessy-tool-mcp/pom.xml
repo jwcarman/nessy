@@ -42,19 +42,16 @@
       <groupId>io.modelcontextprotocol.sdk</groupId>
       <artifactId>mcp-core</artifactId>
     </dependency>
-    <!-- The SDK's Jackson 2 JSON backend, chosen explicitly over the `mcp` facade's default
-         (Jackson 3, mcp-json-jackson3): the rest of this repo, including ToolSpec's ObjectNode,
-         is built on Jackson 2. JacksonMcpJsonMapper lets a transport be wired directly with
-         nessy's own ObjectMapper instead of a ServiceLoader-discovered default. -->
+    <!-- The SDK's Jackson 3 backend, which is also its default: this repo is on Jackson 3, so the
+         one JsonMapper an application already has serves the wire, the schema and the arguments.
+         Nothing crosses a Jackson major anywhere in this module. -->
     <dependency>
       <groupId>io.modelcontextprotocol.sdk</groupId>
-      <artifactId>mcp-json-jackson2</artifactId>
+      <artifactId>mcp-json-jackson3</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
     </dependency>
   </dependencies>
 

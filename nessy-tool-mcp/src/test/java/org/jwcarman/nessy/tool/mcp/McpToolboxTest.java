@@ -18,36 +18,34 @@ package org.jwcarman.nessy.tool.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
-import org.jwcarman.nessy.api.tool.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolBinding;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class McpToolboxTest {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   private static final Map<String, Object> ECHO_SCHEMA =
       Map.of(
@@ -71,7 +69,7 @@ class McpToolboxTest {
   }
 
   private static ObjectNode echoArguments(String message) {
-    ObjectNode arguments = JsonNodeFactory.instance.objectNode();
+    ObjectNode arguments = MAPPER.createObjectNode();
     arguments.put("message", message);
     return arguments;
   }
@@ -80,15 +78,49 @@ class McpToolboxTest {
    * Where an answer would go if the tool deferred. An MCP {@code tools/call} is a single round trip
    * and never defers, so nothing reads it.
    */
+  /** What the engine hands a running tool. No mocking library, and none needed. */
   private static ToolCallRequest<JsonNode> contextFor(JsonNode arguments) {
-    return new ToolCallRequest<>(
-        AgentType.of("mcp-test"),
-        AgentId.of("one"),
-        TurnId.of("turn-1"),
-        CallId.of("call-1"),
-        "echo",
-        arguments,
-        new ReplyToken("unused-by-a-tool-that-never-defers"));
+    return new ToolCallRequest<>() {
+      @Override
+      public AgentType agentType() {
+        return new AgentType("mcp-test");
+      }
+
+      @Override
+      public AgentId agentId() {
+        return new AgentId(UUID.randomUUID());
+      }
+
+      @Override
+      public TurnId turn() {
+        return new TurnId(1);
+      }
+
+      @Override
+      public CallId callId() {
+        return new CallId("call-1");
+      }
+
+      @Override
+      public ToolName toolName() {
+        return new ToolName("echo");
+      }
+
+      @Override
+      public JsonNode input() {
+        return arguments;
+      }
+
+      @Override
+      public Instant deadline() {
+        return Instant.now().plusSeconds(30);
+      }
+
+      @Override
+      public ReplyToken replyToken() {
+        return new ReplyToken("unused-by-a-tool-that-never-defers");
+      }
+    };
   }
 
   /**
@@ -99,9 +131,9 @@ class McpToolboxTest {
   private static String successText(ToolResult result) {
     assertThat(result).isInstanceOf(ToolResult.Success.class);
     return ((ToolResult.Success) result)
-        .content().stream()
-            .map(block -> ((org.jwcarman.nessy.api.block.TextBlock) block).text())
-            .collect(java.util.stream.Collectors.joining("\n"));
+        .blocks().stream()
+            .map(block -> ((Block.Text) block).text())
+            .collect(Collectors.joining("\n"));
   }
 
   private static String failureMessage(ToolResult result) {
@@ -111,7 +143,7 @@ class McpToolboxTest {
 
   private static ToolResult readyResult(Awaited<ToolResult> awaited) {
     if (awaited instanceof Awaited.Ready<ToolResult> ready) {
-      return ready.result();
+      return ready.value();
     }
     throw new AssertionError("expected an Awaited.Ready but got: " + awaited);
   }
@@ -127,7 +159,7 @@ class McpToolboxTest {
         List<Tool<JsonNode>> tools = fixture.toolbox().tools();
 
         assertThat(tools).hasSize(1);
-        assertThat(tools.getFirst().name()).isEqualTo("echo");
+        assertThat(tools.getFirst().name()).isEqualTo(new ToolName("echo"));
       }
     }
 
@@ -155,8 +187,11 @@ class McpToolboxTest {
 
         Tool<JsonNode> tool = fixture.tool("echo");
 
-        assertThat(tool.inputSchema()).isEqualTo(MAPPER.valueToTree(ECHO_SCHEMA));
-        assertThat(tool.name()).isEqualTo("echo");
+        // The schema crosses as text and is compared as a document: byte order inside a map is
+        // the serializer's business, not the contract.
+        assertThat(MAPPER.readTree(tool.inputSchema(_ -> null).json()))
+            .isEqualTo(MAPPER.valueToTree(ECHO_SCHEMA));
+        assertThat(tool.name()).isEqualTo(new ToolName("echo"));
         assertThat(tool.description()).isEqualTo("Echoes the message back");
       }
     }
@@ -201,7 +236,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi there");
 
-        tool.execute(contextFor(arguments));
+        tool.call(contextFor(arguments));
 
         assertThat(received.get()).containsExactly(Map.entry("message", "hi there"));
       }
@@ -215,7 +250,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
+        ToolResult result = readyResult(tool.call(contextFor(arguments)));
 
         assertThat(successText(result)).isEqualTo("line one\nline two");
       }
@@ -234,7 +269,7 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
+        ToolResult result = readyResult(tool.call(contextFor(arguments)));
 
         assertThat(failureMessage(result)).isEqualTo("boom");
       }
@@ -252,56 +287,19 @@ class McpToolboxTest {
         Tool<JsonNode> tool = fixture.tool("echo");
         JsonNode arguments = echoArguments("hi");
 
-        ToolResult result = readyResult(tool.execute(contextFor(arguments)));
+        ToolResult result = readyResult(tool.call(contextFor(arguments)));
 
         assertThat(successText(result)).contains("YWJj").contains("image/png");
       }
     }
   }
 
-  @Nested
-  class Governance_without_a_wrapper {
-
-    /**
-     * Spec §0's claim that a third-party tool is governable with no wrapper class of nessy's own:
-     * {@link McpTool} (obtained here through {@link McpToolbox#tool(String)}, package-private and
-     * never subclassed by this test) goes straight into a {@link ToolBinding} with a {@link
-     * ActionRenderer} that states the call and a pinned denying approver.
-     */
-    @Test
-    void governs_a_fetched_mcp_tool_directly_with_no_wrapper_class() {
-      try (McpTestServer fixture =
-          McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
-        Tool<JsonNode> tool = fixture.tool("echo");
-        JsonNode arguments = echoArguments("hi there");
-        ActionRenderer<JsonNode> renderer = args -> tool.name() + " " + args;
-        Approver deny = request -> Awaited.ready(ApprovalResult.denied("pinned"));
-
-        ToolBinding<JsonNode> binding = new ToolBinding<>(tool, deny, renderer);
-
-        // The binding is the whole of the governance: the tool it wraps is untouched, the
-        // sentence a human would read comes off the renderer, and the answer off the approver.
-        assertThat(binding.tool()).isSameAs(tool);
-        assertThat(binding.renderer().render(arguments)).isEqualTo("echo " + arguments);
-        assertThat(binding.approver().approve(approvalRequestFor(arguments)))
-            .isEqualTo(Awaited.ready(ApprovalResult.denied("pinned")));
-      }
-    }
-
-    private static ApprovalRequest approvalRequestFor(JsonNode arguments) {
-      return new ApprovalRequest(
-          AgentType.of("mcp-test"),
-          AgentId.of("one"),
-          TurnId.of("turn-1"),
-          CallId.of("call-1"),
-          "echo",
-          arguments,
-          "echo " + arguments,
-          Instant.EPOCH,
-          () -> new ReplyToken("unused-by-a-tool-that-never-defers"));
-    }
-  }
-
+  /**
+   * Governance -- approver, action renderer, timeout -- is attached where a tool is BOUND, on the
+   * harness config, and an MCP tool is bound exactly like a local one. There is no wrapper class to
+   * test here because there is no wrapper: the engine's own ToolBinding tests cover the binding,
+   * and this module's job ends at producing an ordinary {@link Tool}.
+   */
   @Nested
   class Closed_toolbox {
 
@@ -311,10 +309,10 @@ class McpToolboxTest {
           McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"));
       Tool<JsonNode> tool = fixture.tool("echo");
       JsonNode arguments = echoArguments("hi");
-      ToolCallRequest context = contextFor(arguments);
+      ToolCallRequest<JsonNode> context = contextFor(arguments);
       fixture.close();
 
-      assertThatThrownBy(() -> tool.execute(context))
+      assertThatThrownBy(() -> tool.call(context))
           .isInstanceOf(RuntimeException.class)
           .hasMessageContaining("failed to initialize")
           .rootCause()

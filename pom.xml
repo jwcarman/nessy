@@ -61,6 +61,7 @@
     <module>nessy-inference</module>
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>
+    <module>nessy-tool-mcp</module>
 
     <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
@@ -70,7 +71,6 @@
     <module>nessy-store-tests</module>
     <module>nessy-console</module>
     <module>nessy-approval</module>
-    <module>nessy-tool-mcp</module>
     <module>nessy-examples</module>
     -->
   </modules>
@@ -510,6 +510,11 @@
       <dependency>
         <groupId>io.modelcontextprotocol.sdk</groupId>
         <artifactId>mcp-json-jackson2</artifactId>
+        <version>${mcp-sdk.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp-json-jackson3</artifactId>
         <version>${mcp-sdk.version}</version>
       </dependency>
       <dependency>

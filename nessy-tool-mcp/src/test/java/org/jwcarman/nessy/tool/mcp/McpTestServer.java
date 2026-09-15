@@ -15,16 +15,16 @@
  */
 package org.jwcarman.nessy.tool.mcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.json.McpJsonMapper;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.function.BiFunction;
 import org.jwcarman.nessy.api.tool.Tool;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A real, in-process MCP server plus the {@link McpToolbox} connected to it — every test in this
@@ -45,7 +45,7 @@ final class McpTestServer implements AutoCloseable {
       McpSchema.Tool tool,
       BiFunction<McpSyncServerExchange, McpSchema.CallToolRequest, McpSchema.CallToolResult>
           handler) {
-    ObjectMapper wireMapper = new ObjectMapper();
+    JsonMapper wireMapper = JsonMapper.builder().build();
     McpJsonMapper jsonMapper = new JacksonMcpJsonMapper(wireMapper);
     InMemoryMcpTransport.Pair pair = InMemoryMcpTransport.open(jsonMapper);
 
@@ -55,7 +55,7 @@ final class McpTestServer implements AutoCloseable {
             .toolCall(tool, handler)
             .build();
 
-    McpToolbox toolbox = McpToolbox.connect(pair.client(), new ObjectMapper());
+    McpToolbox toolbox = McpToolbox.connect(pair.client(), JsonMapper.builder().build());
     return new McpTestServer(server, toolbox);
   }
 
