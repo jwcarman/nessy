@@ -64,6 +64,7 @@
     <module>nessy-tool-mcp</module>
     <module>nessy-approval</module>
     <module>nessy-console</module>
+    <module>nessy-examples</module>
 
     <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
@@ -71,8 +72,6 @@
 
     <module>nessy-testing</module>
     <module>nessy-store-tests</module>
-    <module>nessy-console</module>
-    <module>nessy-examples</module>
     -->
   </modules>
 

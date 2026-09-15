@@ -117,6 +117,18 @@ public final class ReplConfig {
     return this;
   }
 
+  /**
+   * Anything else the harness can be told -- ambient sources, summaries, the tail, retry policy.
+   *
+   * <p>The REPL names the few things a terminal always wants; this is the door to the rest, so a
+   * notebook's index or a plan reaches the model without this class growing a method per feature.
+   * Applied in order with the tools, after the REPL's own settings.
+   */
+  public ReplConfig harness(Consumer<HarnessConfig<String>> customizer) {
+    tools.add(Objects.requireNonNull(customizer, "customizer must not be null"));
+    return this;
+  }
+
   String banner() {
     return banner;
   }

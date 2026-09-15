@@ -43,12 +43,14 @@
   </properties>
 
   <modules>
-    <module>watchman</module>
-    <module>chat-cli</module>
-    <module>chat-web</module>
-    <module>mcp</module>
     <module>policy</module>
-    <!-- THROWAWAY SPIKE: the watchman ported onto the actor design, to compare side by side. -->
+    <module>mcp</module>
+    <module>chat-cli</module>
+
+    <!-- Ported next, in this order.
+    <module>chat-web</module>
+    <module>watchman</module>
+    -->
   </modules>
   <dependencies>
     <!-- Every example is an application, and an application picks its own SLF4J provider. The root

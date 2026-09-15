@@ -17,24 +17,24 @@ package org.jwcarman.nessy.examples.policy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyApprover;
 import org.jwcarman.nessy.approval.policy.opa.OpaPolicyEngine;
 import org.testcontainers.containers.GenericContainer;
@@ -59,6 +59,7 @@ import org.testcontainers.utility.MountableFile;
 class GatedByPolicyTest {
 
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
+  private static final AgentId HOUSE_12 = new AgentId(UUID.randomUUID());
 
   @Container
   static final GenericContainer<?> OPA =
@@ -71,6 +72,8 @@ class GatedByPolicyTest {
 
   /** What reached a person, so a test can see whether anybody was troubled. */
   private final List<ApprovalRequest> desk = new ArrayList<>();
+
+  private final List<Duration> terms = new ArrayList<>();
 
   private Approver gate() {
     var opa =
@@ -87,31 +90,30 @@ class GatedByPolicyTest {
           Duration term =
               request
                   .fact("policy.term")
-                  .map(node -> Duration.parse(node.asText()))
+                  .map(node -> Duration.parse(node.asString()))
                   .orElse(Duration.ofHours(1));
-          return Awaited.deferred(NOW.plus(term));
+          terms.add(term);
+          return Awaited.deferred();
         };
     return PolicyApprover.create(config -> config.engine(opa).delegate("humans", humans));
   }
 
   private static ApprovalRequest asking(String agentType, String tool, String target) {
-    ObjectNode arguments = JsonNodeFactory.instance.objectNode();
-    arguments.put("target", target);
     return new ApprovalRequest(
-        AgentType.of(agentType),
-        AgentId.of("house-12"),
-        TurnId.of("turn-1"),
-        CallId.of("call-1"),
-        tool,
-        arguments,
+        new AgentType(agentType),
+        HOUSE_12,
+        new TurnId(1),
+        new CallId("call-1"),
+        new ToolName(tool),
+        "{\"target\":\"" + target + "\"}",
         tool + " on " + target,
         NOW,
-        () -> ReplyToken.of("a-capability"),
-        JsonNodeFactory.instance.objectNode());
+        NOW.plusSeconds(3600),
+        new ReplyToken("a-capability"));
   }
 
   private static ApprovalResult resultOf(Awaited<ApprovalResult> answer) {
-    return ((Awaited.Ready<ApprovalResult>) answer).result();
+    return ((Awaited.Ready<ApprovalResult>) answer).value();
   }
 
   @Test
@@ -135,9 +137,12 @@ class GatedByPolicyTest {
   void a_production_call_reaches_the_desk() {
     var answer = gate().approve(asking("watchman", "prune_images", "prod-eu-1"));
 
-    assertThat(answer).isEqualTo(Awaited.deferred(NOW.plus(Duration.ofDays(3))));
+    assertThat(answer).isEqualTo(Awaited.deferred());
+    assertThat(terms)
+        .as("the term came from the policy, not from the desk")
+        .containsExactly(Duration.ofDays(3));
     assertThat(desk).hasSize(1);
-    assertThat(desk.getFirst().fact("policy.reason").orElseThrow().asText())
+    assertThat(desk.getFirst().fact("policy.reason").orElseThrow().asString())
         .isEqualTo("prune_images targets production");
   }
 }

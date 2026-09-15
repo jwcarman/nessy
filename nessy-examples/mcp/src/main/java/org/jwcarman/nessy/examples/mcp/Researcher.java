@@ -15,15 +15,15 @@
  */
 package org.jwcarman.nessy.examples.mcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.tool.mcp.McpToolbox;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * An agent whose tools belong to somebody else.
@@ -72,7 +72,7 @@ public final class Researcher {
   private Researcher() {}
 
   public static void main(String[] args) {
-    ObjectMapper mapper = new ObjectMapper();
+    JsonMapper mapper = JsonMapper.builder().build();
     McpClientTransport transport =
         HttpClientStreamableHttpTransport.builder(DEEPWIKI)
             .endpoint("/mcp")
@@ -88,7 +88,7 @@ public final class Researcher {
                   .prompt("> ")
                   .farewell("bye.")
                   .systemPrompt(SYSTEM_PROMPT)
-                  .agent(org.jwcarman.nessy.api.AgentType.of("researcher"))
+                  .agent(new org.jwcarman.nessy.api.AgentType("researcher"))
                   // Reading is free, so it is ungated. Nothing here is Nessy's judgement about
                   // DeepWiki; it is this application's judgement about its own bill.
                   .tool(toolbox.tool("read_wiki_structure"))
@@ -118,7 +118,7 @@ public final class Researcher {
       return "Ask DeepWiki: " + arguments;
     }
     return repository.isMissingNode()
-        ? "Ask DeepWiki: %s".formatted(question.asText())
-        : "Ask DeepWiki about %s: %s".formatted(repository.asText(), question.asText());
+        ? "Ask DeepWiki: %s".formatted(question.asString())
+        : "Ask DeepWiki about %s: %s".formatted(repository.asString(), question.asString());
   }
 }

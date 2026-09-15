@@ -53,13 +53,13 @@
          contributes the ModelProvider bean. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
+      <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- The JSON binding the MCP SDK speaks. mcp-core is transport and protocol only. -->
     <dependency>
       <groupId>io.modelcontextprotocol.sdk</groupId>
-      <artifactId>mcp-json-jackson2</artifactId>
+      <artifactId>mcp-json-jackson3</artifactId>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>

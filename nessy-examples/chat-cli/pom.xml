@@ -45,8 +45,9 @@
       <artifactId>spring-jdbc</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
     </dependency>
     </dependencies>
   </dependencyManagement>
@@ -75,17 +76,12 @@
          something, not that they chose it. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
+      <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-anthropic</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-gemini</artifactId>
+      <artifactId>nessy-inference-anthropic</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
