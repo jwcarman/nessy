@@ -1,25 +1,12 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -28,28 +15,24 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
-import org.jwcarman.nessy.api.backlog.BacklogCoalescer;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.HistoryMessage;
-import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
+import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolBindingConfig;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.testing.TestDatabase;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-/**
- * The settings a console application fills in.
- *
- * <p>These two — the substrate and the memory — exist so that {@link Repl} DEFAULTS them rather
- * than owning them: a notebook or a plan is opened over a substrate, and an application that cannot
- * name the one its agent writes to cannot give the agent either.
- */
 @DisplayName("A REPL's configuration")
 class ReplConfigTest {
 
@@ -59,77 +42,29 @@ class ReplConfigTest {
   @DisplayName("the database")
   class TheDatabase {
 
+    /**
+     * There used to be a default -- an embedded H2 -- and the engine's schema does not load on H2
+     * at all. Absent here means "use the Boot context's", and the REPL says so if there is none.
+     */
     @Test
-    @DisplayName("is there without being asked for, so the easy button stays easy")
-    void defaults_to_a_database_that_works() {
-      assertThat(config.dataSource()).isNotNull();
+    @DisplayName("is absent until somebody supplies one, because there is no honest default")
+    void has_no_default() {
+      assertThat(config.dataSource()).isEmpty();
     }
 
     @Test
     @DisplayName("is the caller's own when they have one, which is the whole point")
     void a_supplied_database_is_the_one_used() {
-      DataSource mine = TestDatabase.fresh();
-
+      // Never queried here: any DataSource object proves the plumbing, and this one needs no
+      // driver.
+      DataSource mine = new DriverManagerDataSource();
       config.dataSource(mine);
-
-      assertThat(config.dataSource()).isSameAs(mine);
-    }
-
-    @Test
-    void two_configurations_do_not_share_a_default_database() {
-      assertThat(config.dataSource()).isNotSameAs(new ReplConfig().dataSource());
+      assertThat(config.dataSource()).containsSame(mine);
     }
 
     @Test
     void null_is_refused_rather_than_silently_meaning_the_default() {
       assertThatThrownBy(() -> config.dataSource(null)).isInstanceOf(NullPointerException.class);
-    }
-  }
-
-  @Nested
-  @DisplayName("the memory")
-  class TheMemory {
-
-    /** A memory that does nothing, because what it does is not what this asserts. */
-    private final Memory mine =
-        new Memory() {
-          @Override
-          public Context recall(AgentId agentId) {
-            return Context.of(List.of());
-          }
-
-          @Override
-          public void remember(AgentId agentId, HistoryMessage message) {
-            // nothing to keep
-          }
-
-          @Override
-          public void forget(AgentId agentId) {
-            // Nothing kept here.
-          }
-        };
-
-    /**
-     * Empty rather than a stand-in, so {@link Repl} says nothing to the harness and the harness
-     * keeps its OWN default. A default invented here would be a second answer to a question the
-     * engine has already answered.
-     */
-    @Test
-    @DisplayName("is unset by default, leaving the choice to the harness")
-    void is_absent_until_someone_says_otherwise() {
-      assertThat(config.memory()).isEmpty();
-    }
-
-    @Test
-    void a_supplied_memory_is_the_one_used() {
-      config.memory(mine);
-
-      assertThat(config.memory()).containsSame(mine);
-    }
-
-    @Test
-    void null_is_refused_rather_than_silently_meaning_the_default() {
-      assertThatThrownBy(() -> config.memory(null)).isInstanceOf(NullPointerException.class);
     }
   }
 
@@ -140,14 +75,12 @@ class ReplConfigTest {
     @Test
     void a_supplied_prompt_replaces_the_default() {
       config.prompt("nessy> ");
-
       assertThat(config.prompt()).isEqualTo("nessy> ");
     }
 
     @Test
     void a_supplied_system_prompt_is_the_one_used() {
       config.systemPrompt("You are terse.");
-
       assertThat(config.systemPrompt()).isEqualTo("You are terse.");
     }
 
@@ -177,21 +110,23 @@ class ReplConfigTest {
   @DisplayName("which agent is running")
   class WhichAgentIsRunning {
 
+    /** A random id would start a fresh conversation on every launch. */
+    @Test
+    void the_default_id_is_the_same_every_time_this_program_runs() {
+      assertThat(config.agentId()).isEqualTo(new ReplConfig().agentId());
+    }
+
     @Test
     void a_supplied_agent_type_is_the_one_used() {
-      AgentType mine = AgentType.of("watchman");
-
+      AgentType mine = new AgentType("watchman");
       config.agent(mine);
-
       assertThat(config.type()).isSameAs(mine);
     }
 
     @Test
     void a_supplied_agent_id_is_the_one_used() {
-      AgentId mine = AgentId.of("second-terminal");
-
+      AgentId mine = new AgentId(UUID.randomUUID());
       config.id(mine);
-
       assertThat(config.agentId()).isSameAs(mine);
     }
 
@@ -218,7 +153,6 @@ class ReplConfigTest {
     @Test
     void a_supplied_limit_is_the_one_used() {
       config.maxTokens(256);
-
       assertThat(config.maxTokens()).isEqualTo(256);
     }
 
@@ -238,29 +172,43 @@ class ReplConfigTest {
   @DisplayName("granted tools")
   class GrantedTools {
 
-    /** Records what a harness was told, so a test can check what actually reached it. */
+    /** Records what reached it; every other method is a no-op that returns itself. */
     private static final class RecordingHarnessConfig implements HarnessConfig<String> {
-
       private final List<Tool<?>> ungated = new ArrayList<>();
       private final List<Tool<?>> bound = new ArrayList<>();
 
       @Override
-      public HarnessConfig<String> type(AgentType type) {
+      public HarnessConfig<String> agentType(AgentType agentType) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> coalescer(BacklogCoalescer<String> coalescer) {
+      public HarnessConfig<String> systemPrompt(String prompt) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> systemPrompt(String systemPrompt) {
+      public HarnessConfig<String> systemPrompt(SystemPromptSource source) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> model(ModelId modelId) {
+      public HarnessConfig<String> observationRenderer(ObservationRenderer<String> renderer) {
+        return this;
+      }
+
+      @Override
+      public HarnessConfig<String> observationCoalescer(ObservationCoalescer<String> coalescer) {
+        return this;
+      }
+
+      @Override
+      public HarnessConfig<String> inference(Consumer<InferenceConfig> customizer) {
+        return this;
+      }
+
+      @Override
+      public HarnessConfig<String> effects(Consumer<EffectsConfig> customizer) {
         return this;
       }
 
@@ -271,36 +219,39 @@ class ReplConfigTest {
       }
 
       @Override
-      public <I> HarnessConfig<String> tool(
-          Tool<I> tool, Consumer<ToolBindingConfig<I>> customizer) {
+      public <I> HarnessConfig<String> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
         bound.add(tool);
         customizer.accept(
-            new ToolBindingConfig<I>() {
+            new ToolConfig<I>() {
               @Override
-              public ToolBindingConfig<I> approver(Approver approver) {
+              public ToolConfig<I> timeout(Duration timeout) {
                 return this;
               }
 
               @Override
-              public ToolBindingConfig<I> action(ActionRenderer<I> renderer) {
+              public ToolConfig<I> retryPolicy(RetryPolicy retryPolicy) {
+                return this;
+              }
+
+              @Override
+              public ToolConfig<I> action(ActionRenderer<I> action) {
+                return this;
+              }
+
+              @Override
+              public ToolConfig<I> enrich(ApprovalEnricher enricher) {
+                return this;
+              }
+
+              @Override
+              public ToolConfig<I> approver(Approver approver, Consumer<ApproverConfig> c) {
                 return this;
               }
             });
         return this;
       }
-
-      @Override
-      public HarnessConfig<String> renderer(ObservationRenderer<String> renderer) {
-        return this;
-      }
-
-      @Override
-      public HarnessConfig<String> memory(Memory memory) {
-        return this;
-      }
     }
 
-    /** Never executed here: these tests are about how a tool is WIRED, not what it does. */
     private static Tool<String> doNothingTool() {
       return new Tool<>() {
         @Override
@@ -309,8 +260,8 @@ class ReplConfigTest {
         }
 
         @Override
-        public String name() {
-          return "noop";
+        public ToolName name() {
+          return new ToolName("noop");
         }
 
         @Override
@@ -319,7 +270,7 @@ class ReplConfigTest {
         }
 
         @Override
-        public Awaited<ToolResult> execute(ToolCallRequest<String> call) {
+        public Awaited<ToolResult> call(ToolCallRequest<String> request) {
           throw new UnsupportedOperationException("never called in this test");
         }
       };
@@ -331,9 +282,7 @@ class ReplConfigTest {
       Tool<String> tool = doNothingTool();
       config.tool(tool);
       RecordingHarnessConfig harnessConfig = new RecordingHarnessConfig();
-
       config.tools().forEach(grant -> grant.accept(harnessConfig));
-
       assertThat(harnessConfig.ungated).containsExactly(tool);
       assertThat(harnessConfig.bound).isEmpty();
     }
@@ -345,9 +294,7 @@ class ReplConfigTest {
       List<String> customizations = new ArrayList<>();
       config.tool(tool, binding -> customizations.add("applied"));
       RecordingHarnessConfig harnessConfig = new RecordingHarnessConfig();
-
       config.tools().forEach(grant -> grant.accept(harnessConfig));
-
       assertThat(harnessConfig.bound).containsExactly(tool);
       assertThat(customizations).containsExactly("applied");
     }
@@ -360,7 +307,6 @@ class ReplConfigTest {
     @Test
     void null_customizer_is_refused() {
       Tool<String> tool = doNothingTool();
-
       assertThatThrownBy(() -> config.tool(tool, null)).isInstanceOf(NullPointerException.class);
     }
   }

@@ -1,75 +1,35 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.console;
 
 import java.time.Duration;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import org.jwcarman.nessy.api.AgentEvent;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentSubscriber;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.TurnResult;
 
-/**
- * Read a line, post it, watch the answer arrive, prompt again.
- *
- * <p><b>The loop looks synchronous and the engine is not.</b> {@link Harness#observe} returns the
- * moment the line is durably the agent's problem; the answer arrives later, on other threads, as
- * events. What makes a REPL out of that is the one thing here that waits — after posting a line it
- * blocks until it sees {@code TurnEnded}, so a person is never asked to type over a reply that is
- * still being written. An unattended application simply would not wait.
- *
- * <p>Separate from {@link Repl} so it can be tested: everything here needs is a harness, an id, and
- * somewhere to read and write, none of which has to be real.
- */
+/** Reads a line, hands it to the agent, waits for the turn to end, prompts again. */
 final class ReplLoop {
 
-  /** How long to wait for a turn before telling the person it is still going. */
   private static final Duration PATIENCE = Duration.ofMinutes(5);
 
   private final Harness<String> harness;
   private final AgentId agentId;
   private final ReplConfig config;
   private final ConsoleIo io;
+  private final ConsoleNarration narration;
 
-  /**
-   * One slot, holding "the turn you were waiting for is over". A queue rather than a latch because
-   * the loop waits again on the next line, and a latch does not reset.
-   */
-  private final BlockingQueue<AgentEvent.TurnEnded> finished = new ArrayBlockingQueue<>(1);
-
-  ReplLoop(Harness<String> harness, AgentId agentId, ReplConfig config, ConsoleIo io) {
+  ReplLoop(
+      Harness<String> harness,
+      AgentId agentId,
+      ReplConfig config,
+      ConsoleIo io,
+      ConsoleNarration narration) {
     this.harness = harness;
     this.agentId = agentId;
     this.config = config;
     this.io = io;
+    this.narration = narration;
   }
 
   void run() {
-    // Closed on the way out: an unclosed subscription leaves a routing entry behind, and the
-    // engine going on narrating into a REPL that has left is how a clean exit turns into a
-    // warning about dropped messages.
-    try (var _ = harness.subscribe(agentId, printing())) {
-      converse();
-    }
-  }
-
-  private void converse() {
     if (!config.banner().isEmpty()) {
       io.write(config.banner() + System.lineSeparator());
     }
@@ -81,9 +41,7 @@ final class ReplLoop {
         break;
       }
       if (!line.isBlank()) {
-        // Anything left over from a turn nobody waited for must not end THIS one instantly.
-        finished.clear();
-        spoke = false;
+        narration.beginTurn();
         harness.observe(agentId, line);
         awaitTurn();
       }
@@ -94,73 +52,22 @@ final class ReplLoop {
     }
   }
 
-  /**
-   * What the person sees. Deltas print as they arrive, so an answer appears at the speed the model
-   * writes it; tool calls announce themselves, because a pause with no explanation looks like a
-   * hang.
-   */
-  private AgentSubscriber printing() {
-    return AgentSubscriber.of(
-        events ->
-            events
-                // Flushed per delta, which is what makes this actually stream. print() only
-                // reaches the terminal when what it wrote contains a newline, so without this a
-                // paragraph arrives in one lump at the end — the answer appears finished rather
-                // than being written, which is the whole difference a person can see.
-                .onTextDelta(
-                    delta -> {
-                      spoke = true;
-                      writeNow(delta.text());
-                    })
-                .onToolCallRequested(
-                    call ->
-                        io.write(
-                            System.lineSeparator()
-                                + "  [calling "
-                                + call.toolName()
-                                + "]"
-                                + System.lineSeparator()))
-                .onToolCallCompleted(
-                    call ->
-                        io.write("  [" + call.toolName() + " answered]" + System.lineSeparator()))
-                // offer(), not put(): if nobody is waiting the notice is worth dropping, and
-                // blocking an engine thread on a REPL that moved on never is.
-                .onTurnEnded(finished::offer));
-  }
-
-  /**
-   * Whether the model has said anything at all this turn.
-   *
-   * <p>A turn can end having produced no text: it can be refused, it can fail on a rate limit or a
-   * context overflow, or the model can simply stop after its tools. Without this the person sees an
-   * empty line and a fresh prompt, which is indistinguishable from an answer of nothing — and from
-   * a hang.
-   */
-  private volatile boolean spoke;
-
-  /** Written and made visible immediately: a REPL's output is watched, not collected. */
-  private void writeNow(String text) {
-    io.write(text);
-    io.flush();
-  }
-
   private void awaitTurn() {
     try {
-      AgentEvent.TurnEnded ended = finished.poll(PATIENCE.toMillis(), TimeUnit.MILLISECONDS);
-      if (ended == null) {
+      Optional<ConsoleNarration.Ending> ended = narration.awaitEnding(PATIENCE);
+      if (ended.isEmpty()) {
         // Not "still working": the other possibility is that the turn finished and the news never
-        // arrived, which is what a lost subscription looks like from here. Naming both is the
-        // difference between looking at the model and looking at the plumbing — measured, on a
-        // session that waited five minutes for an answer the model had already given.
+        // arrived, which is what a lost narration looks like from here. Naming both is the
+        // difference between looking at the model and looking at the plumbing.
         io.write(
             System.lineSeparator()
                 + "  [no answer after "
                 + PATIENCE.toMinutes()
-                + "m — still working, or the turn ended without reaching this listener]"
+                + "m -- still working, or the turn ended without reaching this listener]"
                 + System.lineSeparator());
       } else {
         io.write(System.lineSeparator());
-        report(ended.outcome());
+        report(ended.get());
       }
       io.flush();
     } catch (InterruptedException _) {
@@ -168,25 +75,16 @@ final class ReplLoop {
     }
   }
 
-  /**
-   * Says what happened when the answer alone does not.
-   *
-   * <p>Only when the turn produced no text, except for a refusal or a failure — those are worth
-   * saying even if something was streamed first, because a half-written answer that then failed is
-   * the case most likely to be misread as a complete one.
-   */
-  private void report(TurnResult outcome) {
-    switch (outcome) {
-      case TurnResult.Refused(var category, var explanation) ->
-          note("refused (" + category + "): " + explanation);
-      case TurnResult.Failed(var reason) -> note("failed: " + reason);
-      case TurnResult.Truncated() ->
-          note("the answer was cut off at the token limit; ask for less, or raise maxTokens");
-      case TurnResult.Completed() when !spoke ->
+  private void report(ConsoleNarration.Ending ending) {
+    switch (ending) {
+      case REFUSED -> note("the model refused to answer");
+      case FAILED -> note("the turn failed; the model could not be reached or did not finish");
+      case TERMINATED -> note("the agent was terminated");
+      case ANSWERED -> {
+        if (!narration.spoke()) {
           note("the model ended the turn without saying anything");
-      case TurnResult.Completed() -> {
-        // Said its piece and stopped. The answer IS the report, so anything here would be the
-        // REPL talking over the model.
+        }
+        // Otherwise it said its piece: the answer IS the report.
       }
     }
   }

@@ -37,17 +37,13 @@
       <artifactId>spring-jdbc</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- The model comes from whichever credentials are in the environment: a minimal Boot context
          (web-application-type NONE), so whichever provider module's @AutoConfiguration finds its
-         API key contributes the ModelProvider bean. The ADAPTERS are the application's choice, so
+         API key contributes the InferenceProvider bean. The ADAPTERS are the application's choice, so
          they are not dragged in here — an application chooses which provider jars ride its
          classpath, exactly as it chose which ones fed discovery before it. -->
     <dependency>
@@ -58,12 +54,6 @@
            even declared last. Pinning the one Boot artifact this module actually uses, directly,
            keeps that blast radius to this dependency alone. -->
       <version>${spring-boot.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

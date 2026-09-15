@@ -1,45 +1,26 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.console;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentSubscriber;
-import org.jwcarman.nessy.api.AgentSubscription;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
- * A harness that records what it was told and narrates whatever a test wants.
+ * A harness that answers each observation with a scripted run of events.
  *
- * <p>The engine is not what these tests are about: they are about a loop that posts a line and
- * waits for a turn to end. So this stands in for the engine and lets a test decide, per
- * observation, what the agent says back.
+ * <p>Narrated on THIS thread, which the real engine would not do -- but the loop must not care
+ * which thread an event arrives on, and a test that had to start one would be racing.
  */
 final class FakeHarness implements Harness<String> {
 
-  /** What to narrate in response to the nth observation. */
-  private final List<List<AgentEvent>> answers;
+  private static final AgentType TYPE = new AgentType("chat");
 
+  private final List<List<AgentEvent>> answers;
   private final List<String> observed = new ArrayList<>();
-  private final List<AgentSubscriber> subscribers = new CopyOnWriteArrayList<>();
-  private boolean everSubscribed;
+  private Narrator narrator = Narrator.silent();
   private int next;
 
   @SafeVarargs
@@ -47,9 +28,9 @@ final class FakeHarness implements Harness<String> {
     this.answers = List.of(answers);
   }
 
-  @Override
-  public AgentType type() {
-    return AgentType.of("chat");
+  /** The engine is told its narrator at construction; a fake is told afterwards. */
+  void narrateTo(Narrator narrator) {
+    this.narrator = narrator;
   }
 
   @Override
@@ -58,40 +39,15 @@ final class FakeHarness implements Harness<String> {
     if (next >= answers.size()) {
       return;
     }
-    // Narrated on THIS thread, which the real engine would not do — but the loop must not care
-    // which thread an event arrives on, and a test that had to start one would be racing.
-    answers.get(next++).forEach(event -> subscribers.forEach(s -> s.on(event)));
+    answers.get(next++).forEach(event -> narrator.narrate(TYPE, agentId, event));
   }
 
   @Override
-  public void forget(AgentId agentId) {
-    // A fake that keeps nothing has nothing to forget.
-  }
-
-  @Override
-  public AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber) {
-    return subscribe(agentId, subscriber, null);
-  }
-
-  @Override
-  public AgentSubscription subscribe(
-      AgentId agentId, AgentSubscriber subscriber, String lastEventId) {
-    subscribers.add(subscriber);
-    everSubscribed = true;
-    return () -> subscribers.remove(subscriber);
+  public void terminate(AgentId agentId) {
+    narrator.narrate(TYPE, agentId, new AgentEvent.Terminated());
   }
 
   List<String> observed() {
     return List.copyOf(observed);
-  }
-
-  /** Whether anyone ever listened — true even after the listener left. */
-  boolean wasListenedTo() {
-    return everSubscribed;
-  }
-
-  /** Whether anyone is listening NOW: a subscription left open would still be here. */
-  boolean isListenedTo() {
-    return !subscribers.isEmpty();
   }
 }
