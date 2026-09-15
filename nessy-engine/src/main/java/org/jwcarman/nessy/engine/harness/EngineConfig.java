@@ -39,6 +39,7 @@ public final class EngineConfig {
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ReplyTokens replyTokens;
   private Codec<byte[]> storage;
+  private boolean recordInferenceContexts = true;
 
   EngineConfig() {}
 
@@ -100,6 +101,17 @@ public final class EngineConfig {
     return this;
   }
 
+  /**
+   * Whether every model call's request is written down, whole, in {@code nessy_inference_context}
+   * -- on unless said otherwise. The cost is one row per call, small against the call itself; the
+   * value is knowing exactly what the model was shown when it decided something, which nothing else
+   * can say afterwards.
+   */
+  public EngineConfig recordInferenceContexts(boolean record) {
+    this.recordInferenceContexts = record;
+    return this;
+  }
+
   // ---- what the factory reads ------------------------------------------------------------
 
   DataSource requiredDataSource() {
@@ -126,6 +138,10 @@ public final class EngineConfig {
 
   ObservationRegistry observations() {
     return observations;
+  }
+
+  boolean recordInferenceContexts() {
+    return recordInferenceContexts;
   }
 
   Optional<Codec<byte[]>> storage() {

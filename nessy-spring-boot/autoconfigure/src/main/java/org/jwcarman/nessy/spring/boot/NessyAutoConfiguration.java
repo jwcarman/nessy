@@ -15,6 +15,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.store.InferenceContexts;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -143,6 +144,13 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public TurnHistories nessyHistories(DefaultHarnessFactory factory) {
     return factory.histories();
+  }
+
+  /** What each model call was shown, for evals, critics and anyone debugging a call. */
+  @Bean
+  @ConditionalOnMissingBean
+  public InferenceContexts nessyInferenceContexts(DefaultHarnessFactory factory) {
+    return factory.inferenceContexts();
   }
 
   @Bean

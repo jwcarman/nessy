@@ -1,5 +1,7 @@
 package org.jwcarman.nessy.api.turn;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.block.Block;
@@ -15,6 +17,14 @@ import org.jwcarman.nessy.api.block.Block;
  * ending. It carries what each ending has rather than a discriminator plus a lookup: an answer has
  * content, and the other two have nothing to say beyond having happened.
  */
+// Named on the wire so a Turn can be written down whole -- the recorded inference contexts are
+// where that happens -- and read back as the type it was.
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = TurnResult.Answered.class, name = "answered"),
+  @JsonSubTypes.Type(value = TurnResult.Failed.class, name = "failed"),
+  @JsonSubTypes.Type(value = TurnResult.Refused.class, name = "refused")
+})
 public sealed interface TurnResult {
 
   /** The turn was answered. */

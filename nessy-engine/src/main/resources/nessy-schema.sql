@@ -105,3 +105,27 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
 -- Shaped for the one query that matters: due work of one agent type, oldest first.
 CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
+
+-- What a model was shown, call by call: the whole request as rendered -- system prompt,
+-- summaries, tail, ambient, tools, options -- written before the provider is asked. It cannot be
+-- reconstructed afterwards: the head summary replaces itself, ambient changes every call, and
+-- the system prompt is a template rendered per call. Stored whole rather than by reference to
+-- the story so that a row means something on its own, wherever it is read.
+CREATE TABLE IF NOT EXISTS nessy_inference_context
+(
+    context_id   UUID         PRIMARY KEY,
+    agent_type   VARCHAR(64)  NOT NULL,
+    agent_id     UUID         NOT NULL REFERENCES nessy_agent_state (agent_id),
+    -- The open turn the call was made for: the last turn in the context.
+    turn_id      BIGINT       NOT NULL,
+    requested_at TIMESTAMPTZ  NOT NULL,
+    model        VARCHAR(128) NOT NULL,
+    payload      BYTEA        NOT NULL,
+    -- How the call came back: answer, actions, refusal, fault -- or null while it is in flight or
+    -- if the process died before it returned.
+    outcome      VARCHAR(16),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_nessy_inference_context_agent
+    ON nessy_inference_context (agent_type, agent_id, requested_at);

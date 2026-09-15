@@ -1,5 +1,7 @@
 package org.jwcarman.nessy.api.turn;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.block.Block;
@@ -17,6 +19,13 @@ import org.jwcarman.nessy.api.tool.CallId;
  * one result block -- but that flattening is the adapter's to perform, and doing it here would
  * throw away the distinction before anyone could use it.
  */
+// Named on the wire for the same reason TurnResult is: a Turn is written down whole.
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = ToolOutcome.Succeeded.class, name = "succeeded"),
+  @JsonSubTypes.Type(value = ToolOutcome.Failed.class, name = "failed"),
+  @JsonSubTypes.Type(value = ToolOutcome.Denied.class, name = "denied")
+})
 public sealed interface ToolOutcome {
 
   /** The call this answers. Providers match results to calls by this id, never by position. */

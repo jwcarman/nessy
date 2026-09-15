@@ -25,13 +25,16 @@ import org.jwcarman.nessy.engine.effect.ToolCallHandler;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.inference.InferenceRecorder;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.AgentStateStore;
 import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.store.InferenceContexts;
 import org.jwcarman.nessy.engine.store.JdbcEffectStore;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
+import org.jwcarman.nessy.engine.store.JdbcInferenceContexts;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
@@ -75,6 +78,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final AgentStateRepository states;
   private final JdbcHistoryStore history;
   private final JdbcEffectStore effectRows;
+  private final JdbcInferenceContexts contexts;
+  private final InferenceRecorder recorder;
   private final TransactionTemplate transactions;
   private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
@@ -103,6 +108,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     this.states = new AgentStateRepository(jdbc);
     this.history = new JdbcHistoryStore(jdbc, codecs, new CharacterCountEstimator());
     this.effectRows = new JdbcEffectStore(jdbc, codecs);
+    this.contexts = new JdbcInferenceContexts(jdbc, codecs, clock);
+    this.recorder = config.recordInferenceContexts() ? contexts : InferenceRecorder.NONE;
     this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
@@ -161,7 +168,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
                     inference.provider(),
                     config.requiredSystemPrompt(),
                     tools.offers(),
-                    narrator),
+                    narrator,
+                    recorder),
                 inference.options(),
                 inference.timeout(),
                 inference.retryPolicy()),
@@ -239,6 +247,11 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * board -- reads it through this rather than opening the tables itself, so what it reads is what
    * the engine wrote, decoded the way the engine decodes it.
    */
+  /** What each model call was shown, read-only. */
+  public InferenceContexts inferenceContexts() {
+    return contexts;
+  }
+
   public TurnHistories histories() {
     return history;
   }
