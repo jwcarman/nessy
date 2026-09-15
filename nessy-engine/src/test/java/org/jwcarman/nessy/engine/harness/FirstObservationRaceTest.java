@@ -82,13 +82,21 @@ class FirstObservationRaceTest {
       call.get();
     }
 
-    // One took the turn, the rest joined the backlog, and every one is answered in time.
+    // One took the turn, the rest joined the backlog, and every one is answered in time. Waited
+    // for to the last answer, not the last observation: the engines in this suite share one
+    // database and one agent type, so work left in flight here would be picked up by the next
+    // test's dispatcher and performed by ITS model.
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
-            () ->
-                assertThat(engine.history().entriesFrom(CHAT, agentId, 0))
-                    .filteredOn(HistoryEntry.ObservationReceived.class::isInstance)
-                    .hasSize(CALLERS));
+            () -> {
+              List<HistoryEntry> story = engine.history().entriesFrom(CHAT, agentId, 0);
+              assertThat(story)
+                  .filteredOn(HistoryEntry.ObservationReceived.class::isInstance)
+                  .hasSize(CALLERS);
+              assertThat(story)
+                  .filteredOn(HistoryEntry.InferenceAnswered.class::isInstance)
+                  .hasSize(CALLERS);
+            });
   }
 }
