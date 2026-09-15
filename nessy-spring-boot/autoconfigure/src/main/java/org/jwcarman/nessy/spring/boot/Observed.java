@@ -15,26 +15,22 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
-import io.micrometer.core.instrument.DistributionSummary;
-import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import java.util.Iterator;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.model.StopReason;
-import org.jwcarman.nessy.api.model.Usage;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.inference.InferenceResult;
 
 /**
  * Observability by WRAPPING the collaborators the engine calls, rather than by listening to what it
@@ -67,8 +63,10 @@ public final class Observed {
   /** Semconv's histogram of how long a GenAI operation took. */
   private static final String DURATION = "gen_ai.client.operation.duration";
 
-  /** Semconv's histogram of tokens used, split by {@code gen_ai.token.type}. */
-  private static final String TOKENS = "gen_ai.client.token.usage";
+  // Semconv's gen_ai.client.token.usage histogram is NOT recorded, because InferenceResult does
+  // not carry usage. The old streaming SPI reported it per event; the new one returns one finished
+  // result and says nothing about what it cost. Adding it back is a change to InferenceResult, and
+  // is worth making when somebody actually wants to bill or budget on it.
 
   private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String FINISH_REASONS = "gen_ai.response.finish_reasons";
@@ -78,202 +76,73 @@ public final class Observed {
   private Observed() {}
 
   /**
-   * Every model this provider hands out, observed.
+   * One provider, observed: a span per inference, lasting as long as the provider actually takes.
    *
-   * @param providerName the semconv {@code gen_ai.provider.name} for this vendor — {@code
-   *     "openai"}, {@code "anthropic"}, {@code "gcp.gemini"}, {@code "aws.bedrock"}. Passed in
-   *     because {@link Model} no longer reports its own vendor, and the application that built the
-   *     provider is the one thing that knows. Each adapter publishes the right value as its own
-   *     {@code PROVIDER_NAME} constant.
+   * <p><b>Simpler than it was, because the SPI is.</b> Timing used to have to stay open across
+   * iteration of a stream -- the provider did its work as events were consumed, so timing the call
+   * that returned the iterator measured almost nothing. An inference is one call that returns when
+   * it is done, so the span is just the call.
+   *
+   * @param providerName the semconv {@code gen_ai.provider.name} for this vendor -- {@code
+   *     "openai"}, {@code "anthropic"}, {@code "x_ai"}. Passed in because the application that
+   *     built the provider is the one thing that knows; each adapter publishes the right value as
+   *     its own {@code PROVIDER_NAME}.
    */
-  public static ModelProvider models(
-      ModelProvider delegate,
-      String providerName,
-      ObservationRegistry observations,
-      MeterRegistry meters) {
-    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
-    return id -> model(delegate.model(id), providerName, observations, meters);
-  }
-
-  /** One model, observed: a span per call, lasting as long as the provider actually takes. */
-  public static Model model(
-      Model delegate, String providerName, ObservationRegistry observations, MeterRegistry meters) {
+  public static InferenceProvider inference(
+      InferenceProvider delegate, String providerName, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
     Objects.requireNonNull(providerName, "providerName must not be null");
     Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-    Objects.requireNonNull(meters, "meters must not be null");
-    return new Model() {
-      @Override
-      public org.jwcarman.nessy.api.model.ModelId id() {
-        return delegate.id();
-      }
 
-      @Override
-      public ModelStream stream(ModelRequest request) {
-        String model = delegate.id().value();
-        Observation observation =
-            Observation.createNotStarted(DURATION, observations)
-                // Semconv's span name is "{operation} {model}", which the metric name cannot also
-                // be — so the contextual name carries it and the meter keeps the histogram's name.
-                .contextualName("chat " + model)
-                .lowCardinalityKeyValue(OPERATION_NAME, "chat")
-                .lowCardinalityKeyValue("gen_ai.provider.name", providerName)
-                .lowCardinalityKeyValue("gen_ai.request.model", model)
-                .lowCardinalityKeyValue("gen_ai.request.stream", "true")
-                // Set at START, not on outcome. Micrometer compares an observation's key set
-                // against others recorded under the same name, so a chat that only sometimes
-                // carried a finish reason would be a different shape from one that did.
-                .lowCardinalityKeyValue(FINISH_REASONS, "none")
-                .lowCardinalityKeyValue("error.type", "none")
-                .start();
-        try {
-          return new ObservedStream(
-              delegate.stream(request), observation, meters, providerName, model);
-        } catch (RuntimeException e) {
-          observation.lowCardinalityKeyValue("error.type", e.getClass().getSimpleName());
-          observation.error(e);
-          observation.stop();
-          throw e;
+    return (request, narrator) -> {
+      String model = request.options().modelName();
+      Observation observation =
+          Observation.createNotStarted(DURATION, observations)
+              // Semconv's span name is "{operation} {model}", which the metric name cannot also
+              // be -- so the contextual name carries it and the meter keeps the histogram's name.
+              .contextualName("chat " + model)
+              .lowCardinalityKeyValue(OPERATION_NAME, "chat")
+              .lowCardinalityKeyValue("gen_ai.provider.name", providerName)
+              .lowCardinalityKeyValue("gen_ai.request.model", model)
+              // Set at START, not on outcome. Micrometer compares an observation's key set
+              // against others recorded under the same name, so a chat that only sometimes
+              // carried a finish reason would be a different shape from one that did.
+              .lowCardinalityKeyValue(FINISH_REASONS, "none")
+              .lowCardinalityKeyValue("error.type", "none")
+              .start();
+      try {
+        InferenceResult result = delegate.infer(request, narrator);
+        observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
+        // A provider that answers with a Fault did not throw, and the span must still say so --
+        // this is the whole point of a total SPI: the failure is a value, and a value that
+        // nothing recorded would be a call that looks successful in every dashboard.
+        if (result instanceof InferenceResult.Fault(Failure failure)) {
+          observation.lowCardinalityKeyValue("error.type", failure.getClass().getSimpleName());
         }
+        return result;
+      } catch (RuntimeException e) {
+        observation.lowCardinalityKeyValue("error.type", e.getClass().getSimpleName());
+        observation.error(e);
+        throw e;
+      } finally {
+        observation.stop();
       }
     };
   }
 
   /**
-   * A stream that ends its observation when the caller is done with it.
+   * What the model did, in semconv's vocabulary.
    *
-   * <p>Timing {@code stream()} alone would report almost nothing: the provider does its work as the
-   * events are consumed. So the span stays open across iteration and closes with the stream, which
-   * is what makes its duration the model's latency rather than the cost of returning an iterator.
+   * <p>Exhaustive, so a new kind of result has to be given a name here rather than silently
+   * reported as whatever the last arm happened to be.
    */
-  private static final class ObservedStream implements ModelStream {
-
-    private final ModelStream delegate;
-    private final Observation observation;
-    private final MeterRegistry meters;
-    private final String providerName;
-    private final String model;
-    private final long startedAt = System.nanoTime();
-    private boolean firstChunkSeen;
-    private boolean stopped;
-
-    private ObservedStream(
-        ModelStream delegate,
-        Observation observation,
-        MeterRegistry meters,
-        String providerName,
-        String model) {
-      this.delegate = delegate;
-      this.observation = observation;
-      this.meters = meters;
-      this.providerName = providerName;
-      this.model = model;
-    }
-
-    @Override
-    public Iterator<ModelEvent> iterator() {
-      Iterator<ModelEvent> events = delegate.iterator();
-      return new Iterator<>() {
-        @Override
-        public boolean hasNext() {
-          return events.hasNext();
-        }
-
-        @Override
-        public ModelEvent next() {
-          ModelEvent event = events.next();
-          if (!firstChunkSeen) {
-            firstChunkSeen = true;
-            // Distinguishes a model that is slow to start from one that is simply long-winded.
-            observation.highCardinalityKeyValue(
-                "gen_ai.response.time_to_first_chunk",
-                String.valueOf((System.nanoTime() - startedAt) / 1_000_000));
-          }
-          recordOutcome(event);
-          return event;
-        }
-      };
-    }
-
-    /** The tokens THIS call reported, and how it ended. */
-    private void recordOutcome(ModelEvent event) {
-      switch (event) {
-        case ModelEvent.Stopped(StopReason reason, Usage usage) -> {
-          observation.lowCardinalityKeyValue(FINISH_REASONS, finishReason(reason));
-          tokens(usage);
-        }
-        case ModelEvent.Refused(_, _, Usage usage) -> {
-          observation.lowCardinalityKeyValue(FINISH_REASONS, "content_filter");
-          tokens(usage);
-        }
-        default -> {
-          // Deltas and tool calls are the body of the turn, not its outcome.
-        }
-      }
-    }
-
-    /**
-     * Our normalized reason as semconv spells it. {@code MAX_TOKENS} is {@code "length"} rather
-     * than anything about tokens, which reads oddly and is what every provider reports.
-     */
-    private static String finishReason(StopReason reason) {
-      return switch (reason) {
-        case END_TURN -> "stop";
-        case TOOL_USE -> "tool_calls";
-        case MAX_TOKENS -> "length";
-      };
-    }
-
-    /**
-     * Records what the call cost, and records NOTHING for what the provider did not report.
-     *
-     * <p>A reported zero is still written, for the reason it always was: a missing attribute and a
-     * genuine zero look identical on a graph, so "is the cache working" cannot be answered by an
-     * attribute that appears only when caching happened. An UNREPORTED count is the other case
-     * entirely — there is no measurement to write, and inventing a zero would drag a cache-hit rate
-     * towards zero for every provider that keeps no cache books.
-     */
-    private void tokens(Usage usage) {
-      count("gen_ai.usage.input_tokens", "input", usage.inputTokens());
-      count("gen_ai.usage.output_tokens", "output", usage.outputTokens());
-      // Subsets of input_tokens, never siblings — see Usage.
-      count("gen_ai.usage.cache_read.input_tokens", "cache_read", usage.cacheReadInputTokens());
-      count("gen_ai.usage.cache_write.input_tokens", "cache_write", usage.cacheWriteInputTokens());
-    }
-
-    /**
-     * One count, onto both the span and its own {@code gen_ai.token.type} histogram — so a cache
-     * hit rate is one query rather than arithmetic across metrics.
-     */
-    private void count(String attribute, String type, Integer tokens) {
-      if (tokens == null) {
-        return;
-      }
-      observation.highCardinalityKeyValue(attribute, String.valueOf(tokens));
-      tokenSummary(type).record(tokens);
-    }
-
-    private DistributionSummary tokenSummary(String type) {
-      return DistributionSummary.builder(TOKENS)
-          .baseUnit("token")
-          .tag(OPERATION_NAME, "chat")
-          .tag("gen_ai.provider.name", providerName)
-          .tag("gen_ai.request.model", model)
-          .tag("gen_ai.token.type", type)
-          .register(meters);
-    }
-
-    @Override
-    public void close() {
-      try {
-        delegate.close();
-      } finally {
-        if (!stopped) {
-          stopped = true;
-          observation.stop();
-        }
-      }
-    }
+  private static String finishReasonOf(InferenceResult result) {
+    return switch (result) {
+      case InferenceResult.Answer _ -> "stop";
+      case InferenceResult.Actions _ -> "tool_calls";
+      case InferenceResult.Refusal _ -> "content_filter";
+      case InferenceResult.Fault _ -> "error";
+    };
   }
 
   /**
@@ -288,7 +157,7 @@ public final class Observed {
     Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
     return new Tool<>() {
       @Override
-      public String name() {
+      public ToolName name() {
         return delegate.name();
       }
 
@@ -303,23 +172,23 @@ public final class Observed {
       }
 
       @Override
-      public com.fasterxml.jackson.databind.node.ObjectNode inputSchema() {
-        return delegate.inputSchema();
+      public InputSchema inputSchema(InputSchemaGenerator generator) {
+        return delegate.inputSchema(generator);
       }
 
       @Override
-      public Awaited<ToolResult> execute(ToolCallRequest<I> call) {
+      public Awaited<ToolResult> call(ToolCallRequest<I> request) {
         Observation observation =
             Observation.createNotStarted(DURATION, observations)
-                .contextualName("execute_tool " + delegate.name())
+                .contextualName("execute_tool " + delegate.name().value())
                 .lowCardinalityKeyValue(OPERATION_NAME, "execute_tool")
-                .lowCardinalityKeyValue("gen_ai.tool.name", delegate.name())
+                .lowCardinalityKeyValue("gen_ai.tool.name", delegate.name().value())
                 .lowCardinalityKeyValue("gen_ai.tool.type", "function")
                 .lowCardinalityKeyValue("nessy.tool.outcome", "none")
                 .lowCardinalityKeyValue("nessy.tool.deferred", "none");
         return observation.observe(
             () -> {
-              Awaited<ToolResult> answer = delegate.execute(call);
+              Awaited<ToolResult> answer = delegate.call(request);
               observation.lowCardinalityKeyValue("nessy.tool.outcome", outcomeOf(answer));
               observation.lowCardinalityKeyValue(
                   "nessy.tool.deferred",
@@ -347,10 +216,10 @@ public final class Observed {
     return request -> {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
-              .contextualName("approve " + request.toolName())
-              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().name())
-              .lowCardinalityKeyValue("gen_ai.tool.name", request.toolName())
-              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value())
+              .contextualName("approve " + request.toolName().value())
+              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().value())
+              .lowCardinalityKeyValue("gen_ai.tool.name", request.toolName().value())
+              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value().toString())
               .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
       return observation.observe(

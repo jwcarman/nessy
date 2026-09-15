@@ -1,49 +1,29 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.spring.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.EngineHarnessFactory;
-import org.jwcarman.nessy.engine.Replies;
-import org.jwcarman.nessy.engine.ReplyTokens;
-import org.jwcarman.nessy.spi.model.Model;
-import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.testing.TestDatabase;
+import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.narration.Narrator;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
-import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 /**
  * What the starter wires, and what it steps aside for.
@@ -51,31 +31,65 @@ import org.springframework.context.annotation.Configuration;
  * <p>Every test here drives a real {@link ApplicationContextRunner}: the point of a starter is what
  * Spring does with it, and a test that called the {@code @Bean} methods directly would prove
  * nothing about the conditions guarding them.
+ *
+ * <p><b>The database here is H2, and only because nothing here runs a turn.</b> These are wiring
+ * tests -- they assert which beans exist and which do not. The engine's own tests use real
+ * PostgreSQL, because its queries are PostgreSQL's and a test on H2 would pass against exactly the
+ * bugs that matter. Nothing in this file should ever ask an agent to do anything.
  */
 class NessyAutoConfigurationTest {
+
+  private static final String MODEL = "nessy.model=a-test-model";
+  private static final String PROMPT = "nessy.system-prompt=you are a test assistant";
+
+  /**
+   * <b>No tables, and that is the point of these tests.</b> They assert which beans exist; nothing
+   * here runs a turn. The engine's own schema does not even load on H2 -- {@code BYTEA} and {@code
+   * TIMESTAMPTZ} are PostgreSQL's -- which is the same fact that makes an in-memory fallback
+   * impossible, so opting out is what lets a wiring test stay a wiring test.
+   */
+  private static final String NO_SCHEMA = "nessy.initialize-schema=false";
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
-          .withUserConfiguration(AModelProvider.class)
-          .withPropertyValues("nessy.model=a-test-model");
+          .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
+          .withPropertyValues(MODEL, PROMPT, NO_SCHEMA);
 
   @Test
-  void it_wires_a_harness_from_nothing_but_a_model_provider() {
+  void it_wires_a_harness_from_a_provider_and_a_database() {
     runner.run(
         context -> {
           assertThat(context).hasSingleBean(Harness.class);
-          assertThat(context).hasSingleBean(EngineHarnessFactory.class);
+          assertThat(context).hasSingleBean(HarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
+          assertThat(context).hasSingleBean(Narrator.class);
         });
   }
 
+  /**
+   * <b>No in-memory fallback, deliberately.</b> There used to be one: no {@code DataSource} meant
+   * an embedded H2 and a loud warning. The warning was the tell -- the queries this engine rests on
+   * are PostgreSQL's, so the fallback did not run a degraded Nessy, it ran one that fails on the
+   * first turn. Refusing to start names the missing thing at the only moment it is cheap to fix.
+   */
   @Test
-  void it_refuses_to_start_without_a_model_id() {
+  @DisplayName("with no DataSource, it refuses to start rather than pretending")
+  void it_refuses_to_start_without_a_data_source() {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
-        .withUserConfiguration(AModelProvider.class)
+        .withUserConfiguration(AnInferenceProvider.class)
+        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasFailed());
+  }
+
+  @Test
+  void it_refuses_to_start_without_a_model() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
+        .withPropertyValues(PROMPT, NO_SCHEMA)
         .run(
             context -> {
               // Guessing a model would start cleanly and fail at the first turn.
@@ -85,69 +99,11 @@ class NessyAutoConfigurationTest {
   }
 
   @Test
-  void it_refuses_to_start_without_a_model_provider() {
+  void it_refuses_to_start_with_a_blank_model() {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
-        .withPropertyValues("nessy.model=a-test-model")
-        .run(context -> assertThat(context).hasFailed());
-  }
-
-  @Test
-  @DisplayName("with no DataSource configured, Nessy supplies an in-memory one and says so")
-  void it_falls_back_to_an_in_memory_database_when_there_is_no_data_source() {
-    runner.run(context -> assertThat(context).hasSingleBean(DataSource.class));
-  }
-
-  @Test
-  void an_application_data_source_wins() {
-    runner
-        .withUserConfiguration(AnApplicationDataSource.class)
-        .run(
-            context -> {
-              assertThat(context).hasSingleBean(DataSource.class);
-              assertThat(context.getBean(DataSource.class))
-                  .isSameAs(context.getBean(AnApplicationDataSource.class).dataSource);
-            });
-  }
-
-  @Test
-  void the_agent_type_comes_from_properties() {
-    runner
-        .withPropertyValues("nessy.type=watchman")
-        .run(
-            context ->
-                assertThat(context.getBean(Harness.class).type().name()).isEqualTo("watchman"));
-  }
-
-  @Test
-  void the_system_prompt_can_be_given_inline() {
-    runner
-        .withPropertyValues("nessy.system-prompt=You watch the house.")
-        .run(context -> assertThat(context).hasNotFailed());
-  }
-
-  @Test
-  void giving_both_prompt_sources_fails_rather_than_silently_picking_one() {
-    runner
-        .withPropertyValues(
-            "nessy.system-prompt=inline", "nessy.system-prompt-file=classpath:prompt.txt")
-        .run(context -> assertThat(context).hasFailed());
-  }
-
-  @Test
-  void tools_declared_as_beans_are_granted() {
-    runner
-        .withUserConfiguration(AToolBean.class)
-        .run(context -> assertThat(context).hasSingleBean(Harness.class));
-  }
-
-  @Test
-  @DisplayName("a blank model id fails the same way a missing one does")
-  void it_refuses_to_start_with_a_blank_model_id() {
-    new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
-        .withUserConfiguration(AModelProvider.class)
-        .withPropertyValues("nessy.model=   ")
+        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
+        .withPropertyValues("nessy.model=   ", PROMPT, NO_SCHEMA)
         .run(
             context -> {
               assertThat(context).hasFailed();
@@ -156,94 +112,117 @@ class NessyAutoConfigurationTest {
   }
 
   @Test
-  @DisplayName("configured reply keys seal tokens instead of falling back to the ephemeral default")
+  void it_refuses_to_start_without_an_inference_provider() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withUserConfiguration(ADatabase.class)
+        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasFailed());
+  }
+
+  /**
+   * An agent with no standing instruction is a chat box, and the empty string used to be allowed
+   * only because nothing downstream objected.
+   */
+  @Test
+  void it_refuses_to_start_without_a_system_prompt() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
+        .withPropertyValues(MODEL, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure()).hasMessageContaining("nessy.system-prompt");
+            });
+  }
+
+  @Test
+  void giving_both_prompt_sources_fails_rather_than_silently_picking_one() {
+    runner
+        .withPropertyValues("nessy.system-prompt-file=classpath:application.properties")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure()).hasMessageContaining("not both");
+            });
+  }
+
+  @Test
+  void an_application_data_source_wins() {
+    runner.run(context -> assertThat(context).hasSingleBean(DataSource.class));
+  }
+
+  @Test
+  void tools_declared_as_beans_are_bound_to_the_harness() {
+    runner
+        .withUserConfiguration(AToolBean.class)
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  /** Silence is the default, because narration costs a line per event and nobody asked. */
+  @Test
+  void the_default_narrator_says_nothing_and_an_application_can_replace_it() {
+    runner.run(
+        context ->
+            assertThat(context.getBean(Narrator.class)).isSameAs(context.getBean(Narrator.class)));
+    runner
+        .withUserConfiguration(ANarrator.class)
+        .run(context -> assertThat(context.getBean(Narrator.class)).isSameAs(ANarrator.INSTANCE));
+  }
+
+  @Test
   void configured_reply_keys_are_used_instead_of_the_ephemeral_default() {
     runner
         .withPropertyValues(
-            "nessy.reply-token-encryption-keys=otvNTFHF1XGxgAjeGl32r+k/MhX08XZ5j9mmsOhz+xM=")
+            "nessy.reply-token-encryption-keys[0]=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
         .run(context -> assertThat(context).hasSingleBean(ReplyTokens.class));
   }
 
   @Test
-  @DisplayName("with both a registry and meters present, model calls are observed")
-  void an_application_with_observability_beans_gets_observed_models() {
+  void an_application_with_a_registry_gets_its_provider_observed() {
     runner
-        .withUserConfiguration(AnObservabilityConfig.class)
-        .run(context -> assertThat(context).hasNotFailed());
+        .withUserConfiguration(ARegistry.class)
+        .run(context -> assertThat(context).hasSingleBean(HarnessFactory.class));
   }
 
-  @Test
-  @DisplayName("a registry alone, with no MeterRegistry to record onto, does not observe models")
-  void a_registry_without_meters_does_not_observe_models() {
-    runner
-        .withUserConfiguration(ARegistryOnlyConfig.class)
-        .run(context -> assertThat(context).hasNotFailed());
-  }
-
-  @Test
-  @DisplayName("a tool is wrapped for observation once the application has a registry")
-  void a_declared_tool_is_wrapped_when_observability_is_present() {
-    runner
-        .withUserConfiguration(AToolBean.class, AnObservabilityConfig.class)
-        .run(context -> assertThat(context).hasSingleBean(Harness.class));
-  }
-
-  @Test
-  @DisplayName("the approvals projection only exists when there is a JdbcTemplate to keep it in")
-  void the_approvals_projection_appears_once_there_is_a_jdbc_template() {
-    runner
-        .withConfiguration(AutoConfigurations.of(JdbcTemplateAutoConfiguration.class))
-        .withUserConfiguration(AnApplicationDataSource.class)
-        .run(context -> assertThat(context).hasSingleBean(PendingApprovalsRepository.class));
-  }
+  // ---- what an application brings -------------------------------------------------------
 
   @Configuration(proxyBeanMethods = false)
-  static class AModelProvider {
+  static class AnInferenceProvider {
 
     @Bean
-    ModelProvider models() {
-      return id ->
-          new Model() {
-            @Override
-            public ModelId id() {
-              return id;
-            }
-
-            @Override
-            public ModelStream stream(ModelRequest request) {
-              throw new UnsupportedOperationException("this test never takes a turn");
-            }
-          };
+    InferenceProvider inference() {
+      return (request, narrator) ->
+          new InferenceResult.Refusal("this provider is never actually called");
     }
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class AnApplicationDataSource {
-
-    private final DataSource dataSource = TestDatabase.fresh();
+  static class ADatabase {
 
     @Bean
-    DataSource mine() {
-      return dataSource;
+    DataSource dataSource() {
+      return new EmbeddedDatabaseBuilder()
+          .setType(EmbeddedDatabaseType.H2)
+          .generateUniqueName(true)
+          .build();
     }
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class AnObservabilityConfig {
+  static class ANarrator {
+
+    static final Narrator INSTANCE = Narrator.silent();
 
     @Bean
-    ObservationRegistry observations() {
-      return ObservationRegistry.create();
-    }
-
-    @Bean
-    MeterRegistry meters() {
-      return new SimpleMeterRegistry();
+    Narrator narrator() {
+      return INSTANCE;
     }
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class ARegistryOnlyConfig {
+  static class ARegistry {
 
     @Bean
     ObservationRegistry observations() {
@@ -255,31 +234,26 @@ class NessyAutoConfigurationTest {
   static class AToolBean {
 
     @Bean
-    Tool<ObjectNode> aTool() {
+    Tool<String> aTool() {
       return new Tool<>() {
         @Override
-        public String name() {
-          return "noop";
+        public Class<String> inputType() {
+          return String.class;
+        }
+
+        @Override
+        public ToolName name() {
+          return new ToolName("a_tool");
         }
 
         @Override
         public String description() {
-          return "does nothing";
+          return "does a thing";
         }
 
         @Override
-        public Class<ObjectNode> inputType() {
-          return ObjectNode.class;
-        }
-
-        @Override
-        public ObjectNode inputSchema() {
-          return JsonNodeFactory.instance.objectNode().put("type", "object");
-        }
-
-        @Override
-        public Awaited<ToolResult> execute(ToolCallRequest<ObjectNode> call) {
-          return Awaited.ready(ToolResult.ok("nothing happened"));
+        public Awaited<ToolResult> call(ToolCallRequest<String> request) {
+          throw new UnsupportedOperationException("a declared-only tool is never called");
         }
       };
     }

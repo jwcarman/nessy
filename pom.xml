@@ -59,6 +59,7 @@
     <module>nessy-spi</module>
     <module>nessy-engine</module>
     <module>nessy-inference</module>
+    <module>nessy-spring-boot</module>
 
     <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
@@ -70,7 +71,6 @@
     <module>nessy-memory</module>
     <module>nessy-approval</module>
     <module>nessy-tool-mcp</module>
-    <module>nessy-spring-boot</module>
     <module>nessy-examples</module>
     -->
   </modules>

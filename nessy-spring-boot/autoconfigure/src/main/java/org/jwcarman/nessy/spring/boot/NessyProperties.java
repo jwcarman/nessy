@@ -20,7 +20,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.Set;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.Capability;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.util.FileCopyUtils;
@@ -62,7 +62,8 @@ public record NessyProperties(
     String provider,
     Integer maxTokens,
     Set<Capability> capabilities,
-    java.util.List<String> replyTokenEncryptionKeys) {
+    java.util.List<String> replyTokenEncryptionKeys,
+    Boolean initializeSchema) {
 
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
@@ -76,6 +77,9 @@ public record NessyProperties(
         replyTokenEncryptionKeys == null
             ? java.util.List.of()
             : java.util.List.copyOf(replyTokenEncryptionKeys);
+    // On by default: an application that added the starter wants the tables. An application that
+    // manages its own migrations turns it off, and nothing runs a DDL file behind its back.
+    initializeSchema = initializeSchema == null || initializeSchema;
   }
 
   /**
@@ -83,6 +87,14 @@ public record NessyProperties(
    *
    * @throws IllegalStateException if both were given — silently preferring one would make a
    *     misconfigured prompt very hard to notice
+   */
+  /**
+   * The standing instruction, from whichever of the two places it was given.
+   *
+   * <p>Required rather than defaulted to nothing. An agent with no system prompt is a chat box, and
+   * the empty string used to be allowed here only because nothing downstream objected -- {@link
+   * org.jwcarman.nessy.api.SystemPrompt} now refuses one, so saying so here is what turns a
+   * confusing constructor failure into a sentence naming the property to set.
    */
   public String resolveSystemPrompt() {
     boolean inline = systemPrompt != null && !systemPrompt.isBlank();
@@ -93,7 +105,15 @@ public record NessyProperties(
     if (inline) {
       return systemPrompt;
     }
-    return systemPromptFile == null ? "" : read(systemPromptFile);
+    if (systemPromptFile == null) {
+      throw new IllegalStateException(
+          "nessy.system-prompt or nessy.system-prompt-file must say what these agents are for");
+    }
+    String fromFile = read(systemPromptFile);
+    if (fromFile.isBlank()) {
+      throw new IllegalStateException("nessy.system-prompt-file is empty: " + systemPromptFile);
+    }
+    return fromFile;
   }
 
   private static String read(Resource resource) {

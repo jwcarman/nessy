@@ -26,7 +26,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.api.Capability;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 
@@ -38,7 +38,7 @@ import org.springframework.core.io.Resource;
 class NessyPropertiesTest {
 
   private static NessyProperties properties(String type, String provider, Integer maxTokens) {
-    return new NessyProperties(type, null, null, null, provider, maxTokens, null, null);
+    return new NessyProperties(type, null, null, null, provider, maxTokens, null, null, null);
   }
 
   @Nested
@@ -88,7 +88,7 @@ class NessyPropertiesTest {
     @Test
     void null_capabilities_becomes_an_empty_set() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, null);
+          new NessyProperties(null, null, null, null, null, null, null, null, null);
 
       assertThat(properties.capabilities()).isEmpty();
     }
@@ -96,7 +96,7 @@ class NessyPropertiesTest {
     @Test
     void an_empty_capability_set_stays_empty() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, Set.of(), null);
+          new NessyProperties(null, null, null, null, null, null, Set.of(), null, null);
 
       assertThat(properties.capabilities()).isEmpty();
     }
@@ -111,17 +111,18 @@ class NessyPropertiesTest {
               null,
               null,
               null,
-              Set.of(Capability.THINKING, Capability.PARALLEL_TOOL_CALLS),
+              Set.of(Capability.THINKING, Capability.PROMPT_CACHING),
+              null,
               null);
 
       assertThat(properties.capabilities())
-          .containsExactlyInAnyOrder(Capability.THINKING, Capability.PARALLEL_TOOL_CALLS);
+          .containsExactlyInAnyOrder(Capability.THINKING, Capability.PROMPT_CACHING);
     }
 
     @Test
     void null_reply_token_encryption_keys_becomes_an_empty_list() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, null);
+          new NessyProperties(null, null, null, null, null, null, null, null, null);
 
       assertThat(properties.replyTokenEncryptionKeys()).isEmpty();
     }
@@ -129,7 +130,8 @@ class NessyPropertiesTest {
     @Test
     void given_reply_token_encryption_keys_are_kept_in_order() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, List.of("key-a", "key-b"));
+          new NessyProperties(
+              null, null, null, null, null, null, null, List.of("key-a", "key-b"), null);
 
       assertThat(properties.replyTokenEncryptionKeys()).containsExactly("key-a", "key-b");
     }
@@ -142,17 +144,25 @@ class NessyPropertiesTest {
     @Test
     void returns_the_inline_prompt_when_one_was_given() {
       NessyProperties properties =
-          new NessyProperties(null, "You watch the house.", null, null, null, null, null, null);
+          new NessyProperties(
+              null, "You watch the house.", null, null, null, null, null, null, null);
 
       assertThat(properties.resolveSystemPrompt()).isEqualTo("You watch the house.");
     }
 
+    /**
+     * An agent with no standing instruction is a chat box. The empty string used to come back here
+     * only because nothing downstream objected; {@code SystemPrompt} now refuses one, so saying so
+     * here turns a confusing constructor failure into a sentence naming the property.
+     */
     @Test
-    void returns_an_empty_string_when_neither_source_was_given() {
+    void refuses_when_neither_source_was_given() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, null);
+          new NessyProperties(null, null, null, null, null, null, null, null, null);
 
-      assertThat(properties.resolveSystemPrompt()).isEmpty();
+      assertThatThrownBy(properties::resolveSystemPrompt)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("nessy.system-prompt");
     }
 
     @Test
@@ -161,7 +171,7 @@ class NessyPropertiesTest {
           new ByteArrayResource(
               "Watch the porch.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
       NessyProperties properties =
-          new NessyProperties(null, null, file, null, null, null, null, null);
+          new NessyProperties(null, null, file, null, null, null, null, null, null);
 
       assertThat(properties.resolveSystemPrompt()).isEqualTo("Watch the porch.");
     }
@@ -171,7 +181,7 @@ class NessyPropertiesTest {
     void wraps_a_failure_to_read_the_resource() {
       Resource brokenFile = new BrokenResource();
       NessyProperties properties =
-          new NessyProperties(null, null, brokenFile, null, null, null, null, null);
+          new NessyProperties(null, null, brokenFile, null, null, null, null, null, null);
 
       assertThatThrownBy(properties::resolveSystemPrompt)
           .isInstanceOf(UncheckedIOException.class)

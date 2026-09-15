@@ -1,134 +1,120 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.spring.boot;
 
-import io.micrometer.context.ContextExecutorService;
-import io.micrometer.context.ContextSnapshotFactory;
-import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import javax.sql.DataSource;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
-import org.jwcarman.nessy.api.message.UserMessage;
-import org.jwcarman.nessy.api.model.ModelId;
+import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.engine.EngineHarnessFactory;
-import org.jwcarman.nessy.engine.Replies;
-import org.jwcarman.nessy.engine.ReplyTokens;
-import org.jwcarman.nessy.engine.Traces;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.engine.harness.HarnessFactory;
+import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.store.AgentStateRepository;
+import org.jwcarman.nessy.engine.store.JdbcEffectStore;
+import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
+import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
+import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.transaction.PlatformTransactionManager;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Wires a Nessy harness from {@code application.yaml}, and steps aside for anything the application
- * declares itself.
+ * Nessy as a Boot citizen: a {@code DataSource} and an {@link InferenceProvider} in, a {@link
+ * Harness} out.
  *
- * <p>Every bean here is {@code @ConditionalOnMissingBean}: the starter is a convenience over the
- * public API, never a different way of reaching it. An application that wants a different
- * substrate, factory, or harness declares one and this backs off entirely.
+ * <p><b>The engine is a library, and this is the only thing that makes it a framework.</b>
+ * Everything below assembles collaborators an application could assemble itself -- and one test in
+ * the engine does exactly that, by hand, precisely so this class never becomes load-bearing. If the
+ * engine ever needs an {@code ApplicationContext} to run, that test stops compiling before this one
+ * does.
  *
- * <p><b>The application supplies the {@link ModelProvider}, as a bean.</b> This requires one and
- * fails at startup when none exists, which is a better failure than a mystery at the first turn.
- * That bean can come from either of two ordinary Boot mechanisms: the application declares one
- * itself (as {@code WatchmanConfiguration} does), or a provider module's own
- * {@code @AutoConfiguration} contributes it once its vendor's API key is in the environment (ruled
- * 2026-09-04: Boot is the host, so a separate discovery library has nobody left to serve). Either
- * way the choice is written down where a reader can find it — the application's own {@code @Bean},
- * or the one provider jar it chose to put on the classpath.
+ * <p>Every bean is {@code @ConditionalOnMissingBean}: an application that declares its own is
+ * choosing it explicitly, and this backs off rather than competing.
  */
-// AFTER Boot's own JDBC auto-configuration. Ordering is not cosmetic here: the approvals
-// projection is @ConditionalOnBean(JdbcTemplate), and a condition evaluated before Boot has
-// registered that bean quietly decides there is no database — an application with Postgres right
-// there then fails because its own controller cannot find the repository.
 @AutoConfiguration(after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class})
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 
-  /**
-   * The database Nessy stores everything in, when the application has not configured one.
-   *
-   * <p>An in-memory H2, and loudly announced: a Boot application that forgot its {@code DataSource}
-   * should discover that at startup rather than the first time a restart loses a conversation.
-   * Boot's own auto-configuration supplies the real one whenever {@code spring.datasource.*} is
-   * set, and this backs off to it.
-   *
-   * <p>The schema is initialized only for the database WE created. One the application supplied is
-   * never touched uninvited — apply the shipped {@code nessy-schema.sql} however your operators
-   * prefer, or call {@code Schemas.initialize} yourself.
-   */
-  @Bean
-  @ConditionalOnMissingBean(DataSource.class)
-  public DataSource nessyDataSource() {
-    org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
-        .warn(
-            "NESSY IS RUNNING IN MEMORY: no DataSource bean was found, so transcripts, notes, plans"
-                + " and parked approvals will not survive a restart. Configure a DataSource for"
-                + " anything that is not a test.");
-    DataSource database =
-        new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.H2)
-            .generateUniqueName(true)
-            .build();
-    Schemas.initialize(database);
-    return database;
-  }
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class);
 
+  /**
+   * <b>No in-memory fallback.</b> There used to be one: no {@code DataSource} meant an embedded H2
+   * and a loud warning. The warning was the tell -- every query this engine rests on is
+   * PostgreSQL's ({@code FOR UPDATE SKIP LOCKED} to claim work, {@code LEAST} to cap a deadline),
+   * so the fallback did not run a degraded Nessy, it ran one that fails on the first turn. Saying
+   * so at startup is kinder than an embedded database that looks like it worked.
+   */
   @Bean
   @ConditionalOnMissingBean
   public Clock nessyClock() {
     return Clock.systemUTC();
   }
 
+  @Bean
+  @ConditionalOnMissingBean
+  public CodecFactory nessyCodecs(ObjectProvider<JsonMapper> mappers) {
+    return new JacksonCodecFactory(mappers.getIfAvailable(() -> JsonMapper.builder().build()));
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public InputSchemaGenerator nessyInputSchemas() {
+    return new VictoolsInputSchemaGenerator();
+  }
+
   /**
-   * The keys reply tokens are sealed with, newest first.
+   * The schema, created where the application says so.
    *
-   * <p>An absent {@code nessy.reply-token-encryption-keys} means an EPHEMERAL key, and that is said
-   * out loud for the same reason the in-memory substrate is: a token minted before a restart cannot
-   * be read after one, so every call parked on a human silently becomes unanswerable.
+   * <p>Opt-in on purpose: {@code nessy.initialize-schema} defaults to true because an application
+   * that added the starter wants the tables, but an application that manages its own migrations
+   * turns it off and nothing runs a DDL file behind its back.
    */
+  @Bean
+  @ConditionalOnMissingBean(name = "nessySchema")
+  public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
+    if (properties.initializeSchema()) {
+      Schemas.initialize(dataSource);
+    }
+    return new NessySchema();
+  }
+
+  /** A marker, so every bean that needs tables can depend on the tables existing. */
+  public record NessySchema() {}
+
   @Bean
   @ConditionalOnMissingBean
   public ReplyTokens nessyReplyTokens(NessyProperties properties) {
     List<String> keys = properties.replyTokenEncryptionKeys();
     if (keys.isEmpty()) {
-      org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class)
-          .warn(
-              "NESSY REPLY TOKENS ARE EPHEMERAL: no nessy.reply-token-encryption-keys"
-                  + " configured, so any approval parked on a person becomes unanswerable after a"
-                  + " restart. Configure a base64 32-byte AES key for anything that is not a test:"
-                  + " openssl rand -base64 32");
+      log.warn(
+          "NESSY REPLY TOKENS ARE EPHEMERAL: no nessy.reply-token-encryption-keys configured, so"
+              + " any approval parked on a person becomes unanswerable after a restart. Configure"
+              + " a base64 32-byte AES key for anything that is not a test:"
+              + " openssl rand -base64 32");
       return ReplyTokens.ephemeral();
     }
     return ReplyTokens.withKeys(
@@ -136,150 +122,150 @@ public class NessyAutoConfiguration {
   }
 
   /**
-   * Where blocking tool work runs. Virtual threads, because a tool that shells out or calls a slow
-   * HTTP service should not consume a platform thread while it waits.
+   * A timer, and only a timer.
    *
-   * <p><b>Context-propagating, and that is what makes a trace a tree.</b> Every tool call and every
-   * model call crosses this executor, and a thread-local scope does not follow {@code
-   * executor.execute} — so without this wrapper each of them opens a span with no parent, and one
-   * round arrives in Tempo as five unrelated traces instead of one. The wrapper captures whatever
-   * context the submitting actor holds and restores it on the worker thread, so the spans nest.
+   * <p><b>This does not perform effects.</b> {@code EffectDispatcher} creates its own
+   * virtual-thread executor and submits every model call, tool call and approval to it, so the
+   * threads that matter are the engine's and nothing here configures them. All this scheduler ever
+   * runs is the periodic look for due work: one short query, then a handoff.
+   *
+   * <p>Which is why one thread is enough, and why it is virtual anyway -- the query is still a
+   * blocking call, and there is no reason for a timer to own a platform thread.
    */
   @Bean(destroyMethod = "shutdown")
-  @ConditionalOnMissingBean(name = "nessyBlockingExecutor")
-  public java.util.concurrent.ExecutorService nessyBlockingExecutor() {
-    return ContextExecutorService.wrap(
-        Executors.newVirtualThreadPerTaskExecutor(),
-        ContextSnapshotFactory.builder().build()::captureAll);
+  @ConditionalOnMissingBean(name = "nessyScheduler")
+  public TaskScheduler nessyScheduler() {
+    ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+    scheduler.setVirtualThreads(true);
+    scheduler.setPoolSize(1);
+    scheduler.setThreadNamePrefix("nessy-");
+    scheduler.initialize();
+    return scheduler;
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public PlatformTransactionManager nessyTransactionManager(DataSource dataSource) {
+    return new JdbcTransactionManager(dataSource);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public JdbcHistoryStore nessyHistory(
+      DataSource dataSource, CodecFactory codecs, NessySchema schema) {
+    return new JdbcHistoryStore(
+        JdbcClient.create(dataSource), codecs, new CharacterCountEstimator());
   }
 
   /**
-   * How the engine carries trace context across a mailbox.
+   * Silent unless an application says otherwise.
    *
-   * <p>Just the {@link ObservationRegistry}: whether anything is actually tracing is decided by the
-   * handlers Spring has registered on it, not by this bean. An application with no tracing gets a
-   * registry with no tracing handler and every observation is a timer and nothing more.
+   * <p>Narration is best-effort and never durable, so a default that said something would be a
+   * default that costs every application a log line per token. An application that wants a console,
+   * a journal or a websocket declares a {@link Narrator} bean.
    */
   @Bean
   @ConditionalOnMissingBean
-  public Traces nessyTraces(ObjectProvider<ObservationRegistry> registries) {
-    return new Traces(registries.getIfAvailable(() -> ObservationRegistry.NOOP));
+  public Narrator nessyNarrator() {
+    return Narrator.silent();
   }
 
-  @Bean(destroyMethod = "close")
-  @ConditionalOnMissingBean
-  public EngineHarnessFactory nessyHarnessFactory(
-      DataSource dataSource,
-      ModelProvider models,
-      ObjectProvider<ObservationRegistry> registries,
-      ObjectProvider<MeterRegistry> meterRegistries,
-      NessyProperties properties,
-      @Qualifier("nessyBlockingExecutor") Executor blocking,
-      Clock clock,
-      ReplyTokens tokens,
-      Traces traces) {
-    // Every model this factory resolves is observed, so a chat span lasts exactly as long as the
-    // provider did and carries the tokens THAT call reported. An application with no registry gets
-    // its own provider back untouched.
-    ObservationRegistry registry = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
-    MeterRegistry meters = meterRegistries.getIfAvailable();
-    boolean observing = !ObservationRegistry.NOOP.equals(registry) && meters != null;
-    ModelProvider provider =
-        observing ? Observed.models(models, properties.provider(), registry, meters) : models;
-    return new EngineHarnessFactory(
-        engine ->
-            engine
-                .models(provider)
-                .dataSource(dataSource)
-                .maxTokens(properties.maxTokens())
-                .capabilities(properties.capabilities())
-                .blocking(blocking)
-                .clock(clock)
-                .replyTokens(tokens)
-                .traces(traces));
-  }
-
-  /** The door an application answers a parked call through. */
   @Bean
   @ConditionalOnMissingBean
-  public Replies nessyReplies(EngineHarnessFactory factory) {
+  public HarnessFactory nessyHarnessFactory(
+      DataSource dataSource,
+      CodecFactory codecs,
+      JdbcHistoryStore history,
+      InputSchemaGenerator schemas,
+      Narrator narrator,
+      ReplyTokens replyTokens,
+      PlatformTransactionManager transactions,
+      TaskScheduler scheduler,
+      Clock clock,
+      InferenceProvider models,
+      NessyProperties properties,
+      ObjectProvider<ObservationRegistry> registries,
+      ObjectProvider<JsonMapper> mappers) {
+
+    ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
+    InferenceProvider provider =
+        ObservationRegistry.NOOP.equals(observations)
+            ? models
+            : Observed.inference(models, properties.provider(), observations);
+
+    JdbcClient jdbc = JdbcClient.create(dataSource);
+    return new HarnessFactory(
+        codecs,
+        new AgentStateRepository(jdbc),
+        history,
+        history,
+        history,
+        schemas,
+        mappers.getIfAvailable(() -> JsonMapper.builder().build()),
+        narrator,
+        replyTokens,
+        new JdbcEffectStore(jdbc, codecs),
+        transactions,
+        scheduler,
+        clock,
+        provider,
+        new InferenceOptions(
+            requireModel(properties), properties.maxTokens(), properties.capabilities()),
+        new RetryPolicy.Never());
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public Replies nessyReplies(HarnessFactory factory) {
     return factory.replies();
   }
 
   /**
-   * The harness, configured from properties and given every {@link Tool} bean the application
-   * declared.
+   * The one harness an application gets for free, over {@code String} observations.
    *
-   * <p>Tools arrive ungated. A tool that needs a human needs an approver, and an approver is a
-   * decision about THIS application's policy — so an application that gates anything declares its
-   * own harness rather than teaching this method a rule it cannot know.
+   * <p>Every {@link Tool} bean is bound to it, and every tool is wrapped for observability when
+   * there is a registry to report to. An application wanting several agent types declares its own
+   * harnesses from the factory instead.
    */
   @Bean
   @ConditionalOnMissingBean
   public Harness<String> nessyHarness(
-      EngineHarnessFactory factory,
+      HarnessFactory factory,
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,
       ObjectProvider<ObservationRegistry> registries) {
-    ObservationRegistry registry = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
+
+    ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     List<Tool<?>> declared = tools.orderedStream().toList();
     String systemPrompt = properties.resolveSystemPrompt();
-    ObservationRenderer<String> renderer = renderers.getIfAvailable(() -> UserMessage::of);
-    return factory.createHarness(
+    ObservationRenderer<String> renderer =
+        renderers.getIfAvailable(() -> said -> List.of(new Block.Text(said)));
+
+    return factory.create(
         String.class,
         config -> {
           config
-              .type(AgentType.of(properties.type()))
+              .agentType(new AgentType(properties.type()))
               .systemPrompt(systemPrompt)
-              .renderer(renderer);
-          config.model(ModelId.of(requireModel(properties)));
-          declared.forEach(tool -> grant(config, tool, registry));
+              .observationRenderer(renderer);
+          declared.forEach(tool -> bind(config, tool, observations));
         });
   }
 
-  /**
-   * The configured model id, or a failure that names the missing property.
-   *
-   * <p>Required rather than defaulted: a harness must say which model it talks to, and guessing one
-   * would produce an application that starts cleanly and fails at its first turn against a model
-   * nobody chose.
-   */
+  private static <I> void bind(
+      HarnessConfig<String> config, Tool<I> tool, ObservationRegistry observations) {
+    config.tool(
+        ObservationRegistry.NOOP.equals(observations) ? tool : Observed.tool(tool, observations));
+  }
+
   private static String requireModel(NessyProperties properties) {
     String model = properties.model();
     if (model == null || model.isBlank()) {
       throw new IllegalStateException(
-          "nessy.model must name the model these agents talk to; it is resolved against your"
-              + " ModelProvider bean");
+          "nessy.model must name the model these agents talk to; it is sent to your"
+              + " InferenceProvider bean with every call");
     }
     return model;
-  }
-
-  /**
-   * Grants one tool.
-   *
-   * <p>A method of its own purely so that {@code I} names the wildcard a {@code Tool<?>} out of the
-   * bean factory carries. Java's capture conversion binds it at the call, so {@code
-   * HarnessConfig#tool} gets the concrete input type it needs to tie a tool to its renderer — and
-   * no cast is needed to get it.
-   */
-  private static <I> void grant(
-      HarnessConfig<String> config, Tool<I> tool, ObservationRegistry registry) {
-    config.tool(ObservationRegistry.NOOP.equals(registry) ? tool : Observed.tool(tool, registry));
-  }
-
-  /**
-   * The approvals projection, when there is a database to keep it in.
-   *
-   * <p>Conditional rather than fallback-to-memory on purpose: an approval waiting on a person is
-   * the single thing most likely to outlive the process that asked, so a projection that quietly
-   * lost them on restart would be worse than not having one. An application with no {@code
-   * JdbcTemplate} gets no repository, and can still hear approvals through its own subscriber.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnBean(JdbcTemplate.class)
-  public PendingApprovalsRepository nessyPendingApprovals(JdbcTemplate jdbc) {
-    return new PendingApprovalsRepository(jdbc);
   }
 }
