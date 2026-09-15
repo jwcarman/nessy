@@ -47,7 +47,7 @@
       <!-- Same ordering rule the sibling watchman documents at length: everything this repo pins
            is declared ABOVE Boot's BOM, so Boot only decides what this repo has no opinion on. -->
       <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
+        <groupId>tools.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
         <version>${jackson.version}</version>
         <type>pom</type>
@@ -104,13 +104,6 @@
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Memory, and the Remembrance fold that pairs a tool_use with its result. SubstrateMemory
-         owns the transcript directly; this port no longer has one of its own. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-summarizing</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spring-boot-starter</artifactId>
@@ -126,7 +119,7 @@
          auto-configuration points it at x.ai. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
+      <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
 
@@ -140,17 +133,9 @@
       <version>${logback.version}</version>
     </dependency>
 
-    <!-- Jackson 2, DECLARED EXPLICITLY. Boot 4 ships Jackson 3 (tools.jackson) in its web
-         starter, so com.fasterxml.jackson.databind is no longer transitively present at all.
-         The engine's own mapper and the model client both use Jackson 2 deliberately: it is the
-         reactor's pinned line. -->
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
+      <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
     </dependency>
 
     <dependency>
@@ -235,6 +220,12 @@
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- The engine's schema is PostgreSQL's, and so is the board's: the tests run against one. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
     <!-- Lets TraceTreeTest assert the SHAPE of the trace rather than eyeball it in Grafana.

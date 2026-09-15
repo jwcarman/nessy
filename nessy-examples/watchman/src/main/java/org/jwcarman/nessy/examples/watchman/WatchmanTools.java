@@ -1,23 +1,5 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.watchman;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,44 +11,40 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
-/**
- * The four tools this port carries, and everything the rest of the system needs to know about them.
- *
- * <p>Four rather than fifteen, chosen to cover every SHAPE the real watchman has: two read-only
- * ({@code disk_usage}, {@code containers}), one behind a human ({@code prune_images}), and one that
- * runs for minutes ({@code long_job}). Adding the other eleven would add lines and no findings.
- *
- * <p>Everything about a tool lives in one {@link Spec}: its schema for the model, whether it needs
- * a human, how its command line renders for the approvals page, and how long it may take. The
- * approval policy in particular is a property of the tool rather than a rule somewhere else, which
- * is what lets {@link ToolCallActor} decide what to do by asking one question.
- */
+/** The commands the watchman may run, and how what they print is told to the model. */
 public final class WatchmanTools {
 
-  private static final ObjectMapper JSON = new ObjectMapper();
+  private static final JsonMapper JSON = JsonMapper.builder().build();
 
-  /**
-   * @param argv the literal command line, rendered from the model's arguments; this exact list is
-   *     what the approvals page shows a human and what runs if they say yes
-   */
+  /** Every watchman tool takes no arguments, and says so rather than saying nothing. */
+  private static final InputSchema NO_ARGUMENTS =
+      new InputSchema("{\"type\":\"object\",\"properties\":{},\"required\":[]}");
+
   public record Spec(
-      String name,
+      ToolName name,
       String description,
       boolean needsApproval,
       Duration timeout,
-      java.util.function.Function<JsonNode, List<String>> argv,
+      List<String> argv,
       java.util.function.BiFunction<CommandRunner.Output, List<String>, String> render) {}
 
-  private static final Map<String, Spec> SPECS = new LinkedHashMap<>();
+  private static final Map<ToolName, Spec> SPECS = new LinkedHashMap<>();
 
   static {
     define(
         new Spec(
-            "disk_usage",
+            new ToolName("disk_usage"),
             "Reports the used percentage and free space of every mounted filesystem.",
             false,
             Duration.ofSeconds(30),
@@ -75,34 +53,34 @@ public final class WatchmanTools {
             // reason about (see diskUsage/mount below). We drop -P for real units and make the
             // parsing robust to what that costs: BSD may wrap a very long device name onto its
             // own line, and BSD (unlike GNU) prints three extra inode columns by default.
-            args -> List.of("df", "-h"),
+            List.of("df", "-h"),
             (output, argv) -> diskUsage(output)));
     define(
         new Spec(
-            "containers",
+            new ToolName("containers"),
             "Lists every Docker container with its state, flagging the ones that are unhealthy or"
                 + " exited.",
             false,
             Duration.ofSeconds(30),
-            args -> List.of("docker", "ps", "-a", "--format", "json"),
+            List.of("docker", "ps", "-a", "--format", "json"),
             (output, argv) -> containers(output)));
     define(
         new Spec(
-            "prune_images",
+            new ToolName("prune_images"),
             "Removes every unused Docker image to reclaim disk. Requires human approval; propose"
                 + " it, do not expect it to run during this round.",
             true,
             Duration.ofMinutes(10),
-            args -> List.of("docker", "image", "prune", "-af"),
+            List.of("docker", "image", "prune", "-af"),
             WatchmanTools::plain));
     define(
         new Spec(
-            "long_job",
+            new ToolName("long_job"),
             "Starts a whole-disk trim (fstrim -av). It runs for minutes; the result arrives in a"
                 + " following turn.",
             false,
             Duration.ofHours(1),
-            args -> List.of("fstrim", "-av"),
+            List.of("fstrim", "-av"),
             WatchmanTools::plain));
   }
 
@@ -112,18 +90,10 @@ public final class WatchmanTools {
     SPECS.put(spec.name(), spec);
   }
 
-  public static Optional<Spec> spec(String name) {
+  public static Optional<Spec> spec(ToolName name) {
     return Optional.ofNullable(SPECS.get(name));
   }
 
-  /**
-   * The watchman's tools, as {@link Tool}s bound to the runner that executes them. The engine never
-   * learns that these happen to be shell commands.
-   *
-   * <p>Every tool takes NO arguments — the read-only ones report everything, and the two acting
-   * ones have exactly one thing they do — so each binds {@link JsonNode} and ignores it. That keeps
-   * this example about composition rather than JSON-schema plumbing.
-   */
   public static List<Tool<JsonNode>> boundTo(CommandRunner runner) {
     return SPECS.values().stream().map(spec -> toTool(spec, runner)).toList();
   }
@@ -131,7 +101,7 @@ public final class WatchmanTools {
   private static Tool<JsonNode> toTool(Spec spec, CommandRunner runner) {
     return new Tool<>() {
       @Override
-      public String name() {
+      public ToolName name() {
         return spec.name();
       }
 
@@ -146,46 +116,40 @@ public final class WatchmanTools {
       }
 
       @Override
-      public ObjectNode inputSchema() {
-        return emptyObjectSchema();
+      public InputSchema inputSchema(InputSchemaGenerator generator) {
+        return NO_ARGUMENTS;
       }
 
       @Override
-      public Awaited<ToolResult> execute(ToolCallRequest<JsonNode> call) {
-        JsonNode input = call.input();
-        // Blocking by design; the engine runs this on its blocking executor.
-        List<String> argv = spec.argv().apply(input == null ? JSON.createObjectNode() : input);
-        CommandRunner.Output output = runner.run(argv, spec.timeout());
-        String rendered = spec.render().apply(output, argv);
+      public Awaited<ToolResult> call(ToolCallRequest<JsonNode> request) {
+        // Blocking by design; the engine runs each call on a virtual thread of its own.
+        CommandRunner.Output output = runner.run(spec.argv(), spec.timeout());
+        String rendered = spec.render().apply(output, spec.argv());
+        // A failed command is a Failure, not a success carrying an error string: the model is
+        // told plainly that nothing happened.
         return Awaited.ready(
-            output.succeeded() ? ToolResult.ok(rendered) : ToolResult.error(rendered));
+            output.succeeded()
+                ? ToolResult.ok(new Block.Text(rendered))
+                : new ToolResult.Failure(rendered));
       }
     };
   }
 
-  /** What running this tool would actually do, as a person would read it. */
-  public static String actionOf(String tool, JsonNode arguments) {
+  /** The line that will run, which is what a person is shown and consents to. */
+  public static String actionOf(ToolName tool) {
     return spec(tool)
-        .map(spec -> String.join(" ", spec.argv().apply(arguments)))
-        .orElse("(unknown tool " + tool + ")");
+        .map(spec -> String.join(" ", spec.argv()))
+        .orElse("(unknown tool " + tool.value() + ")");
   }
 
-  public static boolean needsApproval(String tool) {
+  public static boolean needsApproval(ToolName tool) {
     return spec(tool).map(Spec::needsApproval).orElse(false);
   }
 
-  private static ObjectNode emptyObjectSchema() {
-    ObjectNode schema = JSON.createObjectNode();
-    schema.put("type", "object");
-    schema.putObject("properties");
-    schema.putArray("required");
-    return schema;
-  }
-
-  private static JsonNode parse(String argumentsJson) {
+  private static JsonNode parse(String json) {
     try {
-      return JSON.readTree(argumentsJson == null || argumentsJson.isBlank() ? "{}" : argumentsJson);
-    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      return JSON.readTree(json == null || json.isBlank() ? "{}" : json);
+    } catch (JacksonException e) {
       return JSON.createObjectNode();
     }
   }
@@ -200,7 +164,6 @@ public final class WatchmanTools {
   // Matches a Capacity column: "24%", "100%", or the "-" df prints when a filesystem has no
   // notion of capacity (e.g. some macOS synthetic mounts under -i).
   private static final Pattern CAPACITY = Pattern.compile("^-?\\d+%$|^-$");
-
   // Leading numeric portion of a size column ("0Bi", "203Ki", "1.0G"), used only to catch the
   // zero-capacity autofs placeholders that don't already say "map" or "devfs".
   private static final Pattern LEADING_NUMBER = Pattern.compile("^(\\d+(?:\\.\\d+)?)");
@@ -250,7 +213,6 @@ public final class WatchmanTools {
     }
     String filesystem = String.join(" ", Arrays.copyOfRange(columns, 0, capacityIndex - 3));
     String size = columns[capacityIndex - 3];
-    String used = columns[capacityIndex - 2];
     String avail = columns[capacityIndex - 1];
     String capacity = columns[capacityIndex];
     String mountedOn =
@@ -261,14 +223,6 @@ public final class WatchmanTools {
     return mountedOn + " " + capacity + " used, " + avail + " free";
   }
 
-  /**
-   * A filesystem the model can do nothing about, and that would bury a real alarm if reported.
-   * {@code devfs} is a virtual device-node filesystem, permanently 100% full by design. A {@code
-   * map ...} entry is an autofs placeholder, never a real mount. A total size of 0 means there is
-   * nothing to free regardless of name — this also covers Linux pseudo-filesystems like an empty
-   * {@code proc} or {@code sysfs}. Deliberately NOT "keep only /dev/*": a genuinely full Linux
-   * {@code tmpfs} (e.g. {@code /run}) is a real problem this tool must still report.
-   */
   private static boolean isPseudoFilesystem(String filesystem, String size) {
     return filesystem.equals("devfs") || filesystem.startsWith("map") || isZeroSize(size);
   }
@@ -306,7 +260,7 @@ public final class WatchmanTools {
 
   private static String field(JsonNode node, String name) {
     JsonNode value = node.get(name);
-    return value == null || value.isNull() ? "unknown" : value.asText();
+    return value == null || value.isNull() ? "unknown" : value.asString();
   }
 
   private static String text(String value) {

@@ -32,33 +32,30 @@ server:
   shutdown: graceful
 
 nessy:
+  type: watchman
   # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. This is configured
-  # rather than discovered because a Model no longer reports its own vendor.
+  # rather than discovered because a provider does not report its own vendor.
   provider: openai
+  model: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every parked approval becomes
   # unanswerable the moment the process bounces.
   reply-token-encryption-keys:
     - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
 
+# The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio. It
+# stands down when watchman.scripted is on, because the application then declares a provider.
+openai:
+  api-key: ${WATCHMAN_MODEL_API_KEY:lm-studio}
+  base-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
+
 watchman:
   # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",
   # and there is nothing about 3am that a watchman cares about.
-  #
-  # This key used to be `cron`, which nothing read -- WatchmanRounds has always been @Scheduled on
-  # ${watchman.round-interval}, and it is not even a field on WatchmanProperties. Every attempt to
-  # override the schedule was accepted in silence and ignored, and the app ran the PT30M default
-  # while looking perfectly configured.
   round-interval: ${WATCHMAN_ROUND_INTERVAL:PT30M}
+  # How long a question may wait on the board before the engine denies it on the person's behalf.
   approval-term: 3d
-  ask-timeout: 10s
   scripted: ${WATCHMAN_SCRIPTED:false}
-  model-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
-  model-id: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
-  # Older rounds become a paragraph once the transcript passes this; the newest stay verbatim.
-  # Drop summarize-after to something small to watch a compression happen instead of waiting.
-  summarize-after: ${WATCHMAN_SUMMARIZE_AFTER:60}
-  keep-verbatim: ${WATCHMAN_KEEP_VERBATIM:20}
 
 management:
   endpoints:

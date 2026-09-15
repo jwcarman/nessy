@@ -1,18 +1,3 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.watchman;
 
 import java.security.Principal;
@@ -21,28 +6,21 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.block.CommentaryBlock;
-import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.block.ToolResultBlock;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AmbientMessage;
-import org.jwcarman.nessy.api.message.AnswerMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ContextMessage;
-import org.jwcarman.nessy.api.message.ExchangeMessage;
-import org.jwcarman.nessy.api.message.UserMessage;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.engine.Replies;
-import org.jwcarman.nessy.spring.boot.PendingApproval;
-import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
+import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -54,46 +32,32 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-/**
- * The page. A few routes, no API, no JSON: a thing a person looks at every couple of days on a LAN.
- *
- * <p><b>The two buttons are the interesting part, and they are async on purpose.</b> {@link
- * Replies#approve} returns a future the engine completes only once it has accepted the decision,
- * and returning that future from the handler is what makes Spring hold the response open until
- * then.
- *
- * <p>Getting this wrong is easy and quiet: fire the answer off, redirect immediately, and the
- * operator sees a green page for a decision that was still only a message in a mailbox. Lose power
- * in that instant and the denial is gone while the human believes it landed.
- *
- * <p>The read side comes from somewhere else entirely: the projection is written as the agent
- * narrates. A click here is not "update the row", it is "answer the question", and the page catches
- * up when it is next rendered.
- */
 @Controller
 public class ApprovalsController {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApprovalsController.class);
 
-  /** One waiting approval, as the page shows it. */
+  /** A row as the page draws it: strings, because a template renders what toString says. */
   public record Row(
-      AgentType agentType,
-      AgentId agentId,
-      CallId callId,
+      String agentType,
+      String agentId,
+      String callId,
       String action,
       Instant askedAt,
       String dwell) {}
 
+  public record Note(String role, String text) {}
+
   private final PendingApprovalsRepository approvals;
   private final Replies replies;
-  private final Memory memory;
+  private final TurnHistories histories;
   private final Clock clock;
 
   ApprovalsController(
-      PendingApprovalsRepository approvals, Replies replies, Memory memory, Clock clock) {
+      PendingApprovalsRepository approvals, Replies replies, TurnHistories histories, Clock clock) {
     this.approvals = approvals;
     this.replies = replies;
-    this.memory = memory;
+    this.histories = histories;
     this.clock = clock;
   }
 
@@ -105,9 +69,9 @@ public class ApprovalsController {
             .map(
                 row ->
                     new Row(
-                        row.agentType(),
-                        row.agentId(),
-                        row.callId(),
+                        row.agentType().value(),
+                        row.agentId().value().toString(),
+                        row.callId().value(),
                         row.action(),
                         row.askedAt(),
                         dwell(Duration.between(row.askedAt(), now))))
@@ -118,161 +82,128 @@ public class ApprovalsController {
 
   @GetMapping("/transcript")
   public String transcript(Model model) {
-    model.addAttribute("notes", notes(memory.recall(WatchmanConfiguration.AGENT)));
+    model.addAttribute(
+        "notes", notes(histories.forAgent(Watchman.TYPE, Watchman.AGENT).turnsFrom(0)));
     return "transcript";
   }
 
-  /**
-   * The transcript as this page wants it, which is NOT {@code Context.lines()}.
-   *
-   * <p>{@code lines()} is the chat log and says so: tool calls and tool results are invisible there
-   * on purpose. That is right for a chat UI and wrong for a watchman, where the interesting part of
-   * a round is exactly what it decided to run — an assistant turn that only calls a tool has no
-   * text at all, so the page showed the observation, then the final answer, with the work between
-   * them simply missing.
-   *
-   * <p>So this reads the messages directly and renders the three kinds a person wants to see: what
-   * was said, what was called, and what came back.
-   */
-  private static List<Note> notes(Context context) {
+  static List<Note> notes(List<Turn> turns) {
     List<Note> notes = new ArrayList<>();
-    for (ContextMessage message : context.messages()) {
-      switch (message) {
-        case UserMessage user ->
-            text(user.content()).ifPresent(t -> notes.add(new Note("user", t)));
-        case AnswerMessage answer ->
-            text(answer.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
-        case ExchangeMessage exchange -> {
-          commentary(exchange.content()).ifPresent(t -> notes.add(new Note("assistant", t)));
-          exchange.calls().forEach(call -> notes.add(new Note("calls", call.call().name())));
-          exchange.results().forEach(block -> notes.add(new Note("result", resultText(block))));
+    for (Turn turn : turns) {
+      notes.add(new Note("user", text(turn.observation().blocks())));
+      for (Exchange exchange : turn.exchanges()) {
+        String commentary = text(exchange.request());
+        if (!commentary.isBlank()) {
+          notes.add(new Note("assistant", commentary));
         }
-        case AmbientMessage ignored -> {
-          // Background the model was shown; nobody said it, so it is not a note.
+        exchange.calls().forEach(call -> notes.add(new Note("calls", call.name().value())));
+        exchange
+            .outcomes()
+            .forEach(
+                outcome ->
+                    notes.add(
+                        new Note(
+                            "result",
+                            switch (outcome) {
+                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
+                              case ToolOutcome.Failed(var _, String message) ->
+                                  "failed: " + message;
+                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
+                            })));
+      }
+      switch (turn.result()) {
+        case TurnResult.Answered(var blocks) -> notes.add(new Note("assistant", text(blocks)));
+        case TurnResult.Failed _ -> notes.add(new Note("system", "the round failed"));
+        case TurnResult.Refused _ -> notes.add(new Note("system", "the model refused"));
+        case null -> {
+          // A round still under way.
         }
       }
     }
     return notes;
   }
 
-  /** One line of the transcript: who or what it came from, and what it said. */
-  public record Note(String role, String text) {}
-
-  /** What the model said while working — its own commentary, not an answer. */
-  private static Optional<String> commentary(List<? extends Block> blocks) {
-    String joined =
-        blocks.stream()
-            .filter(CommentaryBlock.class::isInstance)
-            .map(block -> ((CommentaryBlock) block).text())
-            .collect(Collectors.joining());
-    return joined.isBlank() ? Optional.empty() : Optional.of(joined);
-  }
-
-  private static Optional<String> text(List<? extends Block> blocks) {
-    String joined =
-        blocks.stream()
-            .filter(TextBlock.class::isInstance)
-            .map(block -> ((TextBlock) block).text())
-            .collect(Collectors.joining());
-    return joined.isBlank() ? Optional.empty() : Optional.of(joined);
-  }
-
-  private static String resultText(ToolResultBlock block) {
-    String body =
-        block.content().stream()
-            .filter(TextBlock.class::isInstance)
-            .map(b -> ((TextBlock) b).text())
-            .collect(Collectors.joining("\n"));
-    return block.isError() ? "failed: " + body : body;
+  private static String text(List<? extends Block> blocks) {
+    return blocks.stream()
+        .map(
+            block ->
+                switch (block) {
+                  case Block.Text(String text) -> text;
+                  case Block.Commentary(String text) -> text;
+                  case Block.Provider _, Block.ToolCall _ -> "";
+                })
+        .filter(text -> !text.isEmpty())
+        .collect(Collectors.joining("\n"));
   }
 
   // The type is in the path with the id, because an id names an agent only within its type. A
   // link that carried the id alone could not find the row it came from once two kinds of agent
   // are asking.
   @PostMapping("/approve/{agentType}/{agentId}/{callId}")
-  public CompletableFuture<String> approve(
+  public String approve(
       @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
       Principal who) {
     return answer(
-        AgentType.of(agentType),
-        AgentId.of(agentId),
-        CallId.of(callId),
+        new AgentType(agentType),
+        agent(agentId),
+        new CallId(callId),
         ApprovalResult.approved(),
         who);
   }
 
   @PostMapping("/deny/{agentType}/{agentId}/{callId}")
-  public CompletableFuture<String> deny(
+  public String deny(
       @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
       @PathVariable("callId") String callId,
       // "reason", the word the form uses and the word ApprovalResult.Denied uses. It read "note"
       // and the form has always sent "reason", so every denial a person typed was bound to
-      // nothing and recorded as the literal "denied" — the one thing a denial exists to carry,
+      // nothing and recorded as the literal "denied" -- the one thing a denial exists to carry,
       // dropped in silence.
       @RequestParam(name = "reason", defaultValue = "") String reason,
       Principal who) {
     return answer(
-        AgentType.of(agentType),
-        AgentId.of(agentId),
-        CallId.of(callId),
+        new AgentType(agentType),
+        agent(agentId),
+        new CallId(callId),
         ApprovalResult.denied(reason.isBlank() ? "denied" : reason),
         who);
   }
 
-  /**
-   * Answers one question, if it is still waiting.
-   *
-   * <p>A row that is already answered is not an error: two people can have the page open, and the
-   * second click should land on a page showing what the first one decided rather than a stack
-   * trace.
-   */
-  private CompletableFuture<String> answer(
+  private String answer(
       AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result, Principal who) {
     PendingApproval row = approvals.byCallId(agentType, agentId, callId).orElse(null);
     if (row == null || !row.waiting()) {
-      LOG.info("[watchman] {} answered {}, which was not waiting", name(who), callId);
-      return CompletableFuture.completedFuture("redirect:/");
+      LOG.info("[watchman] {} answered {}, which was not waiting", name(who), callId.value());
+      return "redirect:/";
     }
-    LOG.info("[watchman] {} answered {} with {}", name(who), callId, result);
-    return replies
-        .approve(new ReplyToken(row.replyToken()), result)
-        .toCompletableFuture()
-        .thenApply(
-            ack -> {
-              // The agent gets the last word on whether an answer landed, and it can refuse: a
-              // call whose term expired seconds ago has already been denied on this person's
-              // behalf. Recording regardless is how the board came to show decisions that never
-              // reached the agent.
-              if (!ack.accepted()) {
-                LOG.warn(
-                    "[watchman] {} answered {}, but the agent had already moved on: {}",
-                    name(who),
-                    callId,
-                    ack.detail());
-                return "redirect:/";
-              }
-              recordLocally(agentType, agentId, callId, result);
-              return "redirect:/";
-            });
+    LOG.info("[watchman] {} answered {} with {}", name(who), callId.value(), result);
+    switch (replies.approve(new ReplyToken(row.replyToken()), result)) {
+      case ReplyOutcome.Settled _ -> recordLocally(agentType, agentId, callId, result);
+      // The agent gets the last word on whether an answer landed, and it can refuse: a call whose
+      // term expired seconds ago has already been denied on this person's behalf. Recording
+      // regardless is how the board came to show decisions that never reached the agent.
+      case ReplyOutcome.NotAwaiting _ ->
+          LOG.warn(
+              "[watchman] {} answered {}, but the agent had already moved on",
+              name(who),
+              callId.value());
+      case ReplyOutcome.Unreadable _ ->
+          LOG.warn(
+              "[watchman] {} answered {} with a token this application cannot read; was the"
+                  + " reply key changed?",
+              name(who),
+              callId.value());
+    }
+    return "redirect:/";
   }
 
   /**
-   * Marks the row answered on the way out, so the page this redirects to shows the decision.
-   *
-   * <p><b>Read your writes.</b> The projection's writer is the listener, which records the decision
-   * when the agent narrates it — some milliseconds after the engine accepts it. Measured on a live
-   * watchman: the engine acknowledged at 12:00:01.808 and the listener wrote at 12:00:01.846.38ms,
-   * and the redirect lands inside it, so the one person guaranteed to look too early is the person
-   * who just clicked. They see the question they have already answered still sitting there.
-   *
-   * <p>Waiting for the listener instead would mean blocking, and the thread that completes this
-   * future belongs to the engine — the one thing this project will not do. So the click records
-   * what it already knows: the engine ACCEPTED this exact result, which is why this runs after the
-   * ack and never before. Both writers converge on the same value, and {@code answered} only
-   * touches a row still waiting, so whichever arrives second changes nothing.
+   * Written here as well as by the desk when the engine narrates the decision, because the redirect
+   * lands before the narration does, and the person who just clicked must not be shown the question
+   * they have already answered. Whichever writer arrives second changes nothing.
    */
   void recordLocally(AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result) {
     approvals.answered(
@@ -284,7 +215,6 @@ public class ApprovalsController {
         clock.instant());
   }
 
-  /** The coarsest unit that is still true — a page shows "3h 12m", never "192 minutes". */
   static String dwell(Duration waited) {
     long minutes = Math.max(0, waited.toMinutes());
     if (minutes < 60) {
@@ -301,13 +231,11 @@ public class ApprovalsController {
     return who == null ? "someone" : who.getName();
   }
 
-  /**
-   * A hand-typed URL carrying an id the identifier rule refuses is the caller's mistake.
-   *
-   * <p>The page's own links never produce one — it builds them from rows it read — so this is for
-   * somebody editing the address bar. Without it they get a 500 that reads as "the watchman is
-   * broken".
-   */
+  /** An id from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
+  private static AgentId agent(String id) {
+    return new AgentId(UUID.fromString(id));
+  }
+
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<String> malformed(IllegalArgumentException refused) {
     return ResponseEntity.badRequest().body(refused.getMessage());

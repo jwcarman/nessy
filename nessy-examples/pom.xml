@@ -47,10 +47,7 @@
     <module>mcp</module>
     <module>chat-cli</module>
     <module>chat-web</module>
-
-    <!-- Ported next.
     <module>watchman</module>
-    -->
   </modules>
   <dependencies>
     <!-- Every example is an application, and an application picks its own SLF4J provider. The root

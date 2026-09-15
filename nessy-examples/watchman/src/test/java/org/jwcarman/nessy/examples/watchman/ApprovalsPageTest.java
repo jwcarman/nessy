@@ -1,18 +1,3 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,65 +17,45 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.spi.store.Schemas;
-import org.jwcarman.nessy.spring.boot.PendingApproval;
-import org.jwcarman.nessy.spring.boot.PendingApprovalsRepository;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.context.support.StaticWebApplicationContext;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.spring6.templateresolver.SpringResourceTemplateResolver;
 import org.thymeleaf.spring6.view.ThymeleafViewResolver;
 
-/**
- * The page renders, with every property its template names.
- *
- * <p>Worth its own test because a Thymeleaf expression naming a property that does not exist fails
- * at RUNTIME: everything compiles, every other test passes, and the operator meets a stack trace on
- * the one screen that has to work. It caught exactly that — the template asked for {@code
- * row.agentType} while {@code Row} had no such component.
- *
- * <p>Standalone rather than {@code @WebMvcTest}: the two collaborators the GET never touches need
- * an actor system to exist, and the no-mocking-library promise holds here as everywhere. The
- * repository is the real one over H2, and the template engine is the real one reading the shipped
- * file.
- */
-class ApprovalsPageTest {
+class ApprovalsPageTest extends PostgresBacked {
 
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
   private static final Pattern INPUT_NAME = Pattern.compile("<input[^>]*name=\"([^\"]+)\"");
 
+  private final AgentId house = AgentId.random();
   private MockMvc mvc;
   private PendingApprovalsRepository approvals;
   private ApprovalsController controller;
 
   @BeforeEach
   void renderTheRealTemplates() {
-    var database =
-        new EmbeddedDatabaseBuilder()
-            .generateUniqueName(true)
-            .setType(EmbeddedDatabaseType.H2)
-            .build();
-    Schemas.initialize(database);
-    approvals = new PendingApprovalsRepository(new JdbcTemplate(database));
+    DataSource database = dataSource();
+    PendingApprovalsRepository.initialize(database);
+    approvals = new PendingApprovalsRepository(database);
     approvals.asked(
         new PendingApproval(
-            CallId.of("call-1"),
-            AgentType.of("watchman"),
-            AgentId.of("house-12"),
+            new CallId("call-1"),
+            Watchman.TYPE,
+            house,
             "prune_images",
             "docker image prune -af",
             NOW.minusSeconds(7200),
@@ -99,7 +64,6 @@ class ApprovalsPageTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty()));
-
     // Null for the two the read path never reaches: answering is the POST handlers' business, and
     // both need a running engine. A null here fails loudly if that ever stops being true.
     controller = new ApprovalsController(approvals, null, null, Clock.fixed(NOW, ZoneOffset.UTC));
@@ -110,8 +74,7 @@ class ApprovalsPageTest {
     var templates = new SpringResourceTemplateResolver();
     templates.setPrefix("classpath:/templates/");
     templates.setSuffix(".html");
-    templates.setApplicationContext(
-        new org.springframework.web.context.support.StaticWebApplicationContext());
+    templates.setApplicationContext(new StaticWebApplicationContext());
     var engine = new SpringTemplateEngine();
     engine.setTemplateResolver(templates);
     var resolver = new ThymeleafViewResolver();
@@ -125,7 +88,7 @@ class ApprovalsPageTest {
     mvc.perform(get("/"))
         .andExpect(status().isOk())
         .andExpect(content().string(containsString("docker image prune -af")))
-        .andExpect(content().string(containsString("house-12")))
+        .andExpect(content().string(containsString(house.value().toString())))
         .andExpect(content().string(containsString("2h 0m")));
   }
 
@@ -134,9 +97,8 @@ class ApprovalsPageTest {
   void the_form_fields_match_the_parameters_the_controller_binds() throws Exception {
     // The bug this exists for: the deny form sent "reason" and the handler read "note", so a
     // denial a person typed bound to nothing and was recorded as the literal "denied". Nothing
-    // failed — not the compiler, not a test, not the page. The reason simply vanished.
+    // failed -- not the compiler, not a test, not the page. The reason simply vanished.
     String page = mvc.perform(get("/")).andReturn().getResponse().getContentAsString();
-
     for (Form form : formsIn(page)) {
       Set<String> bound = parametersOf(form.action());
       assertThat(form.fields())
@@ -145,16 +107,8 @@ class ApprovalsPageTest {
     }
   }
 
-  /** One form's action path and the names it posts. */
   private record Form(String action, Set<String> fields) {}
 
-  /**
-   * Walks the forms by index rather than matching them with one expression.
-   *
-   * <p>The regex version — {@code <form[^>]*action="([^"]+)"(.*?)</form>} under DOTALL — nested a
-   * greedy character class inside a lazy one, which backtracks super-linearly. Scanning is both
-   * faster and easier to read, and this is a test: it should be the least clever code here.
-   */
   private static List<Form> formsIn(String html) {
     List<Form> forms = new ArrayList<>();
     int from = 0;
@@ -180,18 +134,11 @@ class ApprovalsPageTest {
     return forms;
   }
 
-  /** The action of one form block, or empty if it declared none. */
   private static String actionOf(String block) {
     Matcher action = Pattern.compile("action=\"([^\"]+)\"").matcher(block);
     return action.find() ? action.group(1) : "";
   }
 
-  /**
-   * The request parameters the handler for {@code action} binds, read off the controller itself.
-   *
-   * <p>Reflection rather than a second list to keep in step: a list would be one more thing that
-   * can drift from the code, which is the failure being tested.
-   */
   private static Set<String> parametersOf(String action) {
     String verb = action.startsWith("/deny") ? "deny" : "approve";
     for (Method method : ApprovalsController.class.getDeclaredMethods()) {
@@ -211,87 +158,108 @@ class ApprovalsPageTest {
   }
 
   @Test
-  @DisplayName("an id the identifier rule refuses is the caller's mistake, not a 500")
+  @DisplayName("an id that is not one is the caller's mistake, not a 500")
   void a_malformed_id_in_the_address_bar_is_a_bad_request() throws Exception {
-    // AgentId refuses a space. Without a handler this leaves the controller as an
+    // An agent id is a UUID. Without a handler this leaves the controller as an
     // IllegalArgumentException and reaches the operator as "the watchman is broken".
-    mvc.perform(post("/approve/watchman/has a space/call-1")).andExpect(status().isBadRequest());
+    mvc.perform(post("/approve/watchman/not-a-uuid/call-1")).andExpect(status().isBadRequest());
   }
 
   @Test
   @DisplayName("the buttons post to a URL naming the type, the agent AND the call")
   void the_decide_links_carry_the_whole_identity() throws Exception {
     // The id alone cannot find the row it came from: an id is unique only within its type.
+    String id = house.value().toString();
     mvc.perform(get("/"))
-        .andExpect(content().string(containsString("/approve/watchman/house-12/call-1")))
-        .andExpect(content().string(containsString("/deny/watchman/house-12/call-1")));
+        .andExpect(content().string(containsString("/approve/watchman/" + id + "/call-1")))
+        .andExpect(content().string(containsString("/deny/watchman/" + id + "/call-1")));
   }
 
   @Nested
   @DisplayName("the page a decision redirects to")
   class ReadYourWrites {
 
-    // The projection's writer is the listener, which records a decision when the agent narrates
-    // it -- measured at 38ms after the engine accepted it on a live watchman. The redirect lands
-    // inside that window, so the person who just clicked is the one guaranteed to see the question
-    // they have already answered still sitting on the board.
+    // The board's other writer is the desk, which records a decision when the engine narrates it.
+    // The redirect lands inside that window, so the person who just clicked is the one guaranteed
+    // to see the question they have already answered still sitting on the board -- unless the
+    // controller writes too.
+    // The database is shared by every test in the class, so the board is read for THIS house.
+    private List<PendingApproval> waitingOnHouse() {
+      return approvals.pending().stream().filter(row -> row.agentId().equals(house)).toList();
+    }
 
     @Test
     @DisplayName("the row is gone from the board once the decision has been recorded")
     void answering_takes_the_question_off_the_board() {
-      assertThat(approvals.pending()).hasSize(1);
-
+      assertThat(waitingOnHouse()).hasSize(1);
       controller.recordLocally(
-          AgentType.of("watchman"),
-          AgentId.of("house-12"),
-          CallId.of("call-1"),
+          Watchman.TYPE,
+          house,
+          new CallId("call-1"),
           ApprovalResult.denied("that seems dangerous"));
-
-      assertThat(approvals.pending()).isEmpty();
+      assertThat(waitingOnHouse()).isEmpty();
     }
 
     @Test
     @DisplayName("the reason survives, so the two writers agree rather than race")
     void the_recorded_answer_is_the_one_that_was_sent() {
       controller.recordLocally(
-          AgentType.of("watchman"),
-          AgentId.of("house-12"),
-          CallId.of("call-1"),
+          Watchman.TYPE,
+          house,
+          new CallId("call-1"),
           ApprovalResult.denied("that seems dangerous"));
-
-      var row =
-          approvals
-              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("call-1"))
-              .orElseThrow();
-
+      var row = approvals.byCallId(Watchman.TYPE, house, new CallId("call-1")).orElseThrow();
       assertThat(row.answer()).contains("denied");
       assertThat(row.note()).contains("that seems dangerous");
     }
 
     @Test
-    @DisplayName("the listener writing the same decision afterwards changes nothing")
+    @DisplayName("the desk writing the same decision afterwards changes nothing")
     void whichever_writer_arrives_second_is_a_no_op() {
       controller.recordLocally(
-          AgentType.of("watchman"),
-          AgentId.of("house-12"),
-          CallId.of("call-1"),
+          Watchman.TYPE,
+          house,
+          new CallId("call-1"),
           ApprovalResult.denied("that seems dangerous"));
-
-      // What the listener does when the agent narrates ApprovalDecided a few milliseconds later.
+      // What the desk does when the engine narrates the denial a few milliseconds later.
       approvals.answered(
-          AgentType.of("watchman"),
-          AgentId.of("house-12"),
-          CallId.of("call-1"),
+          Watchman.TYPE,
+          house,
+          new CallId("call-1"),
           "denied",
           "that seems dangerous",
           NOW.plusSeconds(1));
-
-      var row =
-          approvals
-              .byCallId(AgentType.of("watchman"), AgentId.of("house-12"), CallId.of("call-1"))
-              .orElseThrow();
+      var row = approvals.byCallId(Watchman.TYPE, house, new CallId("call-1")).orElseThrow();
       assertThat(row.answeredAt()).contains(NOW);
-      assertThat(approvals.pending()).isEmpty();
+      assertThat(waitingOnHouse()).isEmpty();
+    }
+  }
+
+  @Nested
+  @DisplayName("telling two agents' questions apart")
+  class Identity {
+
+    @Test
+    @DisplayName("two agents waiting on the same call id are two questions, not one")
+    void a_call_id_is_only_unique_within_one_response() {
+      AgentId other = new AgentId(UUID.randomUUID());
+      approvals.asked(
+          new PendingApproval(
+              new CallId("call-1"),
+              Watchman.TYPE,
+              other,
+              "prune_images",
+              "docker image prune -af",
+              NOW,
+              NOW.plusSeconds(3600),
+              "token-2",
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty()));
+      assertThat(approvals.pending())
+          .as("one row would mean one house's question silently replaced the other's")
+          .extracting(PendingApproval::agentId)
+          .contains(house, other);
     }
   }
 }
