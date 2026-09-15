@@ -11,15 +11,12 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.HarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.store.AgentStateRepository;
-import org.jwcarman.nessy.engine.store.JdbcEffectStore;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -175,7 +172,6 @@ public class NessyAutoConfiguration {
   public HarnessFactory nessyHarnessFactory(
       DataSource dataSource,
       CodecFactory codecs,
-      JdbcHistoryStore history,
       InputSchemaGenerator schemas,
       Narrator narrator,
       ReplyTokens replyTokens,
@@ -184,34 +180,38 @@ public class NessyAutoConfiguration {
       Clock clock,
       InferenceProvider models,
       NessyProperties properties,
+      NessySchema schema,
       ObjectProvider<ObservationRegistry> registries,
       ObjectProvider<JsonMapper> mappers) {
 
     ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
+    // Wrapped only when there is somewhere to report to, so an application that is not tracing
+    // pays for no wrapper at all -- and when it is, the chat span lands inside the effect span
+    // that caused it rather than starting a trace of its own.
     InferenceProvider provider =
         ObservationRegistry.NOOP.equals(observations)
             ? models
             : Observed.inference(models, properties.provider(), observations);
 
-    JdbcClient jdbc = JdbcClient.create(dataSource);
     return new HarnessFactory(
-        codecs,
-        new AgentStateRepository(jdbc),
-        history,
-        history,
-        history,
-        schemas,
-        mappers.getIfAvailable(() -> JsonMapper.builder().build()),
-        narrator,
-        replyTokens,
-        new JdbcEffectStore(jdbc, codecs),
-        transactions,
-        scheduler,
-        clock,
-        provider,
-        new InferenceOptions(
-            requireModel(properties), properties.maxTokens(), properties.capabilities()),
-        new RetryPolicy.Never());
+        engine ->
+            engine
+                .dataSource(dataSource)
+                .inference(
+                    provider,
+                    new InferenceOptions(
+                        requireModel(properties),
+                        properties.maxTokens(),
+                        properties.capabilities()))
+                .codecs(codecs)
+                .schemas(schemas)
+                .mapper(mappers.getIfAvailable(() -> JsonMapper.builder().build()))
+                .narrator(narrator)
+                .observations(observations)
+                .replyTokens(replyTokens)
+                .transactionManager(transactions)
+                .scheduler(scheduler)
+                .clock(clock));
   }
 
   @Bean

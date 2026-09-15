@@ -1,12 +1,13 @@
 package org.jwcarman.nessy.engine.harness;
 
 import java.time.Clock;
+import java.util.Objects;
 import java.util.function.Consumer;
+import javax.sql.DataSource;
 import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.codec.spi.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -29,12 +30,11 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.spi.narration.Narrator;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
@@ -69,42 +69,48 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory {
   private final TransactionTemplate transactions;
   private final TaskScheduler scheduler;
   private final Clock clock;
+  private final Traces traces;
   private final HarnessConfig.Defaults defaults;
 
-  public HarnessFactory(
-      CodecFactory codecs,
-      AgentStateRepository states,
-      JdbcHistoryStore appender,
-      TurnHistories histories,
-      ToolCallHistories toolCalls,
-      InputSchemaGenerator schemas,
-      ObjectMapper mapper,
-      Narrator narrator,
-      ReplyTokens replyTokens,
-      JdbcEffectStore effectRows,
-      PlatformTransactionManager transactionManager,
-      TaskScheduler scheduler,
-      Clock clock,
-      InferenceProvider provider,
-      InferenceOptions options,
-      RetryPolicy retryPolicy) {
-    this.codecs = codecs;
-    this.states = states;
-    this.appender = appender;
-    this.histories = histories;
-    this.toolCalls = toolCalls;
-    this.schemas = schemas;
-    this.mapper = mapper;
-    this.narrator = narrator;
-    this.replyTokens = replyTokens;
+  /**
+   * Builds an engine from what an application says it wants.
+   *
+   * <p><b>Assembled here rather than handed in.</b> The stores are all one {@code DataSource} and
+   * one {@code CodecFactory} apart, and every caller built them the same way -- so asking for them
+   * was asking every caller to repeat the same seven lines and giving each a chance to get one
+   * wrong. A {@code JdbcHistoryStore} is also a {@code TurnHistories} and a {@code
+   * ToolCallHistories}, and taking it three times over was three chances to pass three different
+   * things.
+   */
+  public HarnessFactory(Consumer<EngineConfig> customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    EngineConfig config = new EngineConfig();
+    customizer.accept(config);
+
+    DataSource dataSource = config.requiredDataSource();
+    JdbcClient jdbc = JdbcClient.create(dataSource);
+    JdbcHistoryStore history = new JdbcHistoryStore(jdbc, config.codecs(), config.tokenEstimator());
+
+    this.codecs = config.codecs();
+    this.states = new AgentStateRepository(jdbc);
+    this.appender = history;
+    this.histories = history;
+    this.toolCalls = history;
+    this.schemas = config.schemas();
+    this.mapper = config.mapper();
+    this.narrator = config.narrator();
+    this.replyTokens = config.replyTokens();
     this.replies = new DefaultReplies(replyTokens);
-    this.effectRows = effectRows;
-    this.transactions = new TransactionTemplate(transactionManager);
-    this.scheduler = scheduler;
-    this.clock = clock;
+    this.effectRows = new JdbcEffectStore(jdbc, config.codecs());
+    this.transactions = new TransactionTemplate(config.transactions(dataSource));
+    this.scheduler = config.scheduler();
+    this.clock = config.clock();
+    this.traces = new Traces(config.observations());
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
-    this.defaults = new HarnessConfig.Defaults(provider, options, retryPolicy);
+    this.defaults =
+        new HarnessConfig.Defaults(
+            config.requiredProvider(), config.requiredOptions(), config.retryPolicy());
   }
 
   /**
@@ -164,7 +170,7 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory {
                 config.toolTimeout(),
                 config.toolRetryPolicy(),
                 clock));
-    EffectStore effects = new EffectStore(agentType, handlers, effectRows);
+    EffectStore effects = new EffectStore(agentType, handlers, effectRows, traces);
     DefaultHarness<O> harness =
         new DefaultHarness<>(
             agentType,
@@ -174,7 +180,8 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory {
             effects,
             transactions,
             narrator,
-            clock);
+            clock,
+            traces);
 
     // The harness is the callback, so it has to exist before its dispatcher does -- and the
     // dispatcher must not be polling before the harness can be called back into. Three
@@ -193,6 +200,7 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory {
             harness,
             clock,
             scheduler,
+            traces,
             config.effects().pollInterval(),
             config.effects().maxInFlight());
     // Lifecycle only: the harness holds it so that closing one closes the other. How often it

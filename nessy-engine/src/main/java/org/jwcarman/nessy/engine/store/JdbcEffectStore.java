@@ -49,17 +49,19 @@ public class JdbcEffectStore {
   public static final String RUNNING = "RUNNING";
 
   private static final String COLUMNS_SELECT =
-      "SELECT effect_id, agent_id, payload, failure_payload, attempts_made, deadline";
+      "SELECT effect_id, agent_id, payload, failure_payload, attempts_made, deadline,"
+          + " trace_context";
 
   private static final String COLUMNS =
       "effect_id, agent_id, agent_type, payload, timeout_millis, failure_payload, deadline,"
+          + " trace_context,"
           + " status, attempts_made, actionable_at, created_at, updated_at";
 
   private static final String INSERT =
       "INSERT INTO nessy_agent_effect ("
           + COLUMNS
           + ")"
-          + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL)";
+          + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL)";
 
   /**
    * Takes what is due and marks it running, in one statement.
@@ -83,7 +85,8 @@ public class JdbcEffectStore {
                 ORDER BY actionable_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT ?)
-            RETURNING effect_id, agent_id, payload, failure_payload, attempts_made, deadline
+            RETURNING effect_id, agent_id, payload, failure_payload, attempts_made, deadline,
+                      trace_context
             """;
 
   /**
@@ -147,6 +150,7 @@ public class JdbcEffectStore {
       Duration timeout,
       EffectOutcome undispatchable,
       Instant deadline,
+      String traceContext,
       Instant at) {
     jdbc.sql(INSERT)
         .params(
@@ -157,6 +161,7 @@ public class JdbcEffectStore {
             timeout.toMillis(),
             outcomeCodec.encode(undispatchable),
             utc(deadline),
+            traceContext,
             PENDING,
             utc(at),
             utc(at))
@@ -201,7 +206,8 @@ public class JdbcEffectStore {
                     rs.getBytes("payload"),
                     rs.getBytes("failure_payload"),
                     rs.getInt("attempts_made"),
-                    rs.getObject("deadline", OffsetDateTime.class).toInstant()))
+                    rs.getObject("deadline", OffsetDateTime.class).toInstant(),
+                    rs.getString("trace_context")))
         .list();
   }
 
@@ -237,7 +243,8 @@ public class JdbcEffectStore {
                     rs.getBytes("payload"),
                     rs.getBytes("failure_payload"),
                     rs.getInt("attempts_made"),
-                    rs.getObject("deadline", OffsetDateTime.class).toInstant()))
+                    rs.getObject("deadline", OffsetDateTime.class).toInstant(),
+                    rs.getString("trace_context")))
         .list();
   }
 

@@ -22,4 +22,6 @@ public record Attempt(
     byte[] payload,
     byte[] failurePayload,
     int attemptsMade,
-    Instant deadline) {}
+    Instant deadline,
+    /** The trace this effect was emitted in, or null if nothing was tracing. */
+    String traceContext) {}

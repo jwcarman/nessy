@@ -9,6 +9,7 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.trace.Traces;
 
 /**
  * One agent type's effects.
@@ -27,11 +28,14 @@ public class EffectStore {
   private final AgentType agentType;
   private final EffectHandlers handlers;
   private final JdbcEffectStore rows;
+  private final Traces traces;
 
-  public EffectStore(AgentType agentType, EffectHandlers handlers, JdbcEffectStore rows) {
+  public EffectStore(
+      AgentType agentType, EffectHandlers handlers, JdbcEffectStore rows, Traces traces) {
     this.agentType = agentType;
     this.handlers = handlers;
     this.rows = rows;
+    this.traces = traces;
   }
 
   /**
@@ -49,6 +53,10 @@ public class EffectStore {
         terms.timeout(),
         terms.undispatchable(),
         at.plus(terms.timeout()),
+        // Captured here, inside the fold's transaction, because this is the last moment the
+        // emitting trace is still in force. Whoever performs this row will have nothing to
+        // inherit from.
+        traces.capture(),
         at);
   }
 

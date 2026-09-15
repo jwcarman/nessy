@@ -17,6 +17,7 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.trace.Traces;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
@@ -63,6 +64,7 @@ public class EffectDispatcher {
   private final Semaphore inFlight;
   private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
   private final TaskScheduler scheduler;
+  private final Traces traces;
   private final Duration pollInterval;
 
   private ScheduledFuture<?> polling;
@@ -74,6 +76,7 @@ public class EffectDispatcher {
       AgentEffectCallback callback,
       Clock clock,
       TaskScheduler scheduler,
+      Traces traces,
       Duration pollInterval,
       int maxInFlight) {
     this.agentType = agentType;
@@ -82,6 +85,7 @@ public class EffectDispatcher {
     this.callback = callback;
     this.clock = clock;
     this.scheduler = scheduler;
+    this.traces = traces;
     this.pollInterval = pollInterval;
     this.inFlight = new Semaphore(maxInFlight);
   }
@@ -206,7 +210,25 @@ public class EffectDispatcher {
     }
   }
 
+  /**
+   * Performs one attempt inside the trace the effect was emitted in.
+   *
+   * <p>The span covers everything the attempt does -- reading the payload, running the handler,
+   * folding the outcome back in -- which is what makes the next effect a child of this one rather
+   * than a sibling. A turn's trace is the shape of what actually caused what.
+   */
   private void perform(Attempt attempt) {
+    traces.restore(
+        "nessy.effect",
+        attempt.traceContext(),
+        java.util.Map.of("nessy.agent.type", agentType.value()),
+        () -> {
+          performInTrace(attempt);
+          return null;
+        });
+  }
+
+  private void performInTrace(Attempt attempt) {
     // Before the payload is even read. A row is claimed at its deadline rather than filtered
     // out of the claim, because a row nobody claims is a row nobody retires -- and its agent
     // waits forever. Coming due at the deadline means coming due to be given up on.

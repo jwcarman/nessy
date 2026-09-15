@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     -- budget rather than restarting it. Distinct from actionable_at, which moves with every
     -- attempt; this never moves.
     deadline    TIMESTAMPTZ NOT NULL,
+    -- The trace this effect belongs to, in W3C's own format, captured as the row was written.
+    --
+    -- Here because the thread that performs this row has nothing to inherit from: the emitting
+    -- transaction committed minutes ago and may have been in a process that has since died. A
+    -- turn comes back as one trace only if its parent was written down beside the work.
+    --
+    -- Nullable, and losing it costs a parent rather than a turn: a row written before tracing was
+    -- switched on, or by an application that never will, simply starts a trace of its own.
+    trace_context TEXT,
     status      VARCHAR(16) NOT NULL,
     -- attempts_made is a fact the row records, and nothing yet judges it. actionable_at is the
     -- one thing a query must see: before an attempt it is when to try, during one it is when the

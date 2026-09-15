@@ -21,6 +21,7 @@ import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.store.AgentStateStore;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.store.HistoryStore;
+import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,6 +67,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
   private final TransactionTemplate transactions;
   private final Narrator narrator;
   private final Clock clock;
+  private final Traces traces;
 
   private EffectDispatcher dispatcher;
 
@@ -77,7 +79,8 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
       EffectStore effects,
       TransactionTemplate transactions,
       Narrator narrator,
-      Clock clock) {
+      Clock clock,
+      Traces traces) {
     this.agentType = agentType;
     this.coalescer = coalescer;
     this.states = states;
@@ -86,6 +89,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
     this.transactions = transactions;
     this.narrator = narrator;
     this.clock = clock;
+    this.traces = traces;
   }
 
   /**
@@ -122,11 +126,25 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
     }
   }
 
+  /**
+   * Where a turn's trace begins.
+   *
+   * <p>The only place that knows a turn is starting, so the only place the root can be opened. It
+   * covers the fold rather than the turn: the work a turn goes on to do happens in effects, hours
+   * later and elsewhere, each carrying this span's identity written down beside it. What is timed
+   * here is admitting the observation -- everything else hangs off it.
+   */
   @Override
   public void observe(AgentId agentId, O observation) {
     Instant arrivedAt = clock.instant();
     log.info("[{}] observing for agent {}: {}", agentType.value(), agentId.value(), observation);
-    fold(agentId, "observation", state -> state.observe(observation, arrivedAt, coalescer));
+    traces.in(
+        "nessy.turn",
+        java.util.Map.of("nessy.agent.type", agentType.value()),
+        () -> {
+          fold(agentId, "observation", state -> state.observe(observation, arrivedAt, coalescer));
+          return null;
+        });
   }
 
   @Override
