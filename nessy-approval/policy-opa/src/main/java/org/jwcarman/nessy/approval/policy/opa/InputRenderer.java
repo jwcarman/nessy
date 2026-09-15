@@ -15,9 +15,9 @@
  */
 package org.jwcarman.nessy.approval.policy.opa;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Builds the <b>input document</b> — what a Rego policy sees as {@code input}.
@@ -47,14 +47,15 @@ public interface InputRenderer {
   static InputRenderer standard(ObjectMapper mapper) {
     return request -> {
       ObjectNode input = mapper.createObjectNode();
-      input.put("agentType", request.agentType().name());
-      input.put("agentId", request.agentId().value());
-      input.put("turnId", request.turnId().value());
+      input.put("agentType", request.agentType().value());
+      input.put("agentId", request.agentId().value().toString());
+      input.put("turnId", request.turn().value());
       input.put("callId", request.callId().value());
-      input.put("toolName", request.toolName());
+      input.put("toolName", request.toolName().value());
       input.put(ACTION_FIELD, request.action());
       input.put("askedAt", request.askedAt().toString());
-      input.set("arguments", request.arguments());
+      // Arguments travel as JSON text; a policy wants a document it can walk, not a string.
+      input.set("arguments", mapper.readTree(request.arguments()));
       input.set("facts", request.facts());
       return input;
     };
@@ -81,16 +82,16 @@ public interface InputRenderer {
       ObjectNode input = mapper.createObjectNode();
       ObjectNode subject = input.putObject("subject");
       subject.put("type", "agent");
-      subject.put("id", request.agentId().value());
-      subject.putObject("properties").put("agentType", request.agentType().name());
+      subject.put("id", request.agentId().value().toString());
+      subject.putObject("properties").put("agentType", request.agentType().value());
 
       ObjectNode resource = input.putObject("resource");
       resource.put("type", "tool");
-      resource.put("id", request.toolName());
+      resource.put("id", request.toolName().value());
 
       ObjectNode action = input.putObject(ACTION_FIELD);
       action.put("name", "call");
-      action.putObject("properties").set("arguments", request.arguments());
+      action.putObject("properties").set("arguments", mapper.readTree(request.arguments()));
 
       ObjectNode context = input.putObject("context");
       context.put(ACTION_FIELD, request.action());

@@ -18,12 +18,12 @@ package org.jwcarman.nessy.approval.policy.opa;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.approval.policy.Verdict;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reading an answer, for both conventions this ships with.
@@ -34,7 +34,7 @@ import org.jwcarman.nessy.approval.policy.Verdict;
 @DisplayName("Reading what a policy answered")
 class DecisionInterpreterTest {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   private static JsonNode json(String text) {
     try {
@@ -78,8 +78,8 @@ class DecisionInterpreterTest {
 
       Verdict.Delegate delegate = (Verdict.Delegate) verdict;
       assertThat(delegate.to()).isEqualTo("humans");
-      assertThat(delegate.facts().path("policy.term").asText()).isEqualTo("PT72H");
-      assertThat(delegate.facts().path("policy.ticket").asText()).isEqualTo("OPS-1");
+      assertThat(delegate.facts().path("policy.term").asString()).isEqualTo("PT72H");
+      assertThat(delegate.facts().path("policy.ticket").asString()).isEqualTo("OPS-1");
       assertThat(delegate.facts().has("policy.to")).as("routing is not a fact").isFalse();
       assertThat(delegate.facts().has("policy.effect")).isFalse();
     }

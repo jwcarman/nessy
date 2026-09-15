@@ -15,9 +15,6 @@
  */
 package org.jwcarman.nessy.approval.policy.opa;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,6 +28,9 @@ import org.jwcarman.nessy.approval.policy.PolicyEngine;
 import org.jwcarman.nessy.approval.policy.Verdict;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A {@link PolicyEngine} backed by Open Policy Agent, so the rules are Rego rather than Java.
@@ -184,10 +184,10 @@ public final class OpaPolicyEngine implements PolicyEngine {
       if (warning != null && LOG.isWarnEnabled()) {
         // OPA hands this over for free; the common one is a missing `input` key.
         LOG.warn(
-            "[opa] {} warned: {}", decision, warning.path("message").asText(warning.toString()));
+            "[opa] {} warned: {}", decision, warning.path("message").asString(warning.toString()));
       }
       return parsed;
-    } catch (IOException notJson) {
+    } catch (tools.jackson.core.JacksonException notJson) {
       throw new IllegalStateException("OPA answered something that is not JSON", notJson);
     }
   }
@@ -197,7 +197,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
 
     private String url;
     private String decisionPath;
-    private ObjectMapper mapper = new ObjectMapper();
+    private ObjectMapper mapper = tools.jackson.databind.json.JsonMapper.builder().build();
     private InputRenderer renderer;
     private DecisionInterpreter interpreter;
     private Duration timeout = Duration.ofSeconds(5);

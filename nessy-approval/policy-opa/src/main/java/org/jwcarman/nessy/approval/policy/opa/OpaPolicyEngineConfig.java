@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.approval.policy.opa;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * How one {@link OpaPolicyEngine} is put together — the same fluent-into-a-{@code Consumer} shape

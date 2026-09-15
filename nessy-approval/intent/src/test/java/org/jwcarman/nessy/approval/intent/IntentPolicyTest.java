@@ -1,72 +1,28 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.approval.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.jwcarman.nessy.approval.intent.Fixtures.AGENT;
+import static org.jwcarman.nessy.approval.intent.Fixtures.MAPPER;
+import static org.jwcarman.nessy.approval.intent.Fixtures.freshStore;
+import static org.jwcarman.nessy.approval.intent.Fixtures.request;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.testing.TestDatabase;
 
 class IntentPolicyTest {
-
-  /** Nothing in these tests answers a deferred question, so the address is never read. */
-  private static final ObjectMapper MAPPER =
-      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-
-  private static ApprovalRequest freshRequest() {
-    return new ApprovalRequest(
-        AgentType.of("ops"),
-        AgentId.of("prod-eu"),
-        TurnId.of("turn-1"),
-        CallId.of("c1"),
-        "restart_prod",
-        JsonNodeFactory.instance.objectNode().put("target", "prod-eu"),
-        "restart prod-eu",
-        Instant.EPOCH,
-        () -> new ReplyToken("nowhere"));
-  }
-
-  private static JdbcIntentStore<Intent> freshStore() {
-    return new JdbcIntentStore<>(
-        TestDatabase.fresh(), AgentType.of("chat"), AgentId.of("agent-a"), Intent.class, MAPPER);
-  }
 
   @Test
   void an_undeclared_call_is_denied_and_told_how_to_proceed() {
     var policy =
-        IntentPolicy.requireDeclared(new IntentEnricher<>(freshStore(), MAPPER), Approver.always());
+        IntentPolicy.requireDeclared(new IntentEnricher<>(freshStore(), MAPPER), Approver.allow());
 
-    Awaited<ApprovalResult> result = policy.approve(freshRequest());
+    Awaited<ApprovalResult> result = policy.approve(request());
 
     assertThat(result).isInstanceOf(Awaited.Ready.class);
-    var answer = ((Awaited.Ready<ApprovalResult>) result).result();
+    var answer = ((Awaited.Ready<ApprovalResult>) result).value();
     assertThat(answer).isInstanceOf(ApprovalResult.Denied.class);
     assertThat(((ApprovalResult.Denied) answer).reason()).contains("declare-intent");
   }
@@ -74,26 +30,23 @@ class IntentPolicyTest {
   @Test
   void a_declared_call_passes_to_the_approver_it_guards() {
     var store = freshStore();
-    store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
+    store.declare(AGENT, new Intent("restart prod-eu to clear the stuck deploy"));
     var policy =
-        IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), Approver.always());
+        IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), Approver.allow());
 
-    Awaited<ApprovalResult> result = policy.approve(freshRequest());
-
-    assertThat(result).isEqualTo(Awaited.ready(ApprovalResult.approved()));
+    assertThat(policy.approve(request())).isEqualTo(Awaited.ready(ApprovalResult.approved()));
   }
 
+  /** A declaration is a precondition, never a reason to allow: the guarded approver still rules. */
   @Test
   void it_never_approves_on_its_own_only_defers_to_what_it_guards() {
     var store = freshStore();
-    store.declare(new Intent("declared, but still not allowed"));
+    store.declare(AGENT, new Intent("declared, but still not allowed"));
     Approver alwaysDenies = request -> Awaited.ready(ApprovalResult.denied("policy says no"));
     var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), alwaysDenies);
 
-    Awaited<ApprovalResult> result = policy.approve(freshRequest());
-
-    // A declaration is a precondition, never a reason to allow: the guarded approver still rules.
-    assertThat(result).isEqualTo(Awaited.ready(ApprovalResult.denied("policy says no")));
+    assertThat(policy.approve(request()))
+        .isEqualTo(Awaited.ready(ApprovalResult.denied("policy says no")));
   }
 
   @Test
@@ -106,7 +59,7 @@ class IntentPolicyTest {
         };
     var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(freshStore(), MAPPER), counting);
 
-    policy.approve(freshRequest());
+    policy.approve(request());
 
     assertThat(calls).hasValue(0);
   }
@@ -114,7 +67,7 @@ class IntentPolicyTest {
   @Test
   void the_guarded_approver_sees_the_declaration_this_policy_recorded() {
     var store = freshStore();
-    store.declare(new Intent("restart prod-eu"));
+    store.declare(AGENT, new Intent("restart prod-eu"));
     Approver reader =
         request ->
             Awaited.ready(
@@ -123,8 +76,6 @@ class IntentPolicyTest {
                     : ApprovalResult.denied("the fact did not reach me"));
     var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), reader);
 
-    Awaited<ApprovalResult> result = policy.approve(freshRequest());
-
-    assertThat(result).isEqualTo(Awaited.ready(ApprovalResult.approved()));
+    assertThat(policy.approve(request())).isEqualTo(Awaited.ready(ApprovalResult.approved()));
   }
 }

@@ -18,20 +18,19 @@ package org.jwcarman.nessy.approval.policy.opa;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
 import org.jwcarman.nessy.approval.policy.Verdict;
 import org.testcontainers.containers.GenericContainer;
@@ -39,6 +38,7 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The engine, against the binary that actually enforces the policy.
@@ -55,7 +55,8 @@ import org.testcontainers.utility.MountableFile;
 @DisplayName("A policy engine backed by OPA")
 class OpaPolicyEngineTest {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+  private static final AgentId HOUSE_12 = new AgentId(UUID.randomUUID());
 
   @Container
   static final GenericContainer<?> OPA =
@@ -80,19 +81,18 @@ class OpaPolicyEngineTest {
   }
 
   private static ApprovalRequest asking(String agentType, String tool, String target) {
-    ObjectNode arguments = JsonNodeFactory.instance.objectNode();
-    arguments.put("target", target);
+    Instant asked = Instant.parse("2026-09-02T12:00:00Z");
     return new ApprovalRequest(
-        AgentType.of(agentType),
-        AgentId.of("house-12"),
-        TurnId.of("turn-1"),
-        CallId.of("call-1"),
-        tool,
-        arguments,
+        new AgentType(agentType),
+        HOUSE_12,
+        new TurnId(1),
+        new CallId("call-1"),
+        new ToolName(tool),
+        "{\"target\":\"" + target + "\"}",
         tool + " on " + target,
-        Instant.parse("2026-09-02T12:00:00Z"),
-        () -> ReplyToken.of("a-capability-no-policy-should-see"),
-        JsonNodeFactory.instance.objectNode());
+        asked,
+        asked.plusSeconds(3600),
+        new ReplyToken("a-capability-no-policy-should-see"));
   }
 
   @Nested
@@ -129,8 +129,8 @@ class OpaPolicyEngineTest {
       assertThat(verdict).isInstanceOf(Verdict.Delegate.class);
       Verdict.Delegate delegate = (Verdict.Delegate) verdict;
       assertThat(delegate.to()).isEqualTo("humans");
-      assertThat(delegate.facts().path("policy.term").asText()).isEqualTo("PT72H");
-      assertThat(delegate.facts().path("policy.reason").asText())
+      assertThat(delegate.facts().path("policy.term").asString()).isEqualTo("PT72H");
+      assertThat(delegate.facts().path("policy.reason").asString())
           .isEqualTo("prune_images targets production");
     }
 
@@ -188,7 +188,7 @@ class OpaPolicyEngineTest {
       // service, so it is the one field that must not be there.
       assertThat(document)
           .doesNotContain("a-capability-no-policy-should-see")
-          .contains("prune_images", "prod-eu-1", "watchman", "house-12");
+          .contains("prune_images", "prod-eu-1", "watchman", HOUSE_12.value().toString());
     }
 
     @Test
@@ -201,7 +201,7 @@ class OpaPolicyEngineTest {
 
       assertThat(document)
           .doesNotContain("a-capability-no-policy-should-see")
-          .contains("\"subject\"", "\"resource\"", "\"action\"", "house-12");
+          .contains("\"subject\"", "\"resource\"", "\"action\"", HOUSE_12.value().toString());
     }
 
     @Test

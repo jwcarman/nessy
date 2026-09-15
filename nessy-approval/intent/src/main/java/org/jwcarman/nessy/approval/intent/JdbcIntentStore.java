@@ -15,16 +15,16 @@
  */
 package org.jwcarman.nessy.approval.intent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
-import org.jwcarman.codec.jackson2.Jackson2CodecFactory;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * What an agent has declared it is trying to do, in a table of its own.
@@ -53,39 +53,37 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
   // Unwrapped once, at construction: below this line is SQL, and SQL takes strings. The same
   // shape JdbcNotebook, JdbcPlanStore and TranscriptMemory already use.
   private final String agentType;
-  private final String agentId;
   private final Codec<T> codec;
 
   /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
   public JdbcIntentStore(
-      DataSource dataSource,
-      AgentType agentType,
-      AgentId agentId,
-      Class<T> vocabulary,
-      ObjectMapper mapper) {
+      DataSource dataSource, AgentType agentType, Class<T> vocabulary, ObjectMapper mapper) {
     this(
         dataSource,
         agentType,
-        agentId,
-        new Jackson2CodecFactory(Objects.requireNonNull(mapper, "mapper must not be null"))
+        new JacksonCodecFactory(Objects.requireNonNull(mapper, "mapper must not be null"))
             .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
-  public JdbcIntentStore(
-      DataSource dataSource, AgentType agentType, AgentId agentId, Codec<T> codec) {
+  public JdbcIntentStore(DataSource dataSource, AgentType agentType, Codec<T> codec) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
-    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").name();
-    this.agentId = Objects.requireNonNull(agentId, "agentId must not be null").value();
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 
+  /** The column is text; an id crosses into SQL as its canonical string, as everywhere else. */
+  private static String key(AgentId agentId) {
+    return Objects.requireNonNull(agentId, "agentId must not be null").value().toString();
+  }
+
   @Override
-  public void declare(T declaration) {
+  public void declare(AgentId agent, T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
+    String agentId = key(agent);
     String encoded = new String(codec.encode(declaration), StandardCharsets.UTF_8);
     while (true) {
-      Optional<Long> version = currentVersion();
+      Optional<Long> version = currentVersion(agentId);
       if (version.isEmpty()) {
         try {
           jdbc.sql(INSERT).params(agentType, agentId, encoded).update();
@@ -103,14 +101,14 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
   }
 
   @Override
-  public Optional<T> latest() {
+  public Optional<T> latest(AgentId agent) {
     return jdbc.sql(SELECT)
-        .params(agentType, agentId)
+        .params(agentType, key(agent))
         .query((row, number) -> decode(row.getString("declaration")))
         .optional();
   }
 
-  private Optional<Long> currentVersion() {
+  private Optional<Long> currentVersion(String agentId) {
     return jdbc.sql(SELECT_VERSION).params(agentType, agentId).query(Long.class).optional();
   }
 

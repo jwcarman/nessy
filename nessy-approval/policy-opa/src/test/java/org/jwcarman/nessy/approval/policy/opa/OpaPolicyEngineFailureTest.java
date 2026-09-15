@@ -18,13 +18,13 @@ package org.jwcarman.nessy.approval.policy.opa;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,10 +32,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
 import org.jwcarman.nessy.approval.policy.Verdict;
 
@@ -84,17 +85,18 @@ class OpaPolicyEngineFailureTest {
   }
 
   private static ApprovalRequest asking() {
+    Instant asked = Instant.parse("2026-09-02T12:00:00Z");
     return new ApprovalRequest(
-        AgentType.of("watchman"),
-        AgentId.of("house-12"),
-        TurnId.of("turn-1"),
-        CallId.of("call-1"),
-        "prune_images",
-        JsonNodeFactory.instance.objectNode(),
+        new AgentType("watchman"),
+        new AgentId(UUID.randomUUID()),
+        new TurnId(1),
+        new CallId("call-1"),
+        new ToolName("prune_images"),
+        "{}",
         "docker image prune -af",
-        Instant.parse("2026-09-02T12:00:00Z"),
-        () -> ReplyToken.of("a-capability"),
-        JsonNodeFactory.instance.objectNode());
+        asked,
+        asked.plusSeconds(3600),
+        new ReplyToken("a-capability"));
   }
 
   @Test
@@ -174,7 +176,8 @@ class OpaPolicyEngineFailureTest {
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort())
                     .decisionPath("nessy/tools/decision")
                     .renderer(
-                        InputRenderer.authzen(new com.fasterxml.jackson.databind.ObjectMapper()))
+                        InputRenderer.authzen(
+                            tools.jackson.databind.json.JsonMapper.builder().build()))
                     .interpreter(DecisionInterpreter.authzen()));
 
     assertThat(authzen.decide(asking())).isEqualTo(Verdict.deny("out of hours"));

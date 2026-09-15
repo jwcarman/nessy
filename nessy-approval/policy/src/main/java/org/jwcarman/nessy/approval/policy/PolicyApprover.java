@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.approval.policy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -26,6 +25,7 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
  * An {@link Approver} that asks a {@link PolicyEngine} and carries out the {@link Verdict}.
@@ -185,7 +185,7 @@ public final class PolicyApprover implements Approver {
     }
     request.fact(DEPTH, JsonNodeFactory.instance.numberNode(depth));
     // Whatever the policy attached -- a term, a ticket -- so the delegate reads what it knows.
-    delegate.facts().fields().forEachRemaining(f -> request.fact(f.getKey(), f.getValue()));
+    delegate.facts().properties().forEach(f -> request.fact(f.getKey(), f.getValue()));
     try {
       Awaited<ApprovalResult> answer = approver.approve(request);
       if (answer == null) {

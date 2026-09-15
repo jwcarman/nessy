@@ -15,11 +15,11 @@
  */
 package org.jwcarman.nessy.approval.policy.opa;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import org.jwcarman.nessy.approval.policy.Verdict;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Reads what a policy answered into a {@link Verdict}.
@@ -67,12 +67,12 @@ public interface DecisionInterpreter {
         throw new IllegalArgumentException(
             "a decision must be an object with an \"effect\", but was: " + result);
       }
-      String effect = result.path("effect").asText("");
+      String effect = result.path("effect").asString("");
       return switch (effect) {
         case "allow" -> Verdict.approve();
-        case "deny" -> Verdict.deny(result.path("reason").asText("denied by policy"));
+        case "deny" -> Verdict.deny(result.path("reason").asString("denied by policy"));
         case "delegate" -> {
-          String to = result.path("to").asText("");
+          String to = result.path("to").asString("");
           if (to.isBlank()) {
             throw new IllegalArgumentException("a delegating decision must name a \"to\"");
           }
@@ -124,7 +124,7 @@ public interface DecisionInterpreter {
         return Verdict.approve();
       }
       JsonNode context = result.path("context");
-      String reason = context.path("reason_user").asText("");
+      String reason = context.path("reason_user").asString("");
       return Verdict.deny(reason.isBlank() ? "denied by policy" : reason);
     };
   }

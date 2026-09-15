@@ -15,9 +15,9 @@
  */
 package org.jwcarman.nessy.approval.policy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What a policy SAID. Not how the call settled — that is {@code ApprovalResult}.

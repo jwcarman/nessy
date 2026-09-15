@@ -18,22 +18,24 @@ package org.jwcarman.nessy.approval.policy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolName;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What a policy approver does with each verdict, and with each way the gate can break.
@@ -48,20 +50,20 @@ class PolicyApproverTest {
 
   private static ApprovalRequest asking() {
     return new ApprovalRequest(
-        AgentType.of("watchman"),
-        AgentId.of("house-12"),
-        TurnId.of("turn-1"),
-        CallId.of("call-1"),
-        "prune_images",
-        JsonNodeFactory.instance.objectNode(),
+        new AgentType("watchman"),
+        new AgentId(UUID.randomUUID()),
+        new TurnId(1),
+        new CallId("call-1"),
+        new ToolName("prune_images"),
+        "{}",
         "docker image prune -af",
         NOW,
-        () -> ReplyToken.of("a-capability"),
-        JsonNodeFactory.instance.objectNode());
+        NOW.plusSeconds(3600),
+        new ReplyToken("a-capability"));
   }
 
   private static String denialOf(Awaited<ApprovalResult> answer) {
-    ApprovalResult result = ((Awaited.Ready<ApprovalResult>) answer).result();
+    ApprovalResult result = ((Awaited.Ready<ApprovalResult>) answer).value();
     if (result instanceof ApprovalResult.Denied denied) {
       return denied.reason();
     }
@@ -90,13 +92,13 @@ class PolicyApproverTest {
     @Test
     @DisplayName("delegate hands the question to the named approver, whose answer stands")
     void delegate_defers_to_whoever_was_named() {
-      Approver desk = request -> Awaited.deferred(NOW.plusSeconds(3600));
+      Approver desk = request -> Awaited.deferred();
       var gate =
           PolicyApprover.create(
               policy ->
                   policy.engine(request -> Verdict.delegate("humans")).delegate("humans", desk));
 
-      assertThat(gate.approve(asking())).isEqualTo(Awaited.deferred(NOW.plusSeconds(3600)));
+      assertThat(gate.approve(asking())).isEqualTo(Awaited.deferred());
     }
 
     @Test
@@ -107,7 +109,7 @@ class PolicyApproverTest {
       Approver desk =
           request ->
               Awaited.ready(
-                  ApprovalResult.denied(request.fact("policy.term").orElseThrow().asText()));
+                  ApprovalResult.denied(request.fact("policy.term").orElseThrow().asString()));
       var gate =
           PolicyApprover.create(
               policy ->
@@ -206,7 +208,7 @@ class PolicyApproverTest {
       // Depth is carried on the request, so the inner approver can see how far it has already come.
       var answer = gate.approve(asking());
 
-      assertThat(((Awaited.Ready<ApprovalResult>) answer).result())
+      assertThat(((Awaited.Ready<ApprovalResult>) answer).value())
           .isInstanceOf(ApprovalResult.Approved.class);
     }
 
