@@ -1,23 +1,5 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.chatweb;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,49 +7,37 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Where the questions wait, and what the page reads.
+ * The questions waiting for a person, in memory.
  *
- * <p>In memory, and honestly so: this example's whole world is one process, and a desk that
- * outlived it would be claiming a durability the rest of the example does not have. The watchman
- * example puts the same projection in Postgres, which is what a real deployment does — the shape of
- * what is stored is identical either way, which is the point worth taking from this file.
- *
- * <p><b>The token never reaches the browser.</b> It is the authority to settle a tool call, so the
- * page addresses a question by its call id and the desk looks the token up. A page that held tokens
- * would be a page that could be pasted into a chat window.
+ * <p>In memory because this is an example: a restart loses the cards, though not the questions --
+ * the engine still holds each call open until its deadline, and a real desk would keep the token
+ * somewhere durable. The reply token is held here and never rendered; it is the credential that
+ * answers the question, not a fact about it.
  */
 @Component
 public class ApprovalDesk {
 
-  /**
-   * Renders the input a person is being asked about.
-   *
-   * <p>The request carries the tool's own input object rather than the model's raw JSON — one
-   * representation, so the page cannot show something the tool will not act on. Writing it back out
-   * as JSON is what makes it readable as evidence beside the renderer's sentence.
-   */
-  private static final ObjectMapper EVIDENCE =
-      new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+  private static final JsonMapper EVIDENCE = JsonMapper.builder().build();
 
-  private static String evidenceOf(Object input) {
+  /** The arguments, pretty-printed for a person, or as they came if they will not parse. */
+  private static String evidenceOf(String arguments) {
     try {
-      return EVIDENCE.writeValueAsString(input);
-    } catch (JsonProcessingException notRenderable) {
-      // A tool whose input will not serialize is a tool nobody can review; say so rather than
-      // showing an empty box beside an Approve button.
-      return "(this tool's input could not be rendered: "
-          + notRenderable.getOriginalMessage()
-          + ")";
+      return EVIDENCE
+          .writerWithDefaultPrettyPrinter()
+          .writeValueAsString(EVIDENCE.readTree(arguments));
+    } catch (JacksonException notJson) {
+      return arguments;
     }
   }
 
-  /** One question, as both the page and the answer path need it. */
   public record Waiting(
       AgentId agentId,
       CallId callId,
@@ -79,21 +49,19 @@ public class ApprovalDesk {
 
   private final ConcurrentMap<CallId, Waiting> waiting = new ConcurrentHashMap<>();
 
-  /** Records a question the approver has just deferred. */
-  public void expecting(ApprovalRequest request, ReplyToken replyToken) {
+  public void expecting(ApprovalRequest request) {
     waiting.put(
         request.callId(),
         new Waiting(
             request.agentId(),
             request.callId(),
-            request.toolName(),
-            request.arguments().toPrettyString(),
+            request.toolName().value(),
+            evidenceOf(request.arguments()),
             request.action(),
             request.askedAt(),
-            replyToken));
+            request.replyToken()));
   }
 
-  /** Everything still waiting on this agent, oldest first. */
   public List<Map<String, ?>> pending(AgentId agentId) {
     return waiting.values().stream()
         .filter(question -> question.agentId().equals(agentId))
@@ -102,19 +70,11 @@ public class ApprovalDesk {
         .toList();
   }
 
-  /** One question as the page draws it — no token. */
   public Map<String, ?> card(CallId callId) {
     Waiting question = waiting.get(callId);
     return question == null ? Map.of("id", callId.value()) : render(question);
   }
 
-  /**
-   * Takes a question off the desk, if it is still there.
-   *
-   * <p>Removing and answering are one step on purpose: two people with the page open both click,
-   * and only the click that actually took the question gets to answer it. The loser is told the
-   * question is gone rather than being allowed to settle a call twice.
-   */
   public Optional<Waiting> take(CallId callId) {
     return Optional.ofNullable(waiting.remove(callId));
   }

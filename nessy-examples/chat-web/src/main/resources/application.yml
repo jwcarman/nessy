@@ -4,6 +4,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    # The engine's schema is PostgreSQL's. The same variables the other examples read.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nessy}
+    username: ${SPRING_DATASOURCE_USERNAME:nessy}
+    password: ${SPRING_DATASOURCE_PASSWORD:nessy}
 
 server:
   shutdown: graceful
@@ -11,15 +16,29 @@ server:
 nessy:
   type: chat
   # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. Configured rather than
-  # discovered because a Model no longer reports its own vendor.
+  # discovered because a provider does not report its own vendor.
   provider: openai
+  model: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every waiting approval becomes
   # unanswerable the moment the process bounces. A DEMO key: generate your own for anything real.
   reply-token-encryption-keys:
     - ${CHAT_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
+  system-prompt: |
+    You are a helpful assistant in a chat window. Keep answers short unless asked for more.
+    When the user tells you something worth keeping -- a preference, a name, a standing fact --
+    remember it as a note. Your notes appear as an index in every conversation; read one in
+    full with the recall tool when it is relevant, and change one with revise using the id from
+    that index. Never invent an id.
+    For work that takes several steps, write a plan with the update_plan tool and keep it
+    current as you go. The plan you are holding appears in every message.
+    When a question turns on today's date or on counting days, use the days_until tool rather
+    than working it out yourself.
+    You can also send email, but every send is shown to a person for approval before it
+    happens. So say what you are about to send, send it, and expect the result to arrive
+    later -- possibly much later. Never claim an email has been sent until the tool says so.
 
-chat:
-  model-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
-  model-api-key: ${CHAT_MODEL_API_KEY:not-needed}
-  model-id: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
+# The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio.
+openai:
+  api-key: ${CHAT_MODEL_API_KEY:not-needed}
+  base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}

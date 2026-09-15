@@ -19,8 +19,10 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -50,8 +52,8 @@ public final class SendEmailTool implements Tool<SendEmailTool.Input> {
   }
 
   @Override
-  public String name() {
-    return "send_email";
+  public ToolName name() {
+    return new ToolName("send_email");
   }
 
   @Override
@@ -61,10 +63,10 @@ public final class SendEmailTool implements Tool<SendEmailTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(ToolCallRequest<Input> call) {
-    Input input = call.input();
+  public Awaited<ToolResult> call(ToolCallRequest<Input> request) {
+    Input input = request.input();
     sent.add(input);
-    return Awaited.ready(ToolResult.ok("sent to " + input.to()));
+    return Awaited.ready(ToolResult.ok(new Block.Text("sent to " + input.to())));
   }
 
   /** What this tool has actually done, newest last. */

@@ -1,30 +1,22 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.chatweb;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.CallId;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.engine.Replies;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
+import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,21 +25,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/**
- * Four routes, and each is one sentence: what has been said, tell the agent something, watch it
- * work, answer its question.
- *
- * <p><b>Posting a message returns nothing.</b> {@code observe} is durable and asynchronous — by the
- * time it returns, the line is the agent's problem and not this request's — so the honest status is
- * 202 with an empty body, and everything the agent then says arrives on {@link #events}. A handler
- * that held the response open until the answer was ready would be inventing a synchrony the engine
- * does not have.
- */
 @RestController
 @RequestMapping("/api/agents")
 public class ChatController {
@@ -56,116 +37,138 @@ public class ChatController {
 
   public record Decision(String decision, String note) {}
 
+  public record Line(String role, String text) {}
+
   private final Harness<String> harness;
-  private final Memory memory;
+  private final TurnHistories histories;
   private final ChatStreams streams;
   private final ApprovalDesk desk;
   private final Replies replies;
 
   ChatController(
       Harness<String> harness,
-      Memory memory,
+      TurnHistories histories,
       ChatStreams streams,
       ApprovalDesk desk,
       Replies replies) {
     this.harness = harness;
-    this.memory = memory;
+    this.histories = histories;
     this.streams = streams;
     this.desk = desk;
     this.replies = replies;
   }
 
-  /**
-   * Everything needed to draw the page from cold: the transcript and any questions still waiting.
-   *
-   * <p>An id the browser has just minted is not an error — an agent that has never been addressed
-   * recalls an empty transcript, so a fresh chat draws as an empty one rather than a 404.
-   */
+  /** What has been said, from the story itself: the page rebuilds from this, not from a replay. */
   @GetMapping("/{id}")
   public Map<String, Object> state(@PathVariable("id") String id) {
-    AgentId agentId = AgentId.of(id);
-    Context context = memory.recall(agentId);
-    List<Context.Line> lines = context.lines();
-    return Map.of("transcript", lines, "approvals", desk.pending(agentId));
+    AgentId agentId = agent(id);
+    List<Turn> turns = histories.forAgent(ChatConfiguration.TYPE, agentId).turnsFrom(0);
+    return Map.of("transcript", lines(turns), "approvals", desk.pending(agentId));
   }
 
-  /** Says one thing to the agent. The answer comes back on the stream, not here. */
   @PostMapping("/{id}/messages")
   public ResponseEntity<Void> say(@PathVariable("id") String id, @RequestBody MessageRequest body) {
-    harness.observe(AgentId.of(id), body.text());
+    harness.observe(agent(id), body.text());
     return ResponseEntity.accepted().build();
   }
 
   /**
-   * Ends this conversation: the agent behind it is forgotten, not merely cleared on screen.
-   *
-   * <p>The browser mints an agent id and keeps it in {@code localStorage}, so without this every
-   * visitor becomes a permanent agent — a state row and a transcript that nothing ever removes.
-   * "Start a new chat" was a lie the page told: it produced a new id and abandoned the old one.
-   *
-   * <p>Accepted, not confirmed. {@code forget} is a request: an agent mid-answer finishes first and
-   * forgets itself after, so a 202 says the agent has been told rather than that it is gone.
+   * Ends the conversation. The story is kept -- an ended agent is one that will not take another
+   * word, not one that never spoke -- and the page moves on to a fresh id.
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> forget(@PathVariable("id") String id) {
-    harness.forget(AgentId.of(id));
+  public ResponseEntity<Void> end(@PathVariable("id") String id) {
+    harness.terminate(agent(id));
     return ResponseEntity.accepted().build();
   }
 
-  /**
-   * The long-lived narration stream for one agent.
-   *
-   * <p>{@code Last-Event-ID} is sent by the browser on its own, without a line of JavaScript: an
-   * EventSource that loses its connection reconnects and reports the id of the last event it
-   * actually received. Passing it straight through is what turns a reconnect from a gap into a
-   * catch-up — every event carries its id, and Nessy's ids are UUIDv7, so one doubles as a cursor.
-   */
   @GetMapping("/{id}/events")
-  public SseEmitter events(
-      @PathVariable("id") String id,
-      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
-    return streams.open(AgentId.of(id), lastEventId);
+  public SseEmitter events(@PathVariable("id") String id) {
+    return streams.open(agent(id));
   }
 
-  /**
-   * Answers one waiting question.
-   *
-   * <p>The future is returned rather than awaited: Spring holds the response open until the engine
-   * has actually accepted the decision, so a page that says "denied" is a page whose denial landed.
-   * Answering and then redirecting optimistically is the quiet way to show a person a decision that
-   * was still only a message in a mailbox.
-   */
   @PostMapping("/{id}/approvals/{callId}")
-  public CompletableFuture<ResponseEntity<Void>> decide(
+  public ResponseEntity<Void> decide(
       @PathVariable("id") String id,
       @PathVariable("callId") String callId,
       @RequestBody Decision body) {
-    ApprovalDesk.Waiting question = desk.take(CallId.of(callId)).orElse(null);
+    ApprovalDesk.Waiting question = desk.take(new CallId(callId)).orElse(null);
     if (question == null) {
       // Already answered, by another tab or another person. Not an error: the page should redraw
       // and see what was decided, rather than be shown a stack trace for losing a race.
-      return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.CONFLICT).build());
+      return ResponseEntity.status(HttpStatus.CONFLICT).build();
     }
     ApprovalResult result =
         "approve".equals(body.decision())
             ? ApprovalResult.approved()
             : ApprovalResult.denied(
                 body.note() == null || body.note().isBlank() ? "denied" : body.note());
-    return replies
-        .approve(question.replyToken(), result)
-        .toCompletableFuture()
-        .thenApply(ack -> ResponseEntity.accepted().build());
+    return switch (replies.approve(question.replyToken(), result)) {
+      case ReplyOutcome.Settled _ -> ResponseEntity.accepted().build();
+      // The agent had already moved on -- the term ran out, or it was ended. The card was stale.
+      case ReplyOutcome.NotAwaiting _, ReplyOutcome.Unreadable _ ->
+          ResponseEntity.status(HttpStatus.CONFLICT).build();
+    };
   }
 
-  /**
-   * An id the identifier rule refuses is the CALLER'S mistake, not this server's.
-   *
-   * <p>{@code AgentId.of} throws when a path variable is over-long or carries a character an
-   * identity must not, and without this that surfaces as a 500 — a page telling somebody the server
-   * broke when what actually happened is that they sent a bad id.
-   */
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<String> malformed(IllegalArgumentException refused) {
     return ResponseEntity.badRequest().body(refused.getMessage());
+  }
+
+  /** An id from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
+  private static AgentId agent(String id) {
+    return new AgentId(UUID.fromString(id));
+  }
+
+  private static List<Line> lines(List<Turn> turns) {
+    List<Line> lines = new ArrayList<>();
+    for (Turn turn : turns) {
+      lines.add(new Line("user", text(turn.observation().blocks())));
+      for (Exchange exchange : turn.exchanges()) {
+        String commentary = text(exchange.request());
+        if (!commentary.isBlank()) {
+          lines.add(new Line("assistant", commentary));
+        }
+        exchange.calls().forEach(call -> lines.add(new Line("tool", "🔧 " + call.name().value())));
+        exchange
+            .outcomes()
+            .forEach(
+                outcome ->
+                    lines.add(
+                        new Line(
+                            "tool",
+                            switch (outcome) {
+                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
+                              case ToolOutcome.Failed(var _, String message) ->
+                                  "failed: " + message;
+                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
+                            })));
+      }
+      switch (turn.result()) {
+        case TurnResult.Answered(var blocks) -> lines.add(new Line("assistant", text(blocks)));
+        case TurnResult.Failed _ -> lines.add(new Line("system", "the agent could not answer"));
+        case TurnResult.Refused _ -> lines.add(new Line("system", "the agent declined to answer"));
+        case null -> {
+          // Still being worked on; what it says arrives on the stream.
+        }
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * The prose in a list of blocks: text and commentary, joined; provider payloads are not prose.
+   */
+  private static String text(List<? extends Block> blocks) {
+    return blocks.stream()
+        .map(
+            block ->
+                switch (block) {
+                  case Block.Text(String text) -> text;
+                  case Block.Commentary(String text) -> text;
+                  case Block.Provider _, Block.ToolCall _ -> "";
+                })
+        .collect(Collectors.joining());
   }
 }

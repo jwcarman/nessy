@@ -210,12 +210,6 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <scope>test</scope>

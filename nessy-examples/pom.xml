@@ -46,9 +46,9 @@
     <module>policy</module>
     <module>mcp</module>
     <module>chat-cli</module>
-
-    <!-- Ported next, in this order.
     <module>chat-web</module>
+
+    <!-- Ported next.
     <module>watchman</module>
     -->
   </modules>

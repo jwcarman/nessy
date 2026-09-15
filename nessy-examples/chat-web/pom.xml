@@ -39,7 +39,7 @@
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
+        <groupId>tools.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
         <version>${jackson.version}</version>
         <type>pom</type>
@@ -68,7 +68,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
+      <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -85,15 +85,25 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The engine's schema is PostgreSQL's, so the tests run against one in a container. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

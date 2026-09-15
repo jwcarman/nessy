@@ -19,8 +19,10 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -41,8 +43,8 @@ public final class DaysUntilTool implements Tool<DaysUntilTool.Input> {
   }
 
   @Override
-  public String name() {
-    return "days_until";
+  public ToolName name() {
+    return new ToolName("days_until");
   }
 
   @Override
@@ -51,16 +53,16 @@ public final class DaysUntilTool implements Tool<DaysUntilTool.Input> {
   }
 
   @Override
-  public Awaited<ToolResult> execute(ToolCallRequest<Input> call) {
-    Input input = call.input();
+  public Awaited<ToolResult> call(ToolCallRequest<Input> request) {
+    Input input = request.input();
     try {
       long days = ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(input.date()));
-      return Awaited.ready(ToolResult.ok(days + " days"));
+      return Awaited.ready(ToolResult.ok(new Block.Text(days + " days")));
     } catch (java.time.format.DateTimeParseException e) {
       // A failure, not an exception: the model can read this and try again with a better date,
       // which is the whole reason ToolResult has a failed arm.
       return Awaited.ready(
-          ToolResult.error("'" + input.date() + "' is not an ISO-8601 date like 2026-12-25"));
+          new ToolResult.Failure("'" + input.date() + "' is not an ISO-8601 date like 2026-12-25"));
     }
   }
 }

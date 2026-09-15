@@ -17,7 +17,6 @@ let agentId = location.hash.slice(1) || localStorage.getItem("agentId") || crypt
 let events = null;
 let openBubble = null;
 let openThinking = null;
-const toolLines = new Map();
 
 function useAgent(id) {
   agentId = id;
@@ -90,7 +89,6 @@ function listen() {
   events.addEventListener("idle", () => {
     openBubble = null;
     openThinking = null;
-    toolLines.clear();
     setBusy(false);
   });
   events.addEventListener("delta", (e) => {
@@ -104,22 +102,21 @@ function listen() {
     openThinking.textContent += JSON.parse(e.data).text;
     log.scrollTop = log.scrollHeight;
   });
+  // A request names the tools; what happens to each call is told later, by call id. Each is a
+  // line of its own rather than an edit to the request's line, which is what the story shows too.
   events.addEventListener("tool-requested", (e) => {
-    const payload = JSON.parse(e.data);
     openThinking = null;
     openBubble = null;
-    toolLines.set(payload.id, appendLine("tool", "🔧 " + (payload.what || payload.name)));
+    appendLine("tool", "🔧 " + JSON.parse(e.data).name);
   });
   events.addEventListener("approval", (e) => renderApproval(JSON.parse(e.data)));
   events.addEventListener("tool-decided", (e) => {
     const payload = JSON.parse(e.data);
-    const line = toolLines.get(payload.id);
-    if (line) line.textContent += payload.allowed ? " — approved" : " — denied";
+    appendLine("tool", payload.allowed ? "approved" : "denied: " + payload.reason);
   });
   events.addEventListener("tool-completed", (e) => {
     const payload = JSON.parse(e.data);
-    const line = toolLines.get(payload.id);
-    if (line) line.textContent += payload.error ? " — failed" : " — done";
+    appendLine("tool", payload.error ? "failed: " + payload.message : "done");
   });
   events.onerror = () => {
     // EventSource reconnects on its own; the input must not stay disabled while it does.
@@ -148,7 +145,6 @@ async function load() {
   approvalsSection.innerHTML = "";
   openBubble = null;
   openThinking = null;
-  toolLines.clear();
   const state = await (await fetch(`/api/agents/${agentId}`)).json();
   for (const line of state.transcript) appendLine(line.role, line.text);
   for (const card of state.approvals) renderApproval(card);
@@ -157,15 +153,16 @@ async function load() {
 
 form.addEventListener("submit", send);
 // "New chat" used to mint a new id and walk away from the old one, which left an agent behind
-// for every conversation anybody ever started -- a state row and a transcript, forever. Ending
-// the old one is the whole difference between starting fresh and quietly littering.
+// for every conversation anybody ever started, open and waiting. Ending the old one is the whole
+// difference between starting fresh and quietly littering; what it said is kept, it just takes
+// no more.
 newChatButton.addEventListener("click", async () => {
   const finished = agentId;
   useAgent(crypto.randomUUID());
   await load();
   listen();
-  // After the switch, deliberately: the new conversation should open even if this fails, and a
-  // forget the server never heard is a leaked agent, not a broken page.
+  // After the switch, deliberately: the new conversation should open even if this fails, and an
+  // ending the server never heard is a leaked agent, not a broken page.
   try {
     await fetch(`/api/agents/${finished}`, { method: "DELETE" });
   } catch (ignored) {

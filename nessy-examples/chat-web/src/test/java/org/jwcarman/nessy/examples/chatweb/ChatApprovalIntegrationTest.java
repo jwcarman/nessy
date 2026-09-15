@@ -1,86 +1,40 @@
-/*
- * Copyright © 2026 James Carman
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.jwcarman.nessy.examples.chatweb;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.testing.ScriptedModel;
+import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
-/**
- * The whole human-in-the-loop, through HTTP, with no model and no network.
- *
- * <p>It asserts the property the example exists to demonstrate and the one that is easiest to break
- * without noticing: a gated tool does NOT run when the model asks for it. It runs when a person
- * says so, through the page, and not one moment earlier.
- */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    // A dead port, so that if the scripted provider ever stopped overriding the real one this
-    // test fails loudly instead of quietly passing through whatever model the developer happens
-    // to be running on this machine.
-    properties = "chat.model-url=http://localhost:1/v1")
-class ChatApprovalIntegrationTest {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class ChatApprovalIntegrationTest extends PostgresBacked {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
-
-    /**
-     * Two turns: ask to send the mail, then report what came back. The second turn is only ever
-     * reached if the first tool call actually settles, so a script that runs to completion is
-     * itself evidence the approval was answered.
-     */
+    // Declared, so the adapter's auto-configuration (conditional on there being no provider)
+    // never builds one: this test talks to no model whatever the machine has running.
     @Bean
-    @Primary
-    ModelProvider scriptedModels() {
-      ObjectNode arguments = JsonNodeFactory.instance.objectNode();
-      arguments.put("to", "jim@example.com");
-      arguments.put("subject", "Dinner");
-      arguments.put("body", "Are you free Thursday?");
-      ScriptedModel model =
-          ScriptedModel.script(
-              script ->
-                  script
-                      .text("I will send that.")
-                      .toolCall("call-1", "send_email", arguments)
-                      .endWithToolCalls()
-                      .text("Sent.")
-                      .endTurn());
-      return id -> model;
+    InferenceProvider scriptedModels() {
+      return ScriptedProvider.callingOnce(
+          "call-1",
+          "send_email",
+          "{\"to\":\"jim@example.com\",\"subject\":\"Dinner\",\"body\":\"Are you free Thursday?\"}",
+          "Sent.");
     }
   }
 
   @LocalServerPort private int port;
-
   @Autowired private SendEmailTool email;
 
   @Test
@@ -100,11 +54,12 @@ class ChatApprovalIntegrationTest {
         .untilAsserted(() -> assertThat(approvals(http, agentId)).isNotEmpty());
     // ...and nothing has been sent while it waits, which is the point.
     assertThat(email.sent()).isEmpty();
+    Map<String, String> card = approvals(http, agentId).getFirst();
+    assertThat(card.get("what")).contains("jim@example.com").contains("Are you free Thursday?");
 
-    String callId = approvals(http, agentId).getFirst().get("id");
     ResponseEntity<Void> answered =
         http.post()
-            .uri("/api/agents/{id}/approvals/{call}", agentId, callId)
+            .uri("/api/agents/{id}/approvals/{call}", agentId, card.get("id"))
             .body(new ChatController.Decision("approve", ""))
             .retrieve()
             .toBodilessEntity();
@@ -119,16 +74,27 @@ class ChatApprovalIntegrationTest {
             });
     // The desk hands out each question once: answering it takes it off the page.
     assertThat(approvals(http, agentId)).isEmpty();
+    // And the story shows the whole of it, for a page that loads later.
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(
+            () ->
+                assertThat(transcript(http, agentId))
+                    .extracting(line -> line.get("text"))
+                    .contains("Email Jim about dinner", "🔧 send_email", "Sent."));
   }
 
-  /**
-   * The page's own view of an agent, bound to a record rather than read out of a {@code Map}: the
-   * cast a map would need is exactly the kind this project does not suppress.
-   */
   record PageState(List<Map<String, String>> transcript, List<Map<String, String>> approvals) {}
 
-  private List<Map<String, String>> approvals(RestClient http, String agentId) {
-    PageState state = http.get().uri("/api/agents/{id}", agentId).retrieve().body(PageState.class);
-    return state.approvals();
+  private static PageState state(RestClient http, String agentId) {
+    return http.get().uri("/api/agents/{id}", agentId).retrieve().body(PageState.class);
+  }
+
+  private static List<Map<String, String>> approvals(RestClient http, String agentId) {
+    return state(http, agentId).approvals();
+  }
+
+  private static List<Map<String, String>> transcript(RestClient http, String agentId) {
+    return state(http, agentId).transcript();
   }
 }
