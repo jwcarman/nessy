@@ -32,13 +32,14 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 @DisplayName("The notebook a model works with")
 class NotebookToolsTest {
 
-  private static final AgentId AGENT = Calls.agent();
+  // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
+  private final AgentId AGENT = Calls.agent();
 
   private Notebook notebook;
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(Calls.freshDatabase(), Calls.TYPE);
+    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE);
   }
 
   /**
@@ -48,7 +49,7 @@ class NotebookToolsTest {
    * suppression, and a test that suppresses a warning to check a type-safe API is testing the wrong
    * thing.
    */
-  private static <I> ToolResult run(Tool<I> tool, I input) {
+  private <I> ToolResult run(Tool<I> tool, I input) {
     Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).value();

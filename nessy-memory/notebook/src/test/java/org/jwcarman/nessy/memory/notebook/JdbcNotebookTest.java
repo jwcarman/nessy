@@ -28,14 +28,15 @@ import org.jwcarman.nessy.api.AgentId;
 @DisplayName("A notebook an agent keeps")
 class JdbcNotebookTest {
 
-  private static final AgentId ONE = Calls.agent();
-  private static final AgentId TWO = Calls.agent();
+  // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
+  private final AgentId ONE = Calls.agent();
+  private final AgentId TWO = Calls.agent();
 
   private Notebook notebook;
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(Calls.freshDatabase(), Calls.TYPE);
+    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE);
   }
 
   @Test

@@ -28,8 +28,9 @@ import org.jwcarman.nessy.api.AgentType;
 @DisplayName("The plan an agent keeps")
 class JdbcPlanStoreTest {
 
-  private static final AgentId ONE = Calls.agent();
-  private static final AgentId TWO = Calls.agent();
+  // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
+  private final AgentId ONE = Calls.agent();
+  private final AgentId TWO = Calls.agent();
 
   private static final Plan.Task WRITE = new Plan.Task("Write the store", Plan.Status.IN_PROGRESS);
   private static final Plan.Task TEST = new Plan.Task("Test it", Plan.Status.PENDING);
@@ -38,7 +39,7 @@ class JdbcPlanStoreTest {
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlanStore(Calls.freshDatabase(), Calls.TYPE);
+    plans = new JdbcPlanStore(Calls.database(), Calls.TYPE);
   }
 
   @Test
@@ -98,7 +99,7 @@ class JdbcPlanStoreTest {
   @Test
   @DisplayName("two agent types keep separate plans even under the same id")
   void the_agent_type_scopes_the_store() {
-    javax.sql.DataSource shared = Calls.freshDatabase();
+    javax.sql.DataSource shared = Calls.database();
     PlanStore chat = new JdbcPlanStore(shared, new AgentType("chat"));
     PlanStore watchman = new JdbcPlanStore(shared, new AgentType("watchman"));
     chat.save(ONE, new Plan(List.of(WRITE)));

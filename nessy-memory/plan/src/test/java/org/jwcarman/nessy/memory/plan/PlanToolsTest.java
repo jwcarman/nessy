@@ -34,17 +34,18 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 @DisplayName("The plan a model works with")
 class PlanToolsTest {
 
-  private static final AgentId AGENT = Calls.agent();
+  // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
+  private final AgentId AGENT = Calls.agent();
 
   private PlanStore plans;
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlanStore(Calls.freshDatabase(), Calls.TYPE);
+    plans = new JdbcPlanStore(Calls.database(), Calls.TYPE);
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */
-  private static <I> ToolResult run(Tool<I> tool, I input) {
+  private <I> ToolResult run(Tool<I> tool, I input) {
     Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     return ((Awaited.Ready<ToolResult>) answer).value();

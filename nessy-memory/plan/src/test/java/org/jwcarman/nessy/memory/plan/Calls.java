@@ -2,6 +2,7 @@ package org.jwcarman.nessy.memory.plan;
 
 import java.time.Instant;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -10,9 +11,8 @@ import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.spi.store.Schemas;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * What the engine hands a running tool, and somewhere to keep what the tool writes.
@@ -20,9 +20,11 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
  * <p>No mocking library, and none needed: a {@link ToolCallRequest} is six values and a database is
  * one builder call.
  *
- * <p><b>H2, because nothing here runs an agent.</b> These tables belong to this module and are read
- * and written with ordinary SQL. The engine's own queries are PostgreSQL's, and its tests use real
- * PostgreSQL for exactly that reason.
+ * <p><b>Real PostgreSQL, not H2.</b> These tables are read and written with ordinary SQL, and H2
+ * ran it happily -- including a bare UUID bound to a TEXT column, which PostgreSQL refuses and
+ * which the first application to open a notebook over a real database found for us. One container
+ * for the JVM; agents are addressed by fresh random ids, so tests do not have to clean up after
+ * each other.
  */
 final class Calls {
 
@@ -34,13 +36,17 @@ final class Calls {
     return new AgentId(UUID.randomUUID());
   }
 
-  /** Every {@code nessy-schema.sql} on the classpath, which here is this module's own. */
-  static EmbeddedDatabase freshDatabase() {
-    EmbeddedDatabase database =
-        new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.H2)
-            .generateUniqueName(true)
-            .build();
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+
+  static {
+    POSTGRES.start();
+  }
+
+  /** The shared database, with every {@code nessy-schema.sql} on the classpath applied to it. */
+  static DataSource database() {
+    DataSource database =
+        new DriverManagerDataSource(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     Schemas.initialize(database);
     return database;
   }

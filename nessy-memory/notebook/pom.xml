@@ -50,9 +50,16 @@
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Real PostgreSQL: H2 coerces a UUID into a TEXT column that PostgreSQL refuses, and hid
+         exactly that bug in this store. -->
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
