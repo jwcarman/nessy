@@ -176,7 +176,6 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
     return effects;
   }
 
-  /** The sources of background this harness asks, in the order they were bound. */
   /** The tools this harness offers, in the order they were bound. */
   Tools tools() {
     return new Tools(tools);

@@ -62,6 +62,7 @@
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>
     <module>nessy-tool-mcp</module>
+    <module>nessy-narration-odyssey</module>
     <module>nessy-approval</module>
     <module>nessy-console</module>
     <module>nessy-examples</module>
@@ -112,6 +113,12 @@
          debug. Annotations are unaffected either way: Jackson 3 left them on the
          com.fasterxml.jackson.annotation coordinates. -->
     <codec.version>0.9.0</codec.version>
+    <!-- Odyssey: clustered, resumable Server-Sent Events over a Substrate journal. 0.10.0 is the
+         release built against substrate 0.7.0, and both are built against codec 0.1.0, whose
+         CodecFactory/Codec/TypeRef the 0.9.0 line above is a strict superset of, so the codec
+         this repo pins serves them too (checked signature by signature). -->
+    <odyssey.version>0.10.0</odyssey.version>
+    <substrate.version>0.7.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
          internally never reaches an adapter. -->
@@ -499,6 +506,18 @@
         <groupId>com.fasterxml.uuid</groupId>
         <artifactId>java-uuid-generator</artifactId>
         <version>${jug.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.odyssey</groupId>
+        <artifactId>odyssey</artifactId>
+        <version>${odyssey.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.substrate</groupId>
+        <artifactId>substrate-bom</artifactId>
+        <version>${substrate.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
       <dependency>
         <groupId>io.modelcontextprotocol.sdk</groupId>

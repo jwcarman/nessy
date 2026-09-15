@@ -77,13 +77,6 @@ public final class NotebookTools {
   public record ForgetNote(@JsonPropertyDescription("The id of the note to forget") String id) {}
 
   /**
-   * The stage that puts the index in front of the model.
-   *
-   * <p>Contributes ONE {@link AmbientMessage} — background, not a turn, so it never reaches the
-   * transcript and each adapter puts it wherever its vendor keeps background. An agent with no
-   * notes contributes nothing at all rather than an empty block announcing its own emptiness.
-   */
-  /**
    * The read half: what the agent wrote, in front of it on the next turn.
    *
    * <p>Ambient rather than a message, which is the whole reason a notebook works. An index written
