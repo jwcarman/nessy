@@ -97,6 +97,7 @@ class TurnWindowTest {
     List<Turn> kept = engine.history().forAgent(TYPE, fiveTurns()).lastTurns(2);
 
     assertThat(kept)
+        .isNotEmpty()
         .allSatisfy(
             turn -> {
               assertThat(turn.observation()).isNotNull();

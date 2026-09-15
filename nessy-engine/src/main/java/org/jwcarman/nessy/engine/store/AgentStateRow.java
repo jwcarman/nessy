@@ -1,6 +1,8 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -27,6 +29,37 @@ public record AgentStateRow(
   public static AgentStateRow initial(
       UUID agentId, String agentType, String stateType, byte[] payload, Instant at) {
     return new AgentStateRow(agentId, agentType, 0L, stateType, payload, at);
+  }
+
+  // The payload is compared by content, as a record of an array otherwise would not be.
+
+  @Override
+  public boolean equals(Object o) {
+    return o instanceof AgentStateRow that
+        && version == that.version
+        && Objects.equals(agentId, that.agentId)
+        && Objects.equals(agentType, that.agentType)
+        && Objects.equals(stateType, that.stateType)
+        && Arrays.equals(payload, that.payload)
+        && Objects.equals(updatedAt, that.updatedAt);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        agentId, agentType, version, stateType, Arrays.hashCode(payload), updatedAt);
+  }
+
+  @Override
+  public String toString() {
+    return "AgentStateRow[agentId=%s, agentType=%s, version=%d, stateType=%s, payload=%d bytes, updatedAt=%s]"
+        .formatted(
+            agentId,
+            agentType,
+            version,
+            stateType,
+            payload == null ? 0 : payload.length,
+            updatedAt);
   }
 
   /** The sequence number the next event appended for this agent will carry. */

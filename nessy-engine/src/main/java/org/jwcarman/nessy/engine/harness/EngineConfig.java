@@ -103,28 +103,21 @@ public final class EngineConfig {
   // ---- what the factory reads ------------------------------------------------------------
 
   DataSource requiredDataSource() {
-    if (dataSource == null) {
-      throw new IllegalStateException(
-          "an engine needs a DataSource: agents, their stories and their outstanding work are all"
-              + " rows, and there is nowhere to keep them");
-    }
-    return dataSource;
+    return Objects.requireNonNull(
+        dataSource,
+        "an engine needs a DataSource: agents, their stories and their outstanding work are all"
+            + " rows, and there is nowhere to keep them");
   }
 
   InferenceProvider requiredProvider() {
-    if (provider == null) {
-      throw new IllegalStateException(
-          "an engine needs an InferenceProvider: it is the thing an agent asks, and there is"
-              + " nothing to ask without one");
-    }
-    return provider;
+    return Objects.requireNonNull(
+        provider,
+        "an engine needs an InferenceProvider: it is the thing an agent asks, and there is"
+            + " nothing to ask without one");
   }
 
   InferenceOptions requiredOptions() {
-    if (options == null) {
-      throw new IllegalStateException("inference(provider, options) needs both");
-    }
-    return options;
+    return Objects.requireNonNull(options, "inference(provider, options) needs both");
   }
 
   List<AgentEventListener> listeners() {

@@ -535,7 +535,9 @@ class AnthropicRequestsTest {
       assertThat(cached.get(1).asTool().cacheControl()).isPresent();
 
       var plain = withTools(List.of(offer("first"), offer("second"))).tools().orElseThrow();
-      assertThat(plain).allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
+      assertThat(plain)
+          .isNotEmpty()
+          .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
     }
   }
 

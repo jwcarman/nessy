@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
@@ -195,7 +196,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
    * no I/O of its own.
    */
   private void fold(AgentId agentId, String what, Function<AgentState<O>, Decision<O>> decide) {
-    Folded folded =
+    Optional<Folded> outcome =
         transactions.execute(
             status -> {
               AgentStateStore.Locked<O> locked = states.lockOrCreate(agentId, clock.instant());
@@ -205,7 +206,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
               // worse
               // than no record.
               if (!(decide.apply(locked.state()) instanceof Decision.Advance<O> advance)) {
-                return null;
+                return Optional.<Folded>empty();
               }
 
               AgentState<O> next = advance.next();
@@ -223,22 +224,25 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
               for (AgentEffect effect : advance.effects()) {
                 effects.insert(agentId, effect, clock.instant());
               }
-              return new Folded(
-                  describe(locked.state()),
-                  describe(next),
-                  List.copyOf(appended),
-                  names(advance.effects()),
-                  Narrations.of(advance.recorded(), opening(advance), advance.effects(), next));
+              return Optional.of(
+                  new Folded(
+                      describe(locked.state()),
+                      describe(next),
+                      List.copyOf(appended),
+                      names(advance.effects()),
+                      Narrations.of(
+                          advance.recorded(), opening(advance), advance.effects(), next)));
             });
 
     // Past this line the transaction has committed, so everything below is true. Logging the
     // transition from inside would announce a fold that a rollback could still undo -- a lock
     // timeout, a constraint violation on the append, a dropped connection -- and leave the log
     // and the database telling different stories. The log is the one somebody reads first.
-    if (folded == null) {
+    if (outcome == null || outcome.isEmpty()) {
       log.info("[{}] agent {}: ignoring redelivered {}", agentType.value(), agentId.value(), what);
       return;
     }
+    Folded folded = outcome.get();
     log.info(
         "[{}] agent {}: {} + {} -> {} | recorded {} | effects {}",
         agentType.value(),

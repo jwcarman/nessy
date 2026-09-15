@@ -151,6 +151,7 @@ class HistoryEntryTest {
                 new Seq(5), new TurnId(1), new CallId("c1"), "not allowed"));
 
     assertThat(entries)
+        .isNotEmpty()
         .allSatisfy(entry -> assertThat(codec.decode(codec.encode(entry))).isEqualTo(entry));
   }
 }
