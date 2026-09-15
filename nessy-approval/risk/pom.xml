@@ -25,26 +25,28 @@
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-approval</artifactId>
-  <packaging>pom</packaging>
-  <name>Nessy Approval</name>
-  <description>Deciding whether a tool call may run, and who gets to decide</description>
+  <artifactId>nessy-approval-risk</artifactId>
+  <name>Nessy Approval Risk</name>
+  <description>An approver that assesses a call's risk and approves, denies, or asks accordingly</description>
 
-  <properties>
-    <!-- An AGGREGATOR, not a parent: children inherit from nessy-parent directly. -->
-    <maven.deploy.skip>true</maven.deploy.skip>
-    <maven.source.skip>true</maven.source.skip>
-    <maven.javadoc.skip>true</maven.javadoc.skip>
-    <gpg.skip>true</gpg.skip>
-  </properties>
-
-  <modules>
-    <module>intent</module>
-    <module>policy</module>
-    <module>policy-opa</module>
-    <module>risk</module>
-  </modules>
-
+  <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>

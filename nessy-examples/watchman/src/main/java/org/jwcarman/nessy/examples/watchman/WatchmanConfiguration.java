@@ -6,7 +6,16 @@ import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.approval.risk.Impact;
+import org.jwcarman.nessy.approval.risk.Likelihood;
+import org.jwcarman.nessy.approval.risk.Risk;
+import org.jwcarman.nessy.approval.risk.RiskAssessment;
+import org.jwcarman.nessy.approval.risk.RiskAssessor;
+import org.jwcarman.nessy.approval.risk.RiskFactors;
+import org.jwcarman.nessy.approval.risk.RiskLevel;
 import org.jwcarman.nessy.engine.harness.HarnessFactory;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.narration.Narrator;
@@ -86,7 +95,7 @@ public class WatchmanConfiguration {
                       binding ->
                           binding
                               .approver(
-                                  Observed.approver(desk, observations),
+                                  Observed.approver(gatedOnRisk(tool.name(), desk), observations),
                                   approval -> approval.timeout(properties.getApprovalTerm()))
                               .action(args -> WatchmanTools.actionOf(tool.name())));
                 } else {
@@ -96,5 +105,28 @@ public class WatchmanConfiguration {
                 }
               });
         });
+  }
+
+  static Approver gatedOnRisk(ToolName tool, Approver desk) {
+    return Risk.assessing(assessorFor(tool))
+        .approvingBelow(RiskLevel.MODERATE)
+        .denyingAtOrAbove(RiskLevel.VERY_HIGH)
+        .otherwiseAsking(desk);
+  }
+
+  private static RiskAssessor assessorFor(ToolName tool) {
+    if (tool.value().equals("prune_images")) {
+      // Likely to bite -- an image you wanted is only "unused" until you want it -- and the loss
+      // is serious rather than catastrophic, because images can be pulled again. The matrix reads
+      // that pair as MODERATE, which is exactly the middle band: not waved through, not refused
+      // outright, so a person decides. WatchmanRiskTest holds that, because a comment claiming a
+      // matrix value is a comment that will eventually be wrong.
+      return RiskAssessor.always(
+          RiskAssessment.of(
+              Likelihood.HIGH, Impact.MODERATE, RiskFactors.DESTRUCTIVE, RiskFactors.IRREVERSIBLE));
+    }
+    // Anything else this box gates but has not assessed: say so rather than assuming it is safe.
+    return RiskAssessor.always(
+        RiskAssessment.of(Likelihood.MODERATE, Impact.MODERATE, RiskFactors.EXTERNAL_WORLD));
   }
 }

@@ -117,6 +117,12 @@
          that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
          that talks to it, pointed at a different base URL, exactly as this module's own xAI
          auto-configuration points it at x.ai. -->
+    <!-- The gate in front of the prune: assessed, and only the middle band reaches a person. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-approval-risk</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-inference-openai</artifactId>
