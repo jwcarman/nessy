@@ -3,11 +3,15 @@ package org.jwcarman.nessy.engine;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.Optional;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
+import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -53,6 +57,19 @@ public final class EngineUnderTest implements AutoCloseable {
 
   public EngineUnderTest(
       InferenceProvider provider, Narrator narrator, ObservationRegistry observations) {
+    this(provider, narrator, observations, Optional.empty());
+  }
+
+  /** With something done to every stored byte, which the fixture's own reader must undo too. */
+  public EngineUnderTest(InferenceProvider provider, Codec<byte[]> storage) {
+    this(provider, Narrator.silent(), ObservationRegistry.NOOP, Optional.of(storage));
+  }
+
+  private EngineUnderTest(
+      InferenceProvider provider,
+      Narrator narrator,
+      ObservationRegistry observations,
+      Optional<Codec<byte[]>> storage) {
     HikariConfig config = new HikariConfig();
     config.setJdbcUrl(POSTGRES.getJdbcUrl());
     config.setUsername(POSTGRES.getUsername());
@@ -68,20 +85,23 @@ public final class EngineUnderTest implements AutoCloseable {
     // asserting on its internals rather than on what it wrote down.
     this.jdbc = JdbcClient.create(dataSource);
     this.states = new AgentStateRepository(jdbc);
+    CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     this.history =
         new JdbcHistoryStore(
             jdbc,
-            new JacksonCodecFactory(JsonMapper.builder().build()),
+            storage.map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson),
             new CharacterCountEstimator());
 
     this.harnesses =
         new DefaultHarnessFactory(
-            engine ->
-                engine
-                    .dataSource(dataSource)
-                    .inference(provider, InferenceOptions.of("a-model"))
-                    .narrator(narrator)
-                    .observations(observations));
+            engine -> {
+              engine
+                  .dataSource(dataSource)
+                  .inference(provider, InferenceOptions.of("a-model"))
+                  .narrator(narrator)
+                  .observations(observations);
+              storage.ifPresent(engine::storage);
+            });
   }
 
   public EngineUnderTest(InferenceProvider provider) {

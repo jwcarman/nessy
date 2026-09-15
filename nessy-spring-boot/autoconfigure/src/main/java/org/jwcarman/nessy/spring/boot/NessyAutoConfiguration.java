@@ -12,6 +12,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -110,7 +111,8 @@ public class NessyAutoConfiguration {
       InferenceProvider models,
       NessyProperties properties,
       NessySchema schema,
-      ObjectProvider<ObservationRegistry> registries) {
+      ObjectProvider<ObservationRegistry> registries,
+      ObjectProvider<StorageCodec> storage) {
 
     ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     // Wrapped only when there is somewhere to report to, so an application that is not tracing
@@ -122,18 +124,21 @@ public class NessyAutoConfiguration {
             : Observed.inference(models, properties.provider(), observations);
 
     return new DefaultHarnessFactory(
-        engine ->
-            engine
-                .dataSource(dataSource)
-                .inference(
-                    provider,
-                    new InferenceOptions(
-                        requireModel(properties),
-                        properties.maxTokens(),
-                        properties.capabilities()))
-                .narrator(narrator)
-                .observations(observations)
-                .replyTokens(replyTokens));
+        engine -> {
+          engine
+              .dataSource(dataSource)
+              .inference(
+                  provider,
+                  new InferenceOptions(
+                      requireModel(properties), properties.maxTokens(), properties.capabilities()))
+              .narrator(narrator)
+              .observations(observations)
+              .replyTokens(replyTokens);
+          // What is done to every stored byte after Jackson, when the application declared it:
+          // compression, encryption. Declared as a StorageCodec bean, because a bean of a plain
+          // Codec<byte[]> names nothing in particular.
+          storage.ifAvailable(engine::storage);
+        });
   }
 
   /** The story, for an application that shows what its agents said. */

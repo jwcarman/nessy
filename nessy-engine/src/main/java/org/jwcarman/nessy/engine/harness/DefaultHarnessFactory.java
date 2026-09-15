@@ -31,6 +31,7 @@ import org.jwcarman.nessy.engine.store.AgentStateStore;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.store.JdbcEffectStore;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
+import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
@@ -64,8 +65,9 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
 
   // The engine's own decisions, made once. A row is encoded by Jackson, a tool's arguments are
   // described by victools, a message costs about its characters, and time is UTC: none of that
-  // is an application's to change, so none of it is asked for.
-  private final CodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
+  // is an application's to change, so none of it is asked for. What is done to the bytes AFTER
+  // Jackson -- compressed, encrypted -- is the application's, and comes from the config.
+  private final CodecFactory codecs;
   private final ObjectMapper mapper = JsonMapper.builder().build();
   private final InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private final Clock clock = Clock.systemUTC();
@@ -94,6 +96,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     customizer.accept(config);
 
     DataSource dataSource = config.requiredDataSource();
+    CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
+    this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
     JdbcClient jdbc = JdbcClient.create(dataSource);
     this.states = new AgentStateRepository(jdbc);
     this.history = new JdbcHistoryStore(jdbc, codecs, new CharacterCountEstimator());

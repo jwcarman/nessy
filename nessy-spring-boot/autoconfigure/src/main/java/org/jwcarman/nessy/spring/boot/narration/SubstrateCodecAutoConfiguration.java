@@ -2,8 +2,11 @@ package org.jwcarman.nessy.spring.boot.narration;
 
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.codec.spi.CodecFactory;
+import org.jwcarman.nessy.engine.store.StorageCodec;
+import org.jwcarman.substrate.core.transform.PayloadTransformer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -33,5 +36,28 @@ public class SubstrateCodecAutoConfiguration {
   @ConditionalOnMissingBean
   public CodecFactory nessySubstrateCodecs(ObjectProvider<ObjectMapper> mappers) {
     return new JacksonCodecFactory(mappers.getIfAvailable(() -> JsonMapper.builder().build()));
+  }
+
+  /**
+   * The engine's storage codec, applied to the journal too -- across the board, so an application
+   * that encrypts what its agents remember also encrypts what they said out loud. Only when the
+   * application declared one and no transformer of its own (substrate-crypto declares one; an
+   * application using it keeps that and gets no second layer).
+   */
+  @Bean
+  @ConditionalOnBean(StorageCodec.class)
+  @ConditionalOnMissingBean(PayloadTransformer.class)
+  public PayloadTransformer nessySubstratePayloads(StorageCodec storage) {
+    return new PayloadTransformer() {
+      @Override
+      public byte[] encode(byte[] bytes) {
+        return storage.encode(bytes);
+      }
+
+      @Override
+      public byte[] decode(byte[] bytes) {
+        return storage.decode(bytes);
+      }
+    };
   }
 }

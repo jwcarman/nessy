@@ -2,18 +2,22 @@ package org.jwcarman.nessy.spring.boot.narration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;
 import org.jwcarman.odyssey.core.Odyssey;
 import org.jwcarman.substrate.core.autoconfigure.SubstrateAutoConfiguration;
+import org.jwcarman.substrate.core.transform.PayloadTransformer;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -103,6 +107,54 @@ class OdysseyNarrationAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(AgentStreams.class);
               assertThat(context).doesNotHaveBean(Narrator.class);
             });
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class AnApplicationThatEncrypts {
+    @Bean
+    StorageCodec storage() {
+      return StorageCodec.of(
+          new Codec<>() {
+            @Override
+            public byte[] encode(byte[] bytes) {
+              byte[] out = bytes.clone();
+              for (int i = 0; i < out.length; i++) {
+                out[i] ^= 0x5A;
+              }
+              return out;
+            }
+
+            @Override
+            public byte[] decode(byte[] bytes) {
+              return encode(bytes);
+            }
+          });
+    }
+  }
+
+  @Test
+  @DisplayName("the engine's storage codec is the journal's payload transformer too")
+  void a_storage_codec_reaches_the_journal() {
+    runner
+        .withUserConfiguration(AnApplicationThatEncrypts.class)
+        .run(
+            context -> {
+              PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
+              byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
+              assertThat(transformer.encode(plain)).isNotEqualTo(plain);
+              assertThat(transformer.decode(transformer.encode(plain))).isEqualTo(plain);
+            });
+  }
+
+  @Test
+  @DisplayName("without one, Substrate's own identity transformer stands")
+  void without_a_storage_codec_the_journal_is_left_alone() {
+    runner.run(
+        context -> {
+          PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
+          byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
+          assertThat(transformer.encode(plain)).isEqualTo(plain);
+        });
   }
 
   @Test
