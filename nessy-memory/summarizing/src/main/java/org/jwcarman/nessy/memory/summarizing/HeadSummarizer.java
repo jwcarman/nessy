@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
@@ -37,11 +38,12 @@ import org.slf4j.LoggerFactory;
  * minTail} verbatim. Each cut is a new, immutable summary of its own range; nothing is summarised
  * twice, so a long story does not decay.
  *
- * <p><b>In the background, and opportunistically.</b> {@link #sweep()} is meant to be called every
- * so often, from anywhere; it takes the {@code summary} lease for each agent that needs one, so
- * several processes may sweep the same database and no agent is summarised twice at once. A sweep
- * that finds nothing to do costs one count per agent. A turn never waits for any of this: until the
- * summary lands, the model sees a slightly shorter tail than it might, which is all.
+ * <p><b>In the background, and opportunistically.</b> Attached to a harness through {@link
+ * #listener()}, it hears every turn end, counts that agent's unsummarised turns (one query, nothing
+ * loaded), and when they exceed {@code maxTail} takes the {@code summary} lease for the agent and
+ * summarises. Several processes may hear the same agent; the lease sees it is not summarised twice
+ * at once. No turn ever waits for any of this, and a missed event costs nothing but delay: the next
+ * turn end counts again.
  */
 public class HeadSummarizer {
 
@@ -176,7 +178,7 @@ public class HeadSummarizer {
       return this;
     }
 
-    /** How long one summary may take before another sweeper may assume this one died. */
+    /** How long one summary may take before another process may assume this one died. */
     public Config leaseTtl(Duration leaseTtl) {
       this.leaseTtl = leaseTtl;
       return this;
@@ -218,13 +220,22 @@ public class HeadSummarizer {
     this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
   }
 
-  /** Every agent of the type whose head has outgrown the tail: summarise it, if nobody else is. */
-  public void sweep() {
-    for (AgentId agentId : histories.agents(agentType)) {
-      TurnHistory history = histories.forAgent(agentType, agentId);
-      if (unsummarised(history, agentId) > maxTail) {
-        leases.tryRun("summary", agentId.value().toString(), leaseTtl, () -> summarize(agentId));
-      }
+  /**
+   * The listener to attach to the harness: hears this type's turns end, on a thread of its own per
+   * event, because a summary is a model call and the engine's narration thread must not wait for
+   * one.
+   */
+  public AgentEventListener listener() {
+    return AgentEventListener.of(
+            c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> summarizeIfDue(agentId)))
+        .async();
+  }
+
+  /** The check, then the work under the lease; public so an application can also ask outright. */
+  public void summarizeIfDue(AgentId agentId) {
+    TurnHistory history = histories.forAgent(agentType, agentId);
+    if (history.turnsAfter(through(agentId)) > maxTail) {
+      leases.tryRun("summary", agentId.value().toString(), leaseTtl, () -> summarize(agentId));
     }
   }
 
@@ -233,11 +244,7 @@ public class HeadSummarizer {
     return summaries.summarizedThrough(agentId).map(TurnId::value).orElse(0L);
   }
 
-  private long unsummarised(TurnHistory history, AgentId agentId) {
-    return history.turnsAfter(through(agentId));
-  }
-
-  /** Under the lease: read again, because another sweeper may have got here first. */
+  /** Under the lease: read again, because another process may have got here first. */
   private void summarize(AgentId agentId) {
     TurnHistory history = histories.forAgent(agentType, agentId);
     List<Turn> head = history.turnsFrom(through(agentId) + 1);
@@ -266,7 +273,7 @@ public class HeadSummarizer {
                 List.of(),
                 options));
     if (!(result instanceof InferenceResult.Answer(var blocks))) {
-      // Not an error to anybody: the head stays as it was, and the next sweep tries again.
+      // Not an error to anybody: the head stays as it was, and the next turn end tries again.
       LOG.warn("[{}] could not summarise agent {}: {}", agentType.value(), agentId.value(), result);
       return;
     }

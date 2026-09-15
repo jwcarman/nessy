@@ -3,7 +3,6 @@ package org.jwcarman.nessy.engine.store;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
@@ -69,9 +68,6 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
    * <p>{@code COALESCE} to zero so an agent with no history yet returns everything it has, which is
    * nothing, rather than no rows at all for a different reason.
    */
-  private static final String AGENTS =
-      "SELECT agent_id FROM nessy_agent_state WHERE agent_type = ?";
-
   private static final String TURNS_AFTER =
       "SELECT COUNT(DISTINCT turn_id) FROM nessy_agent_history"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id > ?";
@@ -225,14 +221,6 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
    * the wrong agent's history unrepresentable instead of merely wrong, and takes two arguments out
    * of every call that a curator would otherwise have to carry and pass along correctly.
    */
-  @Override
-  public List<AgentId> agents(AgentType agentType) {
-    return jdbc.sql(AGENTS)
-        .params(agentType.value())
-        .query((rs, n) -> new AgentId(rs.getObject("agent_id", UUID.class)))
-        .list();
-  }
-
   long turnsAfter(AgentType agentType, AgentId agentId, long through) {
     return jdbc.sql(TURNS_AFTER)
         .params(agentType.value(), agentId.value(), through)

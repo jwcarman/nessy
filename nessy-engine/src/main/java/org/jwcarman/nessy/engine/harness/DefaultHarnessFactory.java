@@ -9,6 +9,7 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.codec.spi.TypeRef;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
@@ -38,7 +39,6 @@ import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -76,13 +76,14 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final JdbcHistoryStore history;
   private final JdbcEffectStore effectRows;
   private final TransactionTemplate transactions;
-  private final Narrator narrator;
+  private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
   private final DefaultReplies replies;
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final DefaultHarnessConfig.Defaults defaults;
   private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
+  private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
 
   /**
    * Builds an engine from what an application says it wants, which is a {@code DataSource} and a
@@ -103,7 +104,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     this.history = new JdbcHistoryStore(jdbc, codecs, new CharacterCountEstimator());
     this.effectRows = new JdbcEffectStore(jdbc, codecs);
     this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
-    this.narrator = config.narrator();
+    listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
     this.replies = new DefaultReplies(replyTokens);
     // A timer, and only a timer: it never performs an effect (each dispatcher has its own
@@ -140,6 +141,9 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
 
     AgentType agentType = config.requiredAgentType();
     Tools tools = config.tools();
+    // Everyone who hears this harness's agents: the engine's listeners, then its own.
+    Listeners narrator = new Listeners(listeners, config.listeners());
+    tellers.add(narrator);
     // Built here because it needs the store, which a caller has no handle on.
     DefaultHarnessConfig.Inference inference = config.inference();
     DefaultHarnessConfig.Inference.Context context = inference.context();
@@ -222,6 +226,15 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   }
 
   /**
+   * Somebody who hears what every agent of every harness does, attached after the fact -- for a
+   * container that finds its listeners once everything else exists. Harnesses already made hear it
+   * too.
+   */
+  public void listener(AgentEventListener listener) {
+    listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+  }
+
+  /**
    * The story, for reading. An application that shows what its agents said -- a transcript page, a
    * board -- reads it through this rather than opening the tables itself, so what it reads is what
    * the engine wrote, decoded the way the engine decodes it.
@@ -237,6 +250,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   @Override
   public void close() {
     harnesses.forEach(DefaultHarness::close);
+    tellers.forEach(Listeners::close);
     scheduler.shutdown();
   }
 

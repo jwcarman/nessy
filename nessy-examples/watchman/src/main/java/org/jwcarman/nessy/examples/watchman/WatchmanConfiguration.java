@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -18,7 +19,6 @@ import org.jwcarman.nessy.approval.risk.RiskFactors;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spring.boot.Observed;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -63,8 +63,8 @@ public class WatchmanConfiguration {
   }
 
   /**
-   * One bean, two roles: the approver the prune is bound to, and -- being the only {@link Narrator}
-   * declared -- the one the starter hands to the engine.
+   * One bean, two roles: the approver the prune is bound to, and -- being the only {@link
+   * AgentEventListener} declared -- the one the starter hands to the engine.
    */
   @Bean
   public ApprovalsDesk approvalsDesk(PendingApprovalsRepository repository, Clock clock) {

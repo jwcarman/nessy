@@ -82,14 +82,6 @@ class HeadSummarizerTest {
         new DefaultHarnessFactory(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
-    harness =
-        factory.create(
-            String.class,
-            h ->
-                h.agentType(CHAT)
-                    .systemPrompt("You are a test assistant.")
-                    .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(MAX_TAIL)))
-                    .effects(e -> e.pollInterval(Duration.ofMillis(100))));
     summarizer =
         HeadSummarizer.create(
             c ->
@@ -99,6 +91,16 @@ class HeadSummarizerTest {
                     .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
+    harness =
+        factory.create(
+            String.class,
+            h ->
+                h.agentType(CHAT)
+                    .systemPrompt("You are a test assistant.")
+                    .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(MAX_TAIL)))
+                    .effects(e -> e.pollInterval(Duration.ofMillis(100)))
+                    // Hears every turn end; summarises off the narration thread.
+                    .listener(summarizer.listener()));
   }
 
   @AfterEach
@@ -127,42 +129,41 @@ class HeadSummarizerTest {
   void a_short_story_is_left_alone() {
     AgentId agentId = new AgentId(UUID.randomUUID());
     converse(agentId, MAX_TAIL);
-    summarizer.sweep();
+    // Every turn end was heard; none found anything to do.
+    await().pollDelay(Duration.ofMillis(500)).atMost(Duration.ofSeconds(2)).until(() -> true);
     assertThat(summaries.forAgent(agentId)).isEmpty();
     assertThat(summariesWritten).hasValue(0);
   }
 
+  /**
+   * The cut is made when a turn's end is heard, on a thread of its own, while the conversation goes
+   * on -- so exactly which turn it lands after depends on timing, and a test that pinned it would
+   * be pinning a race. What never varies: the range starts at the beginning, the cut leaves between
+   * minTail and maxTail turns verbatim, and the next call is built on summary plus tail.
+   */
   @Test
-  @DisplayName("summarises the head once it outgrows the tail, leaving minTail verbatim")
+  @DisplayName("summarises the head once it outgrows the tail, leaving the tail verbatim")
   void a_long_story_gets_its_head_summarised() {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    converse(agentId, MAX_TAIL + 3); // 9 complete turns: 7 are summarised, 2 stay verbatim
+    converse(agentId, MAX_TAIL + 3);
+    await().atMost(Duration.ofSeconds(20)).until(() -> !summaries.forAgent(agentId).isEmpty());
     List<Long> ids = turnIds(agentId);
-    assertThat(ids).hasSize(9);
 
-    summarizer.sweep();
+    Summary summary = summaries.forAgent(agentId).getFirst();
+    int cut = ids.indexOf(summary.through().value()) + 1;
+    assertThat(summary.from()).isEqualTo(new TurnId(ids.getFirst()));
+    assertThat(ids.size() - cut).isBetween(MIN_TAIL, MAX_TAIL);
+    assertThat(summary.content()).containsExactly(new Block.Text("SUMMARY of " + cut));
 
-    assertThat(summaries.forAgent(agentId))
-        .singleElement()
-        .satisfies(
-            summary -> {
-              assertThat(summary.from()).isEqualTo(new TurnId(ids.getFirst()));
-              assertThat(summary.through()).isEqualTo(new TurnId(ids.get(6)));
-              assertThat(summary.content()).containsExactly(new Block.Text("SUMMARY of 7"));
-            });
-
-    // And the next call the agent makes is built on it: the summary, then the turns after it.
+    // The next call the agent makes is built on it: the summary, then the turns after it.
     converse(agentId, 1);
     InferenceRequest last = chatRequests.getLast();
-    assertThat(last.context().summaries()).hasSize(1);
+    assertThat(last.context().summaries()).isNotEmpty();
+    long through = last.context().summaries().getLast().through().value();
     assertThat(last.context().turns())
         .extracting(turn -> turn.id().value())
-        .containsExactly(ids.get(7), ids.get(8), turnIds(agentId).getLast());
-
-    // A second sweep finds the head short again and writes nothing more.
-    summarizer.sweep();
-    assertThat(summaries.forAgent(agentId)).hasSize(1);
-    assertThat(summariesWritten).hasValue(1);
+        .containsExactlyElementsOf(turnIds(agentId).stream().filter(id -> id > through).toList())
+        .hasSizeLessThanOrEqualTo(MAX_TAIL);
   }
 
   @Test
@@ -170,16 +171,22 @@ class HeadSummarizerTest {
   void later_cuts_append() {
     AgentId agentId = new AgentId(UUID.randomUUID());
     converse(agentId, MAX_TAIL + 3);
-    summarizer.sweep();
-    converse(agentId, MAX_TAIL + 1); // 2 verbatim + 7 new = 9 after the summary: over again
-    summarizer.sweep();
+    await().atMost(Duration.ofSeconds(20)).until(() -> summaries.forAgent(agentId).size() == 1);
+    Summary first = summaries.forAgent(agentId).getFirst();
+    converse(agentId, MAX_TAIL + 1);
+    await().atMost(Duration.ofSeconds(20)).until(() -> summaries.forAgent(agentId).size() >= 2);
 
-    List<Long> ids = turnIds(agentId); // 16 turns; the last 2 stay verbatim
+    List<Long> ids = turnIds(agentId);
     List<Summary> written = summaries.forAgent(agentId);
-    assertThat(written).hasSize(2);
-    assertThat(written.get(0).from()).isEqualTo(new TurnId(ids.getFirst()));
-    assertThat(written.get(0).through()).isEqualTo(new TurnId(ids.get(6)));
-    assertThat(written.get(1).from()).isEqualTo(new TurnId(ids.get(7)));
-    assertThat(written.get(1).through()).isEqualTo(new TurnId(ids.get(ids.size() - 1 - MIN_TAIL)));
+    assertThat(written.getFirst()).as("the first summary is as it was").isEqualTo(first);
+    for (int i = 1; i < written.size(); i++) {
+      // Contiguous: each begins at the turn after the previous one ended.
+      long previousEnd = written.get(i - 1).through().value();
+      assertThat(written.get(i).from().value()).isEqualTo(ids.get(ids.indexOf(previousEnd) + 1));
+    }
+    long lastThrough = written.getLast().through().value();
+    assertThat(ids.stream().filter(id -> id > lastThrough).count())
+        .as("what stays verbatim")
+        .isBetween((long) MIN_TAIL, (long) MAX_TAIL);
   }
 }

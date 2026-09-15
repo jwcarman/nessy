@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.codec.spi.CodecFactory;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
@@ -15,7 +16,6 @@ import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -51,23 +51,23 @@ public final class EngineUnderTest implements AutoCloseable {
   private final JdbcClient jdbc;
   private final AgentStateRepository states;
 
-  public EngineUnderTest(InferenceProvider provider, Narrator narrator) {
-    this(provider, narrator, ObservationRegistry.NOOP);
+  public EngineUnderTest(InferenceProvider provider, AgentEventListener listener) {
+    this(provider, listener, ObservationRegistry.NOOP);
   }
 
   public EngineUnderTest(
-      InferenceProvider provider, Narrator narrator, ObservationRegistry observations) {
-    this(provider, narrator, observations, Optional.empty());
+      InferenceProvider provider, AgentEventListener listener, ObservationRegistry observations) {
+    this(provider, listener, observations, Optional.empty());
   }
 
   /** With something done to every stored byte, which the fixture's own reader must undo too. */
   public EngineUnderTest(InferenceProvider provider, Codec<byte[]> storage) {
-    this(provider, Narrator.silent(), ObservationRegistry.NOOP, Optional.of(storage));
+    this(provider, AgentEventListener.none(), ObservationRegistry.NOOP, Optional.of(storage));
   }
 
   private EngineUnderTest(
       InferenceProvider provider,
-      Narrator narrator,
+      AgentEventListener listener,
       ObservationRegistry observations,
       Optional<Codec<byte[]>> storage) {
     HikariConfig config = new HikariConfig();
@@ -98,14 +98,14 @@ public final class EngineUnderTest implements AutoCloseable {
               engine
                   .dataSource(dataSource)
                   .inference(provider, InferenceOptions.of("a-model"))
-                  .narrator(narrator)
+                  .listener(listener)
                   .observations(observations);
               storage.ifPresent(engine::storage);
             });
   }
 
   public EngineUnderTest(InferenceProvider provider) {
-    this(provider, Narrator.silent());
+    this(provider, AgentEventListener.none());
   }
 
   public DefaultHarnessFactory harnesses() {

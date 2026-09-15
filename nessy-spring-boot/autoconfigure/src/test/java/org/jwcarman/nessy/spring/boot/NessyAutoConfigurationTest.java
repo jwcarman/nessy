@@ -6,6 +6,7 @@ import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Replies;
@@ -17,7 +18,6 @@ import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -64,7 +64,6 @@ class NessyAutoConfigurationTest {
           assertThat(context).hasSingleBean(DefaultHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
-          assertThat(context).hasSingleBean(Narrator.class);
         });
   }
 
@@ -160,15 +159,13 @@ class NessyAutoConfigurationTest {
         .run(context -> assertThat(context).hasNotFailed());
   }
 
-  /** Silence is the default, because narration costs a line per event and nobody asked. */
+  /** Nobody listens by default; every listener bean an application declares is attached. */
   @Test
-  void the_default_narrator_says_nothing_and_an_application_can_replace_it() {
-    runner.run(
-        context ->
-            assertThat(context.getBean(Narrator.class)).isSameAs(context.getBean(Narrator.class)));
+  void listeners_are_the_applications_to_declare() {
+    runner.run(context -> assertThat(context).doesNotHaveBean(AgentEventListener.class));
     runner
-        .withUserConfiguration(ANarrator.class)
-        .run(context -> assertThat(context.getBean(Narrator.class)).isSameAs(ANarrator.INSTANCE));
+        .withUserConfiguration(AListener.class)
+        .run(context -> assertThat(context).hasSingleBean(DefaultHarnessFactory.class));
   }
 
   @Test
@@ -211,12 +208,12 @@ class NessyAutoConfigurationTest {
   }
 
   @Configuration(proxyBeanMethods = false)
-  static class ANarrator {
+  static class AListener {
 
-    static final Narrator INSTANCE = Narrator.silent();
+    static final AgentEventListener INSTANCE = AgentEventListener.none();
 
     @Bean
-    Narrator narrator() {
+    AgentEventListener narrator() {
       return INSTANCE;
     }
   }

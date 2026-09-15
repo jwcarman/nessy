@@ -1,21 +1,23 @@
 package org.jwcarman.nessy.engine.harness;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * What an engine needs from the application, and what it will assume if not told.
  *
  * <p><b>Two required things: somewhere to keep agents and something to ask.</b> The rest are
- * application facts with defaults: where narration goes, where spans go, which keys seal a reply
- * token, what is done to the bytes it stores. Anything an agent type might tune -- timeouts,
+ * application facts with defaults: who hears what agents do, where spans go, which keys seal a
+ * reply token, what is done to the bytes it stores. Anything an agent type might tune -- timeouts,
  * retries, the context it is shown -- has its default in the engine and is overridden on the
  * harness that wants otherwise.
  *
@@ -33,7 +35,7 @@ public final class EngineConfig {
   private DataSource dataSource;
   private InferenceProvider provider;
   private InferenceOptions options;
-  private Narrator narrator = Narrator.silent();
+  private final List<AgentEventListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ReplyTokens replyTokens;
   private Codec<byte[]> storage;
@@ -58,9 +60,13 @@ public final class EngineConfig {
     return this;
   }
 
-  /** Where an agent says what it is doing. Defaults to saying nothing. */
-  public EngineConfig narrator(Narrator narrator) {
-    this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
+  /**
+   * Somebody who hears what every agent of every harness does. Repeatable; defaults to nobody,
+   * because narration costs a line per event and nobody asked. A harness adds its own with {@code
+   * HarnessConfig.listener(...)}.
+   */
+  public EngineConfig listener(AgentEventListener listener) {
+    listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
 
@@ -121,8 +127,8 @@ public final class EngineConfig {
     return options;
   }
 
-  Narrator narrator() {
-    return narrator;
+  List<AgentEventListener> listeners() {
+    return List.copyOf(listeners);
   }
 
   ObservationRegistry observations() {

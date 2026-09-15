@@ -256,24 +256,9 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
     }
   }
 
-  /**
-   * Says one thing to whoever is watching, and never lets them stop the agent.
-   *
-   * <p>Narration is best-effort by contract, so a sink that throws is logged and the turn goes on.
-   * A watcher must not be able to fail a turn, and a sink author should not have to be careful to
-   * make that true.
-   */
+  /** Says one thing to whoever is watching. The narrator isolates them from each other. */
   private void announce(AgentId agentId, AgentEvent event) {
-    try {
-      narrator.narrate(agentType, agentId, event);
-    } catch (RuntimeException e) {
-      log.warn(
-          "[{}] agent {}: a narrator threw on {}; carrying on",
-          agentType.value(),
-          agentId.value(),
-          event.getClass().getSimpleName(),
-          e);
-    }
+    narrator.narrate(agentType, agentId, event);
   }
 
   /**

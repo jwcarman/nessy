@@ -31,6 +31,7 @@ class OdysseyNarratorTest {
           new AgentEvent.TurnStarted(new TurnId(1), "x"),
           new AgentEvent.Thinking(),
           new AgentEvent.Answered("x"),
+          new AgentEvent.TurnEnded(new TurnId(1)),
           new AgentEvent.TurnFailed(),
           new AgentEvent.TurnRefused(),
           new AgentEvent.Commentary("x"),
@@ -58,7 +59,7 @@ class OdysseyNarratorTest {
   @Test
   @DisplayName("the stream is the agent's: its type and its id, and it carries events")
   void an_event_lands_on_the_stream_named_for_the_agent() {
-    narrator.narrate(CHAT, ONE, new AgentEvent.Thinking());
+    narrator.on(CHAT, ONE, new AgentEvent.Thinking());
     assertThat(only().stream()).isEqualTo("nessy/chat/" + ONE.value());
     assertThat(only().type()).isEqualTo(AgentEvent.class);
     assertThat(only().data()).isEqualTo(new AgentEvent.Thinking());
@@ -69,7 +70,7 @@ class OdysseyNarratorTest {
   @DisplayName("the event name is the kind, and the event goes as it is")
   void a_delta_is_published_under_its_kind() {
     AgentEvent.ContentDelta delta = new AgentEvent.ContentDelta("hel");
-    narrator.narrate(CHAT, ONE, delta);
+    narrator.on(CHAT, ONE, delta);
     assertThat(only().eventName()).isEqualTo("content-delta");
     assertThat(only().data()).isEqualTo(delta);
   }

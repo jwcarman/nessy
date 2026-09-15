@@ -14,13 +14,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.engine.EngineUnderTest;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * The carrier actually riding an effect out to the database and back.
@@ -100,7 +100,7 @@ class EffectTraceCarrierTest {
               }
               return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));
             },
-            Narrator.silent(),
+            AgentEventListener.none(),
             registry)) {
 
       Harness<String> harness =

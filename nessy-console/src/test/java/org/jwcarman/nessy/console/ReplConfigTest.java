@@ -12,6 +12,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -209,6 +210,11 @@ class ReplConfigTest {
 
       @Override
       public HarnessConfig<String> effects(Consumer<EffectsConfig> customizer) {
+        return this;
+      }
+
+      @Override
+      public HarnessConfig<String> listener(AgentEventListener listener) {
         return this;
       }
 

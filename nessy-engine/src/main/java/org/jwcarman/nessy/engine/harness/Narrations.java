@@ -48,6 +48,18 @@ final class Narrations {
       // answer -- which is the mistake the block kind exists to make impossible.
       commentary(entry).ifPresent(said -> events.add(new AgentEvent.Commentary(said)));
       of(entry).ifPresent(events::add);
+      // However it ended, it ended: the one event to hear when the story grew by a turn.
+      switch (entry) {
+        case HistoryEntry.InferenceAnswered answered ->
+            events.add(new AgentEvent.TurnEnded(answered.turn()));
+        case HistoryEntry.InferenceFailed failed ->
+            events.add(new AgentEvent.TurnEnded(failed.turn()));
+        case HistoryEntry.InferenceRefused refused ->
+            events.add(new AgentEvent.TurnEnded(refused.turn()));
+        default -> {
+          // Not the end of a turn.
+        }
+      }
     }
     // After whatever closed the previous turn, because one fold can do both and the closing
     // entry is written first. Not derived from an entry like the rest: the observation is

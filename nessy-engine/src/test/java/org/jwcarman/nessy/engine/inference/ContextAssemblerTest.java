@@ -108,11 +108,6 @@ class ContextAssemblerTest {
     public long turnsAfter(long through) {
       return turnsFrom(through + 1).size();
     }
-
-    @Override
-    public List<AgentId> agents(AgentType agentType) {
-      return List.of();
-    }
   }
 
   /**

@@ -8,12 +8,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;
 import org.jwcarman.odyssey.core.Odyssey;
 import org.jwcarman.substrate.core.autoconfigure.SubstrateAutoConfiguration;
@@ -40,8 +40,8 @@ class OdysseyNarrationAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class AnApplicationWithItsOwnNarrator {
     @Bean
-    Narrator mine() {
-      return Narrator.silent();
+    AgentEventListener mine() {
+      return AgentEventListener.none();
     }
   }
 
@@ -62,7 +62,7 @@ class OdysseyNarrationAutoConfigurationTest {
         context -> {
           assertThat(context).hasSingleBean(Odyssey.class);
           assertThat(context).hasSingleBean(AgentStreams.class);
-          assertThat(context).getBean(Narrator.class).isInstanceOf(OdysseyNarrator.class);
+          assertThat(context).hasSingleBean(OdysseyNarrator.class);
         });
   }
 
@@ -71,11 +71,11 @@ class OdysseyNarrationAutoConfigurationTest {
   void narrating_writes_to_the_journal() {
     runner.run(
         context -> {
-          Narrator narrator = context.getBean(Narrator.class);
+          AgentEventListener narrator = context.getBean(OdysseyNarrator.class);
           AgentId agentId = new AgentId(UUID.randomUUID());
           // No exception is the assertion: the in-memory journal accepted the entry. What it
           // holds is read back over SSE, which the web example exercises end to end.
-          narrator.narrate(new AgentType("chat"), agentId, new AgentEvent.ContentDelta("hi"));
+          narrator.on(new AgentType("chat"), agentId, new AgentEvent.ContentDelta("hi"));
           assertThat(
                   context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
                       .publish("terminated", new AgentEvent.Terminated()))
@@ -84,15 +84,14 @@ class OdysseyNarrationAutoConfigurationTest {
   }
 
   @Test
-  @DisplayName("a narrator the application declared is left alone")
-  void an_applications_own_narrator_wins() {
+  @DisplayName("a listener the application declared is heard beside it")
+  void an_applications_own_listener_is_kept_too() {
     runner
         .withUserConfiguration(AnApplicationWithItsOwnNarrator.class)
         .run(
             context -> {
-              assertThat(context).hasSingleBean(Narrator.class);
-              assertThat(context).doesNotHaveBean(OdysseyNarrator.class);
-              assertThat(context).hasSingleBean(AgentStreams.class);
+              assertThat(context.getBeansOfType(AgentEventListener.class)).hasSize(2);
+              assertThat(context).hasSingleBean(OdysseyNarrator.class);
             });
   }
 
@@ -105,7 +104,7 @@ class OdysseyNarrationAutoConfigurationTest {
         .run(
             context -> {
               assertThat(context).doesNotHaveBean(AgentStreams.class);
-              assertThat(context).doesNotHaveBean(Narrator.class);
+              assertThat(context).doesNotHaveBean(OdysseyNarrator.class);
             });
   }
 

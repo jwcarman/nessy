@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
   @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
   @JsonSubTypes.Type(value = AgentEvent.Thinking.class, name = "thinking"),
   @JsonSubTypes.Type(value = AgentEvent.Answered.class, name = "answered"),
+  @JsonSubTypes.Type(value = AgentEvent.TurnEnded.class, name = "turn-ended"),
   @JsonSubTypes.Type(value = AgentEvent.TurnFailed.class, name = "turn-failed"),
   @JsonSubTypes.Type(value = AgentEvent.TurnRefused.class, name = "turn-refused"),
   @JsonSubTypes.Type(value = AgentEvent.Commentary.class, name = "commentary"),
@@ -74,6 +75,12 @@ public sealed interface AgentEvent {
    * business, and what a watcher wants is what a person would read.
    */
   record Answered(String text) implements AgentEvent {}
+
+  /**
+   * The turn is over, however it ended -- answered, failed or refused. One event to listen for when
+   * what matters is that the story grew by a turn, not how.
+   */
+  record TurnEnded(TurnId turn) implements AgentEvent {}
 
   /** The turn ended without an answer, and might have gone otherwise. */
   record TurnFailed() implements AgentEvent {}

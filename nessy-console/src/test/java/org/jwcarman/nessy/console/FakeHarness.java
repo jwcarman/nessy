@@ -3,10 +3,10 @@ package org.jwcarman.nessy.console;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * A harness that answers each observation with a scripted run of events.
@@ -20,7 +20,7 @@ final class FakeHarness implements Harness<String> {
 
   private final List<List<AgentEvent>> answers;
   private final List<String> observed = new ArrayList<>();
-  private Narrator narrator = Narrator.silent();
+  private AgentEventListener narrator = AgentEventListener.none();
   private int next;
 
   @SafeVarargs
@@ -29,7 +29,7 @@ final class FakeHarness implements Harness<String> {
   }
 
   /** The engine is told its narrator at construction; a fake is told afterwards. */
-  void narrateTo(Narrator narrator) {
+  void narrateTo(AgentEventListener narrator) {
     this.narrator = narrator;
   }
 
@@ -39,12 +39,12 @@ final class FakeHarness implements Harness<String> {
     if (next >= answers.size()) {
       return;
     }
-    answers.get(next++).forEach(event -> narrator.narrate(TYPE, agentId, event));
+    answers.get(next++).forEach(event -> narrator.on(TYPE, agentId, event));
   }
 
   @Override
   public void terminate(AgentId agentId) {
-    narrator.narrate(TYPE, agentId, new AgentEvent.Terminated());
+    narrator.on(TYPE, agentId, new AgentEvent.Terminated());
   }
 
   List<String> observed() {

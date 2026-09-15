@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.codec.spi.TypeRef;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
@@ -69,6 +70,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   private final Inference inference;
   private final Effects effects = new Effects();
   private final List<ToolBinding<?>> tools = new ArrayList<>();
+  private final List<AgentEventListener> listeners = new ArrayList<>();
 
   DefaultHarnessConfig(
       TypeRef<O> observationType,
@@ -83,6 +85,16 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
 
   /** What the factory already knows, so an agent type only states its differences. */
   record Defaults(InferenceProvider provider, InferenceOptions options) {}
+
+  @Override
+  public DefaultHarnessConfig<O> listener(AgentEventListener listener) {
+    listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+    return this;
+  }
+
+  List<AgentEventListener> listeners() {
+    return List.copyOf(listeners);
+  }
 
   @Override
   public DefaultHarnessConfig<O> agentType(AgentType agentType) {

@@ -6,22 +6,23 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * What the REPL prints while the agent works, and how it knows a turn is over.
  *
- * <p>A {@link Narrator} is engine-wide -- one sink hears every agent -- so this filters to the one
- * agent the terminal is talking to and ignores the rest. It is built before the engine, because the
- * engine is told about it at construction; the loop that reads the keyboard is built after.
+ * <p>A {@link AgentEventListener} is engine-wide -- one sink hears every agent -- so this filters
+ * to the one agent the terminal is talking to and ignores the rest. It is built before the engine,
+ * because the engine is told about it at construction; the loop that reads the keyboard is built
+ * after.
  *
  * <p>The end of a turn is signalled through a one-slot queue with {@code offer}, never {@code put}:
  * if nobody is waiting the notice is worth dropping, and blocking an engine thread on a REPL that
  * moved on never is.
  */
-final class ConsoleNarration implements Narrator {
+final class ConsoleNarration implements AgentEventListener {
 
   /** How a turn ended, as far as a terminal needs to know. */
   enum Ending {
@@ -42,7 +43,7 @@ final class ConsoleNarration implements Narrator {
   }
 
   @Override
-  public void narrate(AgentType agentType, AgentId who, AgentEvent event) {
+  public void on(AgentType agentType, AgentId who, AgentEvent event) {
     if (!agentId.equals(who)) {
       return;
     }
@@ -87,6 +88,7 @@ final class ConsoleNarration implements Narrator {
       // Thinking is shown as a marker, not as content: a model's reasoning is not its answer.
       case AgentEvent.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
       case AgentEvent.TurnStarted _,
+          AgentEvent.TurnEnded _,
           AgentEvent.Commentary _,
           AgentEvent.CallApproved _,
           AgentEvent.ApprovalSought _,

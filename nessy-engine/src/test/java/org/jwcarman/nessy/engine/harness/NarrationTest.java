@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -25,7 +26,6 @@ import org.jwcarman.nessy.engine.EngineUnderTest;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * What an agent says about itself while it works.
@@ -42,7 +42,7 @@ class NarrationTest {
    * A narrator is a factory-level seam, not a per-harness one, so varying it means varying the
    * engine. Every test but one runs against the recording sink installed below.
    */
-  private void narratedBy(Narrator narrator) {
+  private void narratedBy(AgentEventListener narrator) {
     if (engine != null) {
       engine.close();
     }
@@ -69,7 +69,7 @@ class NarrationTest {
    * agent each event belongs to, so one sink serves every agent type and routes on what it is
    * handed rather than being installed per harness.
    */
-  private static final Narrator RECORDING = (_, _, event) -> EVENTS.add(event);
+  private static final AgentEventListener RECORDING = (_, _, event) -> EVENTS.add(event);
 
   @BeforeEach
   void forgetWhatWasSaid() {

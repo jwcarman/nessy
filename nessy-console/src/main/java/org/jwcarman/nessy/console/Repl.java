@@ -77,7 +77,7 @@ public final class Repl {
                   engine
                       .dataSource(dataSource.get())
                       .inference(provider, new InferenceOptions(model.get(), config.maxTokens()))
-                      .narrator(narration)
+                      .listener(narration)
                       // Ephemeral, and correct here: a token only has to outlive the process that
                       // minted it, and this process IS the conversation.
                       .replyTokens(ReplyTokens.ephemeral()))) {

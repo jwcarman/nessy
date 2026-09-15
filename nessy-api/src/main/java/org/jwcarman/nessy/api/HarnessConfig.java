@@ -54,6 +54,12 @@ public interface HarnessConfig<O> {
   /** Adjusts how this agent type performs the work it owes itself. */
   HarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
 
+  /**
+   * Somebody who hears what this harness's agents do, in addition to whoever the engine already
+   * tells. Repeatable; every listener hears every event.
+   */
+  HarnessConfig<O> listener(AgentEventListener listener);
+
   /** Offers a tool, and says what a call of it is worth. */
   <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
 

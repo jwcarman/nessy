@@ -2,9 +2,9 @@ package org.jwcarman.nessy.narration.odyssey;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /**
  * Journals every event about every agent to that agent's stream.
@@ -18,7 +18,7 @@ import org.jwcarman.nessy.spi.narration.Narrator;
  * number. The SSE event name is that same kind, so a browser can listen for {@code content-delta}
  * and a subscriber with a mapper of its own gets the event back typed.
  */
-public class OdysseyNarrator implements Narrator {
+public class OdysseyNarrator implements AgentEventListener {
 
   private final AgentStreams streams;
 
@@ -27,7 +27,7 @@ public class OdysseyNarrator implements Narrator {
   }
 
   @Override
-  public void narrate(AgentType agentType, AgentId agentId, AgentEvent event) {
+  public void on(AgentType agentType, AgentId agentId, AgentEvent event) {
     streams.stream(agentType, agentId).publish(nameOf(event), event);
   }
 
@@ -40,6 +40,7 @@ public class OdysseyNarrator implements Narrator {
       case AgentEvent.TurnStarted _ -> "turn-started";
       case AgentEvent.Thinking _ -> "thinking";
       case AgentEvent.Answered _ -> "answered";
+      case AgentEvent.TurnEnded _ -> "turn-ended";
       case AgentEvent.TurnFailed _ -> "turn-failed";
       case AgentEvent.TurnRefused _ -> "turn-refused";
       case AgentEvent.Commentary _ -> "commentary";

@@ -4,6 +4,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
@@ -17,9 +18,9 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -89,24 +90,10 @@ public class NessyAutoConfiguration {
         keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
   }
 
-  /**
-   * Silent unless an application says otherwise.
-   *
-   * <p>Narration is best-effort and never durable, so a default that said something would be a
-   * default that costs every application a log line per token. An application that wants a console,
-   * a journal or a websocket declares a {@link Narrator} bean.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public Narrator nessyNarrator() {
-    return Narrator.silent();
-  }
-
   @Bean
   @ConditionalOnMissingBean
   public DefaultHarnessFactory nessyHarnessFactory(
       DataSource dataSource,
-      Narrator narrator,
       ReplyTokens replyTokens,
       InferenceProvider models,
       NessyProperties properties,
@@ -129,7 +116,6 @@ public class NessyAutoConfiguration {
               .dataSource(dataSource)
               .inference(
                   provider, new InferenceOptions(requireModel(properties), properties.maxTokens()))
-              .narrator(narrator)
               .observations(observations)
               .replyTokens(replyTokens);
           // What is done to every stored byte after Jackson, when the application declared it:
@@ -137,6 +123,17 @@ public class NessyAutoConfiguration {
           // Codec<byte[]> names nothing in particular.
           storage.ifAvailable(engine::storage);
         });
+  }
+
+  /**
+   * Every {@link AgentEventListener} bean, attached engine-wide once every bean exists -- after
+   * rather than at the factory's making, so a listener that reads the story (through the factory)
+   * is not a circle.
+   */
+  @Bean
+  public SmartInitializingSingleton nessyListeners(
+      DefaultHarnessFactory factory, ObjectProvider<AgentEventListener> listeners) {
+    return () -> listeners.orderedStream().forEach(factory::listener);
   }
 
   /** The story, for an application that shows what its agents said. */

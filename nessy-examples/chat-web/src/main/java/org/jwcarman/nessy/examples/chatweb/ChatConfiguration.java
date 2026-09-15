@@ -57,8 +57,8 @@ public class ChatConfiguration {
   }
 
   /**
-   * Summarises the head of a long conversation in the background, under a lease, on the starter's
-   * sweep. The model then sees the summaries and the last {@value #MAX_TAIL} turns; once more than
+   * Summarises the head of a long conversation in the background, under a lease, whenever a turn
+   * ends. The model then sees the summaries and the last {@value #MAX_TAIL} turns; once more than
    * that many follow the last summary, the oldest are summarised down to {@value #MIN_TAIL}.
    */
   @Bean
@@ -87,13 +87,18 @@ public class ChatConfiguration {
       Approver desk,
       Notebook notebook,
       PlanStore plans,
-      JdbcSummaries summaries) {
+      JdbcSummaries summaries,
+      HeadSummarizer summarizer) {
     return factory.create(
         String.class,
         config ->
             config
                 .agentType(TYPE)
                 .systemPrompt(properties.resolveSystemPrompt())
+                // Hears every turn end and summarises the head once it outgrows the tail -- on
+                // its own thread, because a summary is a model call, and under a lease, so
+                // several instances never summarise one agent twice.
+                .listener(summarizer.listener())
                 // Two sources of background: the notebook's index and the current plan. Both are
                 // ambient, so they are asked afresh every call and never written to the story --
                 // the model sees the notes and the plan as they stand NOW.

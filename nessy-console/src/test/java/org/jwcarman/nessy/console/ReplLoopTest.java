@@ -79,7 +79,7 @@ class ReplLoopTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, new FakeConsole());
     FakeConsole console = new FakeConsole();
     ConsoleNarration mine = new ConsoleNarration(AGENT, console);
-    mine.narrate(new AgentType("chat"), new AgentId(UUID.randomUUID()), said("not for you"));
+    mine.on(new AgentType("chat"), new AgentId(UUID.randomUUID()), said("not for you"));
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
   }
