@@ -1,5 +1,7 @@
 package org.jwcarman.nessy.api;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -27,7 +29,32 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * <p><b>No timestamp and no agent.</b> A sink stamps events if it cares, rather than every delta
  * paying for a clock read; and identity is passed beside the event by {@link Narrator}, which is
  * what lets a provider narrate without ever being told which agent it is serving.
+ *
+ * <p><b>Typed on the wire.</b> An event is announced and forgotten by the engine, but a narrator
+ * may journal it and a page may read it back later -- so, like {@link
+ * org.jwcarman.nessy.api.block.Block}, an event names its kind in JSON. The names are the kinds in
+ * kebab-case, and they are the event names such a narrator uses on the wire too.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
+  @JsonSubTypes.Type(value = AgentEvent.Thinking.class, name = "thinking"),
+  @JsonSubTypes.Type(value = AgentEvent.Answered.class, name = "answered"),
+  @JsonSubTypes.Type(value = AgentEvent.TurnFailed.class, name = "turn-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.TurnRefused.class, name = "turn-refused"),
+  @JsonSubTypes.Type(value = AgentEvent.Commentary.class, name = "commentary"),
+  @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
+  @JsonSubTypes.Type(value = AgentEvent.CallApproved.class, name = "call-approved"),
+  @JsonSubTypes.Type(value = AgentEvent.CallDenied.class, name = "call-denied"),
+  @JsonSubTypes.Type(value = AgentEvent.CallFinished.class, name = "call-finished"),
+  @JsonSubTypes.Type(value = AgentEvent.CallFailed.class, name = "call-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.Terminated.class, name = "terminated"),
+  @JsonSubTypes.Type(value = AgentEvent.ApprovalSought.class, name = "approval-sought"),
+  @JsonSubTypes.Type(value = AgentEvent.ApprovalDeferred.class, name = "approval-deferred"),
+  @JsonSubTypes.Type(value = AgentEvent.CallDeferred.class, name = "call-deferred"),
+  @JsonSubTypes.Type(value = AgentEvent.ThinkingDelta.class, name = "thinking-delta"),
+  @JsonSubTypes.Type(value = AgentEvent.ContentDelta.class, name = "content-delta")
+})
 public sealed interface AgentEvent {
 
   // ---- facts: from the engine, after the fold commits ---------------------------------

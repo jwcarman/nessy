@@ -15,6 +15,7 @@ const newChatButton = document.getElementById("new-chat");
 
 let agentId = location.hash.slice(1) || localStorage.getItem("agentId") || crypto.randomUUID();
 let events = null;
+let approvalEvents = null;
 let openBubble = null;
 let openThinking = null;
 // Whether this inference call has streamed: a provider that does says the answer delta by delta
@@ -125,7 +126,6 @@ function listen() {
     streamed = false;
     for (const name of JSON.parse(e.data).toolNames) appendLine("tool", "🔧 " + name);
   });
-  events.addEventListener("approval", (e) => renderApproval(JSON.parse(e.data)));
   events.addEventListener("call-approved", () => appendLine("tool", "approved"));
   events.addEventListener("call-denied", (e) =>
     appendLine("tool", "denied: " + JSON.parse(e.data).reason),
@@ -151,6 +151,12 @@ function listen() {
     // EventSource reconnects on its own; the input must not stay disabled while it does.
     setBusy(false);
   };
+
+  // The desk's questions are a second stream: the engine's stream carries the engine's events
+  // and nothing else. Both resume on reconnect the same way.
+  if (approvalEvents) approvalEvents.close();
+  approvalEvents = new EventSource(`/api/agents/${agentId}/approvals/events`);
+  approvalEvents.addEventListener("approval", (e) => renderApproval(JSON.parse(e.data)));
 }
 
 async function send(event) {

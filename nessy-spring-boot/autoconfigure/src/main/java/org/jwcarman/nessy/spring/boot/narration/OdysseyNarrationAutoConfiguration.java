@@ -12,7 +12,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * When an {@link Odyssey} is there, the engine narrates through it.
@@ -36,7 +35,7 @@ public class OdysseyNarrationAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean(Narrator.class)
-  public OdysseyNarrator nessyOdysseyNarrator(AgentStreams streams, ObjectMapper mapper) {
-    return new OdysseyNarrator(streams, mapper);
+  public OdysseyNarrator nessyOdysseyNarrator(AgentStreams streams) {
+    return new OdysseyNarrator(streams);
   }
 }

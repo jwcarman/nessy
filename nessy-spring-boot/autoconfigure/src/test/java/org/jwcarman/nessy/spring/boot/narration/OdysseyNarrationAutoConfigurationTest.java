@@ -73,13 +73,8 @@ class OdysseyNarrationAutoConfigurationTest {
           // holds is read back over SSE, which the web example exercises end to end.
           narrator.narrate(new AgentType("chat"), agentId, new AgentEvent.ContentDelta("hi"));
           assertThat(
-                  context
-                      .getBean(AgentStreams.class)
-                      .publish(
-                          new AgentType("chat"),
-                          agentId,
-                          "note",
-                          context.getBean(ObjectMapper.class).createObjectNode()))
+                  context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
+                      .publish("terminated", new AgentEvent.Terminated()))
               .isNotBlank();
         });
   }

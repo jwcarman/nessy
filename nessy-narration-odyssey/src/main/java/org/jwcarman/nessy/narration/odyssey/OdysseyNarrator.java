@@ -5,7 +5,6 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * Journals every event about every agent to that agent's stream.
@@ -14,27 +13,28 @@ import tools.jackson.databind.ObjectMapper;
  * <em>resumable</em>: a page that was closed asks for everything after the last event it saw and
  * gets it, which no fan-out held in memory can offer.
  *
- * <p><b>What is written.</b> The SSE event name is the event's kind in kebab-case ({@code
- * turn-started}, {@code content-delta}, {@code answered}, {@code call-denied}, ...) and the data is
- * the event's fields as a JSON object, exactly as Jackson sees the record -- so a {@code CallId} is
- * its string, a {@code TurnId} its number, and an event with no fields is {@code {}}.
+ * <p><b>What is written.</b> The event itself, as its JSON: a {@code type} naming the kind, then
+ * its fields as Jackson sees the record -- a {@code CallId} is its string, a {@code TurnId} its
+ * number. The SSE event name is that same kind, so a browser can listen for {@code content-delta}
+ * and a subscriber with a mapper of its own gets the event back typed.
  */
 public class OdysseyNarrator implements Narrator {
 
   private final AgentStreams streams;
-  private final ObjectMapper mapper;
 
-  public OdysseyNarrator(AgentStreams streams, ObjectMapper mapper) {
+  public OdysseyNarrator(AgentStreams streams) {
     this.streams = Objects.requireNonNull(streams, "streams must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
   public void narrate(AgentType agentType, AgentId agentId, AgentEvent event) {
-    streams.publish(agentType, agentId, nameOf(event), mapper.valueToTree(event));
+    streams.stream(agentType, agentId).publish(nameOf(event), event);
   }
 
-  /** The event name on the wire. Spelled out rather than derived, so a rename here is a choice. */
+  /**
+   * The event name on the wire: the kind the event declares in its own JSON. Spelled out here
+   * rather than read off the annotation on every event; a test holds the two together.
+   */
   public static String nameOf(AgentEvent event) {
     return switch (event) {
       case AgentEvent.TurnStarted _ -> "turn-started";

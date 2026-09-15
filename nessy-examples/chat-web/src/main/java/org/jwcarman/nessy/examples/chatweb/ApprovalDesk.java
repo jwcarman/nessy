@@ -2,7 +2,6 @@ package org.jwcarman.nessy.examples.chatweb;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -62,7 +61,10 @@ public class ApprovalDesk {
             request.replyToken()));
   }
 
-  public List<Map<String, ?>> pending(AgentId agentId) {
+  /** A question as the page draws it. The token is not on it; a card is not a credential. */
+  public record Card(String id, String tool, String args, String what, Instant askedAt) {}
+
+  public List<Card> pending(AgentId agentId) {
     return waiting.values().stream()
         .filter(question -> question.agentId().equals(agentId))
         .sorted(java.util.Comparator.comparing(Waiting::askedAt))
@@ -70,21 +72,20 @@ public class ApprovalDesk {
         .toList();
   }
 
-  public Map<String, ?> card(CallId callId) {
-    Waiting question = waiting.get(callId);
-    return question == null ? Map.of("id", callId.value()) : render(question);
+  public Optional<Card> card(CallId callId) {
+    return Optional.ofNullable(waiting.get(callId)).map(ApprovalDesk::render);
   }
 
   public Optional<Waiting> take(CallId callId) {
     return Optional.ofNullable(waiting.remove(callId));
   }
 
-  private static Map<String, ?> render(Waiting question) {
-    return Map.of(
-        "id", question.callId().value(),
-        "tool", question.tool(),
-        "args", question.arguments(),
-        "what", question.description(),
-        "askedAt", question.askedAt().toString());
+  private static Card render(Waiting question) {
+    return new Card(
+        question.callId().value(),
+        question.tool(),
+        question.arguments(),
+        question.description(),
+        question.askedAt());
   }
 }

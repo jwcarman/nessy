@@ -44,6 +44,7 @@ public class ChatController {
   private final Harness<String> harness;
   private final TurnHistories histories;
   private final AgentStreams streams;
+  private final ApprovalStreams approvals;
   private final ApprovalDesk desk;
   private final Replies replies;
 
@@ -51,11 +52,13 @@ public class ChatController {
       Harness<String> harness,
       TurnHistories histories,
       AgentStreams streams,
+      ApprovalStreams approvals,
       ApprovalDesk desk,
       Replies replies) {
     this.harness = harness;
     this.histories = histories;
     this.streams = streams;
+    this.approvals = approvals;
     this.desk = desk;
     this.replies = replies;
   }
@@ -94,6 +97,14 @@ public class ChatController {
       @PathVariable("id") String id,
       @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
     return streams.resume(ChatConfiguration.TYPE, agent(id), lastEventId);
+  }
+
+  /** The desk's questions for this agent, as a stream of their own. */
+  @GetMapping("/{id}/approvals/events")
+  public SseEmitter approvalEvents(
+      @PathVariable("id") String id,
+      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+    return approvals.resume(agent(id), lastEventId);
   }
 
   @PostMapping("/{id}/approvals/{callId}")

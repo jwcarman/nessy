@@ -11,7 +11,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /** An Odyssey that remembers what was published to which stream, and serves nothing. */
 final class RecordingOdyssey implements Odyssey {
 
-  record Published(String stream, String eventName, Object data) {}
+  record Published(String stream, Class<?> type, String eventName, Object data) {}
 
   final List<Published> published = new ArrayList<>();
   TtlPolicy lastTtl;
@@ -37,7 +37,7 @@ final class RecordingOdyssey implements Odyssey {
 
       @Override
       public String publish(String eventType, T data) {
-        published.add(new Published(name, eventType, data));
+        published.add(new Published(name, type, eventType, data));
         return String.valueOf(published.size());
       }
 
