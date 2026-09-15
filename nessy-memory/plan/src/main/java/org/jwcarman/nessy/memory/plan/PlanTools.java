@@ -16,19 +16,16 @@
 package org.jwcarman.nessy.memory.plan;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.block.AmbientContentBlock;
-import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.message.AmbientMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ContextMessage;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.memory.pipeline.ContextTransformer;
 
 /**
  * The one verb a model uses on its plan, and the stage that keeps the plan in front of it.
@@ -82,21 +79,24 @@ public final class PlanTools {
    * see the headings of is not a plan you can stick to. No plan, or an empty one, contributes
    * nothing at all.
    */
-  public static ContextTransformer plan(PlanStore store) {
+  /**
+   * The read half: the agent's own plan, in front of it on every turn.
+   *
+   * <p>Ambient rather than a message. A plan written into the story would be re-sent as it was when
+   * written, so a task marked DONE on turn four would still read as PENDING forever -- the model
+   * would be looking at a list of things it has already finished. Asked afresh on every call, it is
+   * the current plan or nothing at all.
+   *
+   * <p>An empty plan contributes nothing: a heading over no tasks tells the model it has a plan,
+   * which is a claim, and saying nothing is not.
+   */
+  public static AmbientSource plan(PlanStore store) {
     Objects.requireNonNull(store, "store must not be null");
-    return (agentId, context) ->
+    return agentId ->
         store
             .find(agentId)
             .filter(plan -> !plan.isEmpty())
-            .map(plan -> carrying(context, plan))
-            .orElse(context);
-  }
-
-  private static Context carrying(Context context, Plan plan) {
-    List<ContextMessage> messages = new ArrayList<>(context.messages());
-    messages.add(
-        new AmbientMessage(KIND, List.<AmbientContentBlock>of(new TextBlock(render(plan)))));
-    return Context.of(messages);
+            .map(plan -> Ambient.text(KIND, render(plan)));
   }
 
   /** A checklist, in the model's own order. */
@@ -124,8 +124,8 @@ public final class PlanTools {
     }
 
     @Override
-    public String name() {
-      return "update_plan";
+    public ToolName name() {
+      return new ToolName("update_plan");
     }
 
     @Override
@@ -137,15 +137,14 @@ public final class PlanTools {
     }
 
     @Override
-    public Awaited<ToolResult> execute(ToolCallRequest<UpdatePlan> call) {
-      UpdatePlan input = call.input();
+    public Awaited<ToolResult> call(ToolCallRequest<UpdatePlan> request) {
       try {
-        Plan plan = toPlan(input);
-        store.save(call.agentId(), plan);
-        return Awaited.ready(ToolResult.ok(confirm(plan)));
+        Plan plan = toPlan(request.input());
+        store.save(request.agentId(), plan);
+        return Awaited.ready(ToolResult.ok(new Block.Text(confirm(plan))));
       } catch (IllegalArgumentException | NullPointerException invalid) {
         // A failed call, not a failed turn: the model can read this and send a better list.
-        return Awaited.ready(ToolResult.error(invalid.getMessage()));
+        return Awaited.ready(new ToolResult.Failure(invalid.getMessage()));
       }
     }
 

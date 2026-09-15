@@ -17,53 +17,28 @@ package org.jwcarman.nessy.memory.notebook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AmbientMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ContextMessage;
-import org.jwcarman.nessy.api.message.HistoryMessage;
-import org.jwcarman.nessy.api.message.UserMessage;
-import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
-import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("The notebook a model works with")
 class NotebookToolsTest {
 
-  private static final AgentId AGENT = AgentId.of("cli");
-  private static final AgentType TYPE = AgentType.of("chat");
+  private static final AgentId AGENT = Calls.agent();
 
   private Notebook notebook;
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(TestDatabase.fresh(), TYPE);
-  }
-
-  /** What the engine hands a running tool. No mocking library, and none needed. */
-  private static <I> ToolCallRequest<I> callBy(AgentId agentId, I input) {
-    return new ToolCallRequest<>(
-        TYPE,
-        agentId,
-        TurnId.of("turn-1"),
-        CallId.of("c1"),
-        "a_tool",
-        input,
-        ReplyToken.of("unused"));
+    notebook = new JdbcNotebook(Calls.freshDatabase(), Calls.TYPE);
   }
 
   /**
@@ -74,9 +49,15 @@ class NotebookToolsTest {
    * thing.
    */
   private static <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.execute(callBy(AGENT, input));
+    Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
-    return ((Awaited.Ready<ToolResult>) answer).result();
+    return ((Awaited.Ready<ToolResult>) answer).value();
+  }
+
+  /** What a tool actually said, which is now blocks rather than a string. */
+  private static String said(ToolResult result) {
+    assertThat(result).isInstanceOf(ToolResult.Success.class);
+    return ((Block.Text) ((ToolResult.Success) result).blocks().getFirst()).text();
   }
 
   @Nested
@@ -90,7 +71,7 @@ class NotebookToolsTest {
               new NotebookTools.RememberNote("Prefers terse answers", "Short answers."));
 
       String id = notebook.headings(AGENT).getFirst().id();
-      assertThat(result.toString()).contains(id);
+      assertThat(said(result)).contains(id);
       assertThat(notebook.find(AGENT, id).orElseThrow().body()).isEqualTo("Short answers.");
     }
 
@@ -172,7 +153,7 @@ class NotebookToolsTest {
       ToolResult result =
           run(NotebookTools.recall(notebook), new NotebookTools.RecallNote(plans.id()));
 
-      assertThat(result).isEqualTo(ToolResult.ok("Ship on Friday."));
+      assertThat(said(result)).isEqualTo("Ship on Friday.");
     }
 
     @Test
@@ -213,92 +194,67 @@ class NotebookToolsTest {
   @DisplayName("the index")
   class Index {
 
-    /** A memory that is a list, so the stage can be seen doing its work. */
-    private static final class Listing implements Memory {
-      private final List<HistoryMessage> told = new java.util.ArrayList<>();
-
-      @Override
-      public Context recall(AgentId agentId) {
-        return Context.of(List.copyOf(told));
-      }
-
-      @Override
-      public void remember(AgentId agentId, HistoryMessage message) {
-        told.add(message);
-      }
-
-      @Override
-      public void forget(AgentId agentId) {
-        // Nothing kept, so nothing to drop -- this memory exists to be recalled from.
-      }
+    /** What the harness would ask on the way into a turn. */
+    private Optional<Ambient> index() {
+      return NotebookTools.index(notebook).forAgent(AGENT);
     }
 
-    private Memory withIndex(Notebook notebook, Listing bootstrap) {
-      return MemoryPipeline.of(bootstrap, p -> p.stage(NotebookTools.index(notebook)));
+    private String shown() {
+      Ambient ambient = index().orElseThrow();
+      assertThat(ambient.kind()).isEqualTo("notebook");
+      return ((Block.Text) ambient.content().getFirst()).text();
     }
 
+    /**
+     * A heading over no notes tells a model it has a notebook, which is a claim. Saying nothing is
+     * not -- and an empty section costs every turn of every agent that never writes one.
+     */
     @Test
     @DisplayName("an agent with no notes contributes nothing at all")
-    void an_empty_notebook_adds_no_message() {
-      Listing bootstrap = new Listing();
-      Memory memory = withIndex(notebook, bootstrap);
-      memory.remember(AGENT, UserMessage.of("hello"));
-
-      assertThat(memory.recall(AGENT).messages()).containsExactly(UserMessage.of("hello"));
+    void an_empty_notebook_offers_no_ambient_at_all() {
+      assertThat(index()).isEmpty();
     }
 
     @Test
     void names_and_hooks_reach_the_model() {
       Notebook.Entry note = notebook.write(AGENT, "Prefers terse answers", "body");
-      Memory memory = withIndex(notebook, new Listing());
 
-      String shown = ambientOf(memory.recall(AGENT));
-
-      assertThat(shown).contains(note.id()).contains("Prefers terse answers");
+      assertThat(shown()).contains(note.id()).contains("Prefers terse answers");
     }
 
     @Test
     @DisplayName("bodies do not: the model asks for those, which is the whole design")
     void bodies_stay_out_of_the_context() {
       notebook.write(AGENT, "Prefers terse", "THE SECRET BODY");
-      Memory memory = withIndex(notebook, new Listing());
 
-      assertThat(ambientOf(memory.recall(AGENT))).doesNotContain("THE SECRET BODY");
+      assertThat(shown()).doesNotContain("THE SECRET BODY");
     }
 
     /**
-     * Background, not a turn. It cannot be remembered — {@code Memory.remember} takes a {@link
-     * HistoryMessage} and this is not one — so it can never silt up the transcript.
+     * <b>Ambient, so it can never silt up the transcript.</b> An index written into the story would
+     * be re-sent exactly as it was written, so a note deleted on Tuesday would still be listed on
+     * Friday. There is no door through which this can reach history: an {@link
+     * org.jwcarman.nessy.api.AmbientSource} is asked on the way into a call and its answer is never
+     * recorded.
      */
     @Test
-    void the_index_is_ambient_rather_than_something_anyone_said() {
-      notebook.write(AGENT, "hook", "body");
-      Listing bootstrap = new Listing();
-      Memory memory = withIndex(notebook, bootstrap);
-
-      memory.recall(AGENT);
-      memory.recall(AGENT);
-
-      assertThat(memory.recall(AGENT).messages()).hasSize(1);
-      assertThat(memory.recall(AGENT).messages().getFirst()).isInstanceOf(AmbientMessage.class);
-      assertThat(bootstrap.recall(AGENT).messages()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("it is rebuilt every recall, so a note written now is visible now")
+    @DisplayName("it is asked afresh, so a note written now is visible now and a gone one is gone")
     void the_index_reflects_the_notebook_as_it_stands() {
-      Memory memory = withIndex(notebook, new Listing());
-      assertThat(memory.recall(AGENT).messages()).isEmpty();
+      assertThat(index()).isEmpty();
 
-      notebook.write(AGENT, "Just written", "body");
+      Notebook.Entry note = notebook.write(AGENT, "Just written", "body");
+      assertThat(shown()).contains("Just written");
 
-      assertThat(ambientOf(memory.recall(AGENT))).contains("Just written");
+      notebook.forget(AGENT, note.id());
+      assertThat(index()).as("and stops saying it the moment it stops being true").isEmpty();
     }
 
-    private static String ambientOf(Context context) {
-      ContextMessage last = context.messages().getLast();
-      assertThat(last).isInstanceOf(AmbientMessage.class);
-      return ((TextBlock) ((AmbientMessage) last).content().getFirst()).text();
+    /** One agent's notes are not another's, which is the whole reason a tool is told whose. */
+    @Test
+    void another_agents_notes_are_not_in_this_agents_index() {
+      notebook.write(Calls.agent(), "Somebody else's note", "body");
+
+      assertThat(index()).isEmpty();
     }
   }
 }

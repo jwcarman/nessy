@@ -73,7 +73,7 @@ public final class JdbcNotebook implements Notebook {
   public JdbcNotebook(DataSource dataSource, AgentType agentType) {
     this.jdbc =
         JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
-    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").name();
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
   }
 
   @Override

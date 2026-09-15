@@ -17,7 +17,6 @@ package org.jwcarman.nessy.memory.plan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,53 +24,36 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.CallId;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.memory.Memory;
-import org.jwcarman.nessy.api.message.AmbientMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ContextMessage;
-import org.jwcarman.nessy.api.message.HistoryMessage;
-import org.jwcarman.nessy.api.message.UserMessage;
-import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.memory.pipeline.MemoryPipeline;
-import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("The plan a model works with")
 class PlanToolsTest {
 
-  private static final AgentId AGENT = AgentId.of("cli");
-  private static final AgentType TYPE = AgentType.of("chat");
+  private static final AgentId AGENT = Calls.agent();
 
   private PlanStore plans;
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlanStore(TestDatabase.fresh(), TYPE);
+    plans = new JdbcPlanStore(Calls.freshDatabase(), Calls.TYPE);
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */
-  private static <I> ToolCallRequest<I> callBy(AgentId agentId, I input) {
-    return new ToolCallRequest<>(
-        TYPE,
-        agentId,
-        TurnId.of("turn-1"),
-        CallId.of("c1"),
-        "a_tool",
-        input,
-        ReplyToken.of("unused"));
+  private static <I> ToolResult run(Tool<I> tool, I input) {
+    Awaited<ToolResult> answer = tool.call(Calls.by(AGENT, input));
+    assertThat(answer).isInstanceOf(Awaited.Ready.class);
+    return ((Awaited.Ready<ToolResult>) answer).value();
   }
 
-  private static <I> ToolResult run(Tool<I> tool, I input) {
-    Awaited<ToolResult> answer = tool.execute(callBy(AGENT, input));
-    assertThat(answer).isInstanceOf(Awaited.Ready.class);
-    return ((Awaited.Ready<ToolResult>) answer).result();
+  /** What a tool actually said, which is now blocks rather than a string. */
+  private static String said(ToolResult result) {
+    assertThat(result).isInstanceOf(ToolResult.Success.class);
+    return ((Block.Text) ((ToolResult.Success) result).blocks().getFirst()).text();
   }
 
   private static PlanTools.UpdatePlan sending(PlanTools.PlannedTask... tasks) {
@@ -159,7 +141,7 @@ class PlanToolsTest {
               PlanTools.updatePlan(plans),
               sending(task("Read", Plan.Status.DONE), task("Write", Plan.Status.IN_PROGRESS)));
 
-      assertThat(result).isEqualTo(ToolResult.ok("Plan updated: 2 tasks (1 in progress, 1 done)."));
+      assertThat(said(result)).isEqualTo("Plan updated: 2 tasks (1 in progress, 1 done).");
     }
 
     /**
@@ -187,150 +169,99 @@ class PlanToolsTest {
       Tool<PlanTools.UpdatePlan> tool = PlanTools.updatePlan(plans);
 
       assertThat(tool.inputType()).isEqualTo(PlanTools.UpdatePlan.class);
-      assertThat(tool.name()).isEqualTo("update_plan");
+      assertThat(tool.name()).isEqualTo(new ToolName("update_plan"));
       assertThat(tool.description()).contains("COMPLETE list");
     }
   }
 
   @Nested
-  @DisplayName("the plan stage")
-  class Carrying {
+  @DisplayName("the plan as ambient background")
+  class AsAmbient {
 
-    /** A memory that is a list, so the stage can be seen doing its work. */
-    private static final class Listing implements Memory {
-      private final List<HistoryMessage> told = new ArrayList<>();
-
-      @Override
-      public Context recall(AgentId agentId) {
-        return Context.of(List.copyOf(told));
-      }
-
-      @Override
-      public void remember(AgentId agentId, HistoryMessage message) {
-        told.add(message);
-      }
-
-      @Override
-      public void forget(AgentId agentId) {
-        // Nothing kept, so nothing to drop -- this memory exists to be recalled from.
-      }
+    /** What the harness would ask on the way into a turn. */
+    private Optional<Ambient> ambient() {
+      return PlanTools.plan(plans).forAgent(AGENT);
     }
 
-    private Memory withPlan(Listing bootstrap) {
-      return MemoryPipeline.of(bootstrap, p -> p.stage(PlanTools.plan(plans)));
+    private String shown() {
+      return ((Block.Text) ambient().orElseThrow().content().getFirst()).text();
     }
 
+    private void planned(String... titles) {
+      List<PlanTools.PlannedTask> tasks =
+          java.util.Arrays.stream(titles)
+              .map(title -> new PlanTools.PlannedTask(title, Plan.Status.PENDING))
+              .toList();
+      run(PlanTools.updatePlan(plans), new PlanTools.UpdatePlan(tasks));
+    }
+
+    /** A heading over no tasks tells a model it has a plan, which is a claim. */
     @Test
     @DisplayName("an agent with no plan contributes nothing at all")
-    void no_plan_adds_no_message() {
-      Memory memory = withPlan(new Listing());
-      memory.remember(AGENT, UserMessage.of("hello"));
-
-      assertThat(memory.recall(AGENT).messages()).containsExactly(UserMessage.of("hello"));
+    void no_plan_offers_no_ambient_at_all() {
+      assertThat(ambient()).isEmpty();
     }
 
     @Test
     @DisplayName("the WHOLE plan reaches the model, not an index of it")
     void every_task_is_shown() {
-      plans.save(
-          AGENT,
-          new Plan(
-              List.of(
-                  new Plan.Task("Read the spec", Plan.Status.DONE),
-                  new Plan.Task("Write the code", Plan.Status.IN_PROGRESS),
-                  new Plan.Task("Ship it", Plan.Status.PENDING))));
+      planned("Read the spec", "Write the code", "Ship it");
 
-      String shown = ambientOf(withPlan(new Listing()).recall(AGENT));
-
-      assertThat(shown).contains("Read the spec").contains("Write the code").contains("Ship it");
+      assertThat(shown()).contains("Read the spec").contains("Write the code").contains("Ship it");
     }
 
     @Test
     @DisplayName("each task is marked with where it stands")
     void status_is_visible_per_task() {
-      plans.save(
-          AGENT,
-          new Plan(
+      run(
+          PlanTools.updatePlan(plans),
+          new PlanTools.UpdatePlan(
               List.of(
-                  new Plan.Task("Done one", Plan.Status.DONE),
-                  new Plan.Task("Doing one", Plan.Status.IN_PROGRESS),
-                  new Plan.Task("Later one", Plan.Status.PENDING))));
+                  new PlanTools.PlannedTask("Done one", Plan.Status.DONE),
+                  new PlanTools.PlannedTask("Doing one", Plan.Status.IN_PROGRESS),
+                  new PlanTools.PlannedTask("Later one", Plan.Status.PENDING))));
 
-      String shown = ambientOf(withPlan(new Listing()).recall(AGENT));
-
-      assertThat(shown)
+      assertThat(shown())
           .contains("- [x] Done one")
           .contains("- [>] Doing one")
           .contains("- [ ] Later one");
     }
 
-    /** Background, not a turn: it can never silt up the transcript. */
-    @Test
-    void the_plan_is_ambient_rather_than_something_anyone_said() {
-      plans.save(AGENT, new Plan(List.of(new Plan.Task("Ship it", Plan.Status.PENDING))));
-      Listing bootstrap = new Listing();
-      Memory memory = withPlan(bootstrap);
-
-      memory.recall(AGENT);
-      memory.recall(AGENT);
-
-      assertThat(memory.recall(AGENT).messages()).hasSize(1);
-      assertThat(memory.recall(AGENT).messages().getFirst()).isInstanceOf(AmbientMessage.class);
-      assertThat(bootstrap.recall(AGENT).messages()).isEmpty();
-    }
-
     @Test
     @DisplayName("it says which background this is, so an adapter can label it")
-    void the_message_is_kinded_plan() {
-      plans.save(AGENT, new Plan(List.of(new Plan.Task("Ship it", Plan.Status.PENDING))));
+    void the_ambient_is_kinded_plan() {
+      planned("something");
 
-      ContextMessage last = withPlan(new Listing()).recall(AGENT).messages().getLast();
-
-      assertThat(((AmbientMessage) last).kind()).isEqualTo("plan");
-    }
-
-    @Test
-    @DisplayName("it is rebuilt every recall, so a task added now is visible now")
-    void the_stage_reflects_the_plan_as_it_stands() {
-      Memory memory = withPlan(new Listing());
-      assertThat(memory.recall(AGENT).messages()).isEmpty();
-
-      plans.save(AGENT, new Plan(List.of(new Plan.Task("Just planned", Plan.Status.PENDING))));
-
-      assertThat(ambientOf(memory.recall(AGENT))).contains("Just planned");
-    }
-
-    private static String ambientOf(Context context) {
-      ContextMessage last = context.messages().getLast();
-      assertThat(last).isInstanceOf(AmbientMessage.class);
-      return ((TextBlock) ((AmbientMessage) last).content().getFirst()).text();
+      assertThat(ambient().orElseThrow().kind()).isEqualTo("plan");
     }
 
     /**
-     * {@link JdbcPlanStore} never hands back a present-but-empty plan -- an empty save clears the
-     * row instead. The stage's own emptiness check still has to hold for any {@link PlanStore}, so
-     * this one is exercised against a store that hands back exactly that shape.
+     * <b>Ambient, which is the whole reason a plan works.</b> A plan written into the story would
+     * be re-sent as it was when written, so a task marked DONE on turn four would read as PENDING
+     * forever and the model would be looking at work it has already finished. Asked afresh on every
+     * call, it is the plan as it stands or nothing at all.
      */
-    private static final class PresentButEmpty implements PlanStore {
-      @Override
-      public Optional<Plan> find(AgentId agentId) {
-        return Optional.of(Plan.empty());
-      }
+    @Test
+    @DisplayName("it is asked afresh, so a task added now is visible now")
+    void the_ambient_reflects_the_plan_as_it_stands() {
+      assertThat(ambient()).isEmpty();
 
-      @Override
-      public void save(AgentId agentId, Plan plan) {
-        throw new UnsupportedOperationException("not needed for this test");
-      }
+      planned("Just planned");
+      assertThat(shown()).contains("Just planned");
+
+      run(PlanTools.updatePlan(plans), new PlanTools.UpdatePlan(List.of()));
+      assertThat(ambient()).as("and an emptied plan stops being mentioned").isEmpty();
     }
 
+    /** One agent's plan is not another's, which is the whole reason a tool is told whose. */
     @Test
-    @DisplayName("a present but empty plan contributes nothing, same as no plan at all")
-    void a_present_empty_plan_adds_no_message() {
-      Memory memory =
-          MemoryPipeline.of(new Listing(), p -> p.stage(PlanTools.plan(new PresentButEmpty())));
-      memory.remember(AGENT, UserMessage.of("hello"));
+    void another_agents_plan_is_not_this_agents_ambient() {
+      run(PlanTools.updatePlan(plans), new PlanTools.UpdatePlan(List.of()));
+      plans.save(
+          Calls.agent(),
+          new Plan(List.of(new Plan.Task("Somebody else's task", Plan.Status.PENDING))));
 
-      assertThat(memory.recall(AGENT).messages()).containsExactly(UserMessage.of("hello"));
+      assertThat(ambient()).isEmpty();
     }
   }
 }

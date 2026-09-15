@@ -56,7 +56,7 @@ public final class JdbcPlanStore implements PlanStore {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").name();
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
   }
 
   @Override

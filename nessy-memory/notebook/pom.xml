@@ -44,22 +44,11 @@
       <version>${project.version}</version>
     </dependency>
     <!-- The index is a pipeline stage; a notebook without one is a store nothing reads. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-pipeline</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <!-- Only SubstrateNotebook needs this. The vocabulary above it needs nothing. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-testing</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.h2database</groupId>

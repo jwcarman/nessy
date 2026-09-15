@@ -24,20 +24,18 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("A notebook an agent keeps")
 class JdbcNotebookTest {
 
-  private static final AgentId ONE = AgentId.of("agent-one");
-  private static final AgentId TWO = AgentId.of("agent-two");
+  private static final AgentId ONE = Calls.agent();
+  private static final AgentId TWO = Calls.agent();
 
   private Notebook notebook;
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(TestDatabase.fresh(), AgentType.of("chat"));
+    notebook = new JdbcNotebook(Calls.freshDatabase(), Calls.TYPE);
   }
 
   @Test

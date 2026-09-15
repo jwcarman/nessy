@@ -43,10 +43,17 @@
   </properties>
 
   <modules>
-    <module>pipeline</module>
     <module>notebook</module>
     <module>plan</module>
+
+    <!-- Held out until the context-assembly seam is settled. Both reshape what is SENT rather
+         than what is stored, which the old Memory SPI expressed and the new engine does not: the
+         engine owns history now, and the equivalent seam is InferenceContextAssembler, which is
+         not yet something an application can supply.
+
+    <module>pipeline</module>
     <module>summarizing</module>
+    -->
   </modules>
 
 </project>

@@ -24,13 +24,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.testing.TestDatabase;
 
 @DisplayName("The plan an agent keeps")
 class JdbcPlanStoreTest {
 
-  private static final AgentId ONE = AgentId.of("agent-one");
-  private static final AgentId TWO = AgentId.of("agent-two");
+  private static final AgentId ONE = Calls.agent();
+  private static final AgentId TWO = Calls.agent();
 
   private static final Plan.Task WRITE = new Plan.Task("Write the store", Plan.Status.IN_PROGRESS);
   private static final Plan.Task TEST = new Plan.Task("Test it", Plan.Status.PENDING);
@@ -39,7 +38,7 @@ class JdbcPlanStoreTest {
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlanStore(TestDatabase.fresh(), AgentType.of("chat"));
+    plans = new JdbcPlanStore(Calls.freshDatabase(), Calls.TYPE);
   }
 
   @Test
@@ -99,9 +98,9 @@ class JdbcPlanStoreTest {
   @Test
   @DisplayName("two agent types keep separate plans even under the same id")
   void the_agent_type_scopes_the_store() {
-    javax.sql.DataSource shared = TestDatabase.fresh();
-    PlanStore chat = new JdbcPlanStore(shared, AgentType.of("chat"));
-    PlanStore watchman = new JdbcPlanStore(shared, AgentType.of("watchman"));
+    javax.sql.DataSource shared = Calls.freshDatabase();
+    PlanStore chat = new JdbcPlanStore(shared, new AgentType("chat"));
+    PlanStore watchman = new JdbcPlanStore(shared, new AgentType("watchman"));
     chat.save(ONE, new Plan(List.of(WRITE)));
 
     assertThat(watchman.find(ONE)).isEmpty();

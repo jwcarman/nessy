@@ -18,11 +18,11 @@ package org.jwcarman.nessy.memory.notebook;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Awaited;
 import java.util.Optional;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -219,8 +219,8 @@ public final class NotebookTools {
    * sent a blank name should read what went wrong and try again, which is the difference between a
    * failed call and a failed turn.
    */
-  private record NotebookTool<I>(Class<I> inputType, ToolName name, String description, Verb<I> verb)
-      implements Tool<I> {
+  private record NotebookTool<I>(
+      Class<I> inputType, ToolName name, String description, Verb<I> verb) implements Tool<I> {
 
     /**
      * Bad arguments come back as a failure the model can read rather than as a throw.
