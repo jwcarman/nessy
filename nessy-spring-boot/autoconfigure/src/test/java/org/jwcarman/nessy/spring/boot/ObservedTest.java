@@ -8,7 +8,6 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -71,7 +70,7 @@ class ObservedTest {
                     null,
                     0))),
         List.of(),
-        new InferenceOptions("a-model", 1024, Set.of()));
+        new InferenceOptions("a-model", 1024));
   }
 
   private String tagOf(String meter, String tag) {

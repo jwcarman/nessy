@@ -18,9 +18,6 @@ package org.jwcarman.nessy.spring.boot;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.util.EnumSet;
-import java.util.Set;
-import org.jwcarman.nessy.api.Capability;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.util.FileCopyUtils;
@@ -44,8 +41,6 @@ import org.springframework.util.FileCopyUtils;
  *     application that built the provider knows which one it is. Each adapter publishes the right
  *     value as its own {@code PROVIDER_NAME} constant.
  * @param maxTokens the longest answer to allow
- * @param capabilities what the application would LIKE its provider to use; an adapter that cannot
- *     oblige simply does not
  * @param replyTokenEncryptionKeys the AES keys a {@code ReplyToken}'s coordinates are sealed with,
  *     newest first — base64, and 16, 24 or 32 bytes each (use 32). Named for what they ARE: "reply
  *     keys" read as an address book rather than as secrets, and nobody could tell from the property
@@ -61,7 +56,6 @@ public record NessyProperties(
     String model,
     String provider,
     Integer maxTokens,
-    Set<Capability> capabilities,
     java.util.List<String> replyTokenEncryptionKeys,
     Boolean initializeSchema) {
 
@@ -69,10 +63,6 @@ public record NessyProperties(
     type = type == null || type.isBlank() ? "agent" : type;
     provider = provider == null || provider.isBlank() ? "unknown" : provider;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
-    capabilities =
-        capabilities == null || capabilities.isEmpty()
-            ? Set.of()
-            : Set.copyOf(EnumSet.copyOf(capabilities));
     replyTokenEncryptionKeys =
         replyTokenEncryptionKeys == null
             ? java.util.List.of()

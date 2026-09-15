@@ -47,11 +47,9 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -169,7 +167,7 @@ class AnthropicInferenceProviderTest {
                       null,
                       0))),
           List.of(),
-          new InferenceOptions("claude-sonnet", 1024, Set.of()));
+          new InferenceOptions("claude-sonnet", 1024));
 
   private static InferenceResult inferAnswering(Message message) {
     return new AnthropicProviderConfig()
@@ -308,9 +306,9 @@ class AnthropicInferenceProviderTest {
       assertThat(captured[0].model().asString()).isEqualTo("claude-sonnet");
     }
 
-    /** The budget is a deployment decision; whether to spend it arrives with the call. */
+    /** Whether to think, and on what budget, is the provider's setting: a deployment decision. */
     @Test
-    void thinking_is_asked_for_only_when_the_call_requests_it() {
+    void thinking_is_asked_for_only_when_the_provider_is_configured_for_it() {
       var captured = new MessageCreateParams[1];
       Function<MessageCreateParams, Message> capture =
           params -> {
@@ -318,24 +316,15 @@ class AnthropicInferenceProviderTest {
             return reply().addContent(text("ok")).build();
           };
 
+      new AnthropicProviderConfig().client(fakeClient(capture)).build().infer(REQUEST);
+      assertThat(captured[0].thinking()).isEmpty();
+
       new AnthropicProviderConfig()
           .client(fakeClient(capture))
+          .thinking(true)
           .thinkingBudget(512)
           .build()
           .infer(REQUEST);
-      assertThat(captured[0].thinking()).isEmpty();
-
-      InferenceRequest wanting =
-          new InferenceRequest(
-              REQUEST.systemPrompt(),
-              REQUEST.context(),
-              REQUEST.tools(),
-              new InferenceOptions("claude-sonnet", 1024, Set.of(Capability.THINKING)));
-      new AnthropicProviderConfig()
-          .client(fakeClient(capture))
-          .thinkingBudget(512)
-          .build()
-          .infer(wanting);
       assertThat(captured[0].thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
     }
   }
@@ -490,13 +479,6 @@ class AnthropicInferenceProviderTest {
       assertThat(provider).isNotNull();
     }
   }
-
-  // REMOVED IN THE CUTOVER (2026-08-30): a nested class pinning the capability set this vendor
-  // advertised through Model#capabilities(). The new SPI has no such method — a request STATES
-  // the capabilities it would like via ModelRequest#requested() and an adapter that cannot
-  // oblige simply does not — so there is no advertised set left to assert on. What the adapter
-  // does with a requested capability is covered by AnthropicRequestsTest's caching and thinking
-  // cases, which is the behaviour this class was standing in for.
 
   @Nested
   class Name {

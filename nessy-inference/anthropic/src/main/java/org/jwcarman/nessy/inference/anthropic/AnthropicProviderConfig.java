@@ -38,7 +38,9 @@ public final class AnthropicProviderConfig {
 
   private String apiKey;
   private String baseUrl;
+  private boolean thinking;
   private int thinkingBudget = DEFAULT_THINKING_BUDGET;
+  private PromptCaching promptCaching = PromptCaching.OFF;
   private AnthropicClient client;
   private boolean useEnv;
 
@@ -87,12 +89,28 @@ public final class AnthropicProviderConfig {
   }
 
   /**
-   * The extended-thinking token budget used when a request asks for {@link
-   * org.jwcarman.nessy.spi.model.Capability#THINKING}.
+   * Extended thinking on every call. Off by default: reasoning is spent out of each call's {@code
+   * maxTokens}, which must then exceed {@link #thinkingBudget(int) the budget}.
    */
+  public AnthropicProviderConfig thinking(boolean thinking) {
+    this.thinking = thinking;
+    return this;
+  }
+
+  /** The extended-thinking token budget, when {@link #thinking(boolean) thinking} is on. */
   public AnthropicProviderConfig thinkingBudget(int thinkingBudget) {
     this.thinkingBudget = thinkingBudget;
     return this;
+  }
+
+  /** Prompt caching on every call. Off by default; see {@link PromptCaching}. */
+  public AnthropicProviderConfig promptCaching(PromptCaching promptCaching) {
+    this.promptCaching = Objects.requireNonNull(promptCaching, "promptCaching must not be null");
+    return this;
+  }
+
+  private AnthropicRequests.Features features() {
+    return new AnthropicRequests.Features(thinking, thinkingBudget, promptCaching);
   }
 
   /**
@@ -120,10 +138,10 @@ public final class AnthropicProviderConfig {
    */
   AnthropicInferenceProvider build() {
     if (client != null) {
-      return new AnthropicInferenceProvider(client, thinkingBudget, false, mapper);
+      return new AnthropicInferenceProvider(client, features(), false, mapper);
     }
     if (useEnv) {
-      return new AnthropicInferenceProvider(buildFromEnv(), thinkingBudget, true, mapper);
+      return new AnthropicInferenceProvider(buildFromEnv(), features(), true, mapper);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -134,7 +152,7 @@ public final class AnthropicProviderConfig {
     if (baseUrl != null) {
       clientBuilder.baseUrl(baseUrl);
     }
-    return new AnthropicInferenceProvider(clientBuilder.build(), thinkingBudget, true, mapper);
+    return new AnthropicInferenceProvider(clientBuilder.build(), features(), true, mapper);
   }
 
   /**

@@ -14,9 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.ThinkingConfig;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -55,7 +53,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   private static final String NAME = "Anthropic";
 
   private final AnthropicClient client;
-  private final int thinkingBudget;
+  private final AnthropicRequests.Features features;
   private final boolean ownsClient;
 
   /**
@@ -66,9 +64,12 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   private final JsonMapper mapper;
 
   AnthropicInferenceProvider(
-      AnthropicClient client, int thinkingBudget, boolean ownsClient, JsonMapper mapper) {
+      AnthropicClient client,
+      AnthropicRequests.Features features,
+      boolean ownsClient,
+      JsonMapper mapper) {
     this.client = client;
-    this.thinkingBudget = thinkingBudget;
+    this.features = Objects.requireNonNull(features, "features must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
@@ -98,18 +99,11 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
     try {
       Message message =
-          client
-              .messages()
-              .create(AnthropicRequests.toParams(request, thinkingFor(request), mapper));
+          client.messages().create(AnthropicRequests.toParams(request, features, mapper));
       return read(message);
     } catch (AnthropicException e) {
       return new InferenceResult.Fault(classify(e));
     }
-  }
-
-  /** Asked for per call; how much to spend on it is a deployment decision, so it lives here. */
-  private ThinkingConfig thinkingFor(InferenceRequest request) {
-    return new ThinkingConfig(request.options().wants(Capability.THINKING), thinkingBudget);
   }
 
   /**

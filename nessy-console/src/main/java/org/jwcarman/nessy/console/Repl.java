@@ -3,7 +3,6 @@ package org.jwcarman.nessy.console;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.Block;
@@ -77,8 +76,7 @@ public final class Repl {
               engine ->
                   engine
                       .dataSource(dataSource.get())
-                      .inference(
-                          provider, new InferenceOptions(model.get(), config.maxTokens(), Set.of()))
+                      .inference(provider, new InferenceOptions(model.get(), config.maxTokens()))
                       .narrator(narration)
                       // Ephemeral, and correct here: a token only has to outlive the process that
                       // minted it, and this process IS the conversation.

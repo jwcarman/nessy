@@ -14,11 +14,11 @@ import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
-import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Exchange;
@@ -57,22 +57,33 @@ public final class AnthropicRequests {
 
   private AnthropicRequests() {}
 
-  /** Whether to think, and how much of the budget to allow for it. */
-  public record ThinkingConfig(boolean enabled, int budgetTokens) {}
+  /**
+   * What this provider does on every call, decided where the provider was built: whether it thinks
+   * and on what budget, and whether it marks the prefix for the prompt cache.
+   */
+  public record Features(boolean thinking, int thinkingBudget, PromptCaching caching) {
+    public Features {
+      Objects.requireNonNull(caching, "caching must not be null");
+    }
+
+    public static Features none() {
+      return new Features(false, 0, PromptCaching.OFF);
+    }
+  }
 
   public static MessageCreateParams toParams(
-      InferenceRequest request, ThinkingConfig thinking, JsonMapper mapper) {
+      InferenceRequest request, Features features, JsonMapper mapper) {
     InferenceOptions options = request.options();
 
-    if (thinking.enabled() && options.maxTokens() <= thinking.budgetTokens()) {
+    if (features.thinking() && options.maxTokens() <= features.thinkingBudget()) {
       // The budget is spent out of maxTokens, so a ceiling at or below it leaves nothing to
       // answer with. Refused here rather than at the wire, where it is a 400 with no hint.
       throw new IllegalArgumentException(
           "maxTokens (%d) must be greater than the thinking budget (%d)"
-              .formatted(options.maxTokens(), thinking.budgetTokens()));
+              .formatted(options.maxTokens(), features.thinkingBudget()));
     }
 
-    Optional<CacheControlEphemeral> marker = cacheMarker(options);
+    Optional<CacheControlEphemeral> marker = cacheMarker(features.caching());
     MessageCreateParams.Builder builder =
         MessageCreateParams.builder().model(options.modelName()).maxTokens(options.maxTokens());
 
@@ -83,28 +94,22 @@ public final class AnthropicRequests {
     addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
     addTools(builder, request.tools(), marker, mapper);
 
-    if (thinking.enabled()) {
+    if (features.thinking()) {
       builder.thinking(
-          ThinkingConfigEnabled.builder().budgetTokens(thinking.budgetTokens()).build());
+          ThinkingConfigEnabled.builder().budgetTokens(features.thinkingBudget()).build());
     }
     return builder.build();
   }
 
-  /**
-   * Whether this call asked for caching, and for how long.
-   *
-   * <p>Asked for rather than assumed: caching costs more to write than an ordinary token, so
-   * turning it on for a conversation that never repeats a prefix is a bill for nothing.
-   */
-  private static Optional<CacheControlEphemeral> cacheMarker(InferenceOptions options) {
-    if (options.wants(Capability.PROMPT_CACHING_1H)) {
-      return Optional.of(
-          CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
-    }
-    if (options.wants(Capability.PROMPT_CACHING)) {
-      return Optional.of(CacheControlEphemeral.builder().build());
-    }
-    return Optional.empty();
+  /** The cache marker this provider puts on the stable prefix, if it puts one at all. */
+  private static Optional<CacheControlEphemeral> cacheMarker(PromptCaching caching) {
+    return switch (caching) {
+      case OFF -> Optional.empty();
+      case FIVE_MINUTES -> Optional.of(CacheControlEphemeral.builder().build());
+      case ONE_HOUR ->
+          Optional.of(
+              CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
+    };
   }
 
   /**

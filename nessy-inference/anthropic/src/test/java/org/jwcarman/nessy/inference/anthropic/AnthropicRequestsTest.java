@@ -7,12 +7,10 @@ import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
-import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -25,7 +23,7 @@ import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.ThinkingConfig;
+import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -42,19 +40,27 @@ import tools.jackson.databind.json.JsonMapper;
 class AnthropicRequestsTest {
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
-  private static final ThinkingConfig NO_THINKING = new ThinkingConfig(false, 0);
+  private static final Features NONE = Features.none();
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
 
-  private static InferenceOptions options(Capability... requested) {
-    return new InferenceOptions("claude-sonnet", 1024, Set.of(requested));
+  private static InferenceOptions options() {
+    return new InferenceOptions("claude-sonnet", 1024);
   }
 
-  private static InferenceRequest request(List<Turn> turns, Capability... requested) {
-    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), List.of(), options(requested));
+  private static InferenceRequest request(List<Turn> turns) {
+    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), List.of(), options());
   }
 
-  private static MessageCreateParams params(List<Turn> turns, Capability... requested) {
-    return AnthropicRequests.toParams(request(turns, requested), NO_THINKING, MAPPER);
+  private static Features caching(PromptCaching caching) {
+    return new Features(false, 0, caching);
+  }
+
+  private static MessageCreateParams params(List<Turn> turns) {
+    return AnthropicRequests.toParams(request(turns), NONE, MAPPER);
+  }
+
+  private static MessageCreateParams params(List<Turn> turns, PromptCaching caching) {
+    return AnthropicRequests.toParams(request(turns), caching(caching), MAPPER);
   }
 
   private static Observation asked(long seq, String text) {
@@ -119,7 +125,7 @@ class AnthropicRequestsTest {
               options());
 
       var system =
-          AnthropicRequests.toParams(request, NO_THINKING, MAPPER)
+          AnthropicRequests.toParams(request, NONE, MAPPER)
               .system()
               .orElseThrow()
               .asTextBlockParams();
@@ -141,7 +147,7 @@ class AnthropicRequestsTest {
               options());
 
       assertThat(
-              AnthropicRequests.toParams(request, NO_THINKING, MAPPER)
+              AnthropicRequests.toParams(request, NONE, MAPPER)
                   .system()
                   .orElseThrow()
                   .asTextBlockParams())
@@ -158,7 +164,7 @@ class AnthropicRequestsTest {
               List.of(),
               options());
 
-      assertThat(blocksOf(AnthropicRequests.toParams(request, NO_THINKING, MAPPER)))
+      assertThat(blocksOf(AnthropicRequests.toParams(request, NONE, MAPPER)))
           .noneSatisfy(block -> assertThat(block.asText().text()).contains("it is Tuesday"));
     }
 
@@ -173,7 +179,7 @@ class AnthropicRequestsTest {
                   .cacheControl())
           .isEmpty();
       assertThat(
-              params(List.of(open(1, "hi")), Capability.PROMPT_CACHING)
+              params(List.of(open(1, "hi")), PromptCaching.FIVE_MINUTES)
                   .system()
                   .orElseThrow()
                   .asTextBlockParams()
@@ -185,7 +191,7 @@ class AnthropicRequestsTest {
     @Test
     void takes_the_long_retention_when_that_is_what_was_asked_for() {
       var marker =
-          params(List.of(open(1, "hi")), Capability.PROMPT_CACHING_1H)
+          params(List.of(open(1, "hi")), PromptCaching.ONE_HOUR)
               .system()
               .orElseThrow()
               .asTextBlockParams()
@@ -459,9 +465,7 @@ class AnthropicRequestsTest {
     void enabled_asks_for_a_budget_and_disabled_asks_for_nothing() {
       var thinking =
           AnthropicRequests.toParams(
-              request(List.of(open(1, "hi")), Capability.THINKING),
-              new ThinkingConfig(true, 512),
-              MAPPER);
+              request(List.of(open(1, "hi"))), new Features(true, 512, PromptCaching.OFF), MAPPER);
       assertThat(thinking.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
 
       assertThat(params(List.of(open(1, "hi"))).thinking()).isEmpty();
@@ -476,7 +480,9 @@ class AnthropicRequestsTest {
       assertThatThrownBy(
               () ->
                   AnthropicRequests.toParams(
-                      request(List.of(open(1, "hi"))), new ThinkingConfig(true, 1024), MAPPER))
+                      request(List.of(open(1, "hi"))),
+                      new Features(true, 1024, PromptCaching.OFF),
+                      MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("1024");
     }
@@ -492,11 +498,15 @@ class AnthropicRequestsTest {
           new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
     }
 
-    private static MessageCreateParams withTools(List<ToolOffer> tools, Capability... requested) {
+    private static MessageCreateParams withTools(List<ToolOffer> tools) {
+      return withTools(tools, PromptCaching.OFF);
+    }
+
+    private static MessageCreateParams withTools(List<ToolOffer> tools, PromptCaching caching) {
       return AnthropicRequests.toParams(
           new InferenceRequest(
-              SYSTEM, InferenceContext.of(List.of(open(1, "hi"))), tools, options(requested)),
-          NO_THINKING,
+              SYSTEM, InferenceContext.of(List.of(open(1, "hi"))), tools, options()),
+          caching(caching),
           MAPPER);
     }
 
@@ -518,7 +528,7 @@ class AnthropicRequestsTest {
     @Test
     void only_the_last_is_marked_for_caching_and_only_when_asked_for() {
       var cached =
-          withTools(List.of(offer("first"), offer("second")), Capability.PROMPT_CACHING)
+          withTools(List.of(offer("first"), offer("second")), PromptCaching.FIVE_MINUTES)
               .tools()
               .orElseThrow();
       assertThat(cached.get(0).asTool().cacheControl()).isEmpty();
@@ -558,7 +568,7 @@ class AnthropicRequestsTest {
 
     @Test
     void a_short_conversation_is_marked_only_at_its_end() {
-      var blocks = blocksOf(params(conversation(2), Capability.PROMPT_CACHING));
+      var blocks = blocksOf(params(conversation(2), PromptCaching.FIVE_MINUTES));
 
       assertThat(markedIn(blocks)).containsExactly(blocks.size() - 1);
     }
@@ -570,7 +580,7 @@ class AnthropicRequestsTest {
      */
     @Test
     void a_long_one_is_also_marked_a_lookback_window_behind_the_end() {
-      var blocks = blocksOf(params(conversation(15), Capability.PROMPT_CACHING));
+      var blocks = blocksOf(params(conversation(15), PromptCaching.FIVE_MINUTES));
 
       int last = blocks.size() - 1;
       assertThat(markedIn(blocks)).containsExactly(last - LOOKBACK, last);
@@ -588,7 +598,7 @@ class AnthropicRequestsTest {
                   List.of(new Block.Text("1412 metres"), thinking("let me recall", "sig-abc"))),
               0);
 
-      var blocks = blocksOf(params(List.of(turn), Capability.PROMPT_CACHING));
+      var blocks = blocksOf(params(List.of(turn), PromptCaching.FIVE_MINUTES));
 
       assertThat(markedIn(blocks))
           .allSatisfy(i -> assertThat(blocks.get(i).isThinking()).isFalse());

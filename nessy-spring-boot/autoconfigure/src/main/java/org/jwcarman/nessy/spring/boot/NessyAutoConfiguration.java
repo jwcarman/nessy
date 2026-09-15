@@ -128,9 +128,7 @@ public class NessyAutoConfiguration {
           engine
               .dataSource(dataSource)
               .inference(
-                  provider,
-                  new InferenceOptions(
-                      requireModel(properties), properties.maxTokens(), properties.capabilities()))
+                  provider, new InferenceOptions(requireModel(properties), properties.maxTokens()))
               .narrator(narrator)
               .observations(observations)
               .replyTokens(replyTokens);

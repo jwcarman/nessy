@@ -4,9 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
-import java.util.Set;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -46,8 +45,17 @@ class AnthropicLiveTest {
       new SystemPrompt("You are a terse assistant. Answer in one short sentence.");
 
   private static AnthropicInferenceProvider provider() {
+    return provider(config -> {});
+  }
+
+  /** A provider configured as a deployment would configure it: thinking, caching, or neither. */
+  private static AnthropicInferenceProvider provider(Consumer<AnthropicProviderConfig> customizer) {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY is not set");
-    return AnthropicInferenceProvider.fromEnv();
+    return AnthropicInferenceProvider.create(
+        config -> {
+          config.fromEnv();
+          customizer.accept(config);
+        });
   }
 
   private static Turn open(long id, String question) {
@@ -59,13 +67,9 @@ class AnthropicLiveTest {
         0);
   }
 
-  private static InferenceRequest asking(
-      List<Turn> turns, List<ToolOffer> tools, Capability... requested) {
+  private static InferenceRequest asking(List<Turn> turns, List<ToolOffer> tools) {
     return new InferenceRequest(
-        SYSTEM,
-        InferenceContext.of(turns),
-        tools,
-        new InferenceOptions(MODEL, 2048, Set.of(requested)));
+        SYSTEM, InferenceContext.of(turns), tools, new InferenceOptions(MODEL, 2048));
   }
 
   @Test
@@ -125,13 +129,12 @@ class AnthropicLiveTest {
    */
   @Test
   void reasoning_is_replayed_intact_on_the_next_turn() {
-    try (AnthropicInferenceProvider provider = provider()) {
+    try (AnthropicInferenceProvider provider = provider(config -> config.thinking(true))) {
       InferenceResult first =
           provider.infer(
               asking(
                   List.of(open(1, "Think about it, then say how many continents there are.")),
-                  List.of(),
-                  Capability.THINKING));
+                  List.of()));
 
       assertThat(first).isInstanceOf(InferenceResult.Answer.class);
       List<Block.AnswerContent> answered = ((InferenceResult.Answer) first).blocks();
@@ -152,9 +155,7 @@ class AnthropicLiveTest {
               0);
 
       InferenceResult second =
-          provider.infer(
-              asking(
-                  List.of(done, open(3, "And how many oceans?")), List.of(), Capability.THINKING));
+          provider.infer(asking(List.of(done, open(3, "And how many oceans?")), List.of()));
 
       assertThat(second)
           .as("a signature this code altered would come back as a 400 rather than an answer")
@@ -165,13 +166,10 @@ class AnthropicLiveTest {
   /** Prompt caching is money rather than correctness, so what matters is that it is accepted. */
   @Test
   void a_cached_request_is_accepted() {
-    try (AnthropicInferenceProvider provider = provider()) {
+    try (AnthropicInferenceProvider provider =
+        provider(config -> config.promptCaching(PromptCaching.FIVE_MINUTES))) {
       InferenceResult result =
-          provider.infer(
-              asking(
-                  List.of(open(1, "What is the capital of France?")),
-                  List.of(),
-                  Capability.PROMPT_CACHING));
+          provider.infer(asking(List.of(open(1, "What is the capital of France?")), List.of()));
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
     }

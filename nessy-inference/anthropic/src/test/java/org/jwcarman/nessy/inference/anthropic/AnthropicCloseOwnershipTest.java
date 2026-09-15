@@ -54,7 +54,8 @@ class AnthropicCloseOwnershipTest {
     // The apiKey path with the built client swapped in at the constructor — the same seam
     // AnthropicProviderConfig#build() reaches when it builds an AnthropicOkHttpClient itself.
     AnthropicInferenceProvider provider =
-        new AnthropicInferenceProvider(built, 1024, true, JsonMapper.builder().build());
+        new AnthropicInferenceProvider(
+            built, AnthropicRequests.Features.none(), true, JsonMapper.builder().build());
 
     provider.close();
 
@@ -67,7 +68,10 @@ class AnthropicCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     AnthropicInferenceProvider provider =
         new AnthropicInferenceProvider(
-            recordingClient(closes), 1024, true, JsonMapper.builder().build());
+            recordingClient(closes),
+            AnthropicRequests.Features.none(),
+            true,
+            JsonMapper.builder().build());
 
     provider.close();
     provider.close();
