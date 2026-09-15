@@ -133,15 +133,20 @@ class NotebookPatternTest {
                         .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(remember(agentId))
-                        // The other half. Asked afresh on every call, off the agent's row lock, so
-                        // it may
-                        // read whatever it keeps -- and so it can say something different next
-                        // time.
-                        .ambient(
-                            who ->
-                                Optional.ofNullable(notebook.get(who.value()))
-                                    .map(note -> Ambient.text("notebook", note)))
-                        .inference(in -> in.model("a-model"))
+                        .inference(
+                            in ->
+                                in.model("a-model")
+                                    // The other half. Asked afresh on every call, off the agent's
+                                    // row lock, so it may read whatever it keeps -- and so it can
+                                    // say something different next time.
+                                    .context(
+                                        ctx ->
+                                            ctx.ambient(
+                                                who ->
+                                                    Optional.ofNullable(notebook.get(who.value()))
+                                                        .map(
+                                                            note ->
+                                                                Ambient.text("notebook", note)))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
     harness.observe(agentId, "remember that the deploy is frozen");
@@ -197,8 +202,11 @@ class NotebookPatternTest {
                     config
                         .agentType(type)
                         .systemPrompt("You are a test assistant.")
-                        .ambient(Ambient.text("clock", "it is Tuesday"))
-                        .inference(in -> in.model("a-model"))
+                        .inference(
+                            in ->
+                                in.model("a-model")
+                                    .context(
+                                        ctx -> ctx.ambient(Ambient.text("clock", "it is Tuesday"))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
     harness.observe(agentId, "hello");
@@ -239,8 +247,12 @@ class NotebookPatternTest {
                             config
                                 .agentType(new AgentType("notebook-clash"))
                                 .systemPrompt("You are a test assistant.")
-                                .ambient(Ambient.text("notebook", "one"))
-                                .ambient(Ambient.text("notebook", "two"))))
+                                .inference(
+                                    in ->
+                                        in.context(
+                                            ctx ->
+                                                ctx.ambient(Ambient.text("notebook", "one"))
+                                                    .ambient(Ambient.text("notebook", "two"))))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("notebook");
   }

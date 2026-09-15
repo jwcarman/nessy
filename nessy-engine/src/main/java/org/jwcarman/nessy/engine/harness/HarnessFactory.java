@@ -16,9 +16,9 @@ import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.InferenceHandler;
 import org.jwcarman.nessy.engine.effect.ToolCallHandler;
+import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.inference.RecentTurnsContextAssembler;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.AgentStateStore;
@@ -134,8 +134,9 @@ public class HarnessFactory implements org.jwcarman.nessy.api.HarnessFactory {
     Tools tools = config.tools();
     // Built here because it needs the store, which a caller has no handle on.
     HarnessConfig.Inference inference = config.inference();
+    HarnessConfig.Inference.Context context = inference.context();
     InferenceContextAssembler assembler =
-        new RecentTurnsContextAssembler(histories, inference.recentTurns(), config.ambient());
+        new ContextAssembler(histories, context.summaries(), context.maxTail(), context.ambient());
     // One registry, held by both halves: the store asks it what an effect is worth while
     // writing the row, the dispatcher asks it who performs one after reading it back. Two
     // lookups keyed by the same thing could disagree; one cannot.

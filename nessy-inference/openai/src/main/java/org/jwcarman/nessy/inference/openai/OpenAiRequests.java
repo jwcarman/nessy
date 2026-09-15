@@ -21,6 +21,7 @@ import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
@@ -58,7 +59,9 @@ public final class OpenAiRequests {
                         ChatCompletionSystemMessageParam.builder()
                             .content(system(request))
                             .build())),
-                request.context().turns().stream().flatMap(OpenAiRequests::toMessages))
+                Stream.concat(
+                    request.context().summaries().stream().map(OpenAiRequests::summary),
+                    request.context().turns().stream().flatMap(OpenAiRequests::toMessages)))
             .toList();
 
     ChatCompletionCreateParams.Builder builder =
@@ -118,6 +121,22 @@ public final class OpenAiRequests {
    * <p>A refused observation is dropped rather than re-sent: it is what caused the refusal, and
    * re-sending it keeps the conversation refused for as long as it is still in the request.
    */
+  /**
+   * A summary, standing where the turns it replaces once stood.
+   *
+   * <p><b>User role, and bracketed, and that is this adapter's decision.</b> This wire has no role
+   * for "here is what happened earlier": {@code system} is the standing instruction, {@code
+   * assistant} would put the recap in the model's own mouth, and {@code user} is the only one that
+   * reads as something the model is being shown. The tag is what tells it from something the person
+   * just said, and the range is on it because the model is entitled to know that turns are missing
+   * and which ones.
+   */
+  private static ChatCompletionMessageParam summary(Summary summary) {
+    return user(
+        "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
+            .formatted(summary.from().value(), summary.through().value(), text(summary.content())));
+  }
+
   private static Stream<ChatCompletionMessageParam> toMessages(Turn turn) {
     Stream<ChatCompletionMessageParam> opening =
         turn.result() instanceof TurnResult.Refused

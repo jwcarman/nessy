@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.util.List;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Turn;
 
 /**
@@ -39,4 +40,11 @@ public interface TurnHistory {
    * everything ahead of it verbatim.
    */
   List<Turn> turnsFrom(long fromTurn);
+
+  /**
+   * Every turn after {@code through}, oldest first: the tail once a summary has covered the rest.
+   */
+  default List<Turn> turnsAfter(TurnId through) {
+    return turnsFrom(through.value() + 1);
+  }
 }

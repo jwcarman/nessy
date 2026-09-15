@@ -32,13 +32,10 @@ public interface InferenceConfig {
   InferenceConfig requesting(Set<Capability> capabilities);
 
   /**
-   * How many turns of the story to send, counting back from the newest, whole.
-   *
-   * <p>Turns rather than tokens: an estimate written when an entry is stored and the provider's
-   * tokenizer never agree, so a token budget is a number that cannot be checked against the one
-   * that decides whether a request is accepted.
+   * How the context for the call is built: summaries, the tail, and background. See {@link
+   * ContextConfig} for the order those are sent in and what each one means.
    */
-  InferenceConfig recentTurns(int turns);
+  InferenceConfig context(java.util.function.Consumer<ContextConfig> customizer);
 
   /**
    * How long the agent is willing to wait for an answer, measured from when the work is written

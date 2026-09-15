@@ -22,6 +22,7 @@ import org.jwcarman.nessy.api.Capability;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
@@ -79,7 +80,7 @@ public final class AnthropicRequests {
     if (!system.isEmpty()) {
       builder.systemOfTextBlockParams(system);
     }
-    addMessages(builder, request.context().turns(), marker, mapper);
+    addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
     addTools(builder, request.tools(), marker, mapper);
 
     if (thinking.enabled()) {
@@ -136,11 +137,16 @@ public final class AnthropicRequests {
 
   private static void addMessages(
       MessageCreateParams.Builder builder,
+      List<Summary> summaries,
       List<Turn> turns,
       Optional<CacheControlEphemeral> marker,
       JsonMapper mapper) {
 
-    List<Drafted> drafts = turns.stream().flatMap(turn -> draft(turn, mapper)).toList();
+    List<Drafted> drafts =
+        Stream.concat(
+                summaries.stream().map(AnthropicRequests::draftSummary),
+                turns.stream().flatMap(turn -> draft(turn, mapper)))
+            .toList();
     Set<Integer> marked = marker.isPresent() ? conversationBreakpoints(drafts) : Set.of();
 
     List<MessageParam> params = new ArrayList<>(drafts.size());
@@ -202,6 +208,29 @@ public final class AnthropicRequests {
         };
 
     return Stream.concat(opening, Stream.concat(middle, ending));
+  }
+
+  /**
+   * A summary, standing where the turns it replaces once stood.
+   *
+   * <p>User role and bracketed, as on OpenAI's wire and for the same reason: two roles, neither of
+   * which is "here is what happened earlier", and {@code user} is the one that reads as something
+   * the model is being shown. The tag and the range tell it from a question, and tell the model
+   * which turns are missing.
+   *
+   * <p>Eligible for a cache breakpoint like any text block -- a summary is the most stable prefix a
+   * long conversation has.
+   */
+  private static Drafted draftSummary(Summary summary) {
+    Block.Text text =
+        new Block.Text(
+            "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
+                .formatted(
+                    summary.from().value(), summary.through().value(), text(summary.content())));
+    return new Drafted(
+        MessageParam.Role.USER,
+        List.of(text),
+        List.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text.text()).build())));
   }
 
   /**

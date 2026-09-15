@@ -3,6 +3,7 @@ package org.jwcarman.nessy.spi.inference;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 
 /**
@@ -39,27 +40,31 @@ import org.jwcarman.nessy.api.turn.Turn;
  * @param turns the conversation, oldest first
  * @param ambient what stands behind it, in the order its sources were bound -- usually empty
  */
-public record InferenceContext(List<Turn> turns, List<Ambient> ambient) {
+public record InferenceContext(List<Summary> summaries, List<Turn> turns, List<Ambient> ambient) {
 
   public InferenceContext {
+    Objects.requireNonNull(summaries, "summaries must not be null");
     Objects.requireNonNull(turns, "turns must not be null");
     Objects.requireNonNull(ambient, "ambient must not be null");
+    summaries = List.copyOf(summaries);
     turns = List.copyOf(turns);
     ambient = List.copyOf(ambient);
   }
 
-  /** A conversation with nothing standing behind it. */
-  public static InferenceContext of(List<Turn> turns) {
-    return new InferenceContext(turns, List.of());
+  /** Turns and background, with nothing compressed away. */
+  public InferenceContext(List<Turn> turns, List<Ambient> ambient) {
+    this(List.of(), turns, ambient);
   }
 
-  /**
-   * Whether there is any background at all.
-   *
-   * <p>Worth asking rather than rendering an empty section: an adapter that always writes a
-   * background block would tell the model "here is what you know" and then say nothing, which is a
-   * claim where absence is not.
-   */
+  /** Only turns: no summaries, no background. */
+  public static InferenceContext of(List<Turn> turns) {
+    return new InferenceContext(List.of(), turns, List.of());
+  }
+
+  public boolean hasSummaries() {
+    return !summaries.isEmpty();
+  }
+
   public boolean hasAmbient() {
     return !ambient.isEmpty();
   }

@@ -13,11 +13,13 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Capability;
+import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.SummarySource;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
@@ -65,8 +67,6 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
   private final Inference inference;
   private final Effects effects = new Effects();
   private final List<ToolBinding<?>> tools = new ArrayList<>();
-  private final List<AmbientSource> ambient = new ArrayList<>();
-  private final Set<String> ambientKinds = new LinkedHashSet<>();
 
   HarnessConfig(
       TypeRef<O> observationType,
@@ -131,32 +131,6 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
    * length of the customizer. A tool's shape cannot change between calls, and doing this per call
    * would put a reflective walk of the input type on the path of every inference.
    */
-  /**
-   * Binds one source of background.
-   *
-   * <p>A constant source is checked for a duplicate kind here, at the line that bound it. One that
-   * computes its kind per agent cannot be -- nothing may be asked of a source at wiring time, since
-   * asking means I/O about an agent that does not exist yet -- so that collision is found when the
-   * two sections are assembled instead.
-   */
-  @Override
-  public HarnessConfig<O> ambient(AmbientSource source) {
-    Objects.requireNonNull(source, "ambient source must not be null");
-    ambient.add(source);
-    return this;
-  }
-
-  @Override
-  public HarnessConfig<O> ambient(Ambient constant) {
-    Objects.requireNonNull(constant, "ambient must not be null");
-    if (!ambientKinds.add(constant.kind())) {
-      // Two sections under one label, and no way for a model to tell which is current.
-      throw new IllegalArgumentException(
-          "two ambient sources offer the kind '" + constant.kind() + "'");
-    }
-    return ambient(AmbientSource.constant(constant));
-  }
-
   @Override
   public <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
@@ -199,10 +173,6 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
   }
 
   /** The sources of background this harness asks, in the order they were bound. */
-  List<AmbientSource> ambient() {
-    return List.copyOf(ambient);
-  }
-
   /** The tools this harness offers, in the order they were bound. */
   Tools tools() {
     return new Tools(tools);
@@ -336,7 +306,7 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
     private String modelName;
     private int maxTokens;
     private final Set<Capability> requested = EnumSet.noneOf(Capability.class);
-    private int recentTurns = 20;
+    private final Context context = new Context();
     private Duration timeout = Duration.ofMinutes(5);
     private RetryPolicy retryPolicy;
 
@@ -372,8 +342,8 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
     }
 
     @Override
-    public InferenceConfig recentTurns(int turns) {
-      this.recentTurns = turns;
+    public InferenceConfig context(java.util.function.Consumer<ContextConfig> customizer) {
+      customizer.accept(context);
       return this;
     }
 
@@ -397,8 +367,8 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
       return new InferenceOptions(modelName, maxTokens, requested);
     }
 
-    int recentTurns() {
-      return recentTurns;
+    Context context() {
+      return context;
     }
 
     Duration timeout() {
@@ -407,6 +377,59 @@ public final class HarnessConfig<O> implements org.jwcarman.nessy.api.HarnessCon
 
     RetryPolicy retryPolicy() {
       return retryPolicy;
+    }
+
+    /** Summaries, the tail, and background: everything that goes in that is not the call itself. */
+    static final class Context implements ContextConfig {
+
+      private final List<SummarySource> summaries = new ArrayList<>();
+      private final List<AmbientSource> ambient = new ArrayList<>();
+      private final Set<String> ambientKinds = new LinkedHashSet<>();
+      private int maxTail = 20;
+
+      @Override
+      public ContextConfig summaries(SummarySource source) {
+        summaries.add(Objects.requireNonNull(source, "summary source must not be null"));
+        return this;
+      }
+
+      @Override
+      public ContextConfig maxTail(int turns) {
+        if (turns <= 0) {
+          throw new IllegalArgumentException("maxTail must be positive");
+        }
+        this.maxTail = turns;
+        return this;
+      }
+
+      @Override
+      public ContextConfig ambient(AmbientSource source) {
+        ambient.add(Objects.requireNonNull(source, "ambient source must not be null"));
+        return this;
+      }
+
+      @Override
+      public ContextConfig ambient(Ambient constant) {
+        Objects.requireNonNull(constant, "ambient must not be null");
+        // Only a constant's kind is known at configuration time; a source's is known per call.
+        if (!ambientKinds.add(constant.kind())) {
+          throw new IllegalArgumentException(
+              "two ambient sources offer the kind '" + constant.kind() + "'");
+        }
+        return ambient(AmbientSource.constant(constant));
+      }
+
+      List<SummarySource> summaries() {
+        return List.copyOf(summaries);
+      }
+
+      int maxTail() {
+        return maxTail;
+      }
+
+      List<AmbientSource> ambient() {
+        return List.copyOf(ambient);
+      }
     }
   }
 

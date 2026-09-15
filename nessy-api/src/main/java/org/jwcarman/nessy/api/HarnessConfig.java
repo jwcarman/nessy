@@ -54,23 +54,6 @@ public interface HarnessConfig<O> {
   /** Adjusts how this agent type performs the work it owes itself. */
   HarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
 
-  /**
-   * Offers background the model should have in mind, asked afresh on every call.
-   *
-   * <p>The other half of a tool. A notebook the agent writes to is a tool and one of these; so is a
-   * plan it keeps, or a view of a system it is operating. Tool in, background out.
-   *
-   * <p>Two sources may not offer the same {@link Ambient#kind()} -- refused here rather than at
-   * render time, because an adapter would write two sections under one label and the model would
-   * see a contradiction with no way to tell which is current.
-   */
-  HarnessConfig<O> ambient(AmbientSource source);
-
-  /** Background that is the same for every agent and every turn. */
-  default HarnessConfig<O> ambient(Ambient ambient) {
-    return ambient(AmbientSource.constant(ambient));
-  }
-
   /** Offers a tool, and says what a call of it is worth. */
   <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
 
