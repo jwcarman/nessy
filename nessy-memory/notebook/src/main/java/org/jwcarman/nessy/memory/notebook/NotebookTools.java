@@ -20,15 +20,14 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.block.AmbientContentBlock;
-import org.jwcarman.nessy.api.block.TextBlock;
-import org.jwcarman.nessy.api.message.AmbientMessage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.ContextMessage;
+import java.util.Optional;
+import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.memory.pipeline.ContextTransformer;
 
 /**
  * The three verbs a model uses on its notebook, and the stage that shows it what it has.
@@ -84,17 +83,24 @@ public final class NotebookTools {
    * transcript and each adapter puts it wherever its vendor keeps background. An agent with no
    * notes contributes nothing at all rather than an empty block announcing its own emptiness.
    */
-  public static ContextTransformer index(Notebook notebook) {
+  /**
+   * The read half: what the agent wrote, in front of it on the next turn.
+   *
+   * <p>Ambient rather than a message, which is the whole reason a notebook works. An index written
+   * into the story would be re-sent verbatim forever, so a note deleted on Tuesday would still be
+   * listed on Friday. Asked afresh on every call instead, so it can say something different each
+   * time and can stop saying anything at all.
+   *
+   * <p>Empty means absent. A heading with nothing under it tells a model its notebook is empty,
+   * which is a claim; saying nothing is not.
+   */
+  public static AmbientSource index(Notebook notebook) {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
-    return (agentId, context) -> {
+    return agentId -> {
       List<Notebook.Heading> headings = notebook.headings(agentId);
-      if (headings.isEmpty()) {
-        return context;
-      }
-      List<ContextMessage> messages = new java.util.ArrayList<>(context.messages());
-      messages.add(
-          new AmbientMessage(KIND, List.<AmbientContentBlock>of(new TextBlock(render(headings)))));
-      return Context.of(messages);
+      return headings.isEmpty()
+          ? Optional.empty()
+          : Optional.of(Ambient.text(KIND, render(headings)));
     };
   }
 
@@ -135,13 +141,13 @@ public final class NotebookTools {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         RememberNote.class,
-        "remember",
+        new ToolName("remember"),
         "File a new note with a one-line hook. Returns the id it was given. To CHANGE a note that"
             + " already exists, use revise with the id from your notebook index — never guess an"
             + " id, and never use this tool to replace a note.",
         (agentId, note) -> {
           Notebook.Entry written = notebook.write(agentId, note.hook(), note.body());
-          return ToolResult.ok("Remembered as '" + written.id() + "'.");
+          return said("Remembered as '" + written.id() + "'.");
         });
   }
 
@@ -150,14 +156,14 @@ public final class NotebookTools {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         ReviseNote.class,
-        "revise",
+        new ToolName("revise"),
         "Replace a note that already exists, using its id exactly as it appears in your notebook"
             + " index. If you do not have an id from the index, file a new note with remember"
             + " instead.",
         (agentId, note) ->
             notebook
                 .revise(agentId, note.id(), note.hook(), note.body())
-                .map(revised -> ToolResult.ok("Replaced '" + revised.id() + "'."))
+                .map(revised -> said("Replaced '" + revised.id() + "'."))
                 .orElseGet(() -> unknown(note.id())));
   }
 
@@ -165,12 +171,12 @@ public final class NotebookTools {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         RecallNote.class,
-        "recall",
+        new ToolName("recall"),
         "Read one of your notes in full, by the id shown in your notebook index.",
         (agentId, note) ->
             notebook
                 .find(agentId, note.id())
-                .map(entry -> ToolResult.ok(entry.body()))
+                .map(entry -> said(entry.body()))
                 // An error the model can act on: it can see the index, so it can correct itself.
                 .orElseGet(() -> unknown(note.id())));
   }
@@ -179,18 +185,25 @@ public final class NotebookTools {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return new NotebookTool<>(
         ForgetNote.class,
-        "forget",
+        new ToolName("forget"),
         "Delete one of your notes by id.",
         (agentId, note) -> {
           notebook.forget(agentId, note.id());
-          return ToolResult.ok("Forgotten '" + note.id() + "'.");
+          return said("Forgotten '" + note.id() + "'.");
         });
   }
 
   /** The same answer wherever an id turns out to name nothing: look at the index again. */
   private static ToolResult unknown(String id) {
-    return ToolResult.error(
-        "no note with id '" + id + "' — check the notebook index in your context");
+    return failure("no note with id '" + id + "' -- check the notebook index in your context");
+  }
+
+  private static ToolResult failure(String message) {
+    return new ToolResult.Failure(message);
+  }
+
+  private static ToolResult said(String text) {
+    return ToolResult.ok(new Block.Text(text));
   }
 
   /** What a notebook verb does once it knows whose notebook it is. */
@@ -206,16 +219,21 @@ public final class NotebookTools {
    * sent a blank name should read what went wrong and try again, which is the difference between a
    * failed call and a failed turn.
    */
-  private record NotebookTool<I>(Class<I> inputType, String name, String description, Verb<I> verb)
+  private record NotebookTool<I>(Class<I> inputType, ToolName name, String description, Verb<I> verb)
       implements Tool<I> {
 
+    /**
+     * Bad arguments come back as a failure the model can read rather than as a throw.
+     *
+     * <p>A thrown exception is the engine's problem and gets retried with the identical bad
+     * arguments; a failure is the model's problem, and the model is the one who can fix it.
+     */
     @Override
-    public Awaited<ToolResult> execute(ToolCallRequest<I> call) {
-      I input = call.input();
+    public Awaited<ToolResult> call(ToolCallRequest<I> request) {
       try {
-        return Awaited.ready(verb.apply(call.agentId(), input));
+        return Awaited.ready(verb.apply(request.agentId(), request.input()));
       } catch (IllegalArgumentException | NullPointerException invalid) {
-        return Awaited.ready(ToolResult.error(invalid.getMessage()));
+        return Awaited.ready(failure(invalid.getMessage()));
       }
     }
   }

@@ -247,6 +247,31 @@ class ObservedTest {
   private static ToolCallRequest<String> call(String input) {
     return new ToolCallRequest<>() {
       @Override
+      public AgentType agentType() {
+        return new AgentType("observed");
+      }
+
+      @Override
+      public AgentId agentId() {
+        return new AgentId(java.util.UUID.randomUUID());
+      }
+
+      @Override
+      public TurnId turn() {
+        return new TurnId(1);
+      }
+
+      @Override
+      public CallId callId() {
+        return new CallId("c1");
+      }
+
+      @Override
+      public ToolName toolName() {
+        return new ToolName("a_tool");
+      }
+
+      @Override
       public String input() {
         return input;
       }

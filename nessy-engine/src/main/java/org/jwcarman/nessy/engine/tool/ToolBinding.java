@@ -179,7 +179,15 @@ public final class ToolBinding<I> {
    * the complaint so the next attempt is better informed. Throwing would route it through the retry
    * machinery, which would run the identical bad arguments again.
    */
-  public Awaited<ToolResult> call(String json, Instant deadline, ReplyToken replyToken) {
+  public Awaited<ToolResult> call(
+      AgentType agentType,
+      AgentId agentId,
+      TurnId turn,
+      CallId callId,
+      ToolName toolName,
+      String json,
+      Instant deadline,
+      ReplyToken replyToken) {
     I input;
     try {
       input = mapper.readValue(json, tool.inputType());
@@ -187,6 +195,7 @@ public final class ToolBinding<I> {
       return Awaited.ready(
           new ToolResult.Failure("the arguments could not be read: " + e.getMessage()));
     }
-    return tool.call(new CallRequest<>(input, deadline, replyToken));
+    return tool.call(
+        new CallRequest<>(agentType, agentId, turn, callId, toolName, input, deadline, replyToken));
   }
 }

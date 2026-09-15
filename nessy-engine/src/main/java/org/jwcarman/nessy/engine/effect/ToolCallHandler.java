@@ -136,7 +136,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
           effect.requestSeq());
       return Awaited.ready(new EffectOutcome.ToolFailed(callId, "the call could not be found"));
     }
-    Block.ToolCall call = found.get().call();
+    ToolCalls.ResolvedCall resolved = found.get();
+    Block.ToolCall call = resolved.call();
 
     Optional<ToolBinding<?>> bound = tools.find(call.name());
     if (bound.isEmpty()) {
@@ -156,6 +157,11 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
         call.name(),
         until,
         binding.call(
+            agentType,
+            agentId,
+            resolved.turn(),
+            callId,
+            call.name(),
             call.arguments(),
             until,
             replyTokens.mint(agentType, agentId, effect.requestSeq(), callId)));
