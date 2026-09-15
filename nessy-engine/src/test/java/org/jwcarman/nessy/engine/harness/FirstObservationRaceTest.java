@@ -1,0 +1,94 @@
+package org.jwcarman.nessy.engine.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.engine.EngineUnderTest;
+import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.spi.inference.InferenceResult;
+
+/**
+ * An agent that does not exist yet has no row to lock, so the first fold is the one place the row
+ * lock cannot serialise anything. Two first observations arriving together used to both find no row
+ * and both insert; the loser died on the primary key and its observation died with it.
+ */
+class FirstObservationRaceTest {
+
+  private static final AgentType CHAT = new AgentType("chat");
+  private static final int CALLERS = 8;
+
+  private EngineUnderTest engine;
+  private Harness<String> harness;
+  private final ExecutorService callers = Executors.newFixedThreadPool(CALLERS);
+
+  @BeforeEach
+  void startEngine() {
+    engine =
+        new EngineUnderTest(
+            (request, narrator) ->
+                new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
+    harness =
+        engine
+            .harnesses()
+            .create(
+                String.class,
+                config ->
+                    config
+                        .agentType(CHAT)
+                        .systemPrompt("You are a test assistant.")
+                        .effects(e -> e.pollInterval(Duration.ofMillis(100))));
+  }
+
+  @AfterEach
+  void stopEngine() {
+    callers.shutdownNow();
+    engine.close();
+  }
+
+  @Test
+  void everyOneOfSeveralSimultaneousFirstObservationsIsKept() throws Exception {
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    CountDownLatch go = new CountDownLatch(1);
+
+    List<Future<Object>> told =
+        IntStream.range(0, CALLERS)
+            .mapToObj(
+                i ->
+                    callers.submit(
+                        () -> {
+                          go.await();
+                          harness.observe(agentId, "hello " + i);
+                          return null;
+                        }))
+            .toList();
+    go.countDown();
+    for (Future<Object> call : told) {
+      // A caller that lost the race used to get a DuplicateKeyException here.
+      call.get();
+    }
+
+    // One took the turn, the rest joined the backlog, and every one is answered in time.
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(
+            () ->
+                assertThat(engine.history().entriesFrom(CHAT, agentId, 0))
+                    .filteredOn(HistoryEntry.ObservationReceived.class::isInstance)
+                    .hasSize(CALLERS));
+  }
+}

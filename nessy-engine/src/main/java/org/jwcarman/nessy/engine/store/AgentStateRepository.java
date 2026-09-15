@@ -36,6 +36,20 @@ public class AgentStateRepository {
       VALUES (?, ?, ?, ?, ?, ?)
       """;
 
+  // ON CONFLICT DO NOTHING rather than a plain insert, because the first fold for a new agent has
+  // nothing to lock: two callers can each find no row, and only one insert can win. A unique
+  // violation would abort the loser's whole transaction, and the observation it carried with it.
+  // This way the loser writes nothing, then locks the winner's row -- waiting for its commit --
+  // and folds over the state the winner left, which is what the row lock means for every fold
+  // after the first.
+  private static final String INSERT_IF_ABSENT =
+      """
+      INSERT INTO nessy_agent_state
+             (agent_id, agent_type, version, state_type, payload, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (agent_id) DO NOTHING
+      """;
+
   private static final String UPDATE =
       """
       UPDATE nessy_agent_state
@@ -110,6 +124,24 @@ public class AgentStateRepository {
               .formatted(row.agentId(), row.version()));
     }
     return next;
+  }
+
+  /**
+   * Writes a brand-new agent's first row unless somebody else just did. Either way, the row is
+   * there to be locked afterwards, which is the only thing a caller may rely on: nothing is
+   * returned, because what is in the row is whatever the winner's fold is about to make of it.
+   */
+  public void insertIfAbsent(AgentStateRow row) {
+    AgentStateRow first = row.atVersion(1);
+    jdbc.sql(INSERT_IF_ABSENT)
+        .params(
+            first.agentId(),
+            first.agentType(),
+            first.version(),
+            first.stateType(),
+            first.payload(),
+            utc(first.updatedAt()))
+        .update();
   }
 
   /**

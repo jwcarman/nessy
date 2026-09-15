@@ -54,14 +54,25 @@ public class AgentStateStore<O> {
     AgentStateRow row =
         rows.findAndLockByAgentId(agentId.value())
             .orElseGet(
-                () ->
-                    rows.save(
-                        AgentStateRow.initial(
-                            agentId.value(),
-                            agentType.value(),
-                            AgentState.Idle.class.getSimpleName(),
-                            codec.encode(new AgentState.Idle<O>(Seq.NONE)),
-                            at)));
+                () -> {
+                  // Nothing to lock yet. Put the row there -- or find that another first fold
+                  // beat us to it -- and then lock it like any other, so two first observations
+                  // of one agent are serialised exactly as the third and fourth would be.
+                  rows.insertIfAbsent(
+                      AgentStateRow.initial(
+                          agentId.value(),
+                          agentType.value(),
+                          AgentState.Idle.class.getSimpleName(),
+                          codec.encode(new AgentState.Idle<O>(Seq.NONE)),
+                          at));
+                  return rows.findAndLockByAgentId(agentId.value())
+                      .orElseThrow(
+                          () ->
+                              new IllegalStateException(
+                                  "agent "
+                                      + agentId.value()
+                                      + " vanished between insert and lock"));
+                });
     return new Locked<>(row, codec.decode(row.payload()));
   }
 
