@@ -8,12 +8,10 @@ import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -32,11 +30,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Summarises the head of a story once it has grown past what the model is shown.
  *
- * <p>The engine shows a model the summaries and then the last {@code maxTail} turns after them.
- * Once more than {@code maxTail} turns follow the last summary, the oldest of them are no longer
- * shown at all -- that is when this writes them down as a summary, leaving the newest {@code
- * minTail} verbatim. Each cut is a new, immutable summary of its own range; nothing is summarised
- * twice, so a long story does not decay.
+ * <p>The engine shows a model the summary and then the last {@code maxTail} turns after it. Once
+ * more than {@code maxTail} turns follow the summary, the oldest of them are no longer shown at all
+ * -- that is when they are folded in: the model is shown the summary so far and those turns, and
+ * what it writes replaces the summary, now covering the story through the last of them and leaving
+ * the newest {@code minTail} verbatim. One summary per agent, always.
  *
  * <p><b>In the background, and opportunistically.</b> Attached to a harness through {@link
  * #listener()}, it hears every turn end, counts that agent's unsummarised turns (one query, nothing
@@ -52,7 +50,9 @@ public class HeadSummarizer {
   public static final String PROMPT =
       """
       You are compressing the earlier part of a conversation so it can be carried forward. \
-      What you write will be shown in place of those turns, before the newer ones.
+      You may be shown a summary of the part before this; fold it in, so that what you write \
+      stands alone as the summary of everything so far. It will be shown in place of all of \
+      it, before the newer turns.
 
       Keep what a reader would need in order to continue:
       - names, identifiers and specific values that were established
@@ -258,36 +258,33 @@ public class HeadSummarizer {
     if (cut.isEmpty()) {
       return;
     }
-    Turn asking =
-        new Turn(
-            new TurnId(1),
-            new Observation(new Seq(1), List.of(new Block.Text(transcript(cut)))),
-            List.of(),
-            null,
-            0);
+    // The summary so far, then the turns being folded in: the shape the engine shows a model
+    // anyway, so every adapter already renders it.
+    List<Summary> soFar = summaries.forAgent(agentId);
     InferenceResult result =
         provider.infer(
             new InferenceRequest(
                 new SystemPrompt(PROMPT),
-                InferenceContext.of(List.of(asking)),
+                new InferenceContext(soFar, cut, List.of()),
                 List.of(),
                 options));
     if (!(result instanceof InferenceResult.Answer(var blocks))) {
-      // Not an error to anybody: the head stays as it was, and the next turn end tries again.
+      // Not an error to anybody: the summary stays as it was, and the next turn end tries again.
       LOG.warn("[{}] could not summarise agent {}: {}", agentType.value(), agentId.value(), result);
       return;
     }
     String summary = text(blocks);
     if (summary.isBlank()) {
       LOG.warn(
-          "[{}] the summary of agent {} was empty; kept the turns",
+          "[{}] the summary of agent {} was empty; kept what there was",
           agentType.value(),
           agentId.value());
       return;
     }
-    summaries.write(agentId, Summary.text(cut.getFirst().id(), cut.getLast().id(), summary));
+    TurnId from = soFar.isEmpty() ? cut.getFirst().id() : soFar.getFirst().from();
+    summaries.replace(agentId, Summary.text(from, cut.getLast().id(), summary));
     LOG.info(
-        "[{}] summarised turns {}..{} of agent {}",
+        "[{}] folded turns {}..{} into the summary of agent {}",
         agentType.value(),
         cut.getFirst().id().value(),
         cut.getLast().id().value(),

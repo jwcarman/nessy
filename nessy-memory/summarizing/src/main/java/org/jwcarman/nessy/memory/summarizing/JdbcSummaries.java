@@ -17,11 +17,11 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
- * The summaries of one agent type's stories, in {@code nessy_summary}.
+ * The summary each agent of one type has of the head of its story, in {@code nessy_summary}.
  *
- * <p>As a {@link SummarySource} it shows every summary an agent has, oldest first, which the engine
- * places before the verbatim tail. Writing is the {@link HeadSummarizer}'s business, or an episode
- * tool's; either appends a range that begins where the last one ended.
+ * <p>One per agent, folded forward: as a {@link SummarySource} it shows the summary, which the
+ * engine places before the verbatim tail; the {@link HeadSummarizer} replaces it with one that
+ * covers more of the story, and only ever with one that reaches further.
  */
 public class JdbcSummaries implements SummarySource {
 
@@ -32,10 +32,20 @@ public class JdbcSummaries implements SummarySource {
   private static final String THROUGH =
       "SELECT MAX(through_turn) FROM nessy_summary WHERE agent_type = ? AND agent_id = ?";
 
-  private static final String INSERT =
-      "INSERT INTO nessy_summary"
-          + " (agent_type, agent_id, from_turn, through_turn, content, created_at)"
-          + " VALUES (?, ?, ?, ?, ?, ?)";
+  // Replaces, and only ever with a summary that reaches further: two folds racing -- which the
+  // lease prevents, but a row must hold on its own -- cannot move the story backwards.
+  private static final String REPLACE =
+      """
+      INSERT INTO nessy_summary
+             (agent_type, agent_id, from_turn, through_turn, content, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT (agent_type, agent_id) DO UPDATE
+             SET from_turn = EXCLUDED.from_turn,
+                 through_turn = EXCLUDED.through_turn,
+                 content = EXCLUDED.content,
+                 updated_at = EXCLUDED.updated_at
+           WHERE nessy_summary.through_turn < EXCLUDED.through_turn
+      """;
 
   private final JdbcClient jdbc;
   private final String agentType;
@@ -75,25 +85,20 @@ public class JdbcSummaries implements SummarySource {
   }
 
   /**
-   * Appends a summary. Its range must begin after the last one's end: turn ids are positions in the
-   * story rather than a count, so "after" is all that can be asked, not "at the next number".
+   * Replaces the agent's summary with one that reaches further into the story. Says whether it did:
+   * a summary that reaches no further than the one there is left unwritten.
    */
-  public void write(AgentId agentId, Summary summary) {
-    long through = summarizedThrough(agentId).map(TurnId::value).orElse(0L);
-    if (summary.from().value() <= through) {
-      throw new IllegalArgumentException(
-          "a summary must begin after the last one ended (turn %d), got %s"
-              .formatted(through, summary.from()));
-    }
-    jdbc.sql(INSERT)
-        .params(
-            agentType,
-            key(agentId),
-            summary.from().value(),
-            summary.through().value(),
-            textOf(summary),
-            OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))
-        .update();
+  public boolean replace(AgentId agentId, Summary summary) {
+    return jdbc.sql(REPLACE)
+            .params(
+                agentType,
+                key(agentId),
+                summary.from().value(),
+                summary.through().value(),
+                textOf(summary),
+                OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))
+            .update()
+        > 0;
   }
 
   private static String textOf(Summary summary) {

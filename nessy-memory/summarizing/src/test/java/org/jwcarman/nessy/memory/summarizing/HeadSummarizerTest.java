@@ -49,16 +49,24 @@ class HeadSummarizerTest {
   /** Answers chat with the same words; summarises with a line that says how many turns it saw. */
   private final List<InferenceRequest> chatRequests = new CopyOnWriteArrayList<>();
 
+  private final List<InferenceRequest> summaryRequests = new CopyOnWriteArrayList<>();
+
   private final AtomicInteger summariesWritten = new AtomicInteger();
   private final InferenceProvider model =
       (request, narrator) -> {
         if (request.systemPrompt().value().equals(HeadSummarizer.PROMPT)) {
           summariesWritten.incrementAndGet();
-          String seen =
-              ((Block.Text) request.context().turns().getFirst().observation().blocks().getFirst())
-                  .text();
-          long turns = seen.lines().filter(line -> line.startsWith("user: ")).count();
-          return new InferenceResult.Answer(List.of(new Block.Text("SUMMARY of " + turns)));
+          summaryRequests.add(request);
+          // What it was shown: how many turns, and the summary so far if there was one -- so a
+          // fold can be told from a fresh start.
+          String soFar =
+              request.context().summaries().isEmpty()
+                  ? ""
+                  : " after [" + text(request.context().summaries().getFirst().content()) + "]";
+          return new InferenceResult.Answer(
+              List.of(
+                  new Block.Text(
+                      "SUMMARY of " + request.context().turns().size() + " turns" + soFar)));
         }
         chatRequests.add(request);
         return new InferenceResult.Answer(List.of(new Block.Text("a lake monster")));
@@ -109,6 +117,10 @@ class HeadSummarizerTest {
     dataSource.close();
   }
 
+  private static String text(List<? extends Block> blocks) {
+    return ((Block.Text) blocks.getFirst()).text();
+  }
+
   /** The ids of an agent's turns, oldest first: positions in the story, not a count. */
   private List<Long> turnIds(AgentId agentId) {
     return factory.histories().forAgent(CHAT, agentId).turnsFrom(0).stream()
@@ -153,7 +165,7 @@ class HeadSummarizerTest {
     int cut = ids.indexOf(summary.through().value()) + 1;
     assertThat(summary.from()).isEqualTo(new TurnId(ids.getFirst()));
     assertThat(ids.size() - cut).isBetween(MIN_TAIL, MAX_TAIL);
-    assertThat(summary.content()).containsExactly(new Block.Text("SUMMARY of " + cut));
+    assertThat(summary.content()).containsExactly(new Block.Text("SUMMARY of " + cut + " turns"));
 
     // The next call the agent makes is built on it: the summary, then the turns after it.
     converse(agentId, 1);
@@ -167,26 +179,34 @@ class HeadSummarizerTest {
   }
 
   @Test
-  @DisplayName("each cut is a new summary of its own range; earlier ones are never rewritten")
-  void later_cuts_append() {
+  @DisplayName("a later fold is shown the summary so far, and what it writes replaces it")
+  void later_folds_replace() {
     AgentId agentId = new AgentId(UUID.randomUUID());
     converse(agentId, MAX_TAIL + 3);
-    await().atMost(Duration.ofSeconds(20)).until(() -> summaries.forAgent(agentId).size() == 1);
+    await().atMost(Duration.ofSeconds(20)).until(() -> !summaries.forAgent(agentId).isEmpty());
     Summary first = summaries.forAgent(agentId).getFirst();
     converse(agentId, MAX_TAIL + 1);
-    await().atMost(Duration.ofSeconds(20)).until(() -> summaries.forAgent(agentId).size() >= 2);
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .until(
+            () ->
+                summaries.forAgent(agentId).getFirst().through().value() > first.through().value());
 
     List<Long> ids = turnIds(agentId);
     List<Summary> written = summaries.forAgent(agentId);
-    assertThat(written.getFirst()).as("the first summary is as it was").isEqualTo(first);
-    for (int i = 1; i < written.size(); i++) {
-      // Contiguous: each begins at the turn after the previous one ended.
-      long previousEnd = written.get(i - 1).through().value();
-      assertThat(written.get(i).from().value()).isEqualTo(ids.get(ids.indexOf(previousEnd) + 1));
-    }
-    long lastThrough = written.getLast().through().value();
-    assertThat(ids.stream().filter(id -> id > lastThrough).count())
+    assertThat(written).as("one summary per agent").hasSize(1);
+    Summary folded = written.getFirst();
+    assertThat(folded.from()).as("still from the beginning").isEqualTo(first.from());
+    assertThat(text(folded.content()))
+        .as("the model was shown the summary so far, and folded it in")
+        .contains("after [" + text(first.content()) + "]");
+    long through = folded.through().value();
+    assertThat(ids.stream().filter(id -> id > through).count())
         .as("what stays verbatim")
         .isBetween((long) MIN_TAIL, (long) MAX_TAIL);
+    // And the fold was asked in the shape the engine uses: the summary, then the turns.
+    InferenceRequest lastFold = summaryRequests.getLast();
+    assertThat(lastFold.context().summaries()).containsExactly(first);
+    assertThat(lastFold.context().turns()).isNotEmpty();
   }
 }
