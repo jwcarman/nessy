@@ -52,7 +52,6 @@
 
     <module>gemini</module>
     <module>bedrock</module>
-    <module>openai-compatible</module>
     -->
   </modules>
 
