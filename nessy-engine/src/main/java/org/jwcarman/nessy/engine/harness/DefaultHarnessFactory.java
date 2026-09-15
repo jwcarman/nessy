@@ -114,8 +114,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
-        new DefaultHarnessConfig.Defaults(
-            config.requiredProvider(), config.requiredOptions(), config.retryPolicy());
+        new DefaultHarnessConfig.Defaults(config.requiredProvider(), config.requiredOptions());
   }
 
   /**

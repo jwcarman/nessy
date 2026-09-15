@@ -3,7 +3,6 @@ package org.jwcarman.nessy.engine.harness;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -14,7 +13,8 @@ import org.jwcarman.nessy.spi.narration.Narrator;
  *
  * <p><b>Two required things: somewhere to keep agents and something to ask.</b> The rest are
  * application facts with defaults: where narration goes, where spans go, which keys seal a reply
- * token, how hard an inference is retried.
+ * token. Anything an agent type might tune -- timeouts, retries, the context it is shown -- has its
+ * default in the engine and is overridden on the harness that wants otherwise.
  *
  * <p><b>Nothing here is the engine's own plumbing.</b> How rows are encoded, how tool arguments are
  * described to a model, how tokens are estimated, which transaction manager wraps a fold and which
@@ -33,7 +33,6 @@ public final class EngineConfig {
   private Narrator narrator = Narrator.silent();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ReplyTokens replyTokens;
-  private RetryPolicy retryPolicy = new RetryPolicy.Never();
 
   EngineConfig() {}
 
@@ -52,12 +51,6 @@ public final class EngineConfig {
   public EngineConfig inference(InferenceProvider provider, InferenceOptions options) {
     this.provider = provider;
     this.options = options;
-    return this;
-  }
-
-  /** How hard an inference is worth trying. Defaults to not at all. */
-  public EngineConfig retryPolicy(RetryPolicy retryPolicy) {
-    this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy must not be null");
     return this;
   }
 
@@ -123,9 +116,5 @@ public final class EngineConfig {
 
   ReplyTokens replyTokens() {
     return replyTokens != null ? replyTokens : ReplyTokens.ephemeral();
-  }
-
-  RetryPolicy retryPolicy() {
-    return retryPolicy;
   }
 }

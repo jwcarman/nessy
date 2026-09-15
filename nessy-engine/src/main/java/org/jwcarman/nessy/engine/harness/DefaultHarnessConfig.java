@@ -47,7 +47,10 @@ import tools.jackson.databind.ObjectMapper;
 public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
 
   private static final Duration DEFAULT_TOOL_TIMEOUT = Duration.ofSeconds(30);
+  // Not at all, for a tool and for an inference alike. A harness that knows its provider flakes
+  // or its tool is idempotent says so; the engine does not guess on its behalf.
   private static final RetryPolicy DEFAULT_TOOL_RETRY_POLICY = new RetryPolicy.Never();
+  private static final RetryPolicy DEFAULT_INFERENCE_RETRY_POLICY = new RetryPolicy.Never();
 
   /**
    * Generous, because the deferred path is the ordinary one for an approval: a human takes as long
@@ -81,7 +84,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   }
 
   /** What the factory already knows, so an agent type only states its differences. */
-  record Defaults(InferenceProvider provider, InferenceOptions options, RetryPolicy retryPolicy) {}
+  record Defaults(InferenceProvider provider, InferenceOptions options) {}
 
   @Override
   public DefaultHarnessConfig<O> agentType(AgentType agentType) {
@@ -309,14 +312,13 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
     private final Set<Capability> requested = EnumSet.noneOf(Capability.class);
     private final Context context = new Context();
     private Duration timeout = Duration.ofMinutes(5);
-    private RetryPolicy retryPolicy;
+    private RetryPolicy retryPolicy = DEFAULT_INFERENCE_RETRY_POLICY;
 
     private Inference(Defaults defaults) {
       this.provider = defaults.provider();
       this.modelName = defaults.options().modelName();
       this.maxTokens = defaults.options().maxTokens();
       this.requested.addAll(defaults.options().requested());
-      this.retryPolicy = defaults.retryPolicy();
     }
 
     @Override
