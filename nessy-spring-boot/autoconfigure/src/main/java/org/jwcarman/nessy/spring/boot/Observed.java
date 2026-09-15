@@ -118,6 +118,10 @@ public final class Observed {
         // nothing recorded would be a call that looks successful in every dashboard.
         if (result instanceof InferenceResult.Fault(Failure failure)) {
           observation.lowCardinalityKeyValue("error.type", failure.getClass().getSimpleName());
+          // The adapter's own account of what went wrong -- a provider's stop reason, an HTTP
+          // status -- which is the one thing worth reading on the span. High cardinality, so it
+          // reaches the trace and stays out of the metric.
+          observation.highCardinalityKeyValue("error.message", failure.reason());
         }
         return result;
       } catch (RuntimeException e) {

@@ -2,6 +2,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.Objects;
 import java.util.function.Consumer;
+import org.slf4j.LoggerFactory;
 
 /**
  * Something that hears what agents do.
@@ -29,7 +30,24 @@ public interface AgentEventListener {
   default AgentEventListener async() {
     AgentEventListener self = this;
     return (agentType, agentId, event) ->
-        Thread.ofVirtual().name("nessy-listener").start(() -> self.on(agentType, agentId, event));
+        Thread.ofVirtual()
+            .name("nessy-listener")
+            .start(
+                () -> {
+                  try {
+                    self.on(agentType, agentId, event);
+                  } catch (RuntimeException e) {
+                    // On a thread of its own there is nobody above to catch this: the engine's
+                    // isolation ended when the hand-off did. Logged as the engine would have.
+                    LoggerFactory.getLogger(AgentEventListener.class)
+                        .warn(
+                            "[{}] agent {}: a listener threw on {}; carrying on",
+                            agentType.value(),
+                            agentId.value(),
+                            event.getClass().getSimpleName(),
+                            e);
+                  }
+                });
   }
 
   /** Hears nothing. */

@@ -128,6 +128,15 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
         message.content().stream().flatMap(block -> toBlock(block, asking).stream()).toList();
 
     if (!asking) {
+      if (blocks.isEmpty()) {
+        // A reply with nothing in it: a model that spent its budget thinking, say. Said as a
+        // fault rather than an answer of no blocks, which the story could not hold.
+        return new InferenceResult.Fault(
+            new Failure.Permanent(
+                "model returned an empty answer (stop_reason="
+                    + message.stopReason().map(Object::toString).orElse("none")
+                    + ")"));
+      }
       return new InferenceResult.Answer(
           blocks.stream().map(Block.AnswerContent.class::cast).toList());
     }
@@ -143,10 +152,10 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   private Optional<Block> toBlock(ContentBlock block, boolean asking) {
     if (block.isText()) {
       String text = block.text().orElseThrow().text();
-      return text.isBlank() && asking
-          // Formatting rather than the model talking: a commentary block made of whitespace is a
-          // dim empty line in every console and a wasted block in every later request. An
-          // answer's whitespace is kept, because there it is part of what was said.
+      // Whitespace is not content in either position: an answer of it is an empty answer.
+      return text.isBlank()
+          // Formatting rather than the model talking: a block of whitespace is a dim empty line
+          // in every console and a wasted block in every later request.
           ? Optional.empty()
           : Optional.of(asking ? new Block.Commentary(text) : new Block.Text(text));
     }

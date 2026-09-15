@@ -172,6 +172,29 @@ class OpenAiInferenceProviderTest {
   @Nested
   class WhatComesBack {
 
+    /**
+     * A reasoning model that spends its whole token budget thinking sends a 200 with empty content
+     * and finish_reason=length. That is not an answer the story can hold, and it is not this
+     * adapter's bug either: it is the model's, said as one.
+     */
+    @Test
+    void an_empty_answer_is_a_fault_that_names_the_finish_reason() {
+      InferenceResult result =
+          inferAnswering(
+              ChatCompletionMessage.builder()
+                  .content("")
+                  .refusal(Optional.<String>empty())
+                  .build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason()).contains("empty").contains("stop");
+              });
+    }
+
     @Test
     void plain_prose_is_an_answer() {
       InferenceResult result =

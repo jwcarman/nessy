@@ -121,7 +121,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
         // A 200 that carries no answer. Asking again returns the same nothing.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
       }
-      return read(completion.choices().getFirst().message());
+      return read(completion.choices().getFirst());
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(classify(e));
     }
@@ -138,13 +138,22 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * finish_reason}: the content is the thing that has to be answered, and several OpenAI-compatible
    * servers report the reason inconsistently while all of them put the calls in the same place.
    */
-  private static InferenceResult read(ChatCompletionMessage message) {
+  private static InferenceResult read(ChatCompletion.Choice choice) {
+    ChatCompletionMessage message = choice.message();
     if (message.refusal().isPresent()) {
       return new InferenceResult.Refusal(message.refusal().get());
     }
     String said = message.content().orElse("");
     List<ChatCompletionMessageToolCall> calls = message.toolCalls().orElseGet(List::of);
     if (calls.isEmpty()) {
+      if (said.isBlank()) {
+        // A 200 with nothing in it. A reasoning model that spent its whole token budget thinking
+        // looks exactly like this, with finish_reason=length -- said here, because it is the one
+        // clue to what happened and nothing else will carry it.
+        return new InferenceResult.Fault(
+            new Failure.Permanent(
+                "model returned an empty answer (finish_reason=" + choice.finishReason() + ")"));
+      }
       return new InferenceResult.Answer(List.of(new Block.Text(said)));
     }
     // Commentary, not text, and the grammar is what says so: a turn that is still asking has

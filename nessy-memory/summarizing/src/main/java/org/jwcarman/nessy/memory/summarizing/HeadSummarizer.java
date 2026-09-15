@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.memory.summarizing;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -8,10 +9,12 @@ import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -239,6 +242,18 @@ public class HeadSummarizer {
     }
   }
 
+  /** What the request ends on: an open turn asking for the summary of everything above. */
+  static Turn ask(Turn last) {
+    return new Turn(
+        new TurnId(last.id().value() + 1),
+        new Observation(
+            new Seq(last.id().value() + 1),
+            List.of(new Block.Text("Write the summary of everything above now."))),
+        List.of(),
+        null,
+        0);
+  }
+
   /** The last summarised turn, or zero: a TurnId cannot say "none", so this is a number. */
   private long through(AgentId agentId) {
     return summaries.summarizedThrough(agentId).map(TurnId::value).orElse(0L);
@@ -258,14 +273,18 @@ public class HeadSummarizer {
     if (cut.isEmpty()) {
       return;
     }
-    // The summary so far, then the turns being folded in: the shape the engine shows a model
-    // anyway, so every adapter already renders it.
+    // The summary so far, then the turns being folded in -- the shape the engine shows a model
+    // anyway, so every adapter already renders it -- and then the ask. Every turn being folded is
+    // complete, so without the ask the conversation would end on the assistant's own words, and
+    // a model given nothing to answer answers nothing.
     List<Summary> soFar = summaries.forAgent(agentId);
+    List<Turn> shown = new ArrayList<>(cut);
+    shown.add(ask(cut.getLast()));
     InferenceResult result =
         provider.infer(
             new InferenceRequest(
                 new SystemPrompt(PROMPT),
-                new InferenceContext(soFar, cut, List.of()),
+                new InferenceContext(soFar, shown, List.of()),
                 List.of(),
                 options));
     if (!(result instanceof InferenceResult.Answer(var blocks))) {

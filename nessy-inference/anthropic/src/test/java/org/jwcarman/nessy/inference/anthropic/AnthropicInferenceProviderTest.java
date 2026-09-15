@@ -193,6 +193,17 @@ class AnthropicInferenceProviderTest {
   @Nested
   class WhatComesBack {
 
+    /** A reply of whitespace only is an empty answer, and an empty answer is a fault. */
+    @Test
+    void an_empty_answer_is_a_fault() {
+      InferenceResult result = inferAnswering(reply().addContent(text("  ")).build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).contains("empty"));
+    }
+
     @Test
     void plain_prose_is_an_answer() {
       InferenceResult result = inferAnswering(reply().addContent(text("1412 metres")).build());

@@ -20,6 +20,7 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -66,7 +67,10 @@ class HeadSummarizerTest {
           return new InferenceResult.Answer(
               List.of(
                   new Block.Text(
-                      "SUMMARY of " + request.context().turns().size() + " turns" + soFar)));
+                      "SUMMARY of "
+                          + request.context().turns().stream().filter(Turn::complete).count()
+                          + " turns"
+                          + soFar)));
         }
         chatRequests.add(request);
         return new InferenceResult.Answer(List.of(new Block.Text("a lake monster")));
@@ -204,9 +208,14 @@ class HeadSummarizerTest {
     assertThat(ids.stream().filter(id -> id > through).count())
         .as("what stays verbatim")
         .isBetween((long) MIN_TAIL, (long) MAX_TAIL);
-    // And the fold was asked in the shape the engine uses: the summary, then the turns.
+    // And the fold was asked in the shape the engine uses -- the summary, then the turns --
+    // ending on an open turn that asks, so the conversation does not end on the assistant's own
+    // words with nothing to answer.
     InferenceRequest lastFold = summaryRequests.getLast();
     assertThat(lastFold.context().summaries()).containsExactly(first);
-    assertThat(lastFold.context().turns()).isNotEmpty();
+    assertThat(lastFold.context().turns()).hasSizeGreaterThan(1);
+    assertThat(lastFold.context().turns().getLast().complete()).isFalse();
+    assertThat(lastFold.context().turns().subList(0, lastFold.context().turns().size() - 1))
+        .allSatisfy(turn -> assertThat(turn.complete()).isTrue());
   }
 }
