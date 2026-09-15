@@ -15,7 +15,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SummarySource;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -117,8 +117,8 @@ class ContextAssemblerTest {
   @Test
   void theTailBeginsAfterWhatWasSummarisedNotAfterWhatWasShown() {
     RecordingHistories histories = new RecordingHistories(turns(1, 12));
-    SummarySource selective =
-        new SummarySource() {
+    Summarizer selective =
+        new Summarizer() {
           @Override
           public List<Summary> forAgent(AgentId agentId) {
             // Shows only the first of its two summaries, as a relevance filter might.
@@ -139,7 +139,7 @@ class ContextAssemblerTest {
   }
 
   private static ContextAssembler assembler(
-      TurnHistories histories, List<SummarySource> summaries, int maxTail) {
+      TurnHistories histories, List<Summarizer> summaries, int maxTail) {
     return new ContextAssembler(histories, summaries, maxTail, List.of());
   }
 
@@ -184,7 +184,7 @@ class ContextAssemblerTest {
     @Test
     void the_summaries_come_first_and_the_tail_is_everything_after_the_last_one() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource source = _ -> List.of(summary(1, 10), summary(11, 20));
+      Summarizer source = _ -> List.of(summary(1, 10), summary(11, 20));
 
       InferenceContext context = assembler(histories, List.of(source), 50).assemble(invocation());
 
@@ -208,7 +208,7 @@ class ContextAssemblerTest {
     @Test
     void a_gap_between_summaries_is_left_out_rather_than_filled_with_turns() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource relevant = _ -> List.of(summary(1, 10), summary(21, 25));
+      Summarizer relevant = _ -> List.of(summary(1, 10), summary(21, 25));
 
       InferenceContext context = assembler(histories, List.of(relevant), 50).assemble(invocation());
 
@@ -220,7 +220,7 @@ class ContextAssemblerTest {
     @Test
     void the_tail_is_still_capped_at_maxTail() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource source = _ -> List.of(summary(1, 10));
+      Summarizer source = _ -> List.of(summary(1, 10));
 
       InferenceContext context = assembler(histories, List.of(source), 3).assemble(invocation());
 
@@ -230,8 +230,8 @@ class ContextAssemblerTest {
     @Test
     void several_sources_are_concatenated_in_the_order_they_were_added() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource episodes = _ -> List.of(summary(1, 10));
-      SummarySource folded = _ -> List.of(summary(11, 20));
+      Summarizer episodes = _ -> List.of(summary(1, 10));
+      Summarizer folded = _ -> List.of(summary(11, 20));
 
       InferenceContext context =
           assembler(histories, List.of(episodes, folded), 50).assemble(invocation());
@@ -243,7 +243,7 @@ class ContextAssemblerTest {
     @Test
     void summaries_that_overlap_are_refused() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource confused = _ -> List.of(summary(1, 15), summary(10, 20));
+      Summarizer confused = _ -> List.of(summary(1, 15), summary(10, 20));
 
       assertThatThrownBy(() -> assembler(histories, List.of(confused), 50).assemble(invocation()))
           .isInstanceOf(IllegalStateException.class)
@@ -258,7 +258,7 @@ class ContextAssemblerTest {
     @Test
     void a_summary_that_reaches_the_turn_in_flight_is_refused() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      SummarySource tooEager = _ -> List.of(summary(1, 30));
+      Summarizer tooEager = _ -> List.of(summary(1, 30));
 
       assertThatThrownBy(() -> assembler(histories, List.of(tooEager), 50).assemble(invocation()))
           .isInstanceOf(IllegalStateException.class)

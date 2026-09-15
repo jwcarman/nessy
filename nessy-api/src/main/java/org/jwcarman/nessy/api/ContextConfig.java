@@ -7,7 +7,7 @@ package org.jwcarman.nessy.api;
  * <p>The story an agent is sent is built in one fixed order, and these are its three parts:
  *
  * <pre>
- *   summaries   whatever every {@link SummarySource} returns, in order
+ *   summaries   whatever every {@link Summarizer} returns, in order
  *   tail        every turn after the last summary, capped at {@link #maxTail} -- or, with no
  *               summaries, the last {@code maxTail} turns of the whole story
  *   ambient     whatever every {@link AmbientSource} has to say right now
@@ -20,7 +20,7 @@ package org.jwcarman.nessy.api;
 public interface ContextConfig {
 
   /** Adds a source of summaries. Several may be added; their results are concatenated in order. */
-  ContextConfig summaries(SummarySource source);
+  ContextConfig summaries(Summarizer source);
 
   /**
    * At most this many turns of the tail, counting back from the newest, whole.

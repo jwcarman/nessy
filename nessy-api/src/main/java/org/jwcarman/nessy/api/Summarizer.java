@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.turn.Summary;
  * story, a person editing a file. Each keeps its own store and answers from it here.
  */
 @FunctionalInterface
-public interface SummarySource {
+public interface Summarizer {
 
   /** This agent's summaries, oldest first. Empty when there are none. */
   List<Summary> forAgent(AgentId agentId);
@@ -38,7 +38,7 @@ public interface SummarySource {
     return shown.isEmpty() ? Optional.empty() : Optional.of(shown.getLast().through());
   }
 
-  static SummarySource none() {
+  static Summarizer none() {
     return _ -> List.of();
   }
 }

@@ -19,7 +19,7 @@ import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.api.SummarySource;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
@@ -381,13 +381,13 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
     /** Summaries, the tail, and background: everything that goes in that is not the call itself. */
     static final class Context implements ContextConfig {
 
-      private final List<SummarySource> summaries = new ArrayList<>();
+      private final List<Summarizer> summaries = new ArrayList<>();
       private final List<AmbientSource> ambient = new ArrayList<>();
       private final Set<String> ambientKinds = new LinkedHashSet<>();
       private int maxTail = 20;
 
       @Override
-      public ContextConfig summaries(SummarySource source) {
+      public ContextConfig summaries(Summarizer source) {
         summaries.add(Objects.requireNonNull(source, "summary source must not be null"));
         return this;
       }
@@ -418,7 +418,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
         return ambient(AmbientSource.constant(constant));
       }
 
-      List<SummarySource> summaries() {
+      List<Summarizer> summaries() {
         return List.copyOf(summaries);
       }
 

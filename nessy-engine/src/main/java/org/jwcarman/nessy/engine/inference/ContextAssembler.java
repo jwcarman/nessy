@@ -6,7 +6,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
-import org.jwcarman.nessy.api.SummarySource;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -35,13 +35,13 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 public class ContextAssembler implements InferenceContextAssembler {
 
   private final TurnHistories histories;
-  private final List<SummarySource> summaries;
+  private final List<Summarizer> summaries;
   private final int maxTail;
   private final List<AmbientSource> ambient;
 
   public ContextAssembler(
       TurnHistories histories,
-      List<SummarySource> summaries,
+      List<Summarizer> summaries,
       int maxTail,
       List<AmbientSource> ambient) {
     if (maxTail <= 0) {
@@ -65,7 +65,7 @@ public class ContextAssembler implements InferenceContextAssembler {
 
   private List<Summary> summariesFor(AgentId agentId) {
     List<Summary> gathered = new ArrayList<>();
-    for (SummarySource source : summaries) {
+    for (Summarizer source : summaries) {
       gathered.addAll(source.forAgent(agentId));
     }
     for (int i = 1; i < gathered.size(); i++) {

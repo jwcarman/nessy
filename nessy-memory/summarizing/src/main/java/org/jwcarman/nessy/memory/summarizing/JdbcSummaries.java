@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.SummarySource;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -19,11 +19,11 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 /**
  * The summary each agent of one type has of the head of its story, in {@code nessy_summary}.
  *
- * <p>One per agent, folded forward: as a {@link SummarySource} it shows the summary, which the
- * engine places before the verbatim tail; the {@link HeadSummarizer} replaces it with one that
- * covers more of the story, and only ever with one that reaches further.
+ * <p>One per agent, folded forward: as a {@link Summarizer} it shows the summary, which the engine
+ * places before the verbatim tail; the {@link HeadSummarizer} replaces it with one that covers more
+ * of the story, and only ever with one that reaches further.
  */
-public class JdbcSummaries implements SummarySource {
+public class JdbcSummaries implements Summarizer {
 
   private static final String FOR_AGENT =
       "SELECT from_turn, through_turn, content FROM nessy_summary"
