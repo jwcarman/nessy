@@ -84,16 +84,12 @@ public class ContextAssembler implements InferenceContextAssembler {
       return history.lastTurns(maxTail);
     }
     TurnId through = covered.getLast().through();
-    List<Turn> after = history.turnsAfter(through);
-    if (after.isEmpty()) {
+    List<Turn> tail = history.lastTurnsAfter(through, maxTail);
+    if (tail.isEmpty()) {
       throw new IllegalStateException(
           "a summary reaches the turn being answered: nothing is left after turn " + through);
     }
-    // Capped in memory for now: the common case is a tail well under the cap, and a summary
-    // source that lets the tail grow past it is the thing to fix rather than the query.
-    return after.size() <= maxTail
-        ? after
-        : List.copyOf(after.subList(after.size() - maxTail, after.size()));
+    return tail;
   }
 
   private List<Ambient> ambientFor(AgentId agentId) {

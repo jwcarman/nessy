@@ -132,6 +132,26 @@ class TurnWindowTest {
     assertThat(engine.history().forAgent(TYPE, agentId).lastTurns(10)).isEmpty();
   }
 
+  /**
+   * The tail after a summary: the same boundary trick with a floor, so the cap is still spent in
+   * the query and the boundary is still a whole turn.
+   */
+  @Test
+  void theTailAfterABoundaryIsCappedAndWhole() {
+    AgentId agentId = fiveTurns();
+    TurnHistory history = engine.history().forAgent(TYPE, agentId);
+
+    assertThat(history.lastTurnsAfter(new TurnId(3), 2).stream().map(Turn::id))
+        .as("the newest two after turn 3, not the first two")
+        .containsExactly(new TurnId(7), new TurnId(9));
+    assertThat(history.lastTurnsAfter(new TurnId(3), 10).stream().map(Turn::id))
+        .as("a cap larger than the tail returns the whole tail")
+        .containsExactly(new TurnId(5), new TurnId(7), new TurnId(9));
+    assertThat(history.lastTurnsAfter(new TurnId(9), 5))
+        .as("nothing after the last turn is nothing, not the whole story")
+        .isEmpty();
+  }
+
   /** The turn in flight has no result yet, and is still sent -- it is the reason for the call. */
   @Test
   void anUnfinishedTurnIsReturnedOpen() {

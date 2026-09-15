@@ -42,9 +42,13 @@ public interface TurnHistory {
   List<Turn> turnsFrom(long fromTurn);
 
   /**
-   * Every turn after {@code through}, oldest first: the tail once a summary has covered the rest.
+   * The newest {@code turns} turns strictly after {@code through}, whole, oldest first: the tail
+   * once a summary covers everything before it.
+   *
+   * <p>Capped in the query, never in memory. Reading everything after the boundary and keeping the
+   * end of it would be right in every test and wrong in production, where the point of a cap is
+   * what it stops being read. There is always a cap; "everything" is a large number, not a missing
+   * one.
    */
-  default List<Turn> turnsAfter(TurnId through) {
-    return turnsFrom(through.value() + 1);
-  }
+  List<Turn> lastTurnsAfter(TurnId through, int turns);
 }

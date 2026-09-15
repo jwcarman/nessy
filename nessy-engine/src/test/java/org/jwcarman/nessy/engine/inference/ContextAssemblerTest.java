@@ -73,6 +73,7 @@ class ContextAssemblerTest {
     final List<String> narrowedTo = new ArrayList<>();
     final List<Integer> windows = new ArrayList<>();
     final List<Long> tailsAfter = new ArrayList<>();
+    final List<Integer> tailCaps = new ArrayList<>();
 
     RecordingHistories(List<Turn> story) {
       this.story = story;
@@ -92,8 +93,15 @@ class ContextAssemblerTest {
 
     @Override
     public List<Turn> turnsFrom(long fromTurn) {
-      tailsAfter.add(fromTurn - 1);
       return story.stream().filter(t -> t.id().value() >= fromTurn).toList();
+    }
+
+    @Override
+    public List<Turn> lastTurnsAfter(TurnId through, int turns) {
+      tailsAfter.add(through.value());
+      tailCaps.add(turns);
+      List<Turn> after = turnsFrom(through.value() + 1);
+      return after.size() <= turns ? after : after.subList(after.size() - turns, after.size());
     }
   }
 
@@ -153,9 +161,10 @@ class ContextAssemblerTest {
       assertThat(ids(context.turns()))
           .containsExactly(21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 30L);
       assertThat(histories.tailsAfter)
-          .as("read as a range from the last summary")
+          .as("read as a tail from the last summary")
           .containsExactly(20L);
-      assertThat(histories.windows).as("and never as a window").isEmpty();
+      assertThat(histories.tailCaps).as("with the cap handed to the store").containsExactly(50);
+      assertThat(histories.windows).as("and never as an uncapped window").isEmpty();
     }
 
     /**

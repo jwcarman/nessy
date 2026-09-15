@@ -8,6 +8,7 @@ import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
@@ -37,6 +38,24 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
   private static final String READ_FROM =
       "SELECT tokens, payload FROM nessy_agent_history"
           + " WHERE agent_type = ? AND agent_id = ? AND turn_id >= ? ORDER BY seq";
+
+  /**
+   * Where the last {@code n} turns AFTER a boundary begin: the tail once a summary covers the rest.
+   *
+   * <p>{@link #WINDOW_START} with one more predicate, so the cap is still spent in the query and
+   * the boundary is still a whole turn. No {@code COALESCE} here on purpose: no turn after the
+   * boundary is a real answer ("nothing left"), not a default of zero that would read the whole
+   * story back from the beginning.
+   */
+  private static final String TAIL_START =
+      """
+            SELECT MIN(turn_id)
+              FROM (SELECT DISTINCT turn_id
+                      FROM nessy_agent_history
+                     WHERE agent_type = ? AND agent_id = ? AND turn_id > ?
+                     ORDER BY turn_id DESC
+                     LIMIT ?) recent
+            """;
 
   /**
    * Where the last {@code n} turns begin.
@@ -126,6 +145,21 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
             .optional()
             .orElse(0L);
     return turnsFrom(agentType, agentId, from);
+  }
+
+  /**
+   * The newest {@code turns} turns strictly after {@code through}, whole, oldest first.
+   *
+   * <p>Empty when nothing follows the boundary, which the assembler reads as a summary having
+   * reached the turn in flight. Two queries whatever the answer's size, as {@link #lastTurns}.
+   */
+  List<Turn> lastTurnsAfter(AgentType agentType, AgentId agentId, TurnId through, int turns) {
+    return jdbc.sql(TAIL_START)
+        .params(agentType.value(), agentId.value(), through.value(), turns)
+        .query(Long.class)
+        .optional()
+        .map(from -> turnsFrom(agentType, agentId, from))
+        .orElse(List.of());
   }
 
   /**
@@ -229,6 +263,11 @@ public class JdbcHistoryStore implements TurnHistories, ToolCallHistories {
     @Override
     public List<Turn> turnsFrom(long fromTurn) {
       return store.turnsFrom(agentType, agentId, fromTurn);
+    }
+
+    @Override
+    public List<Turn> lastTurnsAfter(TurnId through, int turns) {
+      return store.lastTurnsAfter(agentType, agentId, through, turns);
     }
   }
 }
