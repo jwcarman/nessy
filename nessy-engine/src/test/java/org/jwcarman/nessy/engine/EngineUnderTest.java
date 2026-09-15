@@ -3,7 +3,6 @@ package org.jwcarman.nessy.engine;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
-import java.time.Clock;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.harness.HarnessFactory;
@@ -15,7 +14,6 @@ import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -44,7 +42,6 @@ public final class EngineUnderTest implements AutoCloseable {
   }
 
   private final HikariDataSource dataSource;
-  private final ThreadPoolTaskScheduler scheduler;
   private final HarnessFactory harnesses;
   private final JdbcHistoryStore history;
   private final JdbcClient jdbc;
@@ -77,10 +74,6 @@ public final class EngineUnderTest implements AutoCloseable {
             new JacksonCodecFactory(JsonMapper.builder().build()),
             new CharacterCountEstimator());
 
-    this.scheduler = new ThreadPoolTaskScheduler();
-    scheduler.setPoolSize(2);
-    scheduler.initialize();
-
     this.harnesses =
         new HarnessFactory(
             engine ->
@@ -88,9 +81,7 @@ public final class EngineUnderTest implements AutoCloseable {
                     .dataSource(dataSource)
                     .inference(provider, InferenceOptions.of("a-model"))
                     .narrator(narrator)
-                    .observations(observations)
-                    .scheduler(scheduler)
-                    .clock(Clock.systemUTC()));
+                    .observations(observations));
   }
 
   public EngineUnderTest(InferenceProvider provider) {
@@ -119,7 +110,7 @@ public final class EngineUnderTest implements AutoCloseable {
 
   @Override
   public void close() {
-    scheduler.shutdown();
+    harnesses.close();
     dataSource.close();
   }
 }

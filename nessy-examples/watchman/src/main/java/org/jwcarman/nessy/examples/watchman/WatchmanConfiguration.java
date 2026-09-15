@@ -31,6 +31,12 @@ import tools.jackson.databind.JsonNode;
 @EnableConfigurationProperties(WatchmanProperties.class)
 public class WatchmanConfiguration {
 
+  /** The board's clock: how long a question has waited, and when it was answered. */
+  @Bean
+  public Clock clock() {
+    return Clock.systemUTC();
+  }
+
   @Bean
   public CommandRunner commandRunner() {
     return new ProcessRunner();

@@ -1,24 +1,18 @@
 package org.jwcarman.nessy.spring.boot;
 
 import io.micrometer.observation.ObservationRegistry;
-import java.time.Clock;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.HarnessFactory;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
-import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -31,12 +25,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.support.JdbcTransactionManager;
-import org.springframework.scheduling.TaskScheduler;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.transaction.PlatformTransactionManager;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Nessy as a Boot citizen: a {@code DataSource} and an {@link InferenceProvider} in, a {@link
@@ -65,24 +53,6 @@ public class NessyAutoConfiguration {
    * so the fallback did not run a degraded Nessy, it ran one that fails on the first turn. Saying
    * so at startup is kinder than an embedded database that looks like it worked.
    */
-  @Bean
-  @ConditionalOnMissingBean
-  public Clock nessyClock() {
-    return Clock.systemUTC();
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public CodecFactory nessyCodecs(ObjectProvider<JsonMapper> mappers) {
-    return new JacksonCodecFactory(mappers.getIfAvailable(() -> JsonMapper.builder().build()));
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public InputSchemaGenerator nessyInputSchemas() {
-    return new VictoolsInputSchemaGenerator();
-  }
-
   /**
    * The schema, created where the application says so.
    *
@@ -119,42 +89,6 @@ public class NessyAutoConfiguration {
   }
 
   /**
-   * A timer, and only a timer.
-   *
-   * <p><b>This does not perform effects.</b> {@code EffectDispatcher} creates its own
-   * virtual-thread executor and submits every model call, tool call and approval to it, so the
-   * threads that matter are the engine's and nothing here configures them. All this scheduler ever
-   * runs is the periodic look for due work: one short query, then a handoff.
-   *
-   * <p>Which is why one thread is enough, and why it is virtual anyway -- the query is still a
-   * blocking call, and there is no reason for a timer to own a platform thread.
-   */
-  @Bean(destroyMethod = "shutdown")
-  @ConditionalOnMissingBean(name = "nessyScheduler")
-  public TaskScheduler nessyScheduler() {
-    ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-    scheduler.setVirtualThreads(true);
-    scheduler.setPoolSize(1);
-    scheduler.setThreadNamePrefix("nessy-");
-    scheduler.initialize();
-    return scheduler;
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public PlatformTransactionManager nessyTransactionManager(DataSource dataSource) {
-    return new JdbcTransactionManager(dataSource);
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public JdbcHistoryStore nessyHistory(
-      DataSource dataSource, CodecFactory codecs, NessySchema schema) {
-    return new JdbcHistoryStore(
-        JdbcClient.create(dataSource), codecs, new CharacterCountEstimator());
-  }
-
-  /**
    * Silent unless an application says otherwise.
    *
    * <p>Narration is best-effort and never durable, so a default that said something would be a
@@ -171,18 +105,12 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public HarnessFactory nessyHarnessFactory(
       DataSource dataSource,
-      CodecFactory codecs,
-      InputSchemaGenerator schemas,
       Narrator narrator,
       ReplyTokens replyTokens,
-      PlatformTransactionManager transactions,
-      TaskScheduler scheduler,
-      Clock clock,
       InferenceProvider models,
       NessyProperties properties,
       NessySchema schema,
-      ObjectProvider<ObservationRegistry> registries,
-      ObjectProvider<JsonMapper> mappers) {
+      ObjectProvider<ObservationRegistry> registries) {
 
     ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     // Wrapped only when there is somewhere to report to, so an application that is not tracing
@@ -203,15 +131,16 @@ public class NessyAutoConfiguration {
                         requireModel(properties),
                         properties.maxTokens(),
                         properties.capabilities()))
-                .codecs(codecs)
-                .schemas(schemas)
-                .mapper(mappers.getIfAvailable(() -> JsonMapper.builder().build()))
                 .narrator(narrator)
                 .observations(observations)
-                .replyTokens(replyTokens)
-                .transactionManager(transactions)
-                .scheduler(scheduler)
-                .clock(clock));
+                .replyTokens(replyTokens));
+  }
+
+  /** The story, for an application that shows what its agents said. */
+  @Bean
+  @ConditionalOnMissingBean
+  public TurnHistories nessyHistories(HarnessFactory factory) {
+    return factory.histories();
   }
 
   @Bean

@@ -71,7 +71,6 @@
          all at once: a reactor that cannot build tells you nothing about which module is wrong.
 
     <module>nessy-testing</module>
-    <module>nessy-store-tests</module>
     -->
   </modules>
 

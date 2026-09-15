@@ -71,7 +71,8 @@ public final class Repl {
       }
 
       ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
-      HarnessFactory factory =
+      // Closed with the context: the factory owns the engine's timer and every harness it made.
+      try (HarnessFactory factory =
           new HarnessFactory(
               engine ->
                   engine
@@ -81,17 +82,18 @@ public final class Repl {
                       .narrator(narration)
                       // Ephemeral, and correct here: a token only has to outlive the process that
                       // minted it, and this process IS the conversation.
-                      .replyTokens(ReplyTokens.ephemeral()));
-      Harness<String> harness =
-          factory.create(
-              String.class,
-              h -> {
-                h.agentType(config.type())
-                    .systemPrompt(config.systemPrompt())
-                    .observationRenderer(said -> List.of(new Block.Text(said)));
-                config.tools().forEach(grant -> grant.accept(h));
-              });
-      new ReplLoop(harness, config.agentId(), config, io, narration).run();
+                      .replyTokens(ReplyTokens.ephemeral()))) {
+        Harness<String> harness =
+            factory.create(
+                String.class,
+                h -> {
+                  h.agentType(config.type())
+                      .systemPrompt(config.systemPrompt())
+                      .observationRenderer(said -> List.of(new Block.Text(said)));
+                  config.tools().forEach(grant -> grant.accept(h));
+                });
+        new ReplLoop(harness, config.agentId(), config, io, narration).run();
+      }
     }
   }
 
