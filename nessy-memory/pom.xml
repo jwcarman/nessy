@@ -46,12 +46,6 @@
     <module>notebook</module>
     <module>plan</module>
     <module>summarizing</module>
-
-    <!-- Held out: reshaped what was SENT under the old Memory SPI, which the engine no longer
-         has. Likely to be deleted rather than ported.
-
-    <module>pipeline</module>
-    -->
   </modules>
 
 </project>
