@@ -36,7 +36,7 @@ import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.spring6.templateresolver.SpringResourceTemplateResolver;
 import org.thymeleaf.spring6.view.ThymeleafViewResolver;
 
-class ApprovalsPageTest extends PostgresBacked {
+class ApprovalsPageTest {
 
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
   private static final Pattern INPUT_NAME = Pattern.compile("<input[^>]*name=\"([^\"]+)\"");
@@ -48,7 +48,7 @@ class ApprovalsPageTest extends PostgresBacked {
 
   @BeforeEach
   void renderTheRealTemplates() {
-    DataSource database = dataSource();
+    DataSource database = PostgresBacked.dataSource();
     PendingApprovalsRepository.initialize(database);
     approvals = new PendingApprovalsRepository(database);
     approvals.asked(

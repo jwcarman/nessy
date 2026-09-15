@@ -33,7 +33,7 @@ import org.jwcarman.nessy.engine.agent.Effect;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -60,7 +60,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class EffectStorePostgresCertificationTest {
 
   @Container
-  private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17");
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17");
 
   private static final AgentType TYPE = AgentType.of("chat");
   private static final AgentId AGENT = AgentId.of("agent-one");

@@ -16,7 +16,7 @@ import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -37,8 +37,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class EngineUnderTest implements AutoCloseable {
 
-  private static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:18-alpine");
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
   static {
     POSTGRES.start();

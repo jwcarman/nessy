@@ -14,13 +14,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Import(PostgresBacked.class)
 @DisplayName("Ending a conversation")
-class EndingIntegrationTest extends PostgresBacked {
+class EndingIntegrationTest {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {

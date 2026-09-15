@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
@@ -23,8 +24,9 @@ import org.springframework.web.client.RestClient;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {"watchman.scripted=true", "watchman.round-interval=PT1H"})
+@Import(PostgresBacked.Connection.class)
 @DisplayName("A round of the scripted watchman")
-class WatchmanRoundIntegrationTest extends PostgresBacked {
+class WatchmanRoundIntegrationTest {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class CannedCommands {

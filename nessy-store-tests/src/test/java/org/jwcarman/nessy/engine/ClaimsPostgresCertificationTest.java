@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -50,7 +50,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class ClaimsPostgresCertificationTest {
 
   @Container
-  private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17");
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17");
 
   private static final AgentId AGENT = AgentId.of("agent-one");
   private static final TurnId TURN = TurnId.of("turn-1");

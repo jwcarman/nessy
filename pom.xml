@@ -141,14 +141,13 @@
     <opentelemetry-logback-appender.version>2.31.1-alpha</opentelemetry-logback-appender.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
-    <!-- Held at the 1.21 line deliberately: testcontainers 2.0 renamed every module artifact
-         (org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql) and moved
-         the container classes to per-module packages. 2.0.x still ships the old
-         org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-jdbc's container
-         test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
-         a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <hikaricp.version>7.0.2</hikaricp.version>
-    <testcontainers.version>1.21.4</testcontainers.version>
+    <!-- The 2.x line, the one Boot 4.1.1 manages: module artifacts are testcontainers-<module>
+         (org.testcontainers:testcontainers-postgresql) and each container class lives in its
+         module's package (org.testcontainers.postgresql.PostgreSQLContainer). Boot's
+         @ServiceConnection factories are written for these classes, which is why the examples can
+         hand a container straight to the context. -->
+    <testcontainers.version>2.0.5</testcontainers.version>
     <!-- Condition-based waiting for concurrency tests (S2925: no Thread.sleep in tests). Managed
          here directly, unlike nessy-autoconfigure, which inherits the version from its own Boot
          BOM import — nessy-console pulls no Spring BOM at all. -->

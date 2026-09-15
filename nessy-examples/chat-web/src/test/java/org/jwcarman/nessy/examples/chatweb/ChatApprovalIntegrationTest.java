@@ -14,11 +14,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class ChatApprovalIntegrationTest extends PostgresBacked {
+@Import(PostgresBacked.class)
+class ChatApprovalIntegrationTest {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
