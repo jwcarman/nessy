@@ -119,17 +119,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
       if (!any[0]) {
         return new InferenceResult.Fault(new Failure.Permanent("model returned no message"));
       }
-      Message message;
-      try {
-        message = accumulator.message();
-      } catch (IllegalStateException incomplete) {
-        // The stream closed before message_stop: the SDK will not fold half a message, and
-        // neither should this adapter.
-        return new InferenceResult.Fault(
-            new Failure.Permanent(
-                "the stream ended before the answer was complete: " + incomplete.getMessage()));
-      }
-      return read(message);
+      return read(accumulator);
     } catch (AnthropicException e) {
       return new InferenceResult.Fault(classify(e));
     }
@@ -150,6 +140,22 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     } else if (delta.isThinking() && !delta.asThinking().thinking().isEmpty()) {
       narrator.narrate(new AgentEvent.ThinkingDelta(delta.asThinking().thinking()));
     }
+  }
+
+  /**
+   * The folded message, read -- or the fault a stream that closed before {@code message_stop} is:
+   * the SDK will not fold half a message, and neither should this adapter.
+   */
+  private InferenceResult read(MessageAccumulator accumulator) {
+    Message message;
+    try {
+      message = accumulator.message();
+    } catch (IllegalStateException incomplete) {
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the stream ended before the answer was complete: " + incomplete.getMessage()));
+    }
+    return read(message);
   }
 
   /**

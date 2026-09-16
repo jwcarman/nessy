@@ -182,10 +182,12 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return;
       }
       Part last = parts.getLast();
+      boolean lastIsThought = last.thought().orElse(false);
+      boolean thisIsThought = part.thought().orElse(false);
       boolean joinable =
           last.text().isPresent()
               && last.thoughtSignature().isEmpty()
-              && last.thought().orElse(false) == part.thought().orElse(false);
+              && lastIsThought == thisIsThought;
       if (!joinable) {
         parts.add(part);
         return;

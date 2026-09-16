@@ -138,21 +138,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
         // A stream that ended before it began: nothing to fold. Asking again returns the same.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
       }
-      ChatCompletion completion;
-      try {
-        completion = accumulator.chatCompletion();
-      } catch (IllegalStateException incomplete) {
-        // The stream closed before any choice reached its finish reason: the SDK will not fold
-        // half an answer into a completion, and neither should this adapter.
-        return new InferenceResult.Fault(
-            new Failure.Permanent(
-                "the stream ended before the answer was complete: " + incomplete.getMessage()));
-      }
-      if (completion.choices().isEmpty()) {
-        // A 200 that carries no answer. Asking again returns the same nothing.
-        return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
-      }
-      return read(completion.choices().getFirst());
+      return read(accumulator);
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(classify(e));
     }
@@ -188,6 +174,26 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * under one of these two names.
    */
   private static final List<String> REASONING_FIELDS = List.of("reasoning_content", "reasoning");
+
+  /**
+   * The folded completion, read -- or the fault a stream that closed before any choice reached its
+   * finish reason is: the SDK will not fold half an answer, and neither should this adapter.
+   */
+  private static InferenceResult read(ChatCompletionAccumulator accumulator) {
+    ChatCompletion completion;
+    try {
+      completion = accumulator.chatCompletion();
+    } catch (IllegalStateException incomplete) {
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the stream ended before the answer was complete: " + incomplete.getMessage()));
+    }
+    if (completion.choices().isEmpty()) {
+      // A 200 that carries no answer. Asking again returns the same nothing.
+      return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
+    }
+    return read(completion.choices().getFirst());
+  }
 
   /**
    * Which of the three shapes an assistant message is.
