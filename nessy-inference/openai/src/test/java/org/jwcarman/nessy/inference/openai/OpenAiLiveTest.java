@@ -3,8 +3,10 @@ package org.jwcarman.nessy.inference.openai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -70,6 +72,31 @@ class OpenAiLiveTest {
           .singleElement()
           .isInstanceOfSatisfying(
               Block.Text.class, text -> assertThat(text.text()).containsIgnoringCase("Paris"));
+    }
+  }
+
+  /**
+   * The narrator hears the answer in pieces before the result carries it whole: several deltas, and
+   * their concatenation is exactly the text the engine is handed.
+   */
+  @Test
+  void the_answer_is_narrated_as_it_streams() {
+    try (OpenAiInferenceProvider provider = provider()) {
+      List<AgentEvent> narrated = new ArrayList<>();
+
+      InferenceResult result =
+          provider.infer(
+              asking("List the seven days of the week, one per line.", List.of()), narrated::add);
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      String answer = ((Block.Text) ((InferenceResult.Answer) result).blocks().getFirst()).text();
+      List<String> deltas =
+          narrated.stream()
+              .filter(AgentEvent.ContentDelta.class::isInstance)
+              .map(event -> ((AgentEvent.ContentDelta) event).text())
+              .toList();
+      assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
+      assertThat(String.join("", deltas)).isEqualTo(answer);
     }
   }
 

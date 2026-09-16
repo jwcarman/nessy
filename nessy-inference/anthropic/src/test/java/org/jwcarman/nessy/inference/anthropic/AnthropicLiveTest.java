@@ -3,9 +3,11 @@ package org.jwcarman.nessy.inference.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -85,6 +87,37 @@ class AnthropicLiveTest {
           .allSatisfy(block -> assertThat(((Block.Text) block).text()).isNotBlank())
           .anySatisfy(
               block -> assertThat(((Block.Text) block).text()).containsIgnoringCase("Paris"));
+    }
+  }
+
+  /**
+   * The narrator hears the answer in pieces before the result carries it whole: several deltas, and
+   * their concatenation is exactly the text the engine is handed.
+   */
+  @Test
+  void the_answer_is_narrated_as_it_streams() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      List<AgentEvent> narrated = new ArrayList<>();
+
+      InferenceResult result =
+          provider.infer(
+              asking(List.of(open(1, "List the seven days of the week, one per line.")), List.of()),
+              narrated::add);
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      String answer =
+          ((InferenceResult.Answer) result)
+              .blocks().stream()
+                  .filter(Block.Text.class::isInstance)
+                  .map(block -> ((Block.Text) block).text())
+                  .collect(java.util.stream.Collectors.joining());
+      List<String> deltas =
+          narrated.stream()
+              .filter(AgentEvent.ContentDelta.class::isInstance)
+              .map(event -> ((AgentEvent.ContentDelta) event).text())
+              .toList();
+      assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
+      assertThat(String.join("", deltas)).isEqualTo(answer);
     }
   }
 
