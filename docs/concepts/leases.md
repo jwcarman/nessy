@@ -87,7 +87,7 @@ start the same job. So two rules for anything that runs under one:
 
 - **Choose the TTL for the slow case.** A summary by a hosted model takes
   seconds; the same summary by a local thinking model over a long episode
-  took nearly two minutes in testing. The web chat example uses five.
+  takes minutes. Size the TTL to the slowest model the work will run on.
 - **Make the write idempotent anyway.** The episode summary is written with
   `WHERE summary IS NULL`; the head summary only ever replaces one that
   reaches less far. The lease makes duplicate work rare; the guarded write

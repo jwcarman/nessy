@@ -145,9 +145,9 @@ story just left it, and the rest chosen by relevance when the store has an
 `Embedder`, by recency when it has not. Relevance is the cosine between the
 summary's embedding, written beside it when the summary was, and the
 embedding of the observation being answered: one embedding call per model
-call, against one agent's rows, which are tens rather than thousands. Change
-the embedder and the rows the old model wrote rank last until re-embedded;
-the model's name is stored beside every vector for exactly that reason.
+call, against one agent's rows. A summary embedded by a different model than
+the store's current embedder cannot be compared and ranks last; the model's
+name is stored beside every vector so the store knows which.
 
 ```java
 JdbcEpisodes episodes = JdbcEpisodes.create(c -> c
@@ -264,10 +264,8 @@ Embedder embedder = OpenAiEmbedder.create(c -> c
 
 An `Embedding` carries its model's name and compares by content; its
 `similarity` is the cosine between two vectors and refuses a pair from
-different models. Episodes rank by it today, as described above; the notebook
-and the lessons store are the rest of the roadmap's embeddings-ranked recall
-item. Every store degrades to recency when it has no embedder, and the model
-can always recall by title.
+different models. Episodes rank by it, as described above. A store with no
+embedder ranks by recency, and the model can always recall by title.
 
 ## Writing your own
 

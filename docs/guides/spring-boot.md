@@ -172,8 +172,8 @@ StorageCodec nessyStorage(KeySource keys) {
 }
 ```
 
-The seam ships; a reference AES codec with key rotation is on the
-[roadmap](https://github.com/jwcarman/nessy/blob/main/ROADMAP.md).
+No codec ships with the starter: the seam is there, and the codec, its keys
+and their rotation are the application's.
 
 ## A worked example
 

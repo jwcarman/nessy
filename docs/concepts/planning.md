@@ -47,28 +47,6 @@ current plan or nothing at all. An empty plan contributes nothing: a heading
 over no tasks tells the model it has a plan, which is a claim, and saying
 nothing is not.
 
-## The rest of the family
-
-The task list is the first pattern of several, and the rest layer onto it.
-In the order they pay off:
-
-- **Plan-and-Execute with replanning.** After a step's result the model
-  revises the remaining steps rather than only ticking one off: a `replan`
-  tool, and a policy for when a revision is prompted (a failed step, every N
-  steps). Its first form is an ambient nudge built on the read-only turn
-  histories; its second is a separate planner call by an event listener,
-  so a strong, slow planner can sit behind a cheap, fast executor.
-- **Plan critique.** Before execution, a second inference call reviews the
-  plan for missing steps, wrong order or unsafe actions.
-- **Hierarchical decomposition.** A step can itself be a plan, which is
-  exactly what a delegated sub-agent gets handed.
-- **Goals and progress.** A standing goal with success criteria on the plan,
-  checked against its state each turn.
-- **Budget-aware planning**, **plan with placeholders** (ReWOO) and **plan
-  search** (Tree of Thoughts) further out.
-
-See the [roadmap](https://github.com/jwcarman/nessy/blob/main/ROADMAP.md#planning).
-
 ## Where next
 
 - [Memory](memory.md), the notebook, and why a note and a plan differ
