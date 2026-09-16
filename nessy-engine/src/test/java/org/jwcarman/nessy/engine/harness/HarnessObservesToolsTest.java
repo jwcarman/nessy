@@ -67,6 +67,12 @@ class HarnessObservesToolsTest {
         }
       };
 
+  private ToolBinding<?> named(String name) {
+    return lastConfig.tools().find(new ToolName(name)).orElseThrow();
+  }
+
+  private DefaultHarnessConfig<String> lastConfig;
+
   private ToolBinding<?> bound() {
     observations
         .observationConfig()
@@ -92,8 +98,38 @@ class HarnessObservesToolsTest {
             type -> new InputSchema("{}"),
             observations);
     config.tool(ECHO, t -> t.approver(_ -> Awaited.ready(ApprovalResult.approved()), a -> {}));
-    return config.tools().all().getFirst();
+    config.tool(UNGATED, t -> {});
+    lastConfig = config;
+    return named("echo");
   }
+
+  private static final Tool<String> UNGATED =
+      new Tool<>() {
+        @Override
+        public ToolName name() {
+          return new ToolName("ungated");
+        }
+
+        @Override
+        public String description() {
+          return "nobody is asked";
+        }
+
+        @Override
+        public Class<String> inputType() {
+          return String.class;
+        }
+
+        @Override
+        public InputSchema inputSchema(InputSchemaGenerator generator) {
+          return new InputSchema("{\"type\":\"string\"}");
+        }
+
+        @Override
+        public Awaited<ToolResult> call(ToolCallRequest<String> request) {
+          return Awaited.ready(ToolResult.ok(new Block.Text(request.input())));
+        }
+      };
 
   private String tag(String name, String key) {
     return stopped.stream()
@@ -150,5 +186,26 @@ class HarnessObservesToolsTest {
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     assertThat(tag("nessy.approval", "nessy.approval.answer")).isEqualTo("approved");
     assertThat(tag("nessy.approval", "gen_ai.agent.name")).isEqualTo("chat");
+  }
+
+  /** The default approver lets everything through and nobody was asked, so it is no span. */
+  @Test
+  void a_tool_with_no_approver_of_its_own_makes_no_approval_span() {
+    bound();
+    ToolBinding<?> ungated = named("ungated");
+    ungated.approve(
+        new ApprovalRequest(
+            new AgentType("chat"),
+            new AgentId(UUID.randomUUID()),
+            new TurnId(1),
+            new CallId("c2"),
+            new ToolName("ungated"),
+            "{}",
+            "ungated hi",
+            Instant.EPOCH,
+            Instant.EPOCH.plusSeconds(3600),
+            new ReplyToken("unused")));
+
+    assertThat(stopped).noneMatch(c -> c.getName().equals("nessy.approval"));
   }
 }

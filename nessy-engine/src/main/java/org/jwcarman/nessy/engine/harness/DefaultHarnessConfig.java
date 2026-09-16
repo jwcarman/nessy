@@ -168,7 +168,11 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
             terms.retryPolicy,
             terms.action,
             terms.enrichers,
-            terms.approver == null ? null : ObservedTools.approver(terms.approver, observations),
+            // Only an approver the application chose is worth a span: the default lets every
+            // call through, and an "approval" nobody was asked for would mislead a dashboard.
+            terms.approverChosen
+                ? ObservedTools.approver(terms.approver, observations)
+                : terms.approver,
             terms.approvalTimeout,
             terms.approvalRetryPolicy));
     return this;
@@ -230,6 +234,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
     private ActionRenderer<I> action = ActionRenderer.byToString();
     private final List<ApprovalEnricher> enrichers = new ArrayList<>();
     private Approver approver = Approver.allow();
+    private boolean approverChosen;
     private Duration approvalTimeout = DEFAULT_APPROVAL_TIMEOUT;
     private RetryPolicy approvalRetryPolicy = DEFAULT_TOOL_RETRY_POLICY;
 
@@ -267,6 +272,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
       ApprovalTerms terms = new ApprovalTerms();
       customizer.accept(terms);
       this.approver = approver;
+      this.approverChosen = true;
       this.approvalTimeout = terms.timeout;
       this.approvalRetryPolicy = terms.retryPolicy;
       return this;
