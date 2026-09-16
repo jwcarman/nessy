@@ -20,6 +20,7 @@ import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Observation;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
@@ -602,6 +603,89 @@ class AnthropicRequestsTest {
       assertThat(markedIn(blocks))
           .allSatisfy(i -> assertThat(blocks.get(i).isThinking()).isFalse());
       assertThat(markedIn(blocks)).isNotEmpty();
+    }
+  }
+
+  @Nested
+  class TheEdges {
+
+    @Test
+    void a_summary_stands_first_as_a_bracketed_user_message() {
+      InferenceContext context =
+          new InferenceContext(
+              List.of(Summary.text(new TurnId(1), new TurnId(9), "they talked about lakes")),
+              List.of(open(11, "and monsters?")),
+              List.of());
+      MessageCreateParams params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(SYSTEM, context, List.of(), options()), NONE, MAPPER);
+
+      assertThat(params.messages()).hasSize(2);
+      assertThat(params.messages().getFirst().role()).isEqualTo(MessageParam.Role.USER);
+      assertThat(
+              params
+                  .messages()
+                  .getFirst()
+                  .content()
+                  .blockParams()
+                  .orElseThrow()
+                  .getFirst()
+                  .text()
+                  .orElseThrow()
+                  .text())
+          .startsWith("<summary from=\"1\" through=\"9\">")
+          .contains("they talked about lakes");
+    }
+
+    @Test
+    void a_refused_turn_is_left_out_whole() {
+      Turn refused =
+          new Turn(new TurnId(1), asked(1, "rude"), List.of(), new TurnResult.Refused(), 0);
+      Turn blank =
+          new Turn(
+              new TurnId(3),
+              new Observation(new Seq(3), List.of(new Block.Text("hi"))),
+              List.of(),
+              null,
+              0);
+
+      MessageCreateParams params = params(List.of(refused, blank));
+
+      assertThat(params.messages()).hasSize(1);
+      assertThat(params.messages().getFirst().content().blockParams().orElseThrow()).hasSize(1);
+    }
+
+    @Test
+    void a_call_still_awaiting_its_results_is_sent_without_a_results_message() {
+      Exchange asking =
+          new Exchange(
+              new Seq(2),
+              List.of(
+                  new Block.Commentary("thinking aloud"), new Block.ToolCall("c1", "lookup", "{}")),
+              List.of());
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+
+      MessageCreateParams params = params(List.of(turn), PromptCaching.FIVE_MINUTES);
+
+      assertThat(params.messages()).hasSize(2);
+      assertThat(params.messages().get(1).role()).isEqualTo(MessageParam.Role.ASSISTANT);
+      assertThat(params.messages().get(1).content().blockParams().orElseThrow()).hasSize(2);
+    }
+
+    @Test
+    void a_conversation_of_nothing_but_provider_state_gets_no_breakpoint() {
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "hi"),
+              List.of(),
+              new TurnResult.Answered(
+                  List.of(new Block.Provider("someone-else", "{\"type\":\"thinking\"}"))),
+              0);
+
+      MessageCreateParams params = params(List.of(turn), PromptCaching.ONE_HOUR);
+
+      assertThat(params.messages()).hasSize(1);
     }
   }
 }

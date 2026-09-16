@@ -208,4 +208,46 @@ class BedrockInferenceProviderTest {
           .isEqualTo("Bedrock");
     }
   }
+
+  @Nested
+  class TheEdges {
+
+    @Test
+    void a_reply_with_no_output_at_all_is_an_empty_answer() {
+      ConverseResponse bare = ConverseResponse.builder().stopReason(StopReason.END_TURN).build();
+
+      InferenceResult result = infer(bare);
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+    }
+
+    @Test
+    void redacted_and_unsigned_reasoning_and_a_call_without_input_are_carried() {
+      ContentBlock redacted =
+          ContentBlock.fromReasoningContent(
+              ReasoningContentBlock.fromRedactedContent(
+                  software.amazon.awssdk.core.SdkBytes.fromByteArray(new byte[] {7})));
+      ContentBlock unsigned =
+          ContentBlock.fromReasoningContent(
+              ReasoningContentBlock.fromReasoningText(
+                  ReasoningTextBlock.builder().text("hmm").build()));
+      ContentBlock use =
+          ContentBlock.fromToolUse(ToolUseBlock.builder().toolUseId("c1").name("ping").build());
+
+      InferenceResult result = infer(reply(StopReason.TOOL_USE, redacted, unsigned, use));
+
+      List<Block.ActionRequestContent> blocks = ((InferenceResult.Actions) result).blocks();
+      assertThat(((Block.Provider) blocks.get(0)).payload()).contains("\"type\":\"redacted\"");
+      assertThat(((Block.Provider) blocks.get(1)).payload()).contains("\"signature\":\"\"");
+      assertThat(blocks.get(2)).isEqualTo(new Block.ToolCall("c1", "ping", "{}"));
+    }
+
+    @Test
+    void from_env_is_the_config_route() {
+      org.junit.jupiter.api.Assumptions.assumeTrue(
+          System.getenv("AWS_REGION") == null && System.getenv("AWS_DEFAULT_REGION") == null);
+      assertThatThrownBy(BedrockInferenceProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class);
+    }
+  }
 }

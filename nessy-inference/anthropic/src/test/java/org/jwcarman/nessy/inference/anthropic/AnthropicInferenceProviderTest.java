@@ -660,4 +660,52 @@ class AnthropicInferenceProviderTest {
           .hasMessage("a bug in here");
     }
   }
+
+  @Nested
+  class TheEdges {
+
+    @Test
+    void redacted_thinking_travels_as_provider_state_and_a_server_tool_block_is_dropped() {
+      AnthropicClient client =
+          fakeClient(
+              params ->
+                  reply()
+                      .content(
+                          List.of(
+                              com.anthropic.models.messages.ContentBlock.ofRedactedThinking(
+                                  com.anthropic.models.messages.RedactedThinkingBlock.builder()
+                                      .data("opaque")
+                                      .build()),
+                              com.anthropic.models.messages.ContentBlock.ofText(
+                                  com.anthropic.models.messages.TextBlock.builder()
+                                      .text("hello")
+                                      .citations(List.of())
+                                      .build())))
+                      .build());
+      InferenceResult result = new AnthropicProviderConfig().client(client).build().infer(REQUEST);
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      List<Block.AnswerContent> blocks = ((InferenceResult.Answer) result).blocks();
+      assertThat(blocks.get(0)).isInstanceOf(Block.Provider.class);
+      assertThat(((Block.Provider) blocks.get(0)).payload()).contains("redacted_thinking");
+      assertThat(blocks.get(1)).isEqualTo(new Block.Text("hello"));
+    }
+
+    @Test
+    void from_env_is_the_config_route() {
+      org.junit.jupiter.api.Assumptions.assumeTrue(
+          System.getenv("ANTHROPIC_API_KEY") == null
+              && System.getenv("ANTHROPIC_AUTH_TOKEN") == null);
+      assertThatThrownBy(AnthropicInferenceProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void a_null_caching_setting_or_mapper_is_refused_at_configuration() {
+      assertThatThrownBy(() -> AnthropicInferenceProvider.create(c -> c.promptCaching(null)))
+          .isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> AnthropicInferenceProvider.create(c -> c.mapper(null)))
+          .isInstanceOf(NullPointerException.class);
+    }
+  }
 }

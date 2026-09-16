@@ -10,6 +10,7 @@ import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.lease.LeaseAutoConfiguration;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -71,6 +72,10 @@ public final class Repl {
         return;
       }
 
+      // The easy button owns its database the way it owns its provider: the tables are made to
+      // exist, which is safe to repeat and is what a person pointing a terminal at a fresh
+      // PostgreSQL expects.
+      Schemas.initialize(dataSource.get());
       ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
       // Closed with the context: the factory owns the engine's timer and every harness it made.
       try (DefaultHarnessFactory factory =

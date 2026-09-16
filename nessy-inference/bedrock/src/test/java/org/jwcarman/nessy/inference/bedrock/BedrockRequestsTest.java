@@ -247,4 +247,75 @@ class BedrockRequestsTest {
           .isEqualTo("0");
     }
   }
+
+  @Nested
+  class TheEdges {
+
+    @Test
+    void a_call_still_awaiting_its_results_is_sent_alone() {
+      Exchange asking =
+          new Exchange(
+              new Seq(2),
+              List.of(new Block.Commentary("aloud"), new Block.ToolCall("c1", "lookup", "{}")),
+              List.of());
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+
+      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+
+      assertThat(converse.messages()).hasSize(2);
+      assertThat(converse.messages().get(0).content()).hasSize(1);
+      assertThat(converse.messages().get(1).content()).hasSize(2);
+    }
+
+    @Test
+    void redacted_reasoning_goes_back_as_bytes_and_an_unknown_kind_is_dropped() {
+      String redacted =
+          "{\"type\":\"redacted\",\"data\":\""
+              + java.util.Base64.getEncoder().encodeToString(new byte[] {1, 2, 3})
+              + "\"}";
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "go"),
+              List.of(),
+              new TurnResult.Answered(
+                  List.of(
+                      new Block.Provider(BedrockInferenceProvider.PROVIDER_NAME, redacted),
+                      new Block.Provider(
+                          BedrockInferenceProvider.PROVIDER_NAME, "{\"type\":\"other\"}"),
+                      new Block.Text("done"))),
+              0);
+
+      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+
+      List<ContentBlock> answer = converse.messages().get(1).content();
+      assertThat(answer).hasSize(2);
+      assertThat(answer.getFirst().reasoningContent().redactedContent().asByteArray())
+          .containsExactly(1, 2, 3);
+    }
+
+    @Test
+    void a_document_carries_every_json_shape() {
+      var document =
+          BedrockRequests.document(
+              Map.of("s", "x", "n", 1.5, "b", true, "l", List.of(1, "two"), "o", Map.of()));
+      Map<?, ?> back = (Map<?, ?>) document.unwrap();
+
+      assertThat(back.keySet().stream().map(String::valueOf))
+          .containsExactlyInAnyOrder("s", "n", "b", "l", "o");
+      assertThat(BedrockRequests.document(null).isNull()).isTrue();
+    }
+
+    @Test
+    void the_text_of_a_summary_includes_commentary_and_skips_state() {
+      assertThat(
+              BedrockRequests.text(
+                  List.of(
+                      new Block.Commentary("a"),
+                      new Block.Provider("v", "{}"),
+                      new Block.ToolCall("c", "t", "{}"),
+                      new Block.Text("b"))))
+          .isEqualTo("ab");
+    }
+  }
 }

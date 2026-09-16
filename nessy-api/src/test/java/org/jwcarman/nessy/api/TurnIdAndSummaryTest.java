@@ -1,0 +1,33 @@
+package org.jwcarman.nessy.api;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.turn.Summary;
+
+class TurnIdAndSummaryTest {
+
+  @Test
+  void a_turn_id_is_a_story_position_and_orders_like_one() {
+    assertThatThrownBy(() -> new TurnId(0)).isInstanceOf(IllegalArgumentException.class);
+    assertThat(new TurnId(3).openedAt()).isEqualTo(new Seq(3));
+    assertThat(new TurnId(3)).isLessThan(new TurnId(5));
+    assertThat(new Seq(7).opensTurn()).isEqualTo(new TurnId(7));
+  }
+
+  @Test
+  void a_summary_runs_forwards_and_says_something() {
+    assertThatThrownBy(() -> Summary.text(new TurnId(5), new TurnId(3), "backwards"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("forwards");
+    assertThatThrownBy(() -> new Summary(new TurnId(1), new TurnId(3), List.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("say something");
+
+    Summary summary = Summary.text(new TurnId(1), new TurnId(9), "lakes");
+    assertThat(summary.covers(new TurnId(9))).isTrue();
+    assertThat(summary.covers(new TurnId(11))).isFalse();
+  }
+}

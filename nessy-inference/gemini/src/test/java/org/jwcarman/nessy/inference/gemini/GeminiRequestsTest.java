@@ -258,4 +258,69 @@ class GeminiRequestsTest {
       assertThat(declaration.parametersJsonSchema().orElseThrow().toString()).contains("required");
     }
   }
+
+  @Nested
+  class TheEdges {
+
+    @Test
+    void a_call_still_awaiting_its_results_is_sent_alone() {
+      Exchange asking =
+          new Exchange(new Seq(2), List.of(new Block.ToolCall("c1", "lookup", "{}")), List.of());
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+
+      List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
+
+      assertThat(contents).hasSize(2);
+      assertThat(contents.get(0).parts().orElseThrow()).hasSize(1);
+      assertThat(contents.get(1).parts().orElseThrow()).hasSize(1);
+    }
+
+    @Test
+    void a_result_for_a_call_the_exchange_did_not_make_is_refused() {
+      Exchange odd =
+          new Exchange(
+              new Seq(2),
+              List.of(new Block.ToolCall("c1", "lookup", "{}")),
+              List.of(new ToolOutcome.Succeeded(new CallId("c9"), List.of(new Block.Text("?")))));
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(odd), null, 0);
+      InferenceRequest request = request(List.of(turn));
+
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () -> GeminiRequests.toContents(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("c9");
+    }
+
+    @Test
+    void a_signature_that_is_not_base64_is_replayed_unsigned() {
+      Block.Provider broken =
+          new Block.Provider(
+              GeminiInferenceProvider.PROVIDER_NAME,
+              "{\"type\":\"thought-signature\",\"callId\":\"c1\",\"signature\":\"not base64!\"}");
+      Exchange exchange =
+          new Exchange(
+              new Seq(2),
+              List.of(new Block.ToolCall("c1", "lookup", "{}"), broken),
+              List.of(new ToolOutcome.Succeeded(new CallId("c1"), List.of(new Block.Text("ok")))));
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(exchange), null, 0);
+
+      List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
+
+      Part call = contents.get(1).parts().orElseThrow().getFirst();
+      assertThat(new String(call.thoughtSignature().orElseThrow(), StandardCharsets.UTF_8))
+          .isEqualTo("skip_thought_signature_validator");
+    }
+
+    @Test
+    void the_text_of_a_summary_includes_commentary_and_skips_state() {
+      assertThat(
+              GeminiRequests.text(
+                  List.of(
+                      new Block.Commentary("a"),
+                      new Block.Provider("v", "{}"),
+                      new Block.ToolCall("c", "t", "{}"),
+                      new Block.Text("b"))))
+          .isEqualTo("ab");
+    }
+  }
 }

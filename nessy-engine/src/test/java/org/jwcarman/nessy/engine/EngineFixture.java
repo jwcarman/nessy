@@ -116,6 +116,10 @@ public final class EngineFixture implements AutoCloseable {
     return history;
   }
 
+  public javax.sql.DataSource dataSource() {
+    return dataSource;
+  }
+
   public JdbcClient jdbc() {
     return jdbc;
   }

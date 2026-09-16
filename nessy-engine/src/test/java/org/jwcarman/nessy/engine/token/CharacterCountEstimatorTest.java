@@ -91,4 +91,14 @@ class CharacterCountEstimatorTest {
                     java.util.Optional.of("change-1187"))))
         .isZero();
   }
+
+  @Test
+  void providerStateIsChargedItsPayloadAndAnApprovalCostsNothing() {
+    assertThat(estimator.estimate(new Block.Provider("v", "abcdef"))).isEqualTo(2);
+    assertThat(
+            estimator.estimate(
+                new HistoryEntry.ToolApproved(
+                    new Seq(4), new TurnId(1), new CallId("c1"), java.util.Optional.empty())))
+        .isZero();
+  }
 }

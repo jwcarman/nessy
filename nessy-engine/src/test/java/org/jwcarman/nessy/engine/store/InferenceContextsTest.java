@@ -92,4 +92,37 @@ class InferenceContextsTest {
                     .filteredOn(HistoryEntry.InferenceAnswered.class::isInstance)
                     .hasSize(answers));
   }
+
+  @Test
+  @DisplayName("can be switched off, and then nothing is written down")
+  void recording_can_be_switched_off() {
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    try (var quiet =
+        new org.jwcarman.nessy.engine.harness.DefaultHarnessFactory(
+            engine ->
+                engine
+                    .dataSource(this.engine.dataSource())
+                    .inference(
+                        (request, narrator) ->
+                            new InferenceResult.Answer(List.of(new Block.Text("shh"))),
+                        org.jwcarman.nessy.spi.inference.InferenceOptions.of("a-model"))
+                    .recordInferenceContexts(false))) {
+      Harness<String> silent =
+          quiet.create(
+              config ->
+                  config
+                      .agentType(new AgentType("quiet"))
+                      .systemPrompt("You are a test assistant.")
+                      .effects(e -> e.pollInterval(Duration.ofMillis(100))));
+      silent.observe(agentId, "anything");
+      await()
+          .atMost(Duration.ofSeconds(20))
+          .untilAsserted(
+              () ->
+                  assertThat(
+                          quiet.histories().forAgent(new AgentType("quiet"), agentId).turnsFrom(0))
+                      .anyMatch(turn -> turn.complete()));
+      assertThat(quiet.inferenceContexts().forAgent(new AgentType("quiet"), agentId)).isEmpty();
+    }
+  }
 }
