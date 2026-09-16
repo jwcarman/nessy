@@ -3,9 +3,8 @@
 The same conversation as `chat-cli`, in a browser, with the thing a terminal
 cannot show well: **a tool that waits for a person.**
 
-It consumes `nessy-spring-boot-starter`, so there is no actor system here, no
-cluster, no serializer bindings, no substrate. What is left is the
-application: how it reaches a model, what its tools are, which of them needs a
+It consumes `nessy-spring-boot-starter`, so there is no engine wiring here.
+What is left is the application: how it reaches a model, what its tools are, which of them needs a
 person, and where that person is asked.
 
 ## What it shows

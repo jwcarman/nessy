@@ -14,26 +14,24 @@ public static void main(String[] args) {
 That is a complete program. `Repl` assembles everything an engine needs so an
 application does not have to:
 
-- **The model** comes from a minimal Spring Boot context this call raises and
-  tears down around itself: a provider module's own `@AutoConfiguration`
-  contributes a `ModelProvider` bean once its vendor's API key is in the
-  environment — set `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (or
-  `GOOGLE_API_KEY`), `XAI_API_KEY`, or `OPENAI_API_KEY` (with
-  `OPENAI_BASE_URL` for a local runtime) — and the model id comes from
-  `NESSY_MODEL`. Put the provider jars you want on your classpath; this
-  module deliberately drags none of them in.
-- **State** is in memory — substrate, agent and turn state, and reply tokens
-  alike.
+- **The provider** comes from a minimal Spring Boot context this call raises
+  and tears down around itself: `nessy-spring-boot-autoconfigure` contributes
+  an `InferenceProvider` bean once a vendor's API key is in the environment.
+  Set `ANTHROPIC_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` (with
+  `OPENAI_BASE_URL` for a local runtime), and the model id comes from
+  `NESSY_MODEL`. Put the adapter jar you want on your classpath; this module
+  deliberately drags none of them in.
+- **The database** is the `DataSource` that same context has, so
+  `SPRING_DATASOURCE_URL` (with `USERNAME` and `PASSWORD`) is the easy button,
+  and `dataSource(...)` on the config replaces it. The schema is applied on
+  the way in. A conversation therefore survives the process: the agent id is
+  fixed per terminal, so the next run picks up the same story.
 
 ## What it is not
 
-Nothing survives the process, on purpose. A conversation typed into a terminal
-has no reason to outlive the terminal. An application that must survive a
-restart is not a console application: assemble an `EngineHarnessFactory`
-yourself, or use `nessy-spring-boot-starter`.
-
 There is no provider override. An application that wants to name its own
-gateway is not reaching for an easy button, and has the ordinary way to say so.
+adapter is not reaching for an easy button, and has the ordinary way to say
+so: `DefaultHarnessFactory` directly, or `nessy-spring-boot-starter`.
 
 ## Configuration
 
@@ -44,13 +42,15 @@ prompt is a complete program.
 |---|---|
 | `banner(String)` | nothing printed |
 | `prompt(String)` | `"> "` |
-| `exitOn(String...)` | `exit`, `quit` (end of input always works) |
+| `exitOn(String...)` | `exit`, `quit`, `/exit`, `/quit`, any case (end of input always works) |
 | `farewell(String)` | nothing printed |
-| `systemPrompt(String)` | a generic assistant |
+| `systemPrompt(String)` / `systemPrompt(SystemPromptSource)` | a generic assistant |
 | `tool(Tool)` / `tool(Tool, binding)` | none |
 | `agent(AgentType)` | `chat` |
-| `id(AgentId)` | `cli` |
+| `id(AgentId)` | one fixed id for the terminal, so a returning person finds the same conversation |
 | `maxTokens(int)` | 4096 |
+| `dataSource(DataSource)` | the Boot context's |
+| `harness(customizer)` | reaches the full `HarnessConfig` |
 
 ## The one thing worth reading the source for
 

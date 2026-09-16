@@ -75,7 +75,7 @@ OPENAI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:jav
 
 `NESSY_MODEL` names the model to use — required, since a provider's
 `@AutoConfiguration` names no default. Set no key and the Boot context finds
-no `ModelProvider` bean at all, and the program says so instead of a stack
+no `InferenceProvider` bean at all, and the program says so instead of a stack
 trace out of `main`.
 
 Bedrock ships no `@AutoConfiguration`: ambient AWS credentials mean someone

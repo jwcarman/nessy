@@ -9,33 +9,33 @@ An agent harness framework for Java.
 ## The elevator pitch
 
 An agent, in Nessy, is a recipe bound to an id. The recipe is an
-`AgentType` — system prompt, tools, model, memory — compiled once into a
-`Harness` and shared by every id that uses it. The id is an `AgentId`: a
-plain string naming one conversation, one tenant, one ticket, whatever your
-domain calls a "who."
+`AgentType`: system prompt, tools, model, context policy, compiled once into
+a `Harness` and shared by every id that uses it. The id is an `AgentId`
+naming one conversation, one tenant, one ticket, whatever your domain calls
+a "who."
 
 You tell a harness things. It has no per-agent handle to hold, because a
-handle is a thing that can go stale, and sharding already knows where an
-agent lives.
+handle is a thing that can go stale, and the agent's row already knows
+where it lives.
 
 ```java
-harness.observe(AgentId.of("house-12"), "the porch light came on");
+harness.observe(agentId, "the porch light came on");
 ```
 
-One agent is one sharded, durable actor, and it works one turn at a time.
-What it persists is a turn id, a phase and two claim ids — around 260 bytes,
-measured, and it does not grow with what the agent does. See
+One agent is one locked row in PostgreSQL, and it works one turn at a time.
+Its state is a phase, a position in its story and the calls it is waiting
+on, a few hundred bytes that do not grow with what the agent does. See
 [Agent as Scope](concepts/agent-as-scope.md) for the model and
 [Durable Computation](concepts/durable-computation.md) for what survives a
 crash.
 
 **Prior art, in one paragraph.** `(AgentType, AgentId)` plays the role of
-Orleans' `(grain type, grain key)`, and cluster sharding gives the
-single-activation guarantee outright — there is exactly one actor per id, so
-two callers cannot corrupt one agent's state. On the durable side, a parked
-tool call is what Restate or DBOS would call a durable promise: it survives
-the process that opened it, because its deadline is a database row rather
-than a timer in memory.
+Orleans' grain type and key, and a `SELECT ... FOR UPDATE` on the agent's
+row gives the single-activation guarantee outright: exactly one worker
+touches an agent at a time, from any process that can reach the database.
+On the durable side, a parked tool call is what Restate or DBOS would call a
+durable promise: it survives the process that opened it, because its
+deadline is a database row rather than a timer in memory.
 
 ## One door
 
@@ -45,47 +45,33 @@ Build a harness once, keep it, tell it things.
 record Add(int left, int right) {}
 
 class AddTool implements Tool<Add> {
-    public String name() { return "add"; }
+    public ToolName name() { return new ToolName("add"); }
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(ToolCallRequest<Add> call) {
-        Add input = call.input();
-        return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
+    public Awaited<ToolResult> call(ToolCallRequest<Add> request) {
+        Add input = request.input();
+        return Awaited.ready(ToolResult.ok(new Block.Text(String.valueOf(input.left() + input.right()))));
     }
 }
 
-var factory = new EngineHarnessFactory(engine -> engine
-        .models(AnthropicModelProvider.fromEnv()));
+DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)
+        .inference(AnthropicInferenceProvider.fromEnv(), InferenceOptions.of("claude-sonnet-5")));
 
-Harness<String> harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("assistant"))
+Harness<String> harness = factory.create(config -> config
+        .agentType(new AgentType("assistant"))
         .systemPrompt("You are a terse assistant.")
-        .model(ModelId.of("claude-opus-4"))
-        .renderer(UserMessage::of)
+        .listener(AgentEventListener.of(on -> on
+                .onContentDelta((type, id, delta) -> System.out.print(delta.text()))))
         .tool(new AddTool()));
 
-harness.observe(AgentId.of("scope-1"), "what is 2+2?");
+harness.observe(AgentId.random(), "what is 2+2?");
 ```
 
 `observe` is a post, not a call: it returns as soon as the observation is
-durable, and the answer is **narrated** rather than returned. Subscribe to
-hear it:
-
-```java
-try (var subscription = harness.subscribe(agentId, event -> {
-        if (event instanceof AgentEvent.TextDelta delta) {
-            System.out.print(delta.text());
-        }
-    })) {
-    harness.observe(agentId, "what is 2+2?");
-}
-```
-
-Hand the engine no `DataSource` and it builds an in-memory H2 and
-initializes it, so the snippet above runs with nothing else configured. Hand
-it one and it uses that — and never touches it uninvited. See
-[Storage](concepts/storage.md).
+durable, and the answer is **narrated** to listeners rather than returned.
+See [Events](guides/events.md).
 
 For a terminal agent, `Repl.run` does the whole bootstrap in one call; see
 [The Harness](guides/harness.md#the-console-the-whole-application-in-one-call).
@@ -98,23 +84,19 @@ and let a person answer days later:
 ```java
 Approver desk = request -> {
     pending.save(request, request.replyToken());        // hand out the address
-    return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
+    return Awaited.deferred();
 };
 
-Harness<String> harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("ops"))
+Harness<String> harness = factory.create(config -> config
+        .agentType(new AgentType("ops"))
         .systemPrompt("You are the ops assistant.")
-        .model(ModelId.of("claude-opus-4"))
-        .renderer(UserMessage::of)
         .tool(new RestartTool(), binding -> binding
-                .approver(desk)
+                .approver(desk, terms -> terms.timeout(Duration.ofDays(3)))
                 .action(input -> "restart " + input.host())));
-
-harness.observe(AgentId.of("ops"), "restart prod-1");
 ```
 
-Deferring parks the call, arms a durable alarm, and frees the agent. The
-`ReplyToken` is the address the answer comes back to:
+Deferring parks the call and frees the agent. The `ReplyToken` is the
+address the answer comes back to:
 
 ```java
 replies.approve(token, ApprovalResult.approved());
@@ -140,53 +122,49 @@ See [Authorization](concepts/authorization.md).
 
 | Module | Who compiles against it |
 |---|---|
-| `nessy-api` | tool and policy authors — the shared vocabulary: `Tool`, `Approver`, `Awaited`, messages, `AgentEvent` |
-| `nessy-spi` | adapter authors — a custom `Memory` or `Model`, and `Schemas` |
-| `nessy-engine` | application builders — `EngineHarnessFactory`, the durable stores |
-| `nessy-console` | terminal applications — `Repl.run` |
-| `nessy-spring-boot-starter` | Boot applications — one dependency, no code of its own |
-| `nessy-spring-boot-autoconfigure` | the beans behind it, if you would rather assemble the starter yourself |
+| `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `AgentEvent`, `AgentEventListener`, the block vocabulary |
+| `nessy-spi` | adapter authors: `InferenceProvider`, and `Schemas` |
+| `nessy-engine` | application builders: `DefaultHarnessFactory`, the durable stores |
+| `nessy-inference-anthropic`, `nessy-inference-openai` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
+| `nessy-console` | terminal applications: `Repl.run` |
+| `nessy-spring-boot-starter` | Boot applications: one dependency, no code of its own |
+| `nessy-spring-boot-autoconfigure` | the beans behind it, and every optional module's auto-configuration |
+| `nessy-prompt`, `nessy-prompt-spring`, `nessy-prompt-mustache` | prompts as templates, and two engines |
 | `nessy-memory-notebook` | agents that keep notes |
-| `nessy-planning` | agents that write a plan and work through it across turns |
-| `nessy-memory-summarizing` | long-lived agents — compresses older history instead of dropping it |
-| `nessy-approval-intent` | applications that want the declared-intent claim channel |
-| `nessy-approval-policy` | deciding a tool call by policy: `PolicyEngine`, `Verdict`, `PolicyApprover` |
-| `nessy-approval-policy-opa` | asking Open Policy Agent, so the rules are Rego |
+| `nessy-memory-summarizing` | long-lived agents: one rolling summary per agent, replaced as the story grows |
+| `nessy-planning` | agents that write a plan and work through it |
+| `nessy-lease` | background work that must run once across processes |
+| `nessy-narration-odyssey` | events as resumable streams, for a browser |
+| `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
+| `nessy-approval-intent` | the declared-intent claim channel |
+| `nessy-approval-policy`, `nessy-approval-policy-opa` | deciding a call by policy; asking Open Policy Agent |
 | `nessy-tool-mcp` | agents that call MCP servers |
-
-A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
-`nessy-model-gemini`, or `nessy-model-bedrock`) sits alongside
-`nessy-engine` in every application's dependency list. In a Spring Boot
-application, each of these (Bedrock excepted) contributes its own
-`ModelProvider` bean once its vendor's API key is in the environment; a
-non-Spring application constructs one directly.
 
 ## Where to go next
 
 <div class="grid cards" markdown>
 
-- **[Agent as Scope](concepts/agent-as-scope.md)**
-
-    The core model: one actor per agent, phases as data, and why recovery
-    runs on every activation rather than only after a crash.
-
-- **[Durable Computation](concepts/durable-computation.md)**
-
-    What survives a crash: parked calls, reminders as rows, and answers
-    addressed to a place rather than an object.
-
-- **[Storage](concepts/storage.md)**
-
-    The tables, why there is no abstraction over them, and how to apply
-    the schema to your own database.
-
-- **[Memory](concepts/memory.md)**
-
-    The `Memory` SPI, and what "the memory owns history" means for a
-    model call.
-
 - **[Getting Started](guides/getting-started.md)**
 
     The harness door, explained line by line.
+
+- **[Agent as Scope](concepts/agent-as-scope.md)**
+
+    The core model: one locked row per agent, phases as data, and a fold
+    that is a pure function.
+
+- **[Durable Computation](concepts/durable-computation.md)**
+
+    What survives a crash: effects as rows, deadlines as columns, and
+    answers addressed to a place rather than an object.
+
+- **[Memory](concepts/memory.md)**
+
+    Summaries, the tail and ambient: what a model call is built from.
+
+- **[Storage](concepts/storage.md)**
+
+    The tables, the codec seam, and how to apply the schema to your own
+    database.
 
 </div>

@@ -28,7 +28,11 @@ Nessy has not yet released to Maven Central. Build locally
   </dependency>
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-model-anthropic</artifactId>
+    <artifactId>nessy-inference-anthropic</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
   </dependency>
 </dependencies>
 ```
@@ -36,21 +40,30 @@ Nessy has not yet released to Maven Central. Build locally
 `nessy-engine` pulls in `nessy-api` (the vocabulary you write tools against)
 and `nessy-spi` (the seams you write adapters against).
 
-## The one required dependency: a model
+## Two things the engine needs
 
-A `ModelProvider` is a vendor gateway — one per application, not per agent.
+**A database.** The engine is PostgreSQL rows: an agent's state, its story,
+the work it owes. Bring a `DataSource` and apply the schema once:
 
 ```java
-var models = AnthropicModelProvider.fromEnv();   // reads ANTHROPIC_API_KEY
+DataSource dataSource = ...;          // any PostgreSQL DataSource
+Schemas.initialize(dataSource);       // every module's nessy-schema.sql, once
 ```
 
-Every provider module ships one: `AnthropicModelProvider`,
-`OpenAiModelProvider` (which also speaks to any OpenAI-compatible endpoint,
-including a local LM Studio), `GeminiModelProvider`, `BedrockModelProvider`.
-In a Spring Boot application, each of these (Bedrock excepted) also ships its
-own `@AutoConfiguration` that contributes a `ModelProvider` bean once its
-vendor's API key is in the environment — no wiring code needed; see
-[Providers](providers.md#boot-auto-configuration).
+There is no in-memory fallback. The queries the engine rests on are
+PostgreSQL's, so a fallback would not run a degraded Nessy, it would run one
+that fails on the first turn. See [Storage](../concepts/storage.md).
+
+**A provider.** An `InferenceProvider` is a vendor adapter, one per
+application:
+
+```java
+InferenceProvider provider = AnthropicInferenceProvider.fromEnv();   // ANTHROPIC_API_KEY
+```
+
+`nessy-inference-anthropic` and `nessy-inference-openai` ship one each. The
+OpenAI one also speaks to anything with OpenAI's wire protocol, a local LM
+Studio included; see [Providers](providers.md).
 
 ## A tool
 
@@ -60,20 +73,20 @@ A tool is a name, a description, an input type, and a method.
 record Add(int left, int right) {}
 
 class AddTool implements Tool<Add> {
-    public String name() { return "add"; }
+    public ToolName name() { return new ToolName("add"); }
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
 
-    public Awaited<ToolResult> execute(ToolCallRequest<Add> call) {
-        Add input = call.input();
-        return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
+    public Awaited<ToolResult> call(ToolCallRequest<Add> request) {
+        Add input = request.input();
+        return Awaited.ready(ToolResult.ok(new Block.Text(String.valueOf(input.left() + input.right()))));
     }
 }
 ```
 
 The input type becomes the JSON schema the model is shown, so a record with
 good field names *is* the documentation. `Awaited.ready` answers now;
-`Awaited.deferred` parks the call and lets the world answer later — see
+`Awaited.deferred` parks the call and lets the world answer later. See
 [Tools](../concepts/tools.md).
 
 ## The smallest harness
@@ -82,84 +95,67 @@ Two configurations, and the difference matters. **The engine** is one per
 process:
 
 ```java
-var factory = new EngineHarnessFactory(engine -> engine
-        .models(models));
+DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)
+        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
 ```
 
 **A harness** is one per agent type:
 
 ```java
-Harness<String> harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("assistant"))
+Harness<String> harness = factory.create(config -> config
+        .agentType(new AgentType("assistant"))
         .systemPrompt("You are a terse assistant.")
-        .model(ModelId.of("claude-opus-4"))
-        .renderer(UserMessage::of)
         .tool(new AddTool()));
 ```
 
-`String.class` is the **observation type** — whatever your domain tells this
-agent about. `renderer` says how one becomes a message the model can read.
-Use your own record when a string is not the honest shape:
+`create(customizer)` is the `String` observation type. Use your own record
+when a string is not the honest shape, and say how it reads to the model:
 
 ```java
 record HouseEvent(String room, String what) {}
 
-factory.createHarness(HouseEvent.class, config -> config
-        .renderer(event -> UserMessage.of(event.room() + ": " + event.what()))
-        ...);
+Harness<HouseEvent> house = factory.create(HouseEvent.class, config -> config
+        .agentType(new AgentType("watchman"))
+        .systemPrompt("You watch a house.")
+        .observationRenderer(event -> List.of(new Block.Text(event.room() + ": " + event.what()))));
 ```
 
-## Storage: nothing to configure, until it matters
-
-Hand the engine no `DataSource` and it builds an in-memory H2 **and
-initializes it**, so everything above runs with nothing else set up. It
-announces that it did, because an application that forgot its database
-should find out at startup rather than the first time a restart loses a
-conversation.
-
-Hand it one and it uses that — and never touches it uninvited:
+The model and the token cap come from the engine unless a harness says
+otherwise:
 
 ```java
-new EngineHarnessFactory(engine -> engine
-        .models(models)
-        .dataSource(dataSource));
+config.inference(in -> in.model("claude-haiku-4-5").maxTokens(1024));
 ```
-
-You apply the schema, once, however your operators prefer:
-
-```java
-Schemas.initialize(dataSource);
-```
-
-See [Storage](../concepts/storage.md).
 
 ## Telling it something, and hearing back
 
 `observe` is a post, not a call. It returns as soon as the observation is
-durable; the answer is **narrated**.
+durable; the answer is **narrated** to listeners.
 
 ```java
-var agentId = AgentId.of("scope-1");
+AgentId agentId = AgentId.random();
 
-try (AgentSubscription subscription = harness.subscribe(agentId, event -> {
-        switch (event) {
-            case AgentEvent.TextDelta delta -> System.out.print(delta.text());
-            case AgentEvent.TurnEnded ended -> System.out.println();
-            default -> { }
-        }
-    })) {
-    harness.observe(agentId, "what is 2+2?");
-}
+Harness<String> harness = factory.create(config -> config
+        .agentType(new AgentType("assistant"))
+        .systemPrompt("You are a terse assistant.")
+        .listener(AgentEventListener.of(on -> on
+                .onContentDelta((type, id, delta) -> System.out.print(delta.text()))
+                .onTurnEnded((type, id, ended) -> System.out.println())))
+        .tool(new AddTool()));
+
+harness.observe(agentId, "what is 2+2?");
 ```
 
-Close the subscription — an unclosed one leaks a routing entry. Every event
-carries a time-ordered id, so a listener that drops off can resume from the
-last one it saw.
+A listener hears every agent of its harness, in order, off the thread that
+folds the turn. Attach one to the engine instead to hear every harness. See
+[Events](events.md) for the eighteen event kinds and for streaming them to a
+browser.
 
 ## The console door
 
-For a terminal agent, one call does the whole bootstrap — actor system,
-cluster-of-one, reply tokens, harness, and the read-line loop:
+For a terminal agent, one call does the whole bootstrap: the database, the
+provider from the environment, the harness and the read-line loop.
 
 ```java
 public static void main(String[] args) {
@@ -178,14 +174,18 @@ Run it against a local model with no key and no cost:
 export OPENAI_API_KEY=not-needed
 export OPENAI_BASE_URL=http://localhost:1234/v1
 export NESSY_MODEL=<a model id your endpoint serves>
+export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/nessy
+export SPRING_DATASOURCE_USERNAME=nessy
+export SPRING_DATASOURCE_PASSWORD=secret
 ```
 
-`nessy-examples/chat-cli` is exactly this, with a notebook and a plan added.
+`nessy-examples/chat-cli` is exactly this, with a notebook, a plan and a
+templated prompt added.
 
 ## Where next
 
-- [The Harness](harness.md) — the full configuration surface
-- [Agent as Scope](../concepts/agent-as-scope.md) — one actor per id, phases as data
-- [Tools](../concepts/tools.md) — deferring, and answering from outside
-- [Authorization](../concepts/authorization.md) — approvers and reply tokens
-- [Spring Boot](spring-boot.md) — the starter
+- [The Harness](harness.md), the full configuration surface
+- [Agent as Scope](../concepts/agent-as-scope.md), one locked row per id, phases as data
+- [Tools](../concepts/tools.md), deferring, and answering from outside
+- [Authorization](../concepts/authorization.md), approvers and reply tokens
+- [Spring Boot](spring-boot.md), the starter

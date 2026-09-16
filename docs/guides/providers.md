@@ -1,407 +1,195 @@
 # Providers
 
-A model provider provides models. `ModelProvider` is the vendor gateway —
-an application singleton holding the SDK client, credentials, and
-transport for one vendor. It does not run requests itself; it hands out
-`Model` handles that do:
+An `InferenceProvider` is the adapter between the engine and one vendor's
+API. It is an application singleton holding the SDK client, credentials and
+transport, and it does one thing:
 
 ```java
-public interface ModelProvider extends AutoCloseable {
-  Model model(String id);
-  default String name() { ... }
-  default void close() { }   // a gateway with nothing to release says nothing
-}
-
-public interface Model {
-  ModelStream stream(ModelRequest request);
-  Set<Capability> capabilities();
-  String id();
+public interface InferenceProvider {
+  InferenceResult infer(InferenceRequest request, AgentNarrator narrator);
 }
 ```
 
-`.model(id)` binds a cheap, immutable handle to one model id, sharing the
-gateway's client. `ModelId` is what `config.model(...)`
-consumes — the harness never sees the gateway itself. `capabilities()`
-lives on the handle, not the gateway, because it is a per-model fact, not a
-vendor-wide guess: a lineup's thinking support, context size, and schema
-support vary model to model, even at the same vendor.
+The engine builds the request (system prompt, summaries, the tail of turns,
+ambient blocks, the tools on offer, the model and token cap) and the adapter
+turns it into the vendor's wire shape, narrates the deltas as they stream,
+and hands back one of four results: an `Answer`, `Actions` the model wants
+taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
+could help.
 
-Four native gateway modules ship today — `nessy-model-anthropic`,
-`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock`. Each
-of the first three (Bedrock is deliberately the exception — see
-[Bedrock](#bedrock)) also ships its own Spring Boot `@AutoConfiguration`
-that contributes a `ModelProvider` bean once that provider's key is in the
-environment — see [Boot auto-configuration](#boot-auto-configuration) below.
-Add the provider jar you want and set its key; switch providers by swapping
-the jar. `OpenAiModelProvider` also reaches every service that speaks
-OpenAI's wire protocol, covered below.
+Two adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK and
+`nessy-inference-openai` on OpenAI's. The OpenAI one also reaches every
+service that speaks OpenAI's wire protocol, covered
+[below](#the-openai-compatible-universe).
 
-All four native gateways are live-validated against their real APIs —
-Gemini on 2026-08-15 including the tool-call round trip with real thought
-signatures, and Bedrock on 2026-08-16 including the tool round trip through
-the ConverseStream bridge.
+## Which model
 
-## One gateway, many handles
-
-One gateway per application; as many `Model` handles as you need. Two
-agents on two models is two handles drawn from the same gateway, feeding
-two harnesses:
+The provider is engine-wide. The model is a setting: the engine's default,
+overridden per harness.
 
 ```java
-var anthropic = AnthropicModelProvider.fromEnv();
+DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)
+        .inference(AnthropicInferenceProvider.fromEnv(), InferenceOptions.of("claude-sonnet-5")));
 
-var fast = anthropic.model("claude-haiku-4-5");
-var strong = anthropic.model("claude-opus-5");
+Harness<String> triage = factory.create(config -> config
+        .agentType(new AgentType("triage"))
+        .systemPrompt(triagePrompt)
+        .inference(in -> in.model("claude-haiku-4-5").maxTokens(512)));
 
-var triage = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("triage")).model(fast).systemPrompt(triagePrompt).renderer(UserMessage::of));
-var review = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("review")).model(strong).systemPrompt(reviewPrompt).renderer(UserMessage::of));
+Harness<String> review = factory.create(config -> config
+        .agentType(new AgentType("review"))
+        .systemPrompt(reviewPrompt)
+        .inference(in -> in.model("claude-opus-5")));
 ```
 
-No model string threads through a `ModelRequest` — the request describes
-the turn (context, system prompt, max tokens, tools, requested
-capabilities, response schema), and the handle it is sent to already knows
-which model runs it.
+`maxTokens` is per harness for a reason: it is how you make a model give a
+short answer. A timeout and a retry policy for the call live beside it.
 
-## Building a gateway directly
+Provider-level features such as thinking and prompt caching are settings on
+the provider, not requests a harness makes. Two agent types that need the
+provider configured differently get two factories, each with its own
+provider.
 
-Each provider module builds a `ModelProvider` the same way — a static
-`create(ProviderCustomizer)` factory over a config, not a builder:
+## Building a provider
+
+Each adapter is built the same way, a static `create(customizer)` over a
+config, never a public builder:
 
 ```java
-ModelProvider anthropic = AnthropicModelProvider.create(c -> c.apiKey(key));
+InferenceProvider anthropic = AnthropicInferenceProvider.create(c -> c.apiKey(key));
+InferenceProvider openai = OpenAiInferenceProvider.create(c -> c.apiKey(key));
 ```
+
+Each also has `fromEnv()`, which delegates to the SDK's own reading of the
+environment: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and
+`ANTHROPIC_BASE_URL` for one, `OPENAI_API_KEY`, `OPENAI_BASE_URL` and
+`OPENAI_ORG_ID` for the other. Anything set explicitly on the config wins
+over the environment:
 
 ```java
-ModelProvider openai = OpenAiModelProvider.create(c -> c.apiKey(key));
+InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+        .fromEnv()
+        .baseUrl("http://127.0.0.1:1234"));
 ```
+
+`client(...)` hands in a fully built SDK client, which the provider then
+never closes; `mapper(...)` supplies the `JsonMapper` used for tool schemas
+and arguments.
+
+### Anthropic features
 
 ```java
-ModelProvider gemini = GeminiModelProvider.create(c -> c.apiKey(key));
+InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+        .fromEnv()
+        .thinking(true)
+        .thinkingBudget(4096)
+        .promptCaching(PromptCaching.FIVE_MINUTES));
 ```
 
-```java
-ModelProvider bedrock = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
-```
+Thinking is off by default. When on, the model's reasoning is spent out of
+each call's `maxTokens`, which must exceed the budget or the answer comes
+back empty. The budget defaults to 1024 tokens. Prompt caching is
+`OFF`, `FIVE_MINUTES` or `ONE_HOUR`, and marks the system prompt and the
+tool list as cacheable.
 
-Each also ships a `fromEnv()` static — the blessed one-call shape,
-equivalent to `create(config -> config.fromEnv())` — that delegates to that
-provider's own seam-integrity read of the environment:
+### Empty answers
 
-```java
-ModelProvider anthropic = AnthropicModelProvider.fromEnv();
-Model claude = anthropic.model("claude-sonnet-5");
-```
-
-For Anthropic and OpenAI this resolves to the underlying SDK's own
-environment resolution (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
-the rest of what each SDK understands); for Gemini, `fromEnv()` reads
-`GEMINI_API_KEY` then `GOOGLE_API_KEY` itself, rather than delegating to the
-SDK's own resolution; for Bedrock, `fromEnv()` uses the AWS SDK's own
-default credentials chain (env vars, shared profile files, container/instance
-metadata) and resolves the region by reading `AWS_REGION` then, if unset,
-`AWS_DEFAULT_REGION` itself — see [Bedrock](#bedrock) below. Reach for
-`create(...)` directly whenever one of those matters; the Boot
-auto-configuration below only ever reads the API key (and, for OpenAI,
-`OPENAI_BASE_URL`).
+Both adapters treat an answer with no content as a `Fault` with a
+`Permanent` failure naming the finish reason, rather than a turn that ended
+in silence. The usual cause is a thinking model that spent the whole token
+cap on reasoning; raise `maxTokens` or turn the reasoning off at the
+provider.
 
 ## Boot auto-configuration
 
-There is no discovery library. In a Spring Boot application, each provider
-module (Bedrock excepted — see [Bedrock](#bedrock)) ships its own
-`@AutoConfiguration`, gated on that provider's API key, that contributes a
-`ModelProvider` bean:
+`nessy-spring-boot-autoconfigure` contributes an `InferenceProvider` bean
+when an adapter is on the classpath and its key is in the environment:
 
-- **`nessy-model-anthropic`**: `ANTHROPIC_API_KEY` (read as `anthropic.api-key`
-  under Boot's relaxed env-var binding) → `AnthropicModelProvider.create(c ->
-  c.apiKey(key))`.
-- **`nessy-model-openai`**: `OPENAI_API_KEY` (`openai.api-key`) →
-  `OpenAiModelProvider`, with `OPENAI_BASE_URL` (`openai.base-url`) layered on
-  when present — see
-  [The OpenAI-compatible universe](#the-openai-compatible-universe).
-  `XAI_API_KEY` (`xai.api-key`) contributes a second, independent bean at
-  xAI's fixed base URL — Grok, via the same module, with zero extra code.
-- **`nessy-model-gemini`**: `GEMINI_API_KEY` or `GOOGLE_API_KEY`
-  (`gemini.api-key` / `google.api-key`) → `GeminiModelProvider.create(GeminiProviderConfig::fromEnv)`,
-  which reads both, in that order — Google's own documented pair.
+| Property | Bean |
+|---|---|
+| `anthropic.api-key` (`ANTHROPIC_API_KEY`) | `AnthropicInferenceProvider.create(c -> c.apiKey(key))` |
+| `openai.api-key` (`OPENAI_API_KEY`), with `openai.base-url` layered on when present | `OpenAiInferenceProvider` |
+| `xai.api-key` (`XAI_API_KEY`) | the OpenAI adapter at xAI's base URL, reporting `x_ai` as its provider name |
 
-Every one of these beans is `@ConditionalOnMissingBean(ModelProvider.class)`:
-declare your own `ModelProvider` bean and every auto-configuration above
-backs off entirely, the same convention `nessy-spring-boot-autoconfigure`
-follows for everything else it wires. Setting two different vendors' keys at
-once resolves to whichever bean Spring's container reaches first rather than
-a named ambiguity error; an application that means to run against a specific
-vendor sets only that vendor's key, or declares the bean itself.
+Every one of these is `@ConditionalOnMissingBean(InferenceProvider.class)`:
+declare your own and they all back off. Set one vendor's key, or declare the
+bean yourself; two keys at once resolve to whichever bean the container
+reaches first.
 
-The model id is not resolved by any of this — it comes from `nessy.model`
-(`NESSY_MODEL` under relaxed binding), same as every other Boot-wired
-harness; see [Spring Boot](spring-boot.md).
+The model id comes from `nessy.model` (`NESSY_MODEL`), the same as every
+other Boot-wired setting; see [Spring Boot](spring-boot.md).
 
-**`nessy-console`'s `Repl.run(customizer)` uses exactly this mechanism.** The
-call raises a minimal Boot context (`web-application-type` `NONE`) around
-itself so these auto-configurations run, looks up the `ModelProvider` bean,
-and tears the context down when the REPL ends — a caller writes the same one
-call it always has; see the [Getting Started](getting-started.md) and
-`nessy-console`'s own README.
-
-**A non-Spring application constructs a provider directly** —
-`Provider.create(c -> c.apiKey(key))` or that provider's own `fromEnv()`, as
-shown above. Tests do the same: hand-assemble the provider you need rather
-than reaching for any environment-driven mechanism.
-
-**Bedrock contributes no bean.** It ships no `@AutoConfiguration` at all —
-see [Bedrock](#bedrock) below for why, and for the one line that constructs
-it.
-
-## Retrying: `RetryingModel`
-
-Wrappers rebase one level down, on the thing that actually runs requests —
-the model handle, not the gateway. `RetryingModel` retries the *opening* of
-a model stream, with exponential backoff:
-
-```java
-Model resilient = RetryingModel.wrap(claude, RetryPolicy.defaults(), AnthropicModelProvider.RETRYABLE);
-
-var harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("assistant"))
-        .model(resilient)
-        .systemPrompt(prompt)
-        .renderer(UserMessage::of));
-```
-
-Only the initial `stream()` call is retried — once events flow, tokens have
-already been fed downstream, and a mid-stream failure propagates rather
-than transparently re-calling and replaying the turn from the top. Which
-failures are retryable is vendor-specific (a 429 is not an auth error), so
-each vendor module publishes its own predicate —
-`AnthropicModelProvider.RETRYABLE` above, `OpenAiModelProvider.RETRYABLE`
-for the OpenAI-compatible universe.
-
-## Gemini
-
-`nessy-model-gemini` is a native `ModelProvider` on Google's own
-[java-genai](https://github.com/googleapis/java-genai) SDK, talking to the
-Gemini Developer API via a plain API key (Vertex AI auth is out of scope for
-v1):
-
-```java
-ModelProvider provider = GeminiModelProvider.create(c -> c.apiKey(key));
-```
-
-```java
-ModelProvider provider = GeminiModelProvider.fromEnv();
-```
-
-`fromEnv()` reads `GEMINI_API_KEY`, then — if unset — `GOOGLE_API_KEY`,
-Google's own documented pair, in that order. `.baseUrl(String)` overrides
-the endpoint for proxies, gateways, or Gemini-compatible services. Model
-names are the Gemini Developer API's own, e.g. `gemini-3.6-flash` or
-`gemini-2.5-pro`.
-
-Capabilities in v1: text and tool calls, including parallel tool calls in
-one turn, plus usage reporting. Thinking output is not yet mapped — Gemini's
-`thought`-flagged parts are dropped rather than translated.
-
-Tool calls carry real continuity: the stream captures each function call's
-`thoughtSignature` and the request builder replays it verbatim on the next
-turn. A history with no stored signature — one predating this capture, or
-authored by another vendor in a mixed setup — replays with Google's own
-documented skip-validation sentinel instead of failing the call, at the cost
-of degraded reasoning continuity for that one call only.
-
-!!! note "Live-validated"
-    The Gemini mapping, including the signature capture/replay above, passed
-    the live suite — a real conversation and tool round trip against the
-    Gemini Developer API on `gemini-3.6-flash` — on 2026-08-15. Rerun it
-    yourself anytime:
-    `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
-    nessy-model-gemini`.
-
-## Bedrock
-
-`nessy-model-bedrock` is a native `ModelProvider` on the AWS SDK for Java
-v2's `bedrockruntime` client, talking to Amazon Bedrock's unified
-Converse/ConverseStream API — one nessy provider covers Claude, Nova, Llama,
-Mistral, and the rest of the Bedrock catalog, since Converse is
-model-agnostic on the wire (`InvokeModel*`'s per-model JSON bodies are out
-of scope, deliberately: they re-fragment exactly what Converse unified):
-
-```java
-ModelProvider provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
-```
-
-```java
-ModelProvider provider = BedrockModelProvider.fromEnv();
-```
-
-`fromEnv()` uses the AWS SDK's own default credentials provider chain —
-env vars, shared profile/credentials files, container/instance metadata —
-the AWS idiom of ambient credentials, the same reason there is no
-`.apiKey(...)` on this config at all. Only the **region** is resolved
-directly rather than delegated to the SDK's own region chain: `AWS_REGION`
-first, then `AWS_DEFAULT_REGION` if that is unset — Amazon's own documented
-pair. An explicit `.region(...)` set alongside `.fromEnv()` still wins;
-neither variable set fails fast the instant the customizer returns, with an
-`IllegalStateException` naming both. `.credentialsProvider(AwsCredentialsProvider)`
-overrides the credentials chain outright, and `.client(BedrockRuntimeAsyncClient)`
-is the escape hatch for a fully preconfigured async SDK client.
-
-**Close ownership is not symmetric.** `BedrockModelProvider` is
-`AutoCloseable` — the real client holds Netty resources (an event-loop
-group, a connection pool) that outlive one model handle's `stream()` call.
-Closing the gateway closes that client only when the gateway built it
-itself (the `region`/`credentialsProvider`/`fromEnv()` path); a client
-handed in via `.client(...)` is the caller's own to close, on whatever
-lifecycle the caller built it against — the gateway never closes it, since
-it never opened it either.
-
-**No Boot auto-configuration.** `nessy-model-bedrock` ships none, so no
-environment variable — not a key, since Bedrock has none; not `AWS_REGION`
-itself, which some platforms (Lambda) set automatically — ever makes a
-`ModelProvider` bean appear on its own. This is deliberate: AWS credentials
-are ambient on a large fraction of machines, so any mechanism that let their
-presence choose Bedrock would silently route an application with a stray AWS
-profile to it. An application that wants Bedrock says so in code:
-
-```java
-Model model = BedrockModelProvider.fromEnv().model("us.anthropic.claude-haiku-4-5-20251001-v1:0");
-```
-
-`us.anthropic.claude-haiku-4-5-20251001-v1:0` is the `us` cross-region
-inference profile id for Claude Haiku 4.5 — a documented starting point, not
-a default, since there is no bootstrap to hold one.
-
-Capabilities in v1: text and tool calls, including parallel tool calls in
-one assistant turn (Converse already streams several `toolUse` content
-blocks per turn, each on its own `contentBlockIndex`). Thinking output is
-not yet mapped — `ThinkingBlock`/`RedactedThinkingBlock` are dropped on
-replay, the same discipline Gemini's own unadvertised capabilities document.
-
-!!! note "Live-validated"
-    The Bedrock mapping passed the live suite — a real conversation and a
-    real tool round trip through the ConverseStream bridge against Amazon
-    Bedrock — on 2026-08-16, on the default model id
-    (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, the `us` cross-region
-    inference profile for Claude Haiku 4.5). Offline mapping tests
-    (request/response translation, the async-to-blocking bridge, stop-reason
-    and usage tables) run entirely against hand-built SDK fixtures and a
-    hand-rolled async-client fake — no mocking library, no network. Rerun the
-    live suite anytime — `AWS_ACCESS_KEY_ID` is the gate the suite itself
-    checks, so it, not `AWS_REGION` alone, is what opts the tests in:
-
-    ```sh
-    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
-      ./mvnw test -Dnessy.excludedGroups= -pl :nessy-model-bedrock
-    ```
+`Repl.run` in `nessy-console` uses exactly this mechanism: it raises a
+minimal Boot context around itself so these auto-configurations run, and
+tears it down when the loop ends.
 
 ## The OpenAI-compatible universe
 
-`OpenAiModelProvider` + a base URL + a key is, itself, an integration: every
-service below speaks the same OpenAI chat-completions wire protocol, so no
-provider-specific module exists or is needed for any of them. Nessy
-validates against OpenAI proper — a compatible endpoint is the vendor's
-compatibility promise, not ours.
+The OpenAI adapter plus a base URL plus a key is, itself, an integration.
+Every service below speaks the same chat-completions wire protocol, so no
+service-specific module exists or is needed. Nessy validates against OpenAI
+proper; a compatible endpoint is the vendor's compatibility promise.
 
-**Grok** (xAI ships no official Java SDK; its API is deliberately
-OpenAI-compatible):
-
-```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.x.ai/v1"));
-```
-
-`XAI_API_KEY` is a first-class Boot citizen — with `nessy-model-openai` on
-the classpath, set it alone in a Spring Boot application and `OpenAiAutoConfiguration`'s
-xAI bean wires Grok with no other code.
-
-**OpenRouter** (validated live 2026-08-16 against `openai/gpt-4o-mini`: a
-streamed text turn and an approval-gated tool round trip; note OpenRouter
-model ids are vendor-prefixed slugs, so set `NESSY_MODEL`, and cached-token
-counts may read zero since usage passthrough varies by upstream model):
+Name the vendor when it is not OpenAI, so spans and metrics say who was
+actually called:
 
 ```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://openrouter.ai/api/v1"));
+InferenceProvider grok = OpenAiInferenceProvider.create(c -> c
+        .apiKey(key)
+        .baseUrl("https://api.x.ai/v1")
+        .provider("x_ai"));
 ```
 
-**Groq** (validated live 2026-08-16 — the chip company with the LPU
-inference silicon, no relation to xAI's Grok — serving open-weight models
-at extreme speed; `openai/gpt-oss-120b`: a streamed text turn and an
-approval-gated tool round trip, with time-to-first-token in the tens of
-milliseconds. Keys are `gsk_...` from console.groq.com. One field-tested
-quirk: a freshly minted key can intermittently 401 for a few minutes while
-it propagates across their edge — the failed request won't even appear in
-their logs; just retry):
+| Service | Base URL | Notes |
+|---|---|---|
+| xAI (Grok) | `https://api.x.ai/v1` | a first-class Boot citizen through `XAI_API_KEY` |
+| OpenRouter | `https://openrouter.ai/api/v1` | model ids are vendor-prefixed slugs |
+| Groq | `https://api.groq.com/openai/v1` | a freshly minted key can 401 for a few minutes while it propagates |
+| NVIDIA NIM | `https://integrate.api.nvidia.com/v1` | model ids are NVIDIA's catalog ids |
+| Ollama | `http://localhost:11434/v1` | local; any non-empty key |
+| LM Studio | `http://127.0.0.1:1234/v1` | local; any non-empty key |
 
-```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.groq.com/openai/v1"));
-```
+Note the `/v1` suffix. The OpenAI SDK does not append it itself.
 
-**NVIDIA NIM** (validated live 2026-08-16 against the free open-weight
-`nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA's free developer tier: a
-streamed text turn and an approval-gated tool round trip — a no-cost model
-driving the whole loop; keys are `nvapi-...` from build.nvidia.com, model
-ids are NVIDIA's catalog ids):
+`OPENAI_BASE_URL` set alongside `OPENAI_API_KEY` makes any of these a
+zero-code Boot citizen too.
 
-```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://integrate.api.nvidia.com/v1"));
-```
+### Reasoning models on local runtimes
 
-**Ollama** (local, no key required — any non-empty string works; validated
-live 2026-08-16 against `qwen3.6`: a streamed text turn and an
-approval-gated tool round trip. Honest performance note: on the same
-Apple-Silicon machine and model family, LM Studio's MLX engine was notably
-faster than Ollama's GGUF serving — both work, one waits):
-
-```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey("ollama").baseUrl("http://localhost:11434/v1"));
-```
-
-**LM Studio** (local; validated 2026-08-15 against two models —
-`google/gemma-4-e4b` and `qwen/qwen3.6-35b-a3b` — both a streamed text turn
-and a tool-call round trip, on LM Studio's OpenAI-compatible endpoint):
-
-```java
-ModelProvider provider =
-    OpenAiModelProvider.create(c -> c.apiKey("lm-studio").baseUrl("http://127.0.0.1:1234/v1"));
-```
-
-Note the `/v1` suffix on the base URL — the OpenAI SDK does not append it
-itself.
-
-`OPENAI_BASE_URL`, set alongside `OPENAI_API_KEY`, makes any of these a
-zero-code Boot citizen too: `OpenAiAutoConfiguration` layers it onto the
-OpenAI bean exactly as shown above, the same way it wires Grok.
+A local thinking model, such as the Qwen 3 family, spends reasoning tokens
+out of the same cap as its answer. With a small `maxTokens` the answer never
+arrives, and the adapter reports a `Fault` naming `finish_reason=length`.
+Raise the cap for that harness, or serve a model that does not reason by
+default.
 
 ### Anthropic-compatible endpoints
 
-LM Studio also speaks Anthropic's Messages dialect, and `AnthropicModelProvider`
-was validated against it the same date, same two models, same coverage
-(streamed text and a tool-call round trip):
+LM Studio also speaks Anthropic's Messages dialect, and the Anthropic
+adapter reaches it through the same `baseUrl` setting:
 
 ```java
-ModelProvider provider =
-    AnthropicModelProvider.create(c -> c.apiKey("lm-studio").baseUrl("http://127.0.0.1:1234"));
+InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+        .apiKey("lm-studio")
+        .baseUrl("http://127.0.0.1:1234"));
 ```
 
 !!! warning "The base URL is not symmetric with the OpenAI path"
-    The Anthropic Java SDK's default base URL is the bare origin
-    (`https://api.anthropic.com`, no `/v1`) — it appends `/v1/messages`
-    itself. Passing `http://127.0.0.1:1234/v1` here, by analogy with the
-    OpenAI example above, produces a `.../v1/v1/messages` double path that
-    fails. Use the bare origin for `AnthropicModelProvider.baseUrl(...)`,
-    and keep the `/v1` suffix for `OpenAiModelProvider.baseUrl(...)`.
+    The Anthropic SDK's default base URL is the bare origin; it appends
+    `/v1/messages` itself. Passing `http://127.0.0.1:1234/v1` here produces
+    a `/v1/v1/messages` double path that fails. Use the bare origin for the
+    Anthropic adapter, and keep the `/v1` suffix for the OpenAI one.
+
+## What the engine records about a call
+
+Every call's request is written down whole in `nessy_inference_context`
+before the provider is asked, and its outcome afterwards. When a call goes
+wrong, that row is what the model actually saw. See
+[Storage](../concepts/storage.md#what-the-model-was-shown).
 
 ## Where next
 
-- [Getting Started](getting-started.md) — the smallest harness, model swap
-  included.
-- [The harness guide](harness.md) — the door a `Model` handle feeds.
-- [Observability](observability.md) — narrating what a model handle's calls
-  actually do, turn by turn.
-- [Durable Computation](../concepts/durable-computation.md) — what a
-  `Harness` built from a model handle actually gives you.
+- [Getting Started](getting-started.md), the smallest harness
+- [The Harness](harness.md), the per-harness inference settings
+- [Observability](observability.md), what a call reports about itself
+- [Spring Boot](spring-boot.md), the properties that pick a provider

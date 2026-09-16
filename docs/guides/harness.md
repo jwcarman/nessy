@@ -4,68 +4,71 @@ A harness is the door to one **kind** of agent. You build one per agent
 type, keep it for the life of the process, and tell it things.
 
 ```java
-harness.observe(AgentId.of("house-12"), "the porch light came on");
+harness.observe(agentId, "the porch light came on");
 ```
 
 That is the whole surface for getting work done. There is no per-agent
 handle to hold, and deliberately so: a handle is a thing that can go stale,
-and sharding already knows where an agent lives.
+and the agent's row already knows where it is.
 
 ```java
 public interface Harness<O> {
-  AgentType type();
   void observe(AgentId agentId, O observation);
-  void forget(AgentId agentId);
-  AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber);
-  AgentSubscription subscribe(AgentId agentId, AgentSubscriber subscriber, String lastEventId);
+  void terminate(AgentId agentId);
 }
 ```
 
 ## Kept, not closed
 
-Build it once and keep it. A harness closes over the model, the tools, the
-prompt and memory; building one per request would rebuild all of that and
-buy nothing. It holds no per-agent state, so one instance serves every id
-your domain has.
+Build it once and keep it. A harness closes over the provider, the tools,
+the prompt and the context policy; building one per request would rebuild
+all of that and buy nothing. It holds no per-agent state, so one instance
+serves every id your domain has.
 
-There is no `shutdown`. Entities belong to the cluster, not to whoever
-asked for a harness.
+The factory owns the lifecycle: `DefaultHarnessFactory` is `AutoCloseable`,
+and closing it stops every harness it made and the scheduler that drives
+their work.
 
 ## Two configurations, and the difference matters
 
 **`EngineConfig`** is the engine: one per process.
 
 ```java
-var factory = new EngineHarnessFactory(engine -> engine
-        .models(modelProvider)        // required
-        .dataSource(dataSource));     // optional — see below
+DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)                                          // required
+        .inference(provider, InferenceOptions.of("claude-sonnet-5"))     // required
+        .listener(auditLog)
+        .replyTokens(ReplyTokens.withKeys(currentKey, previousKey))
+        .observations(observationRegistry)
+        .storage(encryption));
 ```
 
 | Setting | Default |
 |---|---|
-| `system` | *required* — the `ActorSystem` the engine runs on |
-| `models` | *required* — the gateway that resolves a `ModelId` |
-| `dataSource` | an in-memory H2 the engine builds **and initializes** |
-| `maxTokens` | 4096 |
-| `capabilities` | none |
-| `blocking` | virtual threads |
-| `clock` | `Clock.systemUTC()` |
-| `replyTokens` | ephemeral keys — tokens die with the process |
-| `traces` | no-op |
+| `dataSource` | *required*: agents, their stories and their outstanding work are all rows |
+| `inference` | *required*: the provider every harness calls, and the model and token cap they inherit |
+| `listener` | none; repeatable. Hears every agent of every harness |
+| `replyTokens` | ephemeral keys, so tokens die with the process |
+| `observations` | no-op registry |
+| `storage` | nothing after Jackson; a `Codec<byte[]>` here compresses or encrypts every row |
+| `recordInferenceContexts` | on; every model call's request is written down whole |
 
-The engine initializes only a `DataSource` it created. One you supply is
-never touched uninvited — see [Storage](../concepts/storage.md) for how to
-apply the schema yourself.
+Everything that touches the database is built inside the factory from that
+one `DataSource`: the stores, the transaction manager, the JDBC client. There
+is nothing for a caller to assemble and nothing for two callers to assemble
+differently.
 
 **`HarnessConfig`** is one agent type: as many as you like.
 
 ```java
-Harness<String> harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("watchman"))
+Harness<String> harness = factory.create(config -> config
+        .agentType(new AgentType("watchman"))
         .systemPrompt("You watch a house.")
-        .model(ModelId.of("claude-opus-4"))
-        .renderer(UserMessage::of)
-        .memory(memory)
+        .inference(in -> in
+                .model("claude-haiku-4-5")
+                .maxTokens(1024)
+                .context(ctx -> ctx.maxTail(20).ambient(PlanTools.plan(plans))))
+        .listener(summarizer.listener())
         .tool(new DiskUsageTool())
         .tool(new PruneImagesTool(), binding -> binding
                 .approver(desk)
@@ -74,13 +77,19 @@ Harness<String> harness = factory.createHarness(String.class, config -> config
 
 | Setting | What it decides |
 |---|---|
-| `type` | the agent type — also the persistence id prefix, so renaming it orphans stored state |
-| `systemPrompt` | the standing instruction |
-| `model` | which model, resolved against your `ModelProvider` |
-| `renderer` | how an observation becomes a `UserMessage` |
-| `coalescer` | what an arriving observation does to the ones already waiting |
-| `memory` | the transcript; defaults to a recent-characters window, **announced loudly** |
-| `tool` | grants one tool, optionally gated and described |
+| `agentType` | the agent type, and the key every row is stored under. Renaming it orphans stored state |
+| `systemPrompt` | the standing instruction, as a string or a `SystemPromptSource` decided per call |
+| `observationRenderer` | how an observation becomes the blocks a model reads; `String` renders as itself |
+| `observationCoalescer` | what an arriving observation does to the ones already waiting |
+| `inference` | model, token cap, timeout, retry policy, and the context policy |
+| `effects` | how often this harness looks for due work, and how much runs at once |
+| `listener` | somebody who hears this harness's agents, after the engine's listeners |
+| `tool` | grants one tool, optionally gated, timed and described |
+
+The defaults that matter: a tool call gets 30 seconds, an approver 10
+minutes, a model call 5 minutes, none of them retried; the tail is the last
+20 turns; work is polled every 250 milliseconds with at most 4 effects in
+flight per harness.
 
 ## Observing
 
@@ -91,118 +100,81 @@ durable, and the turn happens afterwards:
 harness.observe(agentId, "the porch light came on");
 ```
 
-Two steps, in this order and never the other: the row is committed, then the
-agent is told the backlog changed. Reversed, the agent could look for work
-before the row lands, find nothing, and go back to sleep with work sitting
-in the table.
-
-The signal itself carries nothing — not a count, not an id. A busy agent
-drops it on the floor, because going idle always ends with a look at the
-backlog; duplicates are free, because looking at an empty backlog is a
-no-op. That is what makes it safe to send one every time.
+One transaction takes the agent's row lock, folds the observation into its
+state, appends to the story, and writes down the work the fold decided on.
+The model call itself runs later, on its own virtual thread, when the
+harness's dispatcher picks the row up. See
+[Agent as Scope](../concepts/agent-as-scope.md).
 
 ## Coalescing: what happens to what is already waiting
 
 An agent works one turn at a time, so observations arriving during a turn
-wait. What *should* wait is your decision, not Nessy's:
+wait in its backlog. What *should* wait is your decision:
 
 ```java
-BacklogCoalescer<String> coalescer = (waiting, arriving) -> {
-    if (!isTick(arriving)) {
-        var all = new ArrayList<>(waiting);
-        all.add(arriving);
-        return all;                       // keep everything
-    }
-    var kept = waiting.stream().filter(item -> !isTick(item)).toList();
-    var all = new ArrayList<>(kept);
-    all.add(arriving);
-    return all;                           // one heartbeat, the newest
-};
+config.observationCoalescer(ObservationCoalescer.keepAll());            // the default
+config.observationCoalescer(ObservationCoalescer.replaceBy(Reading::sensor));
+config.observationCoalescer(ObservationCoalescer.<Tick, String>dropRepeats(Tick::kind).capped(50));
 ```
 
-The coalescer takes what is waiting and what arrived, and returns **the
-backlog**. It may drop, merge or reorder, and the order it returns is the
-order work is taken in — so "what happens next" is its answer, not a
-timestamp comparison Nessy invented.
+`keepAll` is right for anything a person said. `replaceBy(key)` keeps the
+newest observation per key, so ten readings from one sensor become one.
+`dropRepeats(key)` ignores an arrival whose key is already waiting.
+`mergeBy` folds two into one. `expiring(ttl)` and `capped(max)` compose onto
+any of them.
 
-It sees only what is *waiting*. The observation a turn is currently working
-on is not in that list, so a superseding policy cannot merge away the very
-thing being worked on.
+The coalescer takes what is waiting and what arrived, and returns the
+backlog. It may drop, merge or reorder, and the order it returns is the
+order work is taken in. It sees only what is *waiting*: the observation a
+turn is working on is not in the list, so a superseding policy cannot merge
+away the very thing being worked on. Rendering happens when an observation
+is taken, so one that is coalesced away is never rendered at all.
 
-Rendering happens when an observation is taken, not when it arrives — so an
-observation that gets coalesced away is never rendered at all, and your
-coalescer compares real observations rather than string-matching its way
-back out of a rendered message.
+## Terminating
 
-## Forgetting
-
-An agent id is not always a long-lived name. A browser session, one review by a
-judging agent, a single request — those instances have to be able to END, or
-every one of them is a permanent state row and a permanent transcript.
+An agent id is not always a long-lived name. A browser session, one review
+by a judging agent, a single request: those have to be able to end.
 
 ```java
-harness.forget(agentId);
+harness.terminate(agentId);
 ```
 
-**A request, not a receipt.** It returns as soon as the agent has been told. If
-that agent is mid-turn it finishes first and forgets itself afterwards, so
-nothing is deleted out from under work in flight — the same cooperation
-`Thread.interrupt` asks for, and for the same reason: the alternative strands
-the model's answer in a dead incarnation with nobody left to end the turn. A
-caller that must *know* the agent is gone cannot learn it here.
+It takes effect at once if the agent is idle. One mid-turn stops accepting
+and ends when the turn it already owes an outcome for is finished, because
+an effect that has been written down cannot be cancelled, and abandoning it
+would leave a row nobody will ever discharge. Nothing is written to the
+story: what ended is the agent, not its conversation. Terminating is
+idempotent and irreversible, and an observation arriving afterwards is
+refused.
 
-What goes: the agent's memory, its backlog rows, its claims, and its persisted
-state. What stays: stores it merely *used* — a notebook, a plan, a declared
-intent — because those have their own lifecycles and may be shared with other
-agents. Forget those yourself if you want them gone.
+The rows stay. Terminating ends an agent's activity, it does not delete its
+history; retention is a policy your operators own, applied to the tables
+directly. `nessy-examples/chat-web` shows the shape: its "New chat" button
+terminates the old conversation rather than walking away from it.
 
-Forgetting an agent that never existed is silent. Telling one twice is the same
-as telling it once.
+## Hearing back
 
-**Do not reuse a forgotten id.** An observation offered between the decision to
-forget and the deletion lands in a table nobody is reading. That is harmless
-until the id comes back, when it arrives as stale work for a new agent.
-
-`nessy-examples/chat-web` shows the shape: its "New chat" button ends the old
-conversation rather than minting a new id and walking away from the old one.
-
-## Watching
+Listeners are how an answer reaches you. Attach one to the engine to hear
+every harness, or to a harness to hear its agents alone; a harness's
+listeners are told after the engine's, in order, on one thread per harness
+that is not the thread folding the turn.
 
 ```java
-try (AgentSubscription subscription = harness.subscribe(agentId, event -> {
-        switch (event) {
-            case AgentEvent.TextDelta delta -> System.out.print(delta.text());
-            case AgentEvent.TurnEnded ended -> System.out.println();
-            default -> { }
-        }
-    })) {
-    harness.observe(agentId, "hello");
-}
+config.listener(AgentEventListener.of(on -> on
+        .onContentDelta((type, id, delta) -> out.print(delta.text()))
+        .onApprovalSought((type, id, sought) -> desk.show(id, sought.action()))
+        .onTurnEnded((type, id, ended) -> out.println())));
 ```
 
-**Close it.** An unclosed subscription leaks a routing entry.
-
-Every event carries a time-ordered id, so a listener that drops off can
-resume:
-
-```java
-harness.subscribe(agentId, subscriber, lastEventIdItSaw);
-```
-
-Over SSE that is one line, because a browser sends `Last-Event-ID` on
-reconnect by itself:
-
-```java
-public SseEmitter events(@PathVariable String id,
-                         @RequestHeader(name = "Last-Event-ID", required = false) String cursor) {
-    return streams.open(AgentId.of(id), cursor);
-}
-```
+A listener that does its own slow work, such as a summariser making a model
+call, wraps itself with `async()` and is told on a virtual thread per event.
+See [Events](events.md).
 
 ## The console: the whole application in one call
 
-For a terminal agent, `Repl.run` does discovery, the actor system, the
-cluster-of-one, reply tokens, the harness and the loop:
+For a terminal agent, `Repl.run` raises a minimal Boot context around
+itself, finds the provider and the `DataSource` in the environment, builds
+the harness and runs the loop:
 
 ```java
 public static void main(String[] args) {
@@ -215,9 +187,9 @@ public static void main(String[] args) {
 }
 ```
 
-The barrier to writing a console agent was never the read-line loop; it was
-the actor-system bootstrap. An easy button may *default* a component, but it
-is never the only way to get one — every piece above is still settable.
+An easy button may *default* a component, but it is never the only way to
+get one: `ReplConfig.harness(customizer)` reaches the full `HarnessConfig`,
+and `dataSource(...)` replaces the one Boot found.
 
 ## Writing an approver
 
@@ -232,19 +204,26 @@ or later:
 ```java
 Approver desk = request -> {
     pending.save(request, request.replyToken());
-    return Awaited.deferred(clock.instant().plus(Duration.ofDays(3)));
+    return Awaited.deferred();
 };
 ```
 
-Deferring parks the call, arms a durable alarm, and frees the agent. Days
-later, whoever holds the token answers:
+Deferring parks the call and frees the agent. How long the call waits is
+the binding's decision, not the approver's:
+
+```java
+.tool(restart, binding -> binding
+        .approver(desk, terms -> terms.timeout(Duration.ofDays(3))))
+```
+
+Days later, whoever holds the token answers:
 
 ```java
 replies.approve(token, ApprovalResult.denied("not this time"));
 ```
 
 **A denial is an answer, not an absence.** The model is told the call was
-refused, with the reason, and decides what to do about that — it is not a
+refused, with the reason, and decides what to do about that. It is not a
 failed turn, and it is not a broken tool.
 
 ## Describing what is being approved
@@ -263,8 +242,9 @@ trim it if your surface is a terminal prompt, and don't if it is a page.
 
 ## Where next
 
-- [Getting Started](getting-started.md) — the shortest path to a running agent
-- [Tools](../concepts/tools.md) — writing tools, and deferring
-- [Authorization](../concepts/authorization.md) — grants and approvers
-- [Storage](../concepts/storage.md) — the tables, and applying the schema
-- [Spring Boot](spring-boot.md) — the starter
+- [Getting Started](getting-started.md), the shortest path to a running agent
+- [Tools](../concepts/tools.md), writing tools, and deferring
+- [Authorization](../concepts/authorization.md), grants and approvers
+- [Memory](../concepts/memory.md), what a model call is built from
+- [Storage](../concepts/storage.md), the tables, and applying the schema
+- [Spring Boot](spring-boot.md), the starter

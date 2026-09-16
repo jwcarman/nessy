@@ -49,7 +49,7 @@ breaks the wiring loudly at startup rather than quietly mid-turn.
 `read_wiki_contents` can return a repository's entire wiki — measured at
 **341,962 characters** for a medium-sized project. Nothing in Nessy bounds a
 tool result before it reaches the model: `maxTokens` caps what the model
-writes, and `Memory` shapes the transcript, but a tool result inside the
+writes, and the context policy decides how much history is shown, but a tool result inside the
 current exchange is neither.
 
 A small local model may fail on that, and the failure surfaces as whatever

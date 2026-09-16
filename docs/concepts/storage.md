@@ -1,66 +1,34 @@
 # Storage
 
-Nessy keeps four kinds of thing, and each one lives in a table shaped for
-how it is read.
+Nessy is PostgreSQL rows. Each kind of thing lives in a table shaped for how
+it is read, and there is no abstraction between the engine and its SQL.
 
 | What | Where | Lives for |
 |---|---|---|
-| What an agent is doing | `nessy_agent` | until the agent is forgotten |
-| What is waiting to become a turn | `nessy_backlog` | until it is taken and swept |
-| Content a turn needs and no longer | `nessy_claim` | the turn |
-| An obligation in flight, and any deadline it is parked against | `nessy_effect` | until it completes or is abandoned |
-| The conversation | `nessy_transcript` | forever, unless your `Memory` says otherwise |
+| Where an agent is | `nessy_agent_state` | until the agent is terminated, and after |
+| The story, one row per message | `nessy_agent_history` | forever, unless you prune it |
+| Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
+| What each model call was shown | `nessy_inference_context` | until you prune it |
+| One rolling summary per agent | `nessy_summary` | replaced as the story grows |
+| Notes, plan tasks, declared intent | `nessy_note`, `nessy_plan_task`, `nessy_intent` | as their modules decide |
+| Background work claimed once | `nessy_lease` | its TTL |
 
-Notes, plans and intent each get a table too, from whichever module
-provides them.
+Every module that needs a table ships it in its own `nessy-schema.sql`.
 
-## There is no storage abstraction
+## PostgreSQL, and only PostgreSQL
 
-There used to be. `Substrate` was one key-value seam — documents and
-journals — that everything went through, with a JDBC implementation, an
-in-memory double, and a 550-line contract test holding the two together.
-It was deleted on 2026-09-01.
-
-It went because a general-purpose store makes its callers enforce its
-design rather than their own. The notebook loaded whole entries and threw
-the bodies away in Java to project a list of headings, because "give me
-the headings" was not a shape a key-value seam could express. The
-transcript read a fixed 500-message tail and then applied a character
-budget, because a cursor that stops when it has enough was not a shape
-either. Both are one statement now: `headings()` is `SELECT note_id, hook`,
-so a body cannot reach the model by accident, and the transcript budget is
-a newest-first cursor that stops, so `MAX_MESSAGES_READ` is gone.
-
-The portability it bought was for a backend nobody asked for. One real
-implementation and one test double, held to a contract, is a lot of
-apparatus for a seam with one thing behind it.
-
-## The engine needs it, so the engine provides it
-
-Claims and effects are engine bookkeeping. Nothing outside the engine reads
-either, so neither is an extension point and neither is something an
-application should have to wire.
-
-```java
-new EngineHarnessFactory(engine -> engine
-        .models(models));            // no dataSource: the engine makes its own
-```
-
-Hand it no `DataSource` and it builds an in-memory H2 and initializes it.
-Hand it one and it uses that — and **does not touch it**:
-
-```java
-new EngineHarnessFactory(engine -> engine
-        .models(models)
-        .dataSource(yourDataSource));
-```
-
-The engine initializes only a database it created. Yours is yours.
+The queries this engine rests on are PostgreSQL's: `SELECT ... FOR UPDATE`
+to serialise an agent, `FOR UPDATE SKIP LOCKED` to claim work, `INSERT ...
+ON CONFLICT` to take a lease, `TIMESTAMPTZ` columns. There is no in-memory
+fallback and no H2: a fallback would not run a degraded Nessy, it would run
+one that fails on the first turn, and saying so at startup is kinder than an
+embedded database that looks like it worked. The test suite runs the same
+DDL against a real PostgreSQL container.
 
 ## Applying the schema
 
-Every module that needs a table ships `nessy-schema.sql` at the root of its
-jar. `Schemas` gathers all of them and runs them:
+`Schemas` gathers every module's `nessy-schema.sql` from the classpath and
+runs them, in one call, safe to repeat:
 
 ```java
 Schemas.initialize(dataSource);
@@ -68,58 +36,100 @@ Schemas.initialize(dataSource);
 
 **The name is the opt-in.** Spring Boot looks for `schema.sql`, so Nessy's
 file never runs uninvited, and Nessy's loader never runs yours. Call this
-yourself, or apply the files through whatever runs your migrations.
+yourself, let the starter do it (`nessy.initialize-schema`, on by default),
+or feed the files to whatever runs your migrations. `classpath*:` matters:
+it enumerates *every* matching resource rather than the first, so a module
+added later brings its table with it.
 
-`classpath*:` matters: it enumerates *every* matching resource rather than
-the first, so a jar added later brings its table with it. That is what
-Boot's own script initialization does.
+## The engine builds its own access
 
-## Two rules for the SQL
+The factory is handed a `DataSource` and nothing else about the database:
 
-Both are enforced by a test running the DDL against H2, rather than by
-anyone remembering them.
+```java
+new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)
+        .inference(provider, options));
+```
 
-**ANSI spellings only.** `TIMESTAMPTZ` is a PostgreSQL alias that H2
-rejects; `TIMESTAMP WITH TIME ZONE` works on both.
+From it the factory builds the JDBC client, the transaction manager and
+every store. There is nothing to assemble and nothing for two callers to
+assemble differently. Two things are exposed for reading, and only for
+reading: `histories()`, the story as turns, and `inferenceContexts()`, what
+the model was shown.
 
-**No reserved words as identifiers.** `key` is reserved in H2 and merely
-unreserved in PostgreSQL, so `nessy_document.key` would have worked in
-production and failed in tests — which is the worse way round.
+## Rows are Jackson, then whatever you say
 
-## What the agent's own document holds
+Every payload column is bytes: the row encoded by Jackson, then passed
+through whatever `Codec<byte[]>` the engine was given.
 
-A turn id, a phase, two claim ids, and a token count. Around 260 bytes,
-measured on a real agent running real tools against PostgreSQL, and it does
-not grow with what the agent does.
+```java
+new DefaultHarnessFactory(engine -> engine
+        .dataSource(dataSource)
+        .inference(provider, options)
+        .storage(gzip.andThen(aesGcm)));
+```
 
-That is deliberate. The backlog is a table rather than a list in the
-document, so a phase change rewrites four short strings instead of a queue.
-Tool arguments and tool results are claimed, so a document never carries a
-megabyte of output somebody's tool decided to produce. What is left is only
-what answers one question: *what should happen if this process dies right
-now?*
+That is the seam for compression and for encryption at rest, and it covers
+the state, the story, the effects and the recorded inference contexts
+alike. It is fixed for the life of the data: rows written under one
+transform are unreadable under another, which is the same fact as an
+encryption key. In a Boot application a `StorageCodec` bean is picked up,
+and the same transform is handed to the Odyssey event stream's journal so
+what a listener wrote is protected the way the story is.
 
-## The claim check
+## What the state row holds
 
-A turn needs the message the model asked with, and what each tool answered.
-Neither can live on the document — they are the size of whatever a tool
-decided to hand back — and neither can live in the transcript, because an
-exchange is written **whole**, so for exactly the window a call is in
-flight the transcript is designed not to hold it.
+A phase, a sequence number, a turn id, the backlog of observations waiting,
+and the calls outstanding, as one Jackson document a few hundred bytes
+long. It does not grow with the conversation: the story is its own table,
+and the fold says what to append by returning it. A `version` column moves
+by one on every save, so the row is also where an entry's sequence number
+comes from, read under the lock.
 
-So they are claimed, and the agent deals in ids. Claims are deleted by
-*turn*, not by key, which matters for more than tidiness: a claim written
-just before a crash, before the state naming it was persisted, is an orphan
-no key list contains. Deleting by turn sweeps it anyway, because it is in
-the turn.
+## The story
 
-## PostgreSQL
+`nessy_agent_history` is one row per entry, appended and never rewritten,
+keyed by agent and sequence, with the turn it belongs to and a rough token
+estimate beside the payload. The estimate is there so a budget can be
+applied in the query, a running sum over turns stopping at the oldest that
+fits, rather than by loading a conversation to measure it. The provider's
+tokenizer is the authority and being wrong is survivable, because a request
+refused for length is retried rather than lost.
 
-`nessy-store-tests` runs the same certification against a real PostgreSQL 17
-container. Deliberately not Alpine — musl's `strcoll` masks collation bugs
-that glibc surfaces.
+## What the model was shown
+
+`nessy_inference_context` is written by the engine around every model call:
+the whole `InferenceRequest` as rendered, system prompt, summaries, tail,
+ambient, tools and options, before the provider is asked, and the outcome
+(`answer`, `actions`, `refusal`, `fault`) with a completion time afterwards.
+It cannot be reconstructed later: the head summary replaces itself, ambient
+changes every call, and a templated prompt is rendered per call. Stored
+whole rather than by reference to the story, so a row means something
+wherever it is read.
+
+It is on by default and costs one row per call. `recordInferenceContexts(false)`
+on the engine turns it off. Read it back through `InferenceContexts`, as
+`RecordedInference` values: this is the evidence trajectories, evals and
+critics are built from, and the first thing to look at when a call went
+wrong.
+
+## Effects
+
+`nessy_agent_effect` carries the work an agent owes and everything needed
+to perform it without decoding it: a status, when it is next actionable,
+how many attempts it has had, a per-attempt timeout, a hard deadline, the
+W3C trace context it was emitted under, and beside the payload a second
+blob saying what to tell the agent if the work can never be done. See
+[Durable Computation](durable-computation.md).
+
+## Retention
+
+Nothing here deletes. Terminating an agent ends its activity and leaves its
+rows; the story and the inference contexts grow until you prune them. That
+is a policy your operators own, applied to the tables directly, and the
+schema is plain enough to do it in one statement per table.
 
 ## See also
 
-- [Memory](memory.md) — what an agent remembers, and who decides
-- [Durable Computation](durable-computation.md) — what survives a crash, and how
+- [Memory](memory.md), what a model call is built from
+- [Durable Computation](durable-computation.md), what survives a crash, and how
