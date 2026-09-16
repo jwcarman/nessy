@@ -250,4 +250,29 @@ class BedrockInferenceProviderTest {
           .isInstanceOf(IllegalStateException.class);
     }
   }
+
+  @Nested
+  class BlankText {
+
+    @Test
+    void whitespace_is_not_content() {
+      InferenceResult result =
+          infer(
+              reply(
+                  StopReason.END_TURN, ContentBlock.fromText("   "), ContentBlock.fromText("hi")));
+
+      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
+    }
+
+    @Test
+    void a_reply_whose_output_has_no_message_is_empty() {
+      ConverseResponse hollow =
+          ConverseResponse.builder()
+              .stopReason(StopReason.END_TURN)
+              .output(ConverseOutput.builder().build())
+              .build();
+
+      assertThat(infer(hollow)).isInstanceOf(InferenceResult.Fault.class);
+    }
+  }
 }

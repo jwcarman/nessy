@@ -162,4 +162,22 @@ class NessyPropertiesTest {
       }
     }
   }
+
+  @org.junit.jupiter.api.Test
+  void every_default_and_every_override() {
+    NessyProperties defaults = new NessyProperties(" ", null, null, "m", " ", null, null, null);
+    assertThat(defaults.type()).isEqualTo("agent");
+    assertThat(defaults.provider()).isEqualTo("unknown");
+    assertThat(defaults.maxTokens()).isEqualTo(4096);
+    assertThat(defaults.replyTokenEncryptionKeys()).isEmpty();
+    assertThat(defaults.initializeSchema()).isTrue();
+
+    NessyProperties given =
+        new NessyProperties("ops", null, null, "m", "openai", 512, java.util.List.of("k"), false);
+    assertThat(given.type()).isEqualTo("ops");
+    assertThat(given.provider()).isEqualTo("openai");
+    assertThat(given.maxTokens()).isEqualTo(512);
+    assertThat(given.replyTokenEncryptionKeys()).containsExactly("k");
+    assertThat(given.initializeSchema()).isFalse();
+  }
 }
