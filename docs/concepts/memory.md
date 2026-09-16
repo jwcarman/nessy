@@ -127,7 +127,12 @@ it began; what it was opened as is kept beside it. Until it has one, the
 episode's turns are still shown verbatim, so a slow summary costs a larger
 context on a few calls and never a hole. An episode index is ambient, kind
 `episodes`, listing every episode by number and title and which one is under
-way; `recall_episode(n)` reads any summary the store did not choose to show.
+way, and ending with the question the model has to answer on every call: with
+nothing open, whether this message starts a piece of work; with one open,
+whether this message is still about it, naming it. The system prompt can say
+"begin an episode when the subject changes"; only the ambient can say what
+the subject currently is. `recall_episode(n)` reads any summary the store did
+not choose to show.
 
 `JdbcEpisodes` is the `Summarizer`. Its candidates are the summarised
 episodes from the start of the story up to the first that is open or not yet

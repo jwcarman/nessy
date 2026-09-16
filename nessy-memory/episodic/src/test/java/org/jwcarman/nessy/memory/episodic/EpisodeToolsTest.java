@@ -53,7 +53,7 @@ class EpisodeToolsTest {
             org.assertj.core.groups.Tuple.tuple(new TurnId(1), new TurnId(5)),
             org.assertj.core.groups.Tuple.tuple(new TurnId(6), null));
     assertThat(begin.name().value()).isEqualTo("begin_episode");
-    assertThat(begin.description()).contains("subject changes");
+    assertThat(begin.description()).contains("before answering");
   }
 
   @Test
@@ -88,9 +88,9 @@ class EpisodeToolsTest {
   }
 
   @Test
-  void the_index_lists_every_episode_and_says_nothing_when_there_are_none() {
+  void the_index_lists_every_episode_and_asks_whether_this_message_begins_one() {
     AgentId agent = Calls.agent();
-    assertThat(index.forAgent(agent)).isEmpty();
+    assertThat(text(index.forAgent(agent))).isEqualTo(EpisodeTools.NONE_OPEN);
 
     episodes.begin(agent, new TurnId(1), "greetings", "start");
     episodes.begin(agent, new TurnId(4), "the task", "next");
@@ -105,6 +105,10 @@ class EpisodeToolsTest {
                 "- 1. Saying hello (begun as \"greetings\") (turns 1..3)",
                 "- 2. the task (turns 4..8, not yet summarised)",
                 "- 3. the wrap-up (current, since turn 9)"));
-    assertThat(text(ambient)).contains("recall_episode").contains("begin_episode");
+    assertThat(text(ambient))
+        .contains("recall_episode")
+        .endsWith(
+            "The current episode is 'the wrap-up'. If this message is not about that, call"
+                + " begin_episode first.");
   }
 }

@@ -48,29 +48,39 @@ public final class EpisodeTools {
           int number) {}
 
   /**
-   * The read half: the episodes there are, in front of the model on every call.
+   * The read half: the episodes there are, in front of the model on every call, and what to do
+   * about the message in hand.
    *
    * <p>Ambient rather than a message, for the reason the notebook's index is: asked afresh each
-   * time, it says what is true now. Empty means absent: an agent with no episodes yet is shown
-   * nothing, and the tool's own description says when to begin one.
+   * time, it says what is true now. It always says something, unlike the notebook's, because the
+   * decision it prompts is made on every call: with no episode open, whether this message begins
+   * one; with one open, whether this message is still about it. The system prompt can say "begin an
+   * episode when the subject changes"; only this can say what the subject currently is.
    */
   public static AmbientSource index(JdbcEpisodes episodes) {
     Objects.requireNonNull(episodes, EPISODES_NOT_NULL);
-    return agentId -> {
-      List<Episode> all = episodes.all(agentId);
-      return all.isEmpty() ? Optional.empty() : Optional.of(Ambient.text(KIND, render(all)));
-    };
+    return agentId -> Optional.of(Ambient.text(KIND, render(episodes.all(agentId))));
   }
 
-  /** What the model sees: numbers, titles and spans, and which is under way. */
+  static final String NONE_OPEN =
+      "No episode is open. If this message starts a piece of work -- a topic, task or request"
+          + " that will take more than a passing answer -- begin one with begin_episode before"
+          + " answering.";
+
+  /** What the model sees: numbers, titles and spans, which is under way, and the question. */
   private static String render(List<Episode> all) {
+    if (all.isEmpty()) {
+      return NONE_OPEN;
+    }
     StringBuilder text = new StringBuilder("Episodes of this conversation so far:\n");
+    Episode current = null;
     for (Episode episode : all) {
       text.append("- ").append(episode.number()).append(". ").append(episode.title());
       if (!episode.title().equals(episode.openedAs())) {
         text.append(" (begun as \"").append(episode.openedAs()).append("\")");
       }
       if (episode.open()) {
+        current = episode;
         text.append(" (current, since turn ").append(episode.from().value()).append(')');
       } else {
         text.append(" (turns ")
@@ -81,11 +91,17 @@ public final class EpisodeTools {
       }
       text.append('\n');
     }
-    return text.append(
-            "Summaries of the episodes most relevant to the current turn are shown above the recent"
-                + " turns; read any other in full with recall_episode. When a distinct piece of work"
-                + " begins, call begin_episode.")
-        .toString();
+    text.append(
+        "Summaries of the episodes most relevant to this message are shown above the recent turns;"
+            + " read any other in full with recall_episode.\n");
+    if (current == null) {
+      text.append(NONE_OPEN);
+    } else {
+      text.append("The current episode is '")
+          .append(current.title())
+          .append("'. If this message is not about that, call begin_episode first.");
+    }
+    return text.toString();
   }
 
   /** Records that a new episode began at this turn; the summary of the last comes later. */
@@ -95,8 +111,10 @@ public final class EpisodeTools {
         BeginEpisode.class,
         new ToolName("begin_episode"),
         "Mark that a distinct piece of work has begun: a new topic, task or request that is not a"
-            + " continuation of what came before. The previous episode is closed and summarised in"
-            + " the background. Call this when the subject changes, not on every turn.",
+            + " continuation of the current episode. Call it before answering the message that"
+            + " starts the new work, and not otherwise: a follow-up, a clarification or a return"
+            + " to the current subject is the same episode. The previous episode is closed and"
+            + " summarised in the background; you need not summarise it yourself.",
         (agentId, turn, input) -> {
           Episode begun = episodes.begin(agentId, turn, input.title(), input.reason());
           return said("Began episode " + begun.number() + ", '" + begun.title() + "'.");
