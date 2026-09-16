@@ -39,9 +39,12 @@ A model call is `chat` with `gen_ai.operation.name`, `gen_ai.provider.name`,
 `gen_ai.tool.name`, `gen_ai.tool.call.id` and the outcome; an approval is
 `nessy.approval` with the answer. A dashboard that already groups by
 provider, or an alert that already watches operation duration, works on a
-Nessy application without being taught anything. Token counts are a
-histogram, never tags: a tag whose value is 606 makes a new time series per
-distinct count.
+Nessy application without being taught anything. What a call cost is on the
+`chat` span as `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`,
+and in semconv's `gen_ai.client.token.usage` histogram split by
+`gen_ai.token.type`, which the starter records whenever a meter registry is
+present. Token counts are samples, never tags: a tag whose value is 606
+makes a new time series per distinct count.
 
 When a call fails, the failure's kind is a low-cardinality tag
 (`error.type`) and its message a high-cardinality one (`error.message`), so
@@ -96,9 +99,10 @@ handler runs rather than inside it.
 Traces are sampled and expire. What the model was shown is written to
 `nessy_inference_context` on every call, whole, and stays until you prune
 it. Read it back through `InferenceContexts` as `RecordedInference`: the
-request as rendered, when it was made, how it came back and when. That is
-the row to open when a trace says a call took thirty seconds and answered
-with nothing. See [Storage](../concepts/storage.md#what-the-model-was-shown).
+request as rendered, when it was made, how it came back and when, and what
+it cost in tokens, so spend per agent, model or day is a query rather than a
+sampled trace. That is the row to open when a trace says a call took thirty
+seconds and answered with nothing. See [Storage](../concepts/storage.md#what-the-model-was-shown).
 
 ## Seeing it
 

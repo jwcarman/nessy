@@ -361,7 +361,11 @@ class AnthropicInferenceProviderTest {
               new AgentEvent.ContentDelta("ster"));
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
       assertThat(((InferenceResult.Answer) result).blocks())
-          .contains(new Block.Text("a lake monster"));
+          .contains(
+              new Block.Text(
+                  "a lake monster")); // message_start said one token in, message_delta one token
+      // out: what the fold carried.
+      assertThat(result.usage()).isEqualTo(new org.jwcarman.nessy.spi.inference.Usage(1, 1));
     }
 
     @Test
@@ -422,6 +426,8 @@ class AnthropicInferenceProviderTest {
       InferenceResult result = inferAnswering(reply().addContent(text("1412 metres")).build());
 
       assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("1412 metres"))));
     }
 

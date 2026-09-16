@@ -226,7 +226,7 @@ public class EpisodeSummarizer {
                 new InferenceContext(List.of(), shown, List.of()),
                 List.of(),
                 options));
-    if (!(result instanceof InferenceResult.Answer(var blocks))) {
+    if (!(result instanceof InferenceResult.Answer(var blocks, var _))) {
       // Not an error to anybody: the episode stays unsummarised, and the next turn end tries again.
       LOG.warn(
           "[{}] could not summarise episode {} of agent {}: {}",

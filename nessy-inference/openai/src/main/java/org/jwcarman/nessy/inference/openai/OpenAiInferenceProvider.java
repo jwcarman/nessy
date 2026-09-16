@@ -23,6 +23,7 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import org.jwcarman.nessy.spi.narration.AgentNarrator;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -188,11 +189,17 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
           new Failure.Permanent(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
+    Usage usage =
+        completion
+            .usage()
+            .map(counted -> new Usage(counted.promptTokens(), counted.completionTokens()))
+            .orElse(Usage.unknown());
     if (completion.choices().isEmpty()) {
       // A 200 that carries no answer. Asking again returns the same nothing.
-      return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
+      return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"))
+          .withUsage(usage);
     }
-    return read(completion.choices().getFirst());
+    return read(completion.choices().getFirst()).withUsage(usage);
   }
 
   /**

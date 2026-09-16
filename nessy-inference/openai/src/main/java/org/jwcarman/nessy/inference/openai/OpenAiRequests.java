@@ -8,6 +8,7 @@ import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionFunctionTool;
 import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionStreamOptions;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionTool;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
@@ -66,6 +67,8 @@ public final class OpenAiRequests {
 
     ChatCompletionCreateParams.Builder builder =
         ChatCompletionCreateParams.builder().model(options.modelName()).messages(messages);
+    // Streamed, usage arrives only when asked for, on a final chunk of its own.
+    builder.streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());
 
     // Omitted rather than sent as zero when no ceiling was asked for: zero is a real value to
     // this API and would ask for an empty answer.

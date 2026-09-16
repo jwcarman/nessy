@@ -380,4 +380,18 @@ class OpenAiRequestsTest {
           .isEmpty();
     }
   }
+
+  @Test
+  void usage_is_asked_for_on_the_stream() {
+    ChatCompletionCreateParams params =
+        OpenAiRequests.toParams(
+            new InferenceRequest(
+                new SystemPrompt("s"),
+                InferenceContext.of(List.of()),
+                List.of(),
+                InferenceOptions.of("m")),
+            MAPPER);
+
+    assertThat(params.streamOptions().flatMap(o -> o.includeUsage())).contains(true);
+  }
 }

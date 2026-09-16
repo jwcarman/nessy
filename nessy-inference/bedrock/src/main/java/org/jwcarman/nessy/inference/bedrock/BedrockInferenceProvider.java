@@ -15,6 +15,7 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import org.jwcarman.nessy.spi.narration.AgentNarrator;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
@@ -28,6 +29,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStopEven
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseOutput;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamMetadataEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
 import software.amazon.awssdk.services.bedrockruntime.model.InternalServerException;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
@@ -40,6 +42,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ServiceUnavailableException;
 import software.amazon.awssdk.services.bedrockruntime.model.StopReason;
 import software.amazon.awssdk.services.bedrockruntime.model.ThrottlingException;
+import software.amazon.awssdk.services.bedrockruntime.model.TokenUsage;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -121,10 +124,19 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
         return new InferenceResult.Fault(
             new Failure.Permanent("the stream ended before the answer was complete"));
       }
-      return read(folded.response());
+      ConverseResponse response = folded.response();
+      return read(response).withUsage(usageOf(response));
     } catch (SdkException e) {
       return new InferenceResult.Fault(classify(e));
     }
+  }
+
+  private static Usage usageOf(ConverseResponse response) {
+    TokenUsage counted = response.usage();
+    if (counted == null || counted.inputTokens() == null || counted.outputTokens() == null) {
+      return Usage.unknown();
+    }
+    return new Usage(counted.inputTokens(), counted.outputTokens());
   }
 
   /**
@@ -141,6 +153,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     private final SortedMap<Integer, Pending> open = new TreeMap<>();
     private final SortedMap<Integer, ContentBlock> closed = new TreeMap<>();
     private StopReason stop;
+    private TokenUsage usage;
     private boolean any;
 
     Folded(AgentNarrator narrator, JsonMapper mapper) {
@@ -159,6 +172,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
           stop = stopped.stopReason();
           List.copyOf(open.keySet()).forEach(this::close);
         }
+        case ConverseStreamMetadataEvent metadata -> usage = metadata.usage();
         default -> {
           // messageStart and metadata: nothing in them is read.
         }
@@ -212,6 +226,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     ConverseResponse response() {
       return ConverseResponse.builder()
           .stopReason(stop)
+          .usage(usage)
           .output(
               ConverseOutput.fromMessage(
                   Message.builder()

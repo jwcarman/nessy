@@ -35,6 +35,7 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 
 /**
  * What an application sees in its tracing and its meters.
@@ -56,6 +57,37 @@ class ObservedTest {
     meters = new SimpleMeterRegistry();
     observations = ObservationRegistry.create();
     observations.observationConfig().observationHandler(new DefaultMeterObservationHandler(meters));
+    observations.observationConfig().observationHandler(new TokenUsageHandler(meters));
+  }
+
+  @Test
+  void what_a_call_cost_is_a_histogram_of_tokens_in_and_tokens_out() {
+    observe(
+        (_, _) ->
+            new InferenceResult.Answer(List.of(new Block.Text("done"))).withUsage(new Usage(3, 5)));
+
+    assertThat(
+            meters
+                .get(TokenUsageHandler.TOKEN_USAGE)
+                .tag("gen_ai.token.type", "input")
+                .summary()
+                .totalAmount())
+        .isEqualTo(3);
+    assertThat(
+            meters
+                .get(TokenUsageHandler.TOKEN_USAGE)
+                .tag("gen_ai.token.type", "output")
+                .tag("gen_ai.provider.name", "openai")
+                .summary()
+                .totalAmount())
+        .isEqualTo(5);
+  }
+
+  @Test
+  void an_uncounted_call_records_no_token_sample() {
+    observe((_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done"))));
+
+    assertThat(meters.find(TokenUsageHandler.TOKEN_USAGE).summary()).isNull();
   }
 
   private static InferenceRequest request() {

@@ -6,6 +6,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 
 /**
  * A provider observed the way the OpenTelemetry GenAI semantic conventions describe a model call:
@@ -16,9 +17,10 @@ import org.jwcarman.nessy.spi.inference.InferenceResult;
  * <p>Here rather than in the Boot starter because every model call should look the same on a
  * dashboard whoever made it: the engine's turns, and the summarisers working in the background.
  *
- * <p>Semconv's {@code gen_ai.client.token.usage} histogram is NOT recorded, because {@link
- * InferenceResult} does not carry usage. Adding it back is a change to the result, worth making
- * when somebody actually wants to bill or budget on it.
+ * <p>Token counts go on the span as {@code gen_ai.usage.input_tokens} and {@code
+ * gen_ai.usage.output_tokens}, and into the observation's context as a {@link Usage} for a handler
+ * that has a meter registry to record semconv's {@code gen_ai.client.token.usage} histogram -- the
+ * Boot starter registers one.
  */
 public final class ObservedInference {
 
@@ -66,10 +68,20 @@ public final class ObservedInference {
       try {
         InferenceResult result = delegate.infer(request, narrator);
         observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
+        if (result.usage().known()) {
+          // Semconv's attributes on the span, and the count itself in the context for a handler
+          // with a meter registry to put in gen_ai.client.token.usage; a count is never a tag on
+          // a metric, or every distinct number would be a time series.
+          observation.highCardinalityKeyValue(
+              "gen_ai.usage.input_tokens", Long.toString(result.usage().inputTokens()));
+          observation.highCardinalityKeyValue(
+              "gen_ai.usage.output_tokens", Long.toString(result.usage().outputTokens()));
+          observation.getContext().put(Usage.class, result.usage());
+        }
         // A provider that answers with a Fault did not throw, and the span must still say so:
         // the failure is a value, and a value nothing recorded would be a call that looks
         // successful in every dashboard.
-        if (result instanceof InferenceResult.Fault(Failure failure)) {
+        if (result instanceof InferenceResult.Fault(Failure failure, var _)) {
           observation.lowCardinalityKeyValue(ERROR_TYPE, failure.getClass().getSimpleName());
           // The adapter's own account of what went wrong, which is the one thing worth reading
           // on the span. High cardinality, so it reaches the trace and stays out of the metric.

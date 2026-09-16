@@ -124,8 +124,15 @@ CREATE TABLE IF NOT EXISTS nessy_inference_context
     -- How the call came back: answer, actions, refusal, fault -- or null while it is in flight or
     -- if the process died before it returned.
     outcome      VARCHAR(16),
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ,
+    -- What the call cost, as the vendor counted it; null until it returns, or if nobody counted.
+    input_tokens  BIGINT,
+    output_tokens BIGINT
 );
+
+-- A table from before the cost was recorded gains the columns.
+ALTER TABLE nessy_inference_context ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE nessy_inference_context ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 
 CREATE INDEX IF NOT EXISTS ix_nessy_inference_context_agent
     ON nessy_inference_context (agent_type, agent_id, requested_at);

@@ -25,6 +25,7 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import org.jwcarman.nessy.spi.narration.AgentNarrator;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -155,7 +156,8 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
           new Failure.Permanent(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
-    return read(message);
+    return read(message)
+        .withUsage(new Usage(message.usage().inputTokens(), message.usage().outputTokens()));
   }
 
   /**

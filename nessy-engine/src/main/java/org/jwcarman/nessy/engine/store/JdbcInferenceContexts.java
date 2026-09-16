@@ -15,6 +15,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.inference.InferenceRecorder;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -32,9 +33,11 @@ public class JdbcInferenceContexts implements InferenceContexts, InferenceRecord
           + " (context_id, agent_type, agent_id, turn_id, requested_at, model, payload)"
           + " VALUES (?, ?, ?, ?, ?, ?, ?)";
   private static final String END =
-      "UPDATE nessy_inference_context SET outcome = ?, completed_at = ? WHERE context_id = ?";
+      "UPDATE nessy_inference_context SET outcome = ?, completed_at = ?, input_tokens = ?,"
+          + " output_tokens = ? WHERE context_id = ?";
   private static final String COLUMNS =
-      "context_id, agent_type, agent_id, turn_id, requested_at, payload, outcome, completed_at";
+      "context_id, agent_type, agent_id, turn_id, requested_at, payload, outcome, completed_at,"
+          + " input_tokens, output_tokens";
   private static final String FOR_AGENT =
       "SELECT "
           + COLUMNS
@@ -71,17 +74,22 @@ public class JdbcInferenceContexts implements InferenceContexts, InferenceRecord
 
   @Override
   public void end(UUID id, InferenceResult result) {
-    complete(id, outcomeOf(result));
+    complete(id, outcomeOf(result), result.usage());
   }
 
   @Override
   public void failed(UUID id) {
-    complete(id, "fault");
+    complete(id, "fault", Usage.unknown());
   }
 
-  private void complete(UUID id, String outcome) {
+  private void complete(UUID id, String outcome, Usage usage) {
     jdbc.sql(END)
-        .params(outcome, OffsetDateTime.ofInstant(clock.instant(), clock.getZone()), id)
+        .params(
+            outcome,
+            OffsetDateTime.ofInstant(clock.instant(), clock.getZone()),
+            usage.known() ? usage.inputTokens() : null,
+            usage.known() ? usage.outputTokens() : null,
+            id)
         .update();
   }
 
@@ -97,6 +105,13 @@ public class JdbcInferenceContexts implements InferenceContexts, InferenceRecord
 
   private RecordedInference read(ResultSet rs, int rowNum) throws SQLException {
     OffsetDateTime completedAt = rs.getObject("completed_at", OffsetDateTime.class);
+    long inputTokens = rs.getLong("input_tokens");
+    boolean uncounted = rs.wasNull();
+    long outputTokens = rs.getLong("output_tokens");
+    Optional<Usage> usage =
+        uncounted || rs.wasNull()
+            ? Optional.empty()
+            : Optional.of(new Usage(inputTokens, outputTokens));
     return new RecordedInference(
         rs.getObject("context_id", UUID.class),
         new AgentType(rs.getString("agent_type")),
@@ -105,7 +120,8 @@ public class JdbcInferenceContexts implements InferenceContexts, InferenceRecord
         rs.getObject("requested_at", OffsetDateTime.class).toInstant(),
         codec.decode(rs.getBytes("payload")),
         Optional.ofNullable(rs.getString("outcome")),
-        Optional.ofNullable(completedAt).map(OffsetDateTime::toInstant));
+        Optional.ofNullable(completedAt).map(OffsetDateTime::toInstant),
+        usage);
   }
 
   /** The last turn in the context is the one the call is answering; a first call has turn 0. */

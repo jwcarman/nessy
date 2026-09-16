@@ -259,7 +259,7 @@ public class HeadSummarizer {
                 new InferenceContext(soFar, shown, List.of()),
                 List.of(),
                 options));
-    if (!(result instanceof InferenceResult.Answer(var blocks))) {
+    if (!(result instanceof InferenceResult.Answer(var blocks, var _))) {
       // Not an error to anybody: the summary stays as it was, and the next turn end tries again.
       LOG.warn("[{}] could not summarise agent {}: {}", agentType.value(), agentId.value(), result);
       return "fault";

@@ -15,7 +15,9 @@ ambient blocks, the tools on offer, the model and token cap) and the adapter
 turns it into the vendor's wire shape, narrates the deltas as they stream,
 and hands back one of four results: an `Answer`, `Actions` the model wants
 taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
-could help.
+could help. Whichever it is, the result carries a `Usage`, tokens in and
+tokens out as the vendor counted them, or `Usage.unknown()` from a server
+that did not say; the engine records it and puts it on the call's span.
 
 Four adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK,
 `nessy-inference-openai` on OpenAI's, `nessy-inference-gemini` on Google's

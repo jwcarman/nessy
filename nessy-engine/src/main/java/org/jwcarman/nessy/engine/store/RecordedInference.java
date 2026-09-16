@@ -8,11 +8,13 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.Usage;
 
 /**
  * One model call as the model saw it: the request as rendered, and how it came back.
  *
  * @param turn the open turn the call was made for
+ * @param usage what the call cost, once it returned and if the vendor said
  * @param outcome {@code answer}, {@code actions}, {@code refusal} or {@code fault}; empty while the
  *     call is in flight, or forever if the process died before it returned
  */
@@ -24,7 +26,8 @@ public record RecordedInference(
     Instant requestedAt,
     InferenceRequest request,
     Optional<String> outcome,
-    Optional<Instant> completedAt) {
+    Optional<Instant> completedAt,
+    Optional<Usage> usage) {
 
   public RecordedInference {
     Objects.requireNonNull(id, "id must not be null");
@@ -35,6 +38,7 @@ public record RecordedInference(
     Objects.requireNonNull(request, "request must not be null");
     Objects.requireNonNull(outcome, "outcome must not be null");
     Objects.requireNonNull(completedAt, "completedAt must not be null");
+    Objects.requireNonNull(usage, "usage must not be null");
   }
 
   public boolean completed() {

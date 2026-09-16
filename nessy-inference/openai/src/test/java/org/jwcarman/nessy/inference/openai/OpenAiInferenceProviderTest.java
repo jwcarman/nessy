@@ -41,6 +41,7 @@ import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
 import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
+import com.openai.models.completions.CompletionUsage;
 import com.openai.services.blocking.ChatService;
 import com.openai.services.blocking.chat.ChatCompletionService;
 import java.lang.reflect.Proxy;
@@ -65,6 +66,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 
 class OpenAiInferenceProviderTest {
 
@@ -214,6 +216,19 @@ class OpenAiInferenceProviderTest {
         chunk(
             ChatCompletionChunk.Choice.Delta.builder().build(),
             ChatCompletionChunk.Choice.FinishReason.of(choice.finishReason().asString())));
+    // Usage comes last, on a chunk with no choices, when the request asked for it.
+    completion
+        .usage()
+        .ifPresent(
+            usage ->
+                chunks.add(
+                    ChatCompletionChunk.builder()
+                        .id("chatcmpl-test")
+                        .created(0L)
+                        .model("gpt-4o")
+                        .choices(List.of())
+                        .usage(usage)
+                        .build()));
     return chunks;
   }
 
@@ -300,6 +315,49 @@ class OpenAiInferenceProviderTest {
   }
 
   @Nested
+  class WhatItCost {
+
+    @Test
+    void the_usage_on_the_final_chunk_is_the_results() {
+      ChatCompletion priced =
+          completionOf(
+                  ChatCompletionMessage.builder()
+                      .content("a lake monster")
+                      .refusal(Optional.<String>empty())
+                      .build())
+              .toBuilder()
+              .usage(
+                  CompletionUsage.builder()
+                      .promptTokens(3L)
+                      .completionTokens(5L)
+                      .totalTokens(8L)
+                      .build())
+              .build();
+
+      InferenceResult result =
+          new OpenAiProviderConfig()
+              .client(fakeStreamingClient(params -> chunksOf(priced)))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result.usage()).isEqualTo(new Usage(3, 5));
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+    }
+
+    @Test
+    void a_server_that_does_not_count_leaves_the_cost_unknown() {
+      InferenceResult result =
+          inferAnswering(
+              ChatCompletionMessage.builder()
+                  .content("ok")
+                  .refusal(Optional.<String>empty())
+                  .build());
+
+      assertThat(result.usage()).isEqualTo(Usage.unknown());
+    }
+  }
+
+  @Nested
   class WhatIsNarrated {
 
     private final List<AgentEvent> narrated = new ArrayList<>();
@@ -326,6 +384,8 @@ class OpenAiInferenceProviderTest {
           .extracting(event -> ((AgentEvent.ContentDelta) event).text())
           .containsExactly("a lak", "e mon", "ster");
       assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
     }
 
@@ -348,7 +408,10 @@ class OpenAiInferenceProviderTest {
 
       assertThat(narrated)
           .containsExactly(new AgentEvent.ThinkingDelta("hmm"), new AgentEvent.ContentDelta("ok"));
-      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("ok"))));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("ok"))));
     }
 
     @Test
@@ -417,6 +480,8 @@ class OpenAiInferenceProviderTest {
                   .build());
 
       assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("1412 metres"))));
     }
 
@@ -518,7 +583,10 @@ class OpenAiInferenceProviderTest {
                   .refusal("I cannot help with that")
                   .build());
 
-      assertThat(result).isEqualTo(new InferenceResult.Refusal("I cannot help with that"));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Refusal("I cannot help with that"));
     }
 
     /** A 200 that carries no answer. Asking again returns the same nothing. */

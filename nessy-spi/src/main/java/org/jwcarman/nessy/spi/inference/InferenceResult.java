@@ -34,6 +34,15 @@ import org.jwcarman.nessy.api.block.Block;
 public sealed interface InferenceResult {
 
   /**
+   * What the call cost, whatever it came back as. A refusal and a fault that reached the model are
+   * billed too; an adapter that was not told reports {@link Usage#unknown()}.
+   */
+  Usage usage();
+
+  /** The same result, with its cost: how an adapter attaches what the vendor counted. */
+  InferenceResult withUsage(Usage usage);
+
+  /**
    * The model stopped and owes nothing.
    *
    * <p>Carries blocks rather than a message, and never a string. Not a string because content is
@@ -42,11 +51,21 @@ public sealed interface InferenceResult {
    * carry more. Not a message because where it sits in the story is the fold's to decide, and a
    * provider adapter has no business knowing a seq.
    */
-  record Answer(List<Block.AnswerContent> blocks) implements InferenceResult {
+  record Answer(List<Block.AnswerContent> blocks, Usage usage) implements InferenceResult {
 
     public Answer {
+      Objects.requireNonNull(usage, "usage must not be null");
       Objects.requireNonNull(blocks, "blocks must not be null");
       blocks = List.copyOf(blocks);
+    }
+
+    public Answer(List<Block.AnswerContent> blocks) {
+      this(blocks, Usage.unknown());
+    }
+
+    @Override
+    public Answer withUsage(Usage usage) {
+      return new Answer(blocks, usage);
     }
   }
 
@@ -63,10 +82,20 @@ public sealed interface InferenceResult {
    * adapter can tell from an answer. An adapter that cannot detect a refusal simply never produces
    * this, which is honest rather than a gap.
    */
-  record Refusal(String category) implements InferenceResult {
+  record Refusal(String category, Usage usage) implements InferenceResult {
 
     public Refusal {
+      Objects.requireNonNull(usage, "usage must not be null");
       Objects.requireNonNull(category, "category must not be null");
+    }
+
+    public Refusal(String category) {
+      this(category, Usage.unknown());
+    }
+
+    @Override
+    public Refusal withUsage(Usage usage) {
+      return new Refusal(category, usage);
     }
   }
 
@@ -85,10 +114,20 @@ public sealed interface InferenceResult {
    * becomes a {@link Failure} here. A null dereference in an adapter does not -- it throws, and
    * should.
    */
-  record Fault(Failure failure) implements InferenceResult {
+  record Fault(Failure failure, Usage usage) implements InferenceResult {
 
     public Fault {
+      Objects.requireNonNull(usage, "usage must not be null");
       Objects.requireNonNull(failure, "failure must not be null");
+    }
+
+    public Fault(Failure failure) {
+      this(failure, Usage.unknown());
+    }
+
+    @Override
+    public Fault withUsage(Usage usage) {
+      return new Fault(failure, usage);
     }
   }
 
@@ -103,9 +142,10 @@ public sealed interface InferenceResult {
    * <p>Carries the whole message rather than just the calls, because the prose and the vendor state
    * around them are part of it and are re-sent with it.
    */
-  record Actions(List<Block.ActionRequestContent> blocks) implements InferenceResult {
+  record Actions(List<Block.ActionRequestContent> blocks, Usage usage) implements InferenceResult {
 
     public Actions {
+      Objects.requireNonNull(usage, "usage must not be null");
       Objects.requireNonNull(blocks, "blocks must not be null");
       if (blocks.stream().noneMatch(Block.ToolCall.class::isInstance)) {
         // A request for actions that asks for nothing would move the agent into waiting
@@ -113,6 +153,15 @@ public sealed interface InferenceResult {
         throw new IllegalArgumentException("a request for actions must contain at least one call");
       }
       blocks = List.copyOf(blocks);
+    }
+
+    public Actions(List<Block.ActionRequestContent> blocks) {
+      this(blocks, Usage.unknown());
+    }
+
+    @Override
+    public Actions withUsage(Usage usage) {
+      return new Actions(blocks, usage);
     }
   }
 }

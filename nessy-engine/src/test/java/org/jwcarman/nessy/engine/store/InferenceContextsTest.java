@@ -17,6 +17,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 
 @DisplayName("What a model was shown")
 class InferenceContextsTest {
@@ -31,7 +32,8 @@ class InferenceContextsTest {
     engine =
         new EngineFixture(
             (request, narrator) ->
-                new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
+                new InferenceResult.Answer(List.of(new Block.Text("a lake monster")))
+                    .withUsage(new Usage(7, 9)));
     harness =
         engine
             .harnesses()
@@ -72,6 +74,7 @@ class InferenceContextsTest {
     RecordedInference second = calls.get(1);
 
     assertThat(first.request().systemPrompt().value()).isEqualTo("You are a test assistant.");
+    assertThat(first.usage()).contains(new Usage(7, 9));
     assertThat(first.request().options().modelName()).isEqualTo("a-model");
     assertThat(first.request().context().turns()).hasSize(1);
     assertThat(first.turn()).isEqualTo(first.request().context().turns().getLast().id());

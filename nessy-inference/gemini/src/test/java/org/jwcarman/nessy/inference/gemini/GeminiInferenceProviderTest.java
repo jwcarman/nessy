@@ -13,6 +13,7 @@ import com.google.genai.types.FinishReason;
 import com.google.genai.types.FunctionCall;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponsePromptFeedback;
+import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("The Gemini provider")
@@ -100,10 +102,12 @@ class GeminiInferenceProviderTest {
       Candidate.Builder partial =
           Candidate.builder()
               .content(Content.builder().role("model").parts(List.of(pieces.get(i))).build());
+      GenerateContentResponse.Builder built = GenerateContentResponse.builder();
       if (i == pieces.size() - 1) {
         candidate.finishReason().ifPresent(partial::finishReason);
+        response.usageMetadata().ifPresent(built::usageMetadata);
       }
-      partials.add(GenerateContentResponse.builder().candidates(List.of(partial.build())).build());
+      partials.add(built.candidates(List.of(partial.build())).build());
     }
     if (partials.isEmpty()) {
       Candidate.Builder empty = Candidate.builder();
@@ -151,6 +155,27 @@ class GeminiInferenceProviderTest {
   }
 
   @Nested
+  class WhatItCost {
+
+    @Test
+    void prompt_tokens_in_and_candidate_plus_thought_tokens_out() {
+      GenerateContentResponse priced =
+          reply(new FinishReason("STOP"), Part.fromText("hello")).toBuilder()
+              .usageMetadata(
+                  GenerateContentResponseUsageMetadata.builder()
+                      .promptTokenCount(5)
+                      .candidatesTokenCount(7)
+                      .thoughtsTokenCount(2)
+                      .build())
+              .build();
+
+      assertThat(infer(priced).usage()).isEqualTo(new Usage(5, 9));
+      assertThat(infer(reply(new FinishReason("STOP"), Part.fromText("hello"))).usage())
+          .isEqualTo(Usage.unknown());
+    }
+  }
+
+  @Nested
   class WhatIsNarrated {
 
     private final List<AgentEvent> narrated = new ArrayList<>();
@@ -176,6 +201,8 @@ class GeminiInferenceProviderTest {
               new AgentEvent.ContentDelta("e mon"),
               new AgentEvent.ContentDelta("ster"));
       assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
     }
 
@@ -215,7 +242,10 @@ class GeminiInferenceProviderTest {
     void prose_alone_is_an_answer() {
       InferenceResult result = infer(reply(new FinishReason("STOP"), Part.fromText("hello")));
 
-      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hello"))));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hello"))));
     }
 
     @Test
@@ -263,14 +293,20 @@ class GeminiInferenceProviderTest {
 
       InferenceResult result = infer(reply(new FinishReason("STOP"), thought, Part.fromText("hi")));
 
-      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
     }
 
     @Test
     void a_safety_stop_is_a_refusal_named_by_the_vendor() {
       InferenceResult result = infer(reply(new FinishReason("SAFETY")));
 
-      assertThat(result).isEqualTo(new InferenceResult.Refusal("SAFETY"));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Refusal("SAFETY"));
     }
 
     @Test
@@ -283,7 +319,10 @@ class GeminiInferenceProviderTest {
                       .build())
               .build();
 
-      assertThat(infer(blocked)).isEqualTo(new InferenceResult.Refusal("PROHIBITED_CONTENT"));
+      assertThat(infer(blocked))
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Refusal("PROHIBITED_CONTENT"));
     }
 
     @Test

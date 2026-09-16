@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.spring.boot;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Base64;
 import java.util.List;
@@ -99,9 +100,14 @@ public class NessyAutoConfiguration {
       NessyProperties properties,
       NessySchema schema,
       ObjectProvider<ObservationRegistry> registries,
+      ObjectProvider<MeterRegistry> meters,
       ObjectProvider<StorageCodec> storage) {
 
     ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
+    // Token counts become semconv's histogram when there is a meter registry to hold it.
+    meters.ifAvailable(
+        registry ->
+            observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
     // Wrapped only when there is somewhere to report to, so an application that is not tracing
     // pays for no wrapper at all -- and when it is, the chat span lands inside the effect span
     // that caused it rather than starting a trace of its own.

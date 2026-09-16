@@ -10,6 +10,7 @@ import com.google.genai.types.FinishReason;
 import com.google.genai.types.FunctionCall;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponsePromptFeedback;
+import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -26,6 +27,7 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import org.jwcarman.nessy.spi.narration.AgentNarrator;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -122,10 +124,28 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
             GeminiRequests.toConfig(request, mapper))) {
       Folded folded = new Folded();
       stream.forEach(partial -> folded.take(partial, narrator));
-      return folded.any ? read(folded.response()) : noReply();
+      if (!folded.any) {
+        return noReply();
+      }
+      GenerateContentResponse response = folded.response();
+      return read(response).withUsage(usageOf(response));
     } catch (ApiException | GenAiIOException e) {
       return new InferenceResult.Fault(classify(e));
     }
+  }
+
+  /** Prompt in; candidates and thoughts out, since thinking is billed as output everywhere. */
+  private static Usage usageOf(GenerateContentResponse response) {
+    return response
+        .usageMetadata()
+        .filter(counted -> counted.promptTokenCount().isPresent())
+        .map(
+            counted ->
+                new Usage(
+                    counted.promptTokenCount().orElse(0),
+                    counted.candidatesTokenCount().orElse(0)
+                        + counted.thoughtsTokenCount().orElse(0)))
+        .orElse(Usage.unknown());
   }
 
   private static InferenceResult noReply() {
@@ -144,12 +164,17 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private final List<Part> parts = new ArrayList<>();
     private Optional<FinishReason> finish = Optional.empty();
     private Optional<GenerateContentResponsePromptFeedback> feedback = Optional.empty();
+    private Optional<GenerateContentResponseUsageMetadata> usage = Optional.empty();
     private boolean any;
 
     void take(GenerateContentResponse partial, AgentNarrator narrator) {
       any = true;
       if (partial.promptFeedback().isPresent()) {
         feedback = partial.promptFeedback();
+      }
+      if (partial.usageMetadata().isPresent()) {
+        // Sent on every partial and cumulative, so the last one is the whole call's.
+        usage = partial.usageMetadata();
       }
       List<Candidate> candidates = partial.candidates().orElse(List.of());
       if (candidates.isEmpty()) {
@@ -202,6 +227,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     GenerateContentResponse response() {
       GenerateContentResponse.Builder response = GenerateContentResponse.builder();
       feedback.ifPresent(response::promptFeedback);
+      usage.ifPresent(response::usageMetadata);
       if (!parts.isEmpty() || finish.isPresent()) {
         Candidate.Builder candidate =
             Candidate.builder().content(Content.builder().role("model").parts(parts).build());

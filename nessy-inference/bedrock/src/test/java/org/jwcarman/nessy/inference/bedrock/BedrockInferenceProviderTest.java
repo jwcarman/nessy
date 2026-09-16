@@ -23,6 +23,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.Usage;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -35,6 +36,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStopEven
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseOutput;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamMetadataEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
@@ -45,6 +47,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBloc
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.StopReason;
 import software.amazon.awssdk.services.bedrockruntime.model.ThrottlingException;
+import software.amazon.awssdk.services.bedrockruntime.model.TokenUsage;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ValidationException;
 import tools.jackson.databind.json.JsonMapper;
@@ -135,6 +138,9 @@ class BedrockInferenceProviderTest {
       events.add(ContentBlockStopEvent.builder().contentBlockIndex(i).build());
     }
     events.add(MessageStopEvent.builder().stopReason(response.stopReason()).build());
+    if (response.usage() != null) {
+      events.add(ConverseStreamMetadataEvent.builder().usage(response.usage()).build());
+    }
     return events;
   }
 
@@ -180,6 +186,22 @@ class BedrockInferenceProviderTest {
     @Override
     public void close() {
       closed.set(true);
+    }
+  }
+
+  @Nested
+  class WhatItCost {
+
+    @Test
+    void the_metadata_events_usage_is_the_results() {
+      ConverseResponse priced =
+          reply(StopReason.END_TURN, ContentBlock.fromText("hello")).toBuilder()
+              .usage(TokenUsage.builder().inputTokens(4).outputTokens(6).totalTokens(10).build())
+              .build();
+
+      assertThat(infer(priced).usage()).isEqualTo(new Usage(4, 6));
+      assertThat(infer(reply(StopReason.END_TURN, ContentBlock.fromText("hello"))).usage())
+          .isEqualTo(Usage.unknown());
     }
   }
 
@@ -276,6 +298,8 @@ class BedrockInferenceProviderTest {
     @Test
     void prose_alone_is_an_answer() {
       assertThat(infer(reply(StopReason.END_TURN, ContentBlock.fromText("hello"))))
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hello"))));
     }
 
@@ -309,8 +333,12 @@ class BedrockInferenceProviderTest {
     @Test
     void a_guardrail_and_a_content_filter_are_refusals_named_by_the_vendor() {
       assertThat(infer(reply(StopReason.GUARDRAIL_INTERVENED)))
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Refusal("guardrail_intervened"));
       assertThat(infer(reply(StopReason.CONTENT_FILTERED)))
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
           .isEqualTo(new InferenceResult.Refusal("content_filtered"));
     }
 
@@ -431,7 +459,10 @@ class BedrockInferenceProviderTest {
               reply(
                   StopReason.END_TURN, ContentBlock.fromText("   "), ContentBlock.fromText("hi")));
 
-      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
     }
 
     @Test
