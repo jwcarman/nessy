@@ -140,7 +140,7 @@ own [java-genai](https://github.com/googleapis/java-genai) SDK, with a plain
 API key. `fromEnv()` reads `GEMINI_API_KEY`, then `GOOGLE_API_KEY`, Google's
 documented pair in that order; `baseUrl(...)` reaches a proxy or a
 Gemini-compatible endpoint. Model names are the API's own, such as
-`gemini-2.5-pro`.
+`gemini-3.6-pro`.
 
 Gemini ties an opaque **thought signature** to each function call it makes
 and wants it back with that call on the next turn. The adapter carries it as

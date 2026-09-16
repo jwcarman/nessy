@@ -54,7 +54,7 @@ class GeminiInferenceProviderTest {
         new SystemPrompt("be brief"),
         InferenceContext.of(List.of(open)),
         List.of(),
-        new InferenceOptions("gemini-2.5-flash", 256));
+        new InferenceOptions("gemini-3.6-flash", 256));
   }
 
   private static GenerateContentResponse reply(FinishReason finish, Part... parts) {

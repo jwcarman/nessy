@@ -46,7 +46,7 @@ class GeminiRequestsTest {
 
   private static InferenceRequest request(InferenceContext context, List<ToolOffer> tools) {
     return new InferenceRequest(
-        SYSTEM, context, tools, new InferenceOptions("gemini-2.5-pro", 1024));
+        SYSTEM, context, tools, new InferenceOptions("gemini-3.6-pro", 1024));
   }
 
   private static Observation asked(long seq, String text) {

@@ -26,7 +26,7 @@ import org.jwcarman.nessy.spi.inference.InferenceResult;
 class GeminiLiveTest {
 
   /** The cheapest model that streams, because this runs on somebody's bill. */
-  private static final String MODEL = "gemini-2.5-flash";
+  private static final String MODEL = "gemini-3.6-flash";
 
   private static InferenceRequest asking(String question) {
     return new InferenceRequest(
