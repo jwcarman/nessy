@@ -31,7 +31,9 @@ class InferenceTypesTest {
     assertThatThrownBy(() -> new InferenceResult.Actions(ONLY_PROSE))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("at least one call");
-    assertThatThrownBy(() -> new ToolOffer(new ToolName("t"), " ", new InputSchema("{}")))
+    ToolName name = new ToolName("t");
+    InputSchema schema = new InputSchema("{}");
+    assertThatThrownBy(() -> new ToolOffer(name, " ", schema))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new InferenceOptions(" ", 10))
         .isInstanceOf(IllegalArgumentException.class);

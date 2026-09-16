@@ -164,30 +164,25 @@ class TerminationAndConfigurationTest {
                                         terms -> terms.retryPolicy(new RetryPolicy.Never()))));
     assertThat(configured).isNotNull();
 
-    assertThatThrownBy(
-            () ->
-                engine
-                    .harnesses()
-                    .create(
-                        config ->
-                            config
-                                .agentType(new AgentType("chat-clash"))
-                                .systemPrompt("You are a test assistant.")
-                                .tool(new PingTool())
-                                .tool(new PingTool())))
+    var harnesses = engine.harnesses();
+    java.util.function.Consumer<org.jwcarman.nessy.api.HarnessConfig<String>> clash =
+        config ->
+            config
+                .agentType(new AgentType("chat-clash"))
+                .systemPrompt("You are a test assistant.")
+                .tool(new PingTool())
+                .tool(new PingTool());
+    assertThatThrownBy(() -> harnesses.create(clash))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("duplicate");
 
-    assertThatThrownBy(
-            () ->
-                engine
-                    .harnesses()
-                    .create(
-                        config ->
-                            config
-                                .agentType(new AgentType("chat-tail"))
-                                .systemPrompt("You are a test assistant.")
-                                .inference(in -> in.context(ctx -> ctx.maxTail(0)))))
+    java.util.function.Consumer<org.jwcarman.nessy.api.HarnessConfig<String>> noTail =
+        config ->
+            config
+                .agentType(new AgentType("chat-tail"))
+                .systemPrompt("You are a test assistant.")
+                .inference(in -> in.context(ctx -> ctx.maxTail(0)));
+    assertThatThrownBy(() -> harnesses.create(noTail))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
   }

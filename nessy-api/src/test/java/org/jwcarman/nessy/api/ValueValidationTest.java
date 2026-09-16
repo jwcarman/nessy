@@ -38,6 +38,7 @@ class ValueValidationTest {
   @Test
   void content_must_say_something() {
     CallId call = new CallId("c1");
+    Seq seq = new Seq(1);
     assertThatThrownBy(() -> new Block.Text("")).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new Block.Commentary("")).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new Block.Provider(" ", "{}"))
@@ -46,7 +47,7 @@ class ValueValidationTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new TurnResult.Answered(NO_ANSWER))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Observation(new Seq(1), NO_OBSERVATION))
+    assertThatThrownBy(() -> new Observation(seq, NO_OBSERVATION))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
