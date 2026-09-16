@@ -84,6 +84,7 @@ nav:
       - Memory: concepts/memory.md
       - Planning: concepts/planning.md
       - Storage: concepts/storage.md
+      - Leases: concepts/leases.md
   - Guides:
       - Getting Started: guides/getting-started.md
       - Harness: guides/harness.md

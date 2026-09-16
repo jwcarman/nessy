@@ -153,10 +153,11 @@ public interface Leases {
 
 `JdbcLeases` takes the lease with one `INSERT ... ON CONFLICT` against
 `nessy_lease`, runs the work if it won, and releases it. A holder that dies
-mid-work loses the lease when the TTL passes. The head summariser runs
-under one; so will anything else that reacts to events from more than one
-process. The starter contributes a `Leases` bean when the module is on the
-classpath.
+mid-work loses the lease when the TTL passes. The head and episode
+summarisers run under one; so will anything else that reacts to events from
+more than one process. The starter contributes a `Leases` bean when the
+module is on the classpath. Why a lease rather than an effect, and what it
+does and does not promise, is on the [Leases](../concepts/leases.md) page.
 
 ## Encryption at rest
 

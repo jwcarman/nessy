@@ -12,7 +12,7 @@ it is read, and there is no abstraction between the engine and its SQL.
 | One rolling summary per agent | `nessy_summary` | replaced as the story grows |
 | Episodes, each with its summary and the summary's embedding | `nessy_episode` | forever, unless you prune it |
 | Notes, plan tasks, declared intent | `nessy_note`, `nessy_plan_task`, `nessy_intent` | as their modules decide |
-| Background work claimed once | `nessy_lease` | its TTL |
+| Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
 Every module that needs a table ships it in its own `nessy-schema.sql`.
 

@@ -90,7 +90,7 @@ Three things about how it runs:
   holds up the agent. The next call the agent makes sees the new summary.
 - **Under a lease.** Two processes hearing the same turn end do not both
   fold; `Leases.tryRun` lets one through per agent and the other finds
-  nothing left to do. See [Leases](../guides/spring-boot.md#leases).
+  nothing left to do. See [Leases](leases.md).
 - **It replaces, never appends.** The fold request is the previous summary
   plus the turns being cut, with the instruction to write the summary of
   everything so far. One row per agent, in `nessy_summary`, replaced only

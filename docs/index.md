@@ -161,6 +161,7 @@ See [Authorization](concepts/authorization.md).
     answers addressed to a place rather than an object.
 
 - **[Memory](concepts/memory.md)**
+- **[Leases](concepts/leases.md)**
 
     Summaries, the tail and ambient: what a model call is built from.
 
