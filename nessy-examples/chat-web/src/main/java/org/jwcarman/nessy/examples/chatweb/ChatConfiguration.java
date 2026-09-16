@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.examples.chatweb;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
@@ -90,7 +91,8 @@ public class ChatConfiguration {
       JdbcEpisodes episodes,
       Leases leases,
       InferenceProvider provider,
-      NessyProperties properties) {
+      NessyProperties properties,
+      ObjectProvider<ObservationRegistry> observations) {
     return EpisodeSummarizer.create(
         c ->
             c.agentType(TYPE)
@@ -99,7 +101,12 @@ public class ChatConfiguration {
                 .leases(leases)
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
-                .leaseTtl(Duration.ofMinutes(5)));
+                .leaseTtl(Duration.ofMinutes(5))
+                // Each summary is a nessy.summary span with its model call inside, when the
+                // application is tracing.
+                .observations(
+                    observations.getIfAvailable(() -> ObservationRegistry.NOOP),
+                    properties.provider()));
   }
 
   @Bean

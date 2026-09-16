@@ -6,6 +6,9 @@ import static org.awaitility.Awaitility.await;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -21,7 +24,9 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.inference.ObservedInference;
 import org.jwcarman.nessy.lease.JdbcLeases;
+import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
@@ -66,6 +71,9 @@ class EpisodeSummarizerTest {
         return new InferenceResult.Answer(List.of(new Block.Text("ok")));
       };
 
+  private final Recorded recorded = new Recorded();
+  private final ObservationRegistry observations = ObservationRegistry.create();
+
   private HikariDataSource dataSource;
   private DefaultHarnessFactory factory;
   private Harness<String> harness;
@@ -80,6 +88,7 @@ class EpisodeSummarizerTest {
     config.setPassword(Calls.POSTGRES.getPassword());
     dataSource = new HikariDataSource(config);
     Schemas.initialize(dataSource);
+    observations.observationConfig().observationHandler(recorded);
     factory =
         new DefaultHarnessFactory(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
@@ -93,7 +102,8 @@ class EpisodeSummarizerTest {
                     .episodes(episodes)
                     .histories(factory.histories())
                     .leases(new JdbcLeases(dataSource))
-                    .inference(model, InferenceOptions.of("m")));
+                    .inference(model, InferenceOptions.of("m"))
+                    .observations(observations, "test"));
     harness =
         factory.create(
             String.class,
@@ -169,6 +179,15 @@ class EpisodeSummarizerTest {
     assertThat(last.context().ambient()).extracting(Ambient::kind).containsExactly("episodes");
     // One summary fits without ranking, so the turn being answered was not embedded.
     assertThat(embedder.embedded).doesNotContain("dogs two");
+
+    // On record: a nessy.summary span that says it wrote, with the model call inside it as a
+    // chat span tagged with the provider it was told about.
+    assertThat(recorded.names()).contains(SummaryObservation.NAME, ObservedInference.DURATION);
+    assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.kind")).isEqualTo("episode");
+    assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")).isEqualTo("written");
+    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
+    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))
+        .isEqualTo("stop");
   }
 
   @Test
@@ -183,6 +202,12 @@ class EpisodeSummarizerTest {
 
     await().atMost(Duration.ofSeconds(20)).until(() -> !summaryRequests.isEmpty());
     assertThat(episodes.unsummarized(agent)).extracting(Episode::number).containsExactly(1);
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .until(
+            () -> "fault".equals(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")));
+    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))
+        .isEqualTo("content_filter");
 
     refuse.set(false);
     say(agent, "dogs two");
@@ -240,5 +265,34 @@ class EpisodeSummarizerTest {
                     c -> c.agentType(Calls.TYPE).episodes(episodes).histories(factory.histories())))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("leases");
+  }
+
+  /** Every observation stopped, by name, with its low-cardinality tags. */
+  static final class Recorded implements ObservationHandler<Observation.Context> {
+    final List<Observation.Context> stopped = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public boolean supportsContext(Observation.Context context) {
+      return true;
+    }
+
+    @Override
+    public void onStop(Observation.Context context) {
+      stopped.add(context);
+    }
+
+    List<String> names() {
+      return stopped.stream().map(Observation.Context::getName).toList();
+    }
+
+    String tag(String name, String key) {
+      return stopped.stream()
+          .filter(c -> c.getName().equals(name))
+          .map(c -> c.getLowCardinalityKeyValue(key))
+          .filter(java.util.Objects::nonNull)
+          .map(kv -> kv.getValue())
+          .reduce((first, second) -> second)
+          .orElse(null);
+    }
   }
 }

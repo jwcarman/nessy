@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.memory.summarizing;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.engine.inference.ObservedInference;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.lease.Leases;
@@ -80,6 +82,8 @@ public class HeadSummarizer {
     private int maxTail = 20;
     private int minTail = 8;
     private Duration leaseTtl = Duration.ofMinutes(2);
+    private ObservationRegistry observations = ObservationRegistry.NOOP;
+    private String providerName = "unknown";
 
     private Config() {}
 
@@ -130,6 +134,17 @@ public class HeadSummarizer {
       this.leaseTtl = leaseTtl;
       return this;
     }
+
+    /**
+     * Where to report: each summary becomes a {@code nessy.summary} span with the model call inside
+     * it as a {@code chat} span, tagged with {@code providerName} as semconv's {@code
+     * gen_ai.provider.name}. Hand in the plain provider, not one already observed.
+     */
+    public Config observations(ObservationRegistry observations, String providerName) {
+      this.observations = observations;
+      this.providerName = providerName;
+      return this;
+    }
   }
 
   public static HeadSummarizer create(Consumer<Config> customizer) {
@@ -147,16 +162,23 @@ public class HeadSummarizer {
   private final int maxTail;
   private final int minTail;
   private final Duration leaseTtl;
+  private final SummaryObservation observation;
 
   private HeadSummarizer(Config config) {
     this.agentType = Objects.requireNonNull(config.agentType, "agentType is required");
     this.summaries = Objects.requireNonNull(config.summaries, "summaries are required");
     this.histories = Objects.requireNonNull(config.histories, "histories are required");
     this.leases = Objects.requireNonNull(config.leases, "leases are required");
-    this.provider =
-        Objects.requireNonNull(config.provider, "inference(provider, options) is required");
+    Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
+    Objects.requireNonNull(config.observations, "observations must not be null");
+    this.provider =
+        ObservedInference.provider(
+            config.provider,
+            Objects.requireNonNull(config.providerName, "providerName must not be null"),
+            config.observations);
+    this.observation = new SummaryObservation(config.observations, "head", agentType);
     if (config.minTail < 1 || config.maxTail <= config.minTail) {
       throw new IllegalArgumentException(
           "tail(maxTail, minTail) needs 1 <= minTail < maxTail, got (%d, %d)"
@@ -182,7 +204,17 @@ public class HeadSummarizer {
   public void summarizeIfDue(AgentId agentId) {
     TurnHistory history = histories.forAgent(agentType, agentId);
     if (history.turnsAfter(through(agentId)) > maxTail) {
-      leases.tryRun("summary", agentId.value().toString(), leaseTtl, () -> summarize(agentId));
+      observation.observe(
+          agentId,
+          () -> {
+            String[] outcome = {"lease-refused"};
+            leases.tryRun(
+                "summary",
+                agentId.value().toString(),
+                leaseTtl,
+                () -> outcome[0] = summarize(agentId));
+            return outcome[0];
+          });
     }
   }
 
@@ -196,19 +228,22 @@ public class HeadSummarizer {
     return summaries.summarizedThrough(agentId).map(TurnId::value).orElse(0L);
   }
 
-  /** Under the lease: read again, because another process may have got here first. */
-  private void summarize(AgentId agentId) {
+  /**
+   * Under the lease: read again, because another process may have got here first. Says how it came
+   * out, for the span.
+   */
+  private String summarize(AgentId agentId) {
     TurnHistory history = histories.forAgent(agentType, agentId);
     List<Turn> head = history.turnsFrom(through(agentId) + 1);
     if (head.size() <= maxTail) {
-      return;
+      return "nothing";
     }
     // The oldest turns, leaving minTail verbatim -- and never a turn still under way, which can
     // only be the last and is kept by minTail >= 1.
     List<Turn> cut =
         head.subList(0, head.size() - minTail).stream().filter(Turn::complete).toList();
     if (cut.isEmpty()) {
-      return;
+      return "nothing";
     }
     // The summary so far, then the turns being folded in -- the shape the engine shows a model
     // anyway, so every adapter already renders it -- and then the ask. Every turn being folded is
@@ -227,7 +262,7 @@ public class HeadSummarizer {
     if (!(result instanceof InferenceResult.Answer(var blocks))) {
       // Not an error to anybody: the summary stays as it was, and the next turn end tries again.
       LOG.warn("[{}] could not summarise agent {}: {}", agentType.value(), agentId.value(), result);
-      return;
+      return "fault";
     }
     String summary = text(blocks);
     if (summary.isBlank()) {
@@ -235,7 +270,7 @@ public class HeadSummarizer {
           "[{}] the summary of agent {} was empty; kept what there was",
           agentType.value(),
           agentId.value());
-      return;
+      return "empty";
     }
     TurnId from = soFar.isEmpty() ? cut.getFirst().id() : soFar.getFirst().from();
     summaries.replace(agentId, Summary.text(from, cut.getLast().id(), summary));
@@ -245,5 +280,6 @@ public class HeadSummarizer {
         cut.getFirst().id().value(),
         cut.getLast().id().value(),
         agentId.value());
+    return "written";
   }
 }

@@ -45,6 +45,32 @@ When a call fails, the failure's kind is a low-cardinality tag
 a `finish_reason=length` from a thinking model that ran out of budget is
 readable on the span.
 
+## Background work
+
+A summary is triggered by a turn ending but written later, on a thread of its
+own, so it cannot be a child of the turn's trace. It is a trace of its own
+instead: each attempt that found work becomes a `nessy.summary` observation
+(contextual name `nessy.summary head` or `nessy.summary episode`) tagged with
+`nessy.agent.type`, `nessy.summary.kind` and, once it is over,
+`nessy.summary.outcome`: `written`, `nothing` when another process got there
+first or the story had moved on, `lease-refused`, `fault` when the model
+would not answer, or `empty` when it answered with nothing. The agent id is
+a high-cardinality tag, so it reaches the trace and stays out of the metric.
+
+The model call inside is the same `chat` span as any other, with the same
+GenAI tags, because both summarisers wrap the provider they are given with
+`ObservedInference` from the engine, the same wrapper the starter uses.
+Hand them a registry and the vendor's provider name:
+
+```java
+EpisodeSummarizer.create(c -> c
+        ...
+        .observations(observationRegistry, "openai"));
+```
+
+Hand in the plain provider, not one the starter has already observed, or
+the call is counted twice.
+
 ## Traces cross the outbox
 
 Work an agent owes is a row, performed later on another thread and possibly

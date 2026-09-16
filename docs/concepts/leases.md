@@ -94,6 +94,11 @@ start the same job. So two rules for anything that runs under one:
   makes it harmless. The lease is an optimisation over correctness that is
   already there, which is the right way round.
 
+A refused lease is not silent, either: the summarisers report it as the
+`lease-refused` outcome on their `nessy.summary` span, so a dashboard can
+say how often instances were competing. See
+[Observability](../guides/observability.md#background-work).
+
 There is no queue, no fairness, and no waiting. A caller that is refused
 gets `false` and nothing else, which is exactly what opportunistic work
 wants and exactly wrong for work that is owed. For that, write an effect.

@@ -91,6 +91,9 @@ Three things about how it runs:
 - **Under a lease.** Two processes hearing the same turn end do not both
   fold; `Leases.tryRun` lets one through per agent and the other finds
   nothing left to do. See [Leases](leases.md).
+- **On record.** Given an observation registry, each fold is a
+  `nessy.summary` span with the model call inside it. See
+  [Observability](../guides/observability.md#background-work).
 - **It replaces, never appends.** The fold request is the previous summary
   plus the turns being cut, with the instruction to write the summary of
   everything so far. One row per agent, in `nessy_summary`, replaced only

@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.memory.episodic;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,8 +12,10 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.engine.inference.ObservedInference;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.lease.Leases;
+import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.memory.summarizing.Transcripts;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -66,6 +69,8 @@ public class EpisodeSummarizer {
     private InferenceProvider provider;
     private InferenceOptions options;
     private Duration leaseTtl = Duration.ofMinutes(2);
+    private ObservationRegistry observations = ObservationRegistry.NOOP;
+    private String providerName = "unknown";
 
     private Config() {}
 
@@ -105,6 +110,17 @@ public class EpisodeSummarizer {
       this.leaseTtl = leaseTtl;
       return this;
     }
+
+    /**
+     * Where to report: each summary becomes a {@code nessy.summary} span with the model call inside
+     * it as a {@code chat} span, tagged with {@code providerName} as semconv's {@code
+     * gen_ai.provider.name}. Hand in the plain provider, not one already observed.
+     */
+    public Config observations(ObservationRegistry observations, String providerName) {
+      this.observations = observations;
+      this.providerName = providerName;
+      return this;
+    }
   }
 
   public static EpisodeSummarizer create(Consumer<Config> customizer) {
@@ -120,17 +136,24 @@ public class EpisodeSummarizer {
   private final InferenceProvider provider;
   private final InferenceOptions options;
   private final Duration leaseTtl;
+  private final SummaryObservation observation;
 
   private EpisodeSummarizer(Config config) {
     this.agentType = Objects.requireNonNull(config.agentType, "agentType is required");
     this.episodes = Objects.requireNonNull(config.episodes, "episodes are required");
     this.histories = Objects.requireNonNull(config.histories, "histories are required");
     this.leases = Objects.requireNonNull(config.leases, "leases are required");
-    this.provider =
-        Objects.requireNonNull(config.provider, "inference(provider, options) is required");
+    Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
     this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
+    Objects.requireNonNull(config.observations, "observations must not be null");
+    this.provider =
+        ObservedInference.provider(
+            config.provider,
+            Objects.requireNonNull(config.providerName, "providerName must not be null"),
+            config.observations);
+    this.observation = new SummaryObservation(config.observations, "episode", agentType);
   }
 
   /**
@@ -146,22 +169,38 @@ public class EpisodeSummarizer {
   /** The check, then the work under the lease; public so an application can also ask outright. */
   public void summarizeIfDue(AgentId agentId) {
     if (!episodes.unsummarized(agentId).isEmpty()) {
-      leases.tryRun("episode", agentId.value().toString(), leaseTtl, () -> summarizeAll(agentId));
+      observation.observe(
+          agentId,
+          () -> {
+            String[] outcome = {"lease-refused"};
+            leases.tryRun(
+                "episode",
+                agentId.value().toString(),
+                leaseTtl,
+                () -> outcome[0] = summarizeAll(agentId));
+            return outcome[0];
+          });
     }
   }
 
-  /** Under the lease: read again, because another process may have got here first. */
-  private void summarizeAll(AgentId agentId) {
+  /**
+   * Under the lease: read again, because another process may have got here first. Says how it came
+   * out, for the span: what the last episode attempted came to.
+   */
+  private String summarizeAll(AgentId agentId) {
+    String outcome = "nothing";
     for (Episode episode : episodes.unsummarized(agentId)) {
-      if (!summarize(agentId, episode)) {
+      outcome = summarize(agentId, episode);
+      if (!"written".equals(outcome)) {
         // Oldest first, and in order: a later episode summarised before an earlier one would
         // leave a hole the store cannot show past.
-        return;
+        return outcome;
       }
     }
+    return outcome;
   }
 
-  private boolean summarize(AgentId agentId, Episode episode) {
+  private String summarize(AgentId agentId, Episode episode) {
     List<Turn> turns =
         histories.forAgent(agentType, agentId).turnsFrom(episode.from().value()).stream()
             .filter(turn -> turn.id().value() <= episode.through().value())
@@ -169,7 +208,7 @@ public class EpisodeSummarizer {
             .toList();
     if (turns.isEmpty()) {
       // Nothing was said in it: a boundary drawn and redrawn. Close the gap with the title.
-      return episodes.summarize(agentId, episode.number(), episode.title());
+      return episodes.summarize(agentId, episode.number(), episode.title()) ? "written" : "nothing";
     }
     // The episode's turns, the shape the engine shows a model anyway, and then the ask: every turn
     // is complete, so without it the conversation would end on the assistant's own words.
@@ -195,7 +234,7 @@ public class EpisodeSummarizer {
           episode.number(),
           agentId.value(),
           result);
-      return false;
+      return "fault";
     }
     Titled titled = Titled.parse(Transcripts.text(blocks));
     String summary = titled.summary();
@@ -205,9 +244,12 @@ public class EpisodeSummarizer {
           agentType.value(),
           episode.number(),
           agentId.value());
-      return false;
+      return "empty";
     }
-    episodes.summarize(agentId, episode.number(), titled.title(), summary);
+    if (!episodes.summarize(agentId, episode.number(), titled.title(), summary)) {
+      // Another process wrote it while this one was asking the model.
+      return "nothing";
+    }
     LOG.info(
         "[{}] summarised episode {} (turns {}..{}) of agent {} as '{}'",
         agentType.value(),
@@ -216,7 +258,7 @@ public class EpisodeSummarizer {
         episode.through().value(),
         agentId.value(),
         titled.title() == null ? episode.title() : titled.title());
-    return true;
+    return "written";
   }
 
   /**

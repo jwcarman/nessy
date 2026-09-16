@@ -5,6 +5,9 @@ import static org.awaitility.Awaitility.await;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +25,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.inference.ObservedInference;
 import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -76,6 +80,9 @@ class HeadSummarizerTest {
         return new InferenceResult.Answer(List.of(new Block.Text("a lake monster")));
       };
 
+  private final Recorded recorded = new Recorded();
+  private final ObservationRegistry observations = ObservationRegistry.create();
+
   private HikariDataSource dataSource;
   private DefaultHarnessFactory factory;
   private Harness<String> harness;
@@ -90,6 +97,7 @@ class HeadSummarizerTest {
     config.setPassword(POSTGRES.getPassword());
     dataSource = new HikariDataSource(config);
     Schemas.initialize(dataSource);
+    observations.observationConfig().observationHandler(recorded);
     factory =
         new DefaultHarnessFactory(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
@@ -102,7 +110,8 @@ class HeadSummarizerTest {
                     .histories(factory.histories())
                     .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
-                    .tail(MAX_TAIL, MIN_TAIL));
+                    .tail(MAX_TAIL, MIN_TAIL)
+                    .observations(observations, "test"));
     harness =
         factory.create(
             String.class,
@@ -170,6 +179,13 @@ class HeadSummarizerTest {
     assertThat(summary.from()).isEqualTo(new TurnId(ids.getFirst()));
     assertThat(ids.size() - cut).isBetween(MIN_TAIL, MAX_TAIL);
     assertThat(summary.content()).containsExactly(new Block.Text("SUMMARY of " + cut + " turns"));
+    // On record: a nessy.summary span that says it wrote, with the model call inside it.
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .until(
+            () -> "written".equals(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")));
+    assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.kind")).isEqualTo("head");
+    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
 
     // The next call the agent makes is built on it: the summary, then the turns after it.
     converse(agentId, 1);
@@ -217,5 +233,34 @@ class HeadSummarizerTest {
     assertThat(lastFold.context().turns().getLast().complete()).isFalse();
     assertThat(lastFold.context().turns().subList(0, lastFold.context().turns().size() - 1))
         .allSatisfy(turn -> assertThat(turn.complete()).isTrue());
+  }
+
+  /** Every observation stopped, by name, with its low-cardinality tags. */
+  static final class Recorded implements ObservationHandler<Observation.Context> {
+    final List<Observation.Context> stopped = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public boolean supportsContext(Observation.Context context) {
+      return true;
+    }
+
+    @Override
+    public void onStop(Observation.Context context) {
+      stopped.add(context);
+    }
+
+    List<String> names() {
+      return stopped.stream().map(Observation.Context::getName).toList();
+    }
+
+    String tag(String name, String key) {
+      return stopped.stream()
+          .filter(c -> c.getName().equals(name))
+          .map(c -> c.getLowCardinalityKeyValue(key))
+          .filter(java.util.Objects::nonNull)
+          .map(kv -> kv.getValue())
+          .reduce((first, second) -> second)
+          .orElse(null);
+    }
   }
 }

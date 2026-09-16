@@ -28,9 +28,8 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.engine.inference.ObservedInference;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
 
 /**
  * Observability by WRAPPING the collaborators the engine calls, rather than by listening to what it
@@ -63,13 +62,7 @@ public final class Observed {
   /** Semconv's histogram of how long a GenAI operation took. */
   private static final String DURATION = "gen_ai.client.operation.duration";
 
-  // Semconv's gen_ai.client.token.usage histogram is NOT recorded, because InferenceResult does
-  // not carry usage. The old streaming SPI reported it per event; the new one returns one finished
-  // result and says nothing about what it cost. Adding it back is a change to InferenceResult, and
-  // is worth making when somebody actually wants to bill or budget on it.
-
   private static final String OPERATION_NAME = "gen_ai.operation.name";
-  private static final String FINISH_REASONS = "gen_ai.response.finish_reasons";
   private static final String ERROR_TYPE = "error.type";
   private static final String DELEGATE_NOT_NULL = "delegate must not be null";
   private static final String OBSERVATIONS_NOT_NULL = "observations must not be null";
@@ -92,62 +85,8 @@ public final class Observed {
   public static InferenceProvider inference(
       InferenceProvider delegate, String providerName, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
-    Objects.requireNonNull(providerName, "providerName must not be null");
     Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-
-    return (request, narrator) -> {
-      String model = request.options().modelName();
-      Observation observation =
-          Observation.createNotStarted(DURATION, observations)
-              // Semconv's span name is "{operation} {model}", which the metric name cannot also
-              // be -- so the contextual name carries it and the meter keeps the histogram's name.
-              .contextualName("chat " + model)
-              .lowCardinalityKeyValue(OPERATION_NAME, "chat")
-              .lowCardinalityKeyValue("gen_ai.provider.name", providerName)
-              .lowCardinalityKeyValue("gen_ai.request.model", model)
-              // Set at START, not on outcome. Micrometer compares an observation's key set
-              // against others recorded under the same name, so a chat that only sometimes
-              // carried a finish reason would be a different shape from one that did.
-              .lowCardinalityKeyValue(FINISH_REASONS, "none")
-              .lowCardinalityKeyValue(ERROR_TYPE, "none")
-              .start();
-      try {
-        InferenceResult result = delegate.infer(request, narrator);
-        observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
-        // A provider that answers with a Fault did not throw, and the span must still say so --
-        // this is the whole point of a total SPI: the failure is a value, and a value that
-        // nothing recorded would be a call that looks successful in every dashboard.
-        if (result instanceof InferenceResult.Fault(Failure failure)) {
-          observation.lowCardinalityKeyValue(ERROR_TYPE, failure.getClass().getSimpleName());
-          // The adapter's own account of what went wrong -- a provider's stop reason, an HTTP
-          // status -- which is the one thing worth reading on the span. High cardinality, so it
-          // reaches the trace and stays out of the metric.
-          observation.highCardinalityKeyValue("error.message", failure.reason());
-        }
-        return result;
-      } catch (RuntimeException e) {
-        observation.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());
-        observation.error(e);
-        throw e;
-      } finally {
-        observation.stop();
-      }
-    };
-  }
-
-  /**
-   * What the model did, in semconv's vocabulary.
-   *
-   * <p>Exhaustive, so a new kind of result has to be given a name here rather than silently
-   * reported as whatever the last arm happened to be.
-   */
-  private static String finishReasonOf(InferenceResult result) {
-    return switch (result) {
-      case InferenceResult.Answer _ -> "stop";
-      case InferenceResult.Actions _ -> "tool_calls";
-      case InferenceResult.Refusal _ -> "content_filter";
-      case InferenceResult.Fault _ -> "error";
-    };
+    return ObservedInference.provider(delegate, providerName, observations);
   }
 
   /**
