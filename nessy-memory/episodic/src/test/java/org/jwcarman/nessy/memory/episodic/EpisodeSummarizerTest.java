@@ -201,11 +201,15 @@ class EpisodeSummarizerTest {
     episodes.begin(agent, new TurnId(at + 1), "the real thing", "now");
     say(agent, "cats one");
 
+    // The turn before the first named episode is the opening episode, summarised by the model;
+    // the false start itself has no turns and is closed with its title, no model asked.
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(() -> episodes.find(agent, 1).map(Episode::summarized).orElse(false));
-    assertThat(episodes.find(agent, 1).map(Episode::summary)).contains("a false start");
-    assertThat(summaryRequests).isEmpty();
+        .until(() -> episodes.find(agent, 2).map(Episode::summarized).orElse(false));
+    assertThat(episodes.find(agent, 1).map(Episode::title)).contains(JdbcEpisodes.OPENING_TITLE);
+    assertThat(episodes.find(agent, 1).map(Episode::summary)).contains("SUMMARY: hello");
+    assertThat(episodes.find(agent, 2).map(Episode::summary)).contains("a false start");
+    assertThat(summaryRequests).hasSize(1);
   }
 
   @Test

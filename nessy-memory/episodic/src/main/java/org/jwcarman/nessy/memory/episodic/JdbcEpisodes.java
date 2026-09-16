@@ -193,9 +193,20 @@ public class JdbcEpisodes implements Summarizer {
     return rows(UNSUMMARIZED, agentId).stream().map(Row::episode).toList();
   }
 
+  /** What the turns before the first named episode are called; the model never named them. */
+  public static final String OPENING_TITLE = "The opening";
+
+  private static final String OPENING_REASON = "what was said before the first episode was named";
+
   /**
    * Begins an episode at this turn, closing the open one at the turn before. Begun twice in the
    * same turn, the second call renames the first's episode rather than opening an empty one.
+   *
+   * <p>The first episode an agent names may come well into its story, and the turns before it
+   * belong to no episode: nothing would summarise them, and the tail would leave them behind
+   * unsummarised. So the first {@code begin} after turn one also records an opening episode from
+   * turn one through the turn before, titled {@value #OPENING_TITLE}, to be summarised like any
+   * other.
    */
   public Episode begin(AgentId agentId, TurnId at, String title, String reason) {
     Objects.requireNonNull(at, "at must not be null");
@@ -212,9 +223,14 @@ public class JdbcEpisodes implements Summarizer {
             return new Episode(renamed.number(), renamed.from(), null, named, because, null);
           }
           OffsetDateTime now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+          int number = nextNumber(agentId);
+          if (number == 1 && at.value() > 1) {
+            jdbc.sql(INSERT)
+                .params(agentType, key(agentId), 1, 1L, OPENING_TITLE, OPENING_REASON, now)
+                .update();
+            number = 2;
+          }
           jdbc.sql(CLOSE).params(at.value() - 1, now, agentType, key(agentId)).update();
-          int number =
-              jdbc.sql(NEXT_NUMBER).params(agentType, key(agentId)).query(Integer.class).single();
           jdbc.sql(INSERT)
               .params(agentType, key(agentId), number, at.value(), named, because, now)
               .update();
@@ -298,6 +314,10 @@ public class JdbcEpisodes implements Summarizer {
     ranked.add(latest);
     ranked.sort(Comparator.comparingInt(row -> row.episode().number()));
     return ranked;
+  }
+
+  private int nextNumber(AgentId agentId) {
+    return jdbc.sql(NEXT_NUMBER).params(agentType, key(agentId)).query(Integer.class).single();
   }
 
   private List<Row> rows(String sql, AgentId agentId) {

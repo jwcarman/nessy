@@ -113,7 +113,11 @@ own summary that can come back whole when it is relevant again.
 The model draws the boundaries. `begin_episode(title, reason)` records that a
 distinct piece of work has begun at this turn: the open episode closes at the
 turn before, a new one opens, and the tool returns. Nothing else happens
-inside the call. The summary is written later by the `EpisodeSummarizer`, a
+inside the call. The first boundary an agent draws may come well into its
+story, so that call also records an opening episode, "The opening", from turn
+one through the turn before: the turns before the model thought to name
+anything are summarised like the rest rather than falling out of the tail
+unsummarised. The summary is written later by the `EpisodeSummarizer`, a
 listener like the head summariser's: it hears a turn end, sees a closed
 episode with no summary, takes the `episode` lease for the agent and asks the
 model for the summary of that episode's turns alone. Until it has one, the

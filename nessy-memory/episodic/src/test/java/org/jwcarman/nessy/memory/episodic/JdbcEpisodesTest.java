@@ -84,6 +84,22 @@ class JdbcEpisodesTest {
     }
 
     @Test
+    void a_first_episode_named_late_closes_an_opening_episode_behind_it() {
+      AgentId agent = Calls.agent();
+
+      Episode named = store.begin(agent, new TurnId(5), "the task", "a new subject");
+
+      assertThat(named.number()).isEqualTo(2);
+      assertThat(store.all(agent))
+          .extracting(Episode::number, Episode::from, Episode::through, Episode::title)
+          .containsExactly(
+              org.assertj.core.groups.Tuple.tuple(
+                  1, new TurnId(1), new TurnId(4), JdbcEpisodes.OPENING_TITLE),
+              org.assertj.core.groups.Tuple.tuple(2, new TurnId(5), null, "the task"));
+      assertThat(store.unsummarized(agent)).extracting(Episode::number).containsExactly(1);
+    }
+
+    @Test
     void begun_twice_in_one_turn_renames_rather_than_opening_an_empty_episode() {
       AgentId agent = Calls.agent();
       store.begin(agent, new TurnId(1), "first thought", "the start");
