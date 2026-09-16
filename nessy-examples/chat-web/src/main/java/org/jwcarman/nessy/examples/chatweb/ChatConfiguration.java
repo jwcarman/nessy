@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.examples.chatweb;
 
+import java.time.Duration;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -80,7 +81,8 @@ public class ChatConfiguration {
   /**
    * Summarises each episode in the background, under a lease, once the model has begun the next.
    * The model then sees the summaries of the episodes that bear on the current turn and the turns
-   * of the current episode, up to {@value #MAX_TAIL} of them.
+   * of the current episode, up to {@value #MAX_TAIL} of them. The lease is generous because a local
+   * thinking model can take minutes over a long episode; a hosted one takes seconds.
    */
   @Bean
   public EpisodeSummarizer episodeSummarizer(
@@ -96,7 +98,8 @@ public class ChatConfiguration {
                 .histories(factory.histories())
                 .leases(leases)
                 .inference(
-                    provider, new InferenceOptions(properties.model(), properties.maxTokens())));
+                    provider, new InferenceOptions(properties.model(), properties.maxTokens()))
+                .leaseTtl(Duration.ofMinutes(5)));
   }
 
   @Bean
