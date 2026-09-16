@@ -70,6 +70,9 @@ class GeminiLiveTest {
   /**
    * The narrator hears the answer in pieces before the result carries it whole: several deltas, and
    * their concatenation is exactly the text the engine is handed.
+   *
+   * <p>Gemini streams by generation step, not by token, so a one-line answer arrives as one partial
+   * and would prove nothing. A few paragraphs cannot.
    */
   @Test
   void the_answer_is_narrated_as_it_streams() {
@@ -77,7 +80,11 @@ class GeminiLiveTest {
       List<AgentEvent> narrated = new ArrayList<>();
 
       InferenceResult result =
-          provider.infer(asking("List the seven days of the week, one per line."), narrated::add);
+          provider.infer(
+              asking(
+                  "In three paragraphs of about eighty words each, explain how Loch Ness was"
+                      + " formed, why it is so deep, and what lives in it."),
+              narrated::add);
 
       List<String> deltas =
           narrated.stream()
