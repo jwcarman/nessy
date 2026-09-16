@@ -1,10 +1,13 @@
 package org.jwcarman.nessy.inference.gemini;
 
 import com.google.genai.Client;
+import com.google.genai.ResponseStream;
 import com.google.genai.types.Content;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import java.util.List;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  * The one call this module makes, as a seam.
@@ -15,7 +18,11 @@ import java.util.List;
  */
 interface GeminiClient extends AutoCloseable {
 
-  GenerateContentResponse generateContent(
+  /**
+   * The reply as the server streams it: partial responses, each carrying the parts that arrived
+   * since the last. Closing the stream closes the connection behind it.
+   */
+  Stream<GenerateContentResponse> generateContentStream(
       String model, List<Content> contents, GenerateContentConfig config);
 
   @Override
@@ -28,9 +35,11 @@ interface GeminiClient extends AutoCloseable {
   static GeminiClient over(Client client, boolean owned) {
     return new GeminiClient() {
       @Override
-      public GenerateContentResponse generateContent(
+      public Stream<GenerateContentResponse> generateContentStream(
           String model, List<Content> contents, GenerateContentConfig config) {
-        return client.models.generateContent(model, contents, config);
+        ResponseStream<GenerateContentResponse> responses =
+            client.models.generateContentStream(model, contents, config);
+        return StreamSupport.stream(responses.spliterator(), false).onClose(responses::close);
       }
 
       @Override

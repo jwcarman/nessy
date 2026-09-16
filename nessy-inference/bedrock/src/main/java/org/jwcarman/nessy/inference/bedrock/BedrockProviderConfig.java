@@ -4,8 +4,8 @@ import java.util.Objects;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
-import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClientBuilder;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClientBuilder;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -23,7 +23,7 @@ public final class BedrockProviderConfig {
 
   private Region region;
   private AwsCredentialsProvider credentialsProvider;
-  private BedrockRuntimeClient client;
+  private BedrockRuntimeAsyncClient client;
   private boolean useEnv;
   private JsonMapper mapper = JsonMapper.builder().build();
 
@@ -57,7 +57,7 @@ public final class BedrockProviderConfig {
    *
    * <p><b>Ownership stays with the caller.</b> The provider closes only a client it built itself.
    */
-  public BedrockProviderConfig client(BedrockRuntimeClient client) {
+  public BedrockProviderConfig client(BedrockRuntimeAsyncClient client) {
     this.client = client;
     return this;
   }
@@ -75,8 +75,8 @@ public final class BedrockProviderConfig {
     if (client != null) {
       return BedrockClient.over(client, false);
     }
-    BedrockRuntimeClientBuilder builder =
-        BedrockRuntimeClient.builder()
+    BedrockRuntimeAsyncClientBuilder builder =
+        BedrockRuntimeAsyncClient.builder()
             .region(resolveRegion())
             .credentialsProvider(
                 credentialsProvider != null

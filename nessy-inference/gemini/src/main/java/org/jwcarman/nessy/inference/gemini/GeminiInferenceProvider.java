@@ -6,8 +6,10 @@ import com.google.genai.errors.GenAiIOException;
 import com.google.genai.errors.ServerException;
 import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
+import com.google.genai.types.FinishReason;
 import com.google.genai.types.FunctionCall;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponsePromptFeedback;
 import com.google.genai.types.Part;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -16,6 +18,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -34,8 +38,13 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>Holds no model name.</b> Which model to call travels in {@link InferenceOptions}, so one
  * client serves several agent types asking for different models.
  *
- * <p><b>Does not stream, so it narrates nothing and answers all at once.</b> A caller cannot tell
- * it apart from one that does.
+ * <p><b>Streams, and narrates as it goes.</b> Every call is made through {@code
+ * generateContentStream}; each partial response's text parts are narrated as they arrive -- a
+ * thought summary as a {@link AgentEvent.ThinkingDelta}, prose as a {@link AgentEvent.ContentDelta}
+ * -- and the parts are folded into one response here, because this SDK has no accumulator of its
+ * own: consecutive text parts of one kind are joined, function calls arrive whole and are kept
+ * whole, and the last partial's finish reason is the reply's. The reply is then read exactly as a
+ * non-streaming one would be; the engine receives one result.
  *
  * <p><b>Thought signatures round-trip.</b> Gemini ties an opaque signature to each function call it
  * makes and wants it back with the call on the next turn. It comes back as a {@link Block.Provider}
@@ -105,15 +114,99 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    */
   @Override
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
-    try {
-      GenerateContentResponse response =
-          client.generateContent(
-              request.options().modelName(),
-              GeminiRequests.toContents(request, mapper),
-              GeminiRequests.toConfig(request, mapper));
-      return read(response);
+    Objects.requireNonNull(narrator, "narrator must not be null");
+    try (Stream<GenerateContentResponse> stream =
+        client.generateContentStream(
+            request.options().modelName(),
+            GeminiRequests.toContents(request, mapper),
+            GeminiRequests.toConfig(request, mapper))) {
+      Folded folded = new Folded();
+      stream.forEach(partial -> folded.take(partial, narrator));
+      return folded.any ? read(folded.response()) : noReply();
     } catch (ApiException | GenAiIOException e) {
       return new InferenceResult.Fault(classify(e));
+    }
+  }
+
+  private static InferenceResult noReply() {
+    return new InferenceResult.Fault(new Failure.Permanent("model returned no candidates"));
+  }
+
+  /**
+   * The partial responses folded into one, and narrated on the way.
+   *
+   * <p>Only the first candidate is kept, which is the only one read. Text parts are joined with
+   * their neighbours of the same kind (thought or prose) unless one carries a thought signature,
+   * which must stay on the part it came with; every other part is kept as it arrived. The finish
+   * reason and prompt feedback are whichever partial last said them.
+   */
+  private static final class Folded {
+    private final List<Part> parts = new ArrayList<>();
+    private Optional<FinishReason> finish = Optional.empty();
+    private Optional<GenerateContentResponsePromptFeedback> feedback = Optional.empty();
+    private boolean any;
+
+    void take(GenerateContentResponse partial, AgentNarrator narrator) {
+      any = true;
+      if (partial.promptFeedback().isPresent()) {
+        feedback = partial.promptFeedback();
+      }
+      List<Candidate> candidates = partial.candidates().orElse(List.of());
+      if (candidates.isEmpty()) {
+        return;
+      }
+      Candidate candidate = candidates.getFirst();
+      if (candidate.finishReason().isPresent()) {
+        finish = candidate.finishReason();
+      }
+      for (Part part : candidate.content().flatMap(Content::parts).orElse(List.of())) {
+        narrate(part, narrator);
+        fold(part);
+      }
+    }
+
+    private static void narrate(Part part, AgentNarrator narrator) {
+      part.text()
+          .filter(text -> !text.isEmpty())
+          .ifPresent(
+              text ->
+                  narrator.narrate(
+                      part.thought().orElse(false)
+                          ? new AgentEvent.ThinkingDelta(text)
+                          : new AgentEvent.ContentDelta(text)));
+    }
+
+    private void fold(Part part) {
+      if (part.text().isEmpty() || part.thoughtSignature().isPresent() || parts.isEmpty()) {
+        parts.add(part);
+        return;
+      }
+      Part last = parts.getLast();
+      boolean joinable =
+          last.text().isPresent()
+              && last.thoughtSignature().isEmpty()
+              && last.thought().orElse(false) == part.thought().orElse(false);
+      if (!joinable) {
+        parts.add(part);
+        return;
+      }
+      Part.Builder joined = Part.builder().text(last.text().get() + part.text().get());
+      if (part.thought().orElse(false)) {
+        joined.thought(true);
+      }
+      parts.set(parts.size() - 1, joined.build());
+    }
+
+    GenerateContentResponse response() {
+      GenerateContentResponse.Builder response = GenerateContentResponse.builder();
+      feedback.ifPresent(response::promptFeedback);
+      if (!parts.isEmpty() || finish.isPresent()) {
+        Candidate.Builder candidate =
+            Candidate.builder().content(Content.builder().role("model").parts(parts).build());
+        finish.ifPresent(candidate::finishReason);
+        response.candidates(List.of(candidate.build()));
+      }
+      return response.build();
     }
   }
 

@@ -264,8 +264,13 @@ public interface InferenceProvider {
   classification that authorises dropping something a person said. Let a
   bug in the adapter escape rather than recording it as the model's fault.
 - `AgentNarrator.narrate(event)` is how a streaming adapter reports deltas
-  as they arrive; an adapter that does not stream ignores it and nobody can
-  tell.
+  as they arrive: a `ContentDelta` per piece of the answer, a `ThinkingDelta`
+  per piece of visible reasoning. All four shipped adapters use their
+  vendor's streaming call and narrate this way, folding the stream back into
+  the one result the engine reads (with the SDK's own accumulator where one
+  exists, OpenAI and Anthropic; with a fold of their own for Gemini and
+  Bedrock). An adapter that does not stream may ignore the narrator, and
+  nothing above it can tell; only the person watching can.
 
 ## What the engine records about a call
 

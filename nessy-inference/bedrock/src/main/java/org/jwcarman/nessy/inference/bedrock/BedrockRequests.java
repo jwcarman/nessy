@@ -21,7 +21,7 @@ import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
-import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
@@ -53,9 +53,9 @@ public final class BedrockRequests {
 
   private BedrockRequests() {}
 
-  public static ConverseRequest toRequest(InferenceRequest request, JsonMapper mapper) {
-    ConverseRequest.Builder builder =
-        ConverseRequest.builder().modelId(request.options().modelName());
+  public static ConverseStreamRequest toRequest(InferenceRequest request, JsonMapper mapper) {
+    ConverseStreamRequest.Builder builder =
+        ConverseStreamRequest.builder().modelId(request.options().modelName());
     if (request.options().hasMaxTokens()) {
       builder.inferenceConfig(config -> config.maxTokens(request.options().maxTokens()));
     }

@@ -27,7 +27,7 @@ import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
-import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolResultStatus;
 import tools.jackson.databind.json.JsonMapper;
@@ -76,7 +76,7 @@ class BedrockRequestsTest {
 
     @Test
     void an_observation_is_a_user_message_and_an_answer_an_assistant_one() {
-      ConverseRequest converse =
+      ConverseStreamRequest converse =
           BedrockRequests.toRequest(
               request(List.of(answered(1, "hi", "hello"), open(3, "bye"))), MAPPER);
 
@@ -100,7 +100,8 @@ class BedrockRequestsTest {
               List.of(open(11, "and monsters?")),
               List.of());
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(context, List.of()), MAPPER);
+      ConverseStreamRequest converse =
+          BedrockRequests.toRequest(request(context, List.of()), MAPPER);
 
       assertThat(converse.messages()).hasSize(1);
       Message merged = converse.messages().getFirst();
@@ -117,7 +118,7 @@ class BedrockRequestsTest {
       Turn refused =
           new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused(), 0);
 
-      ConverseRequest converse =
+      ConverseStreamRequest converse =
           BedrockRequests.toRequest(request(List.of(failed, refused, open(5, "three"))), MAPPER);
 
       assertThat(converse.messages())
@@ -131,7 +132,8 @@ class BedrockRequestsTest {
           new InferenceContext(
               List.of(open(1, "hi")), List.of(Ambient.text("clock", "it is Tuesday")));
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(context, List.of()), MAPPER);
+      ConverseStreamRequest converse =
+          BedrockRequests.toRequest(request(context, List.of()), MAPPER);
 
       assertThat(converse.system())
           .extracting(block -> block.text())
@@ -159,7 +161,7 @@ class BedrockRequestsTest {
                   new ToolOutcome.Succeeded(
                       new CallId("call_1"), List.of(new Block.Text("230m")))));
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+      ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
       assertThat(converse.messages())
           .extracting(Message::role)
@@ -184,7 +186,7 @@ class BedrockRequestsTest {
                   new ToolOutcome.Denied(new CallId("call_2"), "not today")),
               new Block.ToolCall("call_2", "prune", "{}"));
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+      ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
       List<ContentBlock> results = converse.messages().get(2).content();
       assertThat(results.get(0).toolResult().status()).isEqualTo(ToolResultStatus.ERROR);
@@ -211,7 +213,7 @@ class BedrockRequestsTest {
               unsigned,
               theirs);
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+      ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
       List<ContentBlock> asking = converse.messages().get(1).content();
       assertThat(asking).hasSize(3);
@@ -232,7 +234,7 @@ class BedrockRequestsTest {
               new InputSchema(
                   "{\"type\":\"object\",\"properties\":{\"lake\":{\"type\":\"string\"},\"n\":{\"type\":\"integer\",\"minimum\":0}},\"required\":[\"lake\"]}"));
 
-      ConverseRequest converse =
+      ConverseStreamRequest converse =
           BedrockRequests.toRequest(
               request(new InferenceContext(List.of(open(1, "hi")), List.of()), List.of(offer)),
               MAPPER);
@@ -261,7 +263,7 @@ class BedrockRequestsTest {
               List.of());
       Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+      ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
       assertThat(converse.messages()).hasSize(2);
       assertThat(converse.messages().get(0).content()).hasSize(1);
@@ -287,7 +289,7 @@ class BedrockRequestsTest {
                       new Block.Text("done"))),
               0);
 
-      ConverseRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
+      ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
       List<ContentBlock> answer = converse.messages().get(1).content();
       assertThat(answer).hasSize(2);

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Building a provider needs no network: the SDK client is constructed, never used. */
@@ -37,11 +37,11 @@ class BedrockProviderConfigTest {
   @Test
   void a_client_the_application_hands_in_is_used_and_never_closed_here() {
     AtomicBoolean closed = new AtomicBoolean();
-    BedrockRuntimeClient theirs =
-        (BedrockRuntimeClient)
+    BedrockRuntimeAsyncClient theirs =
+        (BedrockRuntimeAsyncClient)
             java.lang.reflect.Proxy.newProxyInstance(
-                BedrockRuntimeClient.class.getClassLoader(),
-                new Class<?>[] {BedrockRuntimeClient.class},
+                BedrockRuntimeAsyncClient.class.getClassLoader(),
+                new Class<?>[] {BedrockRuntimeAsyncClient.class},
                 (proxy, method, args) -> {
                   if ("close".equals(method.getName())) {
                     closed.set(true);

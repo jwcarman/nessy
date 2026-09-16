@@ -15,12 +15,15 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponsePromptFeedback;
 import com.google.genai.types.Part;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -65,6 +68,51 @@ class GeminiInferenceProviderTest {
         .build();
   }
 
+  /**
+   * The partials a server would have streamed this reply as: each text part five characters at a
+   * time, each other part whole, and the finish reason only on the last. A reply with no candidates
+   * is one partial saying so.
+   */
+  static List<GenerateContentResponse> partialsOf(GenerateContentResponse response) {
+    List<Candidate> candidates = response.candidates().orElse(List.of());
+    if (candidates.isEmpty()) {
+      return List.of(response);
+    }
+    Candidate candidate = candidates.getFirst();
+    List<Part> pieces = new ArrayList<>();
+    for (Part part : candidate.content().flatMap(Content::parts).orElse(List.of())) {
+      if (part.text().isPresent() && part.thoughtSignature().isEmpty()) {
+        String text = part.text().get();
+        for (int i = 0; i < text.length(); i += 5) {
+          Part.Builder piece =
+              Part.builder().text(text.substring(i, Math.min(text.length(), i + 5)));
+          if (part.thought().orElse(false)) {
+            piece.thought(true);
+          }
+          pieces.add(piece.build());
+        }
+      } else {
+        pieces.add(part);
+      }
+    }
+    List<GenerateContentResponse> partials = new ArrayList<>();
+    for (int i = 0; i < pieces.size(); i++) {
+      Candidate.Builder partial =
+          Candidate.builder()
+              .content(Content.builder().role("model").parts(List.of(pieces.get(i))).build());
+      if (i == pieces.size() - 1) {
+        candidate.finishReason().ifPresent(partial::finishReason);
+      }
+      partials.add(GenerateContentResponse.builder().candidates(List.of(partial.build())).build());
+    }
+    if (partials.isEmpty()) {
+      Candidate.Builder empty = Candidate.builder();
+      candidate.finishReason().ifPresent(empty::finishReason);
+      partials.add(GenerateContentResponse.builder().candidates(List.of(empty.build())).build());
+    }
+    return partials;
+  }
+
   private static InferenceResult infer(GenerateContentResponse response) {
     GeminiClient client = new ScriptedClient(response, null);
     return new GeminiInferenceProvider(client, MAPPER).infer(request());
@@ -86,18 +134,77 @@ class GeminiInferenceProviderTest {
       this(response, failure, new AtomicBoolean());
     }
 
+    /** The reply cut into partials, the way the server streams it. */
     @Override
-    public GenerateContentResponse generateContent(
+    public Stream<GenerateContentResponse> generateContentStream(
         String model, List<Content> contents, com.google.genai.types.GenerateContentConfig config) {
       if (failure != null) {
         throw failure;
       }
-      return response;
+      return partialsOf(response).stream();
     }
 
     @Override
     public void close() {
       closed.set(true);
+    }
+  }
+
+  @Nested
+  class WhatIsNarrated {
+
+    private final List<AgentEvent> narrated = new ArrayList<>();
+
+    @Test
+    void thoughts_and_prose_are_narrated_as_they_arrive_and_the_reply_is_read_whole() {
+      GenerateContentResponse response =
+          reply(
+              new FinishReason("STOP"),
+              Part.builder().text("hmm, a lake").thought(true).build(),
+              Part.fromText("a lake monster"));
+
+      InferenceResult result =
+          new GeminiInferenceProvider(new ScriptedClient(response, null), MAPPER)
+              .infer(request(), narrated::add);
+
+      assertThat(narrated)
+          .containsExactly(
+              new AgentEvent.ThinkingDelta("hmm, "),
+              new AgentEvent.ThinkingDelta("a lak"),
+              new AgentEvent.ThinkingDelta("e"),
+              new AgentEvent.ContentDelta("a lak"),
+              new AgentEvent.ContentDelta("e mon"),
+              new AgentEvent.ContentDelta("ster"));
+      assertThat(result)
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
+    }
+
+    @Test
+    void a_stream_of_nothing_is_a_fault() {
+      GeminiClient silent =
+          new GeminiClient() {
+            @Override
+            public Stream<GenerateContentResponse> generateContentStream(
+                String model,
+                List<Content> contents,
+                com.google.genai.types.GenerateContentConfig config) {
+              return Stream.of();
+            }
+
+            @Override
+            public void close() {
+              // Nothing to close.
+            }
+          };
+
+      InferenceResult result =
+          new GeminiInferenceProvider(silent, MAPPER).infer(request(), narrated::add);
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
+      assertThat(narrated).isEmpty();
     }
   }
 

@@ -3,12 +3,15 @@ package org.jwcarman.nessy.inference.bedrock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -24,12 +27,21 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockDelta;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockDeltaEvent;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStart;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStartEvent;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStopEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseOutput;
-import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
+import software.amazon.awssdk.services.bedrockruntime.model.MessageStartEvent;
+import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
+import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlockDelta;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.StopReason;
 import software.amazon.awssdk.services.bedrockruntime.model.ThrottlingException;
@@ -66,6 +78,75 @@ class BedrockInferenceProviderTest {
         .build();
   }
 
+  /**
+   * The events a service would have streamed this reply as: messageStart; for each block, a start
+   * when it is a tool use, its text or reasoning or JSON input five characters at a time, and a
+   * stop; then messageStop with the stop reason.
+   */
+  static List<ConverseStreamOutput> eventsOf(ConverseResponse response) {
+    List<ConverseStreamOutput> events = new ArrayList<>();
+    events.add(MessageStartEvent.builder().role(ConversationRole.ASSISTANT).build());
+    List<ContentBlock> content =
+        response.output() == null || response.output().message() == null
+            ? List.of()
+            : response.output().message().content();
+    for (int i = 0; i < content.size(); i++) {
+      ContentBlock block = content.get(i);
+      List<ContentBlockDelta> deltas = new ArrayList<>();
+      if (block.toolUse() != null) {
+        ToolUseBlock use = block.toolUse();
+        events.add(
+            ContentBlockStartEvent.builder()
+                .contentBlockIndex(i)
+                .start(
+                    ContentBlockStart.fromToolUse(
+                        b -> b.toolUseId(use.toolUseId()).name(use.name())))
+                .build());
+        String json =
+            MAPPER.writeValueAsString(use.input() == null ? Map.of() : use.input().unwrap());
+        pieces(json)
+            .forEach(piece -> deltas.add(ContentBlockDelta.fromToolUse(b -> b.input(piece))));
+      } else if (block.reasoningContent() != null) {
+        ReasoningContentBlock reasoning = block.reasoningContent();
+        if (reasoning.reasoningText() != null) {
+          pieces(reasoning.reasoningText().text())
+              .forEach(
+                  piece ->
+                      deltas.add(
+                          ContentBlockDelta.fromReasoningContent(
+                              ReasoningContentBlockDelta.fromText(piece))));
+          if (reasoning.reasoningText().signature() != null) {
+            deltas.add(
+                ContentBlockDelta.fromReasoningContent(
+                    ReasoningContentBlockDelta.fromSignature(
+                        reasoning.reasoningText().signature())));
+          }
+        } else {
+          deltas.add(
+              ContentBlockDelta.fromReasoningContent(
+                  ReasoningContentBlockDelta.fromRedactedContent(reasoning.redactedContent())));
+        }
+      } else {
+        pieces(block.text()).forEach(piece -> deltas.add(ContentBlockDelta.fromText(piece)));
+      }
+      for (ContentBlockDelta delta : deltas) {
+        events.add(ContentBlockDeltaEvent.builder().contentBlockIndex(i).delta(delta).build());
+      }
+      events.add(ContentBlockStopEvent.builder().contentBlockIndex(i).build());
+    }
+    events.add(MessageStopEvent.builder().stopReason(response.stopReason()).build());
+    return events;
+  }
+
+  /** Five characters at a time, so a stream of them is several events. */
+  private static List<String> pieces(String text) {
+    List<String> pieces = new ArrayList<>();
+    for (int i = 0; i < text.length(); i += 5) {
+      pieces.add(text.substring(i, Math.min(text.length(), i + 5)));
+    }
+    return pieces;
+  }
+
   private static InferenceResult infer(ConverseResponse response) {
     return new BedrockInferenceProvider(new ScriptedClient(response, null), MAPPER)
         .infer(request());
@@ -86,17 +167,106 @@ class BedrockInferenceProviderTest {
       this(response, failure, new AtomicBoolean());
     }
 
+    /** The reply cut into the events the service would have streamed it as. */
     @Override
-    public ConverseResponse converse(ConverseRequest request) {
+    public void converseStream(
+        ConverseStreamRequest request, Consumer<ConverseStreamOutput> onEvent) {
       if (failure != null) {
         throw failure;
       }
-      return response;
+      eventsOf(response).forEach(onEvent);
     }
 
     @Override
     public void close() {
       closed.set(true);
+    }
+  }
+
+  @Nested
+  class WhatIsNarrated {
+
+    private final List<AgentEvent> narrated = new ArrayList<>();
+
+    private InferenceResult inferNarrating(BedrockClient client) {
+      return new BedrockInferenceProvider(client, MAPPER).infer(request(), narrated::add);
+    }
+
+    @Test
+    void text_and_reasoning_are_narrated_as_they_arrive_and_the_reply_is_read_whole() {
+      ConverseResponse response =
+          reply(
+              StopReason.END_TURN,
+              ContentBlock.fromReasoningContent(
+                  ReasoningContentBlock.fromReasoningText(
+                      ReasoningTextBlock.builder().text("hmm, a lake").signature("sig").build())),
+              ContentBlock.fromText("a lake monster"));
+
+      InferenceResult result = inferNarrating(new ScriptedClient(response, null));
+
+      assertThat(narrated)
+          .containsExactly(
+              new AgentEvent.ThinkingDelta("hmm, "),
+              new AgentEvent.ThinkingDelta("a lak"),
+              new AgentEvent.ThinkingDelta("e"),
+              new AgentEvent.ContentDelta("a lak"),
+              new AgentEvent.ContentDelta("e mon"),
+              new AgentEvent.ContentDelta("ster"));
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .contains(new Block.Text("a lake monster"));
+    }
+
+    @Test
+    void tool_input_fragments_are_not_narrated_and_the_input_is_parsed_once_whole() {
+      ConverseResponse response =
+          reply(
+              StopReason.TOOL_USE,
+              ContentBlock.fromToolUse(
+                  ToolUseBlock.builder()
+                      .toolUseId("tooluse_1")
+                      .name("depth")
+                      .input(Document.fromMap(Map.of("lake", Document.fromString("ness"))))
+                      .build()));
+
+      InferenceResult result = inferNarrating(new ScriptedClient(response, null));
+
+      assertThat(narrated).isEmpty();
+      assertThat(result)
+          .isEqualTo(
+              new InferenceResult.Actions(
+                  List.of(new Block.ToolCall("tooluse_1", "depth", "{\"lake\":\"ness\"}"))));
+    }
+
+    @Test
+    void a_stream_of_nothing_and_a_stream_cut_short_are_both_faults() {
+      BedrockClient silent = new ScriptedEvents(List.of());
+      assertThat(inferNarrating(silent))
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).contains("no reply"));
+
+      List<ConverseStreamOutput> cut =
+          eventsOf(reply(StopReason.END_TURN, ContentBlock.fromText("a lake monster")));
+      BedrockClient early = new ScriptedEvents(cut.subList(0, cut.size() - 1));
+      assertThat(inferNarrating(early))
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).contains("ended before"));
+    }
+  }
+
+  /** A client that streams exactly these events. */
+  private record ScriptedEvents(List<ConverseStreamOutput> events) implements BedrockClient {
+    @Override
+    public void converseStream(
+        ConverseStreamRequest request, Consumer<ConverseStreamOutput> onEvent) {
+      events.forEach(onEvent);
+    }
+
+    @Override
+    public void close() {
+      // Nothing to close.
     }
   }
 

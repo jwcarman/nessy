@@ -42,6 +42,12 @@
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>bedrockruntime</artifactId>
     </dependency>
+    <!-- ConverseStream exists only on the async client, and the async client needs an HTTP
+         implementation of its own: Netty is the SDK's default. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>netty-nio-client</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
