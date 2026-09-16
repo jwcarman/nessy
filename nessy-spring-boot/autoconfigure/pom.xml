@@ -161,6 +161,12 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-inference-gemini</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-narration-odyssey</artifactId>
       <version>${project.version}</version>
       <optional>true</optional>

@@ -125,7 +125,7 @@ See [Authorization](concepts/authorization.md).
 | `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `AgentEvent`, `AgentEventListener`, the block vocabulary |
 | `nessy-spi` | adapter authors: `InferenceProvider`, and `Schemas` |
 | `nessy-engine` | application builders: `DefaultHarnessFactory`, the durable stores |
-| `nessy-inference-anthropic`, `nessy-inference-openai` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
+| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | Boot applications: one dependency, no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans behind it, and every optional module's auto-configuration |

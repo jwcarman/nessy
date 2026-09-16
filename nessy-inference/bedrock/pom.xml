@@ -29,8 +29,9 @@
     <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-model-bedrock</artifactId>
-  <name>Nessy Model Bedrock</name>
+  <artifactId>nessy-inference-bedrock</artifactId>
+  <name>Nessy Inference Bedrock</name>
+  <description>Amazon Bedrock's Converse API, through the AWS SDK for Java v2, as an InferenceProvider.</description>
 
   <dependencies>
     <dependency>
@@ -40,6 +41,16 @@
     <dependency>
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>bedrockruntime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -51,7 +62,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.model.bedrock</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.inference.bedrock</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

@@ -122,11 +122,15 @@ prefers. A source with nothing to say returns empty and contributes nothing.
 ## Notes and plans
 
 `nessy-memory-notebook` gives an agent notes it keeps and recalls by
-heading. The index is ambient: `headings()` is `SELECT note_id, hook`, so a
-body cannot reach the model by accident. The agent recalls a note when it
-wants one, through four tools:
+heading. `Notebook` is the store, `JdbcNotebook` the one that ships, scoped
+to an agent type and keyed by agent id, with `write`, `revise`, `forget`,
+`find` and `headings`. The index is ambient: `headings()` is `SELECT
+note_id, hook`, so a body cannot reach the model by accident. The agent
+recalls a note when it wants one, through four tools:
 
 ```java
+Notebook notebook = new JdbcNotebook(dataSource, TYPE);
+
 config.inference(in -> in.context(ctx -> ctx.ambient(NotebookTools.index(notebook))))
       .tool(NotebookTools.remember(notebook))
       .tool(NotebookTools.revise(notebook))

@@ -46,6 +46,21 @@ Three parts:
 - **`TemplatedSystemPrompt`** renders on every call and **refuses a hole
   nothing fills**. A model is never handed a placeholder.
 
+Outside Boot, `EnvironmentVariables.of(propertyResolver)` in
+`nessy-prompt-spring` answers from any Spring `PropertyResolver`, and
+`PromptVariables` is the per-agent view a template is rendered against when
+you call one directly.
+
+With the Mustache engine a section turns on a value being present and not
+empty, which is how an optional line is written:
+
+```java
+SystemPromptSource prompt = TemplatedSystemPrompt.of(
+        new MustachePromptTemplateFactory(),
+        "Be brief.{{#persona}} You are {{persona}}.{{/persona}}",
+        PromptVariableSource.supplied("persona", personas::current));
+```
+
 Per agent, because the source is asked with the agent id: a prompt can name
 the tenant, the user's preferences, or the plan the agent holds, and two
 agents of one type see two prompts.

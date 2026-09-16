@@ -57,7 +57,7 @@ gated on that module's classes being present: add `nessy-lease` and a
 | `nessy.reply-token-encryption-keys` | ephemeral; see below |
 | `nessy.prompt.engine` | `spring`, or `mustache` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour |
-| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key` | pick a provider; see [Providers](providers.md#boot-auto-configuration) |
+| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key` | pick a provider; see [Providers](providers.md#boot-auto-configuration) |
 
 ## Every bean backs off
 
@@ -81,6 +81,15 @@ it.
 
 Every `AgentEventListener` bean is attached to the engine once the context
 has fully started, so a listener may depend on the factory without a cycle.
+
+The auto-configuration classes, for an application that excludes one:
+`NessyAutoConfiguration` (the engine and the free harness),
+`OpenAiAutoConfiguration`, `AnthropicAutoConfiguration` and
+`GeminiAutoConfiguration` under `inference`, `PromptEngineAutoConfiguration`
+and `PromptAutoConfiguration` under `prompt`, `LeaseAutoConfiguration`,
+`OdysseyNarrationAutoConfiguration` and `SubstrateCodecAutoConfiguration`
+under `narration`. The console excludes the engine's and the lease's to build
+its own from the same beans.
 
 Tools come from the application context: every `Tool` bean is granted,
 ungated. Gating one, or adding summaries, ambient sources or a listener to

@@ -17,10 +17,11 @@ and hands back one of four results: an `Answer`, `Actions` the model wants
 taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
 could help.
 
-Two adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK and
-`nessy-inference-openai` on OpenAI's. The OpenAI one also reaches every
-service that speaks OpenAI's wire protocol, covered
-[below](#the-openai-compatible-universe).
+Four adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK,
+`nessy-inference-openai` on OpenAI's, `nessy-inference-gemini` on Google's
+java-genai SDK, and `nessy-inference-bedrock` on the AWS SDK's Converse API.
+The OpenAI one also reaches every service that speaks OpenAI's wire protocol,
+covered [below](#the-openai-compatible-universe).
 
 ## Which model
 
@@ -59,6 +60,8 @@ config, never a public builder:
 ```java
 InferenceProvider anthropic = AnthropicInferenceProvider.create(c -> c.apiKey(key));
 InferenceProvider openai = OpenAiInferenceProvider.create(c -> c.apiKey(key));
+InferenceProvider gemini = GeminiInferenceProvider.create(c -> c.apiKey(key));
+InferenceProvider bedrock = BedrockInferenceProvider.create(c -> c.region(Region.US_EAST_1));
 ```
 
 Each also has `fromEnv()`, which delegates to the SDK's own reading of the
@@ -111,6 +114,12 @@ when an adapter is on the classpath and its key is in the environment:
 | `anthropic.api-key` (`ANTHROPIC_API_KEY`) | `AnthropicInferenceProvider.create(c -> c.apiKey(key))` |
 | `openai.api-key` (`OPENAI_API_KEY`), with `openai.base-url` layered on when present | `OpenAiInferenceProvider` |
 | `xai.api-key` (`XAI_API_KEY`) | the OpenAI adapter at xAI's base URL, reporting `x_ai` as its provider name |
+| `gemini.api-key` (`GEMINI_API_KEY`) or `google.api-key` (`GOOGLE_API_KEY`) | `GeminiInferenceProvider.create(c -> c.apiKey(key))` |
+
+Bedrock contributes no bean, deliberately. AWS credentials are ambient on a
+large fraction of machines, so any mechanism that let their presence choose
+a provider would silently route an application with a stray profile to
+Bedrock. An application that wants Bedrock says so in code.
 
 Every one of these is `@ConditionalOnMissingBean(InferenceProvider.class)`:
 declare your own and they all back off. Set one vendor's key, or declare the
@@ -123,6 +132,50 @@ other Boot-wired setting; see [Spring Boot](spring-boot.md).
 `Repl.run` in `nessy-console` uses exactly this mechanism: it raises a
 minimal Boot context around itself so these auto-configurations run, and
 tears it down when the loop ends.
+
+## Gemini
+
+`nessy-inference-gemini` talks to the Gemini Developer API through Google's
+own [java-genai](https://github.com/googleapis/java-genai) SDK, with a plain
+API key. `fromEnv()` reads `GEMINI_API_KEY`, then `GOOGLE_API_KEY`, Google's
+documented pair in that order; `baseUrl(...)` reaches a proxy or a
+Gemini-compatible endpoint. Model names are the API's own, such as
+`gemini-2.5-pro`.
+
+Gemini ties an opaque **thought signature** to each function call it makes
+and wants it back with that call on the next turn. The adapter carries it as
+a `Block.Provider` block tagged `gcp.gemini` and replays it onto the rebuilt
+call; a call with no signature, one made before capture or by another
+vendor, is replayed with Google's documented skip-validation sentinel rather
+than refused, at the cost of reasoning continuity for that one call. Thought
+summaries are dropped: they are prose about the reasoning, not state the
+vendor wants back.
+
+A prompt the provider blocks outright, and a reply it stops for safety,
+recitation or prohibited content, both come back as a `Refusal` named by the
+vendor's own reason.
+
+## Bedrock
+
+`nessy-inference-bedrock` talks to Amazon Bedrock's Converse API through the
+AWS SDK for Java v2, so one adapter covers Claude, Nova, Llama, Mistral and
+the rest of the catalog: Converse is model-agnostic on the wire. There is no
+`apiKey`. Credentials come from the SDK's default chain (environment,
+profile files, instance metadata) or a `credentialsProvider(...)` you hand
+in; the region comes from `region(...)`, or with `fromEnv()` from
+`AWS_REGION` then `AWS_DEFAULT_REGION`. Model ids are Bedrock's, such as the
+cross-region inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+
+```java
+InferenceProvider bedrock = BedrockInferenceProvider.fromEnv();
+```
+
+Two things this wire does that the adapter absorbs. Roles must alternate, so
+a summary and the observation after it, both user-role, are merged into one
+message before sending. And a model that reasons here, Claude with extended
+thinking on, returns signed reasoning content that must go back untouched;
+it travels as a `Block.Provider` block tagged `aws.bedrock`. A guardrail
+intervention and a content filter come back as a `Refusal`.
 
 ## The OpenAI-compatible universe
 
@@ -179,6 +232,40 @@ InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
     `/v1/messages` itself. Passing `http://127.0.0.1:1234/v1` here produces
     a `/v1/v1/messages` double path that fails. Use the bare origin for the
     Anthropic adapter, and keep the `/v1` suffix for the OpenAI one.
+
+## Writing a provider
+
+An adapter is one method, and the four that ship are the pattern:
+
+```java
+public interface InferenceProvider {
+  InferenceResult infer(InferenceRequest request, AgentNarrator narrator);
+}
+```
+
+- Translate the request in a class of its own that never touches the
+  network, so the projection is testable without a key: summaries first, as
+  user-role text tagged with the turn range they stand for; then each turn
+  as its observation, its exchanges (the request for actions, then the
+  outcomes quoting the calls they answer) and its result; ambient blocks
+  into the system field, labelled by kind. Leave a refused turn out whole and
+  answer for a failed one, so two questions never run together.
+- Decide the shape of the reply on what the wire offers: a provider-level
+  stop or block is a `Refusal` named by the vendor's own reason; a reply with
+  tool calls is `Actions`, with any prose beside them as `Commentary`; prose
+  alone is an `Answer`; an empty reply is a `Fault` naming the finish reason.
+- Keep vendor state whole. Anything the vendor wants back untouched, a
+  thinking signature, a thought signature, travels as a `Block.Provider`
+  tagged with your provider name, and you replay only your own tag.
+- Catch the SDK's root exception and classify it into a `Failure`:
+  `Transient` when the vendor admits retrying may work (429, 5xx),
+  `Unknown` for a transport failure where the request may have been
+  processed, `Permanent` otherwise, and never `Rejected`, which is the one
+  classification that authorises dropping something a person said. Let a
+  bug in the adapter escape rather than recording it as the model's fault.
+- `AgentNarrator.narrate(event)` is how a streaming adapter reports deltas
+  as they arrive; an adapter that does not stream ignores it and nobody can
+  tell.
 
 ## What the engine records about a call
 

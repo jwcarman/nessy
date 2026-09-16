@@ -1,0 +1,257 @@
+package org.jwcarman.nessy.inference.gemini;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.google.genai.errors.ClientException;
+import com.google.genai.errors.GenAiIOException;
+import com.google.genai.errors.ServerException;
+import com.google.genai.types.BlockedReason;
+import com.google.genai.types.Candidate;
+import com.google.genai.types.Content;
+import com.google.genai.types.FinishReason;
+import com.google.genai.types.FunctionCall;
+import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.GenerateContentResponsePromptFeedback;
+import com.google.genai.types.Part;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Observation;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.spi.inference.InferenceContext;
+import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
+
+@DisplayName("The Gemini provider")
+class GeminiInferenceProviderTest {
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  private static InferenceRequest request() {
+    Turn open =
+        new Turn(
+            new TurnId(1),
+            new Observation(new Seq(1), List.of(new Block.Text("hi"))),
+            List.of(),
+            null,
+            0);
+    return new InferenceRequest(
+        new SystemPrompt("be brief"),
+        InferenceContext.of(List.of(open)),
+        List.of(),
+        new InferenceOptions("gemini-2.5-flash", 256));
+  }
+
+  private static GenerateContentResponse reply(FinishReason finish, Part... parts) {
+    return GenerateContentResponse.builder()
+        .candidates(
+            List.of(
+                Candidate.builder()
+                    .content(Content.builder().role("model").parts(List.of(parts)).build())
+                    .finishReason(finish)
+                    .build()))
+        .build();
+  }
+
+  private static InferenceResult infer(GenerateContentResponse response) {
+    GeminiClient client = new ScriptedClient(response, null);
+    return new GeminiInferenceProvider(client, MAPPER).infer(request());
+  }
+
+  private static Failure inferFailing(RuntimeException failure) {
+    GeminiClient client = new ScriptedClient(null, failure);
+    InferenceResult result = new GeminiInferenceProvider(client, MAPPER).infer(request());
+    assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+    return ((InferenceResult.Fault) result).failure();
+  }
+
+  /** A client with one reply, or one failure, and a record of whether it was closed. */
+  private record ScriptedClient(
+      GenerateContentResponse response, RuntimeException failure, AtomicBoolean closed)
+      implements GeminiClient {
+
+    ScriptedClient(GenerateContentResponse response, RuntimeException failure) {
+      this(response, failure, new AtomicBoolean());
+    }
+
+    @Override
+    public GenerateContentResponse generateContent(
+        String model, List<Content> contents, com.google.genai.types.GenerateContentConfig config) {
+      if (failure != null) {
+        throw failure;
+      }
+      return response;
+    }
+
+    @Override
+    public void close() {
+      closed.set(true);
+    }
+  }
+
+  @Nested
+  class WhatComesBack {
+
+    @Test
+    void prose_alone_is_an_answer() {
+      InferenceResult result = infer(reply(new FinishReason("STOP"), Part.fromText("hello")));
+
+      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hello"))));
+    }
+
+    @Test
+    void a_function_call_is_a_request_for_actions_with_its_signature_beside_it() {
+      Part call =
+          Part.builder()
+              .functionCall(
+                  FunctionCall.builder()
+                      .id("call_1")
+                      .name("depth")
+                      .args(Map.of("lake", "ness"))
+                      .build())
+              .thoughtSignature("sig".getBytes(StandardCharsets.UTF_8))
+              .build();
+
+      InferenceResult result =
+          infer(reply(new FinishReason("STOP"), Part.fromText("looking"), call));
+
+      assertThat(result).isInstanceOf(InferenceResult.Actions.class);
+      List<Block.ActionRequestContent> blocks = ((InferenceResult.Actions) result).blocks();
+      assertThat(blocks.get(0)).isEqualTo(new Block.Commentary("looking"));
+      assertThat(blocks.get(1))
+          .isEqualTo(new Block.ToolCall("call_1", "depth", "{\"lake\":\"ness\"}"));
+      assertThat(blocks.get(2)).isInstanceOf(Block.Provider.class);
+      assertThat(((Block.Provider) blocks.get(2)).vendor()).isEqualTo("gcp.gemini");
+      assertThat(((Block.Provider) blocks.get(2)).payload()).contains("call_1").contains("c2ln");
+    }
+
+    @Test
+    void a_call_without_an_id_is_given_one() {
+      Part call =
+          Part.builder()
+              .functionCall(FunctionCall.builder().name("depth").args(Map.of()).build())
+              .build();
+
+      InferenceResult result = infer(reply(new FinishReason("STOP"), call));
+
+      Block.ToolCall made = (Block.ToolCall) ((InferenceResult.Actions) result).blocks().getFirst();
+      assertThat(made.id().value()).startsWith("gemini-call-");
+    }
+
+    @Test
+    void a_thought_part_is_not_content() {
+      Part thought = Part.builder().text("hmm").thought(true).build();
+
+      InferenceResult result = infer(reply(new FinishReason("STOP"), thought, Part.fromText("hi")));
+
+      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("hi"))));
+    }
+
+    @Test
+    void a_safety_stop_is_a_refusal_named_by_the_vendor() {
+      InferenceResult result = infer(reply(new FinishReason("SAFETY")));
+
+      assertThat(result).isEqualTo(new InferenceResult.Refusal("SAFETY"));
+    }
+
+    @Test
+    void a_blocked_prompt_is_a_refusal_too() {
+      GenerateContentResponse blocked =
+          GenerateContentResponse.builder()
+              .promptFeedback(
+                  GenerateContentResponsePromptFeedback.builder()
+                      .blockReason(new BlockedReason("PROHIBITED_CONTENT"))
+                      .build())
+              .build();
+
+      assertThat(infer(blocked)).isEqualTo(new InferenceResult.Refusal("PROHIBITED_CONTENT"));
+    }
+
+    @Test
+    void an_empty_answer_is_a_fault_naming_the_finish_reason() {
+      InferenceResult result = infer(reply(new FinishReason("MAX_TOKENS")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("MAX_TOKENS");
+    }
+  }
+
+  @Nested
+  class WhatAFailureMeans {
+
+    @Test
+    void a_server_error_and_a_rate_limit_are_transient() {
+      assertThat(inferFailing(new ServerException(503, "UNAVAILABLE", "try later")))
+          .isInstanceOf(Failure.Transient.class);
+      assertThat(inferFailing(new ClientException(429, "RESOURCE_EXHAUSTED", "slow down")))
+          .isInstanceOf(Failure.Transient.class);
+    }
+
+    @Test
+    void any_other_client_error_is_permanent() {
+      assertThat(inferFailing(new ClientException(400, "INVALID_ARGUMENT", "bad request")))
+          .isInstanceOf(Failure.Permanent.class);
+    }
+
+    @Test
+    void a_transport_failure_is_unknown() {
+      assertThat(inferFailing(new GenAiIOException("connection reset")))
+          .isInstanceOf(Failure.Unknown.class);
+    }
+
+    @Test
+    void a_bug_in_the_adapter_is_not_dressed_up_as_the_model_failing() {
+      IllegalStateException bug = new IllegalStateException("a bug in here");
+      assertThatThrownBy(() -> inferFailing(bug)).isInstanceOf(IllegalStateException.class);
+    }
+  }
+
+  @Nested
+  class Configuration {
+
+    @Test
+    void closing_the_provider_closes_the_client_it_was_given() {
+      ScriptedClient client = new ScriptedClient(null, null);
+      new GeminiInferenceProvider(client, MAPPER).close();
+      assertThat(client.closed()).isTrue();
+    }
+
+    @Test
+    void a_client_the_application_handed_in_is_not_closed_by_the_provider() {
+      // The real SDK client is final and cannot be observed; GeminiClient.over is the seam, and
+      // owned=false is the branch a handed-in client takes.
+      GeminiClient wrapped =
+          GeminiClient.over(com.google.genai.Client.builder().apiKey("k").build(), false);
+      wrapped.close(); // no exception: nothing was closed
+    }
+
+    @Test
+    void without_a_key_the_config_refuses_to_build() {
+      assertThatThrownBy(() -> GeminiInferenceProvider.create(c -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("apiKey");
+    }
+
+    @Test
+    void the_name_is_the_vendors() {
+      assertThat(new GeminiInferenceProvider(new ScriptedClient(null, null), MAPPER).name())
+          .isEqualTo("Gemini");
+    }
+  }
+}

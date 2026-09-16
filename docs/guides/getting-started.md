@@ -61,7 +61,7 @@ application:
 InferenceProvider provider = AnthropicInferenceProvider.fromEnv();   // ANTHROPIC_API_KEY
 ```
 
-`nessy-inference-anthropic` and `nessy-inference-openai` ship one each. The
+Four ship: Anthropic, OpenAI, Gemini and Bedrock, one module each. The
 OpenAI one also speaks to anything with OpenAI's wire protocol, a local LM
 Studio included; see [Providers](providers.md).
 

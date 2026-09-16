@@ -164,7 +164,7 @@ add `nessy-spi`; an application building an agent depends on
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `AgentEvent`, `AgentEventListener` |
 | `nessy-spi` | adapter authors: `InferenceProvider`, and `Schemas` |
 | `nessy-engine` | the engine: `DefaultHarnessFactory`, the durable stores |
-| `nessy-inference-anthropic`, `nessy-inference-openai` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
+| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and every optional module's auto-configuration |
@@ -193,7 +193,7 @@ add `nessy-spi`; an application building an agent depends on
 | Memory: summaries, the tail and ambient, and a head summariser that runs itself | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Planning: a plan the model holds, and the family of patterns to come | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
-| Providers: two adapters, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
+| Providers: four adapters, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | Prompts: templates with holes, and sources for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
 | Events: listeners, the builder, and streams a browser can resume | [Events](https://jwcarman.github.io/nessy/guides/events/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |

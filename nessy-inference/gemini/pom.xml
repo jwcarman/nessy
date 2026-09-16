@@ -29,8 +29,9 @@
     <relativePath>../../pom.xml</relativePath>
   </parent>
 
-  <artifactId>nessy-model-gemini</artifactId>
-  <name>Nessy Model Gemini</name>
+  <artifactId>nessy-inference-gemini</artifactId>
+  <name>Nessy Inference Gemini</name>
+  <description>Google Gemini, through the java-genai SDK, as an InferenceProvider.</description>
 
   <dependencies>
     <dependency>
@@ -41,17 +42,14 @@
       <groupId>com.google.genai</groupId>
       <artifactId>google-genai</artifactId>
     </dependency>
-    <!-- The @AutoConfiguration door: no Boot BOM import here (see nessy-console/pom.xml's comment
-         on the same tradeoff) — the one Boot artifact this module actually uses, pinned directly. -->
     <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-autoconfigure</artifactId>
-      <version>${spring-boot.version}</version>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-test</artifactId>
-      <version>${spring-boot.version}</version>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -64,7 +62,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.model.gemini</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.inference.gemini</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

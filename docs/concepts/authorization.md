@@ -184,6 +184,11 @@ RiskAssessment.of(Likelihood.HIGH, Impact.MODERATE,
                   RiskFactors.DESTRUCTIVE, RiskFactors.IRREVERSIBLE);
 ```
 
+`RiskFactors` names the stock reasons, `DESTRUCTIVE`, `IRREVERSIBLE`,
+`EXTERNAL_WORLD`, `SPENDS_MONEY`, `TOUCHES_PII` and `READ_ONLY`; a
+`RiskFactor` is a name, so a domain adds its own. They are recorded with the
+assessment for the person to read, and do not change the level.
+
 `Likelihood`, `Impact` and `RiskLevel` are three separate five-value enums,
 deliberately: swapping a likelihood for an impact is then a compile error
 rather than a silent severity bug. `of` derives the level from NIST SP
@@ -228,6 +233,13 @@ Approver gate = PolicyApprover.create(config -> config
 A gate written in Java ships when the application ships. A gate written in
 Rego is data: reviewed by whoever owns the risk, versioned on its own, and
 changed without a release.
+
+Two seams shape the conversation with OPA. An `InputRenderer` builds the
+`input` document from the request (`standard(mapper)` is the field-by-field
+default that keeps the reply token out), and a `DecisionInterpreter` reads
+the result back into a `Verdict` (`effectStyle()` understands the
+`{"effect": ...}` shape below). Replace either when your Rego is shaped
+differently, and set `timeout` and `connectTimeout` for the call.
 
 ### Three verdicts
 

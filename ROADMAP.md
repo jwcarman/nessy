@@ -110,15 +110,13 @@ two copies of that work from colliding.
 
 ## Providers
 
-- **Gemini and Bedrock** — held out since the inference SPI changed; each
-  comes back ported to it.
 - **Reasoning controls on the OpenAI adapter** — `reasoning_effort` (and the
   thinking-off switch local runtimes honour) as provider settings, as the
   Anthropic adapter already has `thinking` and `promptCaching`.
 - **Azure OpenAI** *(spike first)* — likely a base-URL-and-auth story over the
   OpenAI module; the spike decides. Any OpenAI-shaped endpoint is already the
   OpenAI provider with a base URL and a provider name.
-- **Vertex AI** — Gemini's enterprise door, once Gemini is back.
+- **Vertex AI** — Gemini's enterprise door, as a `GeminiProviderConfig` option.
 - **Usage completeness** — cache-write token accounting.
 
 ## Triggers
