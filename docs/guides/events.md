@@ -51,7 +51,10 @@ AgentEventListener listener = AgentEventListener.of(on -> on
 
 `async()` tells it on a virtual thread per event. Order across events is
 not kept, which is right for work that reads the story rather than the
-event, and wrong for a stream a person is reading.
+event, and wrong for a stream a person is reading. Either way the listener runs
+on an engine thread that carries the trace current when the event was
+narrated, so what it does in response appears beneath the turn that caused
+it; see [Observability](observability.md#background-work).
 
 ## The builder
 

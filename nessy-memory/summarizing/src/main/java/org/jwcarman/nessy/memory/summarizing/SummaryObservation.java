@@ -12,11 +12,12 @@ import org.jwcarman.nessy.api.AgentType;
  * do, tagged with the agent type, which summariser ({@code head} or {@code episode}) and how it
  * came out.
  *
- * <p>A summary is triggered by a turn ending but runs later on a thread of its own, so it has no
- * parent and starts a trace of its own; the model call inside it is a {@code chat} span like any
- * other, nested here. Outcomes: {@code written}, {@code nothing} (another process got there first,
- * or the story had moved on), {@code lease-refused}, {@code fault} (the model would not answer) and
- * {@code empty} (it answered with nothing).
+ * <p>A summary is triggered by a turn ending and runs later on a thread of its own, but the engine
+ * carries the observation current at the turn's end onto that thread, so this span is a child of
+ * the turn's last effect, however long after it ran. The model call inside it is a {@code chat}
+ * span like any other, nested here. Outcomes: {@code written}, {@code nothing} (another process got
+ * there first, or the story had moved on), {@code lease-refused}, {@code fault} (the model would
+ * not answer) and {@code empty} (it answered with nothing).
  */
 public final class SummaryObservation {
 

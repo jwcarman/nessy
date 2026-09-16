@@ -91,7 +91,11 @@ class EpisodeSummarizerTest {
     observations.observationConfig().observationHandler(recorded);
     factory =
         new DefaultHarnessFactory(
-            engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
+            engine ->
+                engine
+                    .dataSource(dataSource)
+                    .inference(model, InferenceOptions.of("m"))
+                    .observations(observations));
     episodes =
         JdbcEpisodes.create(
             c -> c.dataSource(dataSource).agentType(Calls.TYPE).embedder(embedder).shown(2));
@@ -188,6 +192,16 @@ class EpisodeSummarizerTest {
     assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
     assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))
         .isEqualTo("stop");
+    // Beneath the turn that caused it: the summary was told about on the engine's threads, and
+    // the observation current when the turn ended travelled with the event.
+    Observation.Context summary =
+        recorded.stopped.stream()
+            .filter(c -> c.getName().equals(SummaryObservation.NAME))
+            .findFirst()
+            .orElseThrow();
+    assertThat(summary.getParentObservation()).isNotNull();
+    assertThat(summary.getParentObservation().getContextView().getName())
+        .isIn("nessy.effect", "nessy.turn");
   }
 
   @Test

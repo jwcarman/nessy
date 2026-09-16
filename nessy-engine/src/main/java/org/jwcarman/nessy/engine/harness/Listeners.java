@@ -1,5 +1,7 @@
 package org.jwcarman.nessy.engine.harness;
 
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +24,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Isolated.</b> A listener that throws is logged and the rest still hear. Nothing a listener
  * does can fail a turn.
+ *
+ * <p><b>In the trace.</b> Both hops -- onto this harness's telling thread, and from there onto the
+ * thread of an {@link AgentEventListener.Async} listener -- carry the observation that was current
+ * when the event was narrated, which is the turn's or the effect's. What a listener does in
+ * response, a summary say, is then a child of what it responded to, however long after.
  */
 final class Listeners implements Narrator, AutoCloseable {
 
@@ -31,8 +38,20 @@ final class Listeners implements Narrator, AutoCloseable {
   // made still hears it -- and then this harness's own.
   private final List<AgentEventListener> engineWide;
   private final List<AgentEventListener> own;
+  private static final ContextSnapshotFactory SNAPSHOTS = ContextSnapshotFactory.builder().build();
+
   private final ExecutorService teller =
-      Executors.newSingleThreadExecutor(Thread.ofVirtual().name("nessy-narration").factory());
+      propagating(
+          Executors.newSingleThreadExecutor(Thread.ofVirtual().name("nessy-narration").factory()));
+
+  // One thread per event per async listener, as async() promises; still in the trace.
+  private final ExecutorService asyncTeller =
+      propagating(
+          Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("nessy-listener").factory()));
+
+  private static ExecutorService propagating(ExecutorService executor) {
+    return ContextExecutorService.wrap(executor, SNAPSHOTS::captureAll);
+  }
 
   Listeners(List<AgentEventListener> engineWide, List<AgentEventListener> own) {
     this.engineWide = engineWide;
@@ -53,8 +72,13 @@ final class Listeners implements Narrator, AutoCloseable {
     }
   }
 
-  private static void tell(
+  private void tell(
       AgentEventListener listener, AgentType agentType, AgentId agentId, AgentEvent event) {
+    if (listener instanceof AgentEventListener.Async async) {
+      // Its own thread, as it asked, but one of ours: the trace goes with it.
+      asyncTeller.execute(() -> async.tell(agentType, agentId, event));
+      return;
+    }
     try {
       listener.on(agentType, agentId, event);
     } catch (RuntimeException e) {
@@ -71,5 +95,6 @@ final class Listeners implements Narrator, AutoCloseable {
   @Override
   public void close() {
     teller.shutdown();
+    asyncTeller.shutdown();
   }
 }

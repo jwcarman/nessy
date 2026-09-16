@@ -28,26 +28,44 @@ public interface AgentEventListener {
    * the story rather than the event, such as a summariser; wrong for a stream a person is reading.
    */
   default AgentEventListener async() {
-    AgentEventListener self = this;
-    return (agentType, agentId, event) ->
-        Thread.ofVirtual()
-            .name("nessy-listener")
-            .start(
-                () -> {
-                  try {
-                    self.on(agentType, agentId, event);
-                  } catch (RuntimeException e) {
-                    // On a thread of its own there is nobody above to catch this: the engine's
-                    // isolation ended when the hand-off did. Logged as the engine would have.
-                    LoggerFactory.getLogger(AgentEventListener.class)
-                        .warn(
-                            "[{}] agent {}: a listener threw on {}; carrying on",
-                            agentType.value(),
-                            agentId.value(),
-                            event.getClass().getSimpleName(),
-                            e);
-                  }
-                });
+    return this instanceof Async ? this : new Async(this);
+  }
+
+  /**
+   * A listener asked to be told on a thread of its own; see {@link #async()}.
+   *
+   * <p>A type rather than a lambda so the engine can see the request and honour it on an executor
+   * of its own, one that carries the trace of the turn being told about onto the listener's thread
+   * -- a summary written because a turn ended then appears beneath that turn. Told directly, with
+   * no engine in between, it starts the thread itself and carries nothing.
+   */
+  record Async(AgentEventListener delegate) implements AgentEventListener {
+
+    public Async {
+      Objects.requireNonNull(delegate, "delegate must not be null");
+    }
+
+    @Override
+    public void on(AgentType agentType, AgentId agentId, AgentEvent event) {
+      Thread.ofVirtual().name("nessy-listener").start(() -> tell(agentType, agentId, event));
+    }
+
+    /**
+     * The delegate, told, with a throw logged rather than lost: on its own thread nobody else can.
+     */
+    public void tell(AgentType agentType, AgentId agentId, AgentEvent event) {
+      try {
+        delegate.on(agentType, agentId, event);
+      } catch (RuntimeException e) {
+        LoggerFactory.getLogger(AgentEventListener.class)
+            .warn(
+                "[{}] agent {}: a listener threw on {}; carrying on",
+                agentType.value(),
+                agentId.value(),
+                event.getClass().getSimpleName(),
+                e);
+      }
+    }
   }
 
   /** Hears nothing. */

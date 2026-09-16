@@ -48,8 +48,11 @@ readable on the span.
 ## Background work
 
 A summary is triggered by a turn ending but written later, on a thread of its
-own, so it cannot be a child of the turn's trace. It is a trace of its own
-instead: each attempt that found work becomes a `nessy.summary` observation
+own. It is still part of the turn's trace: the engine tells listeners on
+context-propagating executors, so the observation current when the turn
+ended, the effect that ended it, travels with the event, and a listener
+marked `async()` runs on an engine thread that inherits it too. Each attempt
+that found work becomes a `nessy.summary` observation beneath that effect
 (contextual name `nessy.summary head` or `nessy.summary episode`) tagged with
 `nessy.agent.type`, `nessy.summary.kind` and, once it is over,
 `nessy.summary.outcome`: `written`, `nothing` when another process got there
