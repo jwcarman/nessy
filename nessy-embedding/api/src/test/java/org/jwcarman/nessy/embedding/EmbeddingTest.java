@@ -19,10 +19,14 @@ class EmbeddingTest {
     Embedding same = new Embedding("m", new float[] {1, 0});
     Embedding other = new Embedding("m", new float[] {0, 1});
 
-    assertThat(one).isEqualTo(same).hasSameHashCodeAs(same).isNotEqualTo(other);
+    assertThat(one)
+        .isEqualTo(same)
+        .hasSameHashCodeAs(same)
+        .isNotEqualTo(other)
+        .hasToString("Embedding[model=m, dimension=2]");
     assertThat(one.dimension()).isEqualTo(2);
-    assertThat(one).hasToString("Embedding[model=m, dimension=2]");
-    assertThat(one).isNotEqualTo("m");
+    // equals(Object) refuses anything that is not an Embedding, and says so without throwing.
+    assertThat(one.equals(new Object())).isFalse();
   }
 
   @Test

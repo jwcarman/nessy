@@ -227,8 +227,8 @@ public class EpisodeSummarizer {
   record Titled(String title, String summary) {
 
     private static final Pattern LABEL = Pattern.compile("^(?i)title\\s*:\\s*");
-    private static final Pattern DRESSING =
-        Pattern.compile("(?:^[\\s*_\"'`#]+)|(?:[\\s*_\"'`#]+$)");
+    private static final Pattern LEADING_DRESSING = Pattern.compile("^[\\s*_\"'`#]+");
+    private static final Pattern TRAILING_DRESSING = Pattern.compile("[\\s*_\"'`#]+$");
 
     static Titled parse(String text) {
       String whole = text.strip();
@@ -237,7 +237,8 @@ public class EpisodeSummarizer {
         return new Titled(null, whole);
       }
       String title = LABEL.matcher(lines[0].strip()).replaceFirst("");
-      title = DRESSING.matcher(title).replaceAll("");
+      title = LEADING_DRESSING.matcher(title).replaceFirst("");
+      title = TRAILING_DRESSING.matcher(title).replaceFirst("");
       String summary = lines[1].strip();
       if (title.isBlank() || summary.isBlank()) {
         return new Titled(null, whole);
