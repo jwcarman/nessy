@@ -1,19 +1,24 @@
 package org.jwcarman.nessy.inference.anthropic;
 
 import com.anthropic.client.AnthropicClient;
+import com.anthropic.core.http.StreamResponse;
 import com.anthropic.errors.AnthropicException;
 import com.anthropic.errors.AnthropicIoException;
 import com.anthropic.errors.AnthropicRetryableException;
 import com.anthropic.errors.InternalServerException;
 import com.anthropic.errors.RateLimitException;
+import com.anthropic.helpers.MessageAccumulator;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.RawContentBlockDelta;
+import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.ToolUseBlock;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -32,9 +37,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>Holds no model name.</b> Which model to call travels in {@link InferenceOptions}, so one
  * client serves several agent types asking for different models.
  *
- * <p><b>Does not stream, so it narrates nothing and answers all at once.</b> A caller cannot tell
- * it apart from one that does; narrating deltas later is a change to this class and to nothing
- * else.
+ * <p><b>Streams, and narrates as it goes.</b> Every call is made through the streaming endpoint;
+ * each text delta is narrated as a {@link AgentEvent.ContentDelta} and each thinking delta as a
+ * {@link AgentEvent.ThinkingDelta} the moment it arrives. The events are folded back into one
+ * message by the SDK's own accumulator, and the reply is read from that exactly as a non-streaming
+ * one would be: the engine receives one result, and only the person watching can tell.
  *
  * <p><b>Extended thinking round-trips.</b> What the model reasoned comes back as a {@link
  * Block.Provider} block carrying this vendor's own payload, signature included, and goes out again
@@ -97,12 +104,51 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    */
   @Override
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
-    try {
-      Message message =
-          client.messages().create(AnthropicRequests.toParams(request, features, mapper));
+    Objects.requireNonNull(narrator, "narrator must not be null");
+    try (StreamResponse<RawMessageStreamEvent> stream =
+        client.messages().createStreaming(AnthropicRequests.toParams(request, features, mapper))) {
+      MessageAccumulator accumulator = MessageAccumulator.create();
+      boolean[] any = {false};
+      stream.stream()
+          .forEach(
+              event -> {
+                any[0] = true;
+                accumulator.accumulate(event);
+                narrate(event, narrator);
+              });
+      if (!any[0]) {
+        return new InferenceResult.Fault(new Failure.Permanent("model returned no message"));
+      }
+      Message message;
+      try {
+        message = accumulator.message();
+      } catch (IllegalStateException incomplete) {
+        // The stream closed before message_stop: the SDK will not fold half a message, and
+        // neither should this adapter.
+        return new InferenceResult.Fault(
+            new Failure.Permanent(
+                "the stream ended before the answer was complete: " + incomplete.getMessage()));
+      }
       return read(message);
     } catch (AnthropicException e) {
       return new InferenceResult.Fault(classify(e));
+    }
+  }
+
+  /**
+   * What a person watching is told as each delta lands: text, and thinking. Tool-input fragments
+   * are not narrated -- half a JSON argument is not something anybody can watch -- and signatures
+   * are the vendor's business.
+   */
+  private static void narrate(RawMessageStreamEvent event, AgentNarrator narrator) {
+    if (!event.isContentBlockDelta()) {
+      return;
+    }
+    RawContentBlockDelta delta = event.asContentBlockDelta().delta();
+    if (delta.isText() && !delta.asText().text().isEmpty()) {
+      narrator.narrate(new AgentEvent.ContentDelta(delta.asText().text()));
+    } else if (delta.isThinking() && !delta.asThinking().thinking().isEmpty()) {
+      narrator.narrate(new AgentEvent.ThinkingDelta(delta.asThinking().thinking()));
     }
   }
 

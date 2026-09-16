@@ -23,6 +23,7 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.http.Headers;
+import com.anthropic.core.http.StreamResponse;
 import com.anthropic.errors.AnthropicInvalidDataException;
 import com.anthropic.errors.AnthropicIoException;
 import com.anthropic.errors.AnthropicRetryableException;
@@ -34,22 +35,38 @@ import com.anthropic.errors.RateLimitException;
 import com.anthropic.errors.UnauthorizedException;
 import com.anthropic.errors.UnexpectedStatusCodeException;
 import com.anthropic.errors.UnprocessableEntityException;
+import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.DirectCaller;
+import com.anthropic.models.messages.InputJsonDelta;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.MessageDeltaUsage;
+import com.anthropic.models.messages.RawContentBlockDelta;
+import com.anthropic.models.messages.RawContentBlockDeltaEvent;
+import com.anthropic.models.messages.RawContentBlockStartEvent;
+import com.anthropic.models.messages.RawContentBlockStopEvent;
+import com.anthropic.models.messages.RawMessageDeltaEvent;
+import com.anthropic.models.messages.RawMessageStartEvent;
+import com.anthropic.models.messages.RawMessageStopEvent;
+import com.anthropic.models.messages.RawMessageStreamEvent;
+import com.anthropic.models.messages.SignatureDelta;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlock;
 import com.anthropic.models.messages.ThinkingBlock;
+import com.anthropic.models.messages.ThinkingDelta;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.Usage;
 import com.anthropic.services.blocking.MessageService;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -63,6 +80,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
 
 class AnthropicInferenceProviderTest {
 
@@ -86,6 +104,16 @@ class AnthropicInferenceProviderTest {
    * network.
    */
   private static AnthropicClient fakeClient(Function<MessageCreateParams, Message> answer) {
+    return fakeStreamingClient(params -> eventsOf(answer.apply(params)));
+  }
+
+  /**
+   * A stream over the events the test hands in: the provider streams, so this is the call it makes.
+   * The events are what the SDK's accumulator folds back into a message, and what is narrated on
+   * the way.
+   */
+  private static AnthropicClient fakeStreamingClient(
+      Function<MessageCreateParams, List<RawMessageStreamEvent>> answer) {
     var messageService =
         (MessageService)
             Proxy.newProxyInstance(
@@ -96,8 +124,20 @@ class AnthropicInferenceProviderTest {
                   // proxy intercepts every interface method call itself rather than letting the
                   // default method's body run and delegate to the two-arg abstract overload -- so
                   // this must match on name alone, not arity.
-                  if ("create".equals(method.getName())) {
-                    return answer.apply((MessageCreateParams) args[0]);
+                  if ("createStreaming".equals(method.getName())) {
+                    List<RawMessageStreamEvent> events =
+                        answer.apply((MessageCreateParams) args[0]);
+                    return new StreamResponse<RawMessageStreamEvent>() {
+                      @Override
+                      public Stream<RawMessageStreamEvent> stream() {
+                        return events.stream();
+                      }
+
+                      @Override
+                      public void close() {
+                        // Nothing held open.
+                      }
+                    };
                   }
                   throw new UnsupportedOperationException(method.getName());
                 });
@@ -111,6 +151,105 @@ class AnthropicInferenceProviderTest {
               }
               throw new UnsupportedOperationException(method.getName());
             });
+  }
+
+  /**
+   * A message cut into the events a server would have streamed it as: message_start with an empty
+   * message, then for each block a start with an empty block of its kind, its text or thinking or
+   * tool input a few characters at a time, and a stop; then message_delta with the stop reason, and
+   * message_stop.
+   */
+  private static List<RawMessageStreamEvent> eventsOf(Message message) {
+    List<RawMessageStreamEvent> events = new ArrayList<>();
+    events.add(
+        RawMessageStreamEvent.ofMessageStart(
+            RawMessageStartEvent.builder()
+                .message(
+                    message.toBuilder().content(List.of()).stopReason(Optional.empty()).build())
+                .build()));
+    List<ContentBlock> content = message.content();
+    for (int i = 0; i < content.size(); i++) {
+      ContentBlock block = content.get(i);
+      RawContentBlockStartEvent.Builder start = RawContentBlockStartEvent.builder().index(i);
+      List<RawContentBlockDelta> deltas = new ArrayList<>();
+      if (block.isText()) {
+        start.contentBlock(text(""));
+        pieces(block.asText().text())
+            .forEach(piece -> deltas.add(RawContentBlockDelta.ofText(piece)));
+      } else if (block.isThinking()) {
+        start.contentBlock(ThinkingBlock.builder().thinking("").signature("").build());
+        pieces(block.asThinking().thinking())
+            .forEach(
+                piece ->
+                    deltas.add(
+                        RawContentBlockDelta.ofThinking(
+                            ThinkingDelta.builder().thinking(piece).build())));
+        deltas.add(
+            RawContentBlockDelta.ofSignature(
+                SignatureDelta.builder().signature(block.asThinking().signature()).build()));
+      } else if (block.isRedactedThinking()) {
+        start.contentBlock(block.asRedactedThinking());
+      } else if (block.isToolUse()) {
+        ToolUseBlock call = block.asToolUse();
+        start.contentBlock(
+            ToolUseBlock.builder()
+                .id(call.id())
+                .name(call.name())
+                .input(JsonValue.from(Map.of()))
+                .caller(DirectCaller.builder().build())
+                .build());
+        pieces(JSON.writeValueAsString(call._input().convert(Map.class)))
+            .forEach(
+                piece ->
+                    deltas.add(
+                        RawContentBlockDelta.ofInputJson(
+                            InputJsonDelta.builder().partialJson(piece).build())));
+      } else {
+        throw new IllegalArgumentException("no stream shape for " + block);
+      }
+      events.add(RawMessageStreamEvent.ofContentBlockStart(start.build()));
+      for (RawContentBlockDelta delta : deltas) {
+        events.add(
+            RawMessageStreamEvent.ofContentBlockDelta(
+                RawContentBlockDeltaEvent.builder().index(i).delta(delta).build()));
+      }
+      events.add(
+          RawMessageStreamEvent.ofContentBlockStop(
+              RawContentBlockStopEvent.builder().index(i).build()));
+    }
+    events.add(
+        RawMessageStreamEvent.ofMessageDelta(
+            RawMessageDeltaEvent.builder()
+                .delta(
+                    RawMessageDeltaEvent.Delta.builder()
+                        .stopReason(message.stopReason())
+                        .stopSequence(Optional.empty())
+                        .container(Optional.empty())
+                        .stopDetails(message.stopDetails())
+                        .build())
+                .usage(
+                    MessageDeltaUsage.builder()
+                        .outputTokens(1L)
+                        .inputTokens(Optional.empty())
+                        .cacheCreationInputTokens(Optional.empty())
+                        .cacheReadInputTokens(Optional.empty())
+                        .serverToolUse(Optional.empty())
+                        .outputTokensDetails(Optional.empty())
+                        .build())
+                .build()));
+    events.add(RawMessageStreamEvent.ofMessageStop(RawMessageStopEvent.builder().build()));
+    return events;
+  }
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
+
+  /** Five characters at a time, so a stream of them is several events. */
+  private static List<String> pieces(String text) {
+    List<String> pieces = new ArrayList<>();
+    for (int i = 0; i < text.length(); i += 5) {
+      pieces.add(text.substring(i, Math.min(text.length(), i + 5)));
+    }
+    return pieces;
   }
 
   /** A reply carrying these content blocks and nothing else of interest. */
@@ -188,6 +327,80 @@ class AnthropicInferenceProviderTest {
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
     return ((InferenceResult.Fault) result).failure();
+  }
+
+  @Nested
+  class WhatIsNarrated {
+
+    private final List<AgentEvent> narrated = new ArrayList<>();
+
+    private InferenceResult inferNarrating(Message message) {
+      return new AnthropicProviderConfig()
+          .client(fakeClient(params -> message))
+          .build()
+          .infer(REQUEST, narrated::add);
+    }
+
+    @Test
+    void text_and_thinking_are_narrated_as_they_arrive_and_the_reply_is_read_whole() {
+      InferenceResult result =
+          inferNarrating(
+              reply()
+                  .addContent(
+                      ThinkingBlock.builder().thinking("hmm, a lake").signature("sig").build())
+                  .addContent(text("a lake monster"))
+                  .build());
+
+      assertThat(narrated)
+          .containsExactly(
+              new AgentEvent.ThinkingDelta("hmm, "),
+              new AgentEvent.ThinkingDelta("a lak"),
+              new AgentEvent.ThinkingDelta("e"),
+              new AgentEvent.ContentDelta("a lak"),
+              new AgentEvent.ContentDelta("e mon"),
+              new AgentEvent.ContentDelta("ster"));
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .contains(new Block.Text("a lake monster"));
+    }
+
+    @Test
+    void tool_input_fragments_are_not_narrated_and_an_empty_stream_is_a_fault() {
+      InferenceResult calls =
+          inferNarrating(
+              reply()
+                  .addContent(use("toolu_1", "days_until", Map.of("date", "2026-12-25")))
+                  .build());
+
+      assertThat(narrated).isEmpty();
+      assertThat(calls).isInstanceOf(InferenceResult.Actions.class);
+
+      InferenceResult nothing =
+          new AnthropicProviderConfig()
+              .client(fakeStreamingClient(params -> List.of()))
+              .build()
+              .infer(REQUEST, narrated::add);
+      assertThat(nothing)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
+    }
+
+    @Test
+    void a_stream_that_stops_early_is_a_fault_rather_than_half_an_answer() {
+      List<RawMessageStreamEvent> cut =
+          eventsOf(reply().addContent(text("a lake monster")).build()).subList(0, 3);
+      InferenceResult result =
+          new AnthropicProviderConfig()
+              .client(fakeStreamingClient(params -> cut))
+              .build()
+              .infer(REQUEST, narrated::add);
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).contains("ended before"));
+    }
   }
 
   @Nested
