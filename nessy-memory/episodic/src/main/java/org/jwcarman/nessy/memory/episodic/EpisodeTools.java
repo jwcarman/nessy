@@ -63,9 +63,9 @@ public final class EpisodeTools {
   }
 
   static final String NONE_OPEN =
-      "No episode is open. If this message starts a piece of work -- a topic, task or request"
-          + " that will take more than a passing answer -- begin one with begin_episode before"
-          + " answering.";
+      "No episode is open. If this message starts a new topic, task or request, begin one with"
+          + " begin_episode before answering, however small it looks: episodes are how this"
+          + " conversation is remembered once it is long, and turns outside one are forgotten.";
 
   /** What the model sees: numbers, titles and spans, which is under way, and the question. */
   private static String render(List<Episode> all) {
