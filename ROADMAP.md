@@ -97,16 +97,33 @@ two copies of that work from colliding.
 
 ## Delegation
 
-- **Subagents** — bring delegation back on the current engine: a child agent
-  defined inside its parent, typed delegation inputs (a subagent's input record
-  is its tool schema), and parking so approval-gated delegation composes with
-  a child that parks.
-- **Parallel fan-out** — a turn's delegations run concurrently instead of in
-  order.
-- **Child progress streaming** — a child's events forwarded into the parent's
-  listeners.
-- **Typed delegation output** — structured results back to the parent.
-- **Remote delegation (A2A)** — the cross-harness mirror of local subagents.
+Not a tool. A delegation built as a tool that defers, a side table from child
+to parent token, and a listener under a lease closing the loop would work and
+would be torn out the moment fan-out or lineage was wanted. Delegation goes in
+the fold, where every other obligation lives:
+
+- **A `Delegate` effect** beside `Infer`, `CallTool` and `Approve`: the fold
+  emits "open agent type X with this observation on behalf of my call C",
+  through the same outbox row, terms and recovery as any effect.
+- **Lineage on the child**: parent type, id and the call it answers, two
+  nullable columns on the state row. A depth cap is a count up the chain, a
+  cycle is a lookup, and an operator can ask whose work this is.
+- **The child's ending is the parent's outcome**: a child that folds to
+  answered, failed or refused and has a parent delivers a tool outcome to the
+  parent through the same path replies use. No token in the middle.
+- **Fan-out falls out**: one advance may carry several `Delegate` effects and
+  the parent waits on several outstanding calls, which `AwaitingActions`
+  already models; speculative fan-out is keeping the first and terminating
+  the rest.
+- **Child progress in the parent's stream**: a listener republishing under
+  the parent's id, free once lineage exists.
+- **Typed delegation output** — a child that must end with a structured
+  report needs a schema-constrained answer from the provider, designed once
+  for delegation and for evals.
+- **Remote delegation (A2A)** — the cross-harness mirror, later.
+
+Built after episodes and replanning, because hierarchical planning is what
+makes delegation earn its keep.
 
 ## Providers
 

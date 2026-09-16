@@ -39,6 +39,34 @@ class ReplRunsTest {
     POSTGRES.stop();
   }
 
+  private record Ping() {}
+
+  /** A tool granted on the way in, so the grant path of the bootstrap is walked. */
+  private static final class PingTool implements org.jwcarman.nessy.api.tool.Tool<Ping> {
+    @Override
+    public Class<Ping> inputType() {
+      return Ping.class;
+    }
+
+    @Override
+    public org.jwcarman.nessy.api.tool.ToolName name() {
+      return new org.jwcarman.nessy.api.tool.ToolName("ping");
+    }
+
+    @Override
+    public String description() {
+      return "pings";
+    }
+
+    @Override
+    public org.jwcarman.nessy.api.Awaited<org.jwcarman.nessy.api.tool.ToolResult> call(
+        org.jwcarman.nessy.api.tool.ToolCallRequest<Ping> request) {
+      return org.jwcarman.nessy.api.Awaited.ready(
+          org.jwcarman.nessy.api.tool.ToolResult.ok(
+              new org.jwcarman.nessy.api.block.Block.Text("pong")));
+    }
+  }
+
   private static PGSimpleDataSource database() {
     PGSimpleDataSource dataSource = new PGSimpleDataSource();
     dataSource.setUrl(POSTGRES.getJdbcUrl());
@@ -57,6 +85,7 @@ class ReplRunsTest {
             .farewell("bye.")
             .dataSource(database())
             .maxTokens(64)
+            .tool(new PingTool())
             .systemPrompt("You are a test assistant.");
 
     Repl.run(config, console);
@@ -64,6 +93,19 @@ class ReplRunsTest {
     assertThat(console.written()).startsWith("nessy test").contains("bye.");
     // The provider is a closed port, so the one turn it was asked for failed, and said so.
     assertThat(console.written()).contains("failed");
+  }
+
+  @Test
+  @DisplayName("says so when no model is named")
+  void it_says_when_there_is_no_model() {
+    System.clearProperty("nessy.model");
+    try {
+      FakeConsole console = new FakeConsole("/exit");
+      Repl.run(new ReplConfig().dataSource(database()), console);
+      assertThat(console.written()).contains("no model is configured");
+    } finally {
+      System.setProperty("nessy.model", "a-model");
+    }
   }
 
   @Test
