@@ -146,6 +146,44 @@ The contrast between the two is deliberate. A note is too large to resend,
 so the notebook pays for addressability with minted ids; a plan is not, so
 it gets idempotence for free.
 
+## Embeddings
+
+Relevance is the end state for every store on this page: the episodes, notes
+and lessons that bear on what the agent is doing now, chosen by meaning, and
+the rest reachable on demand. `nessy-embedding-api` is the seam for that,
+kept apart from inference on purpose: not every inference vendor embeds, and
+the embedding model belongs to the store that holds the vectors, not to the
+agent that talks, because every vector in a table must come from one model.
+
+```java
+public interface Embedder {
+  String model();
+  int dimension();
+  Embedding embed(String text);
+  List<Embedding> embed(List<String> texts);
+}
+```
+
+`nessy-embedding-openai` is the first embedder, over OpenAI's endpoint and,
+with a base URL, every OpenAI-compatible one, which is how a local model such
+as `nomic-embed-text` on Ollama or LM Studio is reached. It is one model at
+one dimension, decided where it is built, because a store's index is sized
+by it.
+
+```java
+Embedder embedder = OpenAiEmbedder.create(c -> c
+        .fromEnv()
+        .model("text-embedding-3-small")
+        .dimension(512));
+```
+
+An `Embedding` carries its model's name and compares by content; its
+`similarity` is the cosine between two vectors and refuses a pair from
+different models. The stores that rank by relevance, and the `pgvector`
+columns behind them, are the roadmap's embeddings-ranked recall item; until
+then the notebook and the episodes rank by recency and let the model recall
+by title.
+
 ## Writing your own
 
 A `Summarizer` and an `AmbientSource` are each one method, and both may do

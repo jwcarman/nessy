@@ -60,6 +60,7 @@
     <module>nessy-engine</module>
     <module>nessy-lease</module>
     <module>nessy-prompt</module>
+    <module>nessy-embedding</module>
     <module>nessy-inference</module>
     <module>nessy-spring-boot</module>
     <module>nessy-memory</module>

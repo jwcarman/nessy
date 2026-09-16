@@ -37,8 +37,13 @@ summarisers; the plan lives under [Planning](#planning).
   conversations (failures always, successes opt-in) and writes durable lessons
   into the agent's Notebook; the Notebook learns authorship (`source`) so an
   agent can't erase its own performance reviews.
-- **Embeddings-ranked recall** — semantic retrieval over Notebook entries and
-  transcripts; today's recall is model-gated via the index.
+- **Embeddings-ranked recall** — semantic retrieval over notes, episodes and
+  lessons. The `Embedder` seam shipped 2026-09-16 as `nessy-embedding-api`
+  with an OpenAI-compatible embedder beside it; what remains is `pgvector`
+  columns on the stores, a current-turn parameter on `Summarizer` and
+  `AmbientSource` so a store knows what to rank against, more embedders
+  (Gemini, an in-process ONNX model, Bedrock, Voyage), and a `Reranker` seam
+  later. Recall degrades to recency and titles when no embedder is present.
 - **Lesson retention** — pruning, capping, or expiry policies for notebook
   entries, before reflection's index grows without bound.
 - **Blackboard** — a shared, structured working memory several agents (or
