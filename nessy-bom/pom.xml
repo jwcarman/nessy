@@ -84,6 +84,21 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-embedding-gemini</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-embedding-bedrock</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-embedding-voyage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-inference-openai</artifactId>
                 <version>${project.version}</version>
             </dependency>

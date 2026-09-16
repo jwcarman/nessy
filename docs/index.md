@@ -130,7 +130,7 @@ See [Authorization](concepts/authorization.md).
 | `nessy-spring-boot-starter` | Boot applications: one dependency, no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans behind it, and every optional module's auto-configuration |
 | `nessy-prompt`, `nessy-prompt-spring`, `nessy-prompt-mustache` | prompts as templates, and two engines |
-| `nessy-embedding-api`, `nessy-embedding-openai` | text into vectors: the `Embedder` seam, and OpenAI's endpoint or any OpenAI-compatible one |
+| `nessy-embedding-api`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | agents that keep notes |
 | `nessy-memory-summarizing` | long-lived agents: one rolling summary per agent, replaced as the story grows |
 | `nessy-planning` | agents that write a plan and work through it |

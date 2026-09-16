@@ -35,5 +35,8 @@
   <modules>
     <module>api</module>
     <module>openai</module>
+    <module>gemini</module>
+    <module>bedrock</module>
+    <module>voyage</module>
   </modules>
 </project>

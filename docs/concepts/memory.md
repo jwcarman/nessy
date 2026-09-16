@@ -164,11 +164,19 @@ public interface Embedder {
 }
 ```
 
-`nessy-embedding-openai` is the first embedder, over OpenAI's endpoint and,
-with a base URL, every OpenAI-compatible one, which is how a local model such
-as `nomic-embed-text` on Ollama or LM Studio is reached. It is one model at
-one dimension, decided where it is built, because a store's index is sized
-by it.
+Four embedders ship, each one model at one dimension decided where it is
+built, because a store's index is sized by it:
+
+| Module | Reaches | Default model |
+|---|---|---|
+| `nessy-embedding-openai` | OpenAI, and with a base URL every OpenAI-compatible endpoint, which is how a local `nomic-embed-text` on Ollama or LM Studio is reached | `text-embedding-3-small` |
+| `nessy-embedding-gemini` | the Gemini Developer API, through java-genai | `gemini-embedding-001` |
+| `nessy-embedding-bedrock` | Amazon Titan and Cohere models on Bedrock, through `InvokeModel` | `amazon.titan-embed-text-v2:0` |
+| `nessy-embedding-voyage` | Voyage AI, over plain HTTP: the partner Anthropic points to, having no embeddings of its own | `voyage-3.5` |
+
+Each batches where its vendor allows, puts the reply back in the order asked,
+refuses a short reply rather than padding it, and has a live test tagged
+`live` that runs when the vendor's key is in the environment.
 
 ```java
 Embedder embedder = OpenAiEmbedder.create(c -> c

@@ -169,7 +169,7 @@ add `nessy-spi`; an application building an agent depends on
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and every optional module's auto-configuration |
 | `nessy-prompt`, `nessy-prompt-spring`, `nessy-prompt-mustache` | prompts as templates, and two engines |
-| `nessy-embedding-api`, `nessy-embedding-openai` | text into vectors: the `Embedder` seam, and OpenAI's endpoint or any OpenAI-compatible one |
+| `nessy-embedding-api`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
 | `nessy-memory-summarizing` | one rolling summary per agent, replaced as the story grows |
 | `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
