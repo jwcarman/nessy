@@ -13,6 +13,23 @@ spring:
 server:
   shutdown: graceful
 
+# Every turn, effect, model call, tool call and background summary is a span; they go to an OTLP
+# collector such as grafana/otel-lgtm (docker run -p 3000:3000 -p 4318:4318 grafana/otel-lgtm),
+# then Grafana on :3000, Explore, Tempo.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_URL:http://localhost:4318/v1/traces}
+  tracing:
+    sampling:
+      probability: 1.0
+
 nessy:
   type: chat
   # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. Configured rather than
