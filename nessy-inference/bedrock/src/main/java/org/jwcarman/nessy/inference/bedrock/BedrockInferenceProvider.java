@@ -57,6 +57,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   private static final String NAME = "Bedrock";
   private static final int TOO_MANY_REQUESTS = 429;
   private static final int SERVER_ERRORS = 500;
+  private static final String CALL_FAILED = "model call failed: ";
 
   private final BedrockClient client;
   private final JsonMapper mapper;
@@ -109,26 +110,12 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     if (stop == StopReason.GUARDRAIL_INTERVENED || stop == StopReason.CONTENT_FILTERED) {
       return new InferenceResult.Refusal(response.stopReasonAsString());
     }
-    List<ContentBlock> content =
-        response.output() != null && response.output().message() != null
-            ? response.output().message().content()
-            : List.of();
+    List<ContentBlock> content = contentOf(response);
     boolean asking = content.stream().anyMatch(block -> block.toolUse() != null);
 
     List<Block> blocks = new ArrayList<>();
     for (ContentBlock block : content) {
-      if (block.text() != null && !block.text().isBlank()) {
-        blocks.add(asking ? new Block.Commentary(block.text()) : new Block.Text(block.text()));
-      }
-      if (block.toolUse() != null) {
-        ToolUseBlock use = block.toolUse();
-        blocks.add(new Block.ToolCall(use.toolUseId(), use.name(), arguments(use)));
-      }
-      if (block.reasoningContent() != null) {
-        blocks.add(reasoning(block.reasoningContent()));
-      }
-      // Images, documents, citations: nothing here asked for any of them, so nothing here knows
-      // what to do with one. Dropped rather than guessed at.
+      add(block, asking, blocks);
     }
 
     if (!asking) {
@@ -146,6 +133,30 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());
+  }
+
+  private static List<ContentBlock> contentOf(ConverseResponse response) {
+    if (response.output() == null || response.output().message() == null) {
+      return List.of();
+    }
+    return response.output().message().content();
+  }
+
+  /**
+   * One block's blocks. Images, documents and citations: nothing here asked for any of them, so
+   * nothing here knows what to do with one. Dropped rather than guessed at.
+   */
+  private void add(ContentBlock block, boolean asking, List<Block> blocks) {
+    if (block.text() != null && !block.text().isBlank()) {
+      blocks.add(asking ? new Block.Commentary(block.text()) : new Block.Text(block.text()));
+    }
+    if (block.toolUse() != null) {
+      ToolUseBlock use = block.toolUse();
+      blocks.add(new Block.ToolCall(use.toolUseId(), use.name(), arguments(use)));
+    }
+    if (block.reasoningContent() != null) {
+      blocks.add(reasoning(block.reasoningContent()));
+    }
   }
 
   /**
@@ -202,18 +213,18 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
         || e instanceof InternalServerException
         || e instanceof ModelTimeoutException
         || e instanceof ModelNotReadyException) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
+      return new Failure.Transient(CALL_FAILED + e.getMessage());
     }
     if (e instanceof AwsServiceException service
         && (service.isThrottlingException()
             || service.statusCode() == TOO_MANY_REQUESTS
             || service.statusCode() >= SERVER_ERRORS)) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
+      return new Failure.Transient(CALL_FAILED + e.getMessage());
     }
     if (e instanceof SdkClientException) {
       return new Failure.Unknown("no answer from the model: " + e.getMessage());
     }
-    return new Failure.Permanent("model call failed: " + e.getMessage());
+    return new Failure.Permanent(CALL_FAILED + e.getMessage());
   }
 
   /**

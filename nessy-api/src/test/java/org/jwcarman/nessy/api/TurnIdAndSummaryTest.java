@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 
 class TurnIdAndSummaryTest {
@@ -19,10 +20,14 @@ class TurnIdAndSummaryTest {
 
   @Test
   void a_summary_runs_forwards_and_says_something() {
-    assertThatThrownBy(() -> Summary.text(new TurnId(5), new TurnId(3), "backwards"))
+    TurnId five = new TurnId(5);
+    TurnId three = new TurnId(3);
+    TurnId one = new TurnId(1);
+    List<Block.SummaryContent> nothing = List.of();
+    assertThatThrownBy(() -> Summary.text(five, three, "backwards"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("forwards");
-    assertThatThrownBy(() -> new Summary(new TurnId(1), new TurnId(3), List.of()))
+    assertThatThrownBy(() -> new Summary(one, three, nothing))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("say something");
 

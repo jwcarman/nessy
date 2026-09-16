@@ -87,10 +87,14 @@ class HeadSummarizerTranscriptTest {
                 .inference((request, narrator) -> null, InferenceOptions.of("m"))
                 .leaseTtl(Duration.ofSeconds(5));
 
-    assertThatThrownBy(() -> HeadSummarizer.create(complete.andThen(c -> c.tail(4, 8))))
+    java.util.function.Consumer<HeadSummarizer.Config> backwards =
+        complete.andThen(c -> c.tail(4, 8));
+    java.util.function.Consumer<HeadSummarizer.Config> nothingKept =
+        complete.andThen(c -> c.tail(4, 0));
+    assertThatThrownBy(() -> HeadSummarizer.create(backwards))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("minTail");
-    assertThatThrownBy(() -> HeadSummarizer.create(complete.andThen(c -> c.tail(4, 0))))
+    assertThatThrownBy(() -> HeadSummarizer.create(nothingKept))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> HeadSummarizer.create(c -> c.agentType(type)))
         .isInstanceOf(NullPointerException.class)

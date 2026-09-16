@@ -238,7 +238,7 @@ class GeminiInferenceProviderTest {
       // owned=false is the branch a handed-in client takes.
       GeminiClient wrapped =
           GeminiClient.over(com.google.genai.Client.builder().apiKey("k").build(), false);
-      wrapped.close(); // no exception: nothing was closed
+      org.assertj.core.api.Assertions.assertThatCode(wrapped::close).doesNotThrowAnyException();
     }
 
     @Test

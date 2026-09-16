@@ -241,7 +241,8 @@ class BedrockRequestsTest {
       assertThat(spec.name()).isEqualTo("depth");
       assertThat(spec.description()).isEqualTo("how deep a lake is");
       Map<?, ?> schema = (Map<?, ?>) spec.inputSchema().json().unwrap();
-      assertThat(schema.get("required")).isEqualTo(List.of("lake"));
+      assertThat(schema.entrySet())
+          .anyMatch(e -> "required".equals(e.getKey()) && List.of("lake").equals(e.getValue()));
       assertThat(((Map<?, ?>) ((Map<?, ?>) schema.get("properties")).get("n")).get("minimum"))
           .asString()
           .isEqualTo("0");

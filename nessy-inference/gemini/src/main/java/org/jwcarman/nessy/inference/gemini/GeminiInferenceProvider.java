@@ -73,6 +73,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
           "IMAGE_OTHER");
 
   private static final int TOO_MANY_REQUESTS = 429;
+  private static final String CALL_FAILED = "model call failed: ";
 
   private final GeminiClient client;
   private final JsonMapper mapper;
@@ -149,21 +150,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
 
     List<Block> blocks = new ArrayList<>();
     for (Part part : parts) {
-      if (part.thought().orElse(false)) {
-        // A thought summary is prose about the reasoning, not state the vendor wants back: the
-        // continuity token is the signature on the call, carried below.
-        continue;
-      }
-      Optional<String> text = part.text().filter(value -> !value.isBlank());
-      if (text.isPresent()) {
-        blocks.add(asking ? new Block.Commentary(text.get()) : new Block.Text(text.get()));
-      }
-      if (part.functionCall().isPresent()) {
-        FunctionCall call = part.functionCall().get();
-        String id = call.id().orElseGet(() -> "gemini-call-" + blocks.size());
-        blocks.add(new Block.ToolCall(id, call.name().orElseThrow(), arguments(call)));
-        part.thoughtSignature().ifPresent(signature -> blocks.add(signature(id, signature)));
-      }
+      add(part, asking, blocks);
     }
 
     if (!asking) {
@@ -178,6 +165,26 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());
+  }
+
+  /**
+   * One part's blocks. A thought summary is prose about the reasoning, not state the vendor wants
+   * back -- the continuity token is the signature on the call -- so it contributes nothing.
+   */
+  private void add(Part part, boolean asking, List<Block> blocks) {
+    if (part.thought().orElse(false)) {
+      return;
+    }
+    Optional<String> text = part.text().filter(value -> !value.isBlank());
+    if (text.isPresent()) {
+      blocks.add(asking ? new Block.Commentary(text.get()) : new Block.Text(text.get()));
+    }
+    if (part.functionCall().isPresent()) {
+      FunctionCall call = part.functionCall().get();
+      String id = call.id().orElseGet(() -> "gemini-call-" + blocks.size());
+      blocks.add(new Block.ToolCall(id, call.name().orElseThrow(), arguments(call)));
+      part.thoughtSignature().ifPresent(signature -> blocks.add(signature(id, signature)));
+    }
   }
 
   private String arguments(FunctionCall call) {
@@ -212,15 +219,15 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    */
   private static Failure classify(RuntimeException e) {
     if (e instanceof ServerException) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
+      return new Failure.Transient(CALL_FAILED + e.getMessage());
     }
     if (e instanceof ClientException client && client.code() == TOO_MANY_REQUESTS) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
+      return new Failure.Transient(CALL_FAILED + e.getMessage());
     }
     if (e instanceof GenAiIOException) {
       return new Failure.Unknown("no answer from the model: " + e.getMessage());
     }
-    return new Failure.Permanent("model call failed: " + e.getMessage());
+    return new Failure.Permanent(CALL_FAILED + e.getMessage());
   }
 
   /**

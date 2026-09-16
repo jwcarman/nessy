@@ -99,9 +99,9 @@ class InferenceContextsTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     try (var quiet =
         new org.jwcarman.nessy.engine.harness.DefaultHarnessFactory(
-            engine ->
-                engine
-                    .dataSource(this.engine.dataSource())
+            settings ->
+                settings
+                    .dataSource(engine.dataSource())
                     .inference(
                         (request, narrator) ->
                             new InferenceResult.Answer(List.of(new Block.Text("shh"))),
@@ -121,7 +121,7 @@ class InferenceContextsTest {
               () ->
                   assertThat(
                           quiet.histories().forAgent(new AgentType("quiet"), agentId).turnsFrom(0))
-                      .anyMatch(turn -> turn.complete()));
+                      .anyMatch(org.jwcarman.nessy.api.turn.Turn::complete));
       assertThat(quiet.inferenceContexts().forAgent(new AgentType("quiet"), agentId)).isEmpty();
     }
   }
