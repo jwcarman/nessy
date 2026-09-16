@@ -107,8 +107,8 @@ public final class EngineConfig {
    * value is knowing exactly what the model was shown when it decided something, which nothing else
    * can say afterwards.
    */
-  public EngineConfig recordInferenceContexts(boolean record) {
-    this.recordInferenceContexts = record;
+  public EngineConfig recordInferenceContexts(boolean recorded) {
+    this.recordInferenceContexts = recorded;
     return this;
   }
 

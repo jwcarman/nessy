@@ -242,16 +242,16 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
   }
 
-  /**
-   * The story, for reading. An application that shows what its agents said -- a transcript page, a
-   * board -- reads it through this rather than opening the tables itself, so what it reads is what
-   * the engine wrote, decoded the way the engine decodes it.
-   */
   /** What each model call was shown, read-only. */
   public InferenceContexts inferenceContexts() {
     return contexts;
   }
 
+  /**
+   * The story, for reading. An application that shows what its agents said -- a transcript page, a
+   * board -- reads it through this rather than opening the tables itself, so what it reads is what
+   * the engine wrote, decoded the way the engine decodes it.
+   */
   public TurnHistories histories() {
     return history;
   }
