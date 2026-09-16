@@ -102,7 +102,7 @@ class OpenAiEmbedderTest {
       assertThat(embedding.model()).isEqualTo("text-embedding-3-small");
       assertThat(embedding.vector()).containsExactly(0.1f, 0.2f, 0.3f);
       assertThat(embedder.dimension()).isEqualTo(3);
-      assertThat(sent.get().model().toString()).isEqualTo("text-embedding-3-small");
+      assertThat(sent.get().model()).hasToString("text-embedding-3-small");
       assertThat(sent.get().input().asArrayOfStrings()).containsExactly("a lake monster");
       assertThat(sent.get().dimensions()).isEmpty();
     }

@@ -50,26 +50,18 @@ public class JdbcEpisodes implements Summarizer {
   /** How many episodes are shown when nothing else is said. */
   public static final int DEFAULT_SHOWN = 5;
 
-  private static final String COLUMNS =
-      "episode_no, from_turn, through_turn, title, opened_as, reason, summary, embedding,"
-          + " embedding_model";
+  private static final String SELECT =
+      "SELECT episode_no, from_turn, through_turn, title, opened_as, reason, summary, embedding,"
+          + " embedding_model FROM nessy_episode";
 
   private static final String ALL =
-      "SELECT "
-          + COLUMNS
-          + " FROM nessy_episode WHERE agent_type = ? AND agent_id = ?"
-          + " ORDER BY episode_no";
+      SELECT + " WHERE agent_type = ? AND agent_id = ? ORDER BY episode_no";
 
   private static final String OPEN =
-      "SELECT "
-          + COLUMNS
-          + " FROM nessy_episode"
-          + " WHERE agent_type = ? AND agent_id = ? AND through_turn IS NULL";
+      SELECT + " WHERE agent_type = ? AND agent_id = ? AND through_turn IS NULL";
 
   private static final String UNSUMMARIZED =
-      "SELECT "
-          + COLUMNS
-          + " FROM nessy_episode"
+      SELECT
           + " WHERE agent_type = ? AND agent_id = ? AND through_turn IS NOT NULL"
           + " AND summary IS NULL ORDER BY episode_no";
 

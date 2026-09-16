@@ -36,23 +36,17 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
   private final JsonMapper mapper;
   private volatile int dimension;
 
-  VoyageEmbedder(
-      HttpClient http,
-      URI endpoint,
-      String apiKey,
-      String model,
-      OptionalInt requestedDimension,
-      String inputType,
-      Duration timeout,
-      JsonMapper mapper) {
+  /** The client, endpoint and key are what the config resolved; the rest is read as configured. */
+  VoyageEmbedder(HttpClient http, URI endpoint, String apiKey, VoyageEmbedderConfig config) {
     this.http = Objects.requireNonNull(http, "http must not be null");
     this.endpoint = Objects.requireNonNull(endpoint, "endpoint must not be null");
     this.apiKey = Objects.requireNonNull(apiKey, "apiKey must not be null");
-    this.model = Objects.requireNonNull(model, "model must not be null");
-    this.requestedDimension = Objects.requireNonNull(requestedDimension, "dimension");
-    this.inputType = inputType;
-    this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    Objects.requireNonNull(config, "config must not be null");
+    this.model = Objects.requireNonNull(config.model(), "model must not be null");
+    this.requestedDimension = Objects.requireNonNull(config.dimension(), "dimension");
+    this.inputType = config.inputType();
+    this.timeout = Objects.requireNonNull(config.timeout(), "timeout must not be null");
+    this.mapper = Objects.requireNonNull(config.mapper(), "mapper must not be null");
     this.dimension = requestedDimension.orElse(0);
   }
 

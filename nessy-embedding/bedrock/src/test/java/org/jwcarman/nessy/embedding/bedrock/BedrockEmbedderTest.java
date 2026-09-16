@@ -163,8 +163,9 @@ class BedrockEmbedderTest {
     @Test
     void a_model_of_an_unknown_family_is_refused_when_built() {
       Scripted client = new Scripted(body -> "{}");
+      OptionalInt unset = OptionalInt.empty();
 
-      assertThatThrownBy(() -> embedder(client, "meta.llama3-8b", OptionalInt.empty()))
+      assertThatThrownBy(() -> embedder(client, "meta.llama3-8b", unset))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Titan")
           .hasMessageContaining("Cohere");

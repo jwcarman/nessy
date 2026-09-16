@@ -106,10 +106,26 @@ public final class VoyageEmbedderConfig {
         http != null ? http : HttpClient.newBuilder().connectTimeout(timeout).build(),
         URI.create(root + "/embeddings"),
         key,
-        model,
-        dimension,
-        inputType,
-        timeout,
-        mapper);
+        this);
+  }
+
+  String model() {
+    return model;
+  }
+
+  OptionalInt dimension() {
+    return dimension;
+  }
+
+  String inputType() {
+    return inputType;
+  }
+
+  Duration timeout() {
+    return timeout;
+  }
+
+  JsonMapper mapper() {
+    return mapper;
   }
 }

@@ -21,8 +21,8 @@ class EmbeddingTest {
 
     assertThat(one).isEqualTo(same).hasSameHashCodeAs(same).isNotEqualTo(other);
     assertThat(one.dimension()).isEqualTo(2);
-    assertThat(one.toString()).isEqualTo("Embedding[model=m, dimension=2]");
-    assertThat(one.equals("m")).isFalse();
+    assertThat(one).hasToString("Embedding[model=m, dimension=2]");
+    assertThat(one).isNotEqualTo("m");
   }
 
   @Test

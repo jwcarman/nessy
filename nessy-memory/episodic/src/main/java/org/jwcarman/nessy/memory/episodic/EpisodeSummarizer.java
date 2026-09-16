@@ -227,7 +227,8 @@ public class EpisodeSummarizer {
   record Titled(String title, String summary) {
 
     private static final Pattern LABEL = Pattern.compile("^(?i)title\\s*:\\s*");
-    private static final Pattern DRESSING = Pattern.compile("^[\\s*_\"'`#]+|[\\s*_\"'`#]+$");
+    private static final Pattern DRESSING =
+        Pattern.compile("(?:^[\\s*_\"'`#]+)|(?:[\\s*_\"'`#]+$)");
 
     static Titled parse(String text) {
       String whole = text.strip();

@@ -141,10 +141,12 @@ public final class EpisodeTools {
                                 + " -- check the episode index in your context")));
   }
 
+  private static final String EPISODE = "Episode ";
+
   private static ToolResult recalled(Episode episode) {
     if (episode.open()) {
       return said(
-          "Episode "
+          EPISODE
               + episode.number()
               + ", '"
               + episode.title()
@@ -152,13 +154,13 @@ public final class EpisodeTools {
     }
     if (!episode.summarized()) {
       return said(
-          "Episode "
+          EPISODE
               + episode.number()
               + ", '"
               + episode.title()
               + "', has not been summarised yet; its turns are still in front of you.");
     }
-    return said("Episode " + episode.number() + ", " + episode.title() + ": " + episode.summary());
+    return said(EPISODE + episode.number() + ", " + episode.title() + ": " + episode.summary());
   }
 
   private static ToolResult failure(String message) {

@@ -274,11 +274,14 @@ class JdbcEpisodesTest {
         .hasMessageContaining("agentType");
     assertThatThrownBy(() -> JdbcEpisodes.create(c -> c.shown(0)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(0, new TurnId(1), null, "t", "t", "r", null))
+    TurnId first = new TurnId(1);
+    TurnId fourth = new TurnId(4);
+    TurnId fifth = new TurnId(5);
+    assertThatThrownBy(() -> new Episode(0, first, null, "t", "t", "r", null))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(1, new TurnId(5), new TurnId(4), "t", "t", "r", null))
+    assertThatThrownBy(() -> new Episode(1, fifth, fourth, "t", "t", "r", null))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(1, new TurnId(1), null, "t", "t", "r", "summary"))
+    assertThatThrownBy(() -> new Episode(1, first, null, "t", "t", "r", "summary"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

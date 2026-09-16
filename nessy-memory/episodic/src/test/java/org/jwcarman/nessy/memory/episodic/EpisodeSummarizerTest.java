@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -165,7 +166,7 @@ class EpisodeSummarizerTest {
     assertThat(last.context().summaries().getFirst().through())
         .isEqualTo(new TurnId(secondBegins - 1));
     assertThat(turnIds(last)).allMatch(id -> id >= secondBegins);
-    assertThat(last.context().ambient()).extracting(a -> a.kind()).containsExactly("episodes");
+    assertThat(last.context().ambient()).extracting(Ambient::kind).containsExactly("episodes");
     // One summary fits without ranking, so the turn being answered was not embedded.
     assertThat(embedder.embedded).doesNotContain("dogs two");
   }
