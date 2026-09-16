@@ -53,24 +53,21 @@ class RowsCompareByContentTest {
     AgentId agent = new AgentId(UUID.randomUUID());
     AgentStateRow row = new AgentStateRow(ID, "chat", 3, "Idle", bytes("{}"), AT);
     assertThat(row)
-        .isNotEqualTo(new AgentStateRow(UUID.randomUUID(), "chat", 3, "Idle", bytes("{}"), AT));
-    assertThat(row).isNotEqualTo(new AgentStateRow(ID, "other", 3, "Idle", bytes("{}"), AT));
-    assertThat(row).isNotEqualTo(new AgentStateRow(ID, "chat", 3, "Inferring", bytes("{}"), AT));
-    assertThat(row).isNotEqualTo(new AgentStateRow(ID, "chat", 3, "Idle", bytes("[]"), AT));
-    assertThat(row)
+        .isNotEqualTo(new AgentStateRow(UUID.randomUUID(), "chat", 3, "Idle", bytes("{}"), AT))
+        .isNotEqualTo(new AgentStateRow(ID, "other", 3, "Idle", bytes("{}"), AT))
+        .isNotEqualTo(new AgentStateRow(ID, "chat", 3, "Inferring", bytes("{}"), AT))
+        .isNotEqualTo(new AgentStateRow(ID, "chat", 3, "Idle", bytes("[]"), AT))
         .isNotEqualTo(new AgentStateRow(ID, "chat", 3, "Idle", bytes("{}"), AT.plusSeconds(1)));
 
     Attempt attempt = new Attempt(ID, agent, bytes("e"), bytes("f"), 1, AT, "t");
     assertThat(attempt)
-        .isNotEqualTo(new Attempt(UUID.randomUUID(), agent, bytes("e"), bytes("f"), 1, AT, "t"));
-    assertThat(attempt)
+        .isNotEqualTo(new Attempt(UUID.randomUUID(), agent, bytes("e"), bytes("f"), 1, AT, "t"))
         .isNotEqualTo(
-            new Attempt(ID, new AgentId(UUID.randomUUID()), bytes("e"), bytes("f"), 1, AT, "t"));
-    assertThat(attempt).isNotEqualTo(new Attempt(ID, agent, bytes("x"), bytes("f"), 1, AT, "t"));
-    assertThat(attempt).isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("x"), 1, AT, "t"));
-    assertThat(attempt)
-        .isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("f"), 1, AT.plusSeconds(1), "t"));
-    assertThat(attempt).isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("f"), 1, AT, "u"));
-    assertThat(attempt.equals("not an attempt")).isFalse();
+            new Attempt(ID, new AgentId(UUID.randomUUID()), bytes("e"), bytes("f"), 1, AT, "t"))
+        .isNotEqualTo(new Attempt(ID, agent, bytes("x"), bytes("f"), 1, AT, "t"))
+        .isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("x"), 1, AT, "t"))
+        .isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("f"), 1, AT.plusSeconds(1), "t"))
+        .isNotEqualTo(new Attempt(ID, agent, bytes("e"), bytes("f"), 1, AT, "u"))
+        .isNotEqualTo("not an attempt");
   }
 }
