@@ -15,6 +15,7 @@ import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -215,7 +216,7 @@ public class EffectDispatcher {
     traces.restore(
         "nessy.effect",
         attempt.traceContext(),
-        java.util.Map.of("nessy.agent.type", agentType.value()),
+        new Identity(agentType, attempt.agentId()),
         () -> {
           performInTrace(attempt);
           return null;

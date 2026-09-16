@@ -188,6 +188,9 @@ class EpisodeSummarizerTest {
     // chat span tagged with the provider it was told about.
     assertThat(recorded.names()).contains(SummaryObservation.NAME, ObservedInference.DURATION);
     assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.kind")).isEqualTo("episode");
+    // Whose, on the summary and on the model call it made.
+    assertThat(recorded.tag(SummaryObservation.NAME, "gen_ai.agent.name")).isEqualTo("chat");
+    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.agent.name")).isEqualTo("chat");
     assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")).isEqualTo("written");
     assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
     assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))

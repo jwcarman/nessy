@@ -46,6 +46,14 @@ and in semconv's `gen_ai.client.token.usage` histogram split by
 present. Token counts are samples, never tags: a tag whose value is 606
 makes a new time series per distinct count.
 
+**Every span says whose it is, the same way.** The agent type is
+`gen_ai.agent.name`, low cardinality, so a dashboard groups by it; the agent
+id is `gen_ai.conversation.id`, high cardinality, so a trace search finds
+everything one conversation did; and the turn, where the span knows it, is
+`nessy.turn.id`. Turns, effects, model calls, tool calls, approvals and
+background summaries all carry the first two. A model call learns them from
+the span it opens under, since the provider is kept from knowing.
+
 When a call fails, the failure's kind is a low-cardinality tag
 (`error.type`) and its message a high-cardinality one (`error.message`), so
 a `finish_reason=length` from a thinking model that ran out of budget is
@@ -60,11 +68,10 @@ ended, the effect that ended it, travels with the event, and a listener
 marked `async()` runs on an engine thread that inherits it too. Each attempt
 that found work becomes a `nessy.summary` observation beneath that effect
 (contextual name `nessy.summary head` or `nessy.summary episode`) tagged with
-`nessy.agent.type`, `nessy.summary.kind` and, once it is over,
+whose it is, `nessy.summary.kind` and, once it is over,
 `nessy.summary.outcome`: `written`, `nothing` when another process got there
 first or the story had moved on, `lease-refused`, `fault` when the model
-would not answer, or `empty` when it answered with nothing. The agent id is
-a high-cardinality tag, so it reaches the trace and stays out of the metric.
+would not answer, or `empty` when it answered with nothing.
 
 The model call inside is the same `chat` span as any other, with the same
 GenAI tags, because both summarisers wrap the provider they are given with

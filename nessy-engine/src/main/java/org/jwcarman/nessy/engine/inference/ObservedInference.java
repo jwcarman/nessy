@@ -3,8 +3,11 @@ package org.jwcarman.nessy.engine.inference;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.jwcarman.nessy.spi.inference.Usage;
 
@@ -63,8 +66,14 @@ public final class ObservedInference {
               // against others recorded under the same name, so a chat that only sometimes
               // carried a finish reason would be a different shape from one that did.
               .lowCardinalityKeyValue(FINISH_REASONS, "none")
-              .lowCardinalityKeyValue(ERROR_TYPE, "none")
-              .start();
+              .lowCardinalityKeyValue(ERROR_TYPE, "none");
+      // Whose call: read off the span this one opens under -- the effect, or the summary -- since
+      // the provider is kept from knowing. The turn is the one the request is answering.
+      Identity whose = Identity.current(observations);
+      if (whose != null) {
+        whose.on(observation, openTurn(request));
+      }
+      observation.start();
       try {
         InferenceResult result = delegate.infer(request, narrator);
         observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
@@ -96,6 +105,12 @@ public final class ObservedInference {
         observation.stop();
       }
     };
+  }
+
+  /** The last turn in the context is the one being answered; a first call has none. */
+  private static TurnId openTurn(InferenceRequest request) {
+    var turns = request.context().turns();
+    return turns.isEmpty() ? null : turns.getLast().id();
   }
 
   /**

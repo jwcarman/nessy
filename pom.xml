@@ -72,7 +72,7 @@
     <module>nessy-examples</module>
     <module>nessy-coverage</module>
 
-    <!-- Held out of the reactor while the nessyng engine is transplanted in. Each is written
+    <!-- Held out of the reactor while the new engine is transplanted in. Each is written
          against the api that was just replaced, so each comes back as it is rewired rather than
          all at once: a reactor that cannot build tells you nothing about which module is wrong.
 
@@ -112,7 +112,7 @@
          codec-crypto, codec-zstd, codec-lz4) has been present since 0.7.0.
 
          The VALUE codec is codec-jackson (Jackson 3), matching the engine's own types. It was
-         codec-jackson2 until the nessyng transplant: Jackson 2 measured faster in James's
+         codec-jackson2 until the engine transplant: Jackson 2 measured faster in James's
          benchmarks (2026-08-28), but the engine's types are Jackson 3 trees and running the
          storage codec on a different major than the types it serialises is a seam nobody wants to
          debug. Annotations are unaffected either way: Jackson 3 left them on the

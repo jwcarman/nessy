@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.engine.observability.Identity;
 
 /**
  * The span a background summary runs in: {@code nessy.summary}, one per attempt that found work to
@@ -46,11 +47,10 @@ public final class SummaryObservation {
     Observation observation =
         Observation.createNotStarted(NAME, registry)
             .contextualName(NAME + " " + kind)
-            .lowCardinalityKeyValue("nessy.agent.type", agentType.value())
             .lowCardinalityKeyValue(KIND, kind)
-            .lowCardinalityKeyValue(OUTCOME, "none")
-            .highCardinalityKeyValue("gen_ai.agent.id", agentId.value().toString())
-            .start();
+            .lowCardinalityKeyValue(OUTCOME, "none");
+    new Identity(agentType, agentId).on(observation, null);
+    observation.start();
     try (Observation.Scope _ = observation.openScope()) {
       observation.lowCardinalityKeyValue(OUTCOME, work.get());
     } catch (RuntimeException e) {

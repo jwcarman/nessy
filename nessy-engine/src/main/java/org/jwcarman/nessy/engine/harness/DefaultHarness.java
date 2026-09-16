@@ -21,6 +21,7 @@ import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.agent.Outstanding;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.AgentStateStore;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.store.HistoryStore;
@@ -132,7 +133,7 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
     log.info("[{}] observing for agent {}: {}", agentType.value(), agentId.value(), observation);
     traces.in(
         "nessy.turn",
-        java.util.Map.of("nessy.agent.type", agentType.value()),
+        new Identity(agentType, agentId),
         () -> {
           fold(agentId, "observation", state -> state.observe(observation, arrivedAt, coalescer));
           return null;

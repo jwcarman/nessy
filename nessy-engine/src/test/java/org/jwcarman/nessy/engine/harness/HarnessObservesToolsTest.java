@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
@@ -163,6 +164,7 @@ class HarnessObservesToolsTest {
         .isEqualTo("execute_tool");
     assertThat(tag("gen_ai.client.operation.duration", "gen_ai.tool.name")).isEqualTo("echo");
     assertThat(tag("gen_ai.client.operation.duration", "nessy.tool.outcome")).isEqualTo("success");
+    assertThat(tag("gen_ai.client.operation.duration", Identity.AGENT_NAME)).isEqualTo("chat");
   }
 
   @Test
@@ -185,7 +187,7 @@ class HarnessObservesToolsTest {
 
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     assertThat(tag("nessy.approval", "nessy.approval.answer")).isEqualTo("approved");
-    assertThat(tag("nessy.approval", "gen_ai.agent.name")).isEqualTo("chat");
+    assertThat(tag("nessy.approval", Identity.AGENT_NAME)).isEqualTo("chat");
   }
 
   /** The default approver lets everything through and nobody was asked, so it is no span. */

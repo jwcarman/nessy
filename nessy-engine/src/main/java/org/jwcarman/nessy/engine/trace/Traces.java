@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.jwcarman.nessy.engine.observability.Identity;
 
 /**
  * Carries a trace across the gap between emitting an effect and performing it.
@@ -80,6 +81,16 @@ public final class Traces {
    * engine whose complete absence changes nothing an application can observe except its dashboards.
    */
   public <T> T restore(String name, String carrier, Map<String, String> tags, Supplier<T> work) {
+    return restore(name, carrier, tags, null, work);
+  }
+
+  /** The same, said to be this agent's. */
+  public <T> T restore(String name, String carrier, Identity whose, Supplier<T> work) {
+    return restore(name, carrier, Map.of(), whose, work);
+  }
+
+  private <T> T restore(
+      String name, String carrier, Map<String, String> tags, Identity whose, Supplier<T> work) {
     if (registry.isNoop()) {
       return work.get();
     }
@@ -87,16 +98,31 @@ public final class Traces {
     received.setCarrier(decode(carrier));
     Observation observation = Observation.createNotStarted(name, () -> received, registry);
     tags.forEach(observation::lowCardinalityKeyValue);
+    if (whose != null) {
+      whose.on(observation, null);
+    }
     return observation.observe(work);
   }
 
   /** Opens a span that later effects will be parented to, and times the work inside it. */
   public <T> T in(String name, Map<String, String> tags, Supplier<T> work) {
+    return in(name, tags, null, work);
+  }
+
+  /** The same, said to be this agent's. */
+  public <T> T in(String name, Identity whose, Supplier<T> work) {
+    return in(name, Map.of(), whose, work);
+  }
+
+  private <T> T in(String name, Map<String, String> tags, Identity whose, Supplier<T> work) {
     if (registry.isNoop()) {
       return work.get();
     }
     Observation observation = Observation.createNotStarted(name, registry);
     tags.forEach(observation::lowCardinalityKeyValue);
+    if (whose != null) {
+      whose.on(observation, null);
+    }
     return observation.observe(work);
   }
 

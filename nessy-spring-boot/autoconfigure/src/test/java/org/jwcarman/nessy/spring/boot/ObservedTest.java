@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -81,6 +82,28 @@ class ObservedTest {
                 .summary()
                 .totalAmount())
         .isEqualTo(5);
+  }
+
+  /** The chat span is told whose it is by the span it opens under, never by the provider. */
+  @Test
+  void a_call_under_an_agents_span_says_whose_it_is_and_which_turn() {
+    io.micrometer.observation.Observation parent =
+        io.micrometer.observation.Observation.createNotStarted("nessy.effect", observations);
+    new Identity(new AgentType("ops"), new AgentId(java.util.UUID.randomUUID())).on(parent, null);
+    parent.observe(
+        () -> observe((_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done")))));
+
+    assertThat(tagOf(DURATION, Identity.AGENT_NAME)).isEqualTo("ops");
+  }
+
+  @Test
+  void a_tool_call_and_an_approval_say_whose_they_are() {
+    Observed.tool(tool(_ -> Awaited.ready(ToolResult.ok(new Block.Text("done")))), observations)
+        .call(call("x"));
+    Observed.approver(_ -> Awaited.deferred(), observations).approve(approvalRequest());
+
+    assertThat(tagOf(DURATION, Identity.AGENT_NAME)).isEqualTo("observed");
+    assertThat(tagOf("nessy.approval", Identity.AGENT_NAME)).isEqualTo("ops");
   }
 
   @Test
@@ -238,8 +261,7 @@ class ObservedTest {
   void an_approval_says_which_agent_it_was_for() {
     Observed.approver(_ -> Awaited.deferred(), observations).approve(approvalRequest());
 
-    // The only collaborator the engine hands an identity to, so the only span that can say so.
-    assertThat(tagOf("nessy.approval", "gen_ai.agent.name")).isEqualTo("ops");
+    assertThat(tagOf("nessy.approval", Identity.AGENT_NAME)).isEqualTo("ops");
     assertThat(tagOf("nessy.approval", "nessy.approval.answer")).isEqualTo("asked-a-person");
   }
 

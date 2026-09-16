@@ -75,6 +75,7 @@ public final class ObservedTools {
                 .lowCardinalityKeyValue("nessy.tool.outcome", "none")
                 .lowCardinalityKeyValue("nessy.tool.deferred", "none")
                 .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value());
+        new Identity(request.agentType(), request.agentId()).on(observation, request.turn());
         return observation.observe(
             () -> {
               Awaited<ToolResult> answer = delegate.call(request);
@@ -98,11 +99,10 @@ public final class ObservedTools {
       Observation observation =
           Observation.createNotStarted("nessy.approval", observations)
               .contextualName("approve " + request.toolName().value())
-              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().value())
               .lowCardinalityKeyValue(TOOL_NAME, request.toolName().value())
-              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value().toString())
               .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
+      new Identity(request.agentType(), request.agentId()).on(observation, request.turn());
       return observation.observe(
           () -> {
             Awaited<ApprovalResult> answer = delegate.approve(request);

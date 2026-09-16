@@ -5,7 +5,7 @@
 > written on Fable, per the model policy. Nothing here is built.
 
 **Provenance.** Designed in conversation on 2026-09-06/07, then reconciled with a parallel session
-(`nessyng-8c`) working the same problem. Where the two disagreed, the resolution and the losing
+(a proof-of-concept branch) working the same problem. Where the two disagreed, the resolution and the losing
 argument are both recorded — a decision without its rejected alternative is a decision that gets
 re-litigated.
 
