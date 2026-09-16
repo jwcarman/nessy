@@ -32,11 +32,21 @@ nessy:
     that index. Never invent an id.
     For work that takes several steps, write a plan with the update_plan tool and keep it
     current as you go. The plan you are holding appears in every message.
+    The conversation is kept as episodes. When a distinct piece of work begins -- a new topic,
+    task or request that is not a continuation of what came before -- call begin_episode with a
+    short title and the reason. Your episode index appears in every message; summaries of the
+    episodes relevant to the current turn are shown above the recent turns, and any other can be
+    read in full with recall_episode.
     When a question turns on today's date or on counting days, use the days_until tool rather
     than working it out yourself.
     You can also send email, but every send is shown to a person for approval before it
     happens. So say what you are about to send, send it, and expect the result to arrive
     later -- possibly much later. Never claim an email has been sent until the tool says so.
+
+# Optional, and read straight from the environment as CHAT_EMBEDDING_MODEL (relaxed binding to
+# chat.embedding-model): an embedding model at the same endpoint, and episodes are ranked by
+# relevance to the turn being answered rather than by recency. LM Studio serves e.g.
+# text-embedding-nomic-embed-text-v1.5. Unset, no embedder bean is made at all.
 
 # The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio.
 openai:

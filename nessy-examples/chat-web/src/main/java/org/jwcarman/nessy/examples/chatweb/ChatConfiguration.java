@@ -5,24 +5,31 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.embedding.Embedder;
+import org.jwcarman.nessy.embedding.openai.OpenAiEmbedder;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.lease.Leases;
+import org.jwcarman.nessy.memory.episodic.EpisodeSummarizer;
+import org.jwcarman.nessy.memory.episodic.EpisodeTools;
+import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
-import org.jwcarman.nessy.memory.summarizing.HeadSummarizer;
-import org.jwcarman.nessy.memory.summarizing.JdbcSummaries;
 import org.jwcarman.nessy.planning.JdbcPlanStore;
 import org.jwcarman.nessy.planning.PlanStore;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
+ * The chat agent: a notebook, a plan, episodes, a date tool, and an email tool a person has to
+ * approve.
  *
  * <p>The starter supplies the factory, the provider (from {@code openai.*}) and the model (from
  * {@code nessy.model}); this class declares the harness itself because the starter's free one binds
@@ -49,34 +56,47 @@ public class ChatConfiguration {
   }
 
   private static final int MAX_TAIL = 20;
-  private static final int MIN_TAIL = 8;
+
+  /**
+   * What ranks episodes by relevance: an embedding model at the same OpenAI-compatible endpoint the
+   * chat model is at, when {@code CHAT_EMBEDDING_MODEL} names one. Without it the store shows the
+   * most recent episodes instead, so the example runs on a chat model alone.
+   */
+  @Bean
+  @ConditionalOnProperty("chat.embedding-model")
+  public Embedder embedder(
+      @Value("${chat.embedding-model}") String model,
+      @Value("${openai.base-url}") String baseUrl,
+      @Value("${openai.api-key}") String apiKey) {
+    return OpenAiEmbedder.create(c -> c.apiKey(apiKey).baseUrl(baseUrl).model(model));
+  }
 
   @Bean
-  public JdbcSummaries summaries(DataSource dataSource) {
-    return new JdbcSummaries(dataSource, TYPE);
+  public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<Embedder> embedder) {
+    return JdbcEpisodes.create(
+        c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder.getIfAvailable()));
   }
 
   /**
-   * Summarises the head of a long conversation in the background, under a lease, whenever a turn
-   * ends. The model then sees the summaries and the last {@value #MAX_TAIL} turns; once more than
-   * that many follow the last summary, the oldest are summarised down to {@value #MIN_TAIL}.
+   * Summarises each episode in the background, under a lease, once the model has begun the next.
+   * The model then sees the summaries of the episodes that bear on the current turn and the turns
+   * of the current episode, up to {@value #MAX_TAIL} of them.
    */
   @Bean
-  public HeadSummarizer headSummarizer(
+  public EpisodeSummarizer episodeSummarizer(
       DefaultHarnessFactory factory,
-      JdbcSummaries summaries,
+      JdbcEpisodes episodes,
       Leases leases,
       InferenceProvider provider,
       NessyProperties properties) {
-    return HeadSummarizer.create(
+    return EpisodeSummarizer.create(
         c ->
             c.agentType(TYPE)
-                .summaries(summaries)
+                .episodes(episodes)
                 .histories(factory.histories())
                 .leases(leases)
                 .inference(
-                    provider, new InferenceOptions(properties.model(), properties.maxTokens()))
-                .tail(MAX_TAIL, MIN_TAIL));
+                    provider, new InferenceOptions(properties.model(), properties.maxTokens())));
   }
 
   @Bean
@@ -87,30 +107,33 @@ public class ChatConfiguration {
       Approver desk,
       Notebook notebook,
       PlanStore plans,
-      JdbcSummaries summaries,
-      HeadSummarizer summarizer) {
+      JdbcEpisodes episodes,
+      EpisodeSummarizer summarizer) {
     return factory.create(
         String.class,
         config ->
             config
                 .agentType(TYPE)
                 .systemPrompt(properties.resolveSystemPrompt())
-                // Hears every turn end and summarises the head once it outgrows the tail -- on
-                // its own thread, because a summary is a model call, and under a lease, so
-                // several instances never summarise one agent twice.
+                // Hears every turn end and summarises any episode that has closed -- on its own
+                // thread, because a summary is a model call, and under a lease, so several
+                // instances never summarise one agent twice.
                 .listener(summarizer.listener())
-                // Two sources of background: the notebook's index and the current plan. Both are
-                // ambient, so they are asked afresh every call and never written to the story --
-                // the model sees the notes and the plan as they stand NOW.
+                // Three sources of background: the notebook's index, the current plan and the
+                // episode index. All ambient, so they are asked afresh every call and never
+                // written to the story -- the model sees them as they stand NOW.
                 .inference(
                     in ->
                         in.context(
                             ctx ->
-                                ctx.summaries(summaries)
+                                ctx.summaries(episodes)
                                     .maxTail(MAX_TAIL)
                                     .ambient(NotebookTools.index(notebook))
-                                    .ambient(PlanTools.plan(plans))))
+                                    .ambient(PlanTools.plan(plans))
+                                    .ambient(EpisodeTools.index(episodes))))
                 .tool(new DaysUntilTool())
+                .tool(EpisodeTools.begin(episodes))
+                .tool(EpisodeTools.recall(episodes))
                 .tool(NotebookTools.remember(notebook))
                 .tool(NotebookTools.revise(notebook))
                 .tool(NotebookTools.recall(notebook))

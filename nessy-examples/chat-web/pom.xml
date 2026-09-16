@@ -81,10 +81,17 @@
       <artifactId>nessy-planning</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Long conversations: the head is summarised in the background, the tail stays verbatim. -->
+    <!-- Long conversations: the model cuts the story into episodes, each summarised in the
+         background once it closes and shown again when it is relevant. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-memory-summarizing</artifactId>
+      <artifactId>nessy-memory-episodic</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- What "relevant" is measured with, when an embedding model is configured. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-embedding-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Narration journaled per agent and served as resumable SSE. Substrate's PostgreSQL backend

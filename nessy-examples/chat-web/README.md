@@ -41,6 +41,17 @@ Defaults target [LM Studio](https://lmstudio.ai) on `localhost:1234`:
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
 appear.
 
+The conversation is kept as episodes: the model calls `begin_episode` when
+the subject changes, each closed episode is summarised in the background, and
+the summaries that bear on the current turn are shown above the recent turns.
+Name an embedding model served at the same endpoint and "bear on" is measured
+by embedding; leave it out and the most recent episodes are shown instead:
+
+```bash
+CHAT_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5 \
+  ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
+```
+
 Any OpenAI-compatible endpoint works:
 
 ```bash
