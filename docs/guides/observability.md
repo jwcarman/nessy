@@ -24,10 +24,13 @@ The Boot starter wires this from your registry automatically.
 **Observability by wrapping, not by listening.** A listener hears that a
 turn started and that it ended, and can time the gap, but a turn that calls
 tools makes several model calls inside that gap, and narration draws no
-boundary around any of them. So the collaborators are wrapped: `Observed`
-in `nessy-spring-boot-autoconfigure` wraps the provider, every tool and
-every approver, and each call becomes an observation with a name and tags a
-dashboard already understands.
+boundary around any of them. So the collaborators are wrapped, and the
+engine does the wrapping: the harness observes every tool and approver it
+is given (`ObservedTools`), whoever registered them, and the provider is
+observed with `ObservedInference` by the Boot starter and by the
+summarisers. Each call becomes an observation with a name and tags a
+dashboard already understands, and two applications with the same tools
+produce the same spans however they wired them.
 
 **The names are the OpenTelemetry GenAI semantic conventions', not ours.**
 A model call is `chat` with `gen_ai.operation.name`, `gen_ai.provider.name`,

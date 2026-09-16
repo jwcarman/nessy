@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.engine.harness;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
@@ -86,6 +87,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final DefaultReplies replies;
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
+  private final ObservationRegistry observations;
   private final DefaultHarnessConfig.Defaults defaults;
   private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
@@ -122,7 +124,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     scheduler.setPoolSize(1);
     scheduler.setThreadNamePrefix("nessy-");
     scheduler.initialize();
-    this.traces = new Traces(config.observations());
+    this.observations = config.observations();
+    this.traces = new Traces(observations);
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
@@ -140,7 +143,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   @Override
   public <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer) {
     DefaultHarnessConfig<O> config =
-        new DefaultHarnessConfig<>(observationType, defaults, mapper, schemas);
+        new DefaultHarnessConfig<>(observationType, defaults, mapper, schemas, observations);
     customizer.accept(config);
 
     TypeRef<AgentState<O>> stateType =

@@ -15,20 +15,14 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
-import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.inference.ObservedInference;
+import org.jwcarman.nessy.engine.observability.ObservedTools;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 
 /**
@@ -97,97 +91,11 @@ public final class Observed {
    * histogram as a chat call, distinguished by {@code gen_ai.operation.name}.
    */
   public static <I> Tool<I> tool(Tool<I> delegate, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
-    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-    return new Tool<>() {
-      @Override
-      public ToolName name() {
-        return delegate.name();
-      }
-
-      @Override
-      public String description() {
-        return delegate.description();
-      }
-
-      @Override
-      public Class<I> inputType() {
-        return delegate.inputType();
-      }
-
-      @Override
-      public InputSchema inputSchema(InputSchemaGenerator generator) {
-        return delegate.inputSchema(generator);
-      }
-
-      @Override
-      public Awaited<ToolResult> call(ToolCallRequest<I> request) {
-        Observation observation =
-            Observation.createNotStarted(DURATION, observations)
-                .contextualName("execute_tool " + delegate.name().value())
-                .lowCardinalityKeyValue(OPERATION_NAME, "execute_tool")
-                .lowCardinalityKeyValue("gen_ai.tool.name", delegate.name().value())
-                .lowCardinalityKeyValue("gen_ai.tool.type", "function")
-                .lowCardinalityKeyValue("nessy.tool.outcome", "none")
-                .lowCardinalityKeyValue("nessy.tool.deferred", "none");
-        return observation.observe(
-            () -> {
-              Awaited<ToolResult> answer = delegate.call(request);
-              observation.lowCardinalityKeyValue("nessy.tool.outcome", outcomeOf(answer));
-              observation.lowCardinalityKeyValue(
-                  "nessy.tool.deferred",
-                  String.valueOf(answer instanceof Awaited.Deferred<ToolResult>));
-              return answer;
-            });
-      }
-    };
+    return ObservedTools.tool(delegate, observations);
   }
 
-  /**
-   * One approver, observed.
-   *
-   * <p>Nessy's own name, deliberately: semconv has no convention for asking a person, and
-   * pretending an approval is a GenAI operation would put human latency in the same histogram as
-   * model latency.
-   *
-   * <p>Its DURATION is the decision, not the wait. An approver that defers returns immediately and
-   * the person takes three days; timing the human would mean holding a span open across a restart,
-   * which is a job for the projection's asked_at, not for a tracer.
-   */
+  /** One approver, observed; see {@link ObservedTools#approver}. */
   public static Approver approver(Approver delegate, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
-    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-    return request -> {
-      Observation observation =
-          Observation.createNotStarted("nessy.approval", observations)
-              .contextualName("approve " + request.toolName().value())
-              .lowCardinalityKeyValue("gen_ai.agent.name", request.agentType().value())
-              .lowCardinalityKeyValue("gen_ai.tool.name", request.toolName().value())
-              .highCardinalityKeyValue("gen_ai.agent.id", request.agentId().value().toString())
-              .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
-              .lowCardinalityKeyValue("nessy.approval.answer", "none");
-      return observation.observe(
-          () -> {
-            Awaited<ApprovalResult> answer = delegate.approve(request);
-            observation.lowCardinalityKeyValue("nessy.approval.answer", approvalOf(answer));
-            return answer;
-          });
-    };
-  }
-
-  private static String outcomeOf(Awaited<ToolResult> answer) {
-    return switch (answer) {
-      case Awaited.Deferred<ToolResult> _ -> "deferred";
-      case Awaited.Ready<ToolResult>(var result) ->
-          result instanceof ToolResult.Success ? "success" : "failure";
-    };
-  }
-
-  private static String approvalOf(Awaited<ApprovalResult> answer) {
-    return switch (answer) {
-      case Awaited.Deferred<ApprovalResult> _ -> "asked-a-person";
-      case Awaited.Ready<ApprovalResult>(var result) ->
-          result instanceof ApprovalResult.Approved ? "approved" : "denied";
-    };
+    return ObservedTools.approver(delegate, observations);
   }
 }

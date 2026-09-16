@@ -1,5 +1,6 @@
 package org.jwcarman.nessy.engine.harness;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -29,6 +30,7 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.engine.observability.ObservedTools;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -70,17 +72,20 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   private final Inference inference;
   private final Effects effects = new Effects();
   private final List<ToolBinding<?>> tools = new ArrayList<>();
+  private final ObservationRegistry observations;
   private final List<AgentEventListener> listeners = new ArrayList<>();
 
   DefaultHarnessConfig(
       TypeRef<O> observationType,
       Defaults defaults,
       ObjectMapper mapper,
-      InputSchemaGenerator schemas) {
+      InputSchemaGenerator schemas,
+      ObservationRegistry observations) {
     this.observationType = observationType;
     this.inference = new Inference(defaults);
     this.mapper = mapper;
     this.schemas = schemas;
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   /** What the factory already knows, so an agent type only states its differences. */
@@ -144,21 +149,26 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
    * created, and the application's terms are read off a {@code ToolConfig} that exists only for the
    * length of the customizer. A tool's shape cannot change between calls, and doing this per call
    * would put a reflective walk of the input type on the path of every inference.
+   *
+   * <p><b>Observed here, whoever registered it.</b> The tool and its approver are wrapped with the
+   * engine's own observations, so a tool bound by hand and one bound by the Boot starter make the
+   * same {@code execute_tool} span. An application that is not tracing pays for a check per call.
    */
   @Override
   public <I> DefaultHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
     customizer.accept(terms);
+    Tool<I> observed = ObservedTools.tool(tool, observations);
     tools.add(
         new ToolBinding<>(
-            tool,
+            observed,
             mapper,
-            tool.inputSchema(schemas),
+            observed.inputSchema(schemas),
             terms.timeout,
             terms.retryPolicy,
             terms.action,
             terms.enrichers,
-            terms.approver,
+            terms.approver == null ? null : ObservedTools.approver(terms.approver, observations),
             terms.approvalTimeout,
             terms.approvalRetryPolicy));
     return this;

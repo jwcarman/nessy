@@ -7,7 +7,6 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -191,14 +190,9 @@ public class NessyAutoConfiguration {
               .agentType(new AgentType(properties.type()))
               .systemPrompt(systemPrompt)
               .observationRenderer(renderer);
-          declared.forEach(tool -> bind(config, tool, observations));
+          // The harness observes every tool it is given itself, so nothing is wrapped here.
+          declared.forEach(config::tool);
         });
-  }
-
-  private static <I> void bind(
-      HarnessConfig<String> config, Tool<I> tool, ObservationRegistry observations) {
-    config.tool(
-        ObservationRegistry.NOOP.equals(observations) ? tool : Observed.tool(tool, observations));
   }
 
   private static String requireModel(NessyProperties properties) {
