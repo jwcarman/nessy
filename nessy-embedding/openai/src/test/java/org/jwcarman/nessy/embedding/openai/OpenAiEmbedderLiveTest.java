@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.embedding.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -9,23 +10,22 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.embedding.Embedding;
 
 /**
- * Against a real OpenAI-compatible endpoint: LM Studio on {@code :1234} serving an embedding model.
- * Tagged {@code live}, so CI skips it; run it with {@code -Dnessy.excludedGroups=} and the two
- * properties below.
+ * Against OpenAI itself, through the SDK's own reading of the environment, so a local runtime is
+ * reached the way it is everywhere else here: {@code OPENAI_BASE_URL} beside {@code
+ * OPENAI_API_KEY}, and {@code NESSY_EMBEDDING_MODEL} naming what that endpoint serves. Tagged
+ * {@code live}, so CI skips it; run it with {@code -Dnessy.excludedGroups=}.
  */
 @Tag("live")
-@DisplayName("The OpenAI embedder against a local model")
+@DisplayName("The OpenAI embedder, live")
 class OpenAiEmbedderLiveTest {
 
-  private static final String BASE_URL =
-      System.getProperty("nessy.embedding.base-url", "http://127.0.0.1:1234/v1");
   private static final String MODEL =
-      System.getProperty("nessy.embedding.model", "text-embedding-nomic-embed-text-v1.5");
+      System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
 
   @Test
   void near_texts_are_nearer_than_far_ones() {
-    try (OpenAiEmbedder embedder =
-        OpenAiEmbedder.create(c -> c.apiKey("lm-studio").baseUrl(BASE_URL).model(MODEL))) {
+    assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
+    try (OpenAiEmbedder embedder = OpenAiEmbedder.create(c -> c.fromEnv().model(MODEL))) {
 
       List<Embedding> embeddings =
           embedder.embed(
