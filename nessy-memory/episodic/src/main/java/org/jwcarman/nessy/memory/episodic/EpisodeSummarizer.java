@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -41,6 +42,10 @@ public class EpisodeSummarizer {
       You are writing the summary of one episode of a longer conversation, so that it can stand \
       in for the episode's turns from now on. You are shown the episode's turns; the rest of the \
       conversation is not your concern.
+
+      Write a title on the first line: at most eight words, naming what the episode turned out \
+      to be about, which may differ from what it was called when it began. Then a blank line, \
+      then the summary.
 
       Keep what a reader would need if this episode came up again:
       - what was being done, and how it ended
@@ -171,7 +176,10 @@ public class EpisodeSummarizer {
     List<Turn> shown = new ArrayList<>(turns);
     shown.add(
         Transcripts.ask(
-            turns.getLast(), "Write the summary of this episode, '" + episode.title() + "', now."));
+            turns.getLast(),
+            "Write the title and then the summary of this episode, opened as '"
+                + episode.title()
+                + "', now."));
     InferenceResult result =
         provider.infer(
             new InferenceRequest(
@@ -189,7 +197,8 @@ public class EpisodeSummarizer {
           result);
       return false;
     }
-    String summary = Transcripts.text(blocks);
+    Titled titled = Titled.parse(Transcripts.text(blocks));
+    String summary = titled.summary();
     if (summary.isBlank()) {
       LOG.warn(
           "[{}] the summary of episode {} of agent {} was empty; left for next time",
@@ -198,14 +207,41 @@ public class EpisodeSummarizer {
           agentId.value());
       return false;
     }
-    episodes.summarize(agentId, episode.number(), summary);
+    episodes.summarize(agentId, episode.number(), titled.title(), summary);
     LOG.info(
-        "[{}] summarised episode {} (turns {}..{}) of agent {}",
+        "[{}] summarised episode {} (turns {}..{}) of agent {} as '{}'",
         agentType.value(),
         episode.number(),
         episode.from().value(),
         episode.through().value(),
-        agentId.value());
+        agentId.value(),
+        titled.title() == null ? episode.title() : titled.title());
     return true;
+  }
+
+  /**
+   * What the model wrote, split as asked: the first line is the title, the rest the summary. A
+   * reply of one line is all summary and no title, so a model that ignored the ask retitles
+   * nothing. A "Title:" label, quotes and markdown dressing around the title are forgiven.
+   */
+  record Titled(String title, String summary) {
+
+    private static final Pattern LABEL = Pattern.compile("^(?i)title\\s*:\\s*");
+    private static final Pattern DRESSING = Pattern.compile("^[\\s*_\"'`#]+|[\\s*_\"'`#]+$");
+
+    static Titled parse(String text) {
+      String whole = text.strip();
+      String[] lines = whole.split("\\R", 2);
+      if (lines.length < 2) {
+        return new Titled(null, whole);
+      }
+      String title = LABEL.matcher(lines[0].strip()).replaceFirst("");
+      title = DRESSING.matcher(title).replaceAll("");
+      String summary = lines[1].strip();
+      if (title.isBlank() || summary.isBlank()) {
+        return new Titled(null, whole);
+      }
+      return new Titled(title, summary);
+    }
   }
 }

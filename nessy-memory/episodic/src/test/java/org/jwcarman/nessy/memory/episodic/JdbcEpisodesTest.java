@@ -147,6 +147,25 @@ class JdbcEpisodesTest {
     }
 
     @Test
+    void a_summary_may_retitle_the_episode_and_what_it_was_opened_as_is_kept() {
+      JdbcEpisodes store = store(null, 5);
+      AgentId agent = Calls.agent();
+      store.begin(agent, new TurnId(1), "a question", "start");
+      store.begin(agent, new TurnId(5), "two", "next");
+
+      assertThat(store.summarize(agent, 1, "Lisbon trip planning", "Alfama in October")).isTrue();
+
+      Episode first = store.find(agent, 1).orElseThrow();
+      assertThat(first.title()).isEqualTo("Lisbon trip planning");
+      assertThat(first.openedAs()).isEqualTo("a question");
+      assertThat(store.find(agent, 2).map(Episode::openedAs)).contains("two");
+      // A blank title leaves the title alone.
+      store.begin(agent, new TurnId(9), "three", "next");
+      assertThat(store.summarize(agent, 2, " ", "the second")).isTrue();
+      assertThat(store.find(agent, 2).map(Episode::title)).contains("two");
+    }
+
+    @Test
     void with_an_embedder_the_summary_is_embedded_as_it_is_written() {
       KeywordEmbedder embedder = new KeywordEmbedder("kw", "cats");
       JdbcEpisodes store = store(embedder, 5);
@@ -255,11 +274,11 @@ class JdbcEpisodesTest {
         .hasMessageContaining("agentType");
     assertThatThrownBy(() -> JdbcEpisodes.create(c -> c.shown(0)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(0, new TurnId(1), null, "t", "r", null))
+    assertThatThrownBy(() -> new Episode(0, new TurnId(1), null, "t", "t", "r", null))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(1, new TurnId(5), new TurnId(4), "t", "r", null))
+    assertThatThrownBy(() -> new Episode(1, new TurnId(5), new TurnId(4), "t", "t", "r", null))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Episode(1, new TurnId(1), null, "t", "r", "summary"))
+    assertThatThrownBy(() -> new Episode(1, new TurnId(1), null, "t", "t", "r", "summary"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

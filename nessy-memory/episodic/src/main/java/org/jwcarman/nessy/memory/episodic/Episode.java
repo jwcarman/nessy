@@ -13,12 +13,20 @@ import org.jwcarman.nessy.api.TurnId;
  * @param number the episode's position in the story, from one
  * @param from the first turn in it
  * @param through the last turn in it, or null while it is still open
- * @param title what the model called it
+ * @param title what it is called: what the model named it when it began, until the summary is
+ *     written by something that has read the whole of it and titles it accordingly
+ * @param openedAs what the model named it when it began, kept whatever it is called later
  * @param reason why the model began it
  * @param summary what was made of it once it closed, or null until then
  */
 public record Episode(
-    int number, TurnId from, TurnId through, String title, String reason, String summary) {
+    int number,
+    TurnId from,
+    TurnId through,
+    String title,
+    String openedAs,
+    String reason,
+    String summary) {
 
   public Episode {
     if (number < 1) {
@@ -26,6 +34,7 @@ public record Episode(
     }
     Objects.requireNonNull(from, "from must not be null");
     Objects.requireNonNull(title, "title must not be null");
+    Objects.requireNonNull(openedAs, "openedAs must not be null");
     Objects.requireNonNull(reason, "reason must not be null");
     if (through != null && through.value() < from.value()) {
       throw new IllegalArgumentException(

@@ -120,7 +120,10 @@ anything are summarised like the rest rather than falling out of the tail
 unsummarised. The summary is written later by the `EpisodeSummarizer`, a
 listener like the head summariser's: it hears a turn end, sees a closed
 episode with no summary, takes the `episode` lease for the agent and asks the
-model for the summary of that episode's turns alone. Until it has one, the
+model for a title and the summary of that episode's turns alone. The title
+replaces the one the model gave at the boundary, because something that has
+read the whole episode knows better what it was about than the model did when
+it began; what it was opened as is kept beside it. Until it has one, the
 episode's turns are still shown verbatim, so a slow summary costs a larger
 context on a few calls and never a hole. An episode index is ambient, kind
 `episodes`, listing every episode by number and title and which one is under

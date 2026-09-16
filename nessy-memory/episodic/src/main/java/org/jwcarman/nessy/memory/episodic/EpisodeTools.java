@@ -67,6 +67,9 @@ public final class EpisodeTools {
     StringBuilder text = new StringBuilder("Episodes of this conversation so far:\n");
     for (Episode episode : all) {
       text.append("- ").append(episode.number()).append(". ").append(episode.title());
+      if (!episode.title().equals(episode.openedAs())) {
+        text.append(" (begun as \"").append(episode.openedAs()).append("\")");
+      }
       if (episode.open()) {
         text.append(" (current, since turn ").append(episode.from().value()).append(')');
       } else {

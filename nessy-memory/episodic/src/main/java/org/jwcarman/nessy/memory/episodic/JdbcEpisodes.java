@@ -51,7 +51,8 @@ public class JdbcEpisodes implements Summarizer {
   public static final int DEFAULT_SHOWN = 5;
 
   private static final String COLUMNS =
-      "episode_no, from_turn, through_turn, title, reason, summary, embedding, embedding_model";
+      "episode_no, from_turn, through_turn, title, opened_as, reason, summary, embedding,"
+          + " embedding_model";
 
   private static final String ALL =
       "SELECT "
@@ -77,7 +78,7 @@ public class JdbcEpisodes implements Summarizer {
           + " WHERE agent_type = ? AND agent_id = ? AND through_turn IS NULL";
 
   private static final String RENAME =
-      "UPDATE nessy_episode SET title = ?, reason = ?"
+      "UPDATE nessy_episode SET title = ?, opened_as = ?, reason = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND episode_no = ?";
 
   private static final String NEXT_NUMBER =
@@ -86,13 +87,14 @@ public class JdbcEpisodes implements Summarizer {
 
   private static final String INSERT =
       "INSERT INTO nessy_episode"
-          + " (agent_type, agent_id, episode_no, from_turn, title, reason, opened_at)"
-          + " VALUES (?, ?, ?, ?, ?, ?, ?)";
+          + " (agent_type, agent_id, episode_no, from_turn, title, opened_as, reason, opened_at)"
+          + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
   // Only ever writes a first summary: two summarisers racing -- which the lease prevents, but a
   // row must hold on its own -- cannot overwrite each other.
   private static final String SUMMARIZE =
-      "UPDATE nessy_episode SET summary = ?, embedding = ?, embedding_model = ?"
+      "UPDATE nessy_episode SET title = COALESCE(?, title), summary = ?, embedding = ?,"
+          + " embedding_model = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND episode_no = ?"
           + " AND through_turn IS NOT NULL AND summary IS NULL";
 
@@ -218,35 +220,55 @@ public class JdbcEpisodes implements Summarizer {
           if (current.isPresent() && current.get().from().value() >= at.value()) {
             Episode renamed = current.get();
             jdbc.sql(RENAME)
-                .params(named, because, agentType, key(agentId), renamed.number())
+                .params(named, named, because, agentType, key(agentId), renamed.number())
                 .update();
-            return new Episode(renamed.number(), renamed.from(), null, named, because, null);
+            return new Episode(renamed.number(), renamed.from(), null, named, named, because, null);
           }
           OffsetDateTime now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
           int number = nextNumber(agentId);
           if (number == 1 && at.value() > 1) {
             jdbc.sql(INSERT)
-                .params(agentType, key(agentId), 1, 1L, OPENING_TITLE, OPENING_REASON, now)
+                .params(
+                    agentType,
+                    key(agentId),
+                    1,
+                    1L,
+                    OPENING_TITLE,
+                    OPENING_TITLE,
+                    OPENING_REASON,
+                    now)
                 .update();
             number = 2;
           }
           jdbc.sql(CLOSE).params(at.value() - 1, now, agentType, key(agentId)).update();
           jdbc.sql(INSERT)
-              .params(agentType, key(agentId), number, at.value(), named, because, now)
+              .params(agentType, key(agentId), number, at.value(), named, named, because, now)
               .update();
-          return new Episode(number, at, null, named, because, null);
+          return new Episode(number, at, null, named, named, because, null);
         });
   }
 
   /**
-   * Writes an episode's summary, and its embedding by this store's embedder when it has one. Says
-   * whether it did: a summary already there is kept, and a summary of nothing is refused.
+   * Writes an episode's summary, and its embedding by this store's embedder when it has one, and
+   * leaves the title as it was. Says whether it did: a summary already there is kept, and a summary
+   * of nothing is refused.
    */
   public boolean summarize(AgentId agentId, int number, String summary) {
+    return summarize(agentId, number, null, summary);
+  }
+
+  /**
+   * The same, and retitles the episode: whatever has read the whole of it knows better what it was
+   * about than the model did when it began. A null or blank title leaves the title alone. What the
+   * episode was opened as is kept either way.
+   */
+  public boolean summarize(AgentId agentId, int number, String title, String summary) {
     String text = required(summary, "summary");
+    String retitled = title == null || title.isBlank() ? null : title.strip();
     Embedding embedding = embedder == null ? null : embedder.embed(text);
     return jdbc.sql(SUMMARIZE)
             .params(
+                retitled,
                 text,
                 embedding == null ? null : embedding.vector(),
                 embedding == null ? null : embedding.model(),
@@ -333,6 +355,7 @@ public class JdbcEpisodes implements Summarizer {
             new TurnId(rs.getLong("from_turn")),
             open ? null : new TurnId(through),
             rs.getString("title"),
+            rs.getString("opened_as"),
             rs.getString("reason"),
             rs.getString("summary"));
     String model = rs.getString("embedding_model");

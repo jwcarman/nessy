@@ -1,6 +1,7 @@
 -- An agent's story cut into episodes: stretches of turns the model itself named as it went. The
 -- open episode has no through_turn; a closed one is summarised in the background, and the summary
--- stands in for its turns from then on. The embedding is the summary's, by the model named beside
+-- stands in for its turns from then on. The title is the model's when the episode opens and the
+-- summariser's once it closes, having read the whole of it; opened_as keeps the first. The embedding is the summary's, by the model named beside
 -- it, so a store handed a different embedder knows which rows it cannot compare.
 CREATE TABLE IF NOT EXISTS nessy_episode (
   agent_type      TEXT        NOT NULL,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS nessy_episode (
   from_turn       BIGINT      NOT NULL,
   through_turn    BIGINT,
   title           TEXT        NOT NULL,
+  opened_as       TEXT        NOT NULL,
   reason          TEXT        NOT NULL,
   summary         TEXT,
   embedding       REAL[],

@@ -95,14 +95,14 @@ class EpisodeToolsTest {
     episodes.begin(agent, new TurnId(1), "greetings", "start");
     episodes.begin(agent, new TurnId(4), "the task", "next");
     episodes.begin(agent, new TurnId(9), "the wrap-up", "next");
-    episodes.summarize(agent, 1, "hello was said");
+    episodes.summarize(agent, 1, "Saying hello", "hello was said");
 
     Optional<Ambient> ambient = index.forAgent(agent);
     assertThat(ambient.map(Ambient::kind)).contains("episodes");
     assertThat(text(ambient).lines().toList())
         .containsSubsequence(
             List.of(
-                "- 1. greetings (turns 1..3)",
+                "- 1. Saying hello (begun as \"greetings\") (turns 1..3)",
                 "- 2. the task (turns 4..8, not yet summarised)",
                 "- 3. the wrap-up (current, since turn 9)"));
     assertThat(text(ambient)).contains("recall_episode").contains("begin_episode");

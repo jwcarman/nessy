@@ -58,7 +58,8 @@ class EpisodeSummarizerTest {
                   .filter(Turn::complete)
                   .map(turn -> ((Block.Text) turn.observation().blocks().getFirst()).text())
                   .reduce("", (a, b) -> a + " " + b);
-          return new InferenceResult.Answer(List.of(new Block.Text("SUMMARY:" + subject)));
+          return new InferenceResult.Answer(
+              List.of(new Block.Text("Title: **About" + subject + "**\n\nSUMMARY:" + subject)));
         }
         chatRequests.add(request);
         return new InferenceResult.Answer(List.of(new Block.Text("ok")));
@@ -150,6 +151,8 @@ class EpisodeSummarizerTest {
         .until(() -> episodes.find(agent, 1).map(Episode::summarized).orElse(false));
     Episode first = episodes.find(agent, 1).orElseThrow();
     assertThat(first.summary()).isEqualTo("SUMMARY: cats one cats two cats three");
+    assertThat(first.title()).isEqualTo("About cats one cats two cats three");
+    assertThat(first.openedAs()).isEqualTo("cats");
     assertThat(first.through()).isEqualTo(new TurnId(secondBegins - 1));
     assertThat(summaryRequests).hasSize(1);
     // Shown the episode's three turns and the ask, nothing before or after.
@@ -206,10 +209,23 @@ class EpisodeSummarizerTest {
     await()
         .atMost(Duration.ofSeconds(20))
         .until(() -> episodes.find(agent, 2).map(Episode::summarized).orElse(false));
-    assertThat(episodes.find(agent, 1).map(Episode::title)).contains(JdbcEpisodes.OPENING_TITLE);
+    assertThat(episodes.find(agent, 1).map(Episode::openedAs)).contains(JdbcEpisodes.OPENING_TITLE);
+    assertThat(episodes.find(agent, 1).map(Episode::title)).contains("About hello");
     assertThat(episodes.find(agent, 1).map(Episode::summary)).contains("SUMMARY: hello");
     assertThat(episodes.find(agent, 2).map(Episode::summary)).contains("a false start");
     assertThat(summaryRequests).hasSize(1);
+  }
+
+  @Test
+  void a_reply_is_split_into_title_and_summary_when_it_has_both() {
+    assertThat(EpisodeSummarizer.Titled.parse("Title: \"Lisbon trip\"\n\nAlfama, October."))
+        .isEqualTo(new EpisodeSummarizer.Titled("Lisbon trip", "Alfama, October."));
+    assertThat(EpisodeSummarizer.Titled.parse("# Lisbon trip\nAlfama."))
+        .isEqualTo(new EpisodeSummarizer.Titled("Lisbon trip", "Alfama."));
+    assertThat(EpisodeSummarizer.Titled.parse("Just a summary on one line."))
+        .isEqualTo(new EpisodeSummarizer.Titled(null, "Just a summary on one line."));
+    assertThat(EpisodeSummarizer.Titled.parse("***\n\nA summary under an empty title."))
+        .isEqualTo(new EpisodeSummarizer.Titled(null, "***\n\nA summary under an empty title."));
   }
 
   @Test
