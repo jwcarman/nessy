@@ -19,7 +19,10 @@ class BedrockEmbedderLiveTest {
 
   @Test
   void near_texts_are_nearer_than_far_ones() {
-    assumeTrue(System.getenv("AWS_ACCESS_KEY_ID") != null, "AWS_ACCESS_KEY_ID is not set");
+    assumeTrue(
+        System.getenv("AWS_BEARER_TOKEN_BEDROCK") != null
+            || System.getenv("AWS_ACCESS_KEY_ID") != null,
+        "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
     String model =
         System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
     try (BedrockEmbedder embedder = BedrockEmbedder.create(c -> c.fromEnv().model(model))) {

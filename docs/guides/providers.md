@@ -170,6 +170,11 @@ cross-region inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
 InferenceProvider bedrock = BedrockInferenceProvider.fromEnv();
 ```
 
+A Bedrock API key works in place of IAM credentials: the SDK reads
+`AWS_BEARER_TOKEN_BEDROCK` from the environment and uses it for every
+Bedrock call, so a short-term key from the Bedrock console's API keys page
+plus `AWS_REGION` is enough to run the adapter and its live tests.
+
 Two things this wire does that the adapter absorbs. Roles must alternate, so
 a summary and the observation after it, both user-role, are merged into one
 message before sending. And a model that reasons here, Claude with extended

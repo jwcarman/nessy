@@ -44,7 +44,10 @@ class BedrockLiveTest {
   }
 
   private static BedrockInferenceProvider provider() {
-    assumeTrue(System.getenv("AWS_ACCESS_KEY_ID") != null, "AWS_ACCESS_KEY_ID is not set");
+    assumeTrue(
+        System.getenv("AWS_BEARER_TOKEN_BEDROCK") != null
+            || System.getenv("AWS_ACCESS_KEY_ID") != null,
+        "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
     assumeTrue(
         System.getenv("AWS_REGION") != null || System.getenv("AWS_DEFAULT_REGION") != null,
         "AWS_REGION is not set");
