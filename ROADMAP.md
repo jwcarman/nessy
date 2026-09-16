@@ -21,15 +21,16 @@ Memory Management, in the canonical vocabulary: what an agent carries between
 turns and how it is compressed. `nessy-memory` holds the notebook and the
 summarisers; the plan lives under [Planning](#planning).
 
-- **Episodic summaries** *(ready to build)* — one summary per episode instead
-  of one rolling head. A tool the model calls (`begin_episode`, with a title
-  and a reason) summarises everything since the last boundary and stores it;
-  `JdbcEpisodes` is a `Summarizer`, so the assembler shows the episodes and
-  then the tail. No lease needed: a tool call runs inside the fold. Open
-  decisions: whether anything other than the model closes an episode (an idle
-  gap, the head summariser's threshold), and whether episodes and the head
-  summariser may run on the same agent (they compose, but the head would fold
-  turns an episode already covers; one or the other per harness to start).
+- **Episodic summaries** *(shipped 2026-09-16 as `nessy-memory-episodic`)* —
+  `begin_episode(title, reason)` records a boundary and nothing else; the
+  `EpisodeSummarizer` listener writes each closed episode's summary in the
+  background under the `episode` lease; `JdbcEpisodes` is a `Summarizer` that
+  shows the most recent episode plus the most relevant of the rest, ranked by
+  cosine against the turn being answered when it has an `Embedder`, by recency
+  when not; `recall_episode(n)` reads the ones it did not show. Only the model
+  opens episodes, and episodes and the head summariser are one-or-the-other per
+  agent type. Still open: an idle-gap or length cutoff that closes an episode
+  the model forgot to, and re-embedding rows written by a previous embedder.
 - **Sliding-window summaries** — a sibling of the head summariser that keeps a
   window of several summaries and folds the oldest, for agents whose story is
   long but whose distant past still matters.
@@ -38,12 +39,14 @@ summarisers; the plan lives under [Planning](#planning).
   into the agent's Notebook; the Notebook learns authorship (`source`) so an
   agent can't erase its own performance reviews.
 - **Embeddings-ranked recall** — semantic retrieval over notes, episodes and
-  lessons. The `Embedder` seam shipped 2026-09-16 as `nessy-embedding-api`
-  with an OpenAI-compatible embedder beside it; what remains is `pgvector`
-  columns on the stores, a current-turn parameter on `Summarizer` and
-  `AmbientSource` so a store knows what to rank against, an in-process
-  ONNX embedder for air-gapped and test use (OpenAI-compatible, Gemini, Bedrock
-  and Voyage shipped 2026-09-16), and a `Reranker` seam later. Recall degrades to recency and titles when no embedder is present.
+  lessons. The `Embedder` seam shipped 2026-09-16 as `nessy-embedding-api`,
+  with OpenAI-compatible, Gemini, Bedrock and Voyage embedders beside it, and
+  `Summarizer` now receives the turn being answered; episodes rank by it. What
+  remains: the same for `AmbientSource` and the notebook, a `pgvector` index
+  once an agent's episodes are more than a scan (the vectors are stored as
+  plain arrays beside the model's name today), an in-process ONNX embedder for
+  air-gapped and test use, and a `Reranker` seam later. Recall degrades to
+  recency and titles when no embedder is present.
 - **Lesson retention** — pruning, capping, or expiry policies for notebook
   entries, before reflection's index grows without bound.
 - **Blackboard** — a shared, structured working memory several agents (or

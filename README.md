@@ -172,6 +172,7 @@ add `nessy-spi`; an application building an agent depends on
 | `nessy-embedding-api`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
 | `nessy-memory-summarizing` | one rolling summary per agent, replaced as the story grows |
+| `nessy-memory-episodic` | the story cut into episodes the model names; each summarised when it closes and shown again when it is relevant, ranked by embedding when the store has one |
 | `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
 | `nessy-lease` | background work that must run once across processes |
 | `nessy-narration-odyssey` | agent events as resumable streams, for a browser |

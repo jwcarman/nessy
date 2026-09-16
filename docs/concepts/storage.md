@@ -10,6 +10,7 @@ it is read, and there is no abstraction between the engine and its SQL.
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | What each model call was shown | `nessy_inference_context` | until you prune it |
 | One rolling summary per agent | `nessy_summary` | replaced as the story grows |
+| Episodes, each with its summary and the summary's embedding | `nessy_episode` | forever, unless you prune it |
 | Notes, plan tasks, declared intent | `nessy_note`, `nessy_plan_task`, `nessy_intent` | as their modules decide |
 | Background work claimed once | `nessy_lease` | its TTL |
 

@@ -146,6 +146,11 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-episodic</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-tool-mcp</artifactId>
       <version>${project.version}</version>
     </dependency>

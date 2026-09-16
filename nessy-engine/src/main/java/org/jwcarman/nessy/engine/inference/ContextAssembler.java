@@ -56,17 +56,20 @@ public class ContextAssembler implements InferenceContextAssembler {
   @Override
   public InferenceContext assemble(InferenceInvocation invocation) {
     TurnHistory history = histories.forAgent(invocation.agentType(), invocation.agentId());
-    List<Summary> covered = summariesFor(invocation.agentId());
-    // Handed over as turns. Flattening here would pick a wire shape on every adapter's behalf,
-    // and they do not agree on one.
-    return new InferenceContext(
-        covered, tail(history, through(invocation.agentId())), ambientFor(invocation.agentId()));
+    // The tail first: its last turn is the one being answered, and a source that ranks its
+    // summaries by relevance ranks them against that. Handed over as turns. Flattening here would
+    // pick a wire shape on every adapter's behalf, and they do not agree on one.
+    List<Turn> tail = tail(history, through(invocation.agentId()));
+    List<Summary> covered =
+        summariesFor(invocation.agentId(), tail.isEmpty() ? null : tail.getLast());
+    return new InferenceContext(covered, tail, ambientFor(invocation.agentId()));
   }
 
-  private List<Summary> summariesFor(AgentId agentId) {
+  private List<Summary> summariesFor(AgentId agentId, Turn current) {
     List<Summary> gathered = new ArrayList<>();
     for (Summarizer source : summaries) {
-      gathered.addAll(source.forAgent(agentId));
+      gathered.addAll(
+          current == null ? source.forAgent(agentId) : source.forAgent(agentId, current));
     }
     for (int i = 1; i < gathered.size(); i++) {
       Summary before = gathered.get(i - 1);

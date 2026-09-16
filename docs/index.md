@@ -133,6 +133,7 @@ See [Authorization](concepts/authorization.md).
 | `nessy-embedding-api`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | agents that keep notes |
 | `nessy-memory-summarizing` | long-lived agents: one rolling summary per agent, replaced as the story grows |
+| `nessy-memory-episodic` | the story cut into episodes the model names; each summarised when it closes and shown again when it is relevant, ranked by embedding when the store has one |
 | `nessy-planning` | agents that write a plan and work through it |
 | `nessy-lease` | background work that must run once across processes |
 | `nessy-narration-odyssey` | events as resumable streams, for a browser |

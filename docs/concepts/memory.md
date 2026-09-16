@@ -39,9 +39,14 @@ A `Summarizer` says what came before the tail:
 ```java
 public interface Summarizer {
   List<Summary> forAgent(AgentId agentId);
+  default List<Summary> forAgent(AgentId agentId, Turn current) { ... }
   default Optional<TurnId> summarizedThrough(AgentId agentId) { ... }
 }
 ```
+
+The engine asks the two-argument form, handing over the turn being answered,
+so a source that ranks by relevance has something to rank against; a source
+that does not rank inherits the default and never sees it.
 
 A `Summary` covers a run of turns, `from` one turn id `through` another,
 and carries the text that stands in for them. The assembler shows every
@@ -97,9 +102,66 @@ names, identifiers, decisions, commitments and open questions rather than a
 retelling, for exactly that reason. A summary that arrives late costs a
 larger context on one call, not a wrong one.
 
-Episodic summaries, one per episode the model itself declares, are the next
-shape on the [roadmap](https://github.com/jwcarman/nessy/blob/main/ROADMAP.md);
-they will be another `Summarizer` beside this one.
+## Episodes
+
+`nessy-memory-episodic` cuts the story where the model says it changes
+subject, summarises each piece once it closes, and on every call shows the
+pieces that bear on what is being asked now. Where the head summariser fades
+the whole past into one paragraph, episodes keep each stretch of work as its
+own summary that can come back whole when it is relevant again.
+
+The model draws the boundaries. `begin_episode(title, reason)` records that a
+distinct piece of work has begun at this turn: the open episode closes at the
+turn before, a new one opens, and the tool returns. Nothing else happens
+inside the call. The summary is written later by the `EpisodeSummarizer`, a
+listener like the head summariser's: it hears a turn end, sees a closed
+episode with no summary, takes the `episode` lease for the agent and asks the
+model for the summary of that episode's turns alone. Until it has one, the
+episode's turns are still shown verbatim, so a slow summary costs a larger
+context on a few calls and never a hole. An episode index is ambient, kind
+`episodes`, listing every episode by number and title and which one is under
+way; `recall_episode(n)` reads any summary the store did not choose to show.
+
+`JdbcEpisodes` is the `Summarizer`. Its candidates are the summarised
+episodes from the start of the story up to the first that is open or not yet
+summarised; the tail begins after the last of them. Of the candidates it
+shows at most `shown` (five by default): always the most recent, because the
+story just left it, and the rest chosen by relevance when the store has an
+`Embedder`, by recency when it has not. Relevance is the cosine between the
+summary's embedding, written beside it when the summary was, and the
+embedding of the observation being answered: one embedding call per model
+call, against one agent's rows, which are tens rather than thousands. Change
+the embedder and the rows the old model wrote rank last until re-embedded;
+the model's name is stored beside every vector for exactly that reason.
+
+```java
+JdbcEpisodes episodes = JdbcEpisodes.create(c -> c
+        .dataSource(dataSource)
+        .agentType(new AgentType("support"))
+        .embedder(OpenAiEmbedder.create(e -> e.fromEnv().dimension(512)))
+        .shown(5));
+
+EpisodeSummarizer summarizer = EpisodeSummarizer.create(c -> c
+        .agentType(new AgentType("support"))
+        .episodes(episodes)
+        .histories(factory.histories())
+        .leases(new JdbcLeases(dataSource))
+        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+
+factory.create(String.class, h -> h
+        .agentType(new AgentType("support"))
+        .tool(EpisodeTools.begin(episodes), t -> {})
+        .tool(EpisodeTools.recall(episodes), t -> {})
+        .inference(in -> in.context(ctx -> ctx
+                .summaries(episodes)
+                .ambient(EpisodeTools.index(episodes))))
+        .listener(summarizer.listener()));
+```
+
+Run episodes or the head summariser on an agent type, not both: the head
+would fold turns an episode already stands in for. Episodes suit an agent
+whose work comes in distinguishable pieces and whose distant pieces come back;
+the head summariser suits one long thread that only ever moves forward.
 
 ## Ambient: true now, never written down
 
@@ -187,10 +249,10 @@ Embedder embedder = OpenAiEmbedder.create(c -> c
 
 An `Embedding` carries its model's name and compares by content; its
 `similarity` is the cosine between two vectors and refuses a pair from
-different models. The stores that rank by relevance, and the `pgvector`
-columns behind them, are the roadmap's embeddings-ranked recall item; until
-then the notebook and the episodes rank by recency and let the model recall
-by title.
+different models. Episodes rank by it today, as described above; the notebook
+and the lessons store are the rest of the roadmap's embeddings-ranked recall
+item. Every store degrades to recency when it has no embedder, and the model
+can always recall by title.
 
 ## Writing your own
 

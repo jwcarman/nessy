@@ -5,20 +5,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Summary;
-import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.lease.Leases;
@@ -66,63 +60,13 @@ public class HeadSummarizer {
       Do not narrate, and do not describe the conversation as a conversation. Keep exact values: \
       a name, a number or an identifier is worth more than a sentence about it.""";
 
-  /** How the head is rendered for the model: one line per thing that happened. */
+  /** How the head is rendered for the model; see {@link Transcripts#render}. */
   static String transcript(List<Turn> turns) {
-    StringBuilder out = new StringBuilder();
-    for (Turn turn : turns) {
-      out.append("user: ").append(text(turn.observation().blocks())).append('\n');
-      for (Exchange exchange : turn.exchanges()) {
-        String said = text(exchange.request());
-        if (!said.isBlank()) {
-          out.append("assistant: ").append(said).append('\n');
-        }
-        exchange
-            .calls()
-            .forEach(
-                call ->
-                    out.append("assistant called ")
-                        .append(call.name().value())
-                        .append(' ')
-                        .append(call.arguments())
-                        .append('\n'));
-        exchange
-            .outcomes()
-            .forEach(
-                outcome ->
-                    out.append("tool: ")
-                        .append(
-                            switch (outcome) {
-                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
-                              case ToolOutcome.Failed(var _, String message) ->
-                                  "failed: " + message;
-                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
-                            })
-                        .append('\n'));
-      }
-      switch (turn.result()) {
-        case TurnResult.Answered(var blocks) ->
-            out.append("assistant: ").append(text(blocks)).append('\n');
-        case TurnResult.Failed _ -> out.append("(the assistant could not answer)\n");
-        case TurnResult.Refused _ -> out.append("(the assistant declined to answer)\n");
-        case null -> {
-          // Still under way; never summarised.
-        }
-      }
-    }
-    return out.toString();
+    return Transcripts.render(turns);
   }
 
   private static String text(List<? extends Block> blocks) {
-    return blocks.stream()
-        .map(
-            block ->
-                switch (block) {
-                  case Block.Text(String text) -> text;
-                  case Block.Commentary(String text) -> text;
-                  case Block.Provider _, Block.ToolCall _ -> "";
-                })
-        .filter(text -> !text.isEmpty())
-        .collect(Collectors.joining("\n"));
+    return Transcripts.text(blocks);
   }
 
   /** What a summariser is made of; see {@link HeadSummarizer#create(Consumer)}. */
@@ -244,14 +188,7 @@ public class HeadSummarizer {
 
   /** What the request ends on: an open turn asking for the summary of everything above. */
   static Turn ask(Turn last) {
-    return new Turn(
-        new TurnId(last.id().value() + 1),
-        new Observation(
-            new Seq(last.id().value() + 1),
-            List.of(new Block.Text("Write the summary of everything above now."))),
-        List.of(),
-        null,
-        0);
+    return Transcripts.ask(last, "Write the summary of everything above now.");
   }
 
   /** The last summarised turn, or zero: a TurnId cannot say "none", so this is a number. */

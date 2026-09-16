@@ -143,6 +143,65 @@ class ContextAssemblerTest {
     return new ContextAssembler(histories, summaries, maxTail, List.of());
   }
 
+  /** A source that ranks by relevance is told what is being answered: the last turn of the tail. */
+  @Test
+  void a_summarizer_is_handed_the_turn_being_answered() {
+    RecordingHistories histories = new RecordingHistories(turns(1, 12));
+    List<Long> askedAbout = new ArrayList<>();
+    Summarizer ranking =
+        new Summarizer() {
+          @Override
+          public List<Summary> forAgent(AgentId agentId) {
+            throw new AssertionError("the engine asks with the current turn");
+          }
+
+          @Override
+          public List<Summary> forAgent(AgentId agentId, Turn current) {
+            askedAbout.add(current.id().value());
+            return List.of(Summary.text(new TurnId(1), new TurnId(4), "the beginning"));
+          }
+
+          @Override
+          public Optional<TurnId> summarizedThrough(AgentId agentId) {
+            return Optional.of(new TurnId(4));
+          }
+        };
+
+    InferenceContext context = assembler(histories, List.of(ranking), 20).assemble(invocation());
+
+    assertThat(askedAbout).containsExactly(12L);
+    assertThat(context.summaries()).hasSize(1);
+    assertThat(ids(context.turns())).first().isEqualTo(5L);
+  }
+
+  /** With no story at all there is no turn to rank against, and the plain question is asked. */
+  @Test
+  void with_no_turns_a_summarizer_is_asked_without_one() {
+    List<Summary> asked = List.of(Summary.text(new TurnId(1), new TurnId(1), "odd"));
+    Summarizer plain =
+        new Summarizer() {
+          @Override
+          public List<Summary> forAgent(AgentId agentId) {
+            return List.of();
+          }
+
+          @Override
+          public List<Summary> forAgent(AgentId agentId, Turn current) {
+            return asked;
+          }
+
+          @Override
+          public Optional<TurnId> summarizedThrough(AgentId agentId) {
+            return Optional.empty();
+          }
+        };
+
+    InferenceContext context =
+        assembler(new RecordingHistories(List.of()), List.of(plain), 5).assemble(invocation());
+
+    assertThat(context.summaries()).isEmpty();
+  }
+
   @Nested
   class WithNoSummaries {
 
