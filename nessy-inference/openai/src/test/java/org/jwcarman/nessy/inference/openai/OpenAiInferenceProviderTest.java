@@ -21,7 +21,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.JsonValue;
 import com.openai.core.http.Headers;
+import com.openai.core.http.StreamResponse;
 import com.openai.errors.BadRequestException;
 import com.openai.errors.InternalServerException;
 import com.openai.errors.NotFoundException;
@@ -34,17 +36,22 @@ import com.openai.errors.UnauthorizedException;
 import com.openai.errors.UnexpectedStatusCodeException;
 import com.openai.errors.UnprocessableEntityException;
 import com.openai.models.chat.completions.ChatCompletion;
+import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
+import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import com.openai.services.blocking.ChatService;
 import com.openai.services.blocking.chat.ChatCompletionService;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -78,6 +85,16 @@ class OpenAiInferenceProviderTest {
    */
   private static OpenAIClient fakeClient(
       Function<ChatCompletionCreateParams, ChatCompletion> answer) {
+    return fakeStreamingClient(params -> chunksOf(answer.apply(params)));
+  }
+
+  /**
+   * A stream over chunks the test hands in: the provider streams, so this is the call it makes. The
+   * chunks are what the SDK's accumulator folds back into a completion, and what is narrated on the
+   * way.
+   */
+  private static OpenAIClient fakeStreamingClient(
+      Function<ChatCompletionCreateParams, List<ChatCompletionChunk>> answer) {
     var completionService =
         (ChatCompletionService)
             Proxy.newProxyInstance(
@@ -88,8 +105,20 @@ class OpenAiInferenceProviderTest {
                   // JDK proxy intercepts every interface method call itself rather than letting
                   // the default method's body run and delegate to the two-arg abstract overload
                   // -- so this must match on name alone, not arity.
-                  if ("create".equals(method.getName())) {
-                    return answer.apply((ChatCompletionCreateParams) args[0]);
+                  if ("createStreaming".equals(method.getName())) {
+                    List<ChatCompletionChunk> chunks =
+                        answer.apply((ChatCompletionCreateParams) args[0]);
+                    return new StreamResponse<ChatCompletionChunk>() {
+                      @Override
+                      public Stream<ChatCompletionChunk> stream() {
+                        return chunks.stream();
+                      }
+
+                      @Override
+                      public void close() {
+                        // Nothing held open.
+                      }
+                    };
                   }
                   throw new UnsupportedOperationException(method.getName());
                 });
@@ -114,6 +143,107 @@ class OpenAiInferenceProviderTest {
               }
               throw new UnsupportedOperationException(method.getName());
             });
+  }
+
+  /**
+   * A completion cut into the chunks a server would have streamed it as: the role first, the text a
+   * few characters at a time, each tool call's name then its arguments in pieces, the refusal, and
+   * the finish reason last on an otherwise empty delta.
+   */
+  private static List<ChatCompletionChunk> chunksOf(ChatCompletion completion) {
+    List<ChatCompletionChunk> chunks = new ArrayList<>();
+    if (completion.choices().isEmpty()) {
+      chunks.add(chunk(null, null));
+      return chunks;
+    }
+    ChatCompletion.Choice choice = completion.choices().getFirst();
+    ChatCompletionMessage message = choice.message();
+    chunks.add(
+        chunk(
+            ChatCompletionChunk.Choice.Delta.builder()
+                .role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+                .build(),
+            null));
+    for (String piece : pieces(message.content().orElse(""))) {
+      chunks.add(chunk(ChatCompletionChunk.Choice.Delta.builder().content(piece).build(), null));
+    }
+    message
+        .refusal()
+        .ifPresent(
+            refusal ->
+                chunks.add(
+                    chunk(
+                        ChatCompletionChunk.Choice.Delta.builder().refusal(refusal).build(),
+                        null)));
+    List<ChatCompletionMessageToolCall> calls = message.toolCalls().orElseGet(List::of);
+    for (int i = 0; i < calls.size(); i++) {
+      var function = calls.get(i).asFunction();
+      chunks.add(
+          chunk(
+              ChatCompletionChunk.Choice.Delta.builder()
+                  .addToolCall(
+                      ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                          .index(i)
+                          .id(function.id())
+                          .type(ChatCompletionChunk.Choice.Delta.ToolCall.Type.FUNCTION)
+                          .function(
+                              ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+                                  .name(function.function().name())
+                                  .arguments("")
+                                  .build())
+                          .build())
+                  .build(),
+              null));
+      for (String piece : pieces(function.function().arguments())) {
+        chunks.add(
+            chunk(
+                ChatCompletionChunk.Choice.Delta.builder()
+                    .addToolCall(
+                        ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                            .index(i)
+                            .function(
+                                ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+                                    .arguments(piece)
+                                    .build())
+                            .build())
+                    .build(),
+                null));
+      }
+    }
+    chunks.add(
+        chunk(
+            ChatCompletionChunk.Choice.Delta.builder().build(),
+            ChatCompletionChunk.Choice.FinishReason.of(choice.finishReason().asString())));
+    return chunks;
+  }
+
+  /** Five characters at a time, so a stream of them is several chunks. */
+  private static List<String> pieces(String text) {
+    List<String> pieces = new ArrayList<>();
+    for (int i = 0; i < text.length(); i += 5) {
+      pieces.add(text.substring(i, Math.min(text.length(), i + 5)));
+    }
+    return pieces;
+  }
+
+  /** One chunk with one choice at index 0, or none when {@code delta} is null. */
+  private static ChatCompletionChunk chunk(
+      ChatCompletionChunk.Choice.Delta delta, ChatCompletionChunk.Choice.FinishReason reason) {
+    ChatCompletionChunk.Builder chunk =
+        ChatCompletionChunk.builder()
+            .id("chatcmpl-test")
+            .created(0L)
+            .model("gpt-4o")
+            .choices(List.of());
+    if (delta != null) {
+      chunk.addChoice(
+          ChatCompletionChunk.Choice.builder()
+              .index(0L)
+              .delta(delta)
+              .finishReason(Optional.ofNullable(reason))
+              .build());
+    }
+    return chunk.build();
   }
 
   /** One completion carrying one choice, which is the only shape this adapter reads. */
@@ -167,6 +297,88 @@ class OpenAiInferenceProviderTest {
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
     return ((InferenceResult.Fault) result).failure();
+  }
+
+  @Nested
+  class WhatIsNarrated {
+
+    private final List<AgentEvent> narrated = new ArrayList<>();
+
+    private InferenceResult inferNarrating(List<ChatCompletionChunk> chunks) {
+      return new OpenAiProviderConfig()
+          .client(fakeStreamingClient(params -> chunks))
+          .build()
+          .infer(REQUEST, narrated::add);
+    }
+
+    @Test
+    void the_text_is_narrated_piece_by_piece_as_it_arrives_and_answered_whole() {
+      InferenceResult result =
+          inferNarrating(
+              chunksOf(
+                  completionOf(
+                      ChatCompletionMessage.builder()
+                          .content("a lake monster")
+                          .refusal(Optional.<String>empty())
+                          .build())));
+
+      assertThat(narrated)
+          .extracting(event -> ((AgentEvent.ContentDelta) event).text())
+          .containsExactly("a lak", "e mon", "ster");
+      assertThat(result)
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
+    }
+
+    @Test
+    void reasoning_a_compatible_server_sends_is_narrated_as_thinking() {
+      List<ChatCompletionChunk> chunks = new ArrayList<>();
+      chunks.add(
+          chunk(
+              ChatCompletionChunk.Choice.Delta.builder()
+                  .putAdditionalProperty("reasoning_content", JsonValue.from("hmm"))
+                  .build(),
+              null));
+      chunks.add(chunk(ChatCompletionChunk.Choice.Delta.builder().content("ok").build(), null));
+      chunks.add(
+          chunk(
+              ChatCompletionChunk.Choice.Delta.builder().build(),
+              ChatCompletionChunk.Choice.FinishReason.STOP));
+
+      InferenceResult result = inferNarrating(chunks);
+
+      assertThat(narrated)
+          .containsExactly(new AgentEvent.ThinkingDelta("hmm"), new AgentEvent.ContentDelta("ok"));
+      assertThat(result).isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("ok"))));
+    }
+
+    @Test
+    void tool_call_fragments_are_not_narrated_and_a_stream_of_nothing_is_a_fault() {
+      InferenceResult calls =
+          inferNarrating(
+              chunksOf(
+                  completionOf(
+                      ChatCompletionMessage.builder()
+                          .content(Optional.<String>empty())
+                          .refusal(Optional.<String>empty())
+                          .addToolCall(
+                              ChatCompletionMessageToolCall.ofFunction(
+                                  ChatCompletionMessageFunctionToolCall.builder()
+                                      .id("call_1")
+                                      .function(
+                                          ChatCompletionMessageFunctionToolCall.Function.builder()
+                                              .name("days_until")
+                                              .arguments("{\"date\":\"2026-12-25\"}")
+                                              .build())
+                                      .build()))
+                          .build())));
+
+      assertThat(narrated).isEmpty();
+      assertThat(calls).isInstanceOf(InferenceResult.Actions.class);
+      assertThat(inferNarrating(List.of()))
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
+    }
   }
 
   @Nested
@@ -327,7 +539,13 @@ class OpenAiInferenceProviderTest {
               .infer(REQUEST);
 
       assertThat(result)
-          .isEqualTo(new InferenceResult.Fault(new Failure.Permanent("model returned no choices")));
+          // Streamed, a reply with no choices is a stream that never reaches a finish reason.
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason()).contains("ended before");
+              });
     }
 
     @Test

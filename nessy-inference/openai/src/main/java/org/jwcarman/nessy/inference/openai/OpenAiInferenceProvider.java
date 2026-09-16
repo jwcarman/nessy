@@ -1,17 +1,22 @@
 package org.jwcarman.nessy.inference.openai;
 
 import com.openai.client.OpenAIClient;
+import com.openai.core.JsonString;
+import com.openai.core.http.StreamResponse;
 import com.openai.errors.InternalServerException;
 import com.openai.errors.OpenAIException;
 import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIRetryableException;
 import com.openai.errors.RateLimitException;
+import com.openai.helpers.ChatCompletionAccumulator;
 import com.openai.models.chat.completions.ChatCompletion;
+import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
+import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -32,10 +37,13 @@ import tools.jackson.databind.json.JsonMapper;
  * model. That is why the old {@code model(ModelId)} handle is gone: there is nothing left for it to
  * pin.
  *
- * <p><b>Does not stream, so it narrates nothing and answers all at once.</b> Which is the point of
- * the narrator being a parameter rather than a second interface: this adapter is unchanged by
- * streaming existing, and no caller can tell it apart from one that does stream. Narrating deltas
- * here later is an addition to this class and a change to nothing else.
+ * <p><b>Streams, and narrates as it goes.</b> Every call is made with {@code stream: true}; each
+ * chunk's text is narrated as a {@link AgentEvent.ContentDelta} the moment it arrives, and a chunk
+ * carrying {@code reasoning_content} -- what OpenAI-compatible servers such as LM Studio send for a
+ * thinking model -- as a {@link AgentEvent.ThinkingDelta}. The chunks are folded back into one
+ * completion by the SDK's own accumulator, and the answer is read from that exactly as a
+ * non-streaming reply would be. The narrator is best-effort and the engine reads only the result,
+ * so nothing above this class can tell it streams; the person watching can.
  *
  * <p><b>Images are not sent.</b> The block grammar has no image yet, so there is nothing to
  * project; when it grows one, {@code OpenAiRequests} is where it lands.
@@ -114,9 +122,32 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    */
   @Override
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
-    try {
-      ChatCompletion completion =
-          client.chat().completions().create(OpenAiRequests.toParams(request, mapper));
+    Objects.requireNonNull(narrator, "narrator must not be null");
+    try (StreamResponse<ChatCompletionChunk> stream =
+        client.chat().completions().createStreaming(OpenAiRequests.toParams(request, mapper))) {
+      ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
+      boolean[] any = {false};
+      stream.stream()
+          .forEach(
+              chunk -> {
+                any[0] = true;
+                accumulator.accumulate(chunk);
+                narrate(chunk, narrator);
+              });
+      if (!any[0]) {
+        // A stream that ended before it began: nothing to fold. Asking again returns the same.
+        return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
+      }
+      ChatCompletion completion;
+      try {
+        completion = accumulator.chatCompletion();
+      } catch (IllegalStateException incomplete) {
+        // The stream closed before any choice reached its finish reason: the SDK will not fold
+        // half an answer into a completion, and neither should this adapter.
+        return new InferenceResult.Fault(
+            new Failure.Permanent(
+                "the stream ended before the answer was complete: " + incomplete.getMessage()));
+      }
       if (completion.choices().isEmpty()) {
         // A 200 that carries no answer. Asking again returns the same nothing.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
@@ -126,6 +157,37 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
       return new InferenceResult.Fault(classify(e));
     }
   }
+
+  /**
+   * What a person watching is told as the chunk lands: the text, and the thinking when the server
+   * sends any. Only the first choice, which is the only one read. Tool-call fragments are not
+   * narrated: half a JSON argument is not something anybody can watch.
+   */
+  private static void narrate(ChatCompletionChunk chunk, AgentNarrator narrator) {
+    for (ChatCompletionChunk.Choice choice : chunk.choices()) {
+      if (choice.index() != 0) {
+        continue;
+      }
+      ChatCompletionChunk.Choice.Delta delta = choice.delta();
+      delta
+          .content()
+          .filter(text -> !text.isEmpty())
+          .ifPresent(text -> narrator.narrate(new AgentEvent.ContentDelta(text)));
+      for (String field : REASONING_FIELDS) {
+        if (delta._additionalProperties().get(field) instanceof JsonString reasoning
+            && !reasoning.value().isEmpty()) {
+          narrator.narrate(new AgentEvent.ThinkingDelta(reasoning.value()));
+        }
+      }
+    }
+  }
+
+  /**
+   * Where OpenAI-compatible servers put a thinking model's reasoning in a chunk. Not in the SDK's
+   * grammar, because OpenAI's own API does not send it; LM Studio, Ollama, vLLM and DeepSeek do,
+   * under one of these two names.
+   */
+  private static final List<String> REASONING_FIELDS = List.of("reasoning_content", "reasoning");
 
   /**
    * Which of the three shapes an assistant message is.

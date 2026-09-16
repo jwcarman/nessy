@@ -26,7 +26,8 @@ class EmbeddingTest {
         .hasToString("Embedding[model=m, dimension=2]");
     assertThat(one.dimension()).isEqualTo(2);
     // equals(Object) refuses anything that is not an Embedding, and says so without throwing.
-    assertThat(one.equals(new Object())).isFalse();
+    Object notAnEmbedding = new Object();
+    assertThat(one).isNotEqualTo(notAnEmbedding);
   }
 
   @Test
