@@ -44,13 +44,7 @@ class InferenceProviderTest {
   /** An anonymous class has no simple name at all, so it answers the same way. */
   @Test
   void a_provider_written_as_an_anonymous_class_is_named_the_same_way() {
-    InferenceProvider anonymous =
-        new InferenceProvider() {
-          @Override
-          public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
-            return ANSWER;
-          }
-        };
+    InferenceProvider anonymous = new LocalProvider() {};
 
     assertThat(anonymous.providerName()).isEqualTo("InferenceProviderTest");
   }
