@@ -145,7 +145,7 @@ class GiveUpUndeliverableTest {
       DELIVERIES.incrementAndGet();
       try {
         fail.await();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
       throw new IllegalStateException("nope");

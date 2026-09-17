@@ -105,7 +105,7 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
                 "gen_ai.embeddings.dimension.count", String.valueOf(delegate.dimension()));
     inheritIdentity(observation);
     observation.start();
-    try (Observation.Scope _ = observation.openScope()) {
+    try (var _ = observation.openScope()) {
       return call.get();
     } catch (RuntimeException e) {
       observation.lowCardinalityKeyValue(ERROR_TYPE, e.getClass().getSimpleName());

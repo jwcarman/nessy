@@ -92,8 +92,4 @@ public final class ObservedTurnHistories {
     }
     return observation.observe(() -> work.apply(observation));
   }
-
-  private static Identity whose(ObservationRegistry observations) {
-    return Identity.current(observations);
-  }
 }

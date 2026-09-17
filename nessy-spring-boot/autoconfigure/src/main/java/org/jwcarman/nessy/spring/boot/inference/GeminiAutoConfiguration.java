@@ -33,13 +33,7 @@ public class GeminiAutoConfiguration {
       @Value("${gemini.api-key}") String apiKey,
       ObjectProvider<JsonMapper> mappers,
       ObservationRegistry observations) {
-    InferenceProvider provider =
-        GeminiInferenceProvider.create(
-            c -> {
-              c.apiKey(apiKey);
-              mappers.ifAvailable(c::mapper);
-            });
-    return ObservedInferenceProvider.wrap(provider, observations);
+    return observed(apiKey, mappers, observations);
   }
 
   @Bean
@@ -49,6 +43,12 @@ public class GeminiAutoConfiguration {
       @Value("${google.api-key}") String apiKey,
       ObjectProvider<JsonMapper> mappers,
       ObservationRegistry observations) {
+    return observed(apiKey, mappers, observations);
+  }
+
+  /** Both keys name the same vendor, so both beans are the same provider. */
+  private static InferenceProvider observed(
+      String apiKey, ObjectProvider<JsonMapper> mappers, ObservationRegistry observations) {
     InferenceProvider provider =
         GeminiInferenceProvider.create(
             c -> {

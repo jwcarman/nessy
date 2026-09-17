@@ -17,6 +17,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 
@@ -59,15 +60,7 @@ class ObservedContextTest {
 
   @Test
   void a_summary_source_is_read_as_semconvs_search_memory() {
-    Summarizer source =
-        new Summarizer() {
-          @Override
-          public List<org.jwcarman.nessy.api.turn.Summary> forAgent(AgentId agentId) {
-            return List.of(
-                org.jwcarman.nessy.api.turn.Summary.text(
-                    new TurnId(1), new TurnId(4), "turns 1-4"));
-          }
-        };
+    Summarizer source = _ -> List.of(Summary.text(new TurnId(1), new TurnId(4), "turns 1-4"));
 
     ObservedSummarizer.wrap(source, registry).forAgent(AGENT);
 

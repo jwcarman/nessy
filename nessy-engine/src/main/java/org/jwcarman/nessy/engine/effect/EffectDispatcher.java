@@ -8,6 +8,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.random.RandomGenerator;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -69,7 +70,13 @@ public class EffectDispatcher {
   private final Traces traces;
   private final Duration pollInterval;
 
-  private volatile ScheduledFuture<?> polling;
+  /**
+   * The schedule, once this dispatcher is started: read by folding threads asking for a nudge, set
+   * by whoever started it, cleared by nobody. An {@code AtomicReference} rather than a volatile
+   * field because what crosses threads here is the reference, and saying so with the type is
+   * cheaper to read than a modifier whose reason has to be remembered.
+   */
+  private final AtomicReference<ScheduledFuture<?>> polling = new AtomicReference<>();
 
   public EffectDispatcher(
       AgentType agentType,
@@ -114,9 +121,9 @@ public class EffectDispatcher {
     // would run a pass while the harness is still being wired, and it would leave a test no
     // way to keep the schedule out of its assertions -- a long interval could still be beaten
     // by the poll that happens on the way up.
-    this.polling =
+    polling.set(
         scheduler.scheduleWithFixedDelay(
-            this::pass, clock.instant().plus(pollInterval), pollInterval);
+            this::pass, clock.instant().plus(pollInterval), pollInterval));
   }
 
   /**
@@ -138,7 +145,7 @@ public class EffectDispatcher {
    * held the waiting rows are the poll's to find, which is what being at capacity means.
    */
   public void nudge() {
-    ScheduledFuture<?> schedule = polling;
+    ScheduledFuture<?> schedule = polling.get();
     if (schedule == null || schedule.isCancelled()) {
       return;
     }
@@ -162,8 +169,9 @@ public class EffectDispatcher {
   }
 
   public void close() {
-    if (polling != null) {
-      polling.cancel(false);
+    ScheduledFuture<?> schedule = polling.get();
+    if (schedule != null) {
+      schedule.cancel(false);
     }
     workers.close();
   }

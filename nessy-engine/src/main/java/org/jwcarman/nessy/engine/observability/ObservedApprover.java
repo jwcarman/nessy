@@ -13,8 +13,6 @@ import org.jwcarman.nessy.api.tool.Approver;
  */
 public final class ObservedApprover {
 
-  private static final String DURATION = "gen_ai.client.operation.duration";
-  private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String TOOL_NAME = "gen_ai.tool.name";
 
   private ObservedApprover() {}

@@ -598,6 +598,13 @@
                  build stays green with no API key and no network. -->
             <excludedGroups>${nessy.excludedGroups}</excludedGroups>
             <argLine>@{jacocoArgLine}</argLine>
+            <!-- One logging configuration for every module's tests. Without it a module with no
+                 logback-test.xml of its own gets logback's default, which is root DEBUG: with
+                 Testcontainers that is every Docker API call and every HTTP header, and the
+                 build's own failures are lost in it. -->
+            <systemPropertyVariables>
+              <logback.configurationFile>${maven.multiModuleProjectDirectory}/config/logback-test.xml</logback.configurationFile>
+            </systemPropertyVariables>
             <!-- The default includes, plus **/*Demo.java: the flagship Demo classes
                  (deterministic, PumpedExecutor + scripted providers) must gate the
                  build, not just compile. -->
