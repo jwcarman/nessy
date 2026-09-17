@@ -124,7 +124,7 @@
          this repo pins serves them too (checked signature by signature). -->
     <odyssey.version>0.10.0</odyssey.version>
     <jmustache.version>1.16</jmustache.version>
-    <substrate.version>0.7.0</substrate.version>
+    <substrate.version>0.8.2</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
          internally never reaches an adapter. -->
