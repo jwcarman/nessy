@@ -312,7 +312,8 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   /** Which vendor an observability layer should report this call under. */
-  public String provider() {
+  @Override
+  public String providerName() {
     return provider;
   }
 }

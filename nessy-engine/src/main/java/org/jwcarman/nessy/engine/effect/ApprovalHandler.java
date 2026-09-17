@@ -94,7 +94,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       // Nothing to approve, and nothing that could run if it were approved. Discharged here
       // rather than waved through to fail one hop later, which would run the whole call
       // lifecycle to reach a conclusion already available.
-      log.info(
+      log.warn(
           "[{}] agent {}: no tool named {} to approve",
           agentType.value(),
           agentId.value(),
@@ -133,7 +133,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       // call whose arguments will not read has no question to ask about it -- and could not
       // run whatever anybody answered. Discharged without asking: a gate exists to stop
       // execution, and there is no execution here to stop.
-      log.info(
+      log.warn(
           "[{}] agent {}: call {} of {} has unreadable arguments",
           agentType.value(),
           agentId.value(),

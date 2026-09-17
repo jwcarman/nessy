@@ -1,12 +1,12 @@
 package org.jwcarman.nessy.examples.watchman;
 
-import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -19,7 +19,6 @@ import org.jwcarman.nessy.approval.risk.RiskFactors;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spring.boot.Observed;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -76,8 +75,7 @@ public class WatchmanConfiguration {
       DefaultHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
-      ApprovalsDesk desk,
-      ObservationRegistry observations) {
+      ApprovalsDesk desk) {
     List<Tool<JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.create(
         String.class,
@@ -85,29 +83,24 @@ public class WatchmanConfiguration {
           config
               .agentType(Watchman.TYPE)
               .systemPrompt(WatchmanPrompt.SYSTEM)
-              .observationCoalescer(WatchmanObservations.COALESCER);
+              .observationCoalescer(ObservationCoalescer.keepLatest());
           // A watchman does rounds forever, so its story grows forever. The tail the model is
           // shown is capped (the default is the last twenty turns); summarising the head into a
           // paragraph is the piece that has not been rebuilt yet.
           tools.forEach(
               tool -> {
-                // Wrapped here rather than by the starter: this application grants its own tools,
-                // so it observes its own. Shell commands are the slow part of a round, and a span
-                // per call is what makes a twenty-minute round explicable.
-                Tool<JsonNode> observed = Observed.tool(tool, observations);
                 if (WatchmanTools.needsApproval(tool.name())) {
                   config.tool(
-                      observed,
+                      tool,
                       binding ->
                           binding
                               .approver(
-                                  Observed.approver(gatedOnRisk(tool.name(), desk), observations),
+                                  gatedOnRisk(tool.name(), desk),
                                   approval -> approval.timeout(properties.getApprovalTerm()))
                               .action(args -> WatchmanTools.actionOf(tool.name())));
                 } else {
                   config.tool(
-                      observed,
-                      binding -> binding.action(args -> WatchmanTools.actionOf(tool.name())));
+                      tool, binding -> binding.action(args -> WatchmanTools.actionOf(tool.name())));
                 }
               });
         });

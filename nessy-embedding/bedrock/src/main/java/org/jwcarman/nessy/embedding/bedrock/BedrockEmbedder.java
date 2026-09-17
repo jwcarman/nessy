@@ -82,6 +82,11 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
+  public String providerName() {
+    return "aws.bedrock";
+  }
+
+  @Override
   public String model() {
     return model;
   }

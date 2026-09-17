@@ -14,6 +14,7 @@ import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
+import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
@@ -57,19 +58,31 @@ public final class EngineFixture implements AutoCloseable {
 
   public EngineFixture(
       InferenceProvider provider, AgentEventListener listener, ObservationRegistry observations) {
-    this(provider, listener, observations, Optional.empty());
+    this(provider, listener, observations, Optional.empty(), Optional.empty());
+  }
+
+  /** Tracing, with the context written by {@code carrier} rather than a momentary span. */
+  public EngineFixture(
+      InferenceProvider provider, ObservationRegistry observations, TraceCarrier carrier) {
+    this(provider, AgentEventListener.none(), observations, Optional.empty(), Optional.of(carrier));
   }
 
   /** With something done to every stored byte, which the fixture's own reader must undo too. */
   public EngineFixture(InferenceProvider provider, Codec<byte[]> storage) {
-    this(provider, AgentEventListener.none(), ObservationRegistry.NOOP, Optional.of(storage));
+    this(
+        provider,
+        AgentEventListener.none(),
+        ObservationRegistry.NOOP,
+        Optional.of(storage),
+        Optional.empty());
   }
 
   private EngineFixture(
       InferenceProvider provider,
       AgentEventListener listener,
       ObservationRegistry observations,
-      Optional<Codec<byte[]>> storage) {
+      Optional<Codec<byte[]>> storage,
+      Optional<TraceCarrier> carrier) {
     HikariConfig config = new HikariConfig();
     config.setJdbcUrl(POSTGRES.getJdbcUrl());
     config.setUsername(POSTGRES.getUsername());
@@ -101,6 +114,7 @@ public final class EngineFixture implements AutoCloseable {
                   .listener(listener)
                   .observations(observations);
               storage.ifPresent(engine::storage);
+              carrier.ifPresent(engine::traceCarrier);
             });
   }
 

@@ -177,6 +177,25 @@
       <version>${project.version}</version>
       <optional>true</optional>
     </dependency>
+    <!-- Embeddings, the same way: the module an application adds decides which vendor it gets. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-embedding-openai</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-embedding-gemini</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-embedding-voyage</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-prompt</artifactId>
@@ -213,6 +232,14 @@
     <dependency>
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-observation</artifactId>
+    </dependency>
+    <!-- Boot's own ObservationRegistry bean. Brought rather than hoped for: everything the starter
+         wires is observed, so a registry is part of what a Nessy application has, and every bean
+         here can take one instead of asking whether it exists. An application that declares its own
+         still wins; one that is not exporting anywhere gets a registry with no handlers. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-micrometer-observation</artifactId>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>

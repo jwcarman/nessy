@@ -33,6 +33,15 @@ class ObservationCoalescerTest {
   }
 
   @Test
+  void keep_latest_replaces_everything_waiting_with_the_arrival() {
+    List<BacklogItem<Reading>> next =
+        ObservationCoalescer.<Reading>keepLatest()
+            .coalesce(waiting(), at(T0.plusSeconds(2), "garage", 3));
+
+    assertThat(next).extracting(item -> item.observation().value()).containsExactly(3);
+  }
+
+  @Test
   void replace_by_key_keeps_the_newest_per_key_in_place_and_appends_a_new_key() {
     ObservationCoalescer<Reading> coalescer = ObservationCoalescer.replaceBy(Reading::sensor);
 

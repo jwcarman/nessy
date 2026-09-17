@@ -5,7 +5,9 @@ spring:
     virtual:
       enabled: true
   datasource:
-    # The engine's schema is PostgreSQL's. The same variables the other examples read.
+    # Where the database is when it is not the compose file's: `spring-boot:run` starts the
+    # containers beside this pom and takes the URL, user and password from them, so these defaults
+    # are for running the jar against a database somebody else started.
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nessy}
     username: ${SPRING_DATASOURCE_USERNAME:nessy}
     password: ${SPRING_DATASOURCE_PASSWORD:nessy}
@@ -32,9 +34,6 @@ management:
 
 nessy:
   type: chat
-  # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. Configured rather than
-  # discovered because a provider does not report its own vendor.
-  provider: openai
   model: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every waiting approval becomes
@@ -61,9 +60,11 @@ nessy:
     later -- possibly much later. Never claim an email has been sent until the tool says so.
 
 # Optional, and read straight from the environment as CHAT_EMBEDDING_MODEL (relaxed binding to
-# chat.embedding-model): an embedding model at the same endpoint, and episodes are ranked by
+# nessy.embedding.openai.model): an embedding model at the same endpoint, and episodes are ranked by
 # relevance to the turn being answered rather than by recency. LM Studio serves e.g.
-# text-embedding-nomic-embed-text-v1.5. Unset, no embedder bean is made at all.
+# text-embedding-nomic-embed-text-v1.5. Named rather than defaulted, because an endpoint that is not
+# OpenAI serves the models it serves. Unset, the starter makes no embedder and the most recent
+# episodes are shown instead.
 
 # The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio.
 openai:

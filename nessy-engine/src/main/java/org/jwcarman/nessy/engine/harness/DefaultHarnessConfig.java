@@ -30,7 +30,8 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
-import org.jwcarman.nessy.engine.observability.ObservedTools;
+import org.jwcarman.nessy.engine.observability.ObservedApprover;
+import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -158,7 +159,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   public <I> DefaultHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
     customizer.accept(terms);
-    Tool<I> observed = ObservedTools.tool(tool, observations);
+    Tool<I> observed = ObservedTool.wrap(tool, observations);
     tools.add(
         new ToolBinding<>(
             observed,
@@ -171,7 +172,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
             // Only an approver the application chose is worth a span: the default lets every
             // call through, and an "approval" nobody was asked for would mislead a dashboard.
             terms.approverChosen
-                ? ObservedTools.approver(terms.approver, observations)
+                ? ObservedApprover.wrap(terms.approver, observations)
                 : terms.approver,
             terms.approvalTimeout,
             terms.approvalRetryPolicy));
@@ -419,18 +420,20 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
 
       @Override
       public ContextConfig ambient(AmbientSource source) {
-        ambient.add(Objects.requireNonNull(source, "ambient source must not be null"));
+        Objects.requireNonNull(source, "ambient source must not be null");
+        // Refused here rather than at render time: two sections under one label leave the model
+        // with a contradiction and no way to tell which is current.
+        if (!ambientKinds.add(source.kind())) {
+          throw new IllegalArgumentException(
+              "two ambient sources offer the kind '" + source.kind() + "'");
+        }
+        ambient.add(source);
         return this;
       }
 
       @Override
       public ContextConfig ambient(Ambient constant) {
         Objects.requireNonNull(constant, "ambient must not be null");
-        // Only a constant's kind is known at configuration time; a source's is known per call.
-        if (!ambientKinds.add(constant.kind())) {
-          throw new IllegalArgumentException(
-              "two ambient sources offer the kind '" + constant.kind() + "'");
-        }
         return ambient(AmbientSource.constant(constant));
       }
 
@@ -450,7 +453,10 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
 
   static final class Effects implements EffectsConfig {
 
-    private Duration pollInterval = Duration.ofMillis(250);
+    // The backstop, not the path: work this process writes is nudged into a pass at once, so the
+    // poll only bounds how late it finds retries coming due, timeouts, and rows another process
+    // wrote.
+    private Duration pollInterval = Duration.ofSeconds(1);
     private int maxInFlight = 4;
 
     @Override

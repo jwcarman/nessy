@@ -17,9 +17,11 @@ package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -37,7 +39,11 @@ class OpenAiAutoConfigurationTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withConfiguration(AutoConfigurations.of(OpenAiAutoConfiguration.class));
+          .withConfiguration(
+              AutoConfigurations.of(
+                  org.springframework.boot.micrometer.observation.autoconfigure
+                      .ObservationAutoConfiguration.class,
+                  OpenAiAutoConfiguration.class));
 
   @Test
   @DisplayName("with an OpenAI key present, it contributes an InferenceProvider")
@@ -53,6 +59,47 @@ class OpenAiAutoConfigurationTest {
     runner
         .withPropertyValues("xai.api-key=xai-test")
         .run(context -> assertThat(context).hasSingleBean(InferenceProvider.class));
+  }
+
+  /** Observed where it is made, and still able to say which vendor it is. */
+  @Test
+  @DisplayName("the provider it contributes is observed and names its vendor")
+  void the_provider_it_contributes_is_observed_and_names_its_vendor() {
+    runner
+        .withBean(ObservationRegistry.class, ObservationRegistry::create)
+        .withPropertyValues("openai.api-key=sk-test")
+        .run(
+            context -> {
+              InferenceProvider provider = context.getBean(InferenceProvider.class);
+              assertThat(provider).isInstanceOf(ObservedInferenceProvider.class);
+              assertThat(provider.providerName()).isEqualTo("openai");
+            });
+  }
+
+  /**
+   * Observed whether or not anything is listening: with no registry configured it is the no-op one,
+   * which costs a check per call, and the bean has one shape either way.
+   */
+  @Test
+  @DisplayName("without an observation registry it is observed against the no-op one")
+  void without_an_observation_registry_it_is_observed_against_the_no_op_one() {
+    runner
+        .withPropertyValues("openai.api-key=sk-test")
+        .run(
+            context ->
+                assertThat(context.getBean(InferenceProvider.class))
+                    .isInstanceOf(ObservedInferenceProvider.class));
+  }
+
+  @Test
+  @DisplayName("an xAI key names x_ai as the vendor")
+  void an_xai_key_names_x_ai_as_the_vendor() {
+    runner
+        .withPropertyValues("xai.api-key=xai-test")
+        .run(
+            context ->
+                assertThat(context.getBean(InferenceProvider.class).providerName())
+                    .isEqualTo("x_ai"));
   }
 
   @Test

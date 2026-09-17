@@ -62,6 +62,12 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return create(VoyageEmbedderConfig::fromEnv);
   }
 
+  /** Semconv names no value for Voyage AI, so this one is ours. */
+  @Override
+  public String providerName() {
+    return "voyage";
+  }
+
   @Override
   public String model() {
     return model;

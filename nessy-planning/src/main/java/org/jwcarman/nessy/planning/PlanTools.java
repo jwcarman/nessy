@@ -18,7 +18,6 @@ package org.jwcarman.nessy.planning;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.block.Block;
@@ -85,11 +84,16 @@ public final class PlanTools {
    */
   public static AmbientSource plan(PlanStore store) {
     Objects.requireNonNull(store, "store must not be null");
-    return agentId ->
-        store
-            .find(agentId)
-            .filter(plan -> !plan.isEmpty())
-            .map(plan -> Ambient.text(KIND, render(plan)));
+    return AmbientSource.of(
+        source ->
+            source
+                .kind(KIND)
+                .text(
+                    agentId ->
+                        store
+                            .find(agentId)
+                            .filter(plan -> !plan.isEmpty())
+                            .map(PlanTools::render)));
   }
 
   /** A checklist, in the model's own order. */

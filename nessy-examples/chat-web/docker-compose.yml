@@ -1,0 +1,54 @@
+#
+# Copyright © 2026 James Carman
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# What chat-web needs that is not chat-web: its database, and somewhere to send traces.
+#
+# `docker compose up -d` beside this file, then run the example. The credentials are the ones
+# application.yml defaults to, so nothing needs exporting.
+services:
+  postgres:
+    image: postgres:17
+    container_name: chat-web-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nessy
+      POSTGRES_USER: nessy
+      POSTGRES_PASSWORD: nessy
+    ports:
+      - "5432:5432"
+    volumes:
+      - chat-web-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nessy -d nessy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Grafana's own all-in-one: Grafana, Prometheus, Tempo and Loki behind one OTLP endpoint.
+  lgtm:
+    image: grafana/otel-lgtm
+    container_name: chat-web-lgtm
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Grafana
+      - "4317:4317"   # OTLP/gRPC
+      - "4318:4318"   # OTLP/HTTP, where application.yml sends traces
+    volumes:
+      - chat-web-lgtm:/data
+
+volumes:
+  chat-web-db:
+  chat-web-lgtm:

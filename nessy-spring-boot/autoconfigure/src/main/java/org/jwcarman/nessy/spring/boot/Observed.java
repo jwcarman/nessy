@@ -16,14 +16,12 @@
 package org.jwcarman.nessy.spring.boot;
 
 import io.micrometer.observation.ObservationRegistry;
-import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.engine.inference.ObservedInference;
-import org.jwcarman.nessy.engine.observability.ObservedTools;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.engine.observability.ObservedApprover;
+import org.jwcarman.nessy.engine.observability.ObservedTool;
 
 /**
  * Observability by WRAPPING the collaborators the engine calls, rather than by listening to what it
@@ -53,35 +51,7 @@ import org.jwcarman.nessy.spi.inference.InferenceProvider;
  */
 public final class Observed {
 
-  /** Semconv's histogram of how long a GenAI operation took. */
-  private static final String DURATION = "gen_ai.client.operation.duration";
-
-  private static final String OPERATION_NAME = "gen_ai.operation.name";
-  private static final String ERROR_TYPE = "error.type";
-  private static final String DELEGATE_NOT_NULL = "delegate must not be null";
-  private static final String OBSERVATIONS_NOT_NULL = "observations must not be null";
-
   private Observed() {}
-
-  /**
-   * One provider, observed: a span per inference, lasting as long as the provider actually takes.
-   *
-   * <p><b>Simpler than it was, because the SPI is.</b> Timing used to have to stay open across
-   * iteration of a stream -- the provider did its work as events were consumed, so timing the call
-   * that returned the iterator measured almost nothing. An inference is one call that returns when
-   * it is done, so the span is just the call.
-   *
-   * @param providerName the semconv {@code gen_ai.provider.name} for this vendor -- {@code
-   *     "openai"}, {@code "anthropic"}, {@code "x_ai"}. Passed in because the application that
-   *     built the provider is the one thing that knows; each adapter publishes the right value as
-   *     its own {@code PROVIDER_NAME}.
-   */
-  public static InferenceProvider inference(
-      InferenceProvider delegate, String providerName, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, DELEGATE_NOT_NULL);
-    Objects.requireNonNull(observations, OBSERVATIONS_NOT_NULL);
-    return ObservedInference.provider(delegate, providerName, observations);
-  }
 
   /**
    * One tool, observed.
@@ -91,11 +61,11 @@ public final class Observed {
    * histogram as a chat call, distinguished by {@code gen_ai.operation.name}.
    */
   public static <I> Tool<I> tool(Tool<I> delegate, ObservationRegistry observations) {
-    return ObservedTools.tool(delegate, observations);
+    return ObservedTool.wrap(delegate, observations);
   }
 
-  /** One approver, observed; see {@link ObservedTools#approver}. */
+  /** One approver, observed; see {@link ObservedApprover#wrap}. */
   public static Approver approver(Approver delegate, ObservationRegistry observations) {
-    return ObservedTools.approver(delegate, observations);
+    return ObservedApprover.wrap(delegate, observations);
   }
 }

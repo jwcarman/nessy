@@ -119,7 +119,7 @@ wrong.
 `nessy_agent_effect` carries the work an agent owes and everything needed
 to perform it without decoding it: a status, when it is next actionable,
 how many attempts it has had, a per-attempt timeout, a hard deadline, the
-W3C trace context it was emitted under, and beside the payload a second
+W3C trace context of the turn it belongs to, and beside the payload a second
 blob saying what to tell the agent if the work can never be done. See
 [Durable Computation](durable-computation.md).
 

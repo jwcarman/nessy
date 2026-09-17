@@ -343,10 +343,15 @@ class ContextAssemblerTest {
     RecordingHistories histories = new RecordingHistories(turns(1, 3));
     List<AgentId> askedFor = new ArrayList<>();
     AmbientSource clock =
-        who -> {
-          askedFor.add(who);
-          return Optional.of(Ambient.text("clock", "it is Tuesday"));
-        };
+        AmbientSource.of(
+            source ->
+                source
+                    .kind("clock")
+                    .text(
+                        who -> {
+                          askedFor.add(who);
+                          return Optional.of("it is Tuesday");
+                        }));
 
     InferenceContext context =
         new ContextAssembler(histories, List.of(), 5, List.of(clock)).assemble(invocation());

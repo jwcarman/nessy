@@ -16,7 +16,11 @@ import java.time.Duration;
  */
 public interface EffectsConfig {
 
-  /** How often to look for work that has become due. */
+  /**
+   * How often to look for work that has become due. Defaults to one second. Work this process
+   * writes down is taken at once without waiting for it, so the interval bounds only how late a
+   * retry, a timeout, or a row written by another process is noticed.
+   */
   EffectsConfig pollInterval(Duration pollInterval);
 
   /**

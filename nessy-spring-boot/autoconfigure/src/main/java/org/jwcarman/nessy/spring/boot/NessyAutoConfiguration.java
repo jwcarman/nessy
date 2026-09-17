@@ -2,6 +2,8 @@ package org.jwcarman.nessy.spring.boot;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
@@ -99,35 +101,35 @@ public class NessyAutoConfiguration {
       InferenceProvider models,
       NessyProperties properties,
       NessySchema schema,
-      ObjectProvider<ObservationRegistry> registries,
+      ObservationRegistry observations,
       ObjectProvider<MeterRegistry> meters,
-      ObjectProvider<StorageCodec> storage) {
+      ObjectProvider<StorageCodec> storage,
+      ObjectProvider<Tracer> tracers,
+      ObjectProvider<Propagator> propagators) {
 
-    ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     // Token counts become semconv's histogram when there is a meter registry to hold it.
     meters.ifAvailable(
         registry ->
             observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
-    // Wrapped only when there is somewhere to report to, so an application that is not tracing
-    // pays for no wrapper at all -- and when it is, the chat span lands inside the effect span
-    // that caused it rather than starting a trace of its own.
-    InferenceProvider provider =
-        ObservationRegistry.NOOP.equals(observations)
-            ? models
-            : Observed.inference(models, properties.provider(), observations);
-
     return new DefaultHarnessFactory(
         engine -> {
           engine
               .dataSource(dataSource)
               .inference(
-                  provider, new InferenceOptions(requireModel(properties), properties.maxTokens()))
+                  models, new InferenceOptions(requireModel(properties), properties.maxTokens()))
               .observations(observations)
               .replyTokens(replyTokens);
           // What is done to every stored byte after Jackson, when the application declared it:
           // compression, encryption. Declared as a StorageCodec bean, because a bean of a plain
           // Codec<byte[]> names nothing in particular.
           storage.ifAvailable(engine::storage);
+          // With a tracer and its propagator the context is written straight into the effect
+          // row; without them the engine opens a momentary span to have it written.
+          Tracer tracer = tracers.getIfAvailable();
+          Propagator propagator = propagators.getIfAvailable();
+          if (tracer != null && propagator != null) {
+            engine.traceCarrier(new PropagatingTraceCarrier(tracer, propagator));
+          }
         });
   }
 
@@ -176,10 +178,9 @@ public class NessyAutoConfiguration {
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,
-      ObjectProvider<ObservationRegistry> registries,
+      ObservationRegistry observations,
       ObjectProvider<SystemPromptSource> prompts) {
 
-    ObservationRegistry observations = registries.getIfAvailable(() -> ObservationRegistry.NOOP);
     List<Tool<?>> declared = tools.orderedStream().toList();
     // A templated prompt when an engine is on the classpath (PromptAutoConfiguration), or one
     // the application declared; the plain property otherwise.

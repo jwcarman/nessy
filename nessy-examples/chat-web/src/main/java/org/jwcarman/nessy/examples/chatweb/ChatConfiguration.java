@@ -8,7 +8,6 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.embedding.Embedder;
-import org.jwcarman.nessy.embedding.openai.OpenAiEmbedder;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.lease.Leases;
 import org.jwcarman.nessy.memory.episodic.EpisodeSummarizer;
@@ -24,8 +23,6 @@ import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -59,20 +56,6 @@ public class ChatConfiguration {
 
   private static final int MAX_TAIL = 20;
 
-  /**
-   * What ranks episodes by relevance: an embedding model at the same OpenAI-compatible endpoint the
-   * chat model is at, when {@code CHAT_EMBEDDING_MODEL} names one. Without it the store shows the
-   * most recent episodes instead, so the example runs on a chat model alone.
-   */
-  @Bean
-  @ConditionalOnProperty("chat.embedding-model")
-  public Embedder embedder(
-      @Value("${chat.embedding-model}") String model,
-      @Value("${openai.base-url}") String baseUrl,
-      @Value("${openai.api-key}") String apiKey) {
-    return OpenAiEmbedder.create(c -> c.apiKey(apiKey).baseUrl(baseUrl).model(model));
-  }
-
   @Bean
   public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<Embedder> embedder) {
     return JdbcEpisodes.create(
@@ -104,9 +87,7 @@ public class ChatConfiguration {
                 .leaseTtl(Duration.ofMinutes(5))
                 // Each summary is a nessy.summary span with its model call inside, when the
                 // application is tracing.
-                .observations(
-                    observations.getIfAvailable(() -> ObservationRegistry.NOOP),
-                    properties.provider()));
+                .observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP)));
   }
 
   @Bean

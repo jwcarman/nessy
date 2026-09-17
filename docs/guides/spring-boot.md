@@ -52,7 +52,6 @@ gated on that module's classes being present: add `nessy-lease` and a
 | `nessy.max-tokens` | 4096 |
 | `nessy.system-prompt` | the standing instruction, inline |
 | `nessy.system-prompt-file` | a `Resource`; **setting both is an error**, because silently preferring one makes a misconfigured prompt very hard to notice |
-| `nessy.provider` | `unknown`: the vendor name observability reports |
 | `nessy.initialize-schema` | `true`: run every module's `nessy-schema.sql` at startup |
 | `nessy.reply-token-encryption-keys` | ephemeral; see below |
 | `nessy.prompt.engine` | `spring`, or `mustache` |

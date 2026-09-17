@@ -1,5 +1,7 @@
 package org.jwcarman.nessy.spring.boot.inference;
 
+import io.micrometer.observation.ObservationRegistry;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -28,23 +30,31 @@ public class GeminiAutoConfiguration {
   @ConditionalOnProperty(name = "gemini.api-key")
   @ConditionalOnMissingBean(InferenceProvider.class)
   public InferenceProvider geminiInferenceProvider(
-      @Value("${gemini.api-key}") String apiKey, ObjectProvider<JsonMapper> mappers) {
-    return GeminiInferenceProvider.create(
-        c -> {
-          c.apiKey(apiKey);
-          mappers.ifAvailable(c::mapper);
-        });
+      @Value("${gemini.api-key}") String apiKey,
+      ObjectProvider<JsonMapper> mappers,
+      ObservationRegistry observations) {
+    InferenceProvider provider =
+        GeminiInferenceProvider.create(
+            c -> {
+              c.apiKey(apiKey);
+              mappers.ifAvailable(c::mapper);
+            });
+    return ObservedInferenceProvider.wrap(provider, observations);
   }
 
   @Bean
   @ConditionalOnProperty(name = "google.api-key")
   @ConditionalOnMissingBean(InferenceProvider.class)
   public InferenceProvider googleInferenceProvider(
-      @Value("${google.api-key}") String apiKey, ObjectProvider<JsonMapper> mappers) {
-    return GeminiInferenceProvider.create(
-        c -> {
-          c.apiKey(apiKey);
-          mappers.ifAvailable(c::mapper);
-        });
+      @Value("${google.api-key}") String apiKey,
+      ObjectProvider<JsonMapper> mappers,
+      ObservationRegistry observations) {
+    InferenceProvider provider =
+        GeminiInferenceProvider.create(
+            c -> {
+              c.apiKey(apiKey);
+              mappers.ifAvailable(c::mapper);
+            });
+    return ObservedInferenceProvider.wrap(provider, observations);
   }
 }

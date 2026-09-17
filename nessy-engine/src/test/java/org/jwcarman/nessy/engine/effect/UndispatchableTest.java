@@ -3,7 +3,6 @@ package org.jwcarman.nessy.engine.effect;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -63,25 +62,17 @@ class UndispatchableTest {
                         .agentType(TYPE)
                         .systemPrompt("You are a test assistant.")
                         .inference(in -> in.model("a-model").retryPolicy(new RetryPolicy.Never()))
-                        .effects(
-                            e ->
-                                e.maxInFlight(2)
-                                    // Long enough that the payload is corrupted before any pass can
-                                    // look at it.
-                                    .pollInterval(Duration.ofSeconds(3))));
+                        .effects(e -> e.maxInFlight(2)));
 
-    harness.observe(agentId, "this will not be dispatchable");
-
-    // Stand in for the rollback: the row now names something no build can construct.
-    int corrupted =
-        engine
-            .jdbc()
-            .sql("UPDATE nessy_agent_effect SET payload = ? WHERE agent_id = ?")
-            .params(
-                "{\"type\":\"AnEffectFromTheFuture\"}".getBytes(StandardCharsets.UTF_8),
-                agentId.value())
-            .update();
-    assertThat(corrupted).as("the effect row must exist to be corrupted").isEqualTo(1);
+    // Stand in for the rollback: the row this agent's effect is written as names something no
+    // build can construct. Rewritten as it is inserted, because the effect is taken the moment
+    // observe commits -- there is no later moment to corrupt it in before a pass looks.
+    rewriteEffectsOf(agentId, "{\"type\":\"AnEffectFromTheFuture\"}");
+    try {
+      harness.observe(agentId, "this will not be dispatchable");
+    } finally {
+      stopRewriting(agentId);
+    }
 
     await()
         .atMost(Duration.ofSeconds(30))
@@ -94,6 +85,34 @@ class UndispatchableTest {
                   .as("an effect nothing can ever perform is retired, not retried forever")
                   .isZero();
             });
+  }
+
+  private static String triggerOf(AgentId agentId) {
+    return "undispatchable_" + agentId.value().toString().replace("-", "");
+  }
+
+  private void rewriteEffectsOf(AgentId agentId, String payload) {
+    String name = triggerOf(agentId);
+    engine
+        .jdbc()
+        .sql(
+            ("CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
+                    + " IF NEW.agent_id = '%s' THEN NEW.payload := convert_to('%s', 'UTF8');"
+                    + " END IF; RETURN NEW; END $$")
+                .formatted(name, agentId.value(), payload))
+        .update();
+    engine
+        .jdbc()
+        .sql(
+            "CREATE TRIGGER %s BEFORE INSERT ON nessy_agent_effect FOR EACH ROW EXECUTE FUNCTION %s()"
+                .formatted(name, name))
+        .update();
+  }
+
+  private void stopRewriting(AgentId agentId) {
+    String name = triggerOf(agentId);
+    engine.jdbc().sql("DROP TRIGGER %s ON nessy_agent_effect".formatted(name)).update();
+    engine.jdbc().sql("DROP FUNCTION %s()".formatted(name)).update();
   }
 
   private String stateOf(AgentId agentId) {

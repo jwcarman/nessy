@@ -68,7 +68,8 @@ class AmbientTest {
   /** Background is asked for afresh, so a source with nothing to say offers none at all. */
   @Test
   void aSourceWithNothingToSayOffersNothing() {
-    AmbientSource quiet = _ -> java.util.Optional.empty();
+    AmbientSource quiet =
+        AmbientSource.of(source -> source.kind("notebook").text(_ -> java.util.Optional.empty()));
 
     assertThat(quiet.forAgent(new AgentId(java.util.UUID.randomUUID()))).isEmpty();
   }

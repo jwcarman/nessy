@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import javax.sql.DataSource;
+import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.codec.spi.TypeRef;
@@ -27,6 +28,12 @@ import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceRecorder;
+import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceRecorder;
+import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
+import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
@@ -88,6 +95,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final ObservationRegistry observations;
+
   private final DefaultHarnessConfig.Defaults defaults;
   private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
@@ -125,7 +133,11 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     scheduler.setThreadNamePrefix("nessy-");
     scheduler.initialize();
     this.observations = config.observations();
-    this.traces = new Traces(observations);
+    this.traces =
+        config
+            .traceCarrier()
+            .map(carrier -> new Traces(observations, carrier))
+            .orElseGet(() -> new Traces(observations));
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
@@ -157,44 +169,29 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     // Built here because it needs the store, which a caller has no handle on.
     DefaultHarnessConfig.Inference inference = config.inference();
     DefaultHarnessConfig.Inference.Context context = inference.context();
+    // Observed as they are handed over, the way a tool is wrapped as it is bound: what the
+    // engine is given reports its own work, and the assembler knows nothing about spans.
     InferenceContextAssembler assembler =
-        new ContextAssembler(history, context.summaries(), context.maxTail(), context.ambient());
+        ObservedInferenceContextAssembler.wrap(
+            new ContextAssembler(
+                ObservedTurnHistories.wrap(history, observations),
+                context.summaries().stream()
+                    .map(source -> ObservedSummarizer.wrap(source, observations))
+                    .toList(),
+                context.maxTail(),
+                context.ambient().stream()
+                    .map(source -> ObservedAmbientSource.wrap(source, observations))
+                    .toList()),
+            observations);
     // One registry, held by both halves: the store asks it what an effect is worth while
     // writing the row, the dispatcher asks it who performs one after reading it back. Two
     // lookups keyed by the same thing could disagree; one cannot.
     EffectHandlers handlers =
         new EffectHandlers(
-            new InferenceHandler(
-                agentType,
-                new DefaultInferenceService(
-                    assembler,
-                    inference.provider(),
-                    config.requiredSystemPrompt(),
-                    tools.offers(),
-                    narrator,
-                    recorder),
-                inference.options(),
-                inference.timeout(),
-                inference.retryPolicy()),
-            new ApprovalHandler(
-                agentType,
-                tools,
-                history.forAgentType(agentType),
-                replyTokens,
-                narrator,
-                config.approvalTimeout(),
-                config.toolRetryPolicy(),
-                clock),
-            new ToolCallHandler(
-                agentType,
-                tools,
-                history.forAgentType(agentType),
-                replyTokens,
-                narrator,
-                config.toolTimeout(),
-                config.toolRetryPolicy(),
-                clock));
-    EffectStore effects = new EffectStore(agentType, handlers, effectRows, traces);
+            createInferenceHandler(agentType, assembler, inference, config, tools, narrator),
+            createApprovalHandler(agentType, tools, narrator, config),
+            createToolCallHandler(agentType, tools, narrator, config));
+    EffectStore effects = new EffectStore(agentType, handlers, effectRows);
     DefaultHarness<O> harness =
         new DefaultHarness<>(
             agentType,
@@ -234,6 +231,53 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     harnesses.add(harness);
 
     return harness;
+  }
+
+  private <O> @NonNull ToolCallHandler createToolCallHandler(
+      AgentType agentType, Tools tools, Listeners narrator, DefaultHarnessConfig<O> config) {
+    return new ToolCallHandler(
+        agentType,
+        tools,
+        history.forAgentType(agentType),
+        replyTokens,
+        narrator,
+        config.toolTimeout(),
+        config.toolRetryPolicy(),
+        clock);
+  }
+
+  private <O> @NonNull ApprovalHandler createApprovalHandler(
+      AgentType agentType, Tools tools, Listeners narrator, DefaultHarnessConfig<O> config) {
+    return new ApprovalHandler(
+        agentType,
+        tools,
+        history.forAgentType(agentType),
+        replyTokens,
+        narrator,
+        config.approvalTimeout(),
+        config.toolRetryPolicy(),
+        clock);
+  }
+
+  private <O> @NonNull InferenceHandler createInferenceHandler(
+      AgentType agentType,
+      InferenceContextAssembler assembler,
+      DefaultHarnessConfig.Inference inference,
+      DefaultHarnessConfig<O> config,
+      Tools tools,
+      Listeners narrator) {
+    return new InferenceHandler(
+        agentType,
+        new DefaultInferenceService(
+            assembler,
+            ObservedInferenceProvider.wrap(inference.provider(), observations),
+            config.requiredSystemPrompt(),
+            tools.offers(),
+            narrator,
+            ObservedInferenceRecorder.wrap(recorder, observations)),
+        inference.options(),
+        inference.timeout(),
+        inference.retryPolicy());
   }
 
   /**

@@ -32,9 +32,12 @@ irreversible — without being something you could point at a stranger.
 
 ## Run it
 
-Defaults target [LM Studio](https://lmstudio.ai) on `localhost:1234`:
+Start its database and Grafana with the compose file beside this README, then
+the example from the repository root. Defaults target
+[LM Studio](https://lmstudio.ai) on `localhost:1234`:
 
 ```bash
+docker compose -f nessy-examples/chat-web/docker-compose.yml up -d
 ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
 
@@ -63,13 +66,11 @@ CHAT_MODEL_ID=gpt-4o-mini \
 
 ## What it does not do
 
-**Everything is in memory** — transcripts, backlogs, and agent and turn
-state alike, since all of it lives in the one engine-owned database. No
-`DataSource` bean means the starter falls back to an in-memory substrate and
-warns loudly, because an example that needs a database before it will say
-hello is an example nobody runs. Add one and it uses it for all of it. The
-`watchman` example next door answers this with Postgres, which is what a
-deployment does.
+**It needs Postgres.** Agents, their stories, episodes, notes, plans and
+outstanding work are all rows. The `docker-compose.yml` beside this README runs
+the database the defaults point at (`localhost:5432/nessy`, user `nessy`, password `nessy`);
+`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and
+`SPRING_DATASOURCE_PASSWORD` point it somewhere else.
 
 The reply key IS fixed, in `application.yml`, because ephemeral keys and
 parked approvals do not mix: a token minted before a restart cannot be read

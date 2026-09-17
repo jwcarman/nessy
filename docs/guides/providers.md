@@ -263,7 +263,9 @@ public interface InferenceProvider {
   alone is an `Answer`; an empty reply is a `Fault` naming the finish reason.
 - Keep vendor state whole. Anything the vendor wants back untouched, a
   thinking signature, a thought signature, travels as a `Block.Provider`
-  tagged with your provider name, and you replay only your own tag.
+  tagged with your provider name, and you replay only your own tag. Return
+  that name from `providerName()` too, as semconv spells it, so every span
+  your calls make says which vendor they went to.
 - Catch the SDK's root exception and classify it into a `Failure`:
   `Transient` when the vendor admits retrying may work (429, 5xx),
   `Unknown` for a transport failure where the request may have been

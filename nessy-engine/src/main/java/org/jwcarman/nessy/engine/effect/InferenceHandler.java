@@ -98,7 +98,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
     return Awaited.ready(
         switch (result) {
           case InferenceResult.Answer(var blocks, var _) -> {
-            log.info("model answered agent {} with {} block(s)", agentId.value(), blocks.size());
+            log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());
             yield new EffectOutcome.InferenceAnswered(blocks);
           }
           case InferenceResult.Refusal(var category, var _) -> {
@@ -106,7 +106,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
             yield new EffectOutcome.InferenceRefused(category);
           }
           case InferenceResult.Actions(var blocks, var _) -> {
-            log.info("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
+            log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
             yield new EffectOutcome.InferenceRequestedActions(blocks);
           }
           case InferenceResult.Fault(var failure, var _) -> {

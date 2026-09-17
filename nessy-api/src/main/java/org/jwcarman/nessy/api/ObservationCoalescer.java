@@ -51,6 +51,15 @@ public interface ObservationCoalescer<O> {
   }
 
   /**
+   * Only the newest observation matters. Anything still waiting is superseded by the arrival, so
+   * the backlog never holds more than one -- the right answer for a clock tick, where an agent
+   * catching up should do one round, not every one it missed.
+   */
+  static <O> ObservationCoalescer<O> keepLatest() {
+    return (backlog, incoming) -> List.of(incoming);
+  }
+
+  /**
    * Keeps only the newest observation per key, <em>in the position the first one held</em>.
    *
    * <p>Position matters: moving a refreshed entry to the back lets a fast-updating sensor push

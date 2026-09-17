@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spring.boot.inference;
 
+import io.micrometer.observation.ObservationRegistry;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -45,11 +47,15 @@ public class AnthropicAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean(InferenceProvider.class)
   public InferenceProvider anthropicInferenceProvider(
-      @Value("${anthropic.api-key}") String apiKey, ObjectProvider<JsonMapper> mappers) {
-    return AnthropicInferenceProvider.create(
-        c -> {
-          c.apiKey(apiKey);
-          mappers.ifAvailable(c::mapper);
-        });
+      @Value("${anthropic.api-key}") String apiKey,
+      ObjectProvider<JsonMapper> mappers,
+      ObservationRegistry observations) {
+    InferenceProvider provider =
+        AnthropicInferenceProvider.create(
+            c -> {
+              c.apiKey(apiKey);
+              mappers.ifAvailable(c::mapper);
+            });
+    return ObservedInferenceProvider.wrap(provider, observations);
   }
 }

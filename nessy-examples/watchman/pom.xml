@@ -144,6 +144,15 @@
       <artifactId>jackson-databind</artifactId>
     </dependency>
 
+    <!-- `spring-boot:run` starts docker-compose.yml beside this pom and takes the database and the
+         OTLP endpoint from the containers it started, then stops them on exit. Optional, so the jar
+         this example is usually run as (on the box whose disks and containers it watches) does not
+         carry it. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-docker-compose</artifactId>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>

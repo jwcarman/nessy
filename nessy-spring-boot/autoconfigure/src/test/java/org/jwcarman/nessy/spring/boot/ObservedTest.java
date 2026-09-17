@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Observation;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.observability.Identity;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -78,7 +79,7 @@ class ObservedTest {
             meters
                 .get(TokenUsageHandler.TOKEN_USAGE)
                 .tag("gen_ai.token.type", "output")
-                .tag("gen_ai.provider.name", "openai")
+                .tag("gen_ai.provider.name", "ObservedTest")
                 .summary()
                 .totalAmount())
         .isEqualTo(5);
@@ -133,7 +134,7 @@ class ObservedTest {
   }
 
   private void observe(InferenceProvider provider) {
-    Observed.inference(provider, "openai", observations).infer(request());
+    ObservedInferenceProvider.wrap(provider, observations).infer(request());
   }
 
   // ---- inference -------------------------------------------------------------------------
@@ -143,7 +144,8 @@ class ObservedTest {
     observe((_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done"))));
 
     assertThat(meters.get(DURATION).timer().count()).isEqualTo(1);
-    assertThat(tagOf(DURATION, "gen_ai.provider.name")).isEqualTo("openai");
+    // A lambda reports the class that wrote it, which is stable across runs.
+    assertThat(tagOf(DURATION, "gen_ai.provider.name")).isEqualTo("ObservedTest");
     assertThat(tagOf(DURATION, "gen_ai.request.model")).isEqualTo("a-model");
     assertThat(tagOf(DURATION, "gen_ai.operation.name")).isEqualTo("chat");
   }
@@ -206,11 +208,9 @@ class ObservedTest {
 
   @Test
   void an_application_without_a_registry_pays_nothing() {
-    Observed.inference(
-            (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done"))),
-            "openai",
-            ObservationRegistry.NOOP)
-        .infer(request());
+    InferenceProvider provider =
+        (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done")));
+    ObservedInferenceProvider.wrap(provider, ObservationRegistry.NOOP).infer(request());
 
     assertThat(meters.find(DURATION).timer()).isNull();
   }

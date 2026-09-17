@@ -143,7 +143,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     if (bound.isEmpty()) {
       // Ordinary, not exceptional: models ask for tools that do not exist, and telling one
       // so is how it picks a different one.
-      log.info("[{}] agent {}: no tool named {}", agentType.value(), agentId.value(), call.name());
+      log.warn("[{}] agent {}: no tool named {}", agentType.value(), agentId.value(), call.name());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
               callId, "there is no tool named '" + call.name().value() + "'"));

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.TurnId;
@@ -59,7 +58,8 @@ public final class EpisodeTools {
    */
   public static AmbientSource index(JdbcEpisodes episodes) {
     Objects.requireNonNull(episodes, EPISODES_NOT_NULL);
-    return agentId -> Optional.of(Ambient.text(KIND, render(episodes.all(agentId))));
+    return AmbientSource.of(
+        source -> source.kind(KIND).text(agentId -> Optional.of(render(episodes.all(agentId)))));
   }
 
   static final String NONE_OPEN =

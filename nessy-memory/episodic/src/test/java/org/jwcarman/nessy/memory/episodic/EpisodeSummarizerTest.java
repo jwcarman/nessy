@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
-import org.jwcarman.nessy.engine.inference.ObservedInference;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
@@ -107,7 +107,7 @@ class EpisodeSummarizerTest {
                     .histories(factory.histories())
                     .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
-                    .observations(observations, "test"));
+                    .observations(observations));
     harness =
         factory.create(
             String.class,
@@ -186,14 +186,17 @@ class EpisodeSummarizerTest {
 
     // On record: a nessy.summary span that says it wrote, with the model call inside it as a
     // chat span tagged with the provider it was told about.
-    assertThat(recorded.names()).contains(SummaryObservation.NAME, ObservedInference.DURATION);
+    assertThat(recorded.names())
+        .contains(SummaryObservation.NAME, ObservedInferenceProvider.DURATION);
     assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.kind")).isEqualTo("episode");
     // Whose, on the summary and on the model call it made.
     assertThat(recorded.tag(SummaryObservation.NAME, "gen_ai.agent.name")).isEqualTo("chat");
-    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.agent.name")).isEqualTo("chat");
+    assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.agent.name"))
+        .isEqualTo("chat");
     assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")).isEqualTo("written");
-    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
-    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))
+    assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.provider.name"))
+        .isEqualTo("EpisodeSummarizerTest");
+    assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.response.finish_reasons"))
         .isEqualTo("stop");
     // Beneath the turn that caused it: the summary was told about on the engine's threads, and
     // the observation current when the turn ended travelled with the event.
@@ -204,7 +207,7 @@ class EpisodeSummarizerTest {
             .orElseThrow();
     assertThat(summary.getParentObservation()).isNotNull();
     assertThat(summary.getParentObservation().getContextView().getName())
-        .isIn("nessy.effect", "nessy.turn");
+        .isIn("nessy.effect", "nessy.observe");
   }
 
   @Test
@@ -223,7 +226,7 @@ class EpisodeSummarizerTest {
         .atMost(Duration.ofSeconds(5))
         .until(
             () -> "fault".equals(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")));
-    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.response.finish_reasons"))
+    assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.response.finish_reasons"))
         .isEqualTo("content_filter");
 
     refuse.set(false);

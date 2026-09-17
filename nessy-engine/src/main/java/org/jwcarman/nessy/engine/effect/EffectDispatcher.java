@@ -13,6 +13,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.observability.Identity;
@@ -68,7 +69,7 @@ public class EffectDispatcher {
   private final Traces traces;
   private final Duration pollInterval;
 
-  private ScheduledFuture<?> polling;
+  private volatile ScheduledFuture<?> polling;
 
   public EffectDispatcher(
       AgentType agentType,
@@ -115,17 +116,49 @@ public class EffectDispatcher {
     // by the poll that happens on the way up.
     this.polling =
         scheduler.scheduleWithFixedDelay(
-            () -> {
-              try {
-                dispatch();
-              } catch (RuntimeException e) {
-                // Never let one bad pass end the schedule: an uncaught throw cancels a
-                // fixed-delay task permanently, and the agent type would go quiet for good.
-                log.error("[{}] dispatch failed", agentType.value(), e);
-              }
-            },
-            clock.instant().plus(pollInterval),
-            pollInterval);
+            this::pass, clock.instant().plus(pollInterval), pollInterval);
+  }
+
+  /**
+   * Asks for a pass now rather than at the next poll, because this process just wrote work down.
+   *
+   * <p>Polling alone makes every step of a turn wait for the next tick -- several times a turn, and
+   * plainly visible between the spans of a trace. The fold that wrote the rows knows they exist, so
+   * it says so. The poll stays for everything a nudge cannot reach: rows written by another
+   * process, rows coming due again after a timeout, and a nudge lost to a crash between commit and
+   * here.
+   *
+   * <p>Runs on the scheduler, never on the caller: the caller is a fold's thread -- an
+   * application's {@code observe}, or a tool's worker -- and a claim is a query it has no business
+   * waiting on.
+   *
+   * <p>Nothing is remembered between nudges. Passes already overlap safely -- permits bound what is
+   * taken, and {@code SKIP LOCKED} keeps two passes off one row -- so a nudge per fold is a pass
+   * per fold, and a pass with no capacity to spend returns without a query. When every permit is
+   * held the waiting rows are the poll's to find, which is what being at capacity means.
+   */
+  public void nudge() {
+    ScheduledFuture<?> schedule = polling;
+    if (schedule == null || schedule.isCancelled()) {
+      return;
+    }
+    try {
+      scheduler.schedule(this::pass, clock.instant());
+    } catch (RuntimeException e) {
+      // A scheduler that is shutting down refuses the task. The poll, or the next process to
+      // start, finds the rows; nothing is lost by not being quicker about it.
+      log.debug("[{}] could not schedule a nudged pass", agentType.value(), e);
+    }
+  }
+
+  private void pass() {
+    try {
+      dispatch();
+    } catch (RuntimeException e) {
+      // Never let one bad pass end the schedule: an uncaught throw cancels a fixed-delay task
+      // permanently, and the agent type would go quiet for good.
+      log.error("[{}] dispatch failed", agentType.value(), e);
+    }
   }
 
   public void close() {
@@ -145,7 +178,7 @@ public class EffectDispatcher {
    */
   public void dispatch() {
     int batchSize = inFlight.drainPermits();
-    log.debug("[{}] capacity for {} effect(s)", agentType.value(), batchSize);
+    log.trace("[{}] capacity for {} effect(s)", agentType.value(), batchSize);
     if (batchSize == 0) {
       // Fully saturated: no query at all, which is the case worth optimising at this
       // interval. Note this also happens transiently when another pass is mid-query holding
@@ -165,7 +198,7 @@ public class EffectDispatcher {
       return;
     }
 
-    log.info("[{}] performing {} effect(s)", agentType.value(), attempts.size());
+    log.debug("[{}] performing {} effect(s)", agentType.value(), attempts.size());
     for (Attempt attempt : attempts) {
       start(attempt);
     }
@@ -206,11 +239,26 @@ public class EffectDispatcher {
   }
 
   /**
-   * Performs one attempt inside the trace the effect was emitted in.
+   * What an effect span is called: its kind, and for a tool call the tool, as {@code execute_tool
+   * <name>} is. An approval often has no span beneath it to say which call it was for.
+   */
+  private static String spanNameOf(AgentEffect effect) {
+    return switch (effect) {
+      case AgentEffect.Infer _ -> "nessy.effect infer";
+      case AgentEffect.Approve(_, _, ToolName toolName) ->
+          "nessy.effect approve " + toolName.value();
+      case AgentEffect.CallTool(_, _, ToolName toolName) ->
+          "nessy.effect call_tool " + toolName.value();
+    };
+  }
+
+  /**
+   * Performs one attempt inside the trace of the turn it belongs to.
    *
    * <p>The span covers everything the attempt does -- reading the payload, running the handler,
-   * folding the outcome back in -- which is what makes the next effect a child of this one rather
-   * than a sibling. A turn's trace is the shape of what actually caused what.
+   * folding the outcome back in. Its parent is the turn's, not the effect that emitted it: every
+   * effect of a turn is a sibling in one flat trace, in the order it ran, because nesting by
+   * emitter made the follow-up inference the child of whichever tool happened to finish last.
    */
   private void perform(Attempt attempt) {
     traces.restore(
@@ -251,8 +299,9 @@ public class EffectDispatcher {
       return;
     }
 
+    traces.nameCurrent(spanNameOf(effect));
     try {
-      log.info(
+      log.debug(
           "[{}] performing {} for agent {} (attempt {})",
           agentType.value(),
           effect.getClass().getSimpleName(),
@@ -263,7 +312,7 @@ public class EffectDispatcher {
           // The outcome is folded first: if that commits and this crashes, the row comes
           // due again, is performed again, and the fold recognises the redelivery and
           // ignores it.
-          callback.deliverOutcome(attempt.agentId(), outcome);
+          callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
           retire(attempt, "performed");
         }
         // Neither delivered nor retired nor rescheduled -- the row is left exactly as it
@@ -321,7 +370,7 @@ public class EffectDispatcher {
       return;
     }
     try {
-      callback.deliverOutcome(attempt.agentId(), outcome);
+      callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
     } catch (RuntimeException e) {
       log.error(
           "[{}] could not tell agent {} that effect {} passed its deadline; keeping"
@@ -350,7 +399,8 @@ public class EffectDispatcher {
    */
   private void undispatchable(Attempt attempt) {
     try {
-      callback.deliverOutcome(attempt.agentId(), effects.failureOf(attempt));
+      callback.deliverOutcome(
+          attempt.agentId(), effects.failureOf(attempt), attempt.traceContext());
     } catch (RuntimeException e) {
       log.error(
           "[{}] effect {} has no readable failure response either; its agent will"
@@ -387,7 +437,7 @@ public class EffectDispatcher {
         // with extra waiting. The policy says how many and how long; whether there is
         // room left for another go is not its question, and this is the one place that
         // has the deadline, the backoff and the clock together to answer it.
-        log.info(
+        log.warn(
             "[{}] effect {} would back off past its deadline; giving up instead",
             agentType.value(),
             attempt.effectId());
@@ -396,13 +446,13 @@ public class EffectDispatcher {
       case RetryDecision.RetryAfter(var backoff) -> {
         Instant next = clock.instant().plus(backoff);
         if (effects.reschedule(attempt.effectId(), attempt.attemptsMade(), next)) {
-          log.info(
+          log.debug(
               "[{}] effect {} will be tried again after {}",
               agentType.value(),
               attempt.effectId(),
               backoff);
         } else {
-          log.info(
+          log.debug(
               "[{}] effect {} was taken over while attempt {} was failing",
               agentType.value(),
               attempt.effectId(),
@@ -424,7 +474,7 @@ public class EffectDispatcher {
     // the stored blob -- which says the effect could not be dispatched -- would be false.
     EffectOutcome outcome = handlers.termsFor(effect).failed(cause);
     try {
-      callback.deliverOutcome(attempt.agentId(), outcome);
+      callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
     } catch (RuntimeException e) {
       // Giving up and failing to say so are not the same thing. Retiring the row here would
       // end the attempts and leave the agent waiting forever, so the obligation stays and
@@ -459,7 +509,7 @@ public class EffectDispatcher {
     if (effects.complete(attempt.effectId(), attempt.attemptsMade())) {
       log.debug("[{}] effect {} retired, {}", agentType.value(), attempt.effectId(), what);
     } else {
-      log.info(
+      log.debug(
           "[{}] effect {} was taken over before attempt {} could retire it",
           agentType.value(),
           attempt.effectId(),

@@ -33,9 +33,6 @@ server:
 
 nessy:
   type: watchman
-  # LM Studio speaks the OpenAI wire, so semconv's value for it is openai. This is configured
-  # rather than discovered because a provider does not report its own vendor.
-  provider: openai
   model: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every parked approval becomes
@@ -73,5 +70,5 @@ management:
 
 logging:
   level:
-    org.jwcarman.nessy.engine: DEBUG
+    org.jwcarman.nessy.engine: INFO
     org.jwcarman.nessy.examples.watchman: DEBUG

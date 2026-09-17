@@ -25,7 +25,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
-import org.jwcarman.nessy.engine.inference.ObservedInference;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -111,7 +111,7 @@ class HeadSummarizerTest {
                     .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL)
-                    .observations(observations, "test"));
+                    .observations(observations));
     harness =
         factory.create(
             String.class,
@@ -185,7 +185,8 @@ class HeadSummarizerTest {
         .until(
             () -> "written".equals(recorded.tag(SummaryObservation.NAME, "nessy.summary.outcome")));
     assertThat(recorded.tag(SummaryObservation.NAME, "nessy.summary.kind")).isEqualTo("head");
-    assertThat(recorded.tag(ObservedInference.DURATION, "gen_ai.provider.name")).isEqualTo("test");
+    assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.provider.name"))
+        .isEqualTo("HeadSummarizerTest");
 
     // The next call the agent makes is built on it: the summary, then the turns after it.
     converse(agentId, 1);

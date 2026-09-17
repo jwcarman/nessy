@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,7 +38,9 @@ class AnthropicAutoConfigurationTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withConfiguration(AutoConfigurations.of(AnthropicAutoConfiguration.class));
+          .withConfiguration(
+              AutoConfigurations.of(
+                  ObservationAutoConfiguration.class, AnthropicAutoConfiguration.class));
 
   @Test
   @DisplayName("with an API key present, it contributes an InferenceProvider")

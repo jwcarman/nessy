@@ -55,10 +55,10 @@ public class ContextAssembler implements InferenceContextAssembler {
 
   @Override
   public InferenceContext assemble(InferenceInvocation invocation) {
-    TurnHistory history = histories.forAgent(invocation.agentType(), invocation.agentId());
     // The tail first: its last turn is the one being answered, and a source that ranks its
     // summaries by relevance ranks them against that. Handed over as turns. Flattening here would
     // pick a wire shape on every adapter's behalf, and they do not agree on one.
+    TurnHistory history = histories.forAgent(invocation.agentType(), invocation.agentId());
     List<Turn> tail = tail(history, through(invocation.agentId()));
     List<Summary> covered =
         summariesFor(invocation.agentId(), tail.isEmpty() ? null : tail.getLast());

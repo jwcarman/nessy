@@ -17,6 +17,15 @@ import java.util.Objects;
  */
 public interface Embedder {
 
+  /**
+   * The vendor, as OpenTelemetry's GenAI semantic conventions name it for {@code
+   * gen_ai.provider.name}: {@code openai}, {@code gcp.gemini}, {@code aws.bedrock}. Every adapter
+   * says so; anything else is named for the class that wrote it.
+   */
+  default String providerName() {
+    return nameOf(getClass());
+  }
+
   /** The model's name, recorded beside every vector it produces. */
   String model();
 
@@ -37,5 +46,23 @@ public interface Embedder {
       embeddings.add(embed(text));
     }
     return List.copyOf(embeddings);
+  }
+
+  /**
+   * A class's simple name, or for a lambda or an anonymous class the name of the class that wrote
+   * it. The name becomes a metric tag, so it has to be stable: a lambda's own name carries an
+   * address that differs between runs, and an anonymous class has none at all.
+   */
+  private static String nameOf(Class<?> type) {
+    if (type.isAnonymousClass() && type.getEnclosingClass() != null) {
+      return type.getEnclosingClass().getSimpleName();
+    }
+    String name = type.getName();
+    int lambda = name.indexOf("$$Lambda");
+    if (lambda >= 0) {
+      String writer = name.substring(0, lambda);
+      return writer.substring(Math.max(writer.lastIndexOf('.'), writer.lastIndexOf('$')) + 1);
+    }
+    return type.getSimpleName();
   }
 }

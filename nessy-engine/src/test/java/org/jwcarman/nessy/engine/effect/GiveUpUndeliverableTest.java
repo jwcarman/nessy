@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,8 @@ class GiveUpUndeliverableTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     DELIVERIES.set(0);
 
-    running(new AlwaysBroken());
+    AlwaysBroken model = new AlwaysBroken();
+    running(model);
     Harness<String> harness =
         engine
             .harnesses()
@@ -75,21 +77,17 @@ class GiveUpUndeliverableTest {
                                     // in five minutes -- the recovery asserted is the timeout, not
                                     // the poller.
                                     .timeout(Duration.ofSeconds(1)))
-                        .effects(
-                            e ->
-                                e.maxInFlight(2)
-                                    // Long enough that the state is corrupted before any pass
-                                    // looks. At a short
-                                    // interval the effect is taken, failed, given up on and retired
-                                    // while this test
-                                    // is still setting up, and there is nothing left to observe.
-                                    .pollInterval(Duration.ofSeconds(3))));
+                        .effects(e -> e.maxInFlight(2)));
 
     harness.observe(agentId, "the fold will break before this is answered");
 
     // Break every fold from here on. The model call fails, the policy says give up, and the
     // delivery that would end the turn fails for the same reason.
     breakTheFold(agentId);
+    // Only now may the model fail. The effect is taken the moment observe commits, so without
+    // holding the model the call fails, is given up on and retired while this test is still
+    // setting up, and there is nothing left to observe.
+    model.fail.countDown();
 
     await()
         .atMost(Duration.ofSeconds(30))
@@ -140,9 +138,16 @@ class GiveUpUndeliverableTest {
 
   static class AlwaysBroken implements InferenceProvider {
 
+    final CountDownLatch fail = new CountDownLatch(1);
+
     @Override
     public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
       DELIVERIES.incrementAndGet();
+      try {
+        fail.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
       throw new IllegalStateException("nope");
     }
   }

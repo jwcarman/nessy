@@ -19,6 +19,7 @@ import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,7 +53,9 @@ class NessyAutoConfigurationTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+          .withConfiguration(
+              AutoConfigurations.of(
+                  ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
           .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
           .withPropertyValues(MODEL, PROMPT, NO_SCHEMA);
 
@@ -77,7 +80,8 @@ class NessyAutoConfigurationTest {
   @DisplayName("with no DataSource, it refuses to start rather than pretending")
   void it_refuses_to_start_without_a_data_source() {
     new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
         .run(context -> assertThat(context).hasFailed());
@@ -86,7 +90,8 @@ class NessyAutoConfigurationTest {
   @Test
   void it_refuses_to_start_without_a_model() {
     new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues(PROMPT, NO_SCHEMA)
         .run(
@@ -100,7 +105,8 @@ class NessyAutoConfigurationTest {
   @Test
   void it_refuses_to_start_with_a_blank_model() {
     new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues("nessy.model=   ", PROMPT, NO_SCHEMA)
         .run(
@@ -113,7 +119,8 @@ class NessyAutoConfigurationTest {
   @Test
   void it_refuses_to_start_without_an_inference_provider() {
     new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
         .run(context -> assertThat(context).hasFailed());
@@ -126,7 +133,8 @@ class NessyAutoConfigurationTest {
   @Test
   void it_refuses_to_start_without_a_system_prompt() {
     new ApplicationContextRunner()
-        .withConfiguration(AutoConfigurations.of(NessyAutoConfiguration.class))
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues(MODEL, NO_SCHEMA)
         .run(

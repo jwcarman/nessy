@@ -6,7 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import java.util.Objects;
-import org.jwcarman.nessy.engine.inference.ObservedInference;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.spi.inference.Usage;
 
 /**
@@ -27,7 +27,7 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
 
   @Override
   public boolean supportsContext(Observation.Context context) {
-    return ObservedInference.DURATION.equals(context.getName());
+    return ObservedInferenceProvider.DURATION.equals(context.getName());
   }
 
   @Override

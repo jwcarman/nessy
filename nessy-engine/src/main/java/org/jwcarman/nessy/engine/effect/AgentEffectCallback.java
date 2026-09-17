@@ -22,6 +22,9 @@ public interface AgentEffectCallback {
    * <p>Called after the work happened and before the effect row is retired, so a crash between the
    * two leaves a row that comes due again -- and the fold, seeing no call outstanding, ignores the
    * second delivery rather than answering twice.
+   *
+   * @param traceContext the trace of the effect this answers, so whatever the outcome causes stays
+   *     in the same turn's trace; null when that effect had none
    */
-  void deliverOutcome(AgentId agentId, EffectOutcome outcome);
+  void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext);
 }

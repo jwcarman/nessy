@@ -176,7 +176,8 @@ class JdbcEpisodesTest {
       store.summarize(agent, 1, "cats everywhere");
 
       assertThat(embedder.embedded).containsExactly("cats everywhere");
-      assertThat(store.embedder()).contains(embedder);
+      // Held observed, so what the store has wraps the embedder it was given.
+      assertThat(store.embedder()).map(Embedder::model).contains("kw");
     }
   }
 

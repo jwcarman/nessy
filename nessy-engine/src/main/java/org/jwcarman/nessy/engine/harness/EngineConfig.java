@@ -9,6 +9,7 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 
@@ -37,6 +38,7 @@ public final class EngineConfig {
   private InferenceOptions options;
   private final List<AgentEventListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
+  private TraceCarrier traceCarrier;
   private ReplyTokens replyTokens;
   private Codec<byte[]> storage;
   private boolean recordInferenceContexts = true;
@@ -77,6 +79,17 @@ public final class EngineConfig {
    */
   public EngineConfig observations(ObservationRegistry observations) {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    return this;
+  }
+
+  /**
+   * How the trace in force is written beside an effect without a span of its own. Defaults to
+   * opening a momentary {@code nessy.effect.emit} span, which is the only way an observation can
+   * have headers written for it; a tracing library can do it directly, and the Boot starter hands
+   * one in.
+   */
+  public EngineConfig traceCarrier(TraceCarrier traceCarrier) {
+    this.traceCarrier = Objects.requireNonNull(traceCarrier, "traceCarrier must not be null");
     return this;
   }
 
@@ -138,6 +151,10 @@ public final class EngineConfig {
 
   ObservationRegistry observations() {
     return observations;
+  }
+
+  Optional<TraceCarrier> traceCarrier() {
+    return Optional.ofNullable(traceCarrier);
   }
 
   boolean recordInferenceContexts() {

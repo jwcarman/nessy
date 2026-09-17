@@ -100,7 +100,7 @@ public final class DefaultReplies implements Replies {
     } catch (IllegalArgumentException _) {
       // Forged, edited, or minted under a key since dropped. Nothing distinguishes those
       // from here, and nothing should: all three mean this is not an address we honour.
-      log.info("a reply arrived on an address this engine did not issue");
+      log.warn("a reply arrived on an address this engine did not issue");
       return new ReplyOutcome.Unreadable();
     }
 
@@ -127,12 +127,14 @@ public final class DefaultReplies implements Replies {
     }
 
     Attempt attempt = found.get();
-    bound.callback().deliverOutcome(agentId, outcome.apply(where.callId(), attempt));
+    bound
+        .callback()
+        .deliverOutcome(agentId, outcome.apply(where.callId(), attempt), attempt.traceContext());
     if (!bound.effects().complete(attempt.effectId(), attempt.attemptsMade())) {
       // The fence: the row moved on while this answer was being folded, so it is not ours
       // to retire. Harmless -- the call is discharged either way, and whatever holds the row
       // now will find the fold already ignores what it delivers.
-      log.info(
+      log.debug(
           "[{}] effect {} was taken over while its answer was being delivered",
           where.agentType(),
           attempt.effectId());

@@ -46,6 +46,11 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
+  public String providerName() {
+    return "gcp.gemini";
+  }
+
+  @Override
   public String model() {
     return model;
   }

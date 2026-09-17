@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.block.Block;
@@ -142,11 +143,15 @@ class NotebookPatternTest {
                                     .context(
                                         ctx ->
                                             ctx.ambient(
-                                                who ->
-                                                    Optional.ofNullable(notebook.get(who.value()))
-                                                        .map(
-                                                            note ->
-                                                                Ambient.text("notebook", note)))))
+                                                AmbientSource.of(
+                                                    source ->
+                                                        source
+                                                            .kind("notebook")
+                                                            .text(
+                                                                who ->
+                                                                    Optional.ofNullable(
+                                                                        notebook.get(
+                                                                            who.value())))))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
     harness.observe(agentId, "remember that the deploy is frozen");

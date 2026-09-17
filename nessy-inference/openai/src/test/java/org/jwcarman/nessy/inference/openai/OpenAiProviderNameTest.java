@@ -52,7 +52,7 @@ class OpenAiProviderNameTest {
         OpenAiInferenceProvider.create(
             c -> c.apiKey("sk-test").baseUrl("https://api.x.ai/v1").provider("x_ai"));
 
-    assertThat(provider.provider()).isEqualTo("x_ai");
+    assertThat(provider.providerName()).isEqualTo("x_ai");
   }
 
   @Test
@@ -61,6 +61,6 @@ class OpenAiProviderNameTest {
         OpenAiInferenceProvider.create(
             c -> c.apiKey("sk-test").baseUrl("https://openrouter.ai/api/v1"));
 
-    assertThat(provider.provider()).isEqualTo("openai");
+    assertThat(provider.providerName()).isEqualTo("openai");
   }
 }

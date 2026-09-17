@@ -75,6 +75,11 @@ class EmbeddingTest {
     Embedder embedder =
         new Embedder() {
           @Override
+          public String providerName() {
+            return "p";
+          }
+
+          @Override
           public String model() {
             return "m";
           }

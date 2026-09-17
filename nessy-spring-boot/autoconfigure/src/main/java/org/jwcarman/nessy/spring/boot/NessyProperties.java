@@ -35,11 +35,6 @@ import org.springframework.util.FileCopyUtils;
  *     exclusive with {@link #systemPrompt}
  * @param model which model the agents talk to, resolved against the application's {@code
  *     ModelProvider}
- * @param provider the semconv {@code gen_ai.provider.name} for the vendor behind the ModelProvider
- *     — {@code openai}, {@code anthropic}, {@code gcp.gemini}, {@code aws.bedrock}. Configured
- *     rather than discovered, because a Model no longer reports its own vendor and only the
- *     application that built the provider knows which one it is. Each adapter publishes the right
- *     value as its own {@code PROVIDER_NAME} constant.
  * @param maxTokens the longest answer to allow
  * @param replyTokenEncryptionKeys the AES keys a {@code ReplyToken}'s coordinates are sealed with,
  *     newest first — base64, and 16, 24 or 32 bytes each (use 32). Named for what they ARE: "reply
@@ -54,14 +49,12 @@ public record NessyProperties(
     String systemPrompt,
     Resource systemPromptFile,
     String model,
-    String provider,
     Integer maxTokens,
     java.util.List<String> replyTokenEncryptionKeys,
     Boolean initializeSchema) {
 
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
-    provider = provider == null || provider.isBlank() ? "unknown" : provider;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
     replyTokenEncryptionKeys =
         replyTokenEncryptionKeys == null

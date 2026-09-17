@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spring.boot.inference;
 
+import io.micrometer.observation.ObservationRegistry;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
@@ -65,26 +67,33 @@ public class OpenAiAutoConfiguration {
   public InferenceProvider openAiInferenceProvider(
       @Value("${openai.api-key}") String apiKey,
       @Value("${openai.base-url:#{null}}") String baseUrl,
-      ObjectProvider<JsonMapper> mappers) {
-    return OpenAiInferenceProvider.create(
-        c -> {
-          c.apiKey(apiKey);
-          if (baseUrl != null) {
-            c.baseUrl(baseUrl);
-          }
-          mappers.ifAvailable(c::mapper);
-        });
+      ObjectProvider<JsonMapper> mappers,
+      ObservationRegistry observations) {
+    InferenceProvider provider =
+        OpenAiInferenceProvider.create(
+            c -> {
+              c.apiKey(apiKey);
+              if (baseUrl != null) {
+                c.baseUrl(baseUrl);
+              }
+              mappers.ifAvailable(c::mapper);
+            });
+    return ObservedInferenceProvider.wrap(provider, observations);
   }
 
   @Bean
   @ConditionalOnProperty(name = "xai.api-key")
   @ConditionalOnMissingBean(InferenceProvider.class)
   public InferenceProvider xaiInferenceProvider(
-      @Value("${xai.api-key}") String apiKey, ObjectProvider<JsonMapper> mappers) {
-    return OpenAiInferenceProvider.create(
-        c -> {
-          c.apiKey(apiKey).baseUrl(XAI_BASE_URL).provider(XAI_PROVIDER_NAME);
-          mappers.ifAvailable(c::mapper);
-        });
+      @Value("${xai.api-key}") String apiKey,
+      ObjectProvider<JsonMapper> mappers,
+      ObservationRegistry observations) {
+    InferenceProvider provider =
+        OpenAiInferenceProvider.create(
+            c -> {
+              c.apiKey(apiKey).baseUrl(XAI_BASE_URL).provider(XAI_PROVIDER_NAME);
+              mappers.ifAvailable(c::mapper);
+            });
+    return ObservedInferenceProvider.wrap(provider, observations);
   }
 }

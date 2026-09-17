@@ -104,6 +104,11 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * times and then recorded as the model's fault.
    */
   @Override
+  public String providerName() {
+    return PROVIDER_NAME;
+  }
+
+  @Override
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<RawMessageStreamEvent> stream =

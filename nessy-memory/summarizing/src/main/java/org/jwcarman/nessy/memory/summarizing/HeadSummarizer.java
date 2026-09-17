@@ -14,7 +14,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.engine.inference.ObservedInference;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.lease.Leases;
@@ -83,7 +83,6 @@ public class HeadSummarizer {
     private int minTail = 8;
     private Duration leaseTtl = Duration.ofMinutes(2);
     private ObservationRegistry observations = ObservationRegistry.NOOP;
-    private String providerName = "unknown";
 
     private Config() {}
 
@@ -137,12 +136,11 @@ public class HeadSummarizer {
 
     /**
      * Where to report: each summary becomes a {@code nessy.summary} span with the model call inside
-     * it as a {@code chat} span, tagged with {@code providerName} as semconv's {@code
-     * gen_ai.provider.name}. Hand in the plain provider, not one already observed.
+     * it as a {@code chat} span. The summariser observes the provider it is given, and one already
+     * observed is used as it is.
      */
-    public Config observations(ObservationRegistry observations, String providerName) {
-      this.observations = observations;
-      this.providerName = providerName;
+    public Config observations(ObservationRegistry observations) {
+      this.observations = Objects.requireNonNull(observations, "observations must not be null");
       return this;
     }
   }
@@ -172,12 +170,7 @@ public class HeadSummarizer {
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
-    Objects.requireNonNull(config.observations, "observations must not be null");
-    this.provider =
-        ObservedInference.provider(
-            config.provider,
-            Objects.requireNonNull(config.providerName, "providerName must not be null"),
-            config.observations);
+    this.provider = ObservedInferenceProvider.wrap(config.provider, config.observations);
     this.observation = new SummaryObservation(config.observations, "head", agentType);
     if (config.minTail < 1 || config.maxTail <= config.minTail) {
       throw new IllegalArgumentException(

@@ -9,7 +9,6 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
-import org.jwcarman.nessy.engine.trace.Traces;
 
 /**
  * One agent type's effects.
@@ -28,14 +27,11 @@ public class EffectStore {
   private final AgentType agentType;
   private final EffectHandlers handlers;
   private final JdbcEffectStore rows;
-  private final Traces traces;
 
-  public EffectStore(
-      AgentType agentType, EffectHandlers handlers, JdbcEffectStore rows, Traces traces) {
+  public EffectStore(AgentType agentType, EffectHandlers handlers, JdbcEffectStore rows) {
     this.agentType = agentType;
     this.handlers = handlers;
     this.rows = rows;
-    this.traces = traces;
   }
 
   /**
@@ -43,8 +39,10 @@ public class EffectStore {
    *
    * <p>Called from inside the fold's transaction, so the effect commits with the state change that
    * owed it or not at all.
+   *
+   * @param traceContext the trace this effect belongs to, as stored headers; null for none
    */
-  public void insert(AgentId agentId, AgentEffect effect, Instant at) {
+  public void insert(AgentId agentId, AgentEffect effect, Instant at, String traceContext) {
     EffectTerms terms = handlers.termsFor(effect);
     rows.insert(
         agentType,
@@ -53,10 +51,7 @@ public class EffectStore {
         terms.timeout(),
         terms.undispatchable(),
         at.plus(terms.timeout()),
-        // Captured here, inside the fold's transaction, because this is the last moment the
-        // emitting trace is still in force. Whoever performs this row will have nothing to
-        // inherit from.
-        traces.capture(),
+        traceContext,
         at);
   }
 

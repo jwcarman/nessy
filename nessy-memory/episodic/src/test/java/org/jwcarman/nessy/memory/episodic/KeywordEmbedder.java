@@ -23,6 +23,11 @@ final class KeywordEmbedder implements Embedder {
   }
 
   @Override
+  public String providerName() {
+    return "keywords";
+  }
+
+  @Override
   public String model() {
     return model;
   }

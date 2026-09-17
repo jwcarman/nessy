@@ -35,8 +35,8 @@ import org.springframework.core.io.Resource;
  */
 class NessyPropertiesTest {
 
-  private static NessyProperties properties(String type, String provider, Integer maxTokens) {
-    return new NessyProperties(type, null, null, null, provider, maxTokens, null, null);
+  private static NessyProperties properties(String type, Integer maxTokens) {
+    return new NessyProperties(type, null, null, null, maxTokens, null, null);
   }
 
   @Nested
@@ -45,48 +45,32 @@ class NessyPropertiesTest {
 
     @Test
     void a_null_type_becomes_agent() {
-      assertThat(properties(null, null, null).type()).isEqualTo("agent");
+      assertThat(properties(null, null).type()).isEqualTo("agent");
     }
 
     @Test
     void a_blank_type_becomes_agent() {
-      assertThat(properties("   ", null, null).type()).isEqualTo("agent");
+      assertThat(properties("   ", null).type()).isEqualTo("agent");
     }
 
     @Test
     void a_given_type_is_kept() {
-      assertThat(properties("watchman", null, null).type()).isEqualTo("watchman");
-    }
-
-    @Test
-    void a_null_provider_becomes_unknown() {
-      assertThat(properties(null, null, null).provider()).isEqualTo("unknown");
-    }
-
-    @Test
-    void a_blank_provider_becomes_unknown() {
-      assertThat(properties(null, "  ", null).provider()).isEqualTo("unknown");
-    }
-
-    @Test
-    void a_given_provider_is_kept() {
-      assertThat(properties(null, "anthropic", null).provider()).isEqualTo("anthropic");
+      assertThat(properties("watchman", null).type()).isEqualTo("watchman");
     }
 
     @Test
     void a_null_max_tokens_becomes_4096() {
-      assertThat(properties(null, null, null).maxTokens()).isEqualTo(4096);
+      assertThat(properties(null, null).maxTokens()).isEqualTo(4096);
     }
 
     @Test
     void a_given_max_tokens_is_kept() {
-      assertThat(properties(null, null, 512).maxTokens()).isEqualTo(512);
+      assertThat(properties(null, 512).maxTokens()).isEqualTo(512);
     }
 
     @Test
     void null_reply_token_encryption_keys_becomes_an_empty_list() {
-      NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, null);
+      NessyProperties properties = new NessyProperties(null, null, null, null, null, null, null);
 
       assertThat(properties.replyTokenEncryptionKeys()).isEmpty();
     }
@@ -94,7 +78,7 @@ class NessyPropertiesTest {
     @Test
     void given_reply_token_encryption_keys_are_kept_in_order() {
       NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, List.of("key-a", "key-b"), null);
+          new NessyProperties(null, null, null, null, null, List.of("key-a", "key-b"), null);
 
       assertThat(properties.replyTokenEncryptionKeys()).containsExactly("key-a", "key-b");
     }
@@ -107,7 +91,7 @@ class NessyPropertiesTest {
     @Test
     void returns_the_inline_prompt_when_one_was_given() {
       NessyProperties properties =
-          new NessyProperties(null, "You watch the house.", null, null, null, null, null, null);
+          new NessyProperties(null, "You watch the house.", null, null, null, null, null);
 
       assertThat(properties.resolveSystemPrompt()).isEqualTo("You watch the house.");
     }
@@ -119,8 +103,7 @@ class NessyPropertiesTest {
      */
     @Test
     void refuses_when_neither_source_was_given() {
-      NessyProperties properties =
-          new NessyProperties(null, null, null, null, null, null, null, null);
+      NessyProperties properties = new NessyProperties(null, null, null, null, null, null, null);
 
       assertThatThrownBy(properties::resolveSystemPrompt)
           .isInstanceOf(IllegalStateException.class)
@@ -132,8 +115,7 @@ class NessyPropertiesTest {
       Resource file =
           new ByteArrayResource(
               "Watch the porch.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-      NessyProperties properties =
-          new NessyProperties(null, null, file, null, null, null, null, null);
+      NessyProperties properties = new NessyProperties(null, null, file, null, null, null, null);
 
       assertThat(properties.resolveSystemPrompt()).isEqualTo("Watch the porch.");
     }
@@ -143,7 +125,7 @@ class NessyPropertiesTest {
     void wraps_a_failure_to_read_the_resource() {
       Resource brokenFile = new BrokenResource();
       NessyProperties properties =
-          new NessyProperties(null, null, brokenFile, null, null, null, null, null);
+          new NessyProperties(null, null, brokenFile, null, null, null, null);
 
       assertThatThrownBy(properties::resolveSystemPrompt)
           .isInstanceOf(UncheckedIOException.class)
@@ -165,17 +147,15 @@ class NessyPropertiesTest {
 
   @org.junit.jupiter.api.Test
   void every_default_and_every_override() {
-    NessyProperties defaults = new NessyProperties(" ", null, null, "m", " ", null, null, null);
+    NessyProperties defaults = new NessyProperties(" ", null, null, "m", null, null, null);
     assertThat(defaults.type()).isEqualTo("agent");
-    assertThat(defaults.provider()).isEqualTo("unknown");
     assertThat(defaults.maxTokens()).isEqualTo(4096);
     assertThat(defaults.replyTokenEncryptionKeys()).isEmpty();
     assertThat(defaults.initializeSchema()).isTrue();
 
     NessyProperties given =
-        new NessyProperties("ops", null, null, "m", "openai", 512, java.util.List.of("k"), false);
+        new NessyProperties("ops", null, null, "m", 512, java.util.List.of("k"), false);
     assertThat(given.type()).isEqualTo("ops");
-    assertThat(given.provider()).isEqualTo("openai");
     assertThat(given.maxTokens()).isEqualTo(512);
     assertThat(given.replyTokenEncryptionKeys()).containsExactly("k");
     assertThat(given.initializeSchema()).isFalse();

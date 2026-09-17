@@ -4,8 +4,6 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -14,30 +12,21 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
- * Tools and approvers observed the way the OpenTelemetry GenAI semantic conventions describe them,
- * applied by the harness to every tool and approver it is given, so a dashboard sees the same spans
- * however an application registered them.
+ * A tool whose every call is semconv's {@code execute_tool} span: the tool's name, the call it
+ * answers, whose agent asked, and how it came out.
  *
- * <p>A tool call is {@code execute_tool <name>} in the same {@code
- * gen_ai.client.operation.duration} histogram as a model call, told apart by {@code
- * gen_ai.operation.name}. An approval is {@code nessy.approval}, a name of Nessy's own: semconv has
- * no convention for asking a person, and putting human latency in the same histogram as model
- * latency would say something untrue. Its duration is the decision, not the wait -- an approver
- * that defers returns at once and the person takes three days, which is the projection's business,
- * not a tracer's.
- *
- * <p>Both ask the registry per call whether anyone is listening, so an application that is not
- * tracing pays nothing but the check.
+ * <p>Wrapped where a tool is bound, so a tool registered by hand and one bound by the Boot starter
+ * make the same span, and nothing a tool itself writes has to mention observability.
  */
-public final class ObservedTools {
+public final class ObservedTool {
 
   private static final String DURATION = "gen_ai.client.operation.duration";
   private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String TOOL_NAME = "gen_ai.tool.name";
 
-  private ObservedTools() {}
+  private ObservedTool() {}
 
-  public static <I> Tool<I> tool(Tool<I> delegate, ObservationRegistry observations) {
+  public static <I> Tool<I> wrap(Tool<I> delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
     return new Tool<>() {
@@ -89,42 +78,11 @@ public final class ObservedTools {
     };
   }
 
-  public static Approver approver(Approver delegate, ObservationRegistry observations) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
-    Objects.requireNonNull(observations, "observations must not be null");
-    return request -> {
-      if (observations.isNoop()) {
-        return delegate.approve(request);
-      }
-      Observation observation =
-          Observation.createNotStarted("nessy.approval", observations)
-              .contextualName("approve " + request.toolName().value())
-              .lowCardinalityKeyValue(TOOL_NAME, request.toolName().value())
-              .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
-              .lowCardinalityKeyValue("nessy.approval.answer", "none");
-      new Identity(request.agentType(), request.agentId()).on(observation, request.turn());
-      return observation.observe(
-          () -> {
-            Awaited<ApprovalResult> answer = delegate.approve(request);
-            observation.lowCardinalityKeyValue("nessy.approval.answer", approvalOf(answer));
-            return answer;
-          });
-    };
-  }
-
   private static String outcomeOf(Awaited<ToolResult> answer) {
     return switch (answer) {
       case Awaited.Deferred<ToolResult> _ -> "deferred";
       case Awaited.Ready<ToolResult>(var result) ->
           result instanceof ToolResult.Success ? "success" : "failure";
-    };
-  }
-
-  private static String approvalOf(Awaited<ApprovalResult> answer) {
-    return switch (answer) {
-      case Awaited.Deferred<ApprovalResult> _ -> "asked-a-person";
-      case Awaited.Ready<ApprovalResult>(var result) ->
-          result instanceof ApprovalResult.Approved ? "approved" : "denied";
     };
   }
 }

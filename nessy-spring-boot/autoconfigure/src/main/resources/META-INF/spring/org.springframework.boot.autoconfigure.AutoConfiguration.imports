@@ -5,5 +5,8 @@ org.jwcarman.nessy.spring.boot.inference.GeminiAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.SubstrateCodecAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.OdysseyNarrationAutoConfiguration
 org.jwcarman.nessy.spring.boot.lease.LeaseAutoConfiguration
+org.jwcarman.nessy.spring.boot.embedding.VoyageEmbeddingAutoConfiguration
+org.jwcarman.nessy.spring.boot.embedding.OpenAiEmbeddingAutoConfiguration
+org.jwcarman.nessy.spring.boot.embedding.GeminiEmbeddingAutoConfiguration
 org.jwcarman.nessy.spring.boot.prompt.PromptEngineAutoConfiguration
 org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration

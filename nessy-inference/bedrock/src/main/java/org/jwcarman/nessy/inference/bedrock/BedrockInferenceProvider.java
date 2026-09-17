@@ -111,6 +111,11 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * model's fault.
    */
   @Override
+  public String providerName() {
+    return PROVIDER_NAME;
+  }
+
+  @Override
   public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try {

@@ -47,6 +47,14 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
     return create(OpenAiEmbedderConfig::fromEnv);
   }
 
+  /**
+   * OpenAI, and anything that speaks its wire at another base URL: nothing more is known about it.
+   */
+  @Override
+  public String providerName() {
+    return "openai";
+  }
+
   @Override
   public String model() {
     return model;

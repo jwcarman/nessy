@@ -98,6 +98,65 @@ class TracesTest {
         .containsExactly(VALUE);
   }
 
+  /**
+   * A tracing library that can write the current context directly is used instead of a span: the
+   * same headers reach the column, and nothing is opened to put them there.
+   */
+  @Test
+  void a_supplied_carrier_writes_the_context_without_opening_a_span() {
+    ConcurrentLinkedQueue<String> started = new ConcurrentLinkedQueue<>();
+    ObservationRegistry registry =
+        registryWith(
+            new ObservationHandler<>() {
+              @Override
+              public void onStart(Observation.Context context) {
+                started.add(context.getName());
+              }
+
+              @Override
+              public boolean supportsContext(Observation.Context context) {
+                return true;
+              }
+            });
+    Traces traces = new Traces(registry, () -> Map.of(HEADER, VALUE));
+
+    String carrier = traces.capture();
+
+    assertThat(carrier).isEqualTo(HEADER + ": " + VALUE);
+    assertThat(started).isEmpty();
+  }
+
+  /** A span learns its name once its work knows what it is, and keeps it when it ends. */
+  @Test
+  void the_span_in_force_can_be_named_after_it_has_started() {
+    ConcurrentLinkedQueue<String> named = new ConcurrentLinkedQueue<>();
+    ObservationRegistry registry =
+        registryWith(
+            new ObservationHandler<>() {
+              @Override
+              public void onStop(Observation.Context context) {
+                named.add(context.getContextualName());
+              }
+
+              @Override
+              public boolean supportsContext(Observation.Context context) {
+                return true;
+              }
+            });
+    Traces traces = new Traces(registry);
+
+    traces.restore(
+        "nessy.effect",
+        null,
+        Map.of(),
+        () -> {
+          traces.nameCurrent("nessy.effect infer");
+          return null;
+        });
+
+    assertThat(named).containsExactly("nessy.effect infer");
+  }
+
   // ---- what absence costs ------------------------------------------------------------------
 
   /**

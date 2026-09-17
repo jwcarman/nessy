@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 @DisplayName("The Gemini auto-configuration")
@@ -13,7 +14,9 @@ class GeminiAutoConfigurationTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withConfiguration(AutoConfigurations.of(GeminiAutoConfiguration.class));
+          .withConfiguration(
+              AutoConfigurations.of(
+                  ObservationAutoConfiguration.class, GeminiAutoConfiguration.class));
 
   @Test
   void gemini_api_key_contributes_a_provider() {

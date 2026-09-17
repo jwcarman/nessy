@@ -120,22 +120,26 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
   }
 
   /**
-   * Where a turn's trace begins.
+   * Admits an observation, and is where a turn's trace begins when it opens one.
    *
-   * <p>The only place that knows a turn is starting, so the only place the root can be opened. It
-   * covers the fold rather than the turn: the work a turn goes on to do happens in effects, hours
-   * later and elsewhere, each carrying this span's identity written down beside it. What is timed
-   * here is admitting the observation -- everything else hangs off it.
+   * <p>Named for what it times, which is admitting the observation and nothing more. The work a
+   * turn goes on to do happens in effects, seconds or hours later and possibly elsewhere, each
+   * carrying this span's identity written down beside it -- so the turn's effects hang beneath this
+   * span, but no span can honestly claim to last as long as the turn, and this one does not try.
    */
   @Override
   public void observe(AgentId agentId, O observation) {
     Instant arrivedAt = clock.instant();
-    log.info("[{}] observing for agent {}: {}", agentType.value(), agentId.value(), observation);
+    log.debug("[{}] observing for agent {}: {}", agentType.value(), agentId.value(), observation);
     traces.in(
-        "nessy.turn",
+        "nessy.observe",
         new Identity(agentType, agentId),
         () -> {
-          fold(agentId, "observation", state -> state.observe(observation, arrivedAt, coalescer));
+          fold(
+              agentId,
+              "observation",
+              Trace.CURRENT,
+              state -> state.observe(observation, arrivedAt, coalescer));
           return null;
         });
   }
@@ -143,14 +147,45 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
   @Override
   public void terminate(AgentId agentId) {
     log.info("[{}] terminating agent {}", agentType.value(), agentId.value());
-    fold(agentId, "termination", AgentState::terminate);
+    fold(agentId, "termination", Trace.CURRENT, AgentState::terminate);
   }
 
   @Override
-  public void deliverOutcome(AgentId agentId, EffectOutcome outcome) {
+  public void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext) {
     String what = describe(outcome);
-    log.info("[{}] delivering {} to agent {}", agentType.value(), what, agentId.value());
-    fold(agentId, what, state -> state.outcome(outcome));
+    log.debug("[{}] delivering {} to agent {}", agentType.value(), what, agentId.value());
+    fold(agentId, what, Trace.inherited(traceContext), state -> state.outcome(outcome));
+  }
+
+  /**
+   * Which trace the effects of a fold are written into.
+   *
+   * <p>A turn is one trace, and its effects are siblings in it. So an effect caused by another
+   * effect's outcome inherits that effect's stored context rather than capturing the one in force
+   * -- which would be the answering effect's own span, and would nest every step inside the last.
+   * An observation, or an outcome whose effect carried no context, captures what is in force.
+   *
+   * @param inherited the answered effect's stored context; null to capture the current one
+   * @param fromOutcome whether this fold answers an effect, which decides what a turn taken from
+   *     the backlog belongs to: not the turn that just ended, so it starts a trace of its own
+   */
+  private record Trace(String inherited, boolean fromOutcome) {
+
+    static final Trace CURRENT = new Trace(null, false);
+
+    static Trace inherited(String traceContext) {
+      return new Trace(traceContext, true);
+    }
+  }
+
+  /** The stored context for the effects of one fold. */
+  private String traceFor(Trace trace, boolean opensTurn) {
+    if (opensTurn && trace.fromOutcome()) {
+      // The next turn, taken off the backlog as the last one closed. It belongs to neither the
+      // closing turn nor the answering effect, so its first effect starts a trace of its own.
+      return null;
+    }
+    return trace.inherited() != null ? trace.inherited() : traces.capture();
   }
 
   /**
@@ -187,7 +222,8 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
    * lost observation. Waiting is the correct behaviour, and the wait is bounded because a fold does
    * no I/O of its own.
    */
-  private void fold(AgentId agentId, String what, Function<AgentState<O>, Decision<O>> decide) {
+  private void fold(
+      AgentId agentId, String what, Trace trace, Function<AgentState<O>, Decision<O>> decide) {
     Optional<Folded> outcome =
         Objects.requireNonNull(
             transactions.execute(
@@ -214,8 +250,14 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
                     appended.add(history.open(agentId, advance.opening()));
                   }
 
-                  for (AgentEffect effect : advance.effects()) {
-                    effects.insert(agentId, effect, clock.instant());
+                  if (!advance.effects().isEmpty()) {
+                    // Captured here, inside the fold's transaction, because this is the last
+                    // moment the emitting trace is still in force. Whoever performs these rows
+                    // will have nothing to inherit from.
+                    String traceContext = traceFor(trace, advance.opensTurn());
+                    for (AgentEffect effect : advance.effects()) {
+                      effects.insert(agentId, effect, clock.instant(), traceContext);
+                    }
                   }
                   return Optional.of(
                       new Folded(
@@ -233,11 +275,16 @@ final class DefaultHarness<O> implements Harness<O>, AgentEffectCallback, AutoCl
     // timeout, a constraint violation on the append, a dropped connection -- and leave the log
     // and the database telling different stories. The log is the one somebody reads first.
     if (outcome.isEmpty()) {
-      log.info("[{}] agent {}: ignoring redelivered {}", agentType.value(), agentId.value(), what);
+      log.debug("[{}] agent {}: ignoring redelivered {}", agentType.value(), agentId.value(), what);
       return;
     }
     Folded folded = outcome.get();
-    log.info(
+    if (!folded.effects().isEmpty() && dispatcher != null) {
+      // Committed, so the rows are there to be claimed. Asked for now rather than left for the
+      // next poll, which would make every step of a turn wait out the interval.
+      dispatcher.nudge();
+    }
+    log.debug(
         "[{}] agent {}: {} + {} -> {} | recorded {} | effects {}",
         agentType.value(),
         agentId.value(),

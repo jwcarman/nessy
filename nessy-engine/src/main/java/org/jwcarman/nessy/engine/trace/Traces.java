@@ -42,9 +42,18 @@ public final class Traces {
   private static final String SEPARATOR = ": ";
 
   private final ObservationRegistry registry;
+  private final TraceCarrier carrier;
 
+  /** Captures by opening a momentary span, for an application that supplied no carrier. */
   public Traces(ObservationRegistry registry) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
+    this.carrier = this::emit;
+  }
+
+  /** Captures through {@code carrier}, which writes the current context without a span. */
+  public Traces(ObservationRegistry registry, TraceCarrier carrier) {
+    this.registry = Objects.requireNonNull(registry, "registry must not be null");
+    this.carrier = Objects.requireNonNull(carrier, "carrier must not be null");
   }
 
   /** For an application that is not tracing, and for every test that does not care. */
@@ -63,14 +72,34 @@ public final class Traces {
     if (registry.isNoop()) {
       return null;
     }
+    Map<String, String> headers = carrier.capture();
+    return headers.isEmpty() ? null : encode(headers);
+  }
+
+  /**
+   * The fallback: a momentary span whose only purpose is to make the tracer write its own identity
+   * into the carrier. An observation has no other way to have headers written for it, so without a
+   * {@link TraceCarrier} this span is the price of the parent.
+   */
+  private Map<String, String> emit() {
     Map<String, String> headers = new LinkedHashMap<>();
     SenderContext<Map<String, String>> sending = new SenderContext<>(Map::put, Kind.PRODUCER);
     sending.setCarrier(headers);
-    // A momentary span whose only purpose is to make the tracer write its own identity into the
-    // carrier. It is the emitting side of the gap, and it closes immediately: the work it stands
-    // for has not happened yet and will be timed where it does.
     Observation.createNotStarted("nessy.effect.emit", () -> sending, registry).observe(() -> {});
-    return headers.isEmpty() ? null : encode(headers);
+    return headers;
+  }
+
+  /**
+   * Names the span in force after it has started, for work that only learns what it is once it is
+   * underway -- an effect row has to be decoded, inside its span, before anyone knows which kind it
+   * is. A span's name is read when it ends, so this lands. A contextual name only, never a tag:
+   * tags become metric dimensions, and those are fixed when the observation starts.
+   */
+  public void nameCurrent(String contextualName) {
+    Observation current = registry.getCurrentObservation();
+    if (current != null) {
+      current.contextualName(contextualName);
+    }
   }
 
   /**
