@@ -112,7 +112,7 @@ public final class ObservedInferenceProvider implements InferenceProvider {
       // A provider that answers with a Fault did not throw, and the span must still say so:
       // the failure is a value, and a value nothing recorded would be a call that looks
       // successful in every dashboard.
-      if (result instanceof InferenceResult.Fault(Failure failure, var _)) {
+      if (result instanceof InferenceResult.Fault(Failure failure, _)) {
         observation.lowCardinalityKeyValue(ERROR_TYPE, failure.getClass().getSimpleName());
         // The adapter's own account of what went wrong, which is the one thing worth reading
         // on the span. High cardinality, so it reaches the trace and stays out of the metric.

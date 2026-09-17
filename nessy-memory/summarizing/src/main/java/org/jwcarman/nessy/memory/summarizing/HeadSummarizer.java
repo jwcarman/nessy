@@ -229,14 +229,14 @@ public class HeadSummarizer {
     TurnHistory history = histories.forAgent(agentType, agentId);
     List<Turn> head = history.turnsFrom(through(agentId) + 1);
     if (head.size() <= maxTail) {
-      return "nothing";
+      return SummaryObservation.NOTHING;
     }
     // The oldest turns, leaving minTail verbatim -- and never a turn still under way, which can
     // only be the last and is kept by minTail >= 1.
     List<Turn> cut =
         head.subList(0, head.size() - minTail).stream().filter(Turn::complete).toList();
     if (cut.isEmpty()) {
-      return "nothing";
+      return SummaryObservation.NOTHING;
     }
     // The summary so far, then the turns being folded in -- the shape the engine shows a model
     // anyway, so every adapter already renders it -- and then the ask. Every turn being folded is
@@ -252,10 +252,10 @@ public class HeadSummarizer {
                 new InferenceContext(soFar, shown, List.of()),
                 List.of(),
                 options));
-    if (!(result instanceof InferenceResult.Answer(var blocks, var _))) {
+    if (!(result instanceof InferenceResult.Answer(var blocks, _))) {
       // Not an error to anybody: the summary stays as it was, and the next turn end tries again.
       LOG.warn("[{}] could not summarise agent {}: {}", agentType.value(), agentId.value(), result);
-      return "fault";
+      return SummaryObservation.FAULT;
     }
     String summary = text(blocks);
     if (summary.isBlank()) {
@@ -263,7 +263,7 @@ public class HeadSummarizer {
           "[{}] the summary of agent {} was empty; kept what there was",
           agentType.value(),
           agentId.value());
-      return "empty";
+      return SummaryObservation.EMPTY;
     }
     TurnId from = soFar.isEmpty() ? cut.getFirst().id() : soFar.getFirst().from();
     summaries.replace(agentId, Summary.text(from, cut.getLast().id(), summary));
@@ -273,6 +273,6 @@ public class HeadSummarizer {
         cut.getFirst().id().value(),
         cut.getLast().id().value(),
         agentId.value());
-    return "written";
+    return SummaryObservation.WRITTEN;
   }
 }

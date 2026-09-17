@@ -148,7 +148,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
             counted ->
                 new Usage(
                     counted.promptTokenCount().orElse(0),
-                    counted.candidatesTokenCount().orElse(0)
+                    (long) counted.candidatesTokenCount().orElse(0)
                         + counted.thoughtsTokenCount().orElse(0)))
         .orElse(Usage.unknown());
   }

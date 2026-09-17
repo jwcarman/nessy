@@ -97,19 +97,19 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
     // thing the wrapper makes explicit.
     return Awaited.ready(
         switch (result) {
-          case InferenceResult.Answer(var blocks, var _) -> {
+          case InferenceResult.Answer(var blocks, _) -> {
             log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());
             yield new EffectOutcome.InferenceAnswered(blocks);
           }
-          case InferenceResult.Refusal(var category, var _) -> {
+          case InferenceResult.Refusal(var category, _) -> {
             log.info("model declined for agent {} ({})", agentId.value(), category);
             yield new EffectOutcome.InferenceRefused(category);
           }
-          case InferenceResult.Actions(var blocks, var _) -> {
+          case InferenceResult.Actions(var blocks, _) -> {
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
             yield new EffectOutcome.InferenceRequestedActions(blocks);
           }
-          case InferenceResult.Fault(var failure, var _) -> {
+          case InferenceResult.Fault(var failure, _) -> {
             log.warn("inference failed for agent {}: {}", agentId.value(), failure.reason());
             yield new EffectOutcome.InferenceFailed(failure);
           }

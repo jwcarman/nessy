@@ -36,11 +36,11 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
     if (usage == null || !usage.known()) {
       return;
     }
-    record(context, "input", usage.inputTokens());
-    record(context, "output", usage.outputTokens());
+    sample(context, "input", usage.inputTokens());
+    sample(context, "output", usage.outputTokens());
   }
 
-  private void record(Observation.Context context, String type, long tokens) {
+  private void sample(Observation.Context context, String type, long tokens) {
     DistributionSummary.Builder summary =
         DistributionSummary.builder(TOKEN_USAGE).baseUnit("token").tag("gen_ai.token.type", type);
     for (KeyValue tag : context.getLowCardinalityKeyValues()) {

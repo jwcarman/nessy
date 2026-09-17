@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -27,15 +26,7 @@ class ListenersTraceTest {
   /** A registry with a handler, so it is not no-op and scopes are real. */
   private static ObservationRegistry registry() {
     ObservationRegistry registry = ObservationRegistry.create();
-    registry
-        .observationConfig()
-        .observationHandler(
-            new ObservationHandler<Observation.Context>() {
-              @Override
-              public boolean supportsContext(Observation.Context context) {
-                return true;
-              }
-            });
+    registry.observationConfig().observationHandler(context -> true);
     return registry;
   }
 

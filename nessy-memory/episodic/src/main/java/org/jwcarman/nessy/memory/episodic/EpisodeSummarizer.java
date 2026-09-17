@@ -181,10 +181,10 @@ public class EpisodeSummarizer {
    * out, for the span: what the last episode attempted came to.
    */
   private String summarizeAll(AgentId agentId) {
-    String outcome = "nothing";
+    String outcome = SummaryObservation.NOTHING;
     for (Episode episode : episodes.unsummarized(agentId)) {
       outcome = summarize(agentId, episode);
-      if (!"written".equals(outcome)) {
+      if (!SummaryObservation.WRITTEN.equals(outcome)) {
         // Oldest first, and in order: a later episode summarised before an earlier one would
         // leave a hole the store cannot show past.
         return outcome;
@@ -219,7 +219,7 @@ public class EpisodeSummarizer {
                 new InferenceContext(List.of(), shown, List.of()),
                 List.of(),
                 options));
-    if (!(result instanceof InferenceResult.Answer(var blocks, var _))) {
+    if (!(result instanceof InferenceResult.Answer(var blocks, _))) {
       // Not an error to anybody: the episode stays unsummarised, and the next turn end tries again.
       LOG.warn(
           "[{}] could not summarise episode {} of agent {}: {}",
@@ -227,7 +227,7 @@ public class EpisodeSummarizer {
           episode.number(),
           agentId.value(),
           result);
-      return "fault";
+      return SummaryObservation.FAULT;
     }
     Titled titled = Titled.parse(Transcripts.text(blocks));
     String summary = titled.summary();
@@ -237,11 +237,11 @@ public class EpisodeSummarizer {
           agentType.value(),
           episode.number(),
           agentId.value());
-      return "empty";
+      return SummaryObservation.EMPTY;
     }
     if (!episodes.summarize(agentId, episode.number(), titled.title(), summary)) {
       // Another process wrote it while this one was asking the model.
-      return "nothing";
+      return SummaryObservation.NOTHING;
     }
     LOG.info(
         "[{}] summarised episode {} (turns {}..{}) of agent {} as '{}'",
@@ -251,7 +251,7 @@ public class EpisodeSummarizer {
         episode.through().value(),
         agentId.value(),
         titled.title() == null ? episode.title() : titled.title());
-    return "written";
+    return SummaryObservation.WRITTEN;
   }
 
   /**

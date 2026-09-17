@@ -23,8 +23,26 @@ import org.jwcarman.nessy.engine.observability.Identity;
 public final class SummaryObservation {
 
   public static final String NAME = "nessy.summary";
-  static final String KIND = "nessy.summary.kind";
-  static final String OUTCOME = "nessy.summary.outcome";
+  static final String KIND_TAG = "nessy.summary.kind";
+  static final String OUTCOME_TAG = "nessy.summary.outcome";
+
+  /**
+   * What an attempt came to, as {@code nessy.summary.outcome} reports it. Here rather than in each
+   * summariser, because two of them say the same five words and a dashboard groups by them.
+   */
+  public static final String WRITTEN = "written";
+
+  /** Nothing to do, or another process got there first. */
+  public static final String NOTHING = "nothing";
+
+  /** Somebody else holds the lease; this attempt simply moves on. */
+  public static final String LEASE_REFUSED = "lease-refused";
+
+  /** The model would not answer. */
+  public static final String FAULT = "fault";
+
+  /** The model answered with nothing, so there was nothing to write. */
+  public static final String EMPTY = "empty";
 
   private final ObservationRegistry registry;
   private final String kind;
@@ -47,12 +65,12 @@ public final class SummaryObservation {
     Observation observation =
         Observation.createNotStarted(NAME, registry)
             .contextualName(NAME + " " + kind)
-            .lowCardinalityKeyValue(KIND, kind)
-            .lowCardinalityKeyValue(OUTCOME, "none");
+            .lowCardinalityKeyValue(KIND_TAG, kind)
+            .lowCardinalityKeyValue(OUTCOME_TAG, "none");
     new Identity(agentType, agentId).on(observation, null);
     observation.start();
-    try (Observation.Scope _ = observation.openScope()) {
-      observation.lowCardinalityKeyValue(OUTCOME, work.get());
+    try (var _ = observation.openScope()) {
+      observation.lowCardinalityKeyValue(OUTCOME_TAG, work.get());
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;

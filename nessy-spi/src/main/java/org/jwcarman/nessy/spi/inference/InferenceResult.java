@@ -33,6 +33,9 @@ import org.jwcarman.nessy.api.block.Block;
 })
 public sealed interface InferenceResult {
 
+  /** Said by every arm, which all carry a usage that may be unknown but never absent. */
+  String USAGE_NOT_NULL = "usage must not be null";
+
   /**
    * What the call cost, whatever it came back as. A refusal and a fault that reached the model are
    * billed too; an adapter that was not told reports {@link Usage#unknown()}.
@@ -54,7 +57,7 @@ public sealed interface InferenceResult {
   record Answer(List<Block.AnswerContent> blocks, Usage usage) implements InferenceResult {
 
     public Answer {
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
       Objects.requireNonNull(blocks, "blocks must not be null");
       blocks = List.copyOf(blocks);
     }
@@ -85,7 +88,7 @@ public sealed interface InferenceResult {
   record Refusal(String category, Usage usage) implements InferenceResult {
 
     public Refusal {
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
       Objects.requireNonNull(category, "category must not be null");
     }
 
@@ -117,7 +120,7 @@ public sealed interface InferenceResult {
   record Fault(Failure failure, Usage usage) implements InferenceResult {
 
     public Fault {
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
       Objects.requireNonNull(failure, "failure must not be null");
     }
 
@@ -145,7 +148,7 @@ public sealed interface InferenceResult {
   record Actions(List<Block.ActionRequestContent> blocks, Usage usage) implements InferenceResult {
 
     public Actions {
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
       Objects.requireNonNull(blocks, "blocks must not be null");
       if (blocks.stream().noneMatch(Block.ToolCall.class::isInstance)) {
         // A request for actions that asks for nothing would move the agent into waiting

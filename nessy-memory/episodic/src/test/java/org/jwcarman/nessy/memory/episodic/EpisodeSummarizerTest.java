@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
@@ -310,7 +311,7 @@ class EpisodeSummarizerTest {
           .filter(c -> c.getName().equals(name))
           .map(c -> c.getLowCardinalityKeyValue(key))
           .filter(java.util.Objects::nonNull)
-          .map(kv -> kv.getValue())
+          .map(KeyValue::getValue)
           .reduce((first, second) -> second)
           .orElse(null);
     }

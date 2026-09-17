@@ -2,6 +2,7 @@ package org.jwcarman.nessy.engine.harness;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
@@ -137,7 +138,7 @@ class HarnessObservesToolsTest {
         .filter(c -> c.getName().equals(name))
         .map(c -> c.getLowCardinalityKeyValue(key))
         .filter(java.util.Objects::nonNull)
-        .map(kv -> kv.getValue())
+        .map(KeyValue::getValue)
         .findFirst()
         .orElse(null);
   }
