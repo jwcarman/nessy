@@ -74,6 +74,42 @@ class AmbientTest {
     assertThat(quiet.forAgent(new AgentId(java.util.UUID.randomUUID()))).isEmpty();
   }
 
+  /** Said the same way to everyone: content given once, at the source rather than per call. */
+  @Test
+  void aSourceCanSayTheSameContentToEveryAgent() {
+    AmbientSource clock =
+        AmbientSource.of(
+            source ->
+                source
+                    .kind("clock")
+                    .saying(java.util.List.of(new org.jwcarman.nessy.api.block.Block.Text("Tue"))));
+
+    assertThat(clock.kind()).isEqualTo("clock");
+    assertThat(clock.forAgent(new AgentId(java.util.UUID.randomUUID())))
+        .contains(Ambient.text("clock", "Tue"));
+  }
+
+  /** A source with no kind has no label to contribute under, and the factory says so. */
+  @Test
+  void aSourceWithoutAKindIsRefused() {
+    java.util.function.Consumer<AmbientSourceConfig> noKind =
+        source -> source.text(_ -> java.util.Optional.of("Tuesday"));
+
+    assertThatThrownBy(() -> AmbientSource.of(noKind))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("kind");
+  }
+
+  /** And one with nothing to offer is refused too, rather than offering nothing forever. */
+  @Test
+  void aSourceWithNothingToOfferIsRefused() {
+    java.util.function.Consumer<AmbientSourceConfig> nothingToSay = source -> source.kind("clock");
+
+    assertThatThrownBy(() -> AmbientSource.of(nothingToSay))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("offering");
+  }
+
   @Test
   void aConstantSourceOffersTheSameThingToEveryAgent() {
     AmbientSource clock = AmbientSource.constant(Ambient.text("clock", "it is Tuesday"));

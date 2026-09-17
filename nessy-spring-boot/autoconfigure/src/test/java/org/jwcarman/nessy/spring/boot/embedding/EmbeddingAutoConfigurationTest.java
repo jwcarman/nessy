@@ -110,6 +110,17 @@ class EmbeddingAutoConfigurationTest {
     }
 
     @Test
+    @DisplayName("Google's other name for the Gemini key does too")
+    void googles_other_name_for_the_key_does_too() {
+      runner
+          .withPropertyValues("google.api-key=g-test")
+          .run(
+              context ->
+                  assertThat(context.getBean(Embedder.class).providerName())
+                      .isEqualTo("gcp.gemini"));
+    }
+
+    @Test
     @DisplayName("a Voyage key wins, because a Voyage key exists for embeddings alone")
     void a_voyage_key_wins() {
       runner

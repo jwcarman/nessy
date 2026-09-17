@@ -126,6 +126,45 @@ class ObservedContextTest {
     assertThat(only().getHighCardinalityKeyValue("nessy.context.turns").getValue()).isEqualTo("1");
   }
 
+  /** Every way of reading the story is timed, not just the one the assembler happens to use. */
+  @Test
+  void every_read_of_the_story_is_a_span() {
+    org.jwcarman.nessy.engine.store.TurnHistory history =
+        ObservedTurnHistories.wrap((_, _) -> new StoryOfOne(), registry).forAgent(TYPE, AGENT);
+
+    history.turnsFrom(1);
+    history.lastTurnsAfter(new TurnId(1), 5);
+
+    assertThat(stopped)
+        .extracting(Observation.Context::getContextualName)
+        .containsExactly("nessy.context history", "nessy.context history");
+  }
+
+  /** Counting is not reading: nothing of the story comes back, so nothing is timed. */
+  @Test
+  void counting_what_is_left_is_not_a_read() {
+    ObservedTurnHistories.wrap((_, _) -> new StoryOfOne(), registry)
+        .forAgent(TYPE, AGENT)
+        .turnsAfter(1);
+
+    assertThat(stopped).isEmpty();
+  }
+
+  /**
+   * A source asked outside any span still reports: whose work it is simply goes unsaid, rather than
+   * the span going missing.
+   */
+  @Test
+  void a_read_outside_an_agents_span_is_still_a_span() {
+    ObservedAmbientSource.wrap(
+            AmbientSource.of(a -> a.kind("clock").text(_ -> Optional.of("it is Tuesday"))),
+            registry)
+        .forAgent(AGENT);
+
+    assertThat(only().getContextualName()).isEqualTo("nessy.context ambient clock");
+    assertThat(only().getLowCardinalityKeyValue(Identity.AGENT_NAME)).isNull();
+  }
+
   /** One turn, so that "how many came back" has an answer worth asserting. */
   private static final class StoryOfOne implements org.jwcarman.nessy.engine.store.TurnHistory {
 

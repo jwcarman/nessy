@@ -49,20 +49,15 @@ public interface Embedder {
   }
 
   /**
-   * A class's simple name, or for a lambda or an anonymous class the name of the class that wrote
-   * it. The name becomes a metric tag, so it has to be stable: a lambda's own name carries an
-   * address that differs between runs, and an anonymous class has none at all.
+   * A class's simple name, or for an anonymous class the name of the class that wrote it. The name
+   * becomes a metric tag, so it has to be stable, and an anonymous class has none of its own.
+   *
+   * <p>No lambda case, unlike the provider's: an embedder says its model and its dimension as well
+   * as embedding, so it is never written as one.
    */
   private static String nameOf(Class<?> type) {
-    if (type.isAnonymousClass() && type.getEnclosingClass() != null) {
-      return type.getEnclosingClass().getSimpleName();
-    }
-    String name = type.getName();
-    int lambda = name.indexOf("$$Lambda");
-    if (lambda >= 0) {
-      String writer = name.substring(0, lambda);
-      return writer.substring(Math.max(writer.lastIndexOf('.'), writer.lastIndexOf('$')) + 1);
-    }
-    return type.getSimpleName();
+    return type.isAnonymousClass() && type.getEnclosingClass() != null
+        ? type.getEnclosingClass().getSimpleName()
+        : type.getSimpleName();
   }
 }
