@@ -665,6 +665,60 @@
           </execution>
         </executions>
       </plugin>
+      <!-- Every source file carries the Apache header, checked in `validate` beside the
+           formatting: both are what the code should look like, and neither is worth finding out
+           about after a compile. `license:format` writes the missing ones. -->
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license.plugin.version}</version>
+        <configuration>
+          <properties>
+            <owner>${license.owner}</owner>
+          </properties>
+          <licenseSets>
+            <licenseSet>
+              <inlineHeader><![CDATA[Copyright © ${year} ${owner}
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.]]></inlineHeader>
+              <excludes>
+                <exclude>**/README</exclude>
+                <exclude>**/README.md</exclude>
+                <exclude>src/test/resources/**</exclude>
+                <exclude>src/main/resources/**</exclude>
+                <exclude>LICENSE</exclude>
+                <exclude>.github/**</exclude>
+                <exclude>**/*.txt</exclude>
+                <exclude>**/*.sh</exclude>
+                <exclude>**/*.md</exclude>
+                <exclude>docs/**</exclude>
+                <exclude>site/**</exclude>
+                <exclude>.mvn/**</exclude>
+                <exclude>mvnw</exclude>
+                <exclude>mvnw.cmd</exclude>
+              </excludes>
+            </licenseSet>
+          </licenseSets>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 
@@ -773,66 +827,5 @@
       </build>
     </profile>
 
-    <!-- License header check/format -->
-    <profile>
-      <id>license</id>
-      <activation>
-        <activeByDefault>false</activeByDefault>
-      </activation>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>com.mycila</groupId>
-            <artifactId>license-maven-plugin</artifactId>
-            <version>${license.plugin.version}</version>
-            <configuration>
-              <properties>
-                <owner>${license.owner}</owner>
-              </properties>
-              <licenseSets>
-                <licenseSet>
-                  <inlineHeader><![CDATA[Copyright © ${year} ${owner}
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.]]></inlineHeader>
-                  <excludes>
-                    <exclude>**/README</exclude>
-                    <exclude>**/README.md</exclude>
-                    <exclude>src/test/resources/**</exclude>
-                    <exclude>src/main/resources/**</exclude>
-                    <exclude>LICENSE</exclude>
-                    <exclude>.github/**</exclude>
-                    <exclude>**/*.txt</exclude>
-                    <exclude>**/*.sh</exclude>
-                    <exclude>**/*.md</exclude>
-                    <exclude>docs/**</exclude>
-                    <exclude>site/**</exclude>
-                    <exclude>.mvn/**</exclude>
-                    <exclude>mvnw</exclude>
-                    <exclude>mvnw.cmd</exclude>
-                  </excludes>
-                </licenseSet>
-              </licenseSets>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>check</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
   </profiles>
 </project>

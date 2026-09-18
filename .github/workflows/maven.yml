@@ -14,7 +14,28 @@ permissions:
   contents: read
 
 jobs:
+  # Formatting and licence headers, before anything is compiled. Both are validate-phase goals,
+  # so this is seconds of work, and failing it here means the answer is one command rather than
+  # a scroll through a build log.
+  check:
+    name: Formatting and licence headers
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+
+    - name: Set up JDK 25
+      uses: actions/setup-java@v6
+      with:
+        java-version: '25'
+        distribution: 'liberica'
+        cache: maven
+
+    - name: Check formatting and licence headers
+      run: mvn -B spotless:check license:check
+
   build:
+    needs: check
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Code

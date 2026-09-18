@@ -51,7 +51,13 @@ context-pipeline reform.)
   Never run two Maven processes concurrently in one worktree (they collide on
   `target/`). Parallel reactor builds (`-T 1C`) are permitted once verified
   green in a worktree.
-- Before every commit: `./mvnw license:format -Plicense && ./mvnw spotless:apply`.
+- **Required before every push**: `./mvnw spotless:apply license:format`. Every source file
+  carries the Apache header, and the formatting is google-java-format; both are enforced, so a
+  push that skips this fails CI at its first job. `./mvnw spotless:check license:check` is what
+  CI runs — it compiles nothing and takes seconds, so run it rather than guessing.
+  - A mass header addition is its own commit. When `license:format` touches far more files than
+    the work did, commit the headers alone first, then make the real change on top — otherwise
+    the diff under review is buried.
 - Live (token-spending) tests: excluded by default; run with
   `./mvnw test -Dnessy.excludedGroups=`.
 
