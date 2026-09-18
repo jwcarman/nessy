@@ -69,12 +69,6 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
     return dimension;
   }
 
-  @Override
-  public Embedding embed(String text) {
-    Objects.requireNonNull(text, "text must not be null");
-    return embed(List.of(text)).getFirst();
-  }
-
   /**
    * One request for the whole batch; the vendor returns them indexed, and they are put in order.
    */

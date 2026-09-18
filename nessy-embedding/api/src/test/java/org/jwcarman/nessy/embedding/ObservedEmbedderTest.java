@@ -50,8 +50,8 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public Embedding embed(String text) {
-        return new Embedding(model(), new float[] {1, 0, 0});
+      public List<Embedding> embed(List<String> texts) {
+        return texts.stream().map(t -> new Embedding(model(), new float[] {1, 0, 0})).toList();
       }
     };
   }
@@ -74,7 +74,7 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public Embedding embed(String text) {
+      public List<Embedding> embed(List<String> texts) {
         throw new IllegalStateException("the endpoint is down");
       }
     };

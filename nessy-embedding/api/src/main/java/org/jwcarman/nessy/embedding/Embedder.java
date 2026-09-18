@@ -1,6 +1,5 @@
 package org.jwcarman.nessy.embedding;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -32,20 +31,26 @@ public interface Embedder {
   /** How many coordinates every vector from this model has. */
   int dimension();
 
-  /** One text's embedding. */
-  Embedding embed(String text);
+  /**
+   * Several texts' embeddings, in the order given, and the one an adapter implements.
+   *
+   * <p>The batch is the real call because that is the shape every vendor's endpoint takes: texts
+   * in, vectors out, one request. Most batches here are of one -- a note, a query -- so this is not
+   * about speed today; it is about there being one path to the vendor rather than two, and about
+   * the day a caller does hand over a hundred notes not being the day it becomes a hundred round
+   * trips.
+   */
+  List<Embedding> embed(List<String> texts);
 
   /**
-   * Several texts' embeddings, in the order given. One call to the vendor where the vendor allows
-   * it; the default asks one at a time, which is correct and slow.
+   * One text's embedding: the degenerate batch, and never worth an adapter writing out.
+   *
+   * <p>Left overridable for the one implementation that needs to say something about a single call
+   * rather than a batch of one -- {@link ObservedEmbedder} opens a span here.
    */
-  default List<Embedding> embed(List<String> texts) {
-    Objects.requireNonNull(texts, "texts must not be null");
-    List<Embedding> embeddings = new ArrayList<>(texts.size());
-    for (String text : texts) {
-      embeddings.add(embed(text));
-    }
-    return List.copyOf(embeddings);
+  default Embedding embed(String text) {
+    Objects.requireNonNull(text, "text must not be null");
+    return embed(List.of(text)).getFirst();
   }
 
   /**

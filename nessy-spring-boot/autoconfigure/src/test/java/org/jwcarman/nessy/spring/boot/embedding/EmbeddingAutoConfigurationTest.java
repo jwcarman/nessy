@@ -3,10 +3,13 @@ package org.jwcarman.nessy.spring.boot.embedding;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.embedding.Embedder;
+import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.embedding.ObservedEmbedder;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -148,8 +151,7 @@ class EmbeddingAutoConfigurationTest {
           .withPropertyValues("openai.api-key=sk-test")
           .run(
               context ->
-                  assertThat(context.getBean(Embedder.class))
-                      .isInstanceOf(org.jwcarman.nessy.embedding.ObservedEmbedder.class));
+                  assertThat(context.getBean(Embedder.class)).isInstanceOf(ObservedEmbedder.class));
     }
 
     /** Observed either way: with nothing configured the registry is the no-op one. */
@@ -160,8 +162,7 @@ class EmbeddingAutoConfigurationTest {
           .withPropertyValues("openai.api-key=sk-test")
           .run(
               context ->
-                  assertThat(context.getBean(Embedder.class))
-                      .isInstanceOf(org.jwcarman.nessy.embedding.ObservedEmbedder.class));
+                  assertThat(context.getBean(Embedder.class)).isInstanceOf(ObservedEmbedder.class));
     }
   }
 
@@ -199,8 +200,8 @@ class EmbeddingAutoConfigurationTest {
     }
 
     @Override
-    public org.jwcarman.nessy.embedding.Embedding embed(String text) {
-      return new org.jwcarman.nessy.embedding.Embedding(model(), new float[] {1});
+    public List<Embedding> embed(List<String> texts) {
+      return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
     }
   }
 }

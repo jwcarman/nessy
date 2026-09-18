@@ -1,6 +1,7 @@
 package org.jwcarman.nessy.embedding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,8 @@ class EmbedderTest {
     }
 
     @Override
-    public Embedding embed(String text) {
-      return new Embedding(model(), new float[] {1});
+    public List<Embedding> embed(List<String> texts) {
+      return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
     }
   }
 
@@ -54,8 +55,8 @@ class EmbedderTest {
           }
 
           @Override
-          public Embedding embed(String text) {
-            return new Embedding(model(), new float[] {1});
+          public List<Embedding> embed(List<String> texts) {
+            return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
           }
         };
 
@@ -76,10 +77,19 @@ class EmbedderTest {
     assertThat(vendor.providerName()).isEqualTo("ollama");
   }
 
+  /** One text is a batch of one, so an adapter never writes this method. */
   @Test
-  void the_default_batch_embeds_one_at_a_time_in_order() {
-    List<Embedding> embeddings = new OllamaEmbedder().embed(List.of("one", "two"));
+  void one_text_is_embedded_as_a_batch_of_one() {
+    assertThat(new OllamaEmbedder().embed("just this"))
+        .isEqualTo(new Embedding("nomic-embed-text", new float[] {1}));
+  }
 
-    assertThat(embeddings).hasSize(2);
+  /** The degenerate case still refuses nothing rather than embedding a null. */
+  @Test
+  void embedding_no_text_at_all_is_refused() {
+    Embedder embedder = new OllamaEmbedder();
+
+    assertThatThrownBy(() -> embedder.embed((String) null))
+        .isInstanceOf(NullPointerException.class);
   }
 }

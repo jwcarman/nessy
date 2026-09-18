@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -68,34 +67,5 @@ class EmbeddingTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("other");
     assertThatThrownBy(() -> east.similarity(longer)).isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void the_default_batch_embeds_one_at_a_time_in_order() {
-    Embedder embedder =
-        new Embedder() {
-          @Override
-          public String providerName() {
-            return "p";
-          }
-
-          @Override
-          public String model() {
-            return "m";
-          }
-
-          @Override
-          public int dimension() {
-            return 1;
-          }
-
-          @Override
-          public Embedding embed(String text) {
-            return new Embedding("m", new float[] {text.length()});
-          }
-        };
-
-    assertThat(embedder.embed(List.of("a", "abc")))
-        .containsExactly(new Embedding("m", new float[] {1}), new Embedding("m", new float[] {3}));
   }
 }

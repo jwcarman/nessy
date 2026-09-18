@@ -38,7 +38,11 @@ final class KeywordEmbedder implements Embedder {
   }
 
   @Override
-  public Embedding embed(String text) {
+  public List<Embedding> embed(List<String> texts) {
+    return texts.stream().map(this::one).toList();
+  }
+
+  private Embedding one(String text) {
     embedded.add(text);
     String lower = text.toLowerCase(Locale.ROOT);
     float[] vector = new float[keywords.size() + 1];

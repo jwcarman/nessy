@@ -78,12 +78,6 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return dimension;
   }
 
-  @Override
-  public Embedding embed(String text) {
-    Objects.requireNonNull(text, "text must not be null");
-    return embed(List.of(text)).getFirst();
-  }
-
   /** Batches of up to {@value #BATCH}, each one request; the reply is indexed and put in order. */
   @Override
   public List<Embedding> embed(List<String> texts) {

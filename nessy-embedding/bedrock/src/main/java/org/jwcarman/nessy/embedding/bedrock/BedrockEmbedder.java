@@ -97,12 +97,6 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
-  public Embedding embed(String text) {
-    Objects.requireNonNull(text, "text must not be null");
-    return embed(List.of(text)).getFirst();
-  }
-
-  @Override
   public List<Embedding> embed(List<String> texts) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
