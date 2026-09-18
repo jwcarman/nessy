@@ -124,7 +124,7 @@
          this repo pins serves them too (checked signature by signature). -->
     <odyssey.version>0.10.0</odyssey.version>
     <jmustache.version>1.16</jmustache.version>
-    <substrate.version>0.8.2</substrate.version>
+    <substrate.version>0.9.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
          internally never reaches an adapter. -->
@@ -440,15 +440,17 @@
         <artifactId>jackson-annotations</artifactId>
         <version>${jackson-annotations.version}</version>
       </dependency>
+      <!-- The whole codec line at one version, rather than the two artifacts this repo happens
+           to name. Substrate and Odyssey both bring codec-core in transitively at the version
+           they were built against, so anything not managed here arrives on its own version.
+           A codec split across two versions compiles and then fails at run time, looking for a
+           class one half expects the other to have. -->
       <dependency>
         <groupId>org.jwcarman.codec</groupId>
-        <artifactId>codec-core</artifactId>
+        <artifactId>codec-bom</artifactId>
         <version>${codec.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.jwcarman.codec</groupId>
-        <artifactId>codec-jackson</artifactId>
-        <version>${codec.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
       <dependency>
         <groupId>com.github.victools</groupId>
