@@ -21,9 +21,9 @@ import com.google.genai.types.EmbedContentResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
 
 /**
  * Gemini's embedding models, through the vendor's own java-genai SDK.
@@ -31,24 +31,17 @@ import org.jwcarman.nessy.api.Embedding;
  * <p>One embedder is one model at one dimension, decided where it is built: a store keyed on this
  * embedder's vectors is keyed on that model, and a second model is a second embedder.
  */
-public final class GeminiEmbedder implements Embedder, AutoCloseable {
+public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   private final GeminiEmbeddingClient client;
-  private final String model;
-  private final OptionalInt requestedDimension;
   private final String taskType;
-  private volatile int dimension;
 
-  GeminiEmbedder(
-      GeminiEmbeddingClient client, String model, OptionalInt requestedDimension, String taskType) {
+  GeminiEmbeddingProvider(GeminiEmbeddingClient client, String taskType) {
     this.client = Objects.requireNonNull(client, "client must not be null");
-    this.model = Objects.requireNonNull(model, "model must not be null");
-    this.requestedDimension = Objects.requireNonNull(requestedDimension, "dimension");
     this.taskType = taskType;
-    this.dimension = requestedDimension.orElse(0);
   }
 
-  public static GeminiEmbedder create(GeminiEmbedderCustomizer customizer) {
+  public static GeminiEmbeddingProvider create(GeminiEmbedderCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     GeminiEmbedderConfig config = new GeminiEmbedderConfig();
     customizer.customize(config);
@@ -56,7 +49,7 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
   }
 
   /** {@code GEMINI_API_KEY} or {@code GOOGLE_API_KEY}, and the default model. */
-  public static GeminiEmbedder fromEnv() {
+  public static GeminiEmbeddingProvider fromEnv() {
     return create(GeminiEmbedderConfig::fromEnv);
   }
 
@@ -65,24 +58,10 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
     return "gcp.gemini";
   }
 
-  @Override
-  public String model() {
-    return model;
-  }
-
-  /**
-   * The dimension asked for, or once the first vector has come back, the dimension the model
-   * produces. Zero before either.
-   */
-  @Override
-  public int dimension() {
-    return dimension;
-  }
-
   /** One request for the whole batch; the vendor returns them in the order given. */
   @Override
-  public List<Embedding> embedDocuments(List<String> texts) {
-    return embed(texts, roleOr("RETRIEVAL_DOCUMENT"));
+  public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
+    return embed(texts, roleOr("RETRIEVAL_DOCUMENT"), options);
   }
 
   /**
@@ -92,9 +71,9 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
    * purpose, and saying so is the difference between finding it and nearly finding it.
    */
   @Override
-  public Embedding embedQuery(String query) {
+  public Embedding embedQuery(String query, EmbeddingOptions options) {
     Objects.requireNonNull(query, "query must not be null");
-    return embed(List.of(query), roleOr("RETRIEVAL_QUERY")).getFirst();
+    return embed(List.of(query), roleOr("RETRIEVAL_QUERY"), options).getFirst();
   }
 
   /**
@@ -107,15 +86,15 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
     return taskType == null ? role : taskType;
   }
 
-  private List<Embedding> embed(List<String> texts, String role) {
+  private List<Embedding> embed(List<String> texts, String role, EmbeddingOptions options) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
     }
     EmbedContentConfig.Builder config = EmbedContentConfig.builder();
-    requestedDimension.ifPresent(config::outputDimensionality);
+    options.dimension().ifPresent(config::outputDimensionality);
     config.taskType(role);
-    EmbedContentResponse response = client.embed(model, texts, config.build());
+    EmbedContentResponse response = client.embed(options.modelName(), texts, config.build());
     List<ContentEmbedding> returned = response.embeddings().orElse(List.of());
     if (returned.size() != texts.size()) {
       throw new IllegalStateException(
@@ -129,10 +108,7 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
       for (int i = 0; i < vector.length; i++) {
         vector[i] = values.get(i);
       }
-      embeddings.add(new Embedding(model, vector));
-    }
-    if (dimension == 0) {
-      dimension = embeddings.getFirst().dimension();
+      embeddings.add(new Embedding(options.modelName(), vector));
     }
     return List.copyOf(embeddings);
   }

@@ -21,8 +21,8 @@ import java.util.Objects;
 import java.util.OptionalInt;
 
 /**
- * What {@link OpenAiEmbedder#create(OpenAiEmbedderCustomizer)} hands a customizer: a CONFIG, not a
- * builder -- fluent setters, no public {@code build()}.
+ * What {@link OpenAiEmbeddingProvider#create(OpenAiEmbedderCustomizer)} hands a customizer: a
+ * CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class OpenAiEmbedderConfig {
 
@@ -99,12 +99,17 @@ public final class OpenAiEmbedderConfig {
     return this;
   }
 
-  OpenAiEmbedder build() {
+  /** The model a factory over this connection hands out when an embedder names none. */
+  String model() {
+    return model;
+  }
+
+  OpenAiEmbeddingProvider build() {
     if (client != null) {
-      return new OpenAiEmbedder(client, false, model, dimension);
+      return new OpenAiEmbeddingProvider(client, false);
     }
     if (useEnv) {
-      return new OpenAiEmbedder(buildFromEnv(), true, model, dimension);
+      return new OpenAiEmbeddingProvider(buildFromEnv(), true);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -118,7 +123,7 @@ public final class OpenAiEmbedderConfig {
     if (organization != null) {
       builder.organization(organization);
     }
-    return new OpenAiEmbedder(builder.build(), true, model, dimension);
+    return new OpenAiEmbeddingProvider(builder.build(), true);
   }
 
   private OpenAIClient buildFromEnv() {

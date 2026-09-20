@@ -32,7 +32,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -41,6 +43,11 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @DisplayName("The Voyage embedder")
 class VoyageEmbedderTest {
+
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(VoyageEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
@@ -72,8 +79,8 @@ class VoyageEmbedderTest {
     server.stop(0);
   }
 
-  private VoyageEmbedder embedder(VoyageEmbedderCustomizer more) {
-    return VoyageEmbedder.create(
+  private VoyageEmbeddingProvider provider(VoyageEmbedderCustomizer more) {
+    return VoyageEmbeddingProvider.create(
         c -> {
           c.apiKey("test-key")
               .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/");
@@ -100,7 +107,8 @@ class VoyageEmbedderTest {
     @Test
     void a_batch_is_one_authorised_request_and_comes_back_in_the_order_asked() {
       answer = body -> reply(new float[] {1, 0}, new float[] {0, 1});
-      try (VoyageEmbedder embedder = embedder(c -> {})) {
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        Embedder embedder = embedderOver(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
         List<Embedding> embeddings = embedder.embedDocuments(List.of("first", "second"));
 
         assertThat(embeddings)
@@ -120,8 +128,10 @@ class VoyageEmbedderTest {
     @Test
     void a_dimension_and_an_input_type_asked_for_are_sent() {
       answer = body -> reply(new float[] {1});
-      try (VoyageEmbedder embedder =
-          embedder(c -> c.model("voyage-3.5-lite").dimension(512).inputType("query"))) {
+      try (VoyageEmbeddingProvider connection = provider(c -> c.inputType("query"))) {
+        Embedder embedder =
+            new DefaultEmbedderFactory(connection, "voyage-3.5-lite").create(c -> c.dimension(512));
+
         assertThat(embedder.dimension()).isEqualTo(512);
         embedder.embedDocument("x");
 
@@ -139,7 +149,8 @@ class VoyageEmbedderTest {
             java.util.Arrays.fill(vectors, new float[] {1});
             return reply(vectors);
           };
-      try (VoyageEmbedder embedder = embedder(c -> {})) {
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        Embedder embedder = embedderOver(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
         assertThat(embedder.embedDocuments(java.util.Collections.nCopies(130, "x"))).hasSize(130);
         assertThat(received).hasSize(2);
       }
@@ -148,13 +159,15 @@ class VoyageEmbedderTest {
     @Test
     void a_short_reply_and_a_stray_index_are_refused() {
       answer = body -> reply(new float[] {1});
-      try (VoyageEmbedder embedder = embedder(c -> {})) {
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        Embedder embedder = embedderOver(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
         List<String> two = List.of("a", "b");
         assertThatThrownBy(() -> embedder.embedDocuments(two))
             .isInstanceOf(IllegalStateException.class);
       }
       answer = body -> "{\"data\":[{\"index\":7,\"embedding\":[1]}]}";
-      try (VoyageEmbedder embedder = embedder(c -> {})) {
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        Embedder embedder = embedderOver(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
         assertThatThrownBy(() -> embedder.embedDocument("a"))
             .isInstanceOf(IllegalStateException.class);
       }
@@ -164,7 +177,8 @@ class VoyageEmbedderTest {
     void an_error_status_is_reported_with_the_vendors_words() {
       status = 401;
       answer = body -> "{\"detail\":\"bad key\"}";
-      try (VoyageEmbedder embedder = embedder(c -> {})) {
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        Embedder embedder = embedderOver(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
         assertThatThrownBy(() -> embedder.embedDocument("a"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("401")
@@ -174,9 +188,14 @@ class VoyageEmbedderTest {
 
     @Test
     void an_unreachable_endpoint_is_reported() {
-      VoyageEmbedder unreachable =
-          VoyageEmbedder.create(
-              c -> c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").timeout(Duration.ofSeconds(2)));
+      Embedder unreachable =
+          embedderOver(
+              VoyageEmbeddingProvider.create(
+                  c ->
+                      c.apiKey("k")
+                          .baseUrl("http://127.0.0.1:1/v1")
+                          .timeout(Duration.ofSeconds(2))),
+              VoyageEmbedderConfig.DEFAULT_MODEL);
 
       assertThatThrownBy(() -> unreachable.embedDocument("a"))
           .isInstanceOf(IllegalStateException.class)
@@ -189,31 +208,31 @@ class VoyageEmbedderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> VoyageEmbedder.create(c -> {}))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
-      assertThatThrownBy(() -> VoyageEmbedder.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> VoyageEmbedder.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> VoyageEmbedder.create(c -> c.mapper(null)))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void from_env_needs_a_key_unless_one_is_given_explicitly() {
       assumeTrue(System.getenv("VOYAGE_API_KEY") == null, "a key is set in this environment");
-      assertThatThrownBy(VoyageEmbedder::fromEnv)
+      assertThatThrownBy(VoyageEmbeddingProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("VOYAGE_API_KEY");
       assertThat(
-              VoyageEmbedder.create(
+              VoyageEmbeddingProvider.create(
                       c ->
                           c.fromEnv()
                               .apiKey("k")
                               .httpClient(java.net.http.HttpClient.newHttpClient()))
-                  .model())
-          .isEqualTo("voyage-3.5");
+                  .providerName())
+          .isEqualTo("voyage");
     }
   }
 }

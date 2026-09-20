@@ -22,17 +22,21 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
-import org.jwcarman.nessy.embedding.ObservedEmbedder;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 /**
- * Which embedder an application gets, and from what.
+ * Which embedders an application can make, and from what.
  *
  * <p>Adding the module is how an application asks for embeddings at all; a key it already gave for
- * chat is enough to build one, and the model is the vendor's default until it says otherwise.
+ * chat is enough to build the factory, and the model is the vendor's default until a store says
+ * otherwise. The starter vends no embedder of its own: the model belongs to whichever store holds
+ * the vectors, so the store is what names it.
  */
 class EmbeddingAutoConfigurationTest {
 
@@ -46,10 +50,15 @@ class EmbeddingAutoConfigurationTest {
                   OpenAiEmbeddingAutoConfiguration.class,
                   GeminiEmbeddingAutoConfiguration.class));
 
+  /** The embedder a store with nothing to say would get: the factory's own default model. */
+  private static Embedder defaultEmbedder(AssertableApplicationContext context) {
+    return context.getBean(EmbedderFactory.class).create(c -> {});
+  }
+
   @Test
-  @DisplayName("with no keys at all, no embedder is made")
+  @DisplayName("with no keys at all, nothing can make an embedder")
   void with_no_keys_at_all_no_embedder_is_made() {
-    runner.run(context -> assertThat(context).doesNotHaveBean(Embedder.class));
+    runner.run(context -> assertThat(context).doesNotHaveBean(EmbedderFactory.class));
   }
 
   @Nested
@@ -63,23 +72,38 @@ class EmbeddingAutoConfigurationTest {
           .withPropertyValues("openai.api-key=sk-test")
           .run(
               context -> {
-                assertThat(context).hasSingleBean(Embedder.class);
-                assertThat(context.getBean(Embedder.class).model())
-                    .isEqualTo("text-embedding-3-small");
-                assertThat(context.getBean(Embedder.class).providerName()).isEqualTo("openai");
+                assertThat(context).hasSingleBean(EmbedderFactory.class);
+                assertThat(defaultEmbedder(context).model()).isEqualTo("text-embedding-3-small");
+                assertThat(defaultEmbedder(context).providerName()).isEqualTo("openai");
               });
     }
 
     @Test
-    @DisplayName("a named model is used instead")
+    @DisplayName("a named model is the default the factory mints with")
     void a_named_model_is_used_instead() {
       runner
           .withPropertyValues(
               "openai.api-key=sk-test", "nessy.embedding.openai.model=text-embedding-3-large")
           .run(
               context ->
-                  assertThat(context.getBean(Embedder.class).model())
-                      .isEqualTo("text-embedding-3-large"));
+                  assertThat(defaultEmbedder(context).model()).isEqualTo("text-embedding-3-large"));
+    }
+
+    /** A store can name its own model, whatever the application's default is. */
+    @Test
+    @DisplayName("a store that names its own model gets that one")
+    void a_store_that_names_its_own_model_gets_that_one() {
+      runner
+          .withPropertyValues("openai.api-key=sk-test")
+          .run(
+              context -> {
+                Embedder mine =
+                    context
+                        .getBean(EmbedderFactory.class)
+                        .create(c -> c.model("text-embedding-3-large"));
+                assertThat(mine.model()).isEqualTo("text-embedding-3-large");
+                assertThat(defaultEmbedder(context).model()).isEqualTo("text-embedding-3-small");
+              });
     }
 
     /**
@@ -92,7 +116,7 @@ class EmbeddingAutoConfigurationTest {
       runner
           .withPropertyValues(
               "openai.api-key=lm-studio", "openai.base-url=http://localhost:1234/v1")
-          .run(context -> assertThat(context).doesNotHaveBean(Embedder.class));
+          .run(context -> assertThat(context).doesNotHaveBean(EmbedderFactory.class));
     }
 
     @Test
@@ -105,7 +129,7 @@ class EmbeddingAutoConfigurationTest {
               "nessy.embedding.openai.model=text-embedding-nomic-embed-text-v1.5")
           .run(
               context ->
-                  assertThat(context.getBean(Embedder.class).model())
+                  assertThat(defaultEmbedder(context).model())
                       .isEqualTo("text-embedding-nomic-embed-text-v1.5"));
     }
   }
@@ -121,9 +145,8 @@ class EmbeddingAutoConfigurationTest {
           .withPropertyValues("gemini.api-key=g-test")
           .run(
               context -> {
-                assertThat(context.getBean(Embedder.class).model())
-                    .isEqualTo("gemini-embedding-001");
-                assertThat(context.getBean(Embedder.class).providerName()).isEqualTo("gcp.gemini");
+                assertThat(defaultEmbedder(context).model()).isEqualTo("gemini-embedding-001");
+                assertThat(defaultEmbedder(context).providerName()).isEqualTo("gcp.gemini");
               });
     }
 
@@ -134,8 +157,7 @@ class EmbeddingAutoConfigurationTest {
           .withPropertyValues("google.api-key=g-test")
           .run(
               context ->
-                  assertThat(context.getBean(Embedder.class).providerName())
-                      .isEqualTo("gcp.gemini"));
+                  assertThat(defaultEmbedder(context).providerName()).isEqualTo("gcp.gemini"));
     }
 
     @Test
@@ -148,8 +170,8 @@ class EmbeddingAutoConfigurationTest {
               "gemini.api-key=g-test")
           .run(
               context -> {
-                assertThat(context).hasSingleBean(Embedder.class);
-                assertThat(context.getBean(Embedder.class).providerName()).isEqualTo("voyage");
+                assertThat(context).hasSingleBean(EmbedderFactory.class);
+                assertThat(defaultEmbedder(context).providerName()).isEqualTo("voyage");
               });
     }
   }
@@ -165,8 +187,7 @@ class EmbeddingAutoConfigurationTest {
           .withBean(ObservationRegistry.class, ObservationRegistry::create)
           .withPropertyValues("openai.api-key=sk-test")
           .run(
-              context ->
-                  assertThat(context.getBean(Embedder.class)).isInstanceOf(ObservedEmbedder.class));
+              context -> assertThat(defaultEmbedder(context)).isInstanceOf(ObservedEmbedder.class));
     }
 
     /** Observed either way: with nothing configured the registry is the no-op one. */
@@ -176,25 +197,26 @@ class EmbeddingAutoConfigurationTest {
       runner
           .withPropertyValues("openai.api-key=sk-test")
           .run(
-              context ->
-                  assertThat(context.getBean(Embedder.class)).isInstanceOf(ObservedEmbedder.class));
+              context -> assertThat(defaultEmbedder(context)).isInstanceOf(ObservedEmbedder.class));
     }
   }
 
   @Nested
-  @DisplayName("when the application supplies its own Embedder")
+  @DisplayName("when the application supplies its own EmbedderFactory")
   class WhenTheApplicationSuppliesItsOwn {
 
     @Test
     @DisplayName("it backs off entirely")
     void it_backs_off_entirely() {
+      EmbedderFactory ours = customizer -> OwnEmbedder.INSTANCE;
       runner
           .withPropertyValues("openai.api-key=sk-test", "gemini.api-key=g-test")
-          .withBean(Embedder.class, () -> OwnEmbedder.INSTANCE)
+          .withBean(EmbedderFactory.class, () -> ours)
           .run(
               context -> {
-                assertThat(context).hasSingleBean(Embedder.class);
-                assertThat(context.getBean(Embedder.class)).isSameAs(OwnEmbedder.INSTANCE);
+                assertThat(context).hasSingleBean(EmbedderFactory.class);
+                assertThat(context.getBean(EmbedderFactory.class)).isSameAs(ours);
+                assertThat(defaultEmbedder(context)).isSameAs(OwnEmbedder.INSTANCE);
               });
     }
   }

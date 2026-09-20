@@ -18,9 +18,9 @@ package org.jwcarman.nessy.embedding.bedrock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import tools.jackson.databind.JsonNode;
@@ -34,9 +34,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>Converse, which the inference adapter uses, has no embeddings, so this is the per-model JSON
  * body the Converse adapter deliberately avoids. Two families are spoken: Amazon Titan Text
  * Embeddings (one text per call, an optional dimension on v2) and Cohere Embed (a batch per call,
- * with an input type). The family is read off the model id when the embedder is built.
+ * with an input type). The family is read off the model id of each call, because which model is
+ * asked for belongs to the caller and can differ between one embedder over this and the next.
  */
-public final class BedrockEmbedder implements Embedder, AutoCloseable {
+public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   /** The request and response shapes this adapter knows. */
   enum Family {
@@ -62,29 +63,17 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
   private static final int COHERE_BATCH = 96;
 
   private final BedrockEmbeddingClient client;
-  private final String model;
-  private final Family family;
-  private final OptionalInt requestedDimension;
   private final String cohereInputType;
   private final JsonMapper mapper;
-  private volatile int dimension;
 
-  BedrockEmbedder(
-      BedrockEmbeddingClient client,
-      String model,
-      OptionalInt requestedDimension,
-      String cohereInputType,
-      JsonMapper mapper) {
+  BedrockEmbeddingProvider(
+      BedrockEmbeddingClient client, String cohereInputType, JsonMapper mapper) {
     this.client = Objects.requireNonNull(client, "client must not be null");
-    this.model = Objects.requireNonNull(model, "model must not be null");
-    this.family = Family.of(model);
-    this.requestedDimension = Objects.requireNonNull(requestedDimension, "dimension");
     this.cohereInputType = Objects.requireNonNull(cohereInputType, "inputType must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
-    this.dimension = requestedDimension.orElse(0);
   }
 
-  public static BedrockEmbedder create(BedrockEmbedderCustomizer customizer) {
+  public static BedrockEmbeddingProvider create(BedrockEmbedderCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     BedrockEmbedderConfig config = new BedrockEmbedderConfig();
     customizer.customize(config);
@@ -92,7 +81,7 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
   }
 
   /** The AWS default credentials chain, the region from the environment, and the default model. */
-  public static BedrockEmbedder fromEnv() {
+  public static BedrockEmbeddingProvider fromEnv() {
     return create(BedrockEmbedderConfig::fromEnv);
   }
 
@@ -102,42 +91,39 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
-  public String model() {
-    return model;
-  }
-
-  @Override
-  public int dimension() {
-    return dimension;
-  }
-
-  @Override
-  public List<Embedding> embedDocuments(List<String> texts) {
+  public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
     }
-    List<Embedding> embeddings =
-        switch (family) {
-          case TITAN -> texts.stream().map(this::titan).toList();
-          case COHERE -> cohere(texts);
-        };
-    if (dimension == 0) {
-      dimension = embeddings.getFirst().dimension();
-    }
-    return embeddings;
+    return switch (Family.of(options.modelName())) {
+      case TITAN -> texts.stream().map(text -> titan(text, options)).toList();
+      case COHERE -> cohere(texts, options);
+    };
+  }
+
+  /**
+   * The same call, because Bedrock's own embedding models say nothing about what a text is for.
+   *
+   * <p>Cohere on Bedrock does take an input type, and it is fixed where this connection is
+   * configured rather than chosen per call: it is a deployment's decision about what this is for.
+   */
+  @Override
+  public Embedding embedQuery(String query, EmbeddingOptions options) {
+    Objects.requireNonNull(query, "query must not be null");
+    return embedDocuments(List.of(query), options).getFirst();
   }
 
   /** Titan takes one text and answers with one vector. */
-  private Embedding titan(String text) {
+  private Embedding titan(String text, EmbeddingOptions options) {
     ObjectNode body = mapper.createObjectNode().put("inputText", text);
-    requestedDimension.ifPresent(d -> body.put("dimensions", d).put("normalize", true));
-    JsonNode reply = invoke(body);
-    return vector(reply.path("embedding"));
+    options.dimension().ifPresent(d -> body.put("dimensions", d).put("normalize", true));
+    JsonNode reply = invoke(body, options);
+    return vector(reply.path("embedding"), options);
   }
 
   /** Cohere takes a batch of up to {@value #COHERE_BATCH} and answers in order. */
-  private List<Embedding> cohere(List<String> texts) {
+  private List<Embedding> cohere(List<String> texts, EmbeddingOptions options) {
     List<Embedding> all = new ArrayList<>(texts.size());
     for (int from = 0; from < texts.size(); from += COHERE_BATCH) {
       List<String> batch = texts.subList(from, Math.min(texts.size(), from + COHERE_BATCH));
@@ -145,22 +131,22 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
       ArrayNode input = body.putArray("texts");
       batch.forEach(input::add);
       body.put("input_type", cohereInputType).put("truncate", "END");
-      JsonNode reply = invoke(body);
+      JsonNode reply = invoke(body, options);
       JsonNode returned = reply.path("embeddings");
       if (returned.size() != batch.size()) {
         throw new IllegalStateException(
             "the model returned %d embeddings for %d texts"
                 .formatted(returned.size(), batch.size()));
       }
-      returned.forEach(node -> all.add(vector(node)));
+      returned.forEach(node -> all.add(vector(node, options)));
     }
     return List.copyOf(all);
   }
 
-  private JsonNode invoke(ObjectNode body) {
+  private JsonNode invoke(ObjectNode body, EmbeddingOptions options) {
     InvokeModelRequest request =
         InvokeModelRequest.builder()
-            .modelId(model)
+            .modelId(options.modelName())
             .contentType(JSON)
             .accept(JSON)
             .body(SdkBytes.fromUtf8String(mapper.writeValueAsString(body)))
@@ -168,7 +154,7 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
     return mapper.readTree(client.invoke(request).body().asUtf8String());
   }
 
-  private Embedding vector(JsonNode values) {
+  private static Embedding vector(JsonNode values, EmbeddingOptions options) {
     if (!values.isArray() || values.isEmpty()) {
       throw new IllegalStateException("the model returned no embedding");
     }
@@ -176,7 +162,7 @@ public final class BedrockEmbedder implements Embedder, AutoCloseable {
     for (int i = 0; i < vector.length; i++) {
       vector[i] = (float) values.get(i).asDouble();
     }
-    return new Embedding(model, vector);
+    return new Embedding(options.modelName(), vector);
   }
 
   /**

@@ -63,11 +63,6 @@
     </dependency>
     <!-- The seam relevance comes through; the store works without one, by recency. -->
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-embedding-api</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>
     </dependency>

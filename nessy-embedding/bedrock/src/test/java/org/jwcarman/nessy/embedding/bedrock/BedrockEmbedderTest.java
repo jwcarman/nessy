@@ -28,7 +28,9 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.SdkBytes;
@@ -40,6 +42,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("The Bedrock embedder")
 class BedrockEmbedderTest {
+
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(BedrockEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
@@ -71,8 +78,11 @@ class BedrockEmbedderTest {
     }
   }
 
-  private static BedrockEmbedder embedder(Scripted client, String model, OptionalInt dimension) {
-    return new BedrockEmbedder(client, model, dimension, "search_document", MAPPER);
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedder(Scripted client, String model, OptionalInt dimension) {
+    return new DefaultEmbedderFactory(
+            new BedrockEmbeddingProvider(client, "search_document", MAPPER), model)
+        .create(c -> dimension.ifPresent(c::dimension));
   }
 
   @Nested
@@ -82,8 +92,7 @@ class BedrockEmbedderTest {
     void one_text_per_call_and_the_dimension_is_learned() {
       Scripted client =
           new Scripted(body -> "{\"embedding\":[0.5,0.25],\"inputTextTokenCount\":3}");
-      BedrockEmbedder embedder =
-          embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.empty());
+      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.empty());
 
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
@@ -99,8 +108,7 @@ class BedrockEmbedderTest {
     @Test
     void a_dimension_asked_for_is_sent_with_normalisation() {
       Scripted client = new Scripted(body -> "{\"embedding\":[1]}");
-      BedrockEmbedder embedder =
-          embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(256));
+      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(256));
 
       embedder.embedDocument("x");
 
@@ -111,7 +119,7 @@ class BedrockEmbedderTest {
 
     @Test
     void a_reply_without_an_embedding_is_refused() {
-      BedrockEmbedder embedder =
+      Embedder embedder =
           embedder(
               new Scripted(body -> "{\"message\":\"nope\"}"),
               "amazon.titan-embed-text-v1",
@@ -128,7 +136,7 @@ class BedrockEmbedderTest {
     @Test
     void a_batch_per_call_with_the_input_type() {
       Scripted client = new Scripted(body -> "{\"embeddings\":[[1,0],[0,1]]}");
-      BedrockEmbedder embedder = embedder(client, "cohere.embed-english-v3", OptionalInt.empty());
+      Embedder embedder = embedder(client, "cohere.embed-english-v3", OptionalInt.empty());
 
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
@@ -152,8 +160,7 @@ class BedrockEmbedderTest {
                 }
                 return reply.append("]}").toString();
               });
-      BedrockEmbedder embedder =
-          embedder(client, "cohere.embed-multilingual-v3", OptionalInt.empty());
+      Embedder embedder = embedder(client, "cohere.embed-multilingual-v3", OptionalInt.empty());
       List<String> texts = java.util.Collections.nCopies(100, "x");
 
       assertThat(embedder.embedDocuments(texts)).hasSize(100);
@@ -162,7 +169,7 @@ class BedrockEmbedderTest {
 
     @Test
     void a_short_reply_is_refused() {
-      BedrockEmbedder embedder =
+      Embedder embedder =
           embedder(
               new Scripted(body -> "{\"embeddings\":[[1]]}"),
               "cohere.embed-english-v3",
@@ -177,12 +184,21 @@ class BedrockEmbedderTest {
   @Nested
   class Configuration {
 
+    /**
+     * Refused when it is used, which is when the model is known.
+     *
+     * <p>It used to be refused when the embedder was built, because the model was fixed then. A
+     * provider holds a connection and is told the model per call, so this is the first moment
+     * anything can say the family is not one Bedrock embeds with. Later than it was, and still
+     * before anything reaches the wire.
+     */
     @Test
-    void a_model_of_an_unknown_family_is_refused_when_built() {
+    void a_model_of_an_unknown_family_is_refused_when_it_is_used() {
       Scripted client = new Scripted(body -> "{}");
-      OptionalInt unset = OptionalInt.empty();
+      Embedder embedder = embedder(client, "meta.llama3-8b", OptionalInt.empty());
+      List<String> texts = List.of("a");
 
-      assertThatThrownBy(() -> embedder(client, "meta.llama3-8b", unset))
+      assertThatThrownBy(() -> embedder.embedDocuments(texts))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Titan")
           .hasMessageContaining("Cohere");
@@ -191,7 +207,7 @@ class BedrockEmbedderTest {
     @Test
     void closing_closes_the_client_it_was_given() {
       Scripted client = new Scripted(body -> "{}");
-      embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.empty()).close();
+      new BedrockEmbeddingProvider(client, "search_document", MAPPER).close();
       assertThat(client.closed).isTrue();
     }
 
@@ -201,7 +217,7 @@ class BedrockEmbedderTest {
           StaticCredentialsProvider.create(AwsBasicCredentials.create("akid", "secret"));
       assertThatCode(
               () ->
-                  BedrockEmbedder.create(
+                  BedrockEmbeddingProvider.create(
                           c ->
                               c.region(Region.US_EAST_1)
                                   .credentialsProvider(credentials)
@@ -226,19 +242,19 @@ class BedrockEmbedderTest {
                     }
                     return null;
                   });
-      BedrockEmbedder.create(c -> c.client(theirs)).close();
+      BedrockEmbeddingProvider.create(c -> c.client(theirs)).close();
       assertThat(closed).isFalse();
     }
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> BedrockEmbedder.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> BedrockEmbedder.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> BedrockEmbedder.create(c -> c.mapper(null)))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
-      assertThatThrownBy(() -> BedrockEmbedder.create(c -> {}))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("region");
     }
@@ -248,7 +264,8 @@ class BedrockEmbedderTest {
       assumeTrue(
           System.getenv("AWS_REGION") == null && System.getenv("AWS_DEFAULT_REGION") == null,
           "a region is set in this environment");
-      assertThatThrownBy(BedrockEmbedder::fromEnv).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(BedrockEmbeddingProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 }

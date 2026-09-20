@@ -23,9 +23,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -37,35 +37,30 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * <p>One embedder is one model at one dimension, decided where it is built.
  */
-public final class VoyageEmbedder implements Embedder, AutoCloseable {
+public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   private static final int BATCH = 128;
 
   private final HttpClient http;
   private final URI endpoint;
   private final String apiKey;
-  private final String model;
-  private final OptionalInt requestedDimension;
   private final String inputType;
   private final Duration timeout;
   private final JsonMapper mapper;
-  private volatile int dimension;
 
   /** The client, endpoint and key are what the config resolved; the rest is read as configured. */
-  VoyageEmbedder(HttpClient http, URI endpoint, String apiKey, VoyageEmbedderConfig config) {
+  VoyageEmbeddingProvider(
+      HttpClient http, URI endpoint, String apiKey, VoyageEmbedderConfig config) {
     this.http = Objects.requireNonNull(http, "http must not be null");
     this.endpoint = Objects.requireNonNull(endpoint, "endpoint must not be null");
     this.apiKey = Objects.requireNonNull(apiKey, "apiKey must not be null");
     Objects.requireNonNull(config, "config must not be null");
-    this.model = Objects.requireNonNull(config.model(), "model must not be null");
-    this.requestedDimension = Objects.requireNonNull(config.dimension(), "dimension");
     this.inputType = config.inputType();
     this.timeout = Objects.requireNonNull(config.timeout(), "timeout must not be null");
     this.mapper = Objects.requireNonNull(config.mapper(), "mapper must not be null");
-    this.dimension = requestedDimension.orElse(0);
   }
 
-  public static VoyageEmbedder create(VoyageEmbedderCustomizer customizer) {
+  public static VoyageEmbeddingProvider create(VoyageEmbedderCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     VoyageEmbedderConfig config = new VoyageEmbedderConfig();
     customizer.customize(config);
@@ -73,7 +68,7 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
   }
 
   /** {@code VOYAGE_API_KEY} and the default model. */
-  public static VoyageEmbedder fromEnv() {
+  public static VoyageEmbeddingProvider fromEnv() {
     return create(VoyageEmbedderConfig::fromEnv);
   }
 
@@ -83,27 +78,17 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return "voyage";
   }
 
-  @Override
-  public String model() {
-    return model;
-  }
-
-  @Override
-  public int dimension() {
-    return dimension;
-  }
-
   /** Batches of up to {@value #BATCH}, each one request; the reply is indexed and put in order. */
   @Override
-  public List<Embedding> embedDocuments(List<String> texts) {
-    return embed(texts, roleOr("document"));
+  public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
+    return embed(texts, roleOr("document"), options);
   }
 
   /** A question, told to Voyage as one. Retrieval is asymmetric and this is the asking half. */
   @Override
-  public Embedding embedQuery(String query) {
+  public Embedding embedQuery(String query, EmbeddingOptions options) {
     Objects.requireNonNull(query, "query must not be null");
-    return embed(List.of(query), roleOr("query")).getFirst();
+    return embed(List.of(query), roleOr("query"), options).getFirst();
   }
 
   /** An explicit input type is an override: somebody who named one meant it. */
@@ -111,7 +96,7 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return inputType == null ? role : inputType;
   }
 
-  private List<Embedding> embed(List<String> texts, String role) {
+  private List<Embedding> embed(List<String> texts, String role, EmbeddingOptions options) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
@@ -119,13 +104,13 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     Embedding[] ordered = new Embedding[texts.size()];
     for (int from = 0; from < texts.size(); from += BATCH) {
       List<String> batch = texts.subList(from, Math.min(texts.size(), from + BATCH));
-      JsonNode reply = post(batch, role);
+      JsonNode reply = post(batch, role, options);
       for (JsonNode item : reply.path("data")) {
         int index = item.path("index").asInt(-1);
         if (index < 0 || index >= batch.size()) {
           throw new IllegalStateException("the vendor returned an embedding for index " + index);
         }
-        ordered[from + index] = vector(item.path("embedding"));
+        ordered[from + index] = vector(item.path("embedding"), options);
       }
     }
     for (Embedding embedding : ordered) {
@@ -133,17 +118,14 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
         throw new IllegalStateException("the vendor returned fewer embeddings than texts");
       }
     }
-    if (dimension == 0) {
-      dimension = ordered[0].dimension();
-    }
     return List.of(ordered);
   }
 
-  private JsonNode post(List<String> batch, String role) {
-    ObjectNode body = mapper.createObjectNode().put("model", model);
+  private JsonNode post(List<String> batch, String role, EmbeddingOptions options) {
+    ObjectNode body = mapper.createObjectNode().put("model", options.modelName());
     ArrayNode input = body.putArray("input");
     batch.forEach(input::add);
-    requestedDimension.ifPresent(d -> body.put("output_dimension", d));
+    options.dimension().ifPresent(d -> body.put("output_dimension", d));
     body.put("input_type", role);
     HttpRequest request =
         HttpRequest.newBuilder(endpoint)
@@ -168,7 +150,7 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return mapper.readTree(response.body());
   }
 
-  private Embedding vector(JsonNode values) {
+  private static Embedding vector(JsonNode values, EmbeddingOptions options) {
     if (!values.isArray() || values.isEmpty()) {
       throw new IllegalStateException("the vendor returned no embedding");
     }
@@ -176,7 +158,7 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     for (int i = 0; i < vector.length; i++) {
       vector[i] = (float) values.get(i).asDouble();
     }
-    return new Embedding(model, vector);
+    return new Embedding(options.modelName(), vector);
   }
 
   /**

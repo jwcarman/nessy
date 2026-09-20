@@ -22,19 +22,28 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /** Against Voyage AI. Tagged {@code live}; needs {@code VOYAGE_API_KEY}. */
 @Tag("live")
 @DisplayName("The Voyage embedder, live")
 class VoyageEmbedderLiveTest {
 
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(VoyageEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
+
   @Test
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
     String model =
         System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
-    try (VoyageEmbedder embedder = VoyageEmbedder.create(c -> c.fromEnv().model(model))) {
+    try (VoyageEmbeddingProvider provider =
+        VoyageEmbeddingProvider.create(c -> c.fromEnv().model(model))) {
+      Embedder embedder = embedderOver(provider, model);
       List<Embedding> embeddings =
           embedder.embedDocuments(
               List.of(

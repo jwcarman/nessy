@@ -16,10 +16,12 @@
 package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.embedding.ObservedEmbedder;
-import org.jwcarman.nessy.embedding.openai.OpenAiEmbedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.openai.OpenAiEmbedderConfig;
+import org.jwcarman.nessy.embedding.openai.OpenAiEmbeddingProvider;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
+import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
+import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -37,42 +39,52 @@ import org.springframework.context.annotation.Conditional;
  * base URL means the model has to be said.
  */
 @AutoConfiguration(after = VoyageEmbeddingAutoConfiguration.class)
-@ConditionalOnClass(OpenAiEmbedder.class)
+@ConditionalOnClass(OpenAiEmbeddingProvider.class)
 @ConditionalOnProperty(name = "openai.api-key")
 public class OpenAiEmbeddingAutoConfiguration {
 
   @Bean
   @Conditional(OnNoOpenAiBaseUrl.class)
-  @ConditionalOnMissingBean(Embedder.class)
-  public Embedder openAiEmbedder(
+  @ConditionalOnMissingBean(EmbedderFactory.class)
+  public EmbedderFactory openAiEmbedders(
       @Value("${openai.api-key}") String apiKey,
       @Value("${nessy.embedding.openai.model:" + OpenAiEmbedderConfig.DEFAULT_MODEL + "}")
           String model,
       ObservationRegistry observations) {
-    return observed(OpenAiEmbedder.create(c -> c.apiKey(apiKey).model(model)), observations);
+    return factory(OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey)), model, observations);
   }
 
   /** An OpenAI-compatible endpoint serves the models it serves, so this one names its own. */
   @Bean
   @ConditionalOnProperty(name = "nessy.embedding.openai.model")
-  @ConditionalOnMissingBean(Embedder.class)
-  public Embedder openAiCompatibleEmbedder(
+  @ConditionalOnMissingBean(EmbedderFactory.class)
+  public EmbedderFactory openAiCompatibleEmbedders(
       @Value("${openai.api-key}") String apiKey,
       @Value("${openai.base-url:#{null}}") String baseUrl,
       @Value("${nessy.embedding.openai.model}") String model,
       ObservationRegistry observations) {
-    return observed(
-        OpenAiEmbedder.create(
+    return factory(
+        OpenAiEmbeddingProvider.create(
             c -> {
-              c.apiKey(apiKey).model(model);
+              c.apiKey(apiKey);
               if (baseUrl != null) {
                 c.baseUrl(baseUrl);
               }
             }),
+        model,
         observations);
   }
 
-  private static Embedder observed(Embedder embedder, ObservationRegistry observations) {
-    return ObservedEmbedder.wrap(embedder, observations);
+  /**
+   * Embedders over one connection, each one watched.
+   *
+   * <p>Wrapped as they are minted rather than the provider being wrapped once, because what a
+   * report wants to say is which model was asked and how wide its vectors are -- facts of the
+   * embedder rather than of the connection behind it.
+   */
+  private static EmbedderFactory factory(
+      EmbeddingProvider provider, String model, ObservationRegistry observations) {
+    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model);
+    return customizer -> ObservedEmbedder.wrap(embedders.create(customizer), observations);
   }
 }

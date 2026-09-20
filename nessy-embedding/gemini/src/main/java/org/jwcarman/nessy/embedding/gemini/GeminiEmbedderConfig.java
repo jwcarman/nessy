@@ -21,8 +21,8 @@ import java.util.Objects;
 import java.util.OptionalInt;
 
 /**
- * What {@link GeminiEmbedder#create(GeminiEmbedderCustomizer)} hands a customizer: a CONFIG, not a
- * builder -- fluent setters, no public {@code build()}.
+ * What {@link GeminiEmbeddingProvider#create(GeminiEmbedderCustomizer)} hands a customizer: a
+ * CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class GeminiEmbedderConfig {
 
@@ -94,8 +94,13 @@ public final class GeminiEmbedderConfig {
     return this;
   }
 
-  GeminiEmbedder build() {
-    return new GeminiEmbedder(resolveClient(), model, dimension, taskType);
+  /** The model a factory over this connection hands out when an embedder names none. */
+  String model() {
+    return model;
+  }
+
+  GeminiEmbeddingProvider build() {
+    return new GeminiEmbeddingProvider(resolveClient(), taskType);
   }
 
   private GeminiEmbeddingClient resolveClient() {

@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.embedding;
 
 import java.util.function.Consumer;
 
 /**
- * Makes extractors that share their wiring.
+ * Makes embedders that share a connection.
  *
- * <p>One provider, one way of turning a type into a schema, one way of reading the answer back --
- * and as many extractors over them as there are kinds of document. The cheap model can read invoice
- * numbers while a stronger one reads contracts, without either of them owning a connection.
+ * <p>One vendor, one set of credentials, and as many embedders over them as there are stores. A
+ * notebook and an episode log can be keyed on different models without either of them owning a
+ * client, which is what makes changing one a change to that store rather than to the application.
  */
 @FunctionalInterface
-public interface ExtractorFactory {
+public interface EmbedderFactory {
 
-  /** One extractor, for documents of a kind. */
-  Extractor create(Consumer<ExtractorConfig> customizer);
+  /** One embedder, for a store. */
+  Embedder create(Consumer<EmbedderConfig> customizer);
 }

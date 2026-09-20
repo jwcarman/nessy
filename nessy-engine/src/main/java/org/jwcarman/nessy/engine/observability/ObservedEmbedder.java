@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.embedding;
+package org.jwcarman.nessy.engine.observability;
 
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
@@ -21,8 +21,8 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
 
 /**
  * An embedder whose every call is an observation named the way OpenTelemetry's GenAI semantic

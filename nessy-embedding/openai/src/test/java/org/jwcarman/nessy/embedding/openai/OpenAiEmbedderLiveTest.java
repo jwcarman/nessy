@@ -22,7 +22,9 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
  * Against OpenAI itself, through the SDK's own reading of the environment, so a local runtime is
@@ -40,7 +42,9 @@ class OpenAiEmbedderLiveTest {
   @Test
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
-    try (OpenAiEmbedder embedder = OpenAiEmbedder.create(c -> c.fromEnv().model(MODEL))) {
+    try (OpenAiEmbeddingProvider provider =
+        OpenAiEmbeddingProvider.create(OpenAiEmbedderConfig::fromEnv)) {
+      Embedder embedder = new DefaultEmbedderFactory(provider, MODEL).create(c -> {});
 
       List<Embedding> embeddings =
           embedder.embedDocuments(

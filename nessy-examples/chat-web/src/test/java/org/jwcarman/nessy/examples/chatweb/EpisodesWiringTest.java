@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,9 +30,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 /**
- * Naming an embedding model makes an embedder at the chat model's endpoint -- the starter's, from
- * the key and base URL this application already configured -- and the store is handed it. The store
- * is built either way.
+ * Naming an embedding model makes a factory at the chat model's endpoint -- the starter's, from the
+ * key and base URL this application already configured -- and the store mints its embedder from it.
+ * The store is built either way.
  */
 @SpringBootTest(properties = "nessy.embedding.openai.model=text-embedding-nomic-embed-text-v1.5")
 @Import(PostgresBacked.class)
@@ -47,12 +48,14 @@ class EpisodesWiringTest {
   }
 
   @Autowired private JdbcEpisodes episodes;
-  @Autowired private Embedder embedder;
+  @Autowired private EmbedderFactory embedders;
 
   @Test
   void the_store_ranks_with_the_configured_embedding_model() {
-    assertThat(embedder.model()).isEqualTo("text-embedding-nomic-embed-text-v1.5");
-    // The store observes the embedder it is given, so it holds a wrapper around that model.
-    assertThat(episodes.embedder()).map(Embedder::model).contains(embedder.model());
+    assertThat(embedders.create(c -> {}).model()).isEqualTo("text-embedding-nomic-embed-text-v1.5");
+    // The store minted its own from the same factory, so it is keyed on that same model.
+    assertThat(episodes.embedder())
+        .map(Embedder::model)
+        .contains("text-embedding-nomic-embed-text-v1.5");
   }
 }

@@ -20,8 +20,9 @@ import java.time.Duration;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Embedder;
 import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.lease.Leases;
@@ -71,10 +72,17 @@ public class ChatConfiguration {
 
   private static final int MAX_TAIL = 20;
 
+  /**
+   * The store mints its own embedder, because the model the vectors were written with is a fact of
+   * the store rather than of the application. This one takes the factory's default, which is what
+   * {@code nessy.embedding.openai.model} names; with no embedding module on the classpath there is
+   * no factory, and the store ranks by recency instead.
+   */
   @Bean
-  public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<Embedder> embedder) {
-    return JdbcEpisodes.create(
-        c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder.getIfAvailable()));
+  public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<EmbedderFactory> embedders) {
+    Embedder embedder =
+        embedders.getIfAvailable() == null ? null : embedders.getObject().create(c -> {});
+    return JdbcEpisodes.create(c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder));
   }
 
   /**

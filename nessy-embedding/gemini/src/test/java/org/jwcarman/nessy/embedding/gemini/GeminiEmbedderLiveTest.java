@@ -22,19 +22,30 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /** Against the Gemini Developer API. Tagged {@code live}; needs {@code GEMINI_API_KEY}. */
 @Tag("live")
 @DisplayName("The Gemini embedder, live")
 class GeminiEmbedderLiveTest {
 
+  private static final String MODEL = GeminiEmbedderConfig.DEFAULT_MODEL;
+
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(GeminiEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
+
   @Test
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(
         System.getenv("GEMINI_API_KEY") != null || System.getenv("GOOGLE_API_KEY") != null,
         "GEMINI_API_KEY is not set");
-    try (GeminiEmbedder embedder = GeminiEmbedder.create(c -> c.fromEnv().dimension(768))) {
+    try (GeminiEmbeddingProvider provider =
+        GeminiEmbeddingProvider.create(c -> c.fromEnv().dimension(768))) {
+      Embedder embedder = embedderOver(provider, MODEL);
       List<Embedding> embeddings =
           embedder.embedDocuments(
               List.of(

@@ -33,7 +33,6 @@
   <description>Text into vectors: the seam, and an embedder per module. Separate from inference, because not every inference vendor embeds and the embedding model belongs to the store, not the agent.</description>
 
   <modules>
-    <module>api</module>
     <module>openai</module>
     <module>gemini</module>
     <module>bedrock</module>

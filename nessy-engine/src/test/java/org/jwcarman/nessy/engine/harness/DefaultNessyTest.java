@@ -22,9 +22,10 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
 import org.jwcarman.nessy.api.Nessy;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
+import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
@@ -92,21 +93,35 @@ class DefaultNessyTest {
 
       assertThat(extraction)
           .as("the stand-in model answers rather than recording, and that is Talked")
-          .isInstanceOf(org.jwcarman.nessy.api.Extraction.Talked.class);
+          .isInstanceOf(org.jwcarman.nessy.api.extraction.Extraction.Talked.class);
     }
   }
 
-  /** Embedding is a choice, and not making it is not a failure. */
+  /**
+   * Asking for what was never wired is a wiring mistake, and says so.
+   *
+   * <p>Said while an application is starting rather than found later, when retrieval would have
+   * been quietly ranking by recency. A store that works either way does not ask.
+   */
   @Test
-  void without_an_embedder_there_is_simply_none() {
+  void asking_for_embedders_that_were_never_wired_is_refused() {
     try (Nessy nessy = nessy(_ -> {})) {
-      assertThat(nessy.embedder()).isEmpty();
+      assertThatThrownBy(nessy::embedders)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("no embedding provider is configured");
     }
   }
 
+  /**
+   * What was wired is what is handed back.
+   *
+   * <p>Nessy owns no embedding of its own: which model a store is keyed on is that store's
+   * decision, and this door only says where embedders come from. What a factory does with a model
+   * is its own test, in the module that implements one.
+   */
   @Test
-  void an_embedder_that_was_configured_is_the_one_handed_back() {
-    Embedder embedder =
+  void the_embedder_factory_that_was_configured_is_the_one_handed_back() {
+    Embedder stub =
         new Embedder() {
           @Override
           public String model() {
@@ -123,9 +138,11 @@ class DefaultNessyTest {
             return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
           }
         };
+    EmbedderFactory embedders = c -> stub;
 
-    try (Nessy nessy = nessy(c -> c.embedder(embedder))) {
-      assertThat(nessy.embedder()).containsSame(embedder);
+    try (Nessy nessy = nessy(c -> c.embedders(embedders))) {
+      assertThat(nessy.embedders()).isSameAs(embedders);
+      assertThat(nessy.embedders().create(c -> {})).isSameAs(stub);
     }
   }
 

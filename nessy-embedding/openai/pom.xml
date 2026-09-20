@@ -33,9 +33,18 @@
   <description>OpenAI's embeddings endpoint, and every OpenAI-compatible one, as an Embedder.</description>
 
   <dependencies>
+    <!-- Tests only: an embedder over this provider is how one is actually used, and the facade
+         that makes one lives in the engine. This is no cycle, as the engine knows nothing of
+         vendors. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-embedding-api</artifactId>
+      <artifactId>nessy-engine</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

@@ -17,13 +17,13 @@ package org.jwcarman.nessy.engine.extraction;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Extraction;
-import org.jwcarman.nessy.api.Extractor;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.extraction.Extraction;
+import org.jwcarman.nessy.api.extraction.Extractor;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Observation;

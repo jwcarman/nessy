@@ -30,10 +30,17 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 @DisplayName("The Gemini embedder")
 class GeminiEmbedderTest {
+
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(GeminiEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
 
   private record Sent(String model, List<String> texts, EmbedContentConfig config) {}
 
@@ -75,12 +82,13 @@ class GeminiEmbedderTest {
     @Test
     void a_batch_is_one_request_and_the_dimension_is_learned_from_the_reply() {
       AtomicReference<Sent> sent = new AtomicReference<>();
-      GeminiEmbedder embedder =
-          new GeminiEmbedder(
-              scripted(reply(new float[] {1, 0}, new float[] {0, 1}), sent, new AtomicBoolean()),
-              "gemini-embedding-001",
-              java.util.OptionalInt.empty(),
-              null);
+      Embedder embedder =
+          embedderOver(
+              new GeminiEmbeddingProvider(
+                  scripted(
+                      reply(new float[] {1, 0}, new float[] {0, 1}), sent, new AtomicBoolean()),
+                  null),
+              GeminiEmbedderConfig.DEFAULT_MODEL);
 
       assertThat(embedder.dimension()).isZero();
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
@@ -98,12 +106,13 @@ class GeminiEmbedderTest {
     @Test
     void a_dimension_and_a_task_type_asked_for_are_sent() {
       AtomicReference<Sent> sent = new AtomicReference<>();
-      GeminiEmbedder embedder =
-          new GeminiEmbedder(
-              scripted(reply(new float[] {1}), sent, new AtomicBoolean()),
-              "m",
-              java.util.OptionalInt.of(256),
-              "RETRIEVAL_QUERY");
+      Embedder embedder =
+          new DefaultEmbedderFactory(
+                  new GeminiEmbeddingProvider(
+                      scripted(reply(new float[] {1}), sent, new AtomicBoolean()),
+                      "RETRIEVAL_QUERY"),
+                  "m")
+              .create(c -> c.dimension(256));
 
       assertThat(embedder.dimension()).isEqualTo(256);
       embedder.embedDocument("x");
@@ -114,12 +123,12 @@ class GeminiEmbedderTest {
 
     @Test
     void a_reply_short_of_an_embedding_is_refused() {
-      GeminiEmbedder embedder =
-          new GeminiEmbedder(
-              scripted(reply(new float[] {1}), new AtomicReference<>(), new AtomicBoolean()),
-              "m",
-              java.util.OptionalInt.empty(),
-              null);
+      Embedder embedder =
+          embedderOver(
+              new GeminiEmbeddingProvider(
+                  scripted(reply(new float[] {1}), new AtomicReference<>(), new AtomicBoolean()),
+                  null),
+              GeminiEmbedderConfig.DEFAULT_MODEL);
       List<String> two = List.of("a", "b");
 
       assertThatThrownBy(() -> embedder.embedDocuments(two))
@@ -133,16 +142,11 @@ class GeminiEmbedderTest {
     @Test
     void closing_closes_the_client_it_was_given_and_not_one_the_application_handed_in() {
       AtomicBoolean closed = new AtomicBoolean();
-      new GeminiEmbedder(
-              scripted(reply(), new AtomicReference<>(), closed),
-              "m",
-              java.util.OptionalInt.empty(),
-              null)
-          .close();
+      new GeminiEmbeddingProvider(scripted(reply(), new AtomicReference<>(), closed), null).close();
       assertThat(closed).isTrue();
 
       Client theirs = Client.builder().apiKey("theirs").build();
-      assertThatCode(() -> GeminiEmbedder.create(c -> c.client(theirs)).close())
+      assertThatCode(() -> GeminiEmbeddingProvider.create(c -> c.client(theirs)).close())
           .doesNotThrowAnyException();
       assertThat(theirs.models).isNotNull();
     }
@@ -151,7 +155,7 @@ class GeminiEmbedderTest {
     void a_key_a_base_url_a_model_and_a_dimension_build_an_embedder() {
       assertThatCode(
               () ->
-                  GeminiEmbedder.create(
+                  GeminiEmbeddingProvider.create(
                           c ->
                               c.apiKey("k")
                                   .baseUrl("http://127.0.0.1:1")
@@ -164,11 +168,11 @@ class GeminiEmbedderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> GeminiEmbedder.create(c -> {}))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> {}))
           .isInstanceOf(IllegalStateException.class);
-      assertThatThrownBy(() -> GeminiEmbedder.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> GeminiEmbedder.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -177,10 +181,10 @@ class GeminiEmbedderTest {
       assumeTrue(
           System.getenv("GEMINI_API_KEY") == null && System.getenv("GOOGLE_API_KEY") == null,
           "a key is set in this environment");
-      assertThatThrownBy(GeminiEmbedder::fromEnv)
+      assertThatThrownBy(GeminiEmbeddingProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("GEMINI_API_KEY");
-      assertThatCode(() -> GeminiEmbedder.create(c -> c.fromEnv().apiKey("k")).close())
+      assertThatCode(() -> GeminiEmbeddingProvider.create(c -> c.fromEnv().apiKey("k")).close())
           .doesNotThrowAnyException();
     }
   }

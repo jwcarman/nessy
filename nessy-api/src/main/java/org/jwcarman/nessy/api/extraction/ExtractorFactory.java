@@ -13,5 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/** The {@code Embedder} seam: text into vectors, apart from inference. */
-package org.jwcarman.nessy.embedding;
+package org.jwcarman.nessy.api.extraction;
+
+import java.util.function.Consumer;
+
+/**
+ * Makes extractors that share their wiring.
+ *
+ * <p>One provider, one way of turning a type into a schema, one way of reading the answer back --
+ * and as many extractors over them as there are kinds of document. The cheap model can read invoice
+ * numbers while a stronger one reads contracts, without either of them owning a connection.
+ */
+@FunctionalInterface
+public interface ExtractorFactory {
+
+  /** One extractor, for documents of a kind. */
+  Extractor create(Consumer<ExtractorConfig> customizer);
+}

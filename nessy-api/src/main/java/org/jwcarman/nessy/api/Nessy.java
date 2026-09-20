@@ -15,7 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.Optional;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
+import org.jwcarman.nessy.api.extraction.ExtractorFactory;
 
 /**
  * One set of model connections, and the ways an application uses them.
@@ -55,12 +56,24 @@ public interface Nessy extends AutoCloseable {
   ExtractorFactory extractors();
 
   /**
-   * Text into vectors, when one was configured.
+   * Embedders, one per store.
    *
-   * <p>Optional because embedding is a choice an application makes: memory can rank by relevance
-   * when there is an embedder and by recency when there is not, and neither is a failure.
+   * <p>Which model is the store's decision rather than this one's: a table of vectors is keyed on
+   * the model that made them, so two stores need not agree and neither of them is "the
+   * application's model".
+   *
+   * <p><b>Throws when nothing was wired.</b> Asking is saying you need one, and needing one that is
+   * not there is a wiring mistake -- a missing {@code nessy-embedding} module, or a key that was
+   * never set. Better said while an application is starting than found later, when retrieval has
+   * quietly been ranking by recency.
+   *
+   * <p>A store that works either way should not ask. Episodic memory ranks by relevance when it was
+   * given an embedder and by recency when it was not, and says so in its own configuration -- which
+   * is where that choice belongs, because that is where it is known.
+   *
+   * @throws IllegalStateException when no embedding provider was configured
    */
-  Optional<Embedder> embedder();
+  EmbedderFactory embedders();
 
   /** Lets go of the pool, the schedule and the threads. */
   @Override

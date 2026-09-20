@@ -22,7 +22,9 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
  * Against Amazon Bedrock. Tagged {@code live}; {@code AWS_ACCESS_KEY_ID} opts it in, as the
@@ -32,6 +34,11 @@ import org.jwcarman.nessy.api.Embedding;
 @DisplayName("The Bedrock embedder, live")
 class BedrockEmbedderLiveTest {
 
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(BedrockEmbeddingProvider provider, String model) {
+    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  }
+
   @Test
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(
@@ -40,7 +47,9 @@ class BedrockEmbedderLiveTest {
         "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
     String model =
         System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
-    try (BedrockEmbedder embedder = BedrockEmbedder.create(c -> c.fromEnv().model(model))) {
+    try (BedrockEmbeddingProvider provider =
+        BedrockEmbeddingProvider.create(c -> c.fromEnv().model(model))) {
+      Embedder embedder = embedderOver(provider, model);
       List<Embedding> embeddings =
           embedder.embedDocuments(
               List.of(

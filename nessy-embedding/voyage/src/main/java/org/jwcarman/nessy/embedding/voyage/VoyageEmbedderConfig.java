@@ -23,8 +23,8 @@ import java.util.OptionalInt;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link VoyageEmbedder#create(VoyageEmbedderCustomizer)} hands a customizer: a CONFIG, not a
- * builder -- fluent setters, no public {@code build()}.
+ * What {@link VoyageEmbeddingProvider#create(VoyageEmbedderCustomizer)} hands a customizer: a
+ * CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class VoyageEmbedderConfig {
 
@@ -104,7 +104,7 @@ public final class VoyageEmbedderConfig {
     return this;
   }
 
-  VoyageEmbedder build() {
+  VoyageEmbeddingProvider build() {
     String key = apiKey;
     if (useEnv && key == null) {
       key = System.getenv(API_KEY_ENV_VAR);
@@ -117,7 +117,7 @@ public final class VoyageEmbedderConfig {
       throw new IllegalStateException("an API key is required: call apiKey(...) or fromEnv()");
     }
     String root = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-    return new VoyageEmbedder(
+    return new VoyageEmbeddingProvider(
         http != null ? http : HttpClient.newBuilder().connectTimeout(timeout).build(),
         URI.create(root + "/embeddings"),
         key,

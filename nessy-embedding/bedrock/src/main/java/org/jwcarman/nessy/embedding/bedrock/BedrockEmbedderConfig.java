@@ -24,9 +24,9 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link BedrockEmbedder#create(BedrockEmbedderCustomizer)} hands a customizer: a CONFIG, not
- * a builder -- fluent setters, no public {@code build()}. No {@code apiKey}: Bedrock is reached
- * with AWS credentials.
+ * What {@link BedrockEmbeddingProvider#create(BedrockEmbedderCustomizer)} hands a customizer: a
+ * CONFIG, not a builder -- fluent setters, no public {@code build()}. No {@code apiKey}: Bedrock is
+ * reached with AWS credentials.
  */
 public final class BedrockEmbedderConfig {
 
@@ -101,8 +101,13 @@ public final class BedrockEmbedderConfig {
     return this;
   }
 
-  BedrockEmbedder build() {
-    return new BedrockEmbedder(resolveClient(), model, dimension, cohereInputType, mapper);
+  /** The model a factory over this connection hands out when an embedder names none. */
+  String model() {
+    return model;
+  }
+
+  BedrockEmbeddingProvider build() {
+    return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper);
   }
 
   private BedrockEmbeddingClient resolveClient() {

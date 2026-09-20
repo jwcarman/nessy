@@ -20,7 +20,7 @@ import java.util.Objects;
 import javax.sql.DataSource;
 import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentEventListener;
-import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -46,7 +46,7 @@ public final class NessyConfig {
   private final EngineConfig engine = new EngineConfig();
   private InferenceProvider provider;
   private InferenceOptions options;
-  private Embedder embedder;
+  private EmbedderFactory embedders;
   private InputSchemaGenerator schemas;
   private ObjectMapper mapper;
 
@@ -71,9 +71,14 @@ public final class NessyConfig {
     return this;
   }
 
-  /** Text into vectors. Left unset, memory ranks by recency rather than relevance. */
-  public NessyConfig embedder(Embedder embedder) {
-    this.embedder = Objects.requireNonNull(embedder, "embedder must not be null");
+  /**
+   * Where embedders come from. Left unset, memory ranks by recency rather than relevance.
+   *
+   * <p>A factory rather than an embedder, because a store is keyed on the vectors of one model and
+   * two stores need not agree. In Spring this is the bean an embedding auto-configuration makes.
+   */
+  public NessyConfig embedders(EmbedderFactory embedders) {
+    this.embedders = Objects.requireNonNull(embedders, "embedders must not be null");
     return this;
   }
 
@@ -143,8 +148,8 @@ public final class NessyConfig {
     return Objects.requireNonNull(options, "a model is required: inference(provider, options)");
   }
 
-  Embedder embedder() {
-    return embedder;
+  EmbedderFactory embedders() {
+    return embedders;
   }
 
   InputSchemaGenerator schemas() {

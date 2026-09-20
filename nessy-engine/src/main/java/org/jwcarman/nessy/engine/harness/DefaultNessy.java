@@ -16,12 +16,11 @@
 package org.jwcarman.nessy.engine.harness;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.ExtractorFactory;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.Nessy;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
+import org.jwcarman.nessy.api.extraction.ExtractorFactory;
 import org.jwcarman.nessy.engine.extraction.DefaultExtractorFactory;
 
 /**
@@ -38,14 +37,14 @@ public final class DefaultNessy implements Nessy {
 
   private final DefaultHarnessFactory harnesses;
   private final ExtractorFactory extractors;
-  private final Embedder embedder;
+  private final EmbedderFactory embedders;
 
   private DefaultNessy(NessyConfig config) {
     // Asked for before anything is built: a missing provider is a wiring mistake, and finding it
     // when the first turn runs is finding it in the wrong place.
     this.extractors =
         new DefaultExtractorFactory(config.requiredProvider(), config.schemas(), config.mapper());
-    this.embedder = config.embedder();
+    this.embedders = config.embedders();
     this.harnesses = new DefaultHarnessFactory(config.engine());
   }
 
@@ -73,8 +72,13 @@ public final class DefaultNessy implements Nessy {
   }
 
   @Override
-  public Optional<Embedder> embedder() {
-    return Optional.ofNullable(embedder);
+  public EmbedderFactory embedders() {
+    if (embedders == null) {
+      throw new IllegalStateException(
+          "no embedding provider is configured: add a nessy-embedding module and its credentials,"
+              + " or build this store without an embedder and let it rank by recency");
+    }
+    return embedders;
   }
 
   @Override

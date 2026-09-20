@@ -21,9 +21,9 @@ import com.openai.models.embeddings.EmbeddingCreateParams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
-import org.jwcarman.nessy.api.Embedder;
-import org.jwcarman.nessy.api.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
 
 /**
  * OpenAI's embeddings endpoint, through the vendor's own SDK, and with a base URL every service
@@ -33,24 +33,17 @@ import org.jwcarman.nessy.api.Embedding;
  * <p>One embedder is one model at one dimension, decided where it is built: a store keyed on this
  * embedder's vectors is keyed on that model, and a second model is a second embedder.
  */
-public final class OpenAiEmbedder implements Embedder, AutoCloseable {
+public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   private final OpenAIClient client;
   private final boolean ownsClient;
-  private final String model;
-  private final OptionalInt requestedDimension;
-  private volatile int dimension;
 
-  OpenAiEmbedder(
-      OpenAIClient client, boolean ownsClient, String model, OptionalInt requestedDimension) {
+  OpenAiEmbeddingProvider(OpenAIClient client, boolean ownsClient) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.ownsClient = ownsClient;
-    this.model = Objects.requireNonNull(model, "model must not be null");
-    this.requestedDimension = Objects.requireNonNull(requestedDimension, "dimension");
-    this.dimension = requestedDimension.orElse(0);
   }
 
-  public static OpenAiEmbedder create(OpenAiEmbedderCustomizer customizer) {
+  public static OpenAiEmbeddingProvider create(OpenAiEmbedderCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     OpenAiEmbedderConfig config = new OpenAiEmbedderConfig();
     customizer.customize(config);
@@ -58,7 +51,7 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
   }
 
   /** {@code OPENAI_API_KEY} and the default model, {@value OpenAiEmbedderConfig#DEFAULT_MODEL}. */
-  public static OpenAiEmbedder fromEnv() {
+  public static OpenAiEmbeddingProvider fromEnv() {
     return create(OpenAiEmbedderConfig::fromEnv);
   }
 
@@ -70,32 +63,19 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
     return "openai";
   }
 
-  @Override
-  public String model() {
-    return model;
-  }
-
-  /**
-   * The dimension asked for, or once the first vector has come back, the dimension the model
-   * produces. Zero before either: a model's width is the vendor's fact, not this class's guess.
-   */
-  @Override
-  public int dimension() {
-    return dimension;
-  }
-
   /**
    * One request for the whole batch; the vendor returns them indexed, and they are put in order.
    */
   @Override
-  public List<Embedding> embedDocuments(List<String> texts) {
+  public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
+    String model = options.modelName();
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
     }
     EmbeddingCreateParams.Builder params =
         EmbeddingCreateParams.builder().model(model).inputOfArrayOfStrings(texts);
-    requestedDimension.ifPresent(params::dimensions);
+    options.dimension().ifPresent(params::dimensions);
     CreateEmbeddingResponse response = client.embeddings().create(params.build());
 
     Embedding[] ordered = new Embedding[texts.size()];
@@ -114,10 +94,20 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
       }
       embeddings.add(embedding);
     }
-    if (dimension == 0) {
-      dimension = embeddings.getFirst().dimension();
-    }
     return List.copyOf(embeddings);
+  }
+
+  /**
+   * The same call, because OpenAI has nothing to say about what a text is for.
+   *
+   * <p>Its embedding models were not trained to place a question differently from a statement, so
+   * being told which this is would change nothing. Written out rather than left to a default, so
+   * that reading this class tells you what the vendor does.
+   */
+  @Override
+  public Embedding embedQuery(String query, EmbeddingOptions options) {
+    Objects.requireNonNull(query, "query must not be null");
+    return embedDocuments(List.of(query), options).getFirst();
   }
 
   /**
