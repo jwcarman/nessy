@@ -58,6 +58,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
+    <module>nessy-extraction</module>
     <module>nessy-lease</module>
     <module>nessy-prompt</module>
     <module>nessy-embedding</module>
