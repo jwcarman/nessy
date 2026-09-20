@@ -17,7 +17,6 @@ package org.jwcarman.nessy.extraction;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Extraction;
 import org.jwcarman.nessy.api.Extractor;
 import org.jwcarman.nessy.api.Seq;
@@ -46,6 +45,11 @@ import tools.jackson.databind.ObjectMapper;
  * and the only thing it can do is fill the shape in. That is the whole of the isolation -- an
  * invoice number and an amount cannot carry out an instruction, whatever the document asked for.
  *
+ * <p><b>Some tool rather than this tool.</b> Exactly one is offered, so "call one of them" and
+ * "call this one" ask for the same thing -- and only the first is a string every OpenAI-compatible
+ * server understands. Naming it sends an object that LM Studio and its like reject outright, which
+ * is a 400 rather than a worse answer.
+ *
  * <p><b>The shape is a tool that never runs.</b> The document is untrusted, so the model is offered
  * exactly one tool, required to call it, and its arguments are the answer. Nothing is dispatched;
  * what was wanted was the shape of the tool's input rather than the work behind it. Every vendor
@@ -70,21 +74,19 @@ public final class DefaultExtractor implements Extractor {
   private final SystemPrompt systemPrompt;
   private final ToolName toolName;
 
-  private DefaultExtractor(ExtractorConfig config) {
-    this.provider = config.requiredProvider();
-    this.options = config.requiredOptions();
-    this.schemas = config.requiredSchemas();
-    this.mapper = config.requiredMapper();
-    this.systemPrompt = config.systemPrompt();
-    this.toolName = config.toolName();
-  }
-
-  /** Builds one. The model, the schema generator and the mapper are all it needs. */
-  public static Extractor create(Consumer<ExtractorConfig> customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
-    ExtractorConfig config = new ExtractorConfig();
-    customizer.accept(config);
-    return new DefaultExtractor(config);
+  DefaultExtractor(
+      InferenceProvider provider,
+      InputSchemaGenerator schemas,
+      ObjectMapper mapper,
+      SystemPrompt systemPrompt,
+      ToolName toolName,
+      InferenceOptions options) {
+    this.provider = provider;
+    this.schemas = schemas;
+    this.mapper = mapper;
+    this.systemPrompt = systemPrompt;
+    this.toolName = toolName;
+    this.options = options;
   }
 
   /**
@@ -124,7 +126,7 @@ public final class DefaultExtractor implements Extractor {
         List.of(
             new ToolOffer(
                 toolName, "Records the fields found in the document.", schemas.generate(type))),
-        new ToolChoice.Named(toolName),
+        new ToolChoice.Any(),
         options);
   }
 

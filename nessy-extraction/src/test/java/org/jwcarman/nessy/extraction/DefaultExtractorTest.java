@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Extraction;
 import org.jwcarman.nessy.api.Extractor;
+import org.jwcarman.nessy.api.ExtractorFactory;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -30,7 +31,6 @@ import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
@@ -55,11 +55,12 @@ class DefaultExtractorTest {
   private final AtomicReference<InferenceRequest> sent = new AtomicReference<>();
 
   private Extractor extracting(InferenceResult answer) {
-    return DefaultExtractor.create(
-        c ->
-            c.inference(recording(answer), InferenceOptions.of("a-model"))
-                .schemas(type -> new InputSchema("{\"type\":\"object\"}"))
-                .mapper(MAPPER));
+    return factory(recording(answer)).create(c -> c.model("a-model"));
+  }
+
+  private static ExtractorFactory factory(InferenceProvider provider) {
+    return new DefaultExtractorFactory(
+        provider, type -> new InputSchema("{\"type\":\"object\"}"), MAPPER);
   }
 
   private InferenceProvider recording(InferenceResult answer) {
@@ -85,7 +86,9 @@ class DefaultExtractorTest {
     InferenceRequest request = sent.get();
     assertThat(request.tools()).hasSize(1);
     assertThat(request.tools().getFirst().name()).isEqualTo(new ToolName("record"));
-    assertThat(request.toolChoice()).isEqualTo(new ToolChoice.Named(new ToolName("record")));
+    assertThat(request.toolChoice())
+        .as("one tool is offered, so requiring some tool requires that one")
+        .isEqualTo(new ToolChoice.Any());
   }
 
   /** Nothing is remembered between documents, so there is nothing else in the context. */
@@ -186,24 +189,32 @@ class DefaultExtractorTest {
 
   @Test
   void an_extractor_needs_a_model_to_read_with() {
-    assertThatThrownBy(
-            () ->
-                DefaultExtractor.create(
-                    c -> c.schemas(type -> new InputSchema("{}")).mapper(MAPPER)))
+    ExtractorFactory factory = factory(recording(recorded("{}")));
+
+    assertThatThrownBy(() -> factory.create(c -> c.maxTokens(10)))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("inference(provider, options)");
+        .hasMessageContaining("model(...)");
   }
 
+  /** The wiring is the factory's and is not a decision anybody makes twice. */
   @Test
-  void an_extractor_needs_to_turn_a_type_into_a_schema() {
-    assertThatThrownBy(
-            () ->
-                DefaultExtractor.create(
-                    c ->
-                        c.inference(recording(recorded("{}")), InferenceOptions.of("m"))
-                            .mapper(MAPPER)))
+  void a_factory_needs_its_wiring() {
+    assertThatThrownBy(() -> new DefaultExtractorFactory(null, type -> null, MAPPER))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("schemas(...)");
+        .hasMessageContaining("provider");
+  }
+
+  /** One factory, several extractors, one connection between them. */
+  @Test
+  void two_extractors_can_read_with_different_models() {
+    ExtractorFactory factory = factory(recording(recorded("{}")));
+
+    factory.create(c -> c.model("cheap")).extract(Inquiry.class, "an invoice");
+    InferenceRequest first = sent.get();
+    factory.create(c -> c.model("strong")).extract(Inquiry.class, "a contract");
+
+    assertThat(first.options().modelName()).isEqualTo("cheap");
+    assertThat(sent.get().options().modelName()).isEqualTo("strong");
   }
 
   /** A narrator is for a turn that is being watched; there is no turn here. */
@@ -211,17 +222,13 @@ class DefaultExtractorTest {
   void the_call_is_made_without_a_narrator() {
     AtomicReference<AgentNarrator> narrator = new AtomicReference<>(null);
     Extractor extractor =
-        DefaultExtractor.create(
-            c ->
-                c.inference(
-                        (request, told) -> {
-                          narrator.set(told);
-                          sent.set(request);
-                          return recorded("{}");
-                        },
-                        InferenceOptions.of("a-model"))
-                    .schemas(type -> new InputSchema("{}"))
-                    .mapper(MAPPER));
+        factory(
+                (request, told) -> {
+                  narrator.set(told);
+                  sent.set(request);
+                  return recorded("{}");
+                })
+            .create(c -> c.model("a-model"));
 
     extractor.extract(Inquiry.class, "a document");
 
