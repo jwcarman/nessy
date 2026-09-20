@@ -32,7 +32,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.Embedding;
 
 @DisplayName("The OpenAI embedder")
 class OpenAiEmbedderTest {

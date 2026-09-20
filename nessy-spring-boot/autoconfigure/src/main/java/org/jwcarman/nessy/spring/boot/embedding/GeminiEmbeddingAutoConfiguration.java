@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.embedding.Embedder;
+import org.jwcarman.nessy.api.Embedder;
 import org.jwcarman.nessy.embedding.ObservedEmbedder;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbedder;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbedderConfig;

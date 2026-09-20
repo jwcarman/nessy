@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.embedding.Embedder;
+import org.jwcarman.nessy.api.Embedder;
 import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.annotation.Autowired;

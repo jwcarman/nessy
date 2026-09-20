@@ -33,6 +33,11 @@
   <description>The Embedder seam and the Embedding it produces.</description>
 
   <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Observations, not tracing: ObservedEmbedder reports an embedding call without knowing which
          bridge, if any, sits underneath. -->
     <dependency>

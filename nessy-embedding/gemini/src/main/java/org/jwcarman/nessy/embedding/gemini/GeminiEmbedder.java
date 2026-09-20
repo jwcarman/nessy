@@ -22,8 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
-import org.jwcarman.nessy.embedding.Embedder;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.Embedding;
 
 /**
  * Gemini's embedding models, through the vendor's own java-genai SDK.

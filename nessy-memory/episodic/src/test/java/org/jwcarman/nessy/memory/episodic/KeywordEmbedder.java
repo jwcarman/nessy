@@ -18,8 +18,8 @@ package org.jwcarman.nessy.memory.episodic;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.jwcarman.nessy.embedding.Embedder;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.Embedding;
 
 /**
  * An embedder whose vectors can be reasoned about: one coordinate per keyword, counting mentions,

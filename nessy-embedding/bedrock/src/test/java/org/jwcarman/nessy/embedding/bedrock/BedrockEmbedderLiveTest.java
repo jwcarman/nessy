@@ -22,7 +22,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.Embedding;
 
 /**
  * Against Amazon Bedrock. Tagged {@code live}; {@code AWS_ACCESS_KEY_ID} opts it in, as the

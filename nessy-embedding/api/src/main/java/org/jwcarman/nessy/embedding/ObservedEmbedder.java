@@ -21,6 +21,8 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.Embedding;
 
 /**
  * An embedder whose every call is an observation named the way OpenTelemetry's GenAI semantic

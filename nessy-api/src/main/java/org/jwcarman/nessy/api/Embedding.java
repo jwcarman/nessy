@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.embedding;
+package org.jwcarman.nessy.api;
 
 import java.util.Arrays;
 import java.util.Objects;

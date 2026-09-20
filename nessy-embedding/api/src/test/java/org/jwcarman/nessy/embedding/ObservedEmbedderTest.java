@@ -24,6 +24,8 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Embedder;
+import org.jwcarman.nessy.api.Embedding;
 
 class ObservedEmbedderTest {
 
