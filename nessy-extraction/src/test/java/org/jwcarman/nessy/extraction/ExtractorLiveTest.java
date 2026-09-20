@@ -126,8 +126,10 @@ class ExtractorLiveTest {
    * The whole point, tried on purpose: a document that tells the model to do something else.
    *
    * <p>What is asserted is not that the model is clever, but that whatever it does lands inside the
-   * shape. There is nothing it can call, so the worst case is fields that are wrong -- never an
-   * instruction that was followed.
+   * shape. <b>A document that wins is a passing outcome here.</b> Resistance is not the promise:
+   * the model may well record what the injection told it to, and the fields would then be wrong.
+   * They would still be fields. There is nothing to call, so the worst case is a claim that has to
+   * be checked before it is acted on -- which is the case for every claim this produces.
    */
   @Test
   void a_document_that_argues_with_its_reader_still_only_produces_fields() {

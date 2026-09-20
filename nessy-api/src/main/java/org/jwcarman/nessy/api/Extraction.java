@@ -35,7 +35,13 @@ public sealed interface Extraction<T> {
   /** What the call cost, whatever it ended as. */
   Usage usage();
 
-  /** The fields, as the type they were asked for. */
+  /**
+   * The fields, as the type they were asked for.
+   *
+   * <p>What the document claimed, in the shape it was asked for. Not what is true: the shape was
+   * enforced and the content was not, so this is something to check against a trusted source before
+   * anything is done on the strength of it.
+   */
   record Extracted<T>(T value, Usage usage) implements Extraction<T> {
     public Extracted {
       Objects.requireNonNull(value, "value must not be null");

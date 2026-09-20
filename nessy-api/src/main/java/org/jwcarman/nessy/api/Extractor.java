@@ -22,11 +22,20 @@ package org.jwcarman.nessy.api;
  * shape, and the only thing it can do is fill the shape in. That is the whole of the isolation --
  * an invoice number and an amount cannot carry out an instruction, whatever the document asked for.
  *
- * <p><b>Structured is not sanitised.</b> A schema constrains the shape, not the content: a {@code
- * String} field will carry whatever text the document put in it, injection included. The safety
- * comes from the fields being as narrow as the job allows -- an enum rather than a string, a number
- * rather than a number written out -- and from what the privileged side does with them afterwards.
- * An extractor turns untrusted text into data; it does not make it harmless.
+ * <p><b>This does not prevent prompt injection, and is not trying to.</b> A document may well talk
+ * a model into recording the wrong thing. What it cannot do is reach a model that can act: the
+ * insulation is that the privileged inference -- the one holding real tools -- never sees the
+ * document, only fields of a shape it asked for.
+ *
+ * <p><b>What comes back is a claim, not a fact.</b> A schema constrains the shape and says nothing
+ * about the content: an invoice number is not true because it arrived in a {@code String}, and a
+ * {@code String} carries whatever the document put in it, injection and all. Narrow fields -- an
+ * enum rather than free text, a number rather than a number written out -- leave less room to carry
+ * a payload onward, which is worth doing and is not trust.
+ *
+ * <p><b>Verify before acting.</b> An extracted field is a query, not an authorisation. Look the
+ * invoice up; find it belongs to the customer who wrote in. What elevates a claim is agreement with
+ * something already trusted, never the fact that a model said it neatly.
  *
  * <p>Deliberately not an agent. There is nothing to remember between documents, nothing to approve
  * and nothing to come back to, so there is no turn, no row and no fold.
