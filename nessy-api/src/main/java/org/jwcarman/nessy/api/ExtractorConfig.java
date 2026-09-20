@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.api.tool.ToolName;
-
 /**
  * What varies between one extractor and the next.
  *
@@ -45,7 +43,4 @@ public interface ExtractorConfig {
    * say it too.
    */
   ExtractorConfig systemPrompt(SystemPrompt systemPrompt);
-
-  /** What the recording tool is called. Worth changing only if the name confuses a model. */
-  ExtractorConfig toolName(ToolName toolName);
 }

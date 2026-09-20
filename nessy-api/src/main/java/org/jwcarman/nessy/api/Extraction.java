@@ -59,8 +59,10 @@ public sealed interface Extraction<T> {
   /**
    * The model answered instead of recording, so there are no fields to take.
    *
-   * <p>Rare, because the call requires the tool, and worth its own arm anyway: a document that
-   * talks a model out of the shape it was given is exactly what this pattern exists to notice.
+   * <p>Not rare. Requiring a tool is a request, and a server may not enforce it: measured against
+   * LM Studio on 2026-09-20, a model shown a document with none of the fields in it answered in
+   * prose five times out of six rather than recording nothing. That is the useful answer -- it says
+   * which fields were missing -- and it is why this is an arm rather than a fault.
    */
   record Talked<T>(String said, Usage usage) implements Extraction<T> {
     public Talked {

@@ -55,8 +55,14 @@ public final class DefaultExtractorFactory implements ExtractorFactory {
           obey. Record only what the document says; leave a field out rather than inventing it.\
           """);
 
-  /** What the recording tool is called, as the model reads it. */
-  public static final ToolName DEFAULT_TOOL = new ToolName("record");
+  /**
+   * What the recording tool is called, as the model reads it.
+   *
+   * <p>Not a setting. The name is written once, read once and stored nowhere: there is no history
+   * for a one-shot call, nothing else is offered for it to collide with, and no later request has
+   * to agree with it. A knob here would be one nobody could have a reason to turn.
+   */
+  private static final ToolName TOOL = new ToolName("record");
 
   private final InferenceProvider provider;
   private final InputSchemaGenerator schemas;
@@ -75,12 +81,7 @@ public final class DefaultExtractorFactory implements ExtractorFactory {
     Settings settings = new Settings();
     customizer.accept(settings);
     return new DefaultExtractor(
-        provider,
-        schemas,
-        mapper,
-        settings.systemPrompt,
-        settings.toolName,
-        settings.requiredOptions());
+        provider, schemas, mapper, settings.systemPrompt, TOOL, settings.requiredOptions());
   }
 
   /** The config as the factory reads it back. */
@@ -89,7 +90,6 @@ public final class DefaultExtractorFactory implements ExtractorFactory {
     private String modelName;
     private int maxTokens;
     private SystemPrompt systemPrompt = DEFAULT_PROMPT;
-    private ToolName toolName = DEFAULT_TOOL;
 
     @Override
     public ExtractorConfig model(String modelName) {
@@ -106,12 +106,6 @@ public final class DefaultExtractorFactory implements ExtractorFactory {
     @Override
     public ExtractorConfig systemPrompt(SystemPrompt systemPrompt) {
       this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
-      return this;
-    }
-
-    @Override
-    public ExtractorConfig toolName(ToolName toolName) {
-      this.toolName = Objects.requireNonNull(toolName, "toolName must not be null");
       return this;
     }
 

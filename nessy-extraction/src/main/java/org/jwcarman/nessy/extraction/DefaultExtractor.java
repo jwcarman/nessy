@@ -112,8 +112,9 @@ public final class DefaultExtractor implements Extractor {
           new Extraction.Refused<>(category, usage);
       case InferenceResult.Fault(Failure failure, Usage usage) ->
           new Extraction.Failed<>(failure.reason(), usage);
-      // Asked for a shape and given prose. Rare, since the call requires the tool, and the one
-      // outcome a caller most wants to know about: something talked the model out of the job.
+      // Asked for a shape and given prose. Not rare: requiring a tool is a request, and a
+      // document with none of the fields in it draws an explanation instead -- which is the
+      // useful answer, because it says what was missing.
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, Usage usage) ->
           new Extraction.Talked<>(said(blocks), usage);
     };
@@ -123,11 +124,20 @@ public final class DefaultExtractor implements Extractor {
     return new InferenceRequest(
         systemPrompt,
         InferenceContext.of(List.of(asOneTurn(document))),
-        List.of(
-            new ToolOffer(
-                toolName, "Records the fields found in the document.", schemas.generate(type))),
+        List.of(new ToolOffer(toolName, describing(type), schemas.generate(type))),
         new ToolChoice.Any(),
         options);
+  }
+
+  /**
+   * What the recording tool says it is for, with the shape named in words.
+   *
+   * <p>The name is an identifier and has a vendor's length limit on it; the description is prose
+   * and does not, so this is where the shape gets spelled out. A model reads the second and matches
+   * on the first.
+   */
+  private static String describing(Class<?> type) {
+    return "Records the fields of a %s found in the document.".formatted(type.getSimpleName());
   }
 
   /** The document as the only thing that was ever said, because it is. */
