@@ -51,10 +51,18 @@ public sealed interface ToolChoice {
   record Auto() implements ToolChoice {}
 
   /**
-   * No tool, whatever is offered. The model answers with what it has.
+   * No tool, whatever is offered.
    *
-   * <p>Not the same as offering none: the tools stay in the request, so the model still knows what
-   * it could have reached for and can say so. Offering none hides them entirely.
+   * <p><b>Rarely what is wanted.</b> An application that does not want a tool called should not
+   * offer the tool: that works on every vendor, sends no schemas, and cannot be dropped in
+   * translation. This exists for the one case where the tools have to stay in the request -- they
+   * are the cached prefix on vendors that cache, so taking them out for a turn throws the cache
+   * away.
+   *
+   * <p>Two things it does not promise. It is not a way to make a model answer: measured against
+   * Anthropic on 2026-09-20, a ban with tools still in the request ends the turn with no content at
+   * all. And Bedrock's Converse cannot say it, so that adapter refuses rather than sending
+   * something weaker.
    */
   record None() implements ToolChoice {}
 

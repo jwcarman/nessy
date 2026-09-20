@@ -34,6 +34,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 
 /**
@@ -58,6 +59,11 @@ class OpenAiLiveTest {
   private static final String MODEL = "gpt-4o-mini";
 
   private static InferenceRequest asking(String question, List<ToolOffer> tools) {
+    return asking(question, tools, ToolChoice.auto());
+  }
+
+  private static InferenceRequest asking(
+      String question, List<ToolOffer> tools, ToolChoice choice) {
     return new InferenceRequest(
         new SystemPrompt("You are a terse assistant. Answer in one short sentence."),
         InferenceContext.of(
@@ -69,6 +75,7 @@ class OpenAiLiveTest {
                     null,
                     0))),
         tools,
+        choice,
         InferenceOptions.of(MODEL));
   }
 
@@ -150,6 +157,95 @@ class OpenAiLiveTest {
                     .contains("name")
                     .contains("Loch Ness");
               });
+    }
+  }
+
+  // ---- whether the vendor honours a tool choice ----------------------------------------
+
+  /** Two tools, so naming one is a choice the model did not make for itself. */
+  private static List<ToolOffer> twoTools() {
+    return List.of(
+        new ToolOffer(
+            new ToolName("lake_depth"),
+            "returns the maximum depth of a named lake, in metres",
+            new InputSchema(
+                """
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")),
+        new ToolOffer(
+            new ToolName("weather"),
+            "returns today's weather for a named place",
+            new InputSchema(
+                """
+                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}""")));
+  }
+
+  private static ToolName calledIn(InferenceResult result) {
+    assertThat(result).isInstanceOf(InferenceResult.Actions.class);
+    return ((InferenceResult.Actions) result)
+        .blocks().stream()
+            .filter(Block.ToolCall.class::isInstance)
+            .map(Block.ToolCall.class::cast)
+            .findFirst()
+            .orElseThrow()
+            .name();
+  }
+
+  /**
+   * Naming the tool the question does not call for.
+   *
+   * <p>Asked about a lake with a lake tool on offer, a model left to itself reaches for that one.
+   * Requiring the weather tool instead is the only way to tell a vendor that honoured the choice
+   * from one that ignored the field and happened to agree.
+   */
+  @Test
+  void requiring_one_tool_by_name_overrides_what_the_model_would_have_picked() {
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              asking(
+                  "How deep is Loch Ness?",
+                  twoTools(),
+                  new ToolChoice.Named(new ToolName("weather"))));
+
+      assertThat(calledIn(result))
+          .as("the vendor was told which tool, and this is whether it listened")
+          .isEqualTo(new ToolName("weather"));
+    }
+  }
+
+  /** Requiring some tool, where an answer would otherwise have done. */
+  @Test
+  void requiring_some_tool_leaves_no_room_for_an_answer() {
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(asking("Say hello.", twoTools(), new ToolChoice.Any()));
+
+      assertThat(result)
+          .as("nothing here needs a tool, so an Answer would mean the requirement was dropped")
+          .isInstanceOf(InferenceResult.Actions.class);
+    }
+  }
+
+  /**
+   * Forbidding tools, where the model would plainly have reached for one.
+   *
+   * <p>What is asserted is that no call was made, not that an answer arrived in its place: the
+   * first is the ban holding, the second is the model's own choice about whether to speak. The
+   * vendors differ there, and measured 2026-09-20 this one answers, where Anthropic ends the turn
+   * with no content at all.
+   */
+  @Test
+  void forbidding_tools_means_no_call_is_made() {
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(asking("How deep is Loch Ness?", twoTools(), new ToolChoice.None()));
+
+      assertThat(result.usage().known())
+          .as("the call reached the model, so what came back is behaviour and not a failed send")
+          .isTrue();
+      assertThat(result)
+          .as("the lake tool was right there, so a call would mean the ban was dropped")
+          .isNotInstanceOf(InferenceResult.Actions.class);
     }
   }
 }

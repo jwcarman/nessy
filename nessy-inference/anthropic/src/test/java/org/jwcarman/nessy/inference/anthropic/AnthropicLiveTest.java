@@ -36,6 +36,7 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 
 /**
@@ -85,8 +86,13 @@ class AnthropicLiveTest {
   }
 
   private static InferenceRequest asking(List<Turn> turns, List<ToolOffer> tools) {
+    return asking(turns, tools, ToolChoice.auto());
+  }
+
+  private static InferenceRequest asking(
+      List<Turn> turns, List<ToolOffer> tools, ToolChoice choice) {
     return new InferenceRequest(
-        SYSTEM, InferenceContext.of(turns), tools, new InferenceOptions(MODEL, 2048));
+        SYSTEM, InferenceContext.of(turns), tools, choice, new InferenceOptions(MODEL, 2048));
   }
 
   @Test
@@ -220,6 +226,101 @@ class AnthropicLiveTest {
           provider.infer(asking(List.of(open(1, "What is the capital of France?")), List.of()));
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+    }
+  }
+
+  // ---- whether the vendor honours a tool choice ----------------------------------------
+
+  /** Two tools, so naming one is a choice the model did not make for itself. */
+  private static List<ToolOffer> twoTools() {
+    return List.of(
+        new ToolOffer(
+            new ToolName("lake_depth"),
+            "returns the maximum depth of a named lake, in metres",
+            new InputSchema(
+                """
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")),
+        new ToolOffer(
+            new ToolName("weather"),
+            "returns today's weather for a named place",
+            new InputSchema(
+                """
+                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}""")));
+  }
+
+  private static ToolName calledIn(InferenceResult result) {
+    assertThat(result).isInstanceOf(InferenceResult.Actions.class);
+    return ((InferenceResult.Actions) result)
+        .blocks().stream()
+            .filter(Block.ToolCall.class::isInstance)
+            .map(Block.ToolCall.class::cast)
+            .findFirst()
+            .orElseThrow()
+            .name();
+  }
+
+  /**
+   * Naming the tool the question does not call for.
+   *
+   * <p>Asked about a lake with a lake tool on offer, a model left to itself reaches for that one.
+   * Requiring the weather tool instead is the only way to tell a vendor that honoured the choice
+   * from one that ignored the field and happened to agree.
+   */
+  @Test
+  void requiring_one_tool_by_name_overrides_what_the_model_would_have_picked() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              asking(
+                  List.of(open(1, "How deep is Loch Ness?")),
+                  twoTools(),
+                  new ToolChoice.Named(new ToolName("weather"))));
+
+      assertThat(calledIn(result))
+          .as("the vendor was told which tool, and this is whether it listened")
+          .isEqualTo(new ToolName("weather"));
+    }
+  }
+
+  /** Requiring some tool, where an answer would otherwise have done. */
+  @Test
+  void requiring_some_tool_leaves_no_room_for_an_answer() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(asking(List.of(open(1, "Say hello.")), twoTools(), new ToolChoice.Any()));
+
+      assertThat(result)
+          .as("nothing here needs a tool, so an Answer would mean the requirement was dropped")
+          .isInstanceOf(InferenceResult.Actions.class);
+    }
+  }
+
+  /**
+   * Forbidding tools, where the model would plainly have reached for one.
+   *
+   * <p>What is asserted is that no call was made, not that an answer arrived in its place. Measured
+   * 2026-09-20: with tools in the request and a ban on using them, Claude ends the turn with an
+   * empty content array -- stop_reason end_turn, eight output tokens, no blocks at all. That is the
+   * model choosing to say nothing rather than the ban failing, and an adapter that reports it as a
+   * fault is reporting what happened.
+   *
+   * <p>Worth knowing before banning tools to break a loop on this vendor: the turn that comes back
+   * may hold nothing to show anyone.
+   */
+  @Test
+  void forbidding_tools_means_no_call_is_made() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              asking(
+                  List.of(open(1, "How deep is Loch Ness?")), twoTools(), new ToolChoice.None()));
+
+      assertThat(result.usage().known())
+          .as("the call reached the model, so what came back is behaviour and not a failed send")
+          .isTrue();
+      assertThat(result)
+          .as("the lake tool was right there, so a call would mean the ban was dropped")
+          .isNotInstanceOf(InferenceResult.Actions.class);
     }
   }
 }

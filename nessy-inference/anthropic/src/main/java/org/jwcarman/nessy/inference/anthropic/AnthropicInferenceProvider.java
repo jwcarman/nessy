@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -207,9 +208,10 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
         // fault rather than an answer of no blocks, which the story could not hold.
         return new InferenceResult.Fault(
             new Failure.Permanent(
-                "model returned an empty answer (stop_reason="
-                    + message.stopReason().map(Object::toString).orElse("none")
-                    + ")"));
+                "model returned an empty answer (stop_reason=%s, blocks=%s)"
+                    .formatted(
+                        message.stopReason().map(Object::toString).orElse("none"),
+                        shapesOf(message.content()))));
       }
       return new InferenceResult.Answer(
           blocks.stream().map(Block.AnswerContent.class::cast).toList());
@@ -223,6 +225,40 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    *     text arriving beside calls is commentary, and text arriving alone is an answer. Both are
    *     the same field on the wire, so only the shape of the reply can tell them apart.
    */
+
+  /**
+   * What came back, by kind and not by content.
+   *
+   * <p>"Empty answer" on its own cannot be acted on: a reply with no blocks at all and one whose
+   * blocks were every one of them blank are different faults with different causes. The kinds say
+   * which. The text does not appear here -- it is the model's, which is to say it may be whatever a
+   * document talked it into.
+   */
+  private static String shapesOf(List<ContentBlock> content) {
+    if (content.isEmpty()) {
+      return "none";
+    }
+    return content.stream()
+        .map(AnthropicInferenceProvider::shapeOf)
+        .collect(Collectors.joining(","));
+  }
+
+  private static String shapeOf(ContentBlock block) {
+    if (block.isText()) {
+      return block.text().orElseThrow().text().isBlank() ? "text(blank)" : "text";
+    }
+    if (block.isThinking()) {
+      return "thinking";
+    }
+    if (block.isRedactedThinking()) {
+      return "redacted_thinking";
+    }
+    if (block.isToolUse()) {
+      return "tool_use";
+    }
+    return "other";
+  }
+
   private Optional<Block> toBlock(ContentBlock block, boolean asking) {
     if (block.isText()) {
       String text = block.text().orElseThrow().text();
