@@ -134,6 +134,46 @@ class EmbeddingAutoConfigurationTest {
     }
   }
 
+  /**
+   * An unset environment variable arrives through a placeholder as the empty string, which is how
+   * every optional setting in the examples is written. Blank has to mean unconfigured, or naming
+   * nothing would build an embedder on a blank model name instead of ranking by recency.
+   */
+  @Nested
+  @DisplayName("a property set to blank")
+  class Blank {
+
+    @Test
+    @DisplayName("a blank key makes nothing at all")
+    void a_blank_key_makes_nothing_at_all() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=", "gemini.api-key=", "nessy.embedding.voyage.api-key=")
+          .run(context -> assertThat(context).doesNotHaveBean(EmbedderFactory.class));
+    }
+
+    @Test
+    @DisplayName("a blank model at a compatible endpoint makes nothing")
+    void a_blank_model_at_a_compatible_endpoint_makes_nothing() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=lm-studio",
+              "openai.base-url=http://localhost:1234/v1",
+              "nessy.embedding.openai.model=")
+          .run(context -> assertThat(context).doesNotHaveBean(EmbedderFactory.class));
+    }
+
+    @Test
+    @DisplayName("a blank model at OpenAI itself leaves OpenAI's default standing")
+    void a_blank_model_at_openai_itself_leaves_the_default_standing() {
+      runner
+          .withPropertyValues("openai.api-key=sk-test", "nessy.embedding.openai.model=")
+          .run(
+              context ->
+                  assertThat(defaultEmbedder(context).model()).isEqualTo("text-embedding-3-small"));
+    }
+  }
+
   @Nested
   @DisplayName("the others")
   class TheOthers {

@@ -26,7 +26,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -41,18 +40,18 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration
 @ConditionalOnClass(VoyageEmbeddingProvider.class)
-@ConditionalOnProperty(name = "nessy.embedding.voyage.api-key")
+@ConditionalOnConfiguredProperty("nessy.embedding.voyage.api-key")
 public class VoyageEmbeddingAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean(EmbedderFactory.class)
   public EmbedderFactory voyageEmbedders(
       @Value("${nessy.embedding.voyage.api-key}") String apiKey,
-      @Value("${nessy.embedding.voyage.model:" + VoyageEmbedderConfig.DEFAULT_MODEL + "}")
-          String model,
+      @Value("${nessy.embedding.voyage.model:}") String model,
       ObservationRegistry observations) {
     EmbeddingProvider provider = VoyageEmbeddingProvider.create(c -> c.apiKey(apiKey));
-    return factory(provider, model, observations);
+    return factory(
+        provider, EmbeddingModels.modelOr(model, VoyageEmbedderConfig.DEFAULT_MODEL), observations);
   }
 
   /**

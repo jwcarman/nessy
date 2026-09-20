@@ -26,7 +26,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 
@@ -40,7 +39,7 @@ import org.springframework.context.annotation.Conditional;
  */
 @AutoConfiguration(after = VoyageEmbeddingAutoConfiguration.class)
 @ConditionalOnClass(OpenAiEmbeddingProvider.class)
-@ConditionalOnProperty(name = "openai.api-key")
+@ConditionalOnConfiguredProperty("openai.api-key")
 public class OpenAiEmbeddingAutoConfiguration {
 
   @Bean
@@ -48,15 +47,17 @@ public class OpenAiEmbeddingAutoConfiguration {
   @ConditionalOnMissingBean(EmbedderFactory.class)
   public EmbedderFactory openAiEmbedders(
       @Value("${openai.api-key}") String apiKey,
-      @Value("${nessy.embedding.openai.model:" + OpenAiEmbedderConfig.DEFAULT_MODEL + "}")
-          String model,
+      @Value("${nessy.embedding.openai.model:}") String model,
       ObservationRegistry observations) {
-    return factory(OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey)), model, observations);
+    return factory(
+        OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey)),
+        EmbeddingModels.modelOr(model, OpenAiEmbedderConfig.DEFAULT_MODEL),
+        observations);
   }
 
   /** An OpenAI-compatible endpoint serves the models it serves, so this one names its own. */
   @Bean
-  @ConditionalOnProperty(name = "nessy.embedding.openai.model")
+  @ConditionalOnConfiguredProperty("nessy.embedding.openai.model")
   @ConditionalOnMissingBean(EmbedderFactory.class)
   public EmbedderFactory openAiCompatibleEmbedders(
       @Value("${openai.api-key}") String apiKey,

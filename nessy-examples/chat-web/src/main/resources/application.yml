@@ -59,12 +59,14 @@ nessy:
     happens. So say what you are about to send, send it, and expect the result to arrive
     later -- possibly much later. Never claim an email has been sent until the tool says so.
 
-# Optional, and read straight from the environment as CHAT_EMBEDDING_MODEL (relaxed binding to
-# nessy.embedding.openai.model): an embedding model at the same endpoint, and episodes are ranked by
-# relevance to the turn being answered rather than by recency. LM Studio serves e.g.
-# text-embedding-nomic-embed-text-v1.5. Named rather than defaulted, because an endpoint that is not
-# OpenAI serves the models it serves. Unset, the starter makes no embedder and the most recent
-# episodes are shown instead.
+  # Optional: an embedding model served at the same endpoint, and episodes are ranked by relevance
+  # to the turn being answered rather than by recency. LM Studio serves e.g.
+  # text-embedding-nomic-embed-text-v1.5. Named rather than defaulted, because an endpoint that is
+  # not OpenAI serves the models it serves. Left unset this is blank, the starter makes no
+  # embedder, and the most recent episodes are shown instead.
+  embedding:
+    openai:
+      model: ${CHAT_EMBEDDING_MODEL:}
 
 # The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio.
 openai:

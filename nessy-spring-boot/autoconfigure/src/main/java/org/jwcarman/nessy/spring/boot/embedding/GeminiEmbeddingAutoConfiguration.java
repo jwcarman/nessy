@@ -26,7 +26,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -38,23 +37,21 @@ import org.springframework.context.annotation.Bean;
 public class GeminiEmbeddingAutoConfiguration {
 
   @Bean
-  @ConditionalOnProperty(name = "gemini.api-key")
+  @ConditionalOnConfiguredProperty("gemini.api-key")
   @ConditionalOnMissingBean(EmbedderFactory.class)
   public EmbedderFactory geminiEmbedders(
       @Value("${gemini.api-key}") String apiKey,
-      @Value("${nessy.embedding.gemini.model:" + GeminiEmbedderConfig.DEFAULT_MODEL + "}")
-          String model,
+      @Value("${nessy.embedding.gemini.model:}") String model,
       ObservationRegistry observations) {
     return observed(apiKey, model, observations);
   }
 
   @Bean
-  @ConditionalOnProperty(name = "google.api-key")
+  @ConditionalOnConfiguredProperty("google.api-key")
   @ConditionalOnMissingBean(EmbedderFactory.class)
   public EmbedderFactory googleEmbedders(
       @Value("${google.api-key}") String apiKey,
-      @Value("${nessy.embedding.gemini.model:" + GeminiEmbedderConfig.DEFAULT_MODEL + "}")
-          String model,
+      @Value("${nessy.embedding.gemini.model:}") String model,
       ObservationRegistry observations) {
     return observed(apiKey, model, observations);
   }
@@ -62,7 +59,8 @@ public class GeminiEmbeddingAutoConfiguration {
   private static EmbedderFactory observed(
       String apiKey, String model, ObservationRegistry observations) {
     EmbeddingProvider provider = GeminiEmbeddingProvider.create(c -> c.apiKey(apiKey));
-    return factory(provider, model, observations);
+    return factory(
+        provider, EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL), observations);
   }
 
   /**
