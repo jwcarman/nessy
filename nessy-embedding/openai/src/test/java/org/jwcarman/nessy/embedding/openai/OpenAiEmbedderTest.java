@@ -112,7 +112,7 @@ class OpenAiEmbedderTest {
                           new AtomicBoolean())));
 
       assertThat(embedder.dimension()).isZero();
-      Embedding embedding = embedder.embed("a lake monster");
+      Embedding embedding = embedder.embedDocument("a lake monster");
 
       assertThat(embedding.model()).isEqualTo("text-embedding-3-small");
       assertThat(embedding.vector()).containsExactly(0.1f, 0.2f, 0.3f);
@@ -130,10 +130,10 @@ class OpenAiEmbedderTest {
                   c.client(
                       fakeClient(params -> reply(item(1, 2f), item(0, 1f)), new AtomicBoolean())));
 
-      List<Embedding> embeddings = embedder.embed(List.of("first", "second"));
+      List<Embedding> embeddings = embedder.embedDocuments(List.of("first", "second"));
 
       assertThat(embeddings).extracting(e -> e.vector()[0]).containsExactly(1f, 2f);
-      assertThat(embedder.embed(List.of())).isEmpty();
+      assertThat(embedder.embedDocuments(List.of())).isEmpty();
     }
 
     @Test
@@ -154,7 +154,7 @@ class OpenAiEmbedderTest {
 
       assertThat(embedder.model()).isEqualTo("text-embedding-3-large");
       assertThat(embedder.dimension()).isEqualTo(256);
-      embedder.embed("x");
+      embedder.embedDocument("x");
       assertThat(sent.get().dimensions()).contains(256L);
     }
 
@@ -165,7 +165,8 @@ class OpenAiEmbedderTest {
               c -> c.client(fakeClient(params -> reply(item(0, 1f)), new AtomicBoolean())));
       List<String> two = List.of("a", "b");
 
-      assertThatThrownBy(() -> embedder.embed(two)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> embedder.embedDocuments(two))
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 

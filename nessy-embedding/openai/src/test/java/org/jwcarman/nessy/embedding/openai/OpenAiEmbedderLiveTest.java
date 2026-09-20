@@ -43,7 +43,7 @@ class OpenAiEmbedderLiveTest {
     try (OpenAiEmbedder embedder = OpenAiEmbedder.create(c -> c.fromEnv().model(MODEL))) {
 
       List<Embedding> embeddings =
-          embedder.embed(
+          embedder.embedDocuments(
               List.of(
                   "The Loch Ness monster is a creature said to live in a Scottish lake.",
                   "Nessie is a legendary animal reported in a loch in the Highlands.",

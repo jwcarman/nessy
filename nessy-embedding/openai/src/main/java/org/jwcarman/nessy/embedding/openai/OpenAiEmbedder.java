@@ -88,7 +88,7 @@ public final class OpenAiEmbedder implements Embedder, AutoCloseable {
    * One request for the whole batch; the vendor returns them indexed, and they are put in order.
    */
   @Override
-  public List<Embedding> embed(List<String> texts) {
+  public List<Embedding> embedDocuments(List<String> texts) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();

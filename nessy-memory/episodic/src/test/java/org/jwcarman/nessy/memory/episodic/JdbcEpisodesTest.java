@@ -251,6 +251,31 @@ class JdbcEpisodesTest {
       assertThat(numbers(store.forAgent(agent, asking(" ")))).containsExactly(3, 4);
     }
 
+    /**
+     * A summary is a statement and a question is a question, and the two are embedded as what they
+     * are.
+     *
+     * <p>Retrieval is asymmetric: vendors that train for it place a query and the document that
+     * answers it differently on purpose. A store that asked for one flavour on both sides would
+     * rank worse and say nothing about why, which is what this is here to stop.
+     */
+    @Test
+    void summaries_are_embedded_as_documents_and_the_question_as_a_query() {
+      KeywordEmbedder embedder = new KeywordEmbedder("kw", "cats", "dogs");
+      JdbcEpisodes store = store(embedder, 2);
+      AgentId agent = story(store);
+
+      store.forAgent(agent, asking("tell me about cats"));
+
+      assertThat(embedder.asked)
+          .as("the question was asked for as a question")
+          .containsExactly("tell me about cats");
+      assertThat(embedder.embedded)
+          .as("and the summaries were written as documents")
+          .isNotEmpty()
+          .doesNotContain("tell me about cats");
+    }
+
     @Test
     void everything_is_shown_when_it_fits_without_asking_the_embedder() {
       KeywordEmbedder embedder = new KeywordEmbedder("kw", "cats");

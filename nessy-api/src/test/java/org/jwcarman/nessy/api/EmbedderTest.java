@@ -44,7 +44,7 @@ class EmbedderTest {
     }
 
     @Override
-    public List<Embedding> embed(List<String> texts) {
+    public List<Embedding> embedDocuments(List<String> texts) {
       return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
     }
   }
@@ -70,7 +70,7 @@ class EmbedderTest {
           }
 
           @Override
-          public List<Embedding> embed(List<String> texts) {
+          public List<Embedding> embedDocuments(List<String> texts) {
             return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
           }
         };
@@ -92,19 +92,29 @@ class EmbedderTest {
     assertThat(vendor.providerName()).isEqualTo("ollama");
   }
 
-  /** One text is a batch of one, so an adapter never writes this method. */
+  /** One document is a batch of one, so an adapter never writes that method. */
   @Test
-  void one_text_is_embedded_as_a_batch_of_one() {
-    assertThat(new OllamaEmbedder().embed("just this"))
+  void one_document_is_embedded_as_a_batch_of_one() {
+    assertThat(new OllamaEmbedder().embedDocument("just this"))
         .isEqualTo(new Embedding("nomic-embed-text", new float[] {1}));
   }
 
   /** The degenerate case still refuses nothing rather than embedding a null. */
   @Test
-  void embedding_no_text_at_all_is_refused() {
+  void embedding_no_document_at_all_is_refused() {
     Embedder embedder = new OllamaEmbedder();
 
-    assertThatThrownBy(() -> embedder.embed((String) null))
-        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> embedder.embedDocument(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  /**
+   * A vendor with nothing to say about roles answers a query as it answers a document, and that is
+   * the truth for it rather than a shortcut.
+   */
+  @Test
+  void a_query_is_the_same_call_when_a_vendor_cannot_tell_them_apart() {
+    Embedder embedder = new OllamaEmbedder();
+
+    assertThat(embedder.embedQuery("how deep is it?")).isEqualTo(embedder.embedDocument("a fact"));
   }
 }

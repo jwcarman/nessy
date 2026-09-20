@@ -83,7 +83,7 @@ class GeminiEmbedderTest {
               null);
 
       assertThat(embedder.dimension()).isZero();
-      List<Embedding> embeddings = embedder.embed(List.of("a", "b"));
+      List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
       assertThat(embeddings)
           .extracting(Embedding::vector)
@@ -92,7 +92,7 @@ class GeminiEmbedderTest {
       assertThat(sent.get().model()).isEqualTo("gemini-embedding-001");
       assertThat(sent.get().texts()).containsExactly("a", "b");
       assertThat(sent.get().config().outputDimensionality()).isEmpty();
-      assertThat(embedder.embed(List.of())).isEmpty();
+      assertThat(embedder.embedDocuments(List.of())).isEmpty();
     }
 
     @Test
@@ -106,7 +106,7 @@ class GeminiEmbedderTest {
               "RETRIEVAL_QUERY");
 
       assertThat(embedder.dimension()).isEqualTo(256);
-      embedder.embed("x");
+      embedder.embedDocument("x");
 
       assertThat(sent.get().config().outputDimensionality()).contains(256);
       assertThat(sent.get().config().taskType()).contains("RETRIEVAL_QUERY");
@@ -122,7 +122,8 @@ class GeminiEmbedderTest {
               null);
       List<String> two = List.of("a", "b");
 
-      assertThatThrownBy(() -> embedder.embed(two)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> embedder.embedDocuments(two))
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 

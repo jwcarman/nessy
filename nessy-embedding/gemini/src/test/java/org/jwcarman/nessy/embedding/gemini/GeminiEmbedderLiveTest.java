@@ -36,7 +36,7 @@ class GeminiEmbedderLiveTest {
         "GEMINI_API_KEY is not set");
     try (GeminiEmbedder embedder = GeminiEmbedder.create(c -> c.fromEnv().dimension(768))) {
       List<Embedding> embeddings =
-          embedder.embed(
+          embedder.embedDocuments(
               List.of(
                   "The Loch Ness monster is a creature said to live in a Scottish lake.",
                   "Nessie is a legendary animal reported in a loch in the Highlands.",

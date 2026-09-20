@@ -92,13 +92,25 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
-  public Embedding embed(String text) {
-    return observe(() -> delegate.embed(text));
+  public Embedding embedDocument(String text) {
+    return observe(() -> delegate.embedDocument(text));
   }
 
   @Override
-  public List<Embedding> embed(List<String> texts) {
-    return observe(() -> delegate.embed(texts));
+  public List<Embedding> embedDocuments(List<String> texts) {
+    return observe(() -> delegate.embedDocuments(texts));
+  }
+
+  /**
+   * Wrapped like the others, and delegated rather than derived.
+   *
+   * <p>Taking the default would embed the query as a document through this wrapper and never ask
+   * the delegate which it was -- which is the whole distinction, lost in the one place that was
+   * only supposed to be watching.
+   */
+  @Override
+  public Embedding embedQuery(String query) {
+    return observe(() -> delegate.embedQuery(query));
   }
 
   private <T> T observe(Supplier<T> call) {

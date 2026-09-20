@@ -95,7 +95,23 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
 
   /** Batches of up to {@value #BATCH}, each one request; the reply is indexed and put in order. */
   @Override
-  public List<Embedding> embed(List<String> texts) {
+  public List<Embedding> embedDocuments(List<String> texts) {
+    return embed(texts, roleOr("document"));
+  }
+
+  /** A question, told to Voyage as one. Retrieval is asymmetric and this is the asking half. */
+  @Override
+  public Embedding embedQuery(String query) {
+    Objects.requireNonNull(query, "query must not be null");
+    return embed(List.of(query), roleOr("query")).getFirst();
+  }
+
+  /** An explicit input type is an override: somebody who named one meant it. */
+  private String roleOr(String role) {
+    return inputType == null ? role : inputType;
+  }
+
+  private List<Embedding> embed(List<String> texts, String role) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
@@ -103,7 +119,7 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     Embedding[] ordered = new Embedding[texts.size()];
     for (int from = 0; from < texts.size(); from += BATCH) {
       List<String> batch = texts.subList(from, Math.min(texts.size(), from + BATCH));
-      JsonNode reply = post(batch);
+      JsonNode reply = post(batch, role);
       for (JsonNode item : reply.path("data")) {
         int index = item.path("index").asInt(-1);
         if (index < 0 || index >= batch.size()) {
@@ -123,14 +139,12 @@ public final class VoyageEmbedder implements Embedder, AutoCloseable {
     return List.of(ordered);
   }
 
-  private JsonNode post(List<String> batch) {
+  private JsonNode post(List<String> batch, String role) {
     ObjectNode body = mapper.createObjectNode().put("model", model);
     ArrayNode input = body.putArray("input");
     batch.forEach(input::add);
     requestedDimension.ifPresent(d -> body.put("output_dimension", d));
-    if (inputType != null) {
-      body.put("input_type", inputType);
-    }
+    body.put("input_type", role);
     HttpRequest request =
         HttpRequest.newBuilder(endpoint)
             .timeout(timeout)

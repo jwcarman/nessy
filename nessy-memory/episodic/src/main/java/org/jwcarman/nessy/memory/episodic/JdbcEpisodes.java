@@ -272,7 +272,7 @@ public class JdbcEpisodes implements Summarizer {
   public boolean summarize(AgentId agentId, int number, String title, String summary) {
     String text = required(summary, "summary");
     String retitled = title == null || title.isBlank() ? null : title.strip();
-    Embedding embedding = embedder == null ? null : embedder.embed(text);
+    Embedding embedding = embedder == null ? null : embedder.embedDocument(text);
     return jdbc.sql(SUMMARIZE)
             .params(
                 retitled,
@@ -325,7 +325,7 @@ public class JdbcEpisodes implements Summarizer {
     if (candidates.size() <= shown) {
       chosen = candidates;
     } else if (embedder != null && query != null && !query.isBlank()) {
-      chosen = mostRelevant(candidates, embedder.embed(query));
+      chosen = mostRelevant(candidates, embedder.embedQuery(query));
     } else {
       chosen = candidates.subList(candidates.size() - shown, candidates.size());
     }

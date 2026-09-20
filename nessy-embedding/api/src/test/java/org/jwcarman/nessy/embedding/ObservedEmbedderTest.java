@@ -67,7 +67,7 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public List<Embedding> embed(List<String> texts) {
+      public List<Embedding> embedDocuments(List<String> texts) {
         return texts.stream().map(t -> new Embedding(model(), new float[] {1, 0, 0})).toList();
       }
     };
@@ -91,7 +91,7 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public List<Embedding> embed(List<String> texts) {
+      public List<Embedding> embedDocuments(List<String> texts) {
         throw new IllegalStateException("the endpoint is down");
       }
     };
@@ -105,7 +105,7 @@ class ObservedEmbedderTest {
     Observation.createNotStarted("nessy.context.memory", registry)
         .lowCardinalityKeyValue("gen_ai.agent.name", "chat")
         .highCardinalityKeyValue("gen_ai.conversation.id", "agent-1")
-        .observe(() -> embedder.embed("what did we decide about the deploy?"));
+        .observe(() -> embedder.embedDocument("what did we decide about the deploy?"));
 
     Observation.Context call = stopped.getFirst();
     assertThat(call.getContextualName()).isEqualTo("embeddings text-embedding-3-small");
@@ -126,7 +126,8 @@ class ObservedEmbedderTest {
   void a_failed_call_says_what_failed() {
     Embedder embedder = ObservedEmbedder.wrap(failing(), registry);
 
-    assertThatThrownBy(() -> embedder.embed("anything")).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> embedder.embedDocument("anything"))
+        .isInstanceOf(IllegalStateException.class);
 
     Observation.Context call = stopped.getFirst();
     assertThat(call.getLowCardinalityKeyValue("error.type").getValue())
@@ -141,7 +142,7 @@ class ObservedEmbedderTest {
 
     assertThat(ObservedEmbedder.wrap(once, registry)).isSameAs(once);
 
-    once.embed("anything");
+    once.embedDocument("anything");
     assertThat(stopped).hasSize(1);
   }
 
@@ -150,7 +151,7 @@ class ObservedEmbedderTest {
   void with_nothing_tracing_it_is_the_embedder_it_wraps() {
     Embedder embedder = ObservedEmbedder.wrap(answering(), ObservationRegistry.NOOP);
 
-    assertThat(embedder.embed("anything").dimension()).isEqualTo(3);
+    assertThat(embedder.embedDocument("anything").dimension()).isEqualTo(3);
     assertThat(embedder.model()).isEqualTo("text-embedding-3-small");
   }
 }

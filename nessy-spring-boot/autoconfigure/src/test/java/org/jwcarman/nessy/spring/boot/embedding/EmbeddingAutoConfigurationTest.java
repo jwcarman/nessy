@@ -215,7 +215,7 @@ class EmbeddingAutoConfigurationTest {
     }
 
     @Override
-    public List<Embedding> embed(List<String> texts) {
+    public List<Embedding> embedDocuments(List<String> texts) {
       return texts.stream().map(t -> new Embedding(model(), new float[] {1})).toList();
     }
   }

@@ -31,6 +31,7 @@ final class KeywordEmbedder implements Embedder {
   private final String model;
   private final List<String> keywords;
   final List<String> embedded = new CopyOnWriteArrayList<>();
+  final List<String> asked = new CopyOnWriteArrayList<>();
 
   KeywordEmbedder(String model, String... keywords) {
     this.model = model;
@@ -52,13 +53,20 @@ final class KeywordEmbedder implements Embedder {
     return keywords.size() + 1;
   }
 
+  /** Which flavour a caller asked for, so a test can say a store got it right. */
   @Override
-  public List<Embedding> embed(List<String> texts) {
+  public Embedding embedQuery(String query) {
+    asked.add(query);
+    return one(query);
+  }
+
+  @Override
+  public List<Embedding> embedDocuments(List<String> texts) {
+    embedded.addAll(texts);
     return texts.stream().map(this::one).toList();
   }
 
   private Embedding one(String text) {
-    embedded.add(text);
     String lower = text.toLowerCase(Locale.ROOT);
     float[] vector = new float[keywords.size() + 1];
     for (int i = 0; i < keywords.size(); i++) {

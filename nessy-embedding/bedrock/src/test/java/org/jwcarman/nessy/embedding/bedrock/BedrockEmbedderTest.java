@@ -85,7 +85,7 @@ class BedrockEmbedderTest {
       BedrockEmbedder embedder =
           embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.empty());
 
-      List<Embedding> embeddings = embedder.embed(List.of("a", "b"));
+      List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
       assertThat(embeddings).hasSize(2);
       assertThat(embeddings.getFirst().vector()).containsExactly(0.5f, 0.25f);
@@ -102,7 +102,7 @@ class BedrockEmbedderTest {
       BedrockEmbedder embedder =
           embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(256));
 
-      embedder.embed("x");
+      embedder.embedDocument("x");
 
       assertThat(client.sent.getFirst().path("dimensions").asInt()).isEqualTo(256);
       assertThat(client.sent.getFirst().path("normalize").asBoolean()).isTrue();
@@ -117,7 +117,8 @@ class BedrockEmbedderTest {
               "amazon.titan-embed-text-v1",
               OptionalInt.empty());
 
-      assertThatThrownBy(() -> embedder.embed("x")).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> embedder.embedDocument("x"))
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 
@@ -129,7 +130,7 @@ class BedrockEmbedderTest {
       Scripted client = new Scripted(body -> "{\"embeddings\":[[1,0],[0,1]]}");
       BedrockEmbedder embedder = embedder(client, "cohere.embed-english-v3", OptionalInt.empty());
 
-      List<Embedding> embeddings = embedder.embed(List.of("a", "b"));
+      List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
       assertThat(embeddings)
           .extracting(Embedding::vector)
@@ -137,7 +138,7 @@ class BedrockEmbedderTest {
       assertThat(client.sent).hasSize(1);
       assertThat(client.sent.getFirst().path("texts")).hasSize(2);
       assertThat(client.sent.getFirst().path("input_type").asString()).isEqualTo("search_document");
-      assertThat(embedder.embed(List.of())).isEmpty();
+      assertThat(embedder.embedDocuments(List.of())).isEmpty();
     }
 
     @Test
@@ -155,7 +156,7 @@ class BedrockEmbedderTest {
           embedder(client, "cohere.embed-multilingual-v3", OptionalInt.empty());
       List<String> texts = java.util.Collections.nCopies(100, "x");
 
-      assertThat(embedder.embed(texts)).hasSize(100);
+      assertThat(embedder.embedDocuments(texts)).hasSize(100);
       assertThat(client.sent).hasSize(2);
     }
 
@@ -168,7 +169,8 @@ class BedrockEmbedderTest {
               OptionalInt.empty());
       List<String> two = List.of("a", "b");
 
-      assertThatThrownBy(() -> embedder.embed(two)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> embedder.embedDocuments(two))
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 

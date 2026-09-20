@@ -47,25 +47,36 @@ public interface Embedder {
   int dimension();
 
   /**
-   * Several texts' embeddings, in the order given, and the one an adapter implements.
+   * The documents, in the order given.
    *
-   * <p>The batch is the real call because that is the shape every vendor's endpoint takes: texts
-   * in, vectors out, one request. Most batches here are of one -- a note, a query -- so this is not
-   * about speed today; it is about there being one path to the vendor rather than two, and about
-   * the day a caller does hand over a hundred notes not being the day it becomes a hundred round
-   * trips.
+   * <p>One of the two things a retrieval system ever embeds, and it is not the same thing as the
+   * other. A document is a statement waiting to be found; a query is the asking. Vendors that train
+   * for retrieval place the two differently on purpose -- Gemini calls it a task type, Voyage an
+   * input type -- and a store that embedded its summaries as though they were questions would rank
+   * worse for no visible reason.
+   *
+   * <p>A batch because documents arrive in batches: a store writes what it has.
    */
-  List<Embedding> embed(List<String> texts);
+  List<Embedding> embedDocuments(List<String> texts);
+
+  /** One document, which is the degenerate batch. */
+  default Embedding embedDocument(String text) {
+    Objects.requireNonNull(text, "text must not be null");
+    return embedDocuments(List.of(text)).getFirst();
+  }
 
   /**
-   * One text's embedding: the degenerate batch, and never worth an adapter writing out.
+   * The question being asked.
    *
-   * <p>Left overridable for the one implementation that needs to say something about a single call
-   * rather than a batch of one -- {@link ObservedEmbedder} opens a span here.
+   * <p>Singular, because it is: a search has one query, however many documents it is searching.
+   *
+   * <p>Defaulted to the other, because for most vendors that is the truth rather than a shortcut: a
+   * model not trained to place questions and statements differently gains nothing from being told
+   * which it was given, and an override saying so would be a copy of this line. Gemini and Voyage
+   * do have something to say, and say it.
    */
-  default Embedding embed(String text) {
-    Objects.requireNonNull(text, "text must not be null");
-    return embed(List.of(text)).getFirst();
+  default Embedding embedQuery(String query) {
+    return embedDocument(query);
   }
 
   /**

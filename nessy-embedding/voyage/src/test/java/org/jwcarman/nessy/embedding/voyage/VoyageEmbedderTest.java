@@ -101,7 +101,7 @@ class VoyageEmbedderTest {
     void a_batch_is_one_authorised_request_and_comes_back_in_the_order_asked() {
       answer = body -> reply(new float[] {1, 0}, new float[] {0, 1});
       try (VoyageEmbedder embedder = embedder(c -> {})) {
-        List<Embedding> embeddings = embedder.embed(List.of("first", "second"));
+        List<Embedding> embeddings = embedder.embedDocuments(List.of("first", "second"));
 
         assertThat(embeddings)
             .extracting(Embedding::vector)
@@ -113,7 +113,7 @@ class VoyageEmbedderTest {
         assertThat(received.getFirst().path("input")).hasSize(2);
         assertThat(received.getFirst().has("output_dimension")).isFalse();
         assertThat(authorizations).containsExactly("Bearer test-key");
-        assertThat(embedder.embed(List.of())).isEmpty();
+        assertThat(embedder.embedDocuments(List.of())).isEmpty();
       }
     }
 
@@ -123,7 +123,7 @@ class VoyageEmbedderTest {
       try (VoyageEmbedder embedder =
           embedder(c -> c.model("voyage-3.5-lite").dimension(512).inputType("query"))) {
         assertThat(embedder.dimension()).isEqualTo(512);
-        embedder.embed("x");
+        embedder.embedDocument("x");
 
         assertThat(received.getFirst().path("output_dimension").asInt()).isEqualTo(512);
         assertThat(received.getFirst().path("input_type").asString()).isEqualTo("query");
@@ -140,7 +140,7 @@ class VoyageEmbedderTest {
             return reply(vectors);
           };
       try (VoyageEmbedder embedder = embedder(c -> {})) {
-        assertThat(embedder.embed(java.util.Collections.nCopies(130, "x"))).hasSize(130);
+        assertThat(embedder.embedDocuments(java.util.Collections.nCopies(130, "x"))).hasSize(130);
         assertThat(received).hasSize(2);
       }
     }
@@ -150,11 +150,13 @@ class VoyageEmbedderTest {
       answer = body -> reply(new float[] {1});
       try (VoyageEmbedder embedder = embedder(c -> {})) {
         List<String> two = List.of("a", "b");
-        assertThatThrownBy(() -> embedder.embed(two)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> embedder.embedDocuments(two))
+            .isInstanceOf(IllegalStateException.class);
       }
       answer = body -> "{\"data\":[{\"index\":7,\"embedding\":[1]}]}";
       try (VoyageEmbedder embedder = embedder(c -> {})) {
-        assertThatThrownBy(() -> embedder.embed("a")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> embedder.embedDocument("a"))
+            .isInstanceOf(IllegalStateException.class);
       }
     }
 
@@ -163,7 +165,7 @@ class VoyageEmbedderTest {
       status = 401;
       answer = body -> "{\"detail\":\"bad key\"}";
       try (VoyageEmbedder embedder = embedder(c -> {})) {
-        assertThatThrownBy(() -> embedder.embed("a"))
+        assertThatThrownBy(() -> embedder.embedDocument("a"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("401")
             .hasMessageContaining("bad key");
@@ -176,7 +178,7 @@ class VoyageEmbedderTest {
           VoyageEmbedder.create(
               c -> c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").timeout(Duration.ofSeconds(2)));
 
-      assertThatThrownBy(() -> unreachable.embed("a"))
+      assertThatThrownBy(() -> unreachable.embedDocument("a"))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("could not reach");
     }

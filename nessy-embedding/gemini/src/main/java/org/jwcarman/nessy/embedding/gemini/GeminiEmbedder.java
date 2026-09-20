@@ -81,16 +81,40 @@ public final class GeminiEmbedder implements Embedder, AutoCloseable {
 
   /** One request for the whole batch; the vendor returns them in the order given. */
   @Override
-  public List<Embedding> embed(List<String> texts) {
+  public List<Embedding> embedDocuments(List<String> texts) {
+    return embed(texts, roleOr("RETRIEVAL_DOCUMENT"));
+  }
+
+  /**
+   * A question, told to Gemini as one.
+   *
+   * <p>Retrieval is asymmetric: a query and the document that answers it are placed differently on
+   * purpose, and saying so is the difference between finding it and nearly finding it.
+   */
+  @Override
+  public Embedding embedQuery(String query) {
+    Objects.requireNonNull(query, "query must not be null");
+    return embed(List.of(query), roleOr("RETRIEVAL_QUERY")).getFirst();
+  }
+
+  /**
+   * What a caller configured, when they configured one.
+   *
+   * <p>An explicit task type is an override: somebody who named one meant it, and roles are the
+   * default rather than the rule.
+   */
+  private String roleOr(String role) {
+    return taskType == null ? role : taskType;
+  }
+
+  private List<Embedding> embed(List<String> texts, String role) {
     Objects.requireNonNull(texts, "texts must not be null");
     if (texts.isEmpty()) {
       return List.of();
     }
     EmbedContentConfig.Builder config = EmbedContentConfig.builder();
     requestedDimension.ifPresent(config::outputDimensionality);
-    if (taskType != null) {
-      config.taskType(taskType);
-    }
+    config.taskType(role);
     EmbedContentResponse response = client.embed(model, texts, config.build());
     List<ContentEmbedding> returned = response.embeddings().orElse(List.of());
     if (returned.size() != texts.size()) {
