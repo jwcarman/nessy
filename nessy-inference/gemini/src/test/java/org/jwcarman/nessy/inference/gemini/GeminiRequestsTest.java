@@ -18,9 +18,12 @@ package org.jwcarman.nessy.inference.gemini;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.genai.types.Content;
+import com.google.genai.types.FunctionCallingConfig;
+import com.google.genai.types.FunctionCallingConfigMode;
 import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.Part;
+import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -45,6 +48,7 @@ import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -337,5 +341,71 @@ class GeminiRequestsTest {
                       new Block.Text("b"))))
           .isEqualTo("ab");
     }
+  }
+
+  /** Whether the model may reach for what it was offered. */
+  @Nested
+  class ChoosingATool {
+
+    private static GenerateContentConfig choosing(ToolChoice choice) {
+      return GeminiRequests.toConfig(
+          new InferenceRequest(
+              SYSTEM,
+              new InferenceContext(List.of(open(1, "hello")), List.of()),
+              List.of(offer()),
+              choice,
+              new InferenceOptions("gemini-3.6-pro", 1024)),
+          MAPPER);
+    }
+
+    private static ToolOffer offer() {
+      return new ToolOffer(
+          new ToolName("lookup"),
+          "looks a thing up",
+          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+    }
+
+    /** An absent config already means auto, so nothing is sent. */
+    @Test
+    void by_default_no_tool_config_is_sent() {
+      assertThat(choosing(ToolChoice.auto()).toolConfig()).isEmpty();
+    }
+
+    @Test
+    void a_ban_is_sent_as_the_none_mode() {
+      assertThat(mode(choosing(new ToolChoice.None()))).isEqualTo("NONE");
+    }
+
+    @Test
+    void requiring_some_tool_is_sent_as_the_any_mode() {
+      assertThat(mode(choosing(new ToolChoice.Any()))).isEqualTo("ANY");
+    }
+
+    /** Gemini names the one it must call by allowing only that name. */
+    @Test
+    void requiring_one_tool_allows_only_that_name() {
+      GenerateContentConfig config = choosing(new ToolChoice.Named(new ToolName("lookup")));
+
+      assertThat(mode(config)).isEqualTo("ANY");
+      assertThat(
+              config
+                  .toolConfig()
+                  .flatMap(GeminiRequestsTest::calling)
+                  .flatMap(FunctionCallingConfig::allowedFunctionNames))
+          .contains(List.of("lookup"));
+    }
+
+    private static String mode(GenerateContentConfig config) {
+      return config
+          .toolConfig()
+          .flatMap(GeminiRequestsTest::calling)
+          .flatMap(FunctionCallingConfig::mode)
+          .map(FunctionCallingConfigMode::toString)
+          .orElse("(none)");
+    }
+  }
+
+  private static java.util.Optional<FunctionCallingConfig> calling(ToolConfig config) {
+    return config.functionCallingConfig();
   }
 }

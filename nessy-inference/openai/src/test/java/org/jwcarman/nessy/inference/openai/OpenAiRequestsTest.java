@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,7 @@ import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -408,5 +410,57 @@ class OpenAiRequestsTest {
             MAPPER);
 
     assertThat(params.streamOptions().flatMap(o -> o.includeUsage())).contains(true);
+  }
+
+  /** Whether the model may reach for what it was offered. */
+  @Nested
+  class ChoosingATool {
+
+    private static ChatCompletionCreateParams choosing(ToolChoice choice) {
+      return OpenAiRequests.toParams(
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hi"))),
+              List.of(
+                  new ToolOffer(
+                      new ToolName("lookup"),
+                      "looks a thing up",
+                      new InputSchema(
+                          "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"))),
+              choice,
+              OPTIONS),
+          MAPPER);
+    }
+
+    /** An absent field already means auto, and several compatible servers prefer it absent. */
+    @Test
+    void by_default_nothing_is_said_about_choosing() {
+      assertThat(choosing(ToolChoice.auto()).toolChoice()).isEmpty();
+    }
+
+    @Test
+    void a_ban_is_sent_as_none() {
+      assertThat(choosing(new ToolChoice.None()).toolChoice().orElseThrow().auto())
+          .contains(ChatCompletionToolChoiceOption.Auto.NONE);
+    }
+
+    @Test
+    void requiring_some_tool_is_sent_as_required() {
+      assertThat(choosing(new ToolChoice.Any()).toolChoice().orElseThrow().auto())
+          .contains(ChatCompletionToolChoiceOption.Auto.REQUIRED);
+    }
+
+    @Test
+    void requiring_one_tool_names_it() {
+      assertThat(
+              choosing(new ToolChoice.Named(new ToolName("lookup")))
+                  .toolChoice()
+                  .orElseThrow()
+                  .namedToolChoice()
+                  .orElseThrow()
+                  .function()
+                  .name())
+          .isEqualTo("lookup");
+    }
   }
 }

@@ -24,6 +24,8 @@ import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.ThinkingBlockParam;
 import com.anthropic.models.messages.ThinkingConfigEnabled;
 import com.anthropic.models.messages.Tool;
+import com.anthropic.models.messages.ToolChoiceAny;
+import com.anthropic.models.messages.ToolChoiceNone;
 import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
@@ -43,6 +46,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -108,6 +112,7 @@ public final class AnthropicRequests {
     }
     addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
     addTools(builder, request.tools(), marker, mapper);
+    chooseTool(builder, request.tools(), request.toolChoice());
 
     if (features.thinking()) {
       builder.thinking(
@@ -356,6 +361,29 @@ public final class AnthropicRequests {
   }
 
   // ---- tools ---------------------------------------------------------------------------
+
+  /**
+   * How the model is told whether it may reach for what it was offered.
+   *
+   * <p>Said only when it is not the default and there is something to choose from. A request that
+   * offers no tools has nothing to say about choosing one, and an explicit "auto" is what the wire
+   * already means when the field is absent -- so every request written before this existed goes out
+   * byte for byte as it did.
+   */
+  private static void chooseTool(
+      MessageCreateParams.Builder builder, List<ToolOffer> tools, ToolChoice choice) {
+    if (tools.isEmpty()) {
+      return;
+    }
+    switch (choice) {
+      case ToolChoice.Auto _ -> {
+        // What the absent field already means.
+      }
+      case ToolChoice.None _ -> builder.toolChoice(ToolChoiceNone.builder().build());
+      case ToolChoice.Any _ -> builder.toolChoice(ToolChoiceAny.builder().build());
+      case ToolChoice.Named(ToolName name) -> builder.toolToolChoice(name.value());
+    }
+  }
 
   private static void addTools(
       MessageCreateParams.Builder builder,

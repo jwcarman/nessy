@@ -30,14 +30,28 @@ public record InferenceRequest(
     SystemPrompt systemPrompt,
     InferenceContext context,
     List<ToolOffer> tools,
+    ToolChoice toolChoice,
     InferenceOptions options) {
 
   public InferenceRequest {
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     Objects.requireNonNull(context, "context must not be null");
     Objects.requireNonNull(tools, "tools must not be null");
+    // Absent means auto, on the wire and in a stored row alike: a request recorded before this
+    // field existed said nothing about choosing, which is exactly what auto means. Defaulted
+    // rather than refused, because those rows are read back to show what a model was shown.
+    toolChoice = toolChoice == null ? ToolChoice.auto() : toolChoice;
     Objects.requireNonNull(options, "options must not be null");
     tools = List.copyOf(tools);
+  }
+
+  /** A request that leaves the choice to the model, which is what a turn wants. */
+  public InferenceRequest(
+      SystemPrompt systemPrompt,
+      InferenceContext context,
+      List<ToolOffer> tools,
+      InferenceOptions options) {
+    this(systemPrompt, context, tools, ToolChoice.auto(), options);
   }
 
   /**

@@ -31,15 +31,18 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.core.document.Document;
+import software.amazon.awssdk.services.bedrockruntime.model.AnyToolChoice;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
+import software.amazon.awssdk.services.bedrockruntime.model.SpecificToolChoice;
 import software.amazon.awssdk.services.bedrockruntime.model.SystemContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.Tool;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolConfiguration;
@@ -95,12 +98,41 @@ public final class BedrockRequests {
     builder.messages(alternating(drafted));
 
     if (request.hasTools()) {
-      builder.toolConfig(
+      ToolConfiguration.Builder tools =
           ToolConfiguration.builder()
-              .tools(request.tools().stream().map(offer -> tool(offer, mapper)).toList())
-              .build());
+              .tools(request.tools().stream().map(offer -> tool(offer, mapper)).toList());
+      chooseTool(tools, request.toolChoice());
+      builder.toolConfig(tools.build());
     }
     return builder.build();
+  }
+
+  /**
+   * How the model is told whether it may reach for what it was offered.
+   *
+   * <p>Converse has three: auto, any, and a named tool. It has no way to say "not this turn", so a
+   * ban is refused here rather than quietly sent as something weaker. A caller that asked for no
+   * tool and got one anyway would be worse off than one told it cannot have that here.
+   */
+  private static void chooseTool(ToolConfiguration.Builder builder, ToolChoice choice) {
+    switch (choice) {
+      case ToolChoice.Auto _ -> {
+        // What the absent field already means.
+      }
+      case ToolChoice.None _ ->
+          throw new IllegalArgumentException(
+              "Bedrock's Converse API cannot forbid tool use for a turn; offer no tools instead");
+      case ToolChoice.Any _ ->
+          builder.toolChoice(
+              software.amazon.awssdk.services.bedrockruntime.model.ToolChoice.builder()
+                  .any(AnyToolChoice.builder().build())
+                  .build());
+      case ToolChoice.Named(ToolName name) ->
+          builder.toolChoice(
+              software.amazon.awssdk.services.bedrockruntime.model.ToolChoice.builder()
+                  .tool(SpecificToolChoice.builder().name(name.value()).build())
+                  .build());
+    }
   }
 
   /** Neighbours with one role become one message, so the wire's alternation holds. */

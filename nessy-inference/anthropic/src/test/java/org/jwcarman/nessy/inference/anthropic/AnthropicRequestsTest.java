@@ -43,6 +43,7 @@ import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -701,6 +702,75 @@ class AnthropicRequestsTest {
       MessageCreateParams params = params(List.of(turn), PromptCaching.ONE_HOUR);
 
       assertThat(params.messages()).hasSize(1);
+    }
+  }
+
+  /**
+   * Whether the model may reach for what it was offered.
+   *
+   * <p>The default says nothing at all, because an absent field already means auto -- a request
+   * written before this existed has to go out unchanged.
+   */
+  @Nested
+  class ChoosingATool {
+
+    private static ToolOffer offer(String name) {
+      return new ToolOffer(
+          new ToolName(name),
+          "looks a thing up",
+          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+    }
+
+    private static MessageCreateParams choosing(ToolChoice choice) {
+      return AnthropicRequests.toParams(
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hello"))),
+              List.of(offer("lookup")),
+              choice,
+              options()),
+          NONE,
+          MAPPER);
+    }
+
+    @Test
+    void by_default_nothing_is_said_about_choosing() {
+      assertThat(choosing(ToolChoice.auto()).toolChoice()).isEmpty();
+    }
+
+    @Test
+    void a_ban_is_sent_as_a_ban() {
+      assertThat(choosing(new ToolChoice.None()).toolChoice()).get().extracting("none").isNotNull();
+    }
+
+    @Test
+    void requiring_some_tool_is_sent_as_any() {
+      assertThat(choosing(new ToolChoice.Any()).toolChoice()).get().extracting("any").isNotNull();
+    }
+
+    @Test
+    void requiring_one_tool_names_it() {
+      assertThat(choosing(new ToolChoice.Named(new ToolName("lookup"))).toolChoice())
+          .get()
+          .extracting("tool")
+          .isNotNull();
+    }
+
+    /** Nothing to choose between, so nothing is said -- and the wire is not sent an empty rule. */
+    @Test
+    void a_request_with_no_tools_says_nothing_about_choosing() {
+      MessageCreateParams params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(open(1, "hello"))),
+                  List.of(),
+                  new ToolChoice.Any(),
+                  options()),
+              NONE,
+              MAPPER);
+
+      assertThat(params.toolChoice()).isEmpty();
     }
   }
 }

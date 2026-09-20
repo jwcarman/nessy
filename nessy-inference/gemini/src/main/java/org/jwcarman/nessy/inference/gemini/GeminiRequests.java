@@ -17,10 +17,14 @@ package org.jwcarman.nessy.inference.gemini;
 
 import com.google.genai.types.Content;
 import com.google.genai.types.FunctionCall;
+import com.google.genai.types.FunctionCallingConfig;
+import com.google.genai.types.FunctionCallingConfigMode;
+import com.google.genai.types.FunctionCallingConfigMode.Known;
 import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.Part;
 import com.google.genai.types.Tool;
+import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -39,6 +43,7 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -107,8 +112,29 @@ public final class GeminiRequests {
                   .functionDeclarations(
                       request.tools().stream().map(offer -> declaration(offer, mapper)).toList())
                   .build()));
+      chooseTool(builder, request.toolChoice());
     }
     return builder.build();
+  }
+
+  /**
+   * How the model is told whether it may reach for what it was offered.
+   *
+   * <p>Said only when it is not the default: {@code AUTO} is what this config already means when it
+   * is absent, so a request written before this existed goes out unchanged.
+   */
+  private static void chooseTool(GenerateContentConfig.Builder builder, ToolChoice choice) {
+    FunctionCallingConfig.Builder calling = FunctionCallingConfig.builder();
+    switch (choice) {
+      case ToolChoice.Auto _ -> {
+        return;
+      }
+      case ToolChoice.None _ -> calling.mode(new FunctionCallingConfigMode(Known.NONE));
+      case ToolChoice.Any _ -> calling.mode(new FunctionCallingConfigMode(Known.ANY));
+      case ToolChoice.Named(ToolName name) ->
+          calling.mode(new FunctionCallingConfigMode(Known.ANY)).allowedFunctionNames(name.value());
+    }
+    builder.toolConfig(ToolConfig.builder().functionCallingConfig(calling.build()).build());
   }
 
   /**

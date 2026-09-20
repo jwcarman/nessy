@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.inference.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -39,11 +40,13 @@ import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
+import software.amazon.awssdk.services.bedrockruntime.model.ToolConfiguration;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolResultStatus;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -334,6 +337,60 @@ class BedrockRequestsTest {
                       new Block.ToolCall("c", "t", "{}"),
                       new Block.Text("b"))))
           .isEqualTo("ab");
+    }
+  }
+
+  /** Whether the model may reach for what it was offered. */
+  @Nested
+  class ChoosingATool {
+
+    private static ToolConfiguration choosing(ToolChoice choice) {
+      return BedrockRequests.toRequest(
+              new InferenceRequest(
+                  SYSTEM,
+                  new InferenceContext(List.of(open(1, "hi")), List.of()),
+                  List.of(offer()),
+                  choice,
+                  new InferenceOptions("us.anthropic.claude-haiku", 1024)),
+              MAPPER)
+          .toolConfig();
+    }
+
+    private static ToolOffer offer() {
+      return new ToolOffer(
+          new ToolName("lookup"),
+          "looks a thing up",
+          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+    }
+
+    @Test
+    void by_default_nothing_is_said_about_choosing() {
+      assertThat(choosing(ToolChoice.auto()).toolChoice()).isNull();
+    }
+
+    @Test
+    void requiring_some_tool_is_sent_as_any() {
+      assertThat(choosing(new ToolChoice.Any()).toolChoice().any()).isNotNull();
+    }
+
+    @Test
+    void requiring_one_tool_names_it() {
+      assertThat(choosing(new ToolChoice.Named(new ToolName("lookup"))).toolChoice().tool().name())
+          .isEqualTo("lookup");
+    }
+
+    /**
+     * Converse has auto, any and a named tool, and no way to say "not this turn". Refused rather
+     * than sent as something weaker: a caller that banned tools and got one anyway is worse off
+     * than one told this backend cannot do it.
+     */
+    @Test
+    void a_ban_is_refused_because_this_wire_cannot_say_it() {
+      ToolChoice ban = new ToolChoice.None();
+
+      assertThatThrownBy(() -> choosing(ban))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("cannot forbid tool use");
     }
   }
 }

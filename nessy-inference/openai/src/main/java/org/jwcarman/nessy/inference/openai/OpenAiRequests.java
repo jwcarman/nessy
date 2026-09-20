@@ -23,9 +23,11 @@ import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionFunctionTool;
 import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionNamedToolChoice;
 import com.openai.models.chat.completions.ChatCompletionStreamOptions;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionTool;
+import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.List;
@@ -36,6 +38,7 @@ import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
@@ -43,6 +46,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -91,6 +95,7 @@ public final class OpenAiRequests {
       builder.maxCompletionTokens(options.maxTokens());
     }
     request.tools().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
+    chooseTool(builder, request.tools(), request.toolChoice());
     return builder.build();
   }
 
@@ -258,6 +263,34 @@ public final class OpenAiRequests {
    * One tool, as this wire describes one. {@code function} is the only kind this API has ever had
    * for a described tool, and it is still required on every entry.
    */
+
+  /**
+   * How the model is told whether it may reach for what it was offered.
+   *
+   * <p>Said only when it is not the default and there is something to choose from: an explicit
+   * "auto" is what the wire already means when the field is absent, and several OpenAI-compatible
+   * servers are happier without it.
+   */
+  private static void chooseTool(
+      ChatCompletionCreateParams.Builder builder, List<ToolOffer> tools, ToolChoice choice) {
+    if (tools.isEmpty()) {
+      return;
+    }
+    switch (choice) {
+      case ToolChoice.Auto _ -> {
+        // What the absent field already means.
+      }
+      case ToolChoice.None _ -> builder.toolChoice(ChatCompletionToolChoiceOption.Auto.NONE);
+      case ToolChoice.Any _ -> builder.toolChoice(ChatCompletionToolChoiceOption.Auto.REQUIRED);
+      case ToolChoice.Named(ToolName name) ->
+          builder.toolChoice(
+              ChatCompletionNamedToolChoice.builder()
+                  .function(
+                      ChatCompletionNamedToolChoice.Function.builder().name(name.value()).build())
+                  .build());
+    }
+  }
+
   private static ChatCompletionTool toFunctionTool(ToolOffer offer, JsonMapper mapper) {
     return ChatCompletionTool.ofFunction(
         ChatCompletionFunctionTool.builder()
