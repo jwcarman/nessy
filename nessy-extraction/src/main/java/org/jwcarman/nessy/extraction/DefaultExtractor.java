@@ -167,16 +167,37 @@ public final class DefaultExtractor implements Extractor {
     return read(type, call, usage);
   }
 
+  /**
+   * The recorded fields as the type, or why they could not be.
+   *
+   * <p>A type's own invariants are enforced here without this class knowing they exist: records are
+   * deserialised through their canonical constructor, so a compact constructor that refuses a
+   * negative amount refuses one a model invented. Measured against Jackson 3 on 2026-09-20 -- the
+   * refusal arrives wrapped, and arrives.
+   *
+   * <p>The reason keeps what the failure said, which is the part worth having: "the fields could
+   * not be read" does not tell anyone that an amount was negative. It is repeated verbatim, so it
+   * may quote what the model produced, and {@link Extraction.Failed} says as much.
+   */
   private <T> Extraction<T> read(Class<T> type, Block.ToolCall call, Usage usage) {
     try {
       return new Extraction.Extracted<>(mapper.readValue(call.arguments(), type), usage);
     } catch (RuntimeException e) {
-      // The schema was what the model was shown, so arguments that will not read as the type are
-      // the model's answer being wrong rather than the caller's type being wrong. Reported as a
-      // failure, with what it said kept out of the message: it is untrusted text.
       return new Extraction.Failed<>(
-          "the recorded fields could not be read as " + type.getSimpleName(), usage);
+          "the recorded fields could not be read as %s: %s"
+              .formatted(type.getSimpleName(), rootOf(e).getMessage()),
+          usage);
     }
+  }
+
+  /**
+   * The failure under the wrapping.
+   *
+   * <p>Jackson reports a refused constructor as a {@code ValueInstantiationException} with the
+   * type's own complaint beneath it, and the complaint is the sentence somebody wants to read.
+   */
+  private static Throwable rootOf(Throwable thrown) {
+    return thrown.getCause() == null ? thrown : rootOf(thrown.getCause());
   }
 
   private static String said(List<Block.AnswerContent> blocks) {

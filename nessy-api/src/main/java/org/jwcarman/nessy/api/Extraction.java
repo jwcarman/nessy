@@ -82,6 +82,10 @@ public sealed interface Extraction<T> {
    *
    * <p>Says why in a sentence rather than carrying the provider's own failure type: what went wrong
    * is worth reading, and the vocabulary for it belongs below this.
+   *
+   * <p><b>The reason may quote what the model produced.</b> A type refusing its own invariant says
+   * which value it refused, and that value came from the document. Treat it as the untrusted text
+   * it is: worth logging, not worth rendering anywhere it could be read as markup.
    */
   record Failed<T>(String reason, Usage usage) implements Extraction<T> {
     public Failed {

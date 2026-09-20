@@ -160,19 +160,23 @@ class DefaultExtractorTest {
   }
 
   /**
-   * The schema is what the model was shown, so arguments that will not read as the type are its
-   * answer being wrong. Reported without quoting them back: they are untrusted text.
+   * A type's own invariants are enforced by deserialising through its constructor, and what it
+   * complained about is the part worth keeping.
+   *
+   * <p>The reason repeats that complaint verbatim, so it can quote the model. That is the trade:
+   * "could not be read" tells nobody that an amount was negative.
    */
   @Test
-  void arguments_that_will_not_read_as_the_type_are_a_failure_that_does_not_quote_them() {
+  void a_failure_says_what_the_type_complained_about() {
     Extraction<Inquiry> extraction =
         extracting(recorded("{\"invoiceNumber\":{\"not\":\"a string\"}}"))
             .extract(Inquiry.class, "a document");
 
     assertThat(extraction).isInstanceOf(Extraction.Failed.class);
     assertThat(((Extraction.Failed<Inquiry>) extraction).reason())
+        .as("names the shape that was asked for, and why it could not be made")
         .contains("Inquiry")
-        .doesNotContain("not a string");
+        .isNotBlank();
   }
 
   /** Actions cannot exist without a call, so there is never a recording-free one to handle. */
@@ -233,5 +237,30 @@ class DefaultExtractorTest {
     extractor.extract(Inquiry.class, "a document");
 
     assertThat(narrator.get()).isNotNull();
+  }
+
+  /** A type that refuses its own bad values, and a model that produced one. */
+  record Money(java.math.BigDecimal amount) {
+    Money {
+      if (amount.signum() <= 0) {
+        throw new IllegalArgumentException("amount must be positive, was " + amount);
+      }
+    }
+  }
+
+  /**
+   * A record is deserialised through its canonical constructor, so a compact constructor is the
+   * validation. Nothing here knows the invariant exists; the type enforces it and a model that
+   * invents a negative amount produces a failure rather than a value nobody checked.
+   */
+  @Test
+  void a_type_that_refuses_a_value_refuses_one_a_model_invented() {
+    Extraction<Money> extraction =
+        extracting(recorded("{\"amount\":-5}")).extract(Money.class, "a document");
+
+    assertThat(extraction).isInstanceOf(Extraction.Failed.class);
+    assertThat(((Extraction.Failed<Money>) extraction).reason())
+        .as("the type's own complaint is what a caller needs to read")
+        .contains("amount must be positive");
   }
 }
