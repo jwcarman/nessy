@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.Embedder;
 import org.jwcarman.nessy.api.ExtractorFactory;
 import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.Nessy;
-import org.jwcarman.nessy.extraction.DefaultExtractorFactory;
+import org.jwcarman.nessy.engine.extraction.DefaultExtractorFactory;
 
 /**
  * A {@link Nessy} over one database and one provider.

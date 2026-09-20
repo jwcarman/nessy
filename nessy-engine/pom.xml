@@ -61,13 +61,13 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- Nessy hands out extractors as well as harnesses, and a quarantined read is a call to a
-         provider with no database behind it: the dependency goes this way so that using one does
-         not drag an engine along. -->
+    <!-- The extraction live test only: a real provider, to find out whether a model records
+         what it is shown. Nothing in the engine needs one; an application brings its own. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-extraction</artifactId>
+      <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
