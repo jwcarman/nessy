@@ -154,4 +154,36 @@ class ObservedEmbedderTest {
     assertThat(embedder.embedDocument("anything").dimension()).isEqualTo(3);
     assertThat(embedder.model()).isEqualTo("text-embedding-3-small");
   }
+
+  /**
+   * The two halves of retrieval are told apart in the report.
+   *
+   * <p>They are different calls with different latency: a document is embedded off the turn, where
+   * nobody is waiting, and a query while somebody is. One number over both hides which is slow.
+   */
+  @Test
+  void a_document_and_a_query_are_reported_as_what_they_are() {
+    Embedder embedder = ObservedEmbedder.wrap(answering(), registry);
+
+    embedder.embedDocument("a statement waiting to be found");
+    embedder.embedQuery("what is it?");
+
+    assertThat(stopped)
+        .hasSize(2)
+        .extracting(c -> c.getLowCardinalityKeyValue("gen_ai.embeddings.input_type").getValue())
+        .containsExactly("document", "query");
+  }
+
+  /** A batch of documents is still documents. */
+  @Test
+  void a_batch_is_reported_as_documents() {
+    Embedder embedder = ObservedEmbedder.wrap(answering(), registry);
+
+    embedder.embedDocuments(java.util.List.of("one", "two"));
+
+    assertThat(stopped)
+        .singleElement()
+        .extracting(c -> c.getLowCardinalityKeyValue("gen_ai.embeddings.input_type").getValue())
+        .isEqualTo("document");
+  }
 }

@@ -40,6 +40,17 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
   private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String ERROR_TYPE = "error.type";
 
+  /**
+   * Which half of retrieval this call was.
+   *
+   * <p>Nessy's own key. Semconv has no word for it, and the distinction is real: the two are
+   * different calls to the model with different latency that anybody reading a trace wants apart.
+   */
+  private static final String INPUT_TYPE = "gen_ai.embeddings.input_type";
+
+  private static final String DOCUMENT = "document";
+  private static final String QUERY = "query";
+
   /** Whose call it is, read off the span this one opens under, so it reads the same as theirs. */
   private static final List<String> LOW_CARDINALITY_IDENTITY = List.of("gen_ai.agent.name");
 
@@ -93,12 +104,12 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
 
   @Override
   public Embedding embedDocument(String text) {
-    return observe(() -> delegate.embedDocument(text));
+    return observe(DOCUMENT, () -> delegate.embedDocument(text));
   }
 
   @Override
   public List<Embedding> embedDocuments(List<String> texts) {
-    return observe(() -> delegate.embedDocuments(texts));
+    return observe(DOCUMENT, () -> delegate.embedDocuments(texts));
   }
 
   /**
@@ -110,10 +121,10 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
    */
   @Override
   public Embedding embedQuery(String query) {
-    return observe(() -> delegate.embedQuery(query));
+    return observe(QUERY, () -> delegate.embedQuery(query));
   }
 
-  private <T> T observe(Supplier<T> call) {
+  private <T> T observe(String role, Supplier<T> call) {
     // Asked per call, not once: a registry is no-op until a handler is registered, which may happen
     // after this wrapper is built.
     if (observations.isNoop()) {
@@ -130,6 +141,10 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
             // fixed: an embedding has no finish reason, and says so rather than leaving it off.
             .lowCardinalityKeyValue("gen_ai.response.finish_reasons", "none")
             .lowCardinalityKeyValue(ERROR_TYPE, "none")
+            // Two values, so a metric can be split by it. Worth splitting: a document is embedded
+            // off the turn, where nobody is waiting, and a query is embedded while somebody is --
+            // one number over both hides which of them is slow.
+            .lowCardinalityKeyValue(INPUT_TYPE, role)
             .highCardinalityKeyValue(
                 "gen_ai.embeddings.dimension.count", String.valueOf(delegate.dimension()));
     inheritIdentity(observation);
