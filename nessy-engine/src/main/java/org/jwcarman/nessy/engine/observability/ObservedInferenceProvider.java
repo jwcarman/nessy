@@ -21,11 +21,11 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.spi.inference.Failure;
 import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.Usage;
 import org.jwcarman.nessy.spi.narration.AgentNarrator;
 
 /**

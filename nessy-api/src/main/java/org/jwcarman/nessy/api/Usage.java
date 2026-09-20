@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.inference;
+package org.jwcarman.nessy.api;
 
 /**
  * What a call cost, as the vendor counted it: tokens in, tokens out.

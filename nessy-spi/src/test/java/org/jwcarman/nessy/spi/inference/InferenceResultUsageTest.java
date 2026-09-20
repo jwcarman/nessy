@@ -16,22 +16,14 @@
 package org.jwcarman.nessy.spi.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 
-class UsageTest {
-
-  @Test
-  void unknown_is_not_zero_and_a_half_known_count_is_refused() {
-    assertThat(Usage.unknown().known()).isFalse();
-    assertThat(Usage.unknown().totalTokens()).isEqualTo(-1);
-    assertThat(new Usage(0, 0).known()).isTrue();
-    assertThat(new Usage(3, 4).totalTokens()).isEqualTo(7);
-    assertThatThrownBy(() -> new Usage(3, -1)).isInstanceOf(IllegalArgumentException.class);
-  }
+/** What a call cost, on whichever way it ended. */
+class InferenceResultUsageTest {
 
   @Test
   void every_result_carries_its_cost_and_can_be_given_one() {

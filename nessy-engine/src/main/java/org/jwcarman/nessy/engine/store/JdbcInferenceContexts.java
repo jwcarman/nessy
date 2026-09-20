@@ -27,10 +27,10 @@ import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.engine.inference.InferenceRecorder;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.Usage;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**

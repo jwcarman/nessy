@@ -21,8 +21,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
-import org.jwcarman.nessy.spi.inference.Usage;
 
 /**
  * Records semconv's {@code gen_ai.client.token.usage} histogram from the {@link Usage} the engine
