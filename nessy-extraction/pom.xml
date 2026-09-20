@@ -52,19 +52,13 @@
       <scope>test</scope>
     </dependency>
     <!-- The live test only: a real provider and a real schema generator, to find out whether a
-         model actually records what it is shown. Neither is needed to extract; an application
-         brings its own of each. -->
+         model actually records what it is shown. The schema generator comes with the API. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-engine</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
+
   </dependencies>
 </project>

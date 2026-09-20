@@ -61,6 +61,14 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Nessy hands out extractors as well as harnesses, and a quarantined read is a call to a
+         provider with no database behind it: the dependency goes this way so that using one does
+         not drag an engine along. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-extraction</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
@@ -128,16 +136,6 @@
     <dependency>
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.github.victools</groupId>
-      <artifactId>jsonschema-module-jakarta-validation</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>jakarta.validation</groupId>
-      <artifactId>jakarta.validation-api</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

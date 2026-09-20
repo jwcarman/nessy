@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.HarnessFactory;
+import org.jwcarman.nessy.api.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -49,7 +50,6 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceRecorder;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.AgentHistoryStore;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.AgentStateStore;
@@ -122,10 +122,21 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * caller to assemble and nothing for two callers to assemble differently.
    */
   public DefaultHarnessFactory(Consumer<EngineConfig> customizer) {
+    this(configured(customizer));
+  }
+
+  private static EngineConfig configured(Consumer<EngineConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     EngineConfig config = new EngineConfig();
     customizer.accept(config);
+    return config;
+  }
 
+  /**
+   * For a caller that already holds the settings, which {@link DefaultNessy} does: it takes the
+   * model at its own door and hands the engine a config it has already written on.
+   */
+  DefaultHarnessFactory(EngineConfig config) {
     DataSource dataSource = config.requiredDataSource();
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);

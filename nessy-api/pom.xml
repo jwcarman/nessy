@@ -32,6 +32,18 @@
   <description>The vocabulary everyone shares: messages, the tool and authorization/risk grammar, turn events, and the other types every Nessy module speaks (§10.10).</description>
 
   <dependencies>
+    <!-- The schema generator's test only: proof that an application can register modules of its
+         own and have their constraints reach the schema a model is shown. -->
+    <dependency>
+      <groupId>com.github.victools</groupId>
+      <artifactId>jsonschema-module-jakarta-validation</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.validation</groupId>
+      <artifactId>jakarta.validation-api</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>

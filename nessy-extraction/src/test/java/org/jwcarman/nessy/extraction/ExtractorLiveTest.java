@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Extraction;
 import org.jwcarman.nessy.api.Extractor;
 import org.jwcarman.nessy.api.ExtractorFactory;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.api.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
 import tools.jackson.databind.json.JsonMapper;
 
