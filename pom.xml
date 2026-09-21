@@ -88,7 +88,7 @@
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
-    <google-genai.version>1.66.0</google-genai.version>
+    <google-genai.version>1.72.0</google-genai.version>
     <!-- AWS SDK for Java v2 (bedrockruntime, Converse/ConverseStream). Managed via the SDK's
          own BOM (like micrometer/testcontainers below) rather than a single artifact version,
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
