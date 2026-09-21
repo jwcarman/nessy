@@ -84,7 +84,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
     <anthropic.version>2.62.0</anthropic.version>
-    <openai.version>4.50.0</openai.version>
+    <openai.version>4.65.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
