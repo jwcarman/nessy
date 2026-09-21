@@ -202,7 +202,7 @@
     <!-- H2, in-memory, for tests only: "in memory" is a DataSource choice rather than a second
          store implementation, so there is exactly one store per purpose and no fake that can lie
          about what SQL does. -->
-    <h2.version>2.3.232</h2.version>
+    <h2.version>2.5.250</h2.version>
 
     <!-- Test groups the default build skips. Override to empty to run them:
          ./mvnw test -Dnessy.excludedGroups= -->
