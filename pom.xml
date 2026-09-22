@@ -101,6 +101,18 @@
          property so each artifact resolves to a version that actually
          exists. -->
     <jackson-annotations.version>2.22</jackson-annotations.version>
+    <!-- Jackson 2 arrives transitively (the AWS SDK, the MCP jackson2 backend) while this repo
+         codes against Jackson 3. Both lines therefore need pinning, and the 2 line was resolving
+         at two different versions in different modules. -->
+    <jackson2.version>2.21.5</jackson2.version>
+    <!-- Transitive through the AWS SDK's async HTTP client. Pinned per artifact rather than by
+         importing netty-bom, for the reason recorded above on spring-boot-dependencies. -->
+    <netty.version>4.2.17.Final</netty.version>
+    <!-- Transitive through the AWS SDK's apache client. -->
+    <httpcore5.version>5.4.3</httpcore5.version>
+    <httpclient5.version>5.6.3</httpclient5.version>
+    <!-- Transitive; Boot routes log4j to slf4j. -->
+    <log4j.version>2.25.5</log4j.version>
     <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
          TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
          Without them a TypeRef for a generic container cannot be built at runtime: the
@@ -444,6 +456,126 @@
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-annotations</artifactId>
         <version>${jackson-annotations.version}</version>
+      </dependency>
+
+      <!-- Security pins for artifacts nothing here declares directly. Dependabot cannot raise
+           these: it reported dependency_not_found for every one, because a transitive Maven
+           dependency has no declaration to edit and Maven has no lockfile. So they are pinned
+           here, per artifact, in the style this POM already uses.
+
+           jackson-core on both lines, because neither was managed and the 2 line was resolving
+           at 2.21.2 in some modules and 2.21.5 in others. -->
+      <dependency>
+        <groupId>tools.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson2.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson2.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-buffer</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-base</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-compression</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-http</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-http2</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-marshalling</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-codec-protobuf</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-common</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-handler</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-resolver</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport-classes-epoll</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport-native-unix-common</artifactId>
+        <version>${netty.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5</artifactId>
+        <version>${httpcore5.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5-h2</artifactId>
+        <version>${httpcore5.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.client5</groupId>
+        <artifactId>httpclient5</artifactId>
+        <version>${httpclient5.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-api</artifactId>
+        <version>${log4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-to-slf4j</artifactId>
+        <version>${log4j.version}</version>
       </dependency>
       <!-- The whole codec line at one version, rather than the two artifacts this repo happens
            to name. Substrate and Odyssey both bring codec-core in transitively at the version
