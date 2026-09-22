@@ -61,9 +61,13 @@ jobs:
       # One build, analysed in place — the same job shape substrate, codec, odyssey,
       # continuum and accent use. Dependabot-triggered workflows cannot see repository
       # secrets, so the SonarCloud goal only runs when a token is present.
+      #
+      # And the build WAITS on the gate. Without that, this job goes green while the gate goes
+      # red and the only way to find out is to visit the website -- which is how this project
+      # sat at reliability D on an assertion that could never fail, uploaded and read by nobody.
       run: |
         if [ -n "$SONAR_TOKEN" ]; then
-          mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live,vendor
+          mvn -Pci -B verify sonar:sonar -Dsonar.qualitygate.wait=true -Dnessy.excludedGroups=live
         else
-          mvn -Pci -B verify -Dnessy.excludedGroups=live,vendor
+          mvn -Pci -B verify -Dnessy.excludedGroups=live
         fi
