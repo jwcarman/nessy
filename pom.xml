@@ -83,18 +83,18 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
-    <anthropic.version>2.62.0</anthropic.version>
-    <openai.version>4.50.0</openai.version>
+    <anthropic.version>2.64.0</anthropic.version>
+    <openai.version>4.65.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
-    <google-genai.version>1.66.0</google-genai.version>
+    <google-genai.version>1.72.0</google-genai.version>
     <!-- AWS SDK for Java v2 (bedrockruntime, Converse/ConverseStream). Managed via the SDK's
          own BOM (like micrometer/testcontainers below) rather than a single artifact version,
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
-    <awssdk.version>2.54.17</awssdk.version>
+    <awssdk.version>2.55.1</awssdk.version>
     <jackson.version>3.1.5</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
