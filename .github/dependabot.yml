@@ -18,9 +18,35 @@ updates:
     reviewers:
       - "jwcarman"
     groups:
-      jackson:
+      # The model SDKs move together and break in the same place: one adapter each, all covered
+      # by tests that use the real SDK types against a fake transport. Grouped so a week's
+      # vendor churn is one review rather than four.
+      model-providers:
         patterns:
-          - "com.fasterxml.jackson*"
+          - "com.openai*"
+          - "com.anthropic*"
+          - "com.google.genai*"
+          - "software.amazon.awssdk*"
+        update-types:
+          - "minor"
+          - "patch"
+      spring:
+        patterns:
+          - "org.springframework*"
+        update-types:
+          - "minor"
+          - "patch"
+      serialization:
+        patterns:
+          - "tools.jackson*"
+          - "com.fasterxml*"
+        update-types:
+          - "minor"
+          - "patch"
+      observability:
+        patterns:
+          - "io.micrometer*"
+          - "io.opentelemetry*"
         update-types:
           - "minor"
           - "patch"
@@ -28,12 +54,19 @@ updates:
         patterns:
           - "org.junit*"
           - "org.assertj*"
+          - "org.mockito*"
+          - "org.awaitility*"
+          - "org.testcontainers*"
         update-types:
           - "minor"
           - "patch"
       build-plugins:
         patterns:
           - "org.apache.maven.plugins*"
+          - "org.jacoco*"
+          - "org.sonarsource*"
+          - "com.diffplug.spotless*"
+          - "com.mycila*"
         update-types:
           - "minor"
           - "patch"

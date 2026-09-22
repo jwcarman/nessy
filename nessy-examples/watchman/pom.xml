@@ -82,6 +82,29 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <!-- Ahead of what Boot manages (11.0.24), which carries three criticals: a FORM auth
+           authorization flaw, a DIGEST capture-replay bypass, and an access-control flaw.
+           Declared rather than set through the tomcat.version property, because this module
+           IMPORTS the Boot BOM rather than inheriting spring-boot-starter-parent, and an imported
+           BOM resolves its own properties, so the property would be silently inert. First
+           declaration wins in dependencyManagement, so these sit above the import. Remove when
+           Boot catches up. -->
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-core</artifactId>
+        <version>11.0.25</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-el</artifactId>
+        <version>11.0.25</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-websocket</artifactId>
+        <version>11.0.25</version>
+      </dependency>
+
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
