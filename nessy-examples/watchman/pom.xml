@@ -180,6 +180,15 @@
       <version>${htmx.version}</version>
     </dependency>
 
+    <!-- So the page can ask for /webjars/htmx.org/dist/htmx.min.js without naming a version.
+         The version used to be written into the template, which meant a dependency bump changed
+         the jar and not the URL: the script 404s, htmx never loads, the page quietly stops
+         working, and no test notices because none of them opens a browser. -->
+    <dependency>
+      <groupId>org.webjars</groupId>
+      <artifactId>webjars-locator-lite</artifactId>
+    </dependency>
+
     <!-- Telemetry. Traces.java codes against MICROMETER (io.micrometer.tracing.Tracer and
          Propagator), not OpenTelemetry: OTel is the implementation underneath via
          micrometer-tracing-bridge-otel, which the Boot starter brings at runtime. The main
