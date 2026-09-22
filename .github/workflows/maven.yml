@@ -1,6 +1,11 @@
 name: CI with Maven
 
 on:
+  # Keeps the SonarCloud token alive. A token is "never expires, if used", so a project that goes
+  # quiet for a month loses it and every build after that fails on a credential nobody revoked.
+  # Twice a month leaves plenty of margin against that.
+  schedule:
+    - cron: '0 9 1,15 * *'
   push:
     branches: [ "main" ]
   pull_request:
