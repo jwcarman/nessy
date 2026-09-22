@@ -322,8 +322,16 @@ stays the source of truth.
 - **The diff between consecutive modules is the teaching material.** It should
   be small enough to read in the article and large enough to matter. If a
   step's diff is unreadably large, a lesson is missing between them.
-- **No lesson introduces a library feature it does not need.** The path earns
-  each capability by hitting the wall that requires it.
+- **No lesson introduces a GOVERNANCE feature it does not need.** The path earns
+  each protection by hitting the wall that requires it: Loch arrives at lesson
+  3 because confidentiality demands it, labels grow an integrity axis at lesson
+  4 because the bridge demands it, OPA arrives at lesson 5.
+
+  Nessy is the exception, and deliberately: it is present from lesson 1 as the
+  agent runtime, not as a protection. The series is about governing agents
+  built this way, so an agent framework is the premise rather than a step in
+  the argument. Lesson 1 is naive in what it governs, not in what it is built
+  with -- it has a real harness, real tools, and no governance whatsoever.
 
 ## Repository layout
 
