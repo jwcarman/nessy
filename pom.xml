@@ -225,14 +225,14 @@
 
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
-    <spotless.version>3.10.0</spotless.version>
-    <license.plugin.version>5.1.1</license.plugin.version>
+    <spotless.version>3.10.2</spotless.version>
+    <license.plugin.version>5.1.2</license.plugin.version>
     <source.plugin.version>3.4.0</source.plugin.version>
     <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
     <gpg.plugin.version>3.2.8</gpg.plugin.version>
     <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
     <jacoco.version>0.8.15</jacoco.version>
-    <sonar.plugin.version>5.7.0.6970</sonar.plugin.version>
+    <sonar.plugin.version>5.8.0.7211</sonar.plugin.version>
     <exec.plugin.version>3.6.3</exec.plugin.version>
     <jar.plugin.version>3.5.1</jar.plugin.version>
     <!-- Populated by the jacoco-maven-plugin prepare-agent execution in the
