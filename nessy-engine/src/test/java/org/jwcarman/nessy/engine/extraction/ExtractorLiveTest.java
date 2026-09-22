@@ -89,9 +89,9 @@ class ExtractorLiveTest {
                       .build(),
                   HttpResponse.BodyHandlers.discarding());
       return response.statusCode() == 200;
-    } catch (IOException e) {
+    } catch (IOException _) {
       return false;
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
       return false;
     }
@@ -155,7 +155,7 @@ class ExtractorLiveTest {
         .isInstanceOfAny(
             Extraction.Extracted.class, Extraction.Refused.class, Extraction.Talked.class);
 
-    if (extraction instanceof Extraction.Extracted<BillingInquiry>(var inquiry, var ignored)) {
+    if (extraction instanceof Extraction.Extracted<BillingInquiry>(var inquiry, var _)) {
       assertThat(inquiry.reason()).isNotNull();
     }
   }

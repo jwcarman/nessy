@@ -33,6 +33,8 @@ import org.jwcarman.nessy.api.Usage;
  */
 public sealed interface Extraction<T> {
 
+  String USAGE_REQUIRED = "usage must not be null";
+
   /** What the call cost, whatever it ended as. */
   Usage usage();
 
@@ -46,7 +48,7 @@ public sealed interface Extraction<T> {
   record Extracted<T>(T value, Usage usage) implements Extraction<T> {
     public Extracted {
       Objects.requireNonNull(value, "value must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_REQUIRED);
     }
   }
 
@@ -59,7 +61,7 @@ public sealed interface Extraction<T> {
   record Refused<T>(String category, Usage usage) implements Extraction<T> {
     public Refused {
       Objects.requireNonNull(category, "category must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_REQUIRED);
     }
   }
 
@@ -74,7 +76,7 @@ public sealed interface Extraction<T> {
   record Talked<T>(String said, Usage usage) implements Extraction<T> {
     public Talked {
       Objects.requireNonNull(said, "said must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_REQUIRED);
     }
   }
 
@@ -91,7 +93,7 @@ public sealed interface Extraction<T> {
   record Failed<T>(String reason, Usage usage) implements Extraction<T> {
     public Failed {
       Objects.requireNonNull(reason, "reason must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
+      Objects.requireNonNull(usage, USAGE_REQUIRED);
     }
   }
 }

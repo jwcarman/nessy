@@ -221,12 +221,6 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   }
 
   /**
-   * @param asking whether this reply is a request for actions, which decides what its prose is:
-   *     text arriving beside calls is commentary, and text arriving alone is an answer. Both are
-   *     the same field on the wire, so only the shape of the reply can tell them apart.
-   */
-
-  /**
    * What came back, by kind and not by content.
    *
    * <p>"Empty answer" on its own cannot be acted on: a reply with no blocks at all and one whose
@@ -243,12 +237,15 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
         .collect(Collectors.joining(","));
   }
 
+  /** Anthropic's name for the kind, and for the field inside a block of that kind. */
+  private static final String THINKING = "thinking";
+
   private static String shapeOf(ContentBlock block) {
     if (block.isText()) {
       return block.text().orElseThrow().text().isBlank() ? "text(blank)" : "text";
     }
     if (block.isThinking()) {
-      return "thinking";
+      return THINKING;
     }
     if (block.isRedactedThinking()) {
       return "redacted_thinking";
@@ -259,6 +256,13 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     return "other";
   }
 
+  /**
+   * One wire block, as ours.
+   *
+   * @param asking whether this reply is a request for actions, which decides what its prose is:
+   *     text arriving beside calls is commentary, and text arriving alone is an answer. Both are
+   *     the same field on the wire, so only the shape of the reply can tell them apart.
+   */
   private Optional<Block> toBlock(ContentBlock block, boolean asking) {
     if (block.isText()) {
       String text = block.text().orElseThrow().text();
@@ -278,8 +282,8 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
           provider(
               Map.of(
                   "type",
-                  "thinking",
-                  "thinking",
+                  THINKING,
+                  THINKING,
                   thinking.thinking(),
                   "signature",
                   thinking.signature())));

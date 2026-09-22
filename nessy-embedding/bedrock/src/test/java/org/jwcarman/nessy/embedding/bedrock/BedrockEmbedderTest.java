@@ -43,11 +43,6 @@ import tools.jackson.databind.json.JsonMapper;
 @DisplayName("The Bedrock embedder")
 class BedrockEmbedderTest {
 
-  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
-  private static Embedder embedderOver(BedrockEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
-  }
-
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   /** A client that answers each request body with a reply body, and remembers what it was sent. */

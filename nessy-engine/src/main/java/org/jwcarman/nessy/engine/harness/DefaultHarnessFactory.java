@@ -68,7 +68,6 @@ import org.jwcarman.nessy.engine.trace.Traces;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -86,7 +85,6 @@ import tools.jackson.databind.json.JsonMapper;
  * own codec, its own model, its own dispatcher, its own schedule, and its own rows. There is no
  * registry here holding the harnesses this made, and nothing that iterates all of them.
  */
-@Component
 public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
 
   // The engine's own decisions, made once. A row is encoded by Jackson, a tool's arguments are

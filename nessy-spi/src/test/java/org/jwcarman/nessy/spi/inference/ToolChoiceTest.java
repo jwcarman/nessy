@@ -72,11 +72,19 @@ class ToolChoiceTest {
         .hasMessageContaining("name");
   }
 
-  /** The four are values, so two of the same choice are the same choice. */
+  /**
+   * The four are values, so two of the same choice are the same choice.
+   *
+   * <p>Same-type comparisons only. Asserting that an {@code Any} differs from a {@code None} tests
+   * the language rather than this file -- two different record classes are never equal, so it would
+   * pass however these were written. What is worth pinning is that each stays a value: a record
+   * turned into a class with identity equality fails these and would pass that.
+   */
   @Test
   void the_choices_are_compared_by_what_they_say() {
     assertThat(new ToolChoice.Auto()).isEqualTo(ToolChoice.auto());
-    assertThat(new ToolChoice.Any()).isNotEqualTo(new ToolChoice.None());
+    assertThat(new ToolChoice.Any()).isEqualTo(new ToolChoice.Any());
+    assertThat(new ToolChoice.None()).isEqualTo(new ToolChoice.None());
     assertThat(new ToolChoice.Named(new ToolName("a")))
         .isNotEqualTo(new ToolChoice.Named(new ToolName("b")));
   }

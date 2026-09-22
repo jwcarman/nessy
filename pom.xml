@@ -265,7 +265,7 @@
 
     <!-- Accepted findings — review-ruled, recorded in docs/superpowers ledgers.
          Config documents them; code never suppresses. -->
-    <sonar.issue.ignore.multicriteria>e1,e2,e3,e4,e5,e6,e7</sonar.issue.ignore.multicriteria>
+    <sonar.issue.ignore.multicriteria>e1,e2,e3,e4,e5,e6,e7,e8</sonar.issue.ignore.multicriteria>
 
     <!-- e1: engine wiring. The handlers, the dispatcher, the harness and the tool binding are
          built once, by the factory, from their collaborators; a parameter object would name a
@@ -281,6 +281,11 @@
     <sonar.issue.ignore.multicriteria.e3.resourceKey>**/Decision.java</sonar.issue.ignore.multicriteria.e3.resourceKey>
     <sonar.issue.ignore.multicriteria.e4.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e4.ruleKey>
     <sonar.issue.ignore.multicriteria.e4.resourceKey>**/Pull.java</sonar.issue.ignore.multicriteria.e4.resourceKey>
+
+    <!-- Same as the three above: Extraction<T> names the shape a document was read for, and only
+         the Extracted arm carries one. A refusal and a fault have no value to be typed. -->
+    <sonar.issue.ignore.multicriteria.e8.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e8.ruleKey>
+    <sonar.issue.ignore.multicriteria.e8.resourceKey>**/Extraction.java</sonar.issue.ignore.multicriteria.e8.resourceKey>
 
     <!-- e5: the console writes to the console. -->
     <sonar.issue.ignore.multicriteria.e5.ruleKey>java:S106</sonar.issue.ignore.multicriteria.e5.ruleKey>
