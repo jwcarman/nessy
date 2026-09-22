@@ -133,14 +133,25 @@ class GiveUpTest {
 
     harness.observe(agentId, "will not work");
 
+    // Both inside the wait, as every other test of this shape has them. Retiring the effect is
+    // its own call rather than part of the write that ends the turn, so reaching Idle does not
+    // mean the row has gone yet -- asserting it outside the wait is a race that a slower machine
+    // loses, and CI is a slower machine.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(
+            () -> {
+              assertThat(agentStateOf(agentId))
+                  .as("the turn ended, so the agent is not left waiting on a call")
+                  .isEqualTo("Idle");
+              assertThat(outstandingEffects(agentId))
+                  .as("no row left holding an obligation nobody will discharge")
+                  .isZero();
+            });
 
     assertThat(model.calls())
         .as("three attempts, then the turn ends -- not one, and not forever")
         .isEqualTo(3);
-    assertThat(outstandingEffects(agentId)).isZero();
   }
 
   private String agentStateOf(AgentId agentId) {
