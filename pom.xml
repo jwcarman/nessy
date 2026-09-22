@@ -113,7 +113,7 @@
     <httpclient5.version>5.6.3</httpclient5.version>
     <!-- Transitive; Boot routes log4j to slf4j. -->
     <log4j.version>2.25.5</log4j.version>
-    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.9.0 is pinned for
+    <!-- org.jwcarman.codec: Central releases only, no snapshots. 0.10.0 is pinned for
          TypeRef.parameterized and its typed companions (listOf, setOf, mapOf, optionalOf).
          Without them a TypeRef for a generic container cannot be built at runtime: the
          anonymous-subclass capture throws on a type variable — deliberately, rather than
@@ -129,14 +129,18 @@
          storage codec on a different major than the types it serialises is a seam nobody wants to
          debug. Annotations are unaffected either way: Jackson 3 left them on the
          com.fasterxml.jackson.annotation coordinates. -->
-    <codec.version>0.9.0</codec.version>
-    <!-- Odyssey: clustered, resumable Server-Sent Events over a Substrate journal. 0.10.0 is the
-         release built against substrate 0.7.0, and both are built against codec 0.1.0, whose
-         CodecFactory/Codec/TypeRef the 0.9.0 line above is a strict superset of, so the codec
-         this repo pins serves them too (checked signature by signature). -->
+    <codec.version>0.10.0</codec.version>
+    <!-- Odyssey: clustered, resumable Server-Sent Events over a Substrate journal.
+
+         Substrate 0.10.0 is the first release built against codec 0.10.0, and it has to be: codec
+         0.10.0 dropped the `spi` package segment, so substrate 0.9.0's bytecode still names
+         org/jwcarman/codec/spi/CodecFactory, which no longer exists. Measured before the bump,
+         73 such references in substrate-core and 12 in substrate-api, and the failure is a
+         NoClassDefFoundError at class-load rather than anything a compiler would catch. The two
+         versions therefore move together; neither can lead. -->
     <odyssey.version>0.10.0</odyssey.version>
     <jmustache.version>1.16</jmustache.version>
-    <substrate.version>0.9.0</substrate.version>
+    <substrate.version>0.10.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
          internally never reaches an adapter. -->

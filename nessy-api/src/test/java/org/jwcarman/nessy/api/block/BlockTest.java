@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.Codec;
 import tools.jackson.databind.json.JsonMapper;
 
 /**

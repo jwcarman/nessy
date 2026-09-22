@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.spring.boot.narration;
 
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.CodecFactory;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.substrate.core.transform.PayloadTransformer;
 import org.springframework.beans.factory.ObjectProvider;

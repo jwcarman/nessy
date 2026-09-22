@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.function.Consumer;
-import org.jwcarman.codec.spi.TypeRef;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.tool.Replies;
 
 /**

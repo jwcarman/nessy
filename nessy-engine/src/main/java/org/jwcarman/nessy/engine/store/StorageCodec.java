@@ -16,9 +16,9 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.util.Objects;
-import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.codec.spi.CodecFactory;
-import org.jwcarman.codec.spi.TypeRef;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
 
 /**
  * What happens to every byte the engine stores, after Jackson has written it and before Jackson

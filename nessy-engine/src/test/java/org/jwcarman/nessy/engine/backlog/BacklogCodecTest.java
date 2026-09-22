@@ -21,9 +21,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.codec.spi.TypeRef;
 import org.jwcarman.nessy.api.BacklogItem;
 import tools.jackson.databind.json.JsonMapper;
 

@@ -18,7 +18,7 @@ package org.jwcarman.nessy.engine.harness;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import javax.sql.DataSource;
-import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.schema.VictoolsInputSchemaGenerator;

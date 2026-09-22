@@ -27,8 +27,8 @@ import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.Codec;
 import org.jwcarman.nessy.api.AgentType;
 
 class JdbcIntentStoreTest {

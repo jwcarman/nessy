@@ -19,10 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.codec.spi.Codec;
-import org.jwcarman.codec.spi.CodecFactory;
-import org.jwcarman.codec.spi.TypeRef;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.Seq;

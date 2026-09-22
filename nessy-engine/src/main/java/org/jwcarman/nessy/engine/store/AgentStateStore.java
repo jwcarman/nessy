@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.time.Instant;
-import org.jwcarman.codec.spi.Codec;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
