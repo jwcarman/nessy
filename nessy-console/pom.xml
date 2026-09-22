@@ -55,11 +55,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
-      <!-- No Boot BOM import here (deliberately, per spring-boot.version's comment in the root
-           POM): a per-module BOM import re-versions every artifact Boot has its own opinion about,
-           even declared last. Pinning the one Boot artifact this module actually uses, directly,
-           keeps that blast radius to this dependency alone. -->
-      <version>${spring-boot.version}</version>
     </dependency>
     <!-- A real run, in a test: an adapter to find, a database to keep the agent in. -->
     <dependency>

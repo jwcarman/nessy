@@ -93,11 +93,9 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
-      <!-- No Boot BOM import here: see nessy-console/pom.xml's comment on the same tradeoff.
-           Already on this module's classpath transitively through nessy-console; declared directly
-           because it is what Repl.run() needs underneath it, the same way the provider adapters
-           above are declared directly rather than left to a transitive accident. -->
-      <version>${spring-boot.version}</version>
+      <!-- Already here transitively through nessy-console; declared anyway, because it is what
+           Repl.run() needs underneath it, the same way the provider adapters above are declared
+           rather than left to a transitive accident. Version from the parent's Boot BOM. -->
     </dependency>
     <!-- The engine's schema is PostgreSQL's; the driver rides along at runtime. -->
     <dependency>
