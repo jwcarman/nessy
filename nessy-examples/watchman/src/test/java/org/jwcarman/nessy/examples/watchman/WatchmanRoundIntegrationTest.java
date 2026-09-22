@@ -57,11 +57,20 @@ class WatchmanRoundIntegrationTest {
   @Autowired private org.jwcarman.nessy.engine.store.TurnHistories histories;
   @org.springframework.boot.test.web.server.LocalServerPort private int port;
 
+  /**
+   * Sixty seconds rather than twenty, because of what is being waited for.
+   *
+   * <p>A round begins on ApplicationReadyEvent and has to get a proposal through a model stand-in,
+   * an approval gate and a row before it lands on the board -- in a module that starts two Spring
+   * contexts against one Postgres container, on a shared runner. Twenty seconds was enough on a
+   * laptop and lost on CI. Raising the ceiling of a wait does not weaken what it asserts: the
+   * condition is the same, and a passing run still stops the moment it is met.
+   */
   @Test
   void a_proposed_prune_waits_on_the_board_until_a_person_approves_it() {
     // The first round starts on ApplicationReadyEvent; the prune reaches the board...
     await()
-        .atMost(Duration.ofSeconds(20))
+        .atMost(Duration.ofSeconds(60))
         .untilAsserted(() -> assertThat(approvals.pending()).hasSize(1));
     PendingApproval waiting = approvals.pending().getFirst();
     assertThat(waiting.action()).isEqualTo("docker image prune -af");
@@ -82,7 +91,7 @@ class WatchmanRoundIntegrationTest {
     // ...which takes it off the board and lets the round finish with its notes.
     assertThat(approvals.pending()).isEmpty();
     await()
-        .atMost(Duration.ofSeconds(20))
+        .atMost(Duration.ofSeconds(60))
         .untilAsserted(
             () -> {
               List<ApprovalsController.Note> notes =
