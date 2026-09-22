@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.voyage.VoyageEmbedderConfig;
 import org.jwcarman.nessy.embedding.voyage.VoyageEmbeddingProvider;
@@ -48,10 +49,14 @@ public class VoyageEmbeddingAutoConfiguration {
   public EmbedderFactory voyageEmbedders(
       @Value("${nessy.embedding.voyage.api-key}") String apiKey,
       @Value("${nessy.embedding.voyage.model:}") String model,
+      @Value("${nessy.embedding.voyage.dimension:}") String dimension,
       ObservationRegistry observations) {
-    EmbeddingProvider provider = VoyageEmbeddingProvider.create(c -> c.apiKey(apiKey));
+    VoyageEmbeddingProvider provider = VoyageEmbeddingProvider.create(c -> c.apiKey(apiKey));
     return factory(
-        provider, EmbeddingModels.modelOr(model, VoyageEmbedderConfig.DEFAULT_MODEL), observations);
+        provider,
+        EmbeddingModels.modelOr(model, VoyageEmbedderConfig.DEFAULT_MODEL),
+        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        observations);
   }
 
   /**
@@ -62,8 +67,11 @@ public class VoyageEmbeddingAutoConfiguration {
    * embedder rather than of the connection behind it.
    */
   private static EmbedderFactory factory(
-      EmbeddingProvider provider, String model, ObservationRegistry observations) {
-    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model);
+      EmbeddingProvider provider,
+      String model,
+      OptionalInt dimension,
+      ObservationRegistry observations) {
+    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model, dimension);
     return customizer -> ObservedEmbedder.wrap(embedders.create(customizer), observations);
   }
 }

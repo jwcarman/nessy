@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spring.boot.embedding;
 
+import java.util.OptionalInt;
 import org.springframework.util.StringUtils;
 
 /** What the three vendors' auto-configurations agree on about a configured model name. */
@@ -25,5 +26,23 @@ final class EmbeddingModels {
   /** A model named as blank is a model nobody named: the vendor's own default stands. */
   static String modelOr(String configured, String fallback) {
     return StringUtils.hasText(configured) ? configured : fallback;
+  }
+
+  /**
+   * A width named as blank is a width nobody named, so whatever the connection decided stands.
+   *
+   * <p>A property beats a connection default because that is the point of a property: an operator
+   * changes one without rebuilding anything. Neither beats an embedder that asks for a width of its
+   * own, which is the one that has to agree with a store's index.
+   */
+  static OptionalInt dimensionOr(String configured, OptionalInt fallback) {
+    if (!StringUtils.hasText(configured)) {
+      return fallback;
+    }
+    int width = Integer.parseInt(configured.trim());
+    if (width <= 0) {
+      throw new IllegalArgumentException("dimension must be positive: " + width);
+    }
+    return OptionalInt.of(width);
   }
 }

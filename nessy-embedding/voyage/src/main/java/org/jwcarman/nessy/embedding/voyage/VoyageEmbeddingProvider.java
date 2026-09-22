@@ -23,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
@@ -47,6 +48,8 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
   private final String inputType;
   private final Duration timeout;
   private final JsonMapper mapper;
+  private final String defaultModel;
+  private final OptionalInt defaultDimension;
 
   /** The client, endpoint and key are what the config resolved; the rest is read as configured. */
   VoyageEmbeddingProvider(
@@ -58,6 +61,18 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     this.inputType = config.inputType();
     this.timeout = Objects.requireNonNull(config.timeout(), "timeout must not be null");
     this.mapper = Objects.requireNonNull(config.mapper(), "mapper must not be null");
+    this.defaultModel = config.model();
+    this.defaultDimension = config.dimension();
+  }
+
+  /** The model this connection hands an embedder that names none. */
+  public String defaultModel() {
+    return defaultModel;
+  }
+
+  /** How wide this connection's vectors are unless an embedder asks otherwise. */
+  public OptionalInt defaultDimension() {
+    return defaultDimension;
   }
 
   public static VoyageEmbeddingProvider create(VoyageEmbedderCustomizer customizer) {

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.openai.OpenAiEmbedderConfig;
 import org.jwcarman.nessy.embedding.openai.OpenAiEmbeddingProvider;
@@ -48,10 +49,13 @@ public class OpenAiEmbeddingAutoConfiguration {
   public EmbedderFactory openAiEmbedders(
       @Value("${openai.api-key}") String apiKey,
       @Value("${nessy.embedding.openai.model:}") String model,
+      @Value("${nessy.embedding.openai.dimension:}") String dimension,
       ObservationRegistry observations) {
+    OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey));
     return factory(
-        OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey)),
+        provider,
         EmbeddingModels.modelOr(model, OpenAiEmbedderConfig.DEFAULT_MODEL),
+        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
         observations);
   }
 
@@ -63,16 +67,20 @@ public class OpenAiEmbeddingAutoConfiguration {
       @Value("${openai.api-key}") String apiKey,
       @Value("${openai.base-url:#{null}}") String baseUrl,
       @Value("${nessy.embedding.openai.model}") String model,
+      @Value("${nessy.embedding.openai.dimension:}") String dimension,
       ObservationRegistry observations) {
-    return factory(
+    OpenAiEmbeddingProvider provider =
         OpenAiEmbeddingProvider.create(
             c -> {
               c.apiKey(apiKey);
               if (baseUrl != null) {
                 c.baseUrl(baseUrl);
               }
-            }),
+            });
+    return factory(
+        provider,
         model,
+        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
         observations);
   }
 
@@ -84,8 +92,11 @@ public class OpenAiEmbeddingAutoConfiguration {
    * embedder rather than of the connection behind it.
    */
   private static EmbedderFactory factory(
-      EmbeddingProvider provider, String model, ObservationRegistry observations) {
-    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model);
+      EmbeddingProvider provider,
+      String model,
+      OptionalInt dimension,
+      ObservationRegistry observations) {
+    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model, dimension);
     return customizer -> ObservedEmbedder.wrap(embedders.create(customizer), observations);
   }
 }

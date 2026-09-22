@@ -21,6 +21,7 @@ import com.openai.models.embeddings.EmbeddingCreateParams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
@@ -37,10 +38,35 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
 
   private final OpenAIClient client;
   private final boolean ownsClient;
+  private final String defaultModel;
+  private final OptionalInt defaultDimension;
 
-  OpenAiEmbeddingProvider(OpenAIClient client, boolean ownsClient) {
+  OpenAiEmbeddingProvider(
+      OpenAIClient client, boolean ownsClient, String defaultModel, OptionalInt defaultDimension) {
+    this.defaultModel = defaultModel;
+    this.defaultDimension = defaultDimension;
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.ownsClient = ownsClient;
+  }
+
+  /** A provider built directly rather than from a config: no connection defaults to inherit. */
+  OpenAiEmbeddingProvider(OpenAIClient client, boolean ownsClient) {
+    this(client, ownsClient, null, OptionalInt.empty());
+  }
+
+  /**
+   * The model this connection hands an embedder that names none.
+   *
+   * <p>A connection decides its model and its width once. Every embedder over it inherits both, so
+   * a store whose index is sized for one width does not depend on every caller remembering it.
+   */
+  public String defaultModel() {
+    return defaultModel;
+  }
+
+  /** How wide this connection's vectors are unless an embedder asks otherwise. */
+  public OptionalInt defaultDimension() {
+    return defaultDimension;
   }
 
   public static OpenAiEmbeddingProvider create(OpenAiEmbedderCustomizer customizer) {

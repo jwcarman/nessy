@@ -100,7 +100,7 @@ public final class GeminiEmbedderConfig {
   }
 
   GeminiEmbeddingProvider build() {
-    return new GeminiEmbeddingProvider(resolveClient(), taskType);
+    return new GeminiEmbeddingProvider(resolveClient(), taskType, model, dimension);
   }
 
   private GeminiEmbeddingClient resolveClient() {

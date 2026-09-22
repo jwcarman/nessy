@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbedderConfig;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbeddingProvider;
@@ -42,8 +43,9 @@ public class GeminiEmbeddingAutoConfiguration {
   public EmbedderFactory geminiEmbedders(
       @Value("${gemini.api-key}") String apiKey,
       @Value("${nessy.embedding.gemini.model:}") String model,
+      @Value("${nessy.embedding.gemini.dimension:}") String dimension,
       ObservationRegistry observations) {
-    return observed(apiKey, model, observations);
+    return observed(apiKey, model, dimension, observations);
   }
 
   @Bean
@@ -52,15 +54,19 @@ public class GeminiEmbeddingAutoConfiguration {
   public EmbedderFactory googleEmbedders(
       @Value("${google.api-key}") String apiKey,
       @Value("${nessy.embedding.gemini.model:}") String model,
+      @Value("${nessy.embedding.gemini.dimension:}") String dimension,
       ObservationRegistry observations) {
-    return observed(apiKey, model, observations);
+    return observed(apiKey, model, dimension, observations);
   }
 
   private static EmbedderFactory observed(
-      String apiKey, String model, ObservationRegistry observations) {
-    EmbeddingProvider provider = GeminiEmbeddingProvider.create(c -> c.apiKey(apiKey));
+      String apiKey, String model, String dimension, ObservationRegistry observations) {
+    GeminiEmbeddingProvider provider = GeminiEmbeddingProvider.create(c -> c.apiKey(apiKey));
     return factory(
-        provider, EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL), observations);
+        provider,
+        EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL),
+        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        observations);
   }
 
   /**
@@ -71,8 +77,11 @@ public class GeminiEmbeddingAutoConfiguration {
    * embedder rather than of the connection behind it.
    */
   private static EmbedderFactory factory(
-      EmbeddingProvider provider, String model, ObservationRegistry observations) {
-    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model);
+      EmbeddingProvider provider,
+      String model,
+      OptionalInt dimension,
+      ObservationRegistry observations) {
+    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model, dimension);
     return customizer -> ObservedEmbedder.wrap(embedders.create(customizer), observations);
   }
 }

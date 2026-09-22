@@ -21,6 +21,7 @@ import com.google.genai.types.EmbedContentResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
@@ -36,9 +37,33 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
   private final GeminiEmbeddingClient client;
   private final String taskType;
 
-  GeminiEmbeddingProvider(GeminiEmbeddingClient client, String taskType) {
+  private final String defaultModel;
+  private final OptionalInt defaultDimension;
+
+  GeminiEmbeddingProvider(
+      GeminiEmbeddingClient client,
+      String taskType,
+      String defaultModel,
+      OptionalInt defaultDimension) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.taskType = taskType;
+    this.defaultModel = defaultModel;
+    this.defaultDimension = defaultDimension;
+  }
+
+  /** A provider built directly rather than from a config: no connection defaults to inherit. */
+  GeminiEmbeddingProvider(GeminiEmbeddingClient client, String taskType) {
+    this(client, taskType, null, OptionalInt.empty());
+  }
+
+  /** The model this connection hands an embedder that names none. */
+  public String defaultModel() {
+    return defaultModel;
+  }
+
+  /** How wide this connection's vectors are unless an embedder asks otherwise. */
+  public OptionalInt defaultDimension() {
+    return defaultDimension;
   }
 
   public static GeminiEmbeddingProvider create(GeminiEmbedderCustomizer customizer) {

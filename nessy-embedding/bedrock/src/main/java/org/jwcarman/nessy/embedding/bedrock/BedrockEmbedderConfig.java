@@ -107,7 +107,7 @@ public final class BedrockEmbedderConfig {
   }
 
   BedrockEmbeddingProvider build() {
-    return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper);
+    return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper, model, dimension);
   }
 
   private BedrockEmbeddingClient resolveClient() {

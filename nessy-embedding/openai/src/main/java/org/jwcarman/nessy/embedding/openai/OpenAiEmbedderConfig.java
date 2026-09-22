@@ -106,10 +106,10 @@ public final class OpenAiEmbedderConfig {
 
   OpenAiEmbeddingProvider build() {
     if (client != null) {
-      return new OpenAiEmbeddingProvider(client, false);
+      return new OpenAiEmbeddingProvider(client, false, model, dimension);
     }
     if (useEnv) {
-      return new OpenAiEmbeddingProvider(buildFromEnv(), true);
+      return new OpenAiEmbeddingProvider(buildFromEnv(), true, model, dimension);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -123,7 +123,7 @@ public final class OpenAiEmbedderConfig {
     if (organization != null) {
       builder.organization(organization);
     }
-    return new OpenAiEmbeddingProvider(builder.build(), true);
+    return new OpenAiEmbeddingProvider(builder.build(), true, model, dimension);
   }
 
   private OpenAIClient buildFromEnv() {

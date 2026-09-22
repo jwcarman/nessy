@@ -35,14 +35,27 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
 
   private final EmbeddingProvider provider;
   private final String defaultModel;
+  private final OptionalInt defaultDimension;
 
   /**
    * @param defaultModel what an embedder gets when it names none; null to require one, which is the
    *     honest setting when no model is obviously right
+   * @param defaultDimension how wide an embedder's vectors are when it asks for no width; empty
+   *     leaves it to the model, which is what most of them want. A store's index is sized by this,
+   *     so a connection that has decided on a width says it once here rather than at every embedder
+   *     that must agree with the others.
    */
-  public DefaultEmbedderFactory(EmbeddingProvider provider, String defaultModel) {
+  public DefaultEmbedderFactory(
+      EmbeddingProvider provider, String defaultModel, OptionalInt defaultDimension) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.defaultModel = defaultModel;
+    this.defaultDimension =
+        Objects.requireNonNull(defaultDimension, "defaultDimension must not be null");
+  }
+
+  /** A connection with a default model and no opinion about width. */
+  public DefaultEmbedderFactory(EmbeddingProvider provider, String defaultModel) {
+    this(provider, defaultModel, OptionalInt.empty());
   }
 
   /** Every embedder names its own model. */
@@ -61,7 +74,7 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
   private final class Settings implements EmbedderConfig {
 
     private String model = defaultModel;
-    private OptionalInt dimension = OptionalInt.empty();
+    private OptionalInt dimension = defaultDimension;
 
     @Override
     public EmbedderConfig model(String model) {
