@@ -137,8 +137,12 @@
          org/jwcarman/codec/spi/CodecFactory, which no longer exists. Measured before the bump,
          73 such references in substrate-core and 12 in substrate-api, and the failure is a
          NoClassDefFoundError at class-load rather than anything a compiler would catch. The two
-         versions therefore move together; neither can lead. -->
-    <odyssey.version>0.10.0</odyssey.version>
+         versions therefore move together; neither can lead.
+
+         Odyssey 0.11.0 is the release on that same line: its parent pins codec 0.10.0, substrate
+         0.10.0 and Boot 4.1.1, which is what this POM pins too. Verified from the published
+         parent rather than inferred from the version number. -->
+    <odyssey.version>0.11.0</odyssey.version>
     <jmustache.version>1.16</jmustache.version>
     <substrate.version>0.10.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
