@@ -153,7 +153,7 @@
     <opentelemetry-logback-appender.version>2.31.1-alpha</opentelemetry-logback-appender.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
-    <hikaricp.version>7.0.2</hikaricp.version>
+    <hikaricp.version>7.1.0</hikaricp.version>
     <!-- The 2.x line, the one Boot 4.1.1 manages: module artifacts are testcontainers-<module>
          (org.testcontainers:testcontainers-postgresql) and each container class lives in its
          module's package (org.testcontainers.postgresql.PostgreSQLContainer). Boot's
