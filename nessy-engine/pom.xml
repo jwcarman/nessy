@@ -61,6 +61,32 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- The schema generator's test only: proof that an application can register modules of its
+         own and have their constraints reach the schema a model is shown. -->
+    <dependency>
+      <groupId>jakarta.validation</groupId>
+      <artifactId>jakarta.validation-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.victools</groupId>
+      <artifactId>jsonschema-module-jakarta-validation</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Schema generation, which is an implementation detail of this module. It lived in
+         nessy-api until the day someone noticed that every tool author compiling against the
+         public API was inheriting a JSON-schema library, plus classmate, to use a class only this
+         module ever constructs. -->
+    <dependency>
+      <groupId>com.github.victools</groupId>
+      <artifactId>jsonschema-generator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.victools</groupId>
+      <artifactId>jsonschema-module-jackson</artifactId>
+    </dependency>
+
     <!-- The extraction live test only: a real provider, to find out whether a model records
          what it is shown. Nothing in the engine needs one; an application brings its own. -->
     <dependency>

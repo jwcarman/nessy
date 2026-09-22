@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.schema;
+package org.jwcarman.nessy.engine.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -221,6 +221,95 @@ class VictoolsInputSchemaGeneratorTest {
   }
 
   // ---- a sealed interface input type ----
+
+  /** A type that says how it serialises. */
+  @Nested
+  class AValueType {
+
+    /** Money-shaped: made of two things, written as one string. */
+    record Dollars(long cents, String currency) {
+      @com.fasterxml.jackson.annotation.JsonValue
+      public String written() {
+        return cents / 100 + "." + cents % 100 + " " + currency;
+      }
+    }
+
+    /** The same idea, written as a number -- which is what money usually does. */
+    record Amount(long cents) {
+      @com.fasterxml.jackson.annotation.JsonValue
+      public java.math.BigDecimal toDecimal() {
+        return java.math.BigDecimal.valueOf(cents, 2);
+      }
+
+      @com.fasterxml.jackson.annotation.JsonCreator
+      static Amount of(java.math.BigDecimal decimal) {
+        return new Amount(decimal.movePointRight(2).longValueExact());
+      }
+    }
+
+    enum Urgency {
+      ROUTINE,
+      URGENT
+    }
+
+    record Payment(Dollars amount, String to) {}
+
+    record Transfer(Amount amount, Urgency urgency) {}
+
+    @Test
+    void is_described_as_the_type_it_writes() {
+      String schema = new VictoolsInputSchemaGenerator().generate(Payment.class).json();
+
+      assertThat(schema).contains("\"amount\":{\"type\":\"string\"}");
+      assertThat(schema).doesNotContain("cents").doesNotContain("currency");
+    }
+
+    @Test
+    void is_described_as_a_number_when_that_is_what_it_writes() {
+      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+
+      assertThat(schema).contains("\"amount\":{\"type\":\"number\"}");
+      assertThat(schema).doesNotContain("cents");
+    }
+
+    /**
+     * The point of the whole exercise: a model told to send X must find that X is accepted.
+     *
+     * <p>Two bugs hid in the gap between those. When the schema described the record's components,
+     * a model sent an object and Jackson refused it because {@code @JsonValue} said the wire form
+     * was a scalar. When the schema was corrected but the creator still only read text, a model
+     * sent a number and Jackson refused that. Both were a schema and a mapper disagreeing about one
+     * type, and neither would have been caught by asserting on the schema alone.
+     */
+    @Test
+    void is_accepted_by_jackson_in_the_shape_the_schema_advertises() {
+      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+      assertThat(schema).contains("\"type\":\"number\"");
+
+      Transfer read =
+          JsonMapper.builder()
+              .build()
+              .readValue("{\"amount\":999.00,\"urgency\":\"URGENT\"}", Transfer.class);
+
+      assertThat(read.amount()).isEqualTo(new Amount(99_900L));
+      assertThat(read.urgency()).isEqualTo(Urgency.URGENT);
+    }
+
+    /** Victools handles enums behind its own option; taking them here would change that. */
+    @Test
+    void leaves_enums_to_victools() {
+      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+
+      assertThat(schema).contains("ROUTINE").contains("URGENT");
+    }
+
+    @Test
+    void still_describes_an_ordinary_record_by_its_components() {
+      String schema = new VictoolsInputSchemaGenerator().generate(Payment.class).json();
+
+      assertThat(schema).contains("\"to\"");
+    }
+  }
 
   @Nested
   class ASealedInterfaceInputType {

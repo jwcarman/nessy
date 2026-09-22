@@ -13,18 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.schema;
+package org.jwcarman.nessy.engine.schema;
 
+import com.fasterxml.classmate.ResolvedType;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonValue;
+import com.github.victools.jsonschema.generator.CustomDefinition;
+import com.github.victools.jsonschema.generator.CustomDefinitionProviderV2;
 import com.github.victools.jsonschema.generator.FieldScope;
 import com.github.victools.jsonschema.generator.OptionPreset;
+import com.github.victools.jsonschema.generator.SchemaGenerationContext;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfig;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
 import com.github.victools.jsonschema.generator.SchemaKeyword;
 import com.github.victools.jsonschema.generator.SchemaVersion;
 import com.github.victools.jsonschema.module.jackson.JacksonSchemaModule;
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Customizers;
@@ -77,9 +84,56 @@ public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator 
         new SchemaGeneratorConfigBuilder(SchemaVersion.DRAFT_2020_12, OptionPreset.PLAIN_JSON)
             .with(new JacksonSchemaModule());
     builder.forFields().withRequiredCheck(VictoolsInputSchemaGenerator::isRequired);
+    builder.forTypesInGeneral().withCustomDefinitionProvider(new JsonValueAsItsOwnType());
     customizer.accept(builder);
     this.config = builder.build();
     this.generator = new SchemaGenerator(this.config);
+  }
+
+  /**
+   * A type that serialises as one value is described as that value.
+   *
+   * <p>Victools builds a schema by walking a type's components, and {@code @JsonValue} is not among
+   * the things its Jackson module looks at for anything but enums. So a value type -- money that
+   * writes itself as {@code 42.00}, an identifier that writes itself as a string -- is advertised
+   * to a model as the object it is made of, and the model obligingly sends that object back.
+   * Jackson then refuses it, because {@code @JsonValue} said the wire form was a scalar.
+   *
+   * <p>The tool call fails with a deserialisation message, which the model may or may not recover
+   * from, and which is nobody's fault but the schema's: it described the Java type rather than what
+   * the application will actually accept. Measured on a real model, handed a money type -- it sent
+   * {@code {"amount": {"minorUnits": 99900, "currency": {...}}}}, exactly as instructed.
+   *
+   * <p>So a type carrying {@code @JsonValue} is described here as whatever that method returns.
+   * Enums are left alone: victools' Jackson module already handles those, behind its own option,
+   * and taking them here would change behaviour nobody asked to change.
+   */
+  private static final class JsonValueAsItsOwnType implements CustomDefinitionProviderV2 {
+
+    @Override
+    public CustomDefinition provideCustomSchemaDefinition(
+        ResolvedType type, SchemaGenerationContext context) {
+      Class<?> erased = type.getErasedType();
+      if (erased.isEnum()) {
+        return null;
+      }
+      return jsonValueOf(erased)
+          .map(
+              method ->
+                  new CustomDefinition(
+                      context.createDefinition(
+                          context.getTypeContext().resolve(method.getGenericReturnType()))))
+          .orElse(null);
+    }
+
+    /** The no-argument method a type says is its wire form, if it has one. */
+    private static Optional<Method> jsonValueOf(Class<?> type) {
+      return Arrays.stream(type.getMethods())
+          .filter(method -> method.getParameterCount() == 0)
+          .filter(method -> method.isAnnotationPresent(JsonValue.class))
+          .filter(method -> method.getAnnotation(JsonValue.class).value())
+          .findFirst();
+    }
   }
 
   /**
