@@ -91,6 +91,29 @@ class NessyAutoConfigurationTest {
    * are PostgreSQL's, so the fallback did not run a degraded Nessy, it ran one that fails on the
    * first turn. Refusing to start names the missing thing at the only moment it is cheap to fix.
    */
+  /**
+   * <b>Off means off, not "backs off".</b> Every bean here is {@code @ConditionalOnMissingBean}, so
+   * an application that declares its own wins -- but an application that declares nothing and wants
+   * nothing still fails, because this refuses to start without {@code nessy.model}. That is right
+   * for an application that wants a harness and wrong for one that merely shares a classpath with
+   * it, which is what happens when several Boot applications run in one JVM.
+   */
+  @Test
+  @DisplayName("switched off, it configures nothing and does not mind the missing model")
+  void it_configures_nothing_when_disabled() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
+        .withPropertyValues("nessy.enabled=false")
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).doesNotHaveBean(Harness.class);
+              assertThat(context).doesNotHaveBean(DefaultHarnessFactory.class);
+            });
+  }
+
   @Test
   @DisplayName("with no DataSource, it refuses to start rather than pretending")
   void it_refuses_to_start_without_a_data_source() {

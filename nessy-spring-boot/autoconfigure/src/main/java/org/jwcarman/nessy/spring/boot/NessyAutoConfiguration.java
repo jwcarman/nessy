@@ -43,6 +43,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
@@ -60,8 +61,15 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>Every bean is {@code @ConditionalOnMissingBean}: an application that declares its own is
  * choosing it explicitly, and this backs off rather than competing.
+ *
+ * <p><b>{@code nessy.enabled=false} turns the whole thing off.</b> Backing off bean by bean is not
+ * enough for an application that shares a classpath with one that uses Nessy -- several Boot apps
+ * in one JVM, say, as an acceptance test does -- because this refuses to start without {@code
+ * nessy.model}, which is right for an application that wants Nessy and wrong for one that only has
+ * it on the classpath. Excluding the class by name works and reads like a workaround.
  */
 @AutoConfiguration(after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class})
+@ConditionalOnProperty(name = "nessy.enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 

@@ -28,6 +28,12 @@ import org.springframework.util.FileCopyUtils;
  * <p>Defaults live in the compact constructor rather than in the auto-configuration, so that
  * reading this record tells you what an unconfigured harness does.
  *
+ * @param enabled whether the starter configures anything at all. Defaults to true. Set false when
+ *     Nessy is on the classpath but this application does not use it — several Boot applications
+ *     sharing one JVM, say — so that a missing {@link #model} is not a startup failure for an
+ *     application that never wanted a harness. Read by {@code @ConditionalOnProperty} rather than
+ *     from here, because the decision happens before this record is bound; it is declared so the
+ *     property is documented and completes in an IDE.
  * @param type what kind of agent this application runs — namespaces every agent id and everything
  *     they persist
  * @param systemPrompt the standing instruction, inline
@@ -45,6 +51,7 @@ import org.springframework.util.FileCopyUtils;
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(
+    Boolean enabled,
     String type,
     String systemPrompt,
     Resource systemPromptFile,
@@ -54,6 +61,7 @@ public record NessyProperties(
     Boolean initializeSchema) {
 
   public NessyProperties {
+    enabled = enabled == null || enabled;
     type = type == null || type.isBlank() ? "agent" : type;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
     replyTokenEncryptionKeys =
