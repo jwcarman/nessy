@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -33,6 +34,10 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Against the real service, when the environment carries a credential; skipped otherwise. Spends
@@ -56,6 +61,23 @@ class GeminiLiveTest {
                     0))),
         List.of(),
         new InferenceOptions(MODEL, 1024));
+  }
+
+  private static InferenceRequest askingFor(String question, OutputSchema shape) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Observation(new Seq(1), List.of(new Block.Text(question))),
+                    List.of(),
+                    null,
+                    0))),
+        List.of(),
+        ToolChoice.auto(),
+        new InferenceOptions(MODEL, 1024),
+        Optional.of(shape));
   }
 
   private static GeminiInferenceProvider provider() {
@@ -109,5 +131,63 @@ class GeminiLiveTest {
       assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
       assertThat(String.join("", deltas)).isEqualTo(text(result));
     }
+  }
+
+  /**
+   * A shape asked for, and a shape that comes back.
+   *
+   * <p>Satisfied here with {@code responseJsonSchema} plus the JSON MIME type, which this wire
+   * wants together. What is asserted is only the contract every adapter shares: the answer is JSON
+   * matching the schema.
+   */
+  @Test
+  void an_answer_can_be_asked_for_in_a_shape() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"city":{"type":"string"},"country":{"type":"string"}},
+             "required":["city","country"],
+             "additionalProperties":false}""");
+
+    try (GeminiInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.get("city").asString()).containsIgnoringCase("Paris");
+      assertThat(parsed.get("country").asString()).containsIgnoringCase("France");
+    }
+  }
+
+  /** Asking for a shape the question fits badly still comes back as that shape. */
+  @Test
+  void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
+             "required":["answer","confident"],
+             "additionalProperties":false}""");
+
+    try (GeminiInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.has("answer")).isTrue();
+      assertThat(parsed.has("confident")).isTrue();
+    }
+  }
+
+  private static String textOf(InferenceResult.Answer answer) {
+    return answer.blocks().stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .collect(Collectors.joining());
   }
 }

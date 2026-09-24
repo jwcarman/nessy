@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi.inference;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.SystemPrompt;
 
 /**
@@ -31,7 +32,18 @@ public record InferenceRequest(
     InferenceContext context,
     List<ToolOffer> tools,
     ToolChoice toolChoice,
-    InferenceOptions options) {
+    InferenceOptions options,
+    Optional<OutputSchema> outputSchema) {
+
+  /** Asks for prose: no shape is required of the answer. */
+  public InferenceRequest(
+      SystemPrompt systemPrompt,
+      InferenceContext context,
+      List<ToolOffer> tools,
+      ToolChoice toolChoice,
+      InferenceOptions options) {
+    this(systemPrompt, context, tools, toolChoice, options, Optional.empty());
+  }
 
   public InferenceRequest {
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");

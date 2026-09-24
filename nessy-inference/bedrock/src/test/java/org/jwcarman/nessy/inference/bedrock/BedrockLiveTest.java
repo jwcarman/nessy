@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
@@ -33,6 +34,10 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
+import org.jwcarman.nessy.spi.inference.ToolChoice;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Against the real service, when the environment carries a credential; skipped otherwise. Spends
@@ -41,7 +46,13 @@ import org.jwcarman.nessy.spi.inference.InferenceResult;
 class BedrockLiveTest {
 
   /** The cheapest model that streams, because this runs on somebody's bill. */
-  private static final String MODEL = "us.amazon.nova-lite-v1:0";
+  /**
+   * Overridable, because structured output on Converse is a <em>per-model</em> capability: Nova
+   * Lite answers "This model doesn't support the outputConfig field", where a Claude model on the
+   * same wire accepts it. Point the suite at another with {@code NESSY_LIVE_MODEL}.
+   */
+  private static final String MODEL =
+      System.getenv().getOrDefault("NESSY_LIVE_MODEL", "us.amazon.nova-lite-v1:0");
 
   private static InferenceRequest asking(String question) {
     return new InferenceRequest(
@@ -56,6 +67,23 @@ class BedrockLiveTest {
                     0))),
         List.of(),
         new InferenceOptions(MODEL, 512));
+  }
+
+  private static InferenceRequest askingFor(String question, OutputSchema shape) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Observation(new Seq(1), List.of(new Block.Text(question))),
+                    List.of(),
+                    null,
+                    0))),
+        List.of(),
+        ToolChoice.auto(),
+        new InferenceOptions(MODEL, 512),
+        Optional.of(shape));
   }
 
   private static BedrockInferenceProvider provider() {
@@ -106,5 +134,63 @@ class BedrockLiveTest {
       assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
       assertThat(String.join("", deltas)).isEqualTo(text(result));
     }
+  }
+
+  /**
+   * A shape asked for, and a shape that comes back.
+   *
+   * <p>Converse takes the schema as a string, so this is the one adapter where what {@code
+   * OutputSchema} holds goes on the wire unchanged. What is asserted is only the contract every
+   * adapter shares: the answer is JSON matching the schema.
+   */
+  @Test
+  void an_answer_can_be_asked_for_in_a_shape() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"city":{"type":"string"},"country":{"type":"string"}},
+             "required":["city","country"],
+             "additionalProperties":false}""");
+
+    try (BedrockInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.get("city").asString()).containsIgnoringCase("Paris");
+      assertThat(parsed.get("country").asString()).containsIgnoringCase("France");
+    }
+  }
+
+  /** Asking for a shape the question fits badly still comes back as that shape. */
+  @Test
+  void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
+             "required":["answer","confident"],
+             "additionalProperties":false}""");
+
+    try (BedrockInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.has("answer")).isTrue();
+      assertThat(parsed.has("confident")).isTrue();
+    }
+  }
+
+  private static String textOf(InferenceResult.Answer answer) {
+    return answer.blocks().stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .collect(Collectors.joining());
   }
 }

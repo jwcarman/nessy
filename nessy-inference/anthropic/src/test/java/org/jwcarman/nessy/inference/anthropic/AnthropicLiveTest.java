@@ -20,7 +20,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
@@ -36,8 +38,11 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The one thing the offline tests cannot tell you: whether Anthropic accepts what this adapter
@@ -93,6 +98,16 @@ class AnthropicLiveTest {
       List<Turn> turns, List<ToolOffer> tools, ToolChoice choice) {
     return new InferenceRequest(
         SYSTEM, InferenceContext.of(turns), tools, choice, new InferenceOptions(MODEL, 2048));
+  }
+
+  private static InferenceRequest askingFor(List<Turn> turns, OutputSchema shape) {
+    return new InferenceRequest(
+        SYSTEM,
+        InferenceContext.of(turns),
+        List.of(),
+        ToolChoice.auto(),
+        new InferenceOptions(MODEL, 2048),
+        Optional.of(shape));
   }
 
   @Test
@@ -322,5 +337,66 @@ class AnthropicLiveTest {
           .as("the lake tool was right there, so a call would mean the ban was dropped")
           .isNotInstanceOf(InferenceResult.Actions.class);
     }
+  }
+
+  /**
+   * A shape asked for, and a shape that comes back.
+   *
+   * <p>This adapter satisfies it with {@code output_config.format} on the stable Messages API --
+   * the parameter that replaced the beta {@code output_format}. What is asserted is only the
+   * contract every adapter shares: the answer is JSON matching the schema. Which mechanism ran is
+   * exactly what a caller must never have to know.
+   */
+  @Test
+  void an_answer_can_be_asked_for_in_a_shape() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"city":{"type":"string"},"country":{"type":"string"}},
+             "required":["city","country"],
+             "additionalProperties":false}""");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(askingFor(List.of(open(1, "What is the capital of France?")), shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.get("city").asString()).containsIgnoringCase("Paris");
+      assertThat(parsed.get("country").asString()).containsIgnoringCase("France");
+    }
+  }
+
+  /** Asking for a shape the question fits badly still comes back as that shape. */
+  @Test
+  void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
+             "required":["answer","confident"],
+             "additionalProperties":false}""");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(askingFor(List.of(open(1, "Tell me a joke.")), shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.has("answer")).isTrue();
+      assertThat(parsed.has("confident")).isTrue();
+    }
+  }
+
+  private static String textOf(InferenceResult.Answer answer) {
+    return answer.blocks().stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .collect(Collectors.joining());
   }
 }

@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
@@ -114,7 +115,22 @@ public final class GeminiRequests {
                   .build()));
       chooseTool(builder, request.toolChoice());
     }
+    request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
     return builder.build();
+  }
+
+  /**
+   * Asks for the answer in a shape, natively.
+   *
+   * <p>{@code responseJsonSchema} takes JSON Schema as it stands, so nothing here has to translate
+   * into this vendor's own {@code Schema} type and lose whatever does not survive the trip. The
+   * MIME type goes with it: this wire wants both, and a schema without it is ignored rather than
+   * refused, which is the worst of the three possible outcomes.
+   */
+  private static void askForShape(
+      GenerateContentConfig.Builder builder, OutputSchema schema, JsonMapper mapper) {
+    builder.responseMimeType("application/json");
+    builder.responseJsonSchema(mapper.readValue(schema.json(), new TypeReference<Object>() {}));
   }
 
   /**

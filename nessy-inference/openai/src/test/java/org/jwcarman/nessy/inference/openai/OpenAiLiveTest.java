@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.Seq;
@@ -34,8 +36,11 @@ import org.jwcarman.nessy.spi.inference.InferenceContext;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
 import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The one thing the offline tests cannot tell you: whether OpenAI accepts what this adapter builds.
@@ -55,11 +60,34 @@ import org.jwcarman.nessy.spi.inference.ToolOffer;
  */
 class OpenAiLiveTest {
 
-  /** The cheapest model that still calls tools, because this runs on somebody's bill. */
-  private static final String MODEL = "gpt-4o-mini";
+  /**
+   * The cheapest model that still calls tools, because this runs on somebody's bill.
+   *
+   * <p>Overridable, so the same tests can be pointed at a local runtime: {@code
+   * NESSY_LIVE_MODEL=google/gemma-4-e4b OPENAI_BASE_URL=http://localhost:1234/v1}.
+   */
+  private static final String MODEL =
+      System.getenv().getOrDefault("NESSY_LIVE_MODEL", "gpt-4o-mini");
 
   private static InferenceRequest asking(String question, List<ToolOffer> tools) {
     return asking(question, tools, ToolChoice.auto());
+  }
+
+  private static InferenceRequest askingFor(String question, OutputSchema shape) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Observation(new Seq(1), List.of(new Block.Text(question))),
+                    List.of(),
+                    null,
+                    0))),
+        List.of(),
+        ToolChoice.auto(),
+        InferenceOptions.of(MODEL),
+        Optional.of(shape));
   }
 
   private static InferenceRequest asking(
@@ -247,5 +275,64 @@ class OpenAiLiveTest {
           .as("the lake tool was right there, so a call would mean the ban was dropped")
           .isNotInstanceOf(InferenceResult.Actions.class);
     }
+  }
+
+  /**
+   * A shape asked for, and a shape that comes back.
+   *
+   * <p>The adapter is free to satisfy this natively or by offering a hidden tool and unwrapping the
+   * call; what is asserted is only the contract -- that the answer is JSON matching the schema.
+   * Which mechanism ran is exactly what a caller must never have to know.
+   */
+  @Test
+  void an_answer_can_be_asked_for_in_a_shape() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"city":{"type":"string"},"country":{"type":"string"}},
+             "required":["city","country"],
+             "additionalProperties":false}""");
+
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      String json = textOf((InferenceResult.Answer) result);
+
+      JsonNode parsed = JsonMapper.builder().build().readTree(json);
+      assertThat(parsed.get("city").asString()).containsIgnoringCase("Paris");
+      assertThat(parsed.get("country").asString()).containsIgnoringCase("France");
+    }
+  }
+
+  /** Asking for a shape the question fits badly still comes back as that shape. */
+  @Test
+  void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
+    OutputSchema shape =
+        new OutputSchema(
+            """
+            {"type":"object",
+             "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
+             "required":["answer","confident"],
+             "additionalProperties":false}""");
+
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.has("answer")).isTrue();
+      assertThat(parsed.has("confident")).isTrue();
+    }
+  }
+
+  private static String textOf(InferenceResult.Answer answer) {
+    return answer.blocks().stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .collect(Collectors.joining());
   }
 }

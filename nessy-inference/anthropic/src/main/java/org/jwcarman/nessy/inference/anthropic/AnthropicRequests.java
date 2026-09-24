@@ -15,10 +15,13 @@
  */
 package org.jwcarman.nessy.inference.anthropic;
 
+import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
+import com.anthropic.models.messages.JsonOutputFormat;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
+import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.RedactedThinkingBlockParam;
 import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.ThinkingBlockParam;
@@ -46,6 +49,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
@@ -113,6 +117,7 @@ public final class AnthropicRequests {
     addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
     addTools(builder, request.tools(), marker, mapper);
     chooseTool(builder, request.tools(), request.toolChoice());
+    request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
 
     if (features.thinking()) {
       builder.thinking(
@@ -383,6 +388,27 @@ public final class AnthropicRequests {
       case ToolChoice.Any _ -> builder.toolChoice(ToolChoiceAny.builder().build());
       case ToolChoice.Named(ToolName name) -> builder.toolToolChoice(name.value());
     }
+  }
+
+  /**
+   * Asks for the answer in a shape, natively.
+   *
+   * <p>{@code output_config.format} on the stable Messages API -- the parameter that replaced the
+   * beta {@code output_format} and needs no beta header. The alternative every other client falls
+   * back to (offer a hidden tool whose input schema is the shape, force a call to it, unwrap the
+   * arguments) is not needed here, and would have been worse: forcing a tool choice stops a model
+   * doing the work it needs to do before it can answer at all.
+   */
+  private static void askForShape(
+      MessageCreateParams.Builder builder, OutputSchema schema, JsonMapper mapper) {
+    JsonOutputFormat.Schema.Builder shape = JsonOutputFormat.Schema.builder();
+    Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});
+    properties.forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
+
+    builder.outputConfig(
+        OutputConfig.builder()
+            .format(JsonOutputFormat.builder().schema(shape.build()).build())
+            .build());
   }
 
   private static void addTools(

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.openai;
 import com.openai.core.JsonValue;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
+import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionFunctionTool;
@@ -46,6 +47,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceOptions;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
@@ -96,7 +98,37 @@ public final class OpenAiRequests {
     }
     request.tools().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
     chooseTool(builder, request.tools(), request.toolChoice());
+    request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
     return builder.build();
+  }
+
+  /**
+   * Asks for the answer in a shape, natively.
+   *
+   * <p>OpenAI constrains decoding to the schema in strict mode, so the answer cannot come back
+   * malformed -- which is stronger than offering a recording tool and hoping it gets called. It
+   * composes with tools: the constraint applies to a message when the model answers, and says
+   * nothing about the calls it makes on the way there.
+   *
+   * <p>The schema's name is a label this wire requires and nothing reads, so it is a constant here
+   * rather than something {@link OutputSchema} has to carry.
+   */
+  private static void constrainAnswer(
+      ChatCompletionCreateParams.Builder builder, OutputSchema schema, JsonMapper mapper) {
+    ResponseFormatJsonSchema.JsonSchema.Schema.Builder shape =
+        ResponseFormatJsonSchema.JsonSchema.Schema.builder();
+    Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});
+    properties.forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
+
+    builder.responseFormat(
+        ResponseFormatJsonSchema.builder()
+            .jsonSchema(
+                ResponseFormatJsonSchema.JsonSchema.builder()
+                    .name("answer")
+                    .schema(shape.build())
+                    .strict(true)
+                    .build())
+            .build());
   }
 
   /**

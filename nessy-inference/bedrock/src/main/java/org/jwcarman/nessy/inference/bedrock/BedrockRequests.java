@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.spi.inference.OutputSchema;
 import org.jwcarman.nessy.spi.inference.ToolChoice;
 import org.jwcarman.nessy.spi.inference.ToolOffer;
 import software.amazon.awssdk.core.SdkBytes;
@@ -40,6 +41,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.Message;
+import software.amazon.awssdk.services.bedrockruntime.model.OutputFormatType;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ReasoningTextBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.SpecificToolChoice;
@@ -104,7 +106,31 @@ public final class BedrockRequests {
       chooseTool(tools, request.toolChoice());
       builder.toolConfig(tools.build());
     }
+    request.outputSchema().ifPresent(schema -> askForShape(builder, schema));
     return builder.build();
+  }
+
+  /**
+   * Asks for the answer in a shape, natively.
+   *
+   * <p>Converse takes the schema as a string, so unlike every other adapter here nothing has to be
+   * parsed and rebuilt into a vendor type on the way through -- what {@link OutputSchema} holds is
+   * what goes on the wire.
+   *
+   * <p>The name is a label this wire requires and nothing reads, so it is a constant rather than
+   * something {@code OutputSchema} has to carry.
+   */
+  private static void askForShape(ConverseStreamRequest.Builder builder, OutputSchema schema) {
+    builder.outputConfig(
+        output ->
+            output.textFormat(
+                format ->
+                    format
+                        .type(OutputFormatType.JSON_SCHEMA)
+                        .structure(
+                            structure ->
+                                structure.jsonSchema(
+                                    json -> json.name("answer").schema(schema.json())))));
   }
 
   /**
