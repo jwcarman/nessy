@@ -314,6 +314,19 @@ deleted last, when nothing references it.
 Built: the backlog is a place work waits (`nessy_agent_backlog`) and a way to take it
 (`Backlog.take()`). Nothing yet *asks*. This is what asks.
 
+**All of it is harness work.** The core is untouched by everything in this section:
+
+```
+core.AgentState      execute(command) -> Decision(events, effects)
+QueuedHarness        the lock, the backlog, the coalescer, the outbox, the handoff
+```
+
+`AgentState` does not know a backlog exists, and must not -- James, this session: "I don't want to
+clutter the core loop with work offered. That leaks the queueing into the core. Can't the harness
+manage that stuff itself?" The fold answers one question, what follows from this command, and every
+pseudocode block below is a method on the harness rather than an operation on the state. That is
+the whole reason the direct door can share the fold while having no backlog at all.
+
 ### 7a. Keeping alive is the effect side, unchanged
 
 James, 2026-09-25: "we can keep them alive the same way we were on the effect side. That's easy."
