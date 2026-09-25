@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -129,7 +129,7 @@ class EffectTraceCarrierTest {
             AgentEventListener.none(),
             registry)) {
 
-      Harness<String> harness =
+      QueuedHarness<String> harness =
           engine
               .harnesses()
               .create(

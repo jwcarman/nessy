@@ -32,8 +32,8 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -97,7 +97,7 @@ class TerminationAndConfigurationTest {
 
   @Test
   void a_terminated_agent_is_announced_and_takes_no_more_observations() {
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -125,7 +125,7 @@ class TerminationAndConfigurationTest {
 
   @Test
   void a_turn_the_model_could_not_answer_reads_back_as_failed() {
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -147,7 +147,7 @@ class TerminationAndConfigurationTest {
 
   @Test
   void every_setting_is_taken_and_two_tools_under_one_name_are_refused() {
-    Harness<String> configured =
+    QueuedHarness<String> configured =
         engine
             .harnesses()
             .create(
@@ -180,7 +180,7 @@ class TerminationAndConfigurationTest {
     assertThat(configured).isNotNull();
 
     var harnesses = engine.harnesses();
-    java.util.function.Consumer<org.jwcarman.nessy.api.HarnessConfig<String>> clash =
+    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> clash =
         config ->
             config
                 .agentType(new AgentType("chat-clash"))
@@ -191,7 +191,7 @@ class TerminationAndConfigurationTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("duplicate");
 
-    java.util.function.Consumer<org.jwcarman.nessy.api.HarnessConfig<String>> noTail =
+    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> noTail =
         config ->
             config
                 .agentType(new AgentType("chat-tail"))

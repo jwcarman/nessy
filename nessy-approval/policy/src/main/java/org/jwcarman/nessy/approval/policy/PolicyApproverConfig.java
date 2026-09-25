@@ -20,8 +20,8 @@ import org.jwcarman.nessy.api.tool.Approver;
 /**
  * How one {@link PolicyApprover} is put together.
  *
- * <p>The same shape as {@code HarnessConfig}: a fluent thing handed to a {@code Consumer}, so an
- * application says what it wants in one expression and never holds a half-built object.
+ * <p>The same shape as {@code QueuedHarnessConfig}: a fluent thing handed to a {@code Consumer}, so
+ * an application says what it wants in one expression and never holds a half-built object.
  *
  * <pre>{@code
  * Approver gate = PolicyApprover.create(policy -> policy

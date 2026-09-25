@@ -26,7 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
@@ -66,7 +66,7 @@ class GiveUpTest {
     }
   }
 
-  private Harness<String> harnessThatFails(
+  private QueuedHarness<String> harnessThatFails(
       AgentType agentType, RetryPolicy policy, InferenceProvider model) {
     running(model);
     return engine
@@ -97,7 +97,8 @@ class GiveUpTest {
   void givingUpEndsTheTurnAndLeavesNothingBehind() {
     AgentType type = new AgentType("gives-up");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    Harness<String> harness = harnessThatFails(type, new RetryPolicy.Never(), new AlwaysBroken());
+    QueuedHarness<String> harness =
+        harnessThatFails(type, new RetryPolicy.Never(), new AlwaysBroken());
 
     harness.observe(agentId, "will not work");
 
@@ -127,7 +128,7 @@ class GiveUpTest {
     AgentType type = new AgentType("retries");
     AgentId agentId = new AgentId(UUID.randomUUID());
     AlwaysBroken model = new AlwaysBroken();
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         harnessThatFails(
             type, new RetryPolicy.FixedDelay(3, Duration.ofMillis(50), Duration.ZERO), model);
 

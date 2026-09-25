@@ -34,8 +34,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -91,8 +91,8 @@ class EpisodeSummarizerTest {
   private final ObservationRegistry observations = ObservationRegistry.create();
 
   private HikariDataSource dataSource;
-  private DefaultHarnessFactory factory;
-  private Harness<String> harness;
+  private DefaultQueuedHarnessFactory factory;
+  private QueuedHarness<String> harness;
   private JdbcEpisodes episodes;
   private EpisodeSummarizer summarizer;
 
@@ -106,7 +106,7 @@ class EpisodeSummarizerTest {
     Schemas.initialize(dataSource);
     observations.observationConfig().observationHandler(recorded);
     factory =
-        new DefaultHarnessFactory(
+        new DefaultQueuedHarnessFactory(
             engine ->
                 engine
                     .dataSource(dataSource)

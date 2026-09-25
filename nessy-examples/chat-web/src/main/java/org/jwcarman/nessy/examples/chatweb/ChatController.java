@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
@@ -56,7 +56,7 @@ public class ChatController {
 
   public record Line(String role, String text) {}
 
-  private final Harness<String> harness;
+  private final QueuedHarness<String> harness;
   private final TurnHistories histories;
   private final AgentStreams streams;
   private final ApprovalStreams approvals;
@@ -64,7 +64,7 @@ public class ChatController {
   private final Replies replies;
 
   ChatController(
-      Harness<String> harness,
+      QueuedHarness<String> harness,
       TurnHistories histories,
       AgentStreams streams,
       ApprovalStreams approvals,

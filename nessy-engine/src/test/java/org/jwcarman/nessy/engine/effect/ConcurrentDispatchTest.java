@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -57,7 +57,7 @@ class ConcurrentDispatchTest {
 
   private final Rendezvous model = new Rendezvous();
   private EngineFixture engine;
-  private Harness<String> harness;
+  private QueuedHarness<String> harness;
 
   @BeforeEach
   void startEngine() {

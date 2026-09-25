@@ -20,11 +20,11 @@ import java.time.Duration;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.lease.JdbcLeases;
@@ -93,7 +93,7 @@ public class ChatConfiguration {
    */
   @Bean
   public EpisodeSummarizer episodeSummarizer(
-      DefaultHarnessFactory factory,
+      DefaultQueuedHarnessFactory factory,
       JdbcEpisodes episodes,
       DataSource dataSource,
       InferenceProvider provider,
@@ -116,8 +116,8 @@ public class ChatConfiguration {
   }
 
   @Bean
-  public Harness<String> harness(
-      DefaultHarnessFactory factory,
+  public QueuedHarness<String> harness(
+      DefaultQueuedHarnessFactory factory,
       NessyProperties properties,
       SendEmailTool email,
       Approver desk,

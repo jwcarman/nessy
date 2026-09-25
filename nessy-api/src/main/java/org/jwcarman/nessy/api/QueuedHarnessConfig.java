@@ -35,16 +35,16 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  *
  * @param <O> the observation type this agent takes
  */
-public interface HarnessConfig<O> {
+public interface QueuedHarnessConfig<O> {
 
   /** What this agent type is called. Names its rows and scopes its dispatcher's polling. */
-  HarnessConfig<O> agentType(AgentType agentType);
+  QueuedHarnessConfig<O> agentType(AgentType agentType);
 
   /** What this agent is, in the same words for every agent of the type. */
-  HarnessConfig<O> systemPrompt(String prompt);
+  QueuedHarnessConfig<O> systemPrompt(String prompt);
 
   /** What this agent is, worked out per agent. May do I/O; it runs off the row lock. */
-  HarnessConfig<O> systemPrompt(SystemPromptSource source);
+  QueuedHarnessConfig<O> systemPrompt(SystemPromptSource source);
 
   /**
    * How an observation becomes something a model can read.
@@ -53,7 +53,7 @@ public interface HarnessConfig<O> {
    * anything with a considered {@code toString}, and quietly wrong for a class without one -- that
    * sends {@code com.acme.Order@1a2b3c} to a model, and you pay for it.
    */
-  HarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer);
+  QueuedHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer);
 
   /**
    * What the backlog becomes when an observation arrives while the agent is busy.
@@ -61,24 +61,24 @@ public interface HarnessConfig<O> {
    * <p>Defaults to {@link ObservationCoalescer#keepAll()} -- right for anything a person said,
    * wrong for a sensor, and only the application knows which it has.
    */
-  HarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer);
+  QueuedHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer);
 
   /** Adjusts how this agent type infers, using the factory's provider. */
-  HarnessConfig<O> inference(Consumer<InferenceConfig> customizer);
+  QueuedHarnessConfig<O> inference(Consumer<InferenceConfig> customizer);
 
   /** Adjusts how this agent type performs the work it owes itself. */
-  HarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
+  QueuedHarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
 
   /**
    * Somebody who hears what this harness's agents do, in addition to whoever the engine already
    * tells. Repeatable; every listener hears every event.
    */
-  HarnessConfig<O> listener(AgentEventListener listener);
+  QueuedHarnessConfig<O> listener(AgentEventListener listener);
 
   /** Offers a tool, and says what a call of it is worth. */
-  <I> HarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
+  <I> QueuedHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
 
-  default <I> HarnessConfig<O> tool(Tool<I> tool) {
+  default <I> QueuedHarnessConfig<O> tool(Tool<I> tool) {
     return tool(tool, Customizers.withDefaults());
   }
 }

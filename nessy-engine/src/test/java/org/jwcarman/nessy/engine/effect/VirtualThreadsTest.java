@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -58,7 +58,7 @@ class VirtualThreadsTest {
               return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));
             })) {
 
-      Harness<String> harness =
+      QueuedHarness<String> harness =
           engine
               .harnesses()
               .create(

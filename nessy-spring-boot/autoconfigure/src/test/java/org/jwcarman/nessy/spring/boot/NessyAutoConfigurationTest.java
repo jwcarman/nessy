@@ -23,12 +23,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -78,8 +78,8 @@ class NessyAutoConfigurationTest {
   void it_wires_a_harness_from_a_provider_and_a_database() {
     runner.run(
         context -> {
-          assertThat(context).hasSingleBean(Harness.class);
-          assertThat(context).hasSingleBean(DefaultHarnessFactory.class);
+          assertThat(context).hasSingleBean(QueuedHarness.class);
+          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
         });
@@ -109,8 +109,8 @@ class NessyAutoConfigurationTest {
         .run(
             context -> {
               assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean(Harness.class);
-              assertThat(context).doesNotHaveBean(DefaultHarnessFactory.class);
+              assertThat(context).doesNotHaveBean(QueuedHarness.class);
+              assertThat(context).doesNotHaveBean(DefaultQueuedHarnessFactory.class);
             });
   }
 
@@ -211,7 +211,7 @@ class NessyAutoConfigurationTest {
     runner.run(context -> assertThat(context).doesNotHaveBean(AgentEventListener.class));
     runner
         .withUserConfiguration(AListener.class)
-        .run(context -> assertThat(context).hasSingleBean(DefaultHarnessFactory.class));
+        .run(context -> assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class));
   }
 
   @Test
@@ -226,7 +226,7 @@ class NessyAutoConfigurationTest {
   void an_application_with_a_registry_gets_its_provider_observed() {
     runner
         .withUserConfiguration(ARegistry.class)
-        .run(context -> assertThat(context).hasSingleBean(DefaultHarnessFactory.class));
+        .run(context -> assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class));
   }
 
   // ---- what an application brings -------------------------------------------------------

@@ -16,11 +16,20 @@
 package org.jwcarman.nessy.api;
 
 /**
- * One agent type's door.
+ * One agent type's door, for work nobody is waiting on.
  *
- * <p>An interface with one method, and that is the whole design. Everything an agent type needs --
- * its codec, its renderer, its transactions, the callback its effects report through -- is behind
- * an implementation a caller cannot reach.
+ * <p><b>It always accepts.</b> Telling an agent something cannot fail and cannot be refused: what
+ * arrives goes in the queue, and the queue is what makes the agent's own pace nobody else's
+ * problem. Nothing comes back, because there is nothing a caller could do with it -- by the time
+ * the turn runs, whoever spoke has gone.
+ *
+ * <p>{@link DirectHarness} is the other door and the opposite bargain: its caller is standing there
+ * holding the answer, so it hands one back and may refuse to start at all. Neither is a special
+ * case of the other, and the question that picks between them is whether anybody is waiting.
+ *
+ * <p>An interface with one method besides ending, and that is the whole design. Everything an agent
+ * type needs -- its codec, its renderer, its transactions, the callback its effects report through
+ * -- is behind an implementation a caller cannot reach.
  *
  * <p>In particular there is no way to deliver an outcome from out here. That capability lives on
  * the engine's own callback, which the same object implements and this type does not mention: were
@@ -29,7 +38,7 @@ package org.jwcarman.nessy.api;
  *
  * @param <O> the observation type
  */
-public interface Harness<O> {
+public interface QueuedHarness<O> {
 
   /**
    * Tells an agent something happened.

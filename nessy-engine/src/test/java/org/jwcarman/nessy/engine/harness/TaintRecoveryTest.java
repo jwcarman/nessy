@@ -26,7 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
@@ -93,7 +93,7 @@ class TaintRecoveryTest {
     Refuser model = new Refuser();
     AgentId agentId = new AgentId(UUID.randomUUID());
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -153,7 +153,7 @@ class TaintRecoveryTest {
     Refuser model = new Refuser();
     AgentId agentId = new AgentId(UUID.randomUUID());
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(

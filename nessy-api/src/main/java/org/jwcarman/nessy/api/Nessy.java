@@ -44,7 +44,7 @@ public interface Nessy extends AutoCloseable {
    * <p>The full weight of the thing: a harness folds observations into a story, writes down what it
    * owes, performs it, and can be picked up by another process after this one has gone.
    */
-  HarnessFactory harnesses();
+  QueuedHarnessFactory harnesses();
 
   /**
    * Readers of untrusted documents.

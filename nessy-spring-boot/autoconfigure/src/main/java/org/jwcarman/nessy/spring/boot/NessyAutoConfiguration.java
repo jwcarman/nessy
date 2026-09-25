@@ -24,12 +24,12 @@ import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.ObservationRenderer;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.store.InferenceContexts;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -51,7 +51,7 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * Nessy as a Boot citizen: a {@code DataSource} and an {@link InferenceProvider} in, a {@link
- * Harness} out.
+ * QueuedHarness} out.
  *
  * <p><b>The engine is a library, and this is the only thing that makes it a framework.</b>
  * Everything below assembles collaborators an application could assemble itself -- and one test in
@@ -118,7 +118,7 @@ public class NessyAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public DefaultHarnessFactory nessyHarnessFactory(
+  public DefaultQueuedHarnessFactory nessyHarnessFactory(
       DataSource dataSource,
       ReplyTokens replyTokens,
       InferenceProvider models,
@@ -134,7 +134,7 @@ public class NessyAutoConfiguration {
     meters.ifAvailable(
         registry ->
             observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
-    return new DefaultHarnessFactory(
+    return new DefaultQueuedHarnessFactory(
         engine -> {
           engine
               .dataSource(dataSource)
@@ -163,27 +163,27 @@ public class NessyAutoConfiguration {
    */
   @Bean
   public SmartInitializingSingleton nessyListeners(
-      DefaultHarnessFactory factory, ObjectProvider<AgentEventListener> listeners) {
+      DefaultQueuedHarnessFactory factory, ObjectProvider<AgentEventListener> listeners) {
     return () -> listeners.orderedStream().forEach(factory::listener);
   }
 
   /** The story, for an application that shows what its agents said. */
   @Bean
   @ConditionalOnMissingBean
-  public TurnHistories nessyHistories(DefaultHarnessFactory factory) {
+  public TurnHistories nessyHistories(DefaultQueuedHarnessFactory factory) {
     return factory.histories();
   }
 
   /** What each model call was shown, for evals, critics and anyone debugging a call. */
   @Bean
   @ConditionalOnMissingBean
-  public InferenceContexts nessyInferenceContexts(DefaultHarnessFactory factory) {
+  public InferenceContexts nessyInferenceContexts(DefaultQueuedHarnessFactory factory) {
     return factory.inferenceContexts();
   }
 
   @Bean
   @ConditionalOnMissingBean
-  public Replies nessyReplies(DefaultHarnessFactory factory) {
+  public Replies nessyReplies(DefaultQueuedHarnessFactory factory) {
     return factory.replies();
   }
 
@@ -196,8 +196,8 @@ public class NessyAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  public Harness<String> nessyHarness(
-      DefaultHarnessFactory factory,
+  public QueuedHarness<String> nessyHarness(
+      DefaultQueuedHarnessFactory factory,
       NessyProperties properties,
       ObjectProvider<Tool<?>> tools,
       ObjectProvider<ObservationRenderer<String>> renderers,

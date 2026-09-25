@@ -23,7 +23,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceResult;
 
@@ -46,7 +46,7 @@ class EngineUnderTestSmokeTest {
 
       AgentId agentId = new AgentId(UUID.randomUUID());
       AgentType type = new AgentType("smoke");
-      Harness<String> harness =
+      QueuedHarness<String> harness =
           engine
               .harnesses()
               .create(

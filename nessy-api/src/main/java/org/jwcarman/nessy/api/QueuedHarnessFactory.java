@@ -31,15 +31,16 @@ import org.jwcarman.nessy.api.tool.Replies;
  * same scheduler the way they use the same JVM. Nothing else crosses between them: each gets its
  * own codec, its own model, its own dispatcher, its own schedule and its own rows.
  */
-public interface HarnessFactory {
+public interface QueuedHarnessFactory {
 
   /** For observations that are already what a model should read. */
-  default Harness<String> create(Consumer<HarnessConfig<String>> customizer) {
+  default QueuedHarness<String> create(Consumer<QueuedHarnessConfig<String>> customizer) {
     return create(String.class, customizer);
   }
 
   /** For an observation type that is not itself generic, which is nearly all of them. */
-  default <O> Harness<O> create(Class<O> observationType, Consumer<HarnessConfig<O>> customizer) {
+  default <O> QueuedHarness<O> create(
+      Class<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer) {
     return create(TypeRef.of(observationType), customizer);
   }
 
@@ -50,7 +51,8 @@ public interface HarnessFactory {
    * type variable, so the agent's own codec has to be composed from the caller's, and only a {@code
    * TypeRef} can carry that through.
    */
-  <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer);
+  <O> QueuedHarness<O> create(
+      TypeRef<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer);
 
   /**
    * Where a late answer comes back in. One for the whole factory rather than one per harness: a

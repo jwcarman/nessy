@@ -21,7 +21,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 
 /**
- * How a {@link DirectHarness} is built, in the same words a {@link HarnessConfig} uses.
+ * How a {@link DirectHarness} is built, in the same words a {@link QueuedHarnessConfig} uses.
  *
  * <p>Almost everything means what it means on the other door: an agent type, a system prompt, what
  * a model is shown, which tools it may reach for and who guards them. Assembling a context and

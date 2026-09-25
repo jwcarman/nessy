@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -217,7 +217,7 @@ class NarrationTest {
     AgentType type = new AgentType("narrated-deferred");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -290,7 +290,7 @@ class NarrationTest {
   }
 
   /** An ordinary harness -- the narration comes from the engine's narrator, not from here. */
-  private Harness<String> harness(AgentType type) {
+  private QueuedHarness<String> harness(AgentType type) {
     return engine
         .harnesses()
         .create(

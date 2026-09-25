@@ -27,7 +27,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -40,7 +40,7 @@ class InferenceContextsTest {
   private static final AgentType CHAT = new AgentType("chat");
 
   private EngineFixture engine;
-  private Harness<String> harness;
+  private QueuedHarness<String> harness;
 
   @BeforeEach
   void startEngine() {
@@ -116,7 +116,7 @@ class InferenceContextsTest {
   void recording_can_be_switched_off() {
     AgentId agentId = new AgentId(UUID.randomUUID());
     try (var quiet =
-        new org.jwcarman.nessy.engine.harness.DefaultHarnessFactory(
+        new org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory(
             settings ->
                 settings
                     .dataSource(engine.dataSource())
@@ -125,7 +125,7 @@ class InferenceContextsTest {
                             new InferenceResult.Answer(List.of(new Block.Text("shh"))),
                         org.jwcarman.nessy.inference.InferenceOptions.of("a-model"))
                     .recordInferenceContexts(false))) {
-      Harness<String> silent =
+      QueuedHarness<String> silent =
           quiet.create(
               config ->
                   config

@@ -26,7 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -74,7 +74,7 @@ class GiveUpUndeliverableTest {
 
     AlwaysBroken model = new AlwaysBroken();
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(

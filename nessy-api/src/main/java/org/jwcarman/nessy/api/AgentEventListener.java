@@ -27,9 +27,9 @@ import org.slf4j.LoggerFactory;
  * and the others still hear; nothing a listener does can fail a turn, and nothing is replayed to a
  * listener that was not there. Work that must not be missed reads the story, which is durable.
  *
- * <p>Attach as many as you like -- to a harness with {@code HarnessConfig.listener(...)}, or to
- * every harness of an engine. A page's stream, a console, a summariser and a board are all one of
- * these.
+ * <p>Attach as many as you like -- to a harness with {@code QueuedHarnessConfig.listener(...)}, or
+ * to every harness of an engine. A page's stream, a console, a summariser and a board are all one
+ * of these.
  */
 @FunctionalInterface
 public interface AgentEventListener {

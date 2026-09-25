@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -139,7 +139,7 @@ class NotebookPatternTest {
         };
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -213,7 +213,7 @@ class NotebookPatternTest {
 
     running(
         (_, _) -> new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("understood")));
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -258,7 +258,7 @@ class NotebookPatternTest {
           throw new AssertionError("this harness never gets as far as a turn");
         });
     var harnesses = engine.harnesses();
-    java.util.function.Consumer<org.jwcarman.nessy.api.HarnessConfig<String>> twoNotebooks =
+    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> twoNotebooks =
         config ->
             config
                 .agentType(new AgentType("notebook-clash"))

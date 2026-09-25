@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,9 +27,9 @@ public class WatchmanRounds {
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
   private static final String TICK = "Do your rounds.";
 
-  private final Harness<String> harness;
+  private final QueuedHarness<String> harness;
 
-  WatchmanRounds(Harness<String> harness) {
+  WatchmanRounds(QueuedHarness<String> harness) {
     this.harness = harness;
   }
 

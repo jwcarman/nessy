@@ -88,7 +88,7 @@ class HarnessObservesToolsTest {
     return lastConfig.tools().find(new ToolName(name)).orElseThrow();
   }
 
-  private DefaultHarnessConfig<String> lastConfig;
+  private DefaultQueuedHarnessConfig<String> lastConfig;
 
   private ToolBinding<?> bound() {
     observations
@@ -105,10 +105,10 @@ class HarnessObservesToolsTest {
                 stopped.add(context);
               }
             });
-    DefaultHarnessConfig<String> config =
-        new DefaultHarnessConfig<>(
+    DefaultQueuedHarnessConfig<String> config =
+        new DefaultQueuedHarnessConfig<>(
             new TypeRef<String>() {},
-            new DefaultHarnessConfig.Defaults(
+            new DefaultQueuedHarnessConfig.Defaults(
                 (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("ok"))),
                 InferenceOptions.of("m")),
             JsonMapper.builder().build(),

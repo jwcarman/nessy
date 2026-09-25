@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.EffectsConfig;
-import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
+import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -54,14 +54,14 @@ import org.jwcarman.nessy.inference.SystemPrompt;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * The engine's {@link org.jwcarman.nessy.api.HarnessConfig}.
+ * The engine's {@link org.jwcarman.nessy.api.QueuedHarnessConfig}.
  *
  * <p>Mutable while a customizer runs, read once afterwards. Defaults are seeded from the factory,
  * so anything an application configured once is already here before the customizer is called.
  *
  * @param <O> the observation type
  */
-public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
+public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<O> {
 
   private static final Duration DEFAULT_TOOL_TIMEOUT = Duration.ofSeconds(30);
   // Not at all, for a tool and for an inference alike. A harness that knows its provider flakes
@@ -91,7 +91,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   private final ObservationRegistry observations;
   private final List<AgentEventListener> listeners = new ArrayList<>();
 
-  DefaultHarnessConfig(
+  DefaultQueuedHarnessConfig(
       TypeRef<O> observationType,
       Defaults defaults,
       ObjectMapper mapper,
@@ -108,7 +108,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   record Defaults(InferenceProvider provider, InferenceOptions options) {}
 
   @Override
-  public DefaultHarnessConfig<O> listener(AgentEventListener listener) {
+  public DefaultQueuedHarnessConfig<O> listener(AgentEventListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
@@ -118,42 +118,42 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
   }
 
   @Override
-  public DefaultHarnessConfig<O> agentType(AgentType agentType) {
+  public DefaultQueuedHarnessConfig<O> agentType(AgentType agentType) {
     this.agentType = agentType;
     return this;
   }
 
   @Override
-  public DefaultHarnessConfig<O> systemPrompt(String prompt) {
+  public DefaultQueuedHarnessConfig<O> systemPrompt(String prompt) {
     return systemPrompt(SystemPromptSource.constant(new SystemPrompt(prompt)));
   }
 
   @Override
-  public DefaultHarnessConfig<O> systemPrompt(SystemPromptSource source) {
+  public DefaultQueuedHarnessConfig<O> systemPrompt(SystemPromptSource source) {
     this.systemPrompt = source;
     return this;
   }
 
   @Override
-  public DefaultHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer) {
+  public DefaultQueuedHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer) {
     this.renderer = renderer;
     return this;
   }
 
   @Override
-  public DefaultHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer) {
+  public DefaultQueuedHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer) {
     this.coalescer = coalescer;
     return this;
   }
 
   @Override
-  public DefaultHarnessConfig<O> inference(Consumer<InferenceConfig> customizer) {
+  public DefaultQueuedHarnessConfig<O> inference(Consumer<InferenceConfig> customizer) {
     customizer.accept(inference);
     return this;
   }
 
   @Override
-  public DefaultHarnessConfig<O> effects(Consumer<EffectsConfig> customizer) {
+  public DefaultQueuedHarnessConfig<O> effects(Consumer<EffectsConfig> customizer) {
     customizer.accept(effects);
     return this;
   }
@@ -171,7 +171,7 @@ public final class DefaultHarnessConfig<O> implements HarnessConfig<O> {
    * same {@code execute_tool} span. An application that is not tracing pays for a check per call.
    */
   @Override
-  public <I> DefaultHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
+  public <I> DefaultQueuedHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
     customizer.accept(terms);
     Tool<I> observed = ObservedTool.wrap(tool, observations);

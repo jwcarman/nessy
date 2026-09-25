@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -144,7 +144,7 @@ class ApprovalEnrichmentTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     ConcurrentLinkedQueue<ApprovalRequest> seen = new ConcurrentLinkedQueue<>();
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -219,7 +219,7 @@ class ApprovalEnrichmentTest {
     AgentType type = new AgentType("enriched-allowed");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -266,7 +266,7 @@ class ApprovalEnrichmentTest {
     AtomicInteger next = new AtomicInteger();
     ConcurrentLinkedQueue<ApprovalRequest> seen = new ConcurrentLinkedQueue<>();
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -314,7 +314,7 @@ class ApprovalEnrichmentTest {
     AgentType type = new AgentType("enriched-broken");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -356,7 +356,7 @@ class ApprovalEnrichmentTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     ConcurrentLinkedQueue<ApprovalRequest> seen = new ConcurrentLinkedQueue<>();
 
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(

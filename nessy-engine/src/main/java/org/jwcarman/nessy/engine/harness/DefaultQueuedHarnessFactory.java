@@ -28,9 +28,9 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.HarnessConfig;
-import org.jwcarman.nessy.api.HarnessFactory;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessConfig;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -85,7 +85,7 @@ import tools.jackson.databind.json.JsonMapper;
  * own codec, its own model, its own dispatcher, its own schedule, and its own rows. There is no
  * registry here holding the harnesses this made, and nothing that iterates all of them.
  */
-public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
+public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCloseable {
 
   // The engine's own decisions, made once. A row is encoded by Jackson, a tool's arguments are
   // described by victools, a message costs about its characters, and time is UTC: none of that
@@ -109,7 +109,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private final Traces traces;
   private final ObservationRegistry observations;
 
-  private final DefaultHarnessConfig.Defaults defaults;
+  private final DefaultQueuedHarnessConfig.Defaults defaults;
   private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
 
@@ -119,7 +119,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * -- the stores, the transaction manager, the one client they share -- so there is nothing for a
    * caller to assemble and nothing for two callers to assemble differently.
    */
-  public DefaultHarnessFactory(Consumer<EngineConfig> customizer) {
+  public DefaultQueuedHarnessFactory(Consumer<EngineConfig> customizer) {
     this(configured(customizer));
   }
 
@@ -134,7 +134,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * For a caller that already holds the settings, which {@link DefaultNessy} does: it takes the
    * model at its own door and hands the engine a config it has already written on.
    */
-  DefaultHarnessFactory(EngineConfig config) {
+  DefaultQueuedHarnessFactory(EngineConfig config) {
     DataSource dataSource = config.requiredDataSource();
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
@@ -165,7 +165,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
-        new DefaultHarnessConfig.Defaults(config.requiredProvider(), config.requiredOptions());
+        new DefaultQueuedHarnessConfig.Defaults(
+            config.requiredProvider(), config.requiredOptions());
   }
 
   /**
@@ -177,9 +178,10 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
    * class never sees -- and it is why nothing above ever has to name {@code AgentState}.
    */
   @Override
-  public <O> Harness<O> create(TypeRef<O> observationType, Consumer<HarnessConfig<O>> customizer) {
-    DefaultHarnessConfig<O> config =
-        new DefaultHarnessConfig<>(observationType, defaults, mapper, schemas, observations);
+  public <O> QueuedHarness<O> create(
+      TypeRef<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer) {
+    DefaultQueuedHarnessConfig<O> config =
+        new DefaultQueuedHarnessConfig<>(observationType, defaults, mapper, schemas, observations);
     customizer.accept(config);
 
     TypeRef<AgentState<O>> stateType =
@@ -191,8 +193,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
     Listeners narrator = new Listeners(listeners, config.listeners());
     tellers.add(narrator);
     // Built here because it needs the store, which a caller has no handle on.
-    DefaultHarnessConfig.Inference inference = config.inference();
-    DefaultHarnessConfig.Inference.Context context = inference.context();
+    DefaultQueuedHarnessConfig.Inference inference = config.inference();
+    DefaultQueuedHarnessConfig.Inference.Context context = inference.context();
     // Observed as they are handed over, the way a tool is wrapped as it is bound: what the
     // engine is given reports its own work, and the assembler knows nothing about spans.
     InferenceContextAssembler assembler =
@@ -258,7 +260,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   }
 
   private <O> @NonNull ToolCallHandler createToolCallHandler(
-      AgentType agentType, Tools tools, Listeners narrator, DefaultHarnessConfig<O> config) {
+      AgentType agentType, Tools tools, Listeners narrator, DefaultQueuedHarnessConfig<O> config) {
     return new ToolCallHandler(
         agentType,
         tools,
@@ -271,7 +273,7 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   }
 
   private <O> @NonNull ApprovalHandler createApprovalHandler(
-      AgentType agentType, Tools tools, Listeners narrator, DefaultHarnessConfig<O> config) {
+      AgentType agentType, Tools tools, Listeners narrator, DefaultQueuedHarnessConfig<O> config) {
     return new ApprovalHandler(
         agentType,
         tools,
@@ -286,8 +288,8 @@ public class DefaultHarnessFactory implements HarnessFactory, AutoCloseable {
   private <O> @NonNull InferenceHandler createInferenceHandler(
       AgentType agentType,
       InferenceContextAssembler assembler,
-      DefaultHarnessConfig.Inference inference,
-      DefaultHarnessConfig<O> config,
+      DefaultQueuedHarnessConfig.Inference inference,
+      DefaultQueuedHarnessConfig<O> config,
       Tools tools,
       Listeners narrator) {
     return new InferenceHandler(

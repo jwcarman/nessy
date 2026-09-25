@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -115,7 +115,7 @@ class DeferredToolTest {
     };
   }
 
-  private Harness<String> harness(AgentType type, Duration toolBudget) {
+  private QueuedHarness<String> harness(AgentType type, Duration toolBudget) {
     return engine
         .harnesses()
         .create(

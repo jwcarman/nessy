@@ -24,7 +24,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.store.AgentStateRepository;
 import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
 import org.jwcarman.nessy.engine.store.StorageCodec;
@@ -62,7 +62,7 @@ public final class EngineFixture implements AutoCloseable {
   }
 
   private final HikariDataSource dataSource;
-  private final DefaultHarnessFactory harnesses;
+  private final DefaultQueuedHarnessFactory harnesses;
   private final JdbcHistoryStore history;
   private final JdbcClient jdbc;
   private final AgentStateRepository states;
@@ -121,7 +121,7 @@ public final class EngineFixture implements AutoCloseable {
             new CharacterCountEstimator());
 
     this.harnesses =
-        new DefaultHarnessFactory(
+        new DefaultQueuedHarnessFactory(
             engine -> {
               engine
                   .dataSource(dataSource)
@@ -137,7 +137,7 @@ public final class EngineFixture implements AutoCloseable {
     this(provider, AgentEventListener.none());
   }
 
-  public DefaultHarnessFactory harnesses() {
+  public DefaultQueuedHarnessFactory harnesses() {
     return harnesses;
   }
 

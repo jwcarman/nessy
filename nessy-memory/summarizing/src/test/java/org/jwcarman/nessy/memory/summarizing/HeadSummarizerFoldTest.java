@@ -29,8 +29,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -57,10 +57,10 @@ class HeadSummarizerFoldTest {
   private final AtomicInteger folds = new AtomicInteger();
   private final AtomicInteger chats = new AtomicInteger();
   private HikariDataSource dataSource;
-  private DefaultHarnessFactory factory;
+  private DefaultQueuedHarnessFactory factory;
   private JdbcSummaries summaries;
 
-  private Harness<String> start(InferenceResult foldResult) {
+  private QueuedHarness<String> start(InferenceResult foldResult) {
     InferenceProvider model =
         (request, narrator) -> {
           if (request.systemPrompt().value().equals(HeadSummarizer.PROMPT)) {
@@ -77,7 +77,7 @@ class HeadSummarizerFoldTest {
     dataSource = new HikariDataSource(config);
     Schemas.initialize(dataSource);
     factory =
-        new DefaultHarnessFactory(
+        new DefaultQueuedHarnessFactory(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     HeadSummarizer summarizer =
@@ -105,7 +105,7 @@ class HeadSummarizerFoldTest {
     dataSource.close();
   }
 
-  private void converse(Harness<String> harness, AgentId agentId, int turns) {
+  private void converse(QueuedHarness<String> harness, AgentId agentId, int turns) {
     for (int i = 1; i <= turns; i++) {
       int expected = chats.get() + 1;
       harness.observe(agentId, "turn " + i);
@@ -115,7 +115,7 @@ class HeadSummarizerFoldTest {
 
   @Test
   void a_fault_leaves_the_summary_as_it_was_and_the_next_turn_tries_again() {
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         start(new InferenceResult.Fault(new Failure.Transient("model is having a day")));
     AgentId agentId = new AgentId(UUID.randomUUID());
 
@@ -127,7 +127,8 @@ class HeadSummarizerFoldTest {
 
   @Test
   void an_empty_answer_keeps_what_there_was() {
-    Harness<String> harness = start(new InferenceResult.Answer(List.of(new Block.Text("   "))));
+    QueuedHarness<String> harness =
+        start(new InferenceResult.Answer(List.of(new Block.Text("   "))));
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     converse(harness, agentId, MAX_TAIL + 3);

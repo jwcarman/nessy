@@ -43,8 +43,8 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  * to be knobs, and every caller set them to the same thing, which is what a knob that should not
  * exist looks like.
  *
- * <p>Customizer-shaped, like {@link org.jwcarman.nessy.api.HarnessConfig} and the configs beneath
- * it: an application says what it wants and stays silent about the rest.
+ * <p>Customizer-shaped, like {@link org.jwcarman.nessy.api.QueuedHarnessConfig} and the configs
+ * beneath it: an application says what it wants and stays silent about the rest.
  */
 public final class EngineConfig {
 
@@ -81,7 +81,7 @@ public final class EngineConfig {
   /**
    * Somebody who hears what every agent of every harness does. Repeatable; defaults to nobody,
    * because narration costs a line per event and nobody asked. A harness adds its own with {@code
-   * HarnessConfig.listener(...)}.
+   * QueuedHarnessConfig.listener(...)}.
    */
   public EngineConfig listener(AgentEventListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));

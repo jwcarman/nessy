@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -157,7 +157,7 @@ class ToolCallingTest {
             new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("It is Loch Ness.")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -234,7 +234,7 @@ class ToolCallingTest {
             new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("no need")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -284,7 +284,7 @@ class ToolCallingTest {
                 HistoryEntry.InferenceAnswered.text("I was not allowed to look.")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -367,7 +367,7 @@ class ToolCallingTest {
         };
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -413,7 +413,7 @@ class ToolCallingTest {
             new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("both done")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -483,7 +483,7 @@ class ToolCallingTest {
                 HistoryEntry.InferenceAnswered.text("Nobody got back to me.")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(
@@ -576,7 +576,7 @@ class ToolCallingTest {
                     List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"x\"}")));
 
     running(model);
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         engine
             .harnesses()
             .create(

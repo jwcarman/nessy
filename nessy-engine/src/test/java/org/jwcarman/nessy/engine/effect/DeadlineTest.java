@@ -26,7 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
@@ -62,7 +62,7 @@ class DeadlineTest {
     }
   }
 
-  private Harness<String> harness(
+  private QueuedHarness<String> harness(
       AgentType agentType, Duration timeout, RetryPolicy policy, InferenceProvider model) {
     running(model);
     return engine
@@ -91,7 +91,8 @@ class DeadlineTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     CountingModel model = new CountingModel();
     // Shorter than the poll interval, so the deadline is behind us before the first claim.
-    Harness<String> harness = harness(type, Duration.ofMillis(1), new RetryPolicy.Never(), model);
+    QueuedHarness<String> harness =
+        harness(type, Duration.ofMillis(1), new RetryPolicy.Never(), model);
 
     harness.observe(agentId, "too late already");
 
@@ -132,7 +133,7 @@ class DeadlineTest {
     AgentType type = new AgentType("backs-off-too-far");
     AgentId agentId = new AgentId(UUID.randomUUID());
     AlwaysBroken model = new AlwaysBroken();
-    Harness<String> harness =
+    QueuedHarness<String> harness =
         harness(
             type,
             Duration.ofSeconds(3),

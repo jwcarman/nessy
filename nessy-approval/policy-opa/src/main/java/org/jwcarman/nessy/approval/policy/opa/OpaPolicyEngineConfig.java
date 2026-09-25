@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * How one {@link OpaPolicyEngine} is put together — the same fluent-into-a-{@code Consumer} shape
- * as {@code HarnessConfig} and {@code PolicyApproverConfig}.
+ * as {@code QueuedHarnessConfig} and {@code PolicyApproverConfig}.
  */
 public interface OpaPolicyEngineConfig {
 

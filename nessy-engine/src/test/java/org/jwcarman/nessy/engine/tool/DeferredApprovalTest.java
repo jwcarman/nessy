@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -111,7 +111,7 @@ class DeferredApprovalTest {
   }
 
   /** Asks once, keeps the address, says nothing -- the whole of a deferring approver. */
-  private Harness<String> harness(AgentType type, Duration questionStands) {
+  private QueuedHarness<String> harness(AgentType type, Duration questionStands) {
     return engine
         .harnesses()
         .create(

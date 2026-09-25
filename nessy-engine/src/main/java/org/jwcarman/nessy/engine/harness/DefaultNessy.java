@@ -17,8 +17,8 @@ package org.jwcarman.nessy.engine.harness;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.HarnessFactory;
 import org.jwcarman.nessy.api.Nessy;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.extraction.ExtractorFactory;
 import org.jwcarman.nessy.engine.extraction.DefaultExtractorFactory;
@@ -35,7 +35,7 @@ import org.jwcarman.nessy.engine.extraction.DefaultExtractorFactory;
  */
 public final class DefaultNessy implements Nessy {
 
-  private final DefaultHarnessFactory harnesses;
+  private final DefaultQueuedHarnessFactory harnesses;
   private final ExtractorFactory extractors;
   private final EmbedderFactory embedders;
 
@@ -45,7 +45,7 @@ public final class DefaultNessy implements Nessy {
     this.extractors =
         new DefaultExtractorFactory(config.requiredProvider(), config.schemas(), config.mapper());
     this.embedders = config.embedders();
-    this.harnesses = new DefaultHarnessFactory(config.engine());
+    this.harnesses = new DefaultQueuedHarnessFactory(config.engine());
   }
 
   /**
@@ -62,7 +62,7 @@ public final class DefaultNessy implements Nessy {
   }
 
   @Override
-  public HarnessFactory harnesses() {
+  public QueuedHarnessFactory harnesses() {
     return harnesses;
   }
 

@@ -21,9 +21,9 @@ import org.jwcarman.nessy.engine.agent.EffectOutcome;
 /**
  * How a performed effect gets back into the agent it was performed for.
  *
- * <p>Separate from {@code Harness} on purpose. The harness is the door callers hold, and its only
- * method is {@code observe}; if delivering an outcome were on it too, any caller could invent an
- * answer the model never gave and fold it into an agent's story. Splitting the two means the
+ * <p>Separate from {@code QueuedHarness} on purpose. The harness is the door callers hold, and its
+ * only method is {@code observe}; if delivering an outcome were on it too, any caller could invent
+ * an answer the model never gave and fold it into an agent's story. Splitting the two means the
  * capability exists for the machinery that has earned it and is not on the type a user is handed.
  *
  * <p>The implementation is the harness -- the fold has to happen behind the same row lock an
