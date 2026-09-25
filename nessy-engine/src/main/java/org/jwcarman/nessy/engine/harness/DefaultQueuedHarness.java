@@ -64,9 +64,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * @param <O> the observation type
  */
-final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, AutoCloseable {
+final class DefaultQueuedHarness<O>
+    implements QueuedHarness<O>, AgentEffectCallback, AutoCloseable {
 
-  private static final Logger log = LoggerFactory.getLogger(DefaultHarness.class);
+  private static final Logger log = LoggerFactory.getLogger(DefaultQueuedHarness.class);
 
   private final AgentType agentType;
 
@@ -90,7 +91,7 @@ final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, 
 
   private EffectDispatcher dispatcher;
 
-  DefaultHarness(
+  DefaultQueuedHarness(
       AgentType agentType,
       BacklogPolicy<O> policy,
       AgentStateStore<O> states,

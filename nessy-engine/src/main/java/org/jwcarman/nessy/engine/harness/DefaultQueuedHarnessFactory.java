@@ -110,7 +110,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final ObservationRegistry observations;
 
   private final DefaultQueuedHarnessConfig.Defaults defaults;
-  private final List<DefaultHarness<?>> harnesses = new CopyOnWriteArrayList<>();
+  private final List<DefaultQueuedHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
 
   /**
@@ -218,8 +218,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             createApprovalHandler(agentType, tools, narrator, config),
             createToolCallHandler(agentType, tools, narrator, config));
     EffectStore effects = new EffectStore(agentType, handlers, effectRows);
-    DefaultHarness<O> harness =
-        new DefaultHarness<>(
+    DefaultQueuedHarness<O> harness =
+        new DefaultQueuedHarness<>(
             agentType,
             config.policy(),
             new AgentStateStore<>(agentType, codecs.create(stateType), states),
@@ -335,7 +335,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    */
   @Override
   public void close() {
-    harnesses.forEach(DefaultHarness::close);
+    harnesses.forEach(DefaultQueuedHarness::close);
     tellers.forEach(Listeners::close);
     scheduler.shutdown();
   }
