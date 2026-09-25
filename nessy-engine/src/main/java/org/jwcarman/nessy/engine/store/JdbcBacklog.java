@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.engine.backlog;
+package org.jwcarman.nessy.engine.store;
 
 import java.util.List;
 import java.util.Objects;
@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
+import org.jwcarman.nessy.api.Pull;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -75,6 +76,16 @@ public final class JdbcBacklog<O> implements Backlog<O> {
       RETURNING arrived_at, payload
       """;
 
+  private static final String TERMINATED =
+      "SELECT terminated_at IS NOT NULL FROM nessy_agent WHERE agent_type = ? AND agent_id = ?";
+
+  private static final String SEAL =
+      """
+      UPDATE nessy_agent
+         SET terminated_at = COALESCE(terminated_at, now())
+       WHERE agent_type = ? AND agent_id = ?
+      """;
+
   private static final String COUNT =
       "SELECT COUNT(*) FROM nessy_agent_backlog WHERE agent_type = ? AND agent_id = ?";
 
@@ -101,13 +112,42 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public Optional<BacklogItem<O>> take() {
+  public Pull<O> take() {
     // Removed and returned in one statement, so nothing can see it waiting after it has been
     // taken. The caller is holding the agent's row, so nothing else is looking anyway.
-    return jdbc.sql(TAKE)
+    Optional<BacklogItem<O>> next =
+        jdbc.sql(TAKE)
+            .params(agentType.value(), agent.value())
+            .query((rs, _) -> item(rs))
+            .optional();
+    if (next.isPresent()) {
+      return new Pull.Item<>(next.get());
+    }
+    // Empty and ended look the same in this table, which is the whole reason the agent row carries
+    // the mark: an agent told to end while it was busy has nothing waiting, and must not be read
+    // as merely idle.
+    return terminated() ? new Pull.Pill<>() : new Pull.Empty<>();
+  }
+
+  /**
+   * End this agent, and abandon whatever it was going to do.
+   *
+   * <p>Not on {@link Backlog}: a coalescer decides what waits, not whether the agent lives. The
+   * mark and the emptying belong to the same transaction, so an agent cannot be left ended with
+   * work still queued behind it.
+   */
+  public void seal() {
+    clear();
+    jdbc.sql(SEAL).params(agentType.value(), agent.value()).update();
+  }
+
+  /** Whether this agent has been told to end, whether or not it has noticed yet. */
+  public boolean terminated() {
+    return jdbc.sql(TERMINATED)
         .params(agentType.value(), agent.value())
-        .query((rs, _) -> item(rs))
-        .optional();
+        .query(Boolean.class)
+        .optional()
+        .orElse(false);
   }
 
   @Override

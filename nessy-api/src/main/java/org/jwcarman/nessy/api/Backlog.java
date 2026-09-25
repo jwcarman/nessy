@@ -17,7 +17,6 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * What is waiting for an agent, and what a coalescer may do about it.
@@ -48,13 +47,14 @@ public interface Backlog<O> {
    * Take the one that has waited longest, and remove it.
    *
    * <p>How work leaves a backlog: a turn ends, the agent is idle, and the next thing waiting
-   * becomes the next turn. Empty when nothing is waiting, which is how an agent goes quiet rather
-   * than by anybody asking whether it should.
+   * becomes the next turn. Three answers rather than two, because an agent that has been ended has
+   * to say so here -- see {@link Pull.Pill}.
    *
    * <p>Taken under the same lock an arrival is written under, so a turn ending and an observation
-   * arriving cannot both decide what is at the head.
+   * arriving cannot both decide what is at the head. Taking is undone by the transaction, not by
+   * putting anything back: a caller that decides against the work rolls back.
    */
-  Optional<BacklogItem<O>> take();
+  Pull<O> take();
 
   /** Keep it, behind everything already waiting. Every observation matters. */
   void append(BacklogItem<O> item);

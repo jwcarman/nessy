@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.engine.backlog;
+package org.jwcarman.nessy.engine.store;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
+import org.jwcarman.nessy.api.Pull;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -190,7 +191,7 @@ class JdbcBacklogTest {
     backlog.append(said("first"));
     backlog.append(said("second"));
 
-    assertThat(backlog.take()).map(BacklogItem::observation).contains("first");
+    assertThat(backlog.take()).isEqualTo(new Pull.Item<>(said("first")));
 
     assertThat(waiting()).as("and it is gone").containsExactly("second");
   }
@@ -202,10 +203,10 @@ class JdbcBacklogTest {
     backlog.append(said("two"));
     backlog.append(said("three"));
 
-    assertThat(backlog.take()).map(BacklogItem::observation).contains("one");
-    assertThat(backlog.take()).map(BacklogItem::observation).contains("two");
-    assertThat(backlog.take()).map(BacklogItem::observation).contains("three");
-    assertThat(backlog.take()).as("how an agent goes quiet").isEmpty();
+    assertThat(backlog.take()).isEqualTo(new Pull.Item<>(said("one")));
+    assertThat(backlog.take()).isEqualTo(new Pull.Item<>(said("two")));
+    assertThat(backlog.take()).isEqualTo(new Pull.Item<>(said("three")));
+    assertThat(backlog.take()).as("how an agent goes quiet").isEqualTo(new Pull.Empty<String>());
   }
 
   @Test
@@ -214,7 +215,11 @@ class JdbcBacklogTest {
     Instant early = Instant.parse("2026-09-25T09:00:00Z");
     backlog.append(new BacklogItem<>("first", early));
 
-    assertThat(backlog.take()).map(BacklogItem::arrivedAt).contains(early);
+    assertThat(backlog.take())
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Pull.Item.class))
+        .extracting(Pull.Item::item)
+        .extracting("arrivedAt")
+        .isEqualTo(early);
   }
 
   @Test
@@ -229,5 +234,45 @@ class JdbcBacklogTest {
     backlog.append(said("later"));
 
     assertThat(waiting()).containsExactly("item 4", "later");
+  }
+
+  /**
+   * Termination cannot reach an agent mid-turn, so it waits here. The backlog is emptied and the
+   * agent is marked; the next read says end, and says it forever.
+   */
+  @Test
+  @DisplayName("sealing empties the backlog and every read afterwards says end")
+  void sealing_abandons_what_was_waiting() {
+    AgentId ending = AgentId.random();
+    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
+    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
+        .params(TYPE.value(), ending.value())
+        .update();
+    its.append(said("never going to happen"));
+
+    its.seal();
+
+    assertThat(its.size()).as("whatever was waiting is abandoned").isZero();
+    assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
+    assertThat(its.take())
+        .as("forever, so a late arrival cannot undo it")
+        .isEqualTo(new Pull.Pill<String>());
+    assertThat(its.terminated()).isTrue();
+  }
+
+  /**
+   * An empty backlog and an ended one look the same in the rows; the agent row tells them apart.
+   */
+  @Test
+  @DisplayName("empty is not the same answer as ended")
+  void empty_is_not_ended() {
+    AgentId living = AgentId.random();
+    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, living);
+    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
+        .params(TYPE.value(), living.value())
+        .update();
+
+    assertThat(its.take()).isEqualTo(new Pull.Empty<String>());
+    assertThat(its.terminated()).isFalse();
   }
 }

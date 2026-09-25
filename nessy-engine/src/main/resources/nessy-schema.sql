@@ -196,9 +196,16 @@ CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
 -- backlog rows instead would leave two arrivals to an empty backlog with nothing to contend for.
 CREATE TABLE IF NOT EXISTS nessy_agent
 (
-    agent_type VARCHAR(64) NOT NULL,
-    agent_id   UUID        NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    agent_type   VARCHAR(64) NOT NULL,
+    agent_id     UUID        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- When it was told to end, and null while it has not been.
+    --
+    -- Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
+    -- it only from idle. So it is recorded here, the backlog is emptied, and every read of the
+    -- backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
+    -- ending IS the work.
+    terminated_at TIMESTAMPTZ,
     PRIMARY KEY (agent_type, agent_id)
 );
 
