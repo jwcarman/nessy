@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine.direct;
+package org.jwcarman.nessy.engine.history;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.block.Block;
@@ -42,29 +43,35 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
  * asked for a call and either got a result or was refused, and that a human said yes in between is
  * not part of the conversation it is having.
  */
-final class Transcript {
+public final class Transcript {
 
   private final PayloadStore payloads;
 
-  Transcript(PayloadStore payloads) {
+  public Transcript(PayloadStore payloads) {
     this.payloads = payloads;
   }
 
-  List<Turn> of(List<AgentEvent> events) {
+  public List<Turn> of(List<AgentEvent> events) {
+    // Every payload in the window, in one ask. Resolving as each event is reached would be a
+    // round trip per block -- free against a map, and one query per turn against a database.
+    Map<PayloadRef, PayloadStore.Resolved> resolved = payloads.get(referencedBy(events));
+
     List<Turn> turns = new ArrayList<>();
     Open open = null;
 
     for (AgentEvent event : events) {
       switch (event) {
         case AgentEvent.TurnStarted started ->
-            open = Open.on(started, resolve(started.observation()));
+            open = Open.on(started, resolve(resolved, started.observation()));
 
         case AgentEvent.ActionsRequested requested ->
-            require(open, event).ask(requested.seq(), cast(resolve(requested.request())));
+            require(open, event).ask(requested.seq(), cast(resolve(resolved, requested.request())));
 
         case AgentEvent.ToolSucceeded done ->
             require(open, event)
-                .outcome(new ToolOutcome.Succeeded(done.callId(), cast(resolve(done.result()))));
+                .outcome(
+                    new ToolOutcome.Succeeded(
+                        done.callId(), cast(resolve(resolved, done.result()))));
 
         case AgentEvent.ToolFailed done ->
             require(open, event).outcome(new ToolOutcome.Failed(done.callId(), done.message()));
@@ -75,7 +82,7 @@ final class Transcript {
         case AgentEvent.InferenceAnswered answered -> {
           turns.add(
               require(open, event)
-                  .closed(new TurnResult.Answered(cast(resolve(answered.answer())))));
+                  .closed(new TurnResult.Answered(cast(resolve(resolved, answered.answer())))));
           open = null;
         }
         case AgentEvent.InferenceRefused refused -> {
@@ -97,13 +104,35 @@ final class Transcript {
     return List.copyOf(turns);
   }
 
-  private List<Block> resolve(PayloadRef ref) {
-    return switch (payloads.get(ref)) {
+  /** Which payloads this window needs, in the order it will need them. */
+  private static List<PayloadRef> referencedBy(List<AgentEvent> events) {
+    List<PayloadRef> refs = new ArrayList<>();
+    for (AgentEvent event : events) {
+      switch (event) {
+        case AgentEvent.TurnStarted started -> refs.add(started.observation());
+        case AgentEvent.ActionsRequested requested -> refs.add(requested.request());
+        case AgentEvent.ToolSucceeded done -> refs.add(done.result());
+        case AgentEvent.InferenceAnswered answered -> refs.add(answered.answer());
+        case AgentEvent.ToolFailed _,
+            AgentEvent.ToolDenied _,
+            AgentEvent.ToolApproved _,
+            AgentEvent.InferenceRefused _,
+            AgentEvent.InferenceFailed _,
+            AgentEvent.Terminated _ -> {
+          // Nothing behind these but the words already in them.
+        }
+      }
+    }
+    return refs;
+  }
+
+  private static List<Block> resolve(
+      Map<PayloadRef, PayloadStore.Resolved> resolved, PayloadRef ref) {
+    return switch (resolved.get(ref)) {
       case PayloadStore.Resolved.Found(List<Block> content) -> content;
       // A reference with nothing behind it is a broken store, not a turn that went badly. Saying
       // so here beats handing a model a turn with a hole where its own words were.
-      case PayloadStore.Resolved.Missing _ ->
-          throw new IllegalStateException("no payload behind " + ref);
+      case null, default -> throw new IllegalStateException("no payload behind " + ref);
     };
   }
 

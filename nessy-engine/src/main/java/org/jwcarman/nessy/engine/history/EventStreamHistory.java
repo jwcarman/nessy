@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.engine.direct;
+package org.jwcarman.nessy.engine.history;
 
 import java.util.List;
 import java.util.Objects;
@@ -39,13 +39,13 @@ import org.jwcarman.nessy.inference.turn.Turn;
  * where the turn boundaries are, so the read is the whole stream either way. That is a property of
  * this store rather than a licence for the next one.
  */
-final class EventStreamHistory implements TurnHistory {
+public final class EventStreamHistory implements TurnHistory {
 
   private final AgentEventStore events;
   private final Transcript transcript;
   private final AgentId agent;
 
-  EventStreamHistory(AgentEventStore events, Transcript transcript, AgentId agent) {
+  public EventStreamHistory(AgentEventStore events, Transcript transcript, AgentId agent) {
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
     this.agent = Objects.requireNonNull(agent, "agent must not be null");

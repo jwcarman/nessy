@@ -45,6 +45,8 @@ import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.history.EventStreamHistory;
+import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;

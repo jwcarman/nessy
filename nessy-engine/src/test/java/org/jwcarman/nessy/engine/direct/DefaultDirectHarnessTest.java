@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
@@ -584,5 +585,67 @@ class DefaultDirectHarnessTest {
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolDenied");
+  }
+
+  @Test
+  @DisplayName("a window of turns asks the payload store once, not once per block")
+  void payloads_are_resolved_in_one_ask() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted();
+    for (int i = 0; i < 4; i++) {
+      model.then(answering("ok " + i));
+    }
+    CountingPayloads counting = new CountingPayloads(payloads);
+    DirectHarness<String> harness =
+        new DirectHarnessFactory(new InMemoryLocks(), events, counting, model, SCHEMAS, MAPPER)
+            .<String>create(
+                c ->
+                    c.agentType(TYPE)
+                        .systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.model("a-model")));
+
+    for (int i = 0; i < 4; i++) {
+      harness.ask(agent, "question " + i);
+    }
+
+    // Four turns behind the last call, each with an observation and an answer. One ask per
+    // projection is the point; one ask per block would grow with the conversation.
+    assertThat(counting.batches).as("one batch per projection").isPositive();
+    assertThat(counting.singles)
+        .as("no payload resolved one at a time while building turns")
+        .isLessThanOrEqualTo(counting.batches);
+  }
+
+  /** Counts how a projection reaches for its payloads. */
+  private static final class CountingPayloads implements PayloadStore {
+    private final PayloadStore delegate;
+    private int batches;
+    private int singles;
+
+    CountingPayloads(PayloadStore delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public PayloadRef put(List<? extends Block> content) {
+      return delegate.put(content);
+    }
+
+    @Override
+    public Resolved get(PayloadRef ref) {
+      singles++;
+      return delegate.get(ref);
+    }
+
+    @Override
+    public java.util.Map<PayloadRef, Resolved> get(java.util.Collection<PayloadRef> refs) {
+      batches++;
+      java.util.Map<PayloadRef, Resolved> found = new java.util.LinkedHashMap<>();
+      for (PayloadRef ref : refs) {
+        found.computeIfAbsent(ref, delegate::get);
+      }
+      return found;
+    }
   }
 }

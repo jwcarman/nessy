@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.spi.store;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
 
@@ -41,6 +44,25 @@ public interface PayloadStore {
 
   /** What is behind a reference. */
   Resolved get(PayloadRef ref);
+
+  /**
+   * Everything behind these references, in one go.
+   *
+   * <p>Building a window of turns needs every payload in it, and asking one at a time is a round
+   * trip per block -- free in memory, and the difference between one query and fifty over a
+   * database. A store that can fetch a set should; the default asks one at a time, so an
+   * implementation that has nothing better is still correct.
+   *
+   * @return what was found, keyed by reference. A reference with nothing behind it maps to {@link
+   *     Resolved.Missing}, so the result always has an entry for every reference asked about.
+   */
+  default Map<PayloadRef, Resolved> get(Collection<PayloadRef> refs) {
+    Map<PayloadRef, Resolved> found = new LinkedHashMap<>();
+    for (PayloadRef ref : refs) {
+      found.computeIfAbsent(ref, this::get);
+    }
+    return found;
+  }
 
   /** What came of asking. */
   sealed interface Resolved {
