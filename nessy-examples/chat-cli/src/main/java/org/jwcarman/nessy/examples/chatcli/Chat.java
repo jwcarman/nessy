@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
@@ -21,6 +22,9 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
+import org.jwcarman.nessy.engine.direct.DirectHarnessFactory;
+import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -31,14 +35,33 @@ import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
 import org.jwcarman.nessy.spi.store.Schemas;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
+import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.annotation.Bean;
+import tools.jackson.databind.json.JsonMapper;
 
-/** A terminal chat with a notebook, a plan, and one tool a person has to approve. */
-public final class Chat {
+/**
+ * A terminal chat with a notebook, a plan, and one tool a person has to approve.
+ *
+ * <p>An ordinary Spring Boot application, which is what it always was underneath: the provider is a
+ * bean its own module contributes, and the database comes up from {@code compose.yaml} when this
+ * runs and goes away after. There is nothing to start first and no connection details to export.
+ *
+ * <p><b>The conversation is not in that database.</b> A terminal's chat lives as long as the
+ * terminal does. What the notebook and the plan keep is the part worth outliving it.
+ */
+// Nessy's own auto-configuration builds the QUEUED world -- a harness factory over a database,
+// with a model and a system prompt read from properties. This application builds a direct harness
+// itself and says what it is for in code, so that configuration has nothing to do here.
+@SpringBootApplication(exclude = {NessyAutoConfiguration.class, PromptAutoConfiguration.class})
+public class Chat {
 
   private static final AgentType TYPE = new AgentType("chat");
 
-  /** A template: {@code ${today}} is filled in on every call, so the date is never stale. */
   private static final String SYSTEM_PROMPT =
       """
       You are a concise, friendly assistant living in someone's terminal. Keep answers short \
@@ -64,81 +87,92 @@ public final class Chat {
         : flattened.substring(0, SHOWN_BODY_CHARACTERS) + "... (" + body.length() + " chars)";
   }
 
-  private Chat() {}
-
   public static void main(String[] args) {
-    Clock clock = Clock.systemDefaultZone();
-    // Built here rather than left to the REPL, because the notebook and the plan are opened over
-    // it: what the agent remembers and what its tools read have to be one database. PostgreSQL,
-    // because the engine's schema is PostgreSQL's -- the same variables Boot reads, so one set of
-    // settings serves both. Initialized because it is OURS to initialize.
-    DataSource database = fromEnvironment();
-    Schemas.initialize(database);
-    Notebook notebook = new JdbcNotebook(database, TYPE);
-    PlanStore plans = new JdbcPlanStore(database, TYPE);
-    Repl.run(
-        config ->
-            config
-                // No exitOn: the defaults already take exit, quit, /exit and /quit, in any case.
-                .banner("nessy chat -- type /exit or press Ctrl-D to leave")
-                .prompt("> ")
-                .farewell("bye.")
-                .systemPrompt(
-                    TemplatedSystemPrompt.of(
-                        new SpringPromptTemplateFactory(),
-                        SYSTEM_PROMPT,
-                        PromptVariableSource.supplied(
-                            "today", () -> LocalDate.now(clock).toString())))
-                .agent(TYPE)
-                .dataSource(database)
-                // Two sources of background: the notebook's index and the current plan. Both are
-                // ambient, so they are asked afresh every call and never written to the story --
-                // the model sees the notes and the plan as they stand NOW.
-                .harness(
-                    h ->
-                        h.inference(
-                            in ->
-                                in.context(
-                                    ctx ->
-                                        ctx.ambient(NotebookTools.index(notebook))
-                                            .ambient(PlanTools.plan(plans)))))
-                .tool(new DaysUntilTool())
-                .tool(NotebookTools.remember(notebook))
-                .tool(NotebookTools.revise(notebook))
-                .tool(NotebookTools.recall(notebook))
-                .tool(NotebookTools.forget(notebook))
-                .tool(PlanTools.updatePlan(plans))
-                // The only thing here that reaches outside the process, so the only thing a
-                // person is asked about. The renderer writes the sentence they consent to.
-                .tool(
-                    new SendEmailTool(),
-                    binding ->
-                        binding
-                            .approver(ConsoleApprover.atTheTerminal())
-                            // Recipient, subject AND the body -- consenting to a message you have
-                            // not read is not consent. Trimmed rather than omitted.
-                            .action(
-                                input ->
-                                    "Send an email to %s%n    subject: %s%n    body: %s"
-                                        .formatted(
-                                            input.to(), input.subject(), trimmed(input.body())))));
+    // A terminal, not a server: nothing here listens, and the process ends when the chat does.
+    new SpringApplicationBuilder(Chat.class)
+        .web(org.springframework.boot.WebApplicationType.NONE)
+        .run(args);
   }
 
-  private static DataSource fromEnvironment() {
-    String url = System.getenv("SPRING_DATASOURCE_URL");
-    if (url == null || url.isBlank()) {
-      throw new IllegalStateException(
-          "set SPRING_DATASOURCE_URL (and SPRING_DATASOURCE_USERNAME/PASSWORD) to a PostgreSQL"
-              + " database; the engine keeps its agents there");
-    }
-    DriverManagerDataSource database =
-        new DriverManagerDataSource(
-            url,
-            System.getenv("SPRING_DATASOURCE_USERNAME"),
-            System.getenv("SPRING_DATASOURCE_PASSWORD"));
-    // Named rather than discovered: under exec:java the driver sits in a class loader that
-    // DriverManager's own lookup never sees, and "no suitable driver" is all it would say.
-    database.setDriverClassName("org.postgresql.Driver");
-    return database;
+  @Bean
+  public Notebook notebook(DataSource database) {
+    Schemas.initialize(database);
+    return new JdbcNotebook(database, TYPE);
+  }
+
+  @Bean
+  public PlanStore plans(DataSource database) {
+    return new JdbcPlanStore(database, TYPE);
+  }
+
+  /** Everything an application owns once. In memory, because the conversation is the process. */
+  @Bean
+  public DirectHarnessFactory harnesses(InferenceProvider provider) {
+    return DirectHarnessFactory.inMemory(
+        provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build());
+  }
+
+  @Bean
+  public CommandLineRunner terminal(
+      DirectHarnessFactory harnesses,
+      @Value("${nessy.model}") String model,
+      Notebook notebook,
+      PlanStore plans,
+      Clock clock) {
+    return _ ->
+        Repl.run(
+            harnesses,
+            model,
+            config ->
+                config
+                    // No exitOn: the defaults already take exit, quit, /exit and /quit.
+                    .banner("nessy chat -- type /exit or press Ctrl-D to leave")
+                    .prompt("> ")
+                    .farewell("bye.")
+                    .systemPrompt(
+                        TemplatedSystemPrompt.of(
+                            new SpringPromptTemplateFactory(),
+                            SYSTEM_PROMPT,
+                            PromptVariableSource.supplied(
+                                "today", () -> LocalDate.now(clock).toString())))
+                    .agent(TYPE)
+                    // Two sources of background: the notebook's index and the current plan. Both
+                    // are ambient, so they are asked afresh every call and never written to the
+                    // story -- the model sees the notes and the plan as they stand NOW.
+                    .harness(
+                        h ->
+                            h.inference(
+                                in ->
+                                    in.context(
+                                        ctx ->
+                                            ctx.ambient(NotebookTools.index(notebook))
+                                                .ambient(PlanTools.plan(plans)))))
+                    .tool(new DaysUntilTool())
+                    .tool(NotebookTools.remember(notebook))
+                    .tool(NotebookTools.revise(notebook))
+                    .tool(NotebookTools.recall(notebook))
+                    .tool(NotebookTools.forget(notebook))
+                    .tool(PlanTools.updatePlan(plans))
+                    // The only thing here that reaches outside the process, so the only thing a
+                    // person is asked about. The renderer writes the sentence they consent to.
+                    .tool(
+                        new SendEmailTool(),
+                        binding ->
+                            binding
+                                .approver(ConsoleApprover.atTheTerminal())
+                                // Recipient, subject AND the body -- consenting to a message you
+                                // have not read is not consent. Trimmed rather than omitted.
+                                .action(
+                                    input ->
+                                        "Send an email to %s%n    subject: %s%n    body: %s"
+                                            .formatted(
+                                                input.to(),
+                                                input.subject(),
+                                                trimmed(input.body())))));
+  }
+
+  @Bean
+  public Clock clock() {
+    return Clock.systemDefaultZone();
   }
 }

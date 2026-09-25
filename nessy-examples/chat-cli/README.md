@@ -1,28 +1,21 @@
 # Nessy Example: Chat CLI
 
-The smallest complete Nessy application: a conversation in a terminal, with
-one tool. No database, no HTTP, no Spring code of your own to write — two
-Java files, one of which is the tool.
+An ordinary Spring Boot application that happens to be a terminal: a
+conversation, a notebook, a plan, and one tool a person has to approve.
 
-It used to be four, and one of those was eighty lines of engine assembly. That
-moved into `nessy-console`, where it is library code rather than an example of
-what an application should not have to write.
+Nothing to start first. `compose.yaml` beside this file is brought up when the
+example runs and stopped when it exits, so the database the notebook and the
+plan live in is part of running it rather than a prerequisite.
 
 ## What it shows
 
-`Chat.java` is 53 lines, and this is all of it:
+It runs on the **direct** harness: `ask` runs the turn on the calling thread and
+returns what it came to. The terminal has nothing to wait on and nothing to
+guess about — it used to block five minutes on a narration queue and then admit
+it could not tell whether the model was still working or the news had been lost.
 
-```java
-Repl.run(config -> config
-    .banner("nessy chat — Ctrl-D or /quit to leave")
-    .systemPrompt(SYSTEM_PROMPT)
-    .tool(new DaysUntilTool()));
-```
-
-`nessy-console` owns everything else — raising the Boot context that finds the
-model, the in-memory substrate and reply tokens, and the loop that streams an
-answer as it arrives. What is left here is the only part that is about THIS
-program: what it is for, and what it can do.
+`nessy-console` owns the loop and the printing. What is left here is the part
+that is about THIS program: what it is for, and what it can do.
 
 - **A tool worth having.** `days_until` counts days to a date: something a model
   is bad at and a tool is trivially good at.
@@ -44,8 +37,10 @@ program: what it is for, and what it can do.
   `y`/`yes` is a no, and end of input is a no — silence is not consent.
 - **Streaming.** The answer is typed out as the model writes it.
 
-Nothing survives the process — state lives exactly as long as the terminal it is
-typed into. Point `chat-web` at a database to see the other half.
+**The conversation does not survive the process** — a terminal's chat lives as
+long as the terminal does, and a CLI that silently resumed yesterday's would
+surprise the person typing into it. What the notebook and the plan keep is the
+part worth outliving it. Point `chat-web` at a database to see the other half.
 
 ## Run it
 

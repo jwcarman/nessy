@@ -41,11 +41,48 @@ public final class Repl {
 
   private Repl() {}
 
+  /**
+   * For a program that is already a Spring Boot application, which is the ordinary case.
+   *
+   * <p>Everything this needs -- a provider, a database for whatever tools keep things, a model name
+   * -- the application already has injected, so nothing is discovered here and no context is
+   * raised. Hand over a factory and say what the agent is for.
+   */
+  public static void run(DirectHarnessFactory factory, String model, ReplCustomizer customizer) {
+    Objects.requireNonNull(factory, "factory must not be null");
+    Objects.requireNonNull(model, "model must not be null");
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    ReplConfig config = new ReplConfig();
+    customizer.customize(config);
+    run(factory, model, config, ConsoleIo.standard());
+  }
+
+  /**
+   * For a program that is not a Spring Boot application and does not want to become one.
+   *
+   * <p>Raises just enough Boot to find a provider and a database, then does what the other one
+   * does. An application with its own context should hand over a factory instead.
+   */
   public static void run(ReplCustomizer customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     ReplConfig config = new ReplConfig();
     customizer.customize(config);
     run(config, ConsoleIo.standard());
+  }
+
+  static void run(DirectHarnessFactory factory, String model, ReplConfig config, ConsoleIo io) {
+    ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
+    DirectHarness<String> harness =
+        factory.<String>create(
+            h -> {
+              h.agentType(config.type())
+                  .systemPrompt(config.systemPrompt())
+                  .inputRenderer(said -> List.of(new Block.Text(said)))
+                  .inference(in -> in.model(model).maxTokens(config.maxTokens()))
+                  .listener(narration);
+              config.tools().forEach(grant -> grant.accept(h));
+            });
+    new ReplLoop(harness, config.agentId(), config, io, narration).run();
   }
 
   /**
@@ -75,21 +112,12 @@ public final class Repl {
       // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
       // A tool that wants to remember something still brings its own store.
       config.dataSource().ifPresent(Schemas::initialize);
-      ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
-      DirectHarnessFactory factory =
+      run(
           DirectHarnessFactory.inMemory(
-              provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build());
-      DirectHarness<String> harness =
-          factory.<String>create(
-              h -> {
-                h.agentType(config.type())
-                    .systemPrompt(config.systemPrompt())
-                    .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model(model.get()).maxTokens(config.maxTokens()))
-                    .listener(narration);
-                config.tools().forEach(grant -> grant.accept(h));
-              });
-      new ReplLoop(harness, config.agentId(), config, io, narration).run();
+              provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build()),
+          model.get(),
+          config,
+          io);
     }
   }
 

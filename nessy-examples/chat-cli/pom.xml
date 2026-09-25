@@ -98,6 +98,16 @@
            rather than left to a transitive accident. Version from the parent's Boot BOM. -->
     </dependency>
     <!-- The engine's schema is PostgreSQL's; the driver rides along at runtime. -->
+    <!-- A pooled DataSource for Boot to hand the compose-started database over as. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <!-- Boot starts the database in compose.yaml when the example runs, and stops it after. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-docker-compose</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
