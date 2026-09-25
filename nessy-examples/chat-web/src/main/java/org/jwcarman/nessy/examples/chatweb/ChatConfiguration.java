@@ -40,6 +40,7 @@ import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.planning.JdbcPlanStore;
 import org.jwcarman.nessy.planning.PlanStore;
 import org.jwcarman.nessy.planning.PlanTools;
+import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -66,6 +67,23 @@ public class ChatConfiguration {
   @Bean
   public Notebook notebook(DataSource dataSource) {
     return new JdbcNotebook(dataSource, TYPE);
+  }
+
+  /**
+   * One turn at a time per agent, and the row is what says so.
+   *
+   * <p>Without this the direct door falls back to locks held in this process, which are STRIPED --
+   * 64 of them shared by every agent -- so an unrelated conversation landing on the same stripe is
+   * told the agent is busy when it is not. A lease is keyed by the agent itself, and it holds
+   * across instances rather than within one process.
+   *
+   * <p>Ten minutes because a turn here can be waiting on a person: the desk holds a call for five
+   * before giving up, and a lease that expired under a holder still working would let a second turn
+   * start on the same agent, which is the thing it exists to prevent.
+   */
+  @Bean
+  public Locks agentLocks(DataSource dataSource) {
+    return new JdbcLeases(dataSource, "agent", Duration.ofMinutes(10));
   }
 
   @Bean

@@ -19,6 +19,7 @@ import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -69,6 +70,13 @@ public class OpenAiAutoConfiguration {
       @Value("${openai.base-url:#{null}}") String baseUrl,
       ObjectProvider<JsonMapper> mappers,
       ObservationRegistry observations) {
+    // The one fact nothing downstream can recover: an application pointing "openai" at a local
+    // server looks identical from the outside until a model name is rejected by a vendor nobody
+    // meant to call. Never the key.
+    LoggerFactory.getLogger(OpenAiAutoConfiguration.class)
+        .info(
+            "NESSY INFERENCE: openai will call {}",
+            baseUrl == null ? "the vendor's own endpoint" : baseUrl);
     InferenceProvider provider =
         OpenAiInferenceProvider.create(
             c -> {

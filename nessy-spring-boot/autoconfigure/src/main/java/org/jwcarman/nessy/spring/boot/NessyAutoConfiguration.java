@@ -226,4 +226,14 @@ public class NessyAutoConfiguration {
     }
     return model;
   }
+
+  /** Says what will actually answer, before a single turn runs. */
+  @Bean
+  @ConditionalOnMissingBean
+  public InferenceReport nessyInferenceReport(
+      ObjectProvider<org.jwcarman.nessy.inference.InferenceProvider> providers,
+      NessyProperties properties,
+      org.springframework.core.env.Environment environment) {
+    return new InferenceReport(providers, properties, environment);
+  }
 }
