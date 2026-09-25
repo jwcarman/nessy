@@ -46,6 +46,17 @@ public interface DirectHarness<I> {
    * out of budget, a provider being unreachable and the agent already being busy are outcomes to
    * branch on, not faults.
    */
+  /**
+   * Unconstrained rather than untyped, which is the distinction that matters. Nothing is asked of
+   * the answer's shape, so what comes back off the wire is prose and arrives in pieces a watcher
+   * can print as they land. Asking for a shape -- even one as bland as a record holding a string --
+   * makes those pieces fragments of JSON instead, which is why this is not a convenience over the
+   * typed form but the only form that streams.
+   *
+   * <p>What it hands back is the TEXT of the answer: the text blocks, joined. Anything else the
+   * model produced -- thinking, a vendor's own opaque blocks -- is in the story and not in this
+   * string.
+   */
   Outcome<String> ask(AgentId agent, I input);
 
   /**
