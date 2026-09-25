@@ -35,6 +35,7 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.narration.Narrator;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,6 +56,10 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private static final Logger log = LoggerFactory.getLogger(ToolCallHandler.class);
 
   private final AgentType agentType;
+
+  /** Where a tool result goes, so the fold is told a reference rather than an answer. */
+  private final PayloadStore payloads;
+
   private final Tools tools;
   private final ToolCalls calls;
   private final Narrator narrator;
@@ -71,8 +76,10 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       Narrator narrator,
       Duration timeout,
       RetryPolicy retryPolicy,
-      Clock clock) {
+      Clock clock,
+      PayloadStore payloads) {
     this.agentType = agentType;
+    this.payloads = payloads;
     this.tools = tools;
     this.calls = calls;
     this.replyTokens = replyTokens;
@@ -199,8 +206,10 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       case Awaited.Ready<ToolResult>(ToolResult result) ->
           Awaited.ready(
               switch (result) {
+                // Put away where it was produced. A tool's result is content; what the fold is
+                // told is that the call succeeded and where the result went.
                 case ToolResult.Success(var blocks) ->
-                    new EffectOutcome.ToolSucceeded(callId, blocks);
+                    new EffectOutcome.ToolSucceeded(callId, payloads.forAgent(agentId).put(blocks));
                 case ToolResult.Failure(String message) ->
                     new EffectOutcome.ToolFailed(callId, message);
               });

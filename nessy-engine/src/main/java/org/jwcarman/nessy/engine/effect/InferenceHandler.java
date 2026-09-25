@@ -16,17 +16,21 @@
 package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
+import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,17 +57,22 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
   private final Duration timeout;
   private final RetryPolicy retryPolicy;
 
+  /** Where what the model said goes, so that what reaches the fold is a reference to it. */
+  private final PayloadStore payloads;
+
   public InferenceHandler(
       AgentType agentType,
       InferenceService inference,
       InferenceOptions options,
       Duration timeout,
-      RetryPolicy retryPolicy) {
+      RetryPolicy retryPolicy,
+      PayloadStore payloads) {
     this.agentType = agentType;
     this.inference = inference;
     this.options = options;
     this.timeout = timeout;
     this.retryPolicy = retryPolicy;
+    this.payloads = payloads;
   }
 
   /** Uniform: one agent type calls one model on one set of terms. */
@@ -114,7 +123,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
         switch (result) {
           case InferenceResult.Answer(var blocks, _) -> {
             log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());
-            yield new EffectOutcome.InferenceAnswered(blocks);
+            // Put away here, where the content exists and there is somewhere to put it. What
+            // reaches the fold is where it went.
+            yield new EffectOutcome.InferenceAnswered(payloads.forAgent(agentId).put(blocks));
           }
           case InferenceResult.Refusal(var category, _) -> {
             log.info("model declined for agent {} ({})", agentId.value(), category);
@@ -122,12 +133,24 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
           }
           case InferenceResult.Actions(var blocks, _) -> {
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
-            yield new EffectOutcome.InferenceRequestedActions(blocks);
+            // The calls come out beside the reference: which calls are outstanding is the one
+            // thing about a request the fold cannot take on trust from a claim check.
+            yield new EffectOutcome.InferenceRequestedActions(
+                payloads.forAgent(agentId).put(blocks), requested(blocks));
           }
           case InferenceResult.Fault(var failure, _) -> {
             log.warn("inference failed for agent {}: {}", agentId.value(), failure.reason());
             yield new EffectOutcome.InferenceFailed(failure);
           }
         });
+  }
+
+  /** Which calls a request obliges an outcome for, in the order the model made them. */
+  private static List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {
+    return blocks.stream()
+        .filter(Block.ToolCall.class::isInstance)
+        .map(Block.ToolCall.class::cast)
+        .map(call -> new AgentEvent.Requested(call.id(), call.name()))
+        .toList();
   }
 }

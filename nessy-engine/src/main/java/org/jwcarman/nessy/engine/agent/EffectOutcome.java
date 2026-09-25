@@ -19,8 +19,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
@@ -55,6 +56,11 @@ import org.jwcarman.nessy.inference.tool.CallId;
 })
 public sealed interface EffectOutcome {
 
+  // Nothing here carries content. Whatever produced this outcome -- the thing that called the
+  // model, the thing that ran the tool -- put what it produced away before saying so, because that
+  // is the moment the content exists and the only place that has both the content and somewhere to
+  // put it. What crosses into the fold is a reference, a status, a decision or a count.
+
   /**
    * The model said something.
    *
@@ -62,7 +68,7 @@ public sealed interface EffectOutcome {
    * discard whatever an answer holds that a string cannot; a message would mean a dispatcher
    * choosing where in the story the answer belongs, which only the fold can know.
    */
-  record InferenceAnswered(List<Block.AnswerContent> blocks) implements EffectOutcome {}
+  record InferenceAnswered(PayloadRef answer) implements EffectOutcome {}
 
   /**
    * The model declined to answer, and said so.
@@ -95,7 +101,7 @@ public sealed interface EffectOutcome {
    * the whole of what came back rather than just the calls, because the prose and the vendor state
    * around them are part of the same message and are re-sent with it.
    */
-  record InferenceRequestedActions(List<Block.ActionRequestContent> blocks)
+  record InferenceRequestedActions(PayloadRef request, List<AgentEvent.Requested> calls)
       implements EffectOutcome {}
 
   /**
@@ -105,8 +111,7 @@ public sealed interface EffectOutcome {
    * still waiting on has been discharged, and to recognise a redelivery of one already discharged.
    * An outcome that could not name its call could not do either.
    */
-  record ToolSucceeded(CallId callId, List<Block.ToolResultContent> blocks)
-      implements EffectOutcome {}
+  record ToolSucceeded(CallId callId, PayloadRef result) implements EffectOutcome {}
 
   /**
    * A tool was run and did not produce content.
