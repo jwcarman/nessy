@@ -1,8 +1,8 @@
 # One core, two doors: unifying the queued harness onto the pure fold
 
 **Status: DESIGN, in progress. Sections 1–5 are BUILT and on `main`. Section 6 is the remaining
-move and is NOT approved — it carries three open questions marked `OPEN — James` that must be
-answered before a plan or a dispatch brief.**
+move and is NOT approved. Two of its three questions were ruled on 2026-09-25; one remains, marked
+`OPEN — James`, and must be answered before a plan or a dispatch brief.**
 
 Date: 2026-09-25. Continues `2026-09-24-inline-inference-and-the-turn-executor-design.md`, which
 built the pure core and the direct door. Supersedes the storage mechanics of
@@ -166,14 +166,30 @@ This reverses the 2026-09-03 ruling that put the backlog into the agent document
 made before a pure core existed; James, this session: "I don't want to clutter the core loop with
 work offered. That leaks the queueing into the core. Can't the harness manage that stuff itself?"
 
-### OPEN — James: does coalescing survive, and where does it run?
+### RULED 2026-09-25: coalescing survives, on write, over the typed object
 
-`Backlog<O>` applies an `ObservationCoalescer<O>` -- three "file changed" notices collapse to one.
-It is the only reason the fold is generic. Once the backlog moves out, coalescing must run in the
-harness on typed input **before** the claim check, because a `PayloadRef` cannot be coalesced.
+James: "Yes, we should still coalesce. I would like to do it on write." And: "It will not be claim
+checked. The backlog table will need to contain the object itself."
 
-Keep it (and move it to the door), or drop it? It is API-visible: `QueuedHarnessConfig
-.observationCoalescer`.
+So `ObservationCoalescer<O>` keeps its shape -- a pure whole-list function, `coalesce(backlog,
+incoming) -> backlog` -- and runs when an observation arrives rather than when it is pulled. The
+backlog table holds the encoded observation, not a reference to it.
+
+**This is a deliberate exception to §3, and the only one.** It is defensible because the backlog is
+a *staging area, not a store of record*: content sits there until it drains into an event, at which
+point it is claim-checked like everything else. What §3 is about is the durable record of an
+agent's life, and the backlog is not that -- it is the queue in front of it.
+
+Two consequences, recorded rather than discovered later:
+
+- **Forgetting an agent has to clear its backlog too.** Those rows hold user content until they
+  drain, so `DELETE FROM nessy_payload WHERE agent_id = ?` is no longer the whole story.
+- **The table is typed.** Unlike events, a backlog row is an `O`, so it needs a codec built per
+  harness -- the same reason the agent document was built per harness and nothing else was.
+
+Rejected on the way: claim-checking the backlog and resolving payloads on every `offer` (drags
+content back into the write path), and narrowing the coalescer to a key function (cheap, but loses
+caps, reordering and "a full resync supersedes everything", which the contract names).
 
 ### OPEN — James: what provides exclusion once the state row is gone?
 
@@ -184,10 +200,22 @@ Candidates: `Locks` (exists now; `JdbcLeases` spans machines, and it is what the
 already uses), a bare row kept solely to lock on, or `expectedLast` alone with losers retrying.
 Recommendation: `Locks`, so "one turn at a time per agent" is one rule rather than two mechanisms.
 
-### OPEN — James: is the backlog its own table?
+### RULED 2026-09-25: the backlog is its own table, holding the observation
 
-Proposed: `nessy_agent_backlog (agent_id, seq, payload_ref)` -- offered work waiting its turn,
-claim-checked like everything else, written in the same transaction as the events.
+```sql
+CREATE TABLE nessy_agent_backlog (
+    agent_type  VARCHAR(64) NOT NULL,
+    agent_id    UUID        NOT NULL,
+    seq         BIGINT      NOT NULL,
+    arrived_at  TIMESTAMPTZ NOT NULL,
+    payload     BYTEA       NOT NULL,   -- the encoded observation, NOT a reference
+    PRIMARY KEY (agent_type, agent_id, seq)
+);
+```
+
+Written in the same transaction as the events it will become. `arrived_at` is the arriving item's
+own time, because a coalescer that is time-dependent uses it as now -- that is why the field exists
+rather than a clock read at pull time.
 
 ### Not open (decided)
 
