@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
@@ -46,7 +46,7 @@ public final class ReplConfig {
   private static final AgentId THE_TERMINAL =
       new AgentId(UUID.nameUUIDFromBytes("nessy-console".getBytes(StandardCharsets.UTF_8)));
 
-  private final List<Consumer<HarnessConfig<String>>> tools = new ArrayList<>();
+  private final List<Consumer<DirectHarnessConfig<String>>> tools = new ArrayList<>();
   private String banner = "";
   private String prompt = "> ";
   private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
@@ -151,7 +151,7 @@ public final class ReplConfig {
    * notebook's index or a plan reaches the model without this class growing a method per feature.
    * Applied in order with the tools, after the REPL's own settings.
    */
-  public ReplConfig harness(Consumer<HarnessConfig<String>> customizer) {
+  public ReplConfig harness(Consumer<DirectHarnessConfig<String>> customizer) {
     tools.add(Objects.requireNonNull(customizer, "customizer must not be null"));
     return this;
   }
@@ -196,7 +196,7 @@ public final class ReplConfig {
     return Optional.ofNullable(dataSource);
   }
 
-  List<Consumer<HarnessConfig<String>>> tools() {
+  List<Consumer<DirectHarnessConfig<String>>> tools() {
     return List.copyOf(tools);
   }
 }

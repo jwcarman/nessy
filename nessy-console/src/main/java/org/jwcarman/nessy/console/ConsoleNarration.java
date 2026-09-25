@@ -15,11 +15,6 @@
  */
 package org.jwcarman.nessy.console;
 
-import java.time.Duration;
-import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
@@ -33,23 +28,15 @@ import org.jwcarman.nessy.api.AgentType;
  * because the engine is told about it at construction; the loop that reads the keyboard is built
  * after.
  *
- * <p>The end of a turn is signalled through a one-slot queue with {@code offer}, never {@code put}:
- * if nobody is waiting the notice is worth dropping, and blocking an engine thread on a REPL that
- * moved on never is.
+ * <p><b>It no longer has to work out when a turn ended.</b> On the door this drives, ask returns
+ * the outcome, so the loop is told directly. This prints what arrives while the model is working
+ * and nothing else -- which is all a narration was ever good for, the ending having been the part
+ * it could only guess at.
  */
 final class ConsoleNarration implements AgentEventListener {
 
-  /** How a turn ended, as far as a terminal needs to know. */
-  enum Ending {
-    ANSWERED,
-    FAILED,
-    REFUSED,
-    TERMINATED
-  }
-
   private final AgentId agentId;
   private final ConsoleIo io;
-  private final BlockingQueue<Ending> finished = new ArrayBlockingQueue<>(1);
   private volatile boolean spoke;
 
   ConsoleNarration(AgentId agentId, ConsoleIo io) {
@@ -80,7 +67,6 @@ final class ConsoleNarration implements AgentEventListener {
           io.write(text);
           io.flush();
         }
-        finished.offer(Ending.ANSWERED);
       }
       case AgentEvent.ActionsRequested(var toolNames) ->
           toolNames.forEach(
@@ -97,9 +83,9 @@ final class ConsoleNarration implements AgentEventListener {
           io.write("  [" + callId.value() + " failed: " + message + "]" + System.lineSeparator());
       case AgentEvent.CallDenied(var callId, String reason) ->
           io.write("  [" + callId.value() + " denied: " + reason + "]" + System.lineSeparator());
-      case AgentEvent.TurnFailed() -> finished.offer(Ending.FAILED);
-      case AgentEvent.TurnRefused() -> finished.offer(Ending.REFUSED);
-      case AgentEvent.Terminated() -> finished.offer(Ending.TERMINATED);
+      case AgentEvent.TurnFailed _, AgentEvent.TurnRefused _, AgentEvent.Terminated _ -> {
+        // How it ended is the outcome's to report, and the loop has it.
+      }
       // Thinking is shown as a marker, not as content: a model's reasoning is not its answer.
       case AgentEvent.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
       case AgentEvent.TurnStarted _,
@@ -115,17 +101,12 @@ final class ConsoleNarration implements AgentEventListener {
     }
   }
 
-  /** Forgets anything left over from a turn nobody waited for, so it cannot end THIS one. */
+  /** A new turn has nothing said in it yet. */
   void beginTurn() {
-    finished.clear();
     spoke = false;
   }
 
   boolean spoke() {
     return spoke;
-  }
-
-  Optional<Ending> awaitEnding(Duration patience) throws InterruptedException {
-    return Optional.ofNullable(finished.poll(patience.toMillis(), TimeUnit.MILLISECONDS));
   }
 }

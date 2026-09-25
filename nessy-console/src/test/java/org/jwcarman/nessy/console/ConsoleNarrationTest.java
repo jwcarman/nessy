@@ -17,7 +17,6 @@ package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +36,7 @@ class ConsoleNarrationTest {
   private static final CallId CALL = new CallId("c1");
 
   @Test
-  void calls_and_their_fates_are_noted_and_a_termination_ends_the_wait() throws Exception {
+  void calls_and_their_fates_are_noted_and_a_termination_ends_the_wait() {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
@@ -60,38 +59,32 @@ class ConsoleNarrationTest {
         .contains("not today")
         .contains("230");
     assertThat(narration.spoke()).isTrue();
-    assertThat(narration.awaitEnding(Duration.ofSeconds(1)))
-        .contains(ConsoleNarration.Ending.TERMINATED);
   }
 
   @Test
-  void another_agents_events_are_not_this_terminals_business() throws Exception {
+  void another_agents_events_are_not_this_terminals_business() {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(CHAT, new AgentId(UUID.randomUUID()), new AgentEvent.Answered("elsewhere"));
 
     assertThat(console.written()).isEmpty();
-    assertThat(narration.awaitEnding(Duration.ofMillis(50))).isEmpty();
   }
 
   @Test
-  void an_answer_that_was_not_streamed_is_printed_once_and_a_streamed_one_is_not_repeated()
-      throws Exception {
+  void an_answer_that_was_not_streamed_is_printed_once_and_a_streamed_one_is_not_repeated() {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(CHAT, AGENT, new AgentEvent.Answered("whole answer"));
     assertThat(console.written()).isEqualTo("whole answer");
-    assertThat(narration.awaitEnding(Duration.ofSeconds(1)))
-        .contains(ConsoleNarration.Ending.ANSWERED);
 
     narration.on(CHAT, AGENT, new AgentEvent.Answered("again"));
     assertThat(console.written()).isEqualTo("whole answer");
   }
 
   @Test
-  void a_blank_answer_prints_nothing_but_still_ends_the_turn() throws Exception {
+  void a_blank_answer_prints_nothing_but_still_ends_the_turn() {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
@@ -99,22 +92,15 @@ class ConsoleNarrationTest {
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
-    assertThat(narration.awaitEnding(Duration.ofSeconds(1)))
-        .contains(ConsoleNarration.Ending.ANSWERED);
   }
 
   @Test
-  void failures_and_refusals_end_the_wait_and_the_rest_is_not_the_terminals_business()
-      throws Exception {
+  void failures_and_refusals_are_not_the_terminals_business() {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(CHAT, AGENT, new AgentEvent.TurnFailed());
-    assertThat(narration.awaitEnding(Duration.ofSeconds(1)))
-        .contains(ConsoleNarration.Ending.FAILED);
     narration.on(CHAT, AGENT, new AgentEvent.TurnRefused());
-    assertThat(narration.awaitEnding(Duration.ofSeconds(1)))
-        .contains(ConsoleNarration.Ending.REFUSED);
 
     for (AgentEvent quiet :
         List.of(

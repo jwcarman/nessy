@@ -13,29 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.jwcarman.nessy.console;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Outcome;
 
 /**
- * A harness that answers each observation with a scripted run of events.
+ * A harness that narrates a scripted run of events and then returns an outcome.
  *
- * <p>Narrated on THIS thread, which the real engine would not do -- but the loop must not care
- * which thread an event arrives on, and a test that had to start one would be racing.
+ * <p>Narrated on THIS thread, which is now also what the real one does: the caller is waiting, so
+ * there is no other thread for a fragment to arrive on.
  */
-final class FakeHarness implements Harness<String> {
+final class FakeHarness implements DirectHarness<String> {
 
   private static final AgentType TYPE = new AgentType("chat");
 
   private final List<List<AgentEvent>> answers;
-  private final List<String> observed = new ArrayList<>();
+  private final List<String> asked = new ArrayList<>();
   private AgentEventListener narrator = AgentEventListener.none();
+  private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)");
   private int next;
 
   @SafeVarargs
@@ -43,26 +47,37 @@ final class FakeHarness implements Harness<String> {
     this.answers = List.of(answers);
   }
 
-  /** The engine is told its narrator at construction; a fake is told afterwards. */
+  /** The engine is told its listeners at construction; a fake is told afterwards. */
   void narrateTo(AgentEventListener narrator) {
     this.narrator = narrator;
   }
 
-  @Override
-  public void observe(AgentId agentId, String observation) {
-    observed.add(observation);
-    if (next >= answers.size()) {
-      return;
-    }
-    answers.get(next++).forEach(event -> narrator.on(TYPE, agentId, event));
+  /** What ask should hand back, for the cases a terminal has to report rather than print. */
+  FakeHarness answering(Outcome<String> outcome) {
+    this.outcome = outcome;
+    return this;
   }
 
   @Override
-  public void terminate(AgentId agentId) {
-    narrator.on(TYPE, agentId, new AgentEvent.Terminated());
+  public Outcome<String> ask(AgentId agent, String input) {
+    asked.add(input);
+    if (next < answers.size()) {
+      answers.get(next++).forEach(event -> narrator.on(TYPE, agent, event));
+    }
+    return outcome;
+  }
+
+  @Override
+  public <T> Outcome<T> ask(AgentId agent, String input, TypeRef<T> type) {
+    throw new UnsupportedOperationException("a terminal asks for prose");
+  }
+
+  @Override
+  public void terminate(AgentId agent) {
+    narrator.on(TYPE, agent, new AgentEvent.Terminated());
   }
 
   List<String> observed() {
-    return List.copyOf(observed);
+    return List.copyOf(asked);
   }
 }

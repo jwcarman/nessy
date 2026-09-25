@@ -18,11 +18,9 @@ package org.jwcarman.nessy.console;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import javax.sql.DataSource;
-import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
-import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.engine.direct.DirectHarnessFactory;
+import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.Schemas;
@@ -34,6 +32,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import tools.jackson.databind.json.JsonMapper;
 
 /** One call from a main method to a working terminal agent. */
 public final class Repl {
@@ -71,48 +70,26 @@ public final class Repl {
         say(io, "no model is configured: set NESSY_MODEL to the name your provider should use");
         return;
       }
-      Optional<DataSource> dataSource =
-          config
-              .dataSource()
-              .or(
-                  () ->
-                      Optional.ofNullable(
-                          context.getBeanProvider(DataSource.class).getIfAvailable()));
-      if (dataSource.isEmpty()) {
-        say(
-            io,
-            "no database is configured: the engine keeps its agents in PostgreSQL, so set"
-                + " SPRING_DATASOURCE_URL (and USERNAME/PASSWORD) or call dataSource(...)");
-        return;
-      }
-
-      // The easy button owns its database the way it owns its provider: the tables are made to
-      // exist, which is safe to repeat and is what a person pointing a terminal at a fresh
-      // PostgreSQL expects.
-      Schemas.initialize(dataSource.get());
+      // A database is the application's business now, not this one's. The terminal keeps the
+      // conversation in memory because the process IS the conversation: a turn that has ended has
+      // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
+      // A tool that wants to remember something still brings its own store.
+      config.dataSource().ifPresent(Schemas::initialize);
       ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
-      // Closed with the context: the factory owns the engine's timer and every harness it made.
-      try (DefaultHarnessFactory factory =
-          new DefaultHarnessFactory(
-              engine ->
-                  engine
-                      .dataSource(dataSource.get())
-                      .inference(provider, new InferenceOptions(model.get(), config.maxTokens()))
-                      .listener(narration)
-                      // Ephemeral, and correct here: a token only has to outlive the process that
-                      // minted it, and this process IS the conversation.
-                      .replyTokens(ReplyTokens.ephemeral()))) {
-        Harness<String> harness =
-            factory.create(
-                String.class,
-                h -> {
-                  h.agentType(config.type())
-                      .systemPrompt(config.systemPrompt())
-                      .observationRenderer(said -> List.of(new Block.Text(said)));
-                  config.tools().forEach(grant -> grant.accept(h));
-                });
-        new ReplLoop(harness, config.agentId(), config, io, narration).run();
-      }
+      DirectHarnessFactory factory =
+          DirectHarnessFactory.inMemory(
+              provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build());
+      DirectHarness<String> harness =
+          factory.<String>create(
+              h -> {
+                h.agentType(config.type())
+                    .systemPrompt(config.systemPrompt())
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model(model.get()).maxTokens(config.maxTokens()))
+                    .listener(narration);
+                config.tools().forEach(grant -> grant.accept(h));
+              });
+      new ReplLoop(harness, config.agentId(), config, io, narration).run();
     }
   }
 

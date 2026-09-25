@@ -210,6 +210,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       // expectedLast is vacuous here -- nothing else writes this agent -- and load-bearing for a
       // queued harness using the same seam. One signature rather than two.
       events.append(agent, decision.events(), state.seq());
+      decision.events().forEach(event -> narrate(agent, event));
       history.addAll(decision.events());
       state = state.applyAll(decision.events());
 
@@ -383,6 +384,50 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     }
     AgentNarrator narrator = event -> tell(agent, event);
     return narrator.forInference();
+  }
+
+  /**
+   * What just became true, told to whoever is watching.
+   *
+   * <p>Narrated after the append, never before: a watcher that heard about a turn the store then
+   * refused would be told something that did not happen. The deltas are the exception and arrive
+   * ahead of everything, because a fragment of an answer is worth seeing before the answer exists.
+   */
+  private void narrate(AgentId agent, AgentEvent event) {
+    if (listeners.isEmpty()) {
+      return;
+    }
+    switch (event) {
+      case AgentEvent.ActionsRequested asked ->
+          tell(
+              agent,
+              new org.jwcarman.nessy.api.AgentEvent.ActionsRequested(
+                  asked.calls().stream().map(AgentEvent.Requested::toolName).toList()));
+      case AgentEvent.ToolApproved approved ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.CallApproved(approved.callId()));
+      case AgentEvent.ToolDenied denied ->
+          tell(
+              agent,
+              new org.jwcarman.nessy.api.AgentEvent.CallDenied(denied.callId(), denied.reason()));
+      case AgentEvent.ToolSucceeded done ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.CallFinished(done.callId()));
+      case AgentEvent.ToolFailed failed ->
+          tell(
+              agent,
+              new org.jwcarman.nessy.api.AgentEvent.CallFailed(failed.callId(), failed.message()));
+      case AgentEvent.InferenceAnswered answered ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Answered(textOf(answered)));
+      case AgentEvent.InferenceRefused _ ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.TurnRefused());
+      case AgentEvent.InferenceFailed _ ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.TurnFailed());
+      case AgentEvent.Terminated _ ->
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Terminated());
+      // A turn starting is the caller's own doing, and it is standing right there.
+      case AgentEvent.TurnStarted _ -> {
+        /* nothing a watcher of this door needs told */
+      }
+    }
   }
 
   private void tell(AgentId agent, org.jwcarman.nessy.api.AgentEvent event) {

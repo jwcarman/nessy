@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 
@@ -238,7 +239,8 @@ class ReplLoopTest {
 
     @Test
     void a_refusal_is_reported() {
-      FakeHarness harness = new FakeHarness(List.of(new AgentEvent.TurnRefused()));
+      FakeHarness harness =
+          new FakeHarness(List.of()).answering(new Outcome.Refused<>("self-harm"));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("refused");
@@ -246,7 +248,8 @@ class ReplLoopTest {
 
     @Test
     void a_failure_is_reported() {
-      FakeHarness harness = new FakeHarness(List.of(new AgentEvent.TurnFailed()));
+      FakeHarness harness =
+          new FakeHarness(List.of()).answering(new Outcome.Failed<>("the model was unreachable"));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("failed");

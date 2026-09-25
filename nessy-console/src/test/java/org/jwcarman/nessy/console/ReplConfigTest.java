@@ -31,10 +31,8 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.EffectsConfig;
-import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
-import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -191,58 +189,49 @@ class ReplConfigTest {
   class GrantedTools {
 
     /** Records what reached it; every other method is a no-op that returns itself. */
-    private static final class RecordingHarnessConfig implements HarnessConfig<String> {
+    private static final class RecordingHarnessConfig implements DirectHarnessConfig<String> {
       private final List<Tool<?>> ungated = new ArrayList<>();
       private final List<Tool<?>> bound = new ArrayList<>();
 
       @Override
-      public HarnessConfig<String> agentType(AgentType agentType) {
+      public DirectHarnessConfig<String> agentType(AgentType agentType) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> systemPrompt(String prompt) {
+      public DirectHarnessConfig<String> systemPrompt(String prompt) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> systemPrompt(SystemPromptSource source) {
+      public DirectHarnessConfig<String> systemPrompt(SystemPromptSource source) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> observationRenderer(ObservationRenderer<String> renderer) {
+      public DirectHarnessConfig<String> inputRenderer(ObservationRenderer<String> renderer) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> observationCoalescer(ObservationCoalescer<String> coalescer) {
+      public DirectHarnessConfig<String> inference(Consumer<InferenceConfig> customizer) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> inference(Consumer<InferenceConfig> customizer) {
+      public DirectHarnessConfig<String> listener(AgentEventListener listener) {
         return this;
       }
 
       @Override
-      public HarnessConfig<String> effects(Consumer<EffectsConfig> customizer) {
-        return this;
-      }
-
-      @Override
-      public HarnessConfig<String> listener(AgentEventListener listener) {
-        return this;
-      }
-
-      @Override
-      public <I> HarnessConfig<String> tool(Tool<I> tool) {
+      public <I> DirectHarnessConfig<String> tool(Tool<I> tool) {
         ungated.add(tool);
         return this;
       }
 
       @Override
-      public <I> HarnessConfig<String> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
+      public <I> DirectHarnessConfig<String> tool(
+          Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
         bound.add(tool);
         customizer.accept(
             new ToolConfig<I>() {

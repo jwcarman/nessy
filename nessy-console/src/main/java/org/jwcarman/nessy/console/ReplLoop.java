@@ -13,26 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.jwcarman.nessy.console;
 
-import java.time.Duration;
-import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Harness;
+import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Outcome;
 
-/** Reads a line, hands it to the agent, waits for the turn to end, prompts again. */
+/**
+ * Reads a line, hands it to the agent, prints what came back, prompts again.
+ *
+ * <p><b>There is nothing to wait for.</b> This used to hand the line over, then block on a
+ * narration queue for five minutes and, on timing out, admit it could not tell whether the model
+ * was still working or the news had simply never arrived. The door it drives now returns the
+ * outcome, so both of those cases are gone: what happened is the return value.
+ */
 final class ReplLoop {
 
-  private static final Duration PATIENCE = Duration.ofMinutes(5);
-
-  private final Harness<String> harness;
+  private final DirectHarness<String> harness;
   private final AgentId agentId;
   private final ReplConfig config;
   private final ConsoleIo io;
   private final ConsoleNarration narration;
 
   ReplLoop(
-      Harness<String> harness,
+      DirectHarness<String> harness,
       AgentId agentId,
       ReplConfig config,
       ConsoleIo io,
@@ -57,8 +62,8 @@ final class ReplLoop {
       }
       if (!line.isBlank()) {
         narration.beginTurn();
-        harness.observe(agentId, line);
-        awaitTurn();
+        report(harness.ask(agentId, line));
+        io.flush();
       }
     }
     if (!config.farewell().isEmpty()) {
@@ -67,35 +72,16 @@ final class ReplLoop {
     }
   }
 
-  private void awaitTurn() {
-    try {
-      Optional<ConsoleNarration.Ending> ended = narration.awaitEnding(PATIENCE);
-      if (ended.isEmpty()) {
-        // Not "still working": the other possibility is that the turn finished and the news never
-        // arrived, which is what a lost narration looks like from here. Naming both is the
-        // difference between looking at the model and looking at the plumbing.
-        io.write(
-            System.lineSeparator()
-                + "  [no answer after "
-                + PATIENCE.toMinutes()
-                + "m -- still working, or the turn ended without reaching this listener]"
-                + System.lineSeparator());
-      } else {
-        io.write(System.lineSeparator());
-        report(ended.get());
-      }
-      io.flush();
-    } catch (InterruptedException _) {
-      Thread.currentThread().interrupt();
-    }
-  }
-
-  private void report(ConsoleNarration.Ending ending) {
-    switch (ending) {
-      case REFUSED -> note("the model refused to answer");
-      case FAILED -> note("the turn failed; the model could not be reached or did not finish");
-      case TERMINATED -> note("the agent was terminated");
-      case ANSWERED -> reportAnswer();
+  private void report(Outcome<String> outcome) {
+    io.write(System.lineSeparator());
+    switch (outcome) {
+      case Outcome.Answered<String> _ -> reportAnswer();
+      case Outcome.Refused<String>(String category) ->
+          note("the model refused to answer: " + category);
+      case Outcome.Failed<String>(String reason) -> note("the turn failed: " + reason);
+      // Only reachable with a lock somebody else holds -- another terminal, or another machine
+      // on the same agent. Worth saying plainly rather than looking like a failure.
+      case Outcome.Busy<String> _ -> note("that agent is busy with another turn; try again");
     }
   }
 

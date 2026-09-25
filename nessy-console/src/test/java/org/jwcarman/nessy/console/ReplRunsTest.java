@@ -125,11 +125,16 @@ class ReplRunsTest {
 
   @Test
   @DisplayName("says so when no database can be found")
-  void it_says_when_there_is_no_database() {
+  /**
+   * A terminal needs no database. The conversation lives as long as the process does, which is what
+   * a person typing into a CLI already assumes -- and a tool that wants to remember something
+   * across runs still brings its own store.
+   */
+  void it_runs_without_a_database() {
     FakeConsole console = new FakeConsole("/exit");
 
     Repl.run(new ReplConfig(), console);
 
-    assertThat(console.written()).contains("no database is configured");
+    assertThat(console.written()).doesNotContain("no database is configured");
   }
 }
