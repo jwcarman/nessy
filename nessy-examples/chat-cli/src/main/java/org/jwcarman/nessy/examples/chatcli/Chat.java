@@ -20,9 +20,10 @@ import java.time.Clock;
 import java.time.LocalDate;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
-import org.jwcarman.nessy.engine.direct.DirectHarnessFactory;
+import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
@@ -108,7 +109,7 @@ public class Chat {
   /** Everything an application owns once. In memory, because the conversation is the process. */
   @Bean
   public DirectHarnessFactory harnesses(InferenceProvider provider) {
-    return DirectHarnessFactory.inMemory(
+    return DefaultDirectHarnessFactory.inMemory(
         provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build());
   }
 

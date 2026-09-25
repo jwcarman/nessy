@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.engine.direct.DirectHarnessFactory;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.block.Block;
@@ -120,7 +121,7 @@ public final class Repl {
       // A tool that wants to remember something still brings its own store.
       config.dataSource().ifPresent(Schemas::initialize);
       run(
-          DirectHarnessFactory.inMemory(
+          DefaultDirectHarnessFactory.inMemory(
               provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build()),
           model.get(),
           config,

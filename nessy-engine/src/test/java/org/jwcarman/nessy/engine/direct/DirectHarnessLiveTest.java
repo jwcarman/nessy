@@ -74,7 +74,7 @@ class DirectHarnessLiveTest {
 
   private static DirectHarness<String> harness() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
-    return DirectHarnessFactory.inMemory(
+    return DefaultDirectHarnessFactory.inMemory(
             OpenAiInferenceProvider.create(c -> c.apiKey(key()).baseUrl(BASE_URL)),
             new VictoolsInputSchemaGenerator(),
             JsonMapper.builder().build())

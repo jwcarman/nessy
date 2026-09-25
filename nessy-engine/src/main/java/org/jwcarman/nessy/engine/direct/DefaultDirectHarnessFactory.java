@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
@@ -42,7 +43,7 @@ import tools.jackson.databind.ObjectMapper;
  * engine's timer and every harness it made, because work outlives the call that submitted it. Here
  * the turn ends when {@code ask} returns and there is nothing left running to shut down.
  */
-public final class DirectHarnessFactory {
+public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
 
   private final Locks locks;
   private final AgentEventStore events;
@@ -51,7 +52,7 @@ public final class DirectHarnessFactory {
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
 
-  public DirectHarnessFactory(
+  public DefaultDirectHarnessFactory(
       Locks locks,
       AgentEventStore events,
       PayloadStore payloads,
@@ -67,9 +68,9 @@ public final class DirectHarnessFactory {
   }
 
   /** Everything in one process and nothing written down: a CLI, a test, a one-shot. */
-  public static DirectHarnessFactory inMemory(
+  public static DefaultDirectHarnessFactory inMemory(
       InferenceProvider provider, InputSchemaGenerator schemas, ObjectMapper mapper) {
-    return new DirectHarnessFactory(
+    return new DefaultDirectHarnessFactory(
         new InMemoryLocks(),
         new InMemoryAgentEventStore(),
         new InMemoryPayloads(),
@@ -85,10 +86,12 @@ public final class DirectHarnessFactory {
    * and a model name that belongs to a different vendor fails as a 404 from one nobody meant to
    * call.
    */
+  @Override
   public String providerName() {
     return provider.providerName();
   }
 
+  @Override
   public <I> DirectHarness<I> create(Consumer<DirectHarnessConfig<I>> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>();

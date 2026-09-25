@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -97,7 +98,7 @@ class DefaultDirectHarnessTest {
   }
 
   private DirectHarnessFactory factoryFor(InferenceProvider model, Locks locks) {
-    return new DirectHarnessFactory(locks, events, payloads, model, SCHEMAS, MAPPER);
+    return new DefaultDirectHarnessFactory(locks, events, payloads, model, SCHEMAS, MAPPER);
   }
 
   private DirectHarness<String> harness(InferenceProvider model) {
@@ -597,7 +598,8 @@ class DefaultDirectHarnessTest {
     }
     CountingPayloads counting = new CountingPayloads(payloads);
     DirectHarness<String> harness =
-        new DirectHarnessFactory(new InMemoryLocks(), events, counting, model, SCHEMAS, MAPPER)
+        new DefaultDirectHarnessFactory(
+                new InMemoryLocks(), events, counting, model, SCHEMAS, MAPPER)
             .<String>create(
                 c ->
                     c.agentType(TYPE)
