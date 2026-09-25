@@ -268,12 +268,20 @@ inside a transaction.
 CREATE TABLE nessy_agent_backlog (
     agent_type  VARCHAR(64) NOT NULL,
     agent_id    UUID        NOT NULL,
-    seq         BIGINT      NOT NULL,
+    -- The backlog's OWN arrival ordinal, not an event seq. An item here is not an event yet and
+    -- may never become one, since a coalescer is free to drop it -- so sharing the number line
+    -- with nessy_agent_event would imply an ordering that does not exist and leave holes where
+    -- items were dropped.
+    ordinal     BIGINT      NOT NULL,
     arrived_at  TIMESTAMPTZ NOT NULL,
     payload     BYTEA       NOT NULL,   -- the encoded observation, NOT a reference
-    PRIMARY KEY (agent_type, agent_id, seq)
+    PRIMARY KEY (agent_type, agent_id, ordinal)
 );
 ```
+
+**One row per item**, which is what lets the handle's operations be statements rather than a
+read-modify-write of a serialized list: `append` is an INSERT, `replaceAll` is a DELETE and an
+INSERT, `dropOldest` is a DELETE with a LIMIT, and only `all` reads everything.
 
 Written in the same transaction as the events it will become. `arrived_at` is the arriving item's
 own time, because a coalescer that is time-dependent uses it as now -- that is why the field exists
