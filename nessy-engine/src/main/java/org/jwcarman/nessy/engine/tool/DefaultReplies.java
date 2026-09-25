@@ -34,6 +34,7 @@ import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +55,19 @@ public final class DefaultReplies implements Replies {
   private static final Logger log = LoggerFactory.getLogger(DefaultReplies.class);
 
   /** One agent type's two halves: where its rows live, and how to reach its fold. */
-  public record Bound(EffectStore effects, AgentEffectCallback callback) {}
+  public record Bound(EffectStore effects, AgentEffectCallback callback, PayloadStore payloads) {}
+
+  /**
+   * How a late answer becomes an outcome.
+   *
+   * <p>Takes the store because a reply that carries content -- a tool result from a desk answering
+   * hours later -- has to put it away before saying so, exactly as the executor would have done had
+   * it answered on the spot. An outcome never carries content, whenever it arrives.
+   */
+  @FunctionalInterface
+  private interface Settlement {
+    EffectOutcome of(CallId callId, Attempt attempt, PayloadStore payloads);
+  }
 
   private final ReplyTokens tokens;
   private final Map<String, Bound> byAgentType = new ConcurrentHashMap<>();
@@ -64,8 +77,12 @@ public final class DefaultReplies implements Replies {
   }
 
   /** Called as each harness is built. An agent type answered before that is simply unknown. */
-  public void register(AgentType agentType, EffectStore effects, AgentEffectCallback callback) {
-    byAgentType.put(agentType.value(), new Bound(effects, callback));
+  public void register(
+      AgentType agentType,
+      EffectStore effects,
+      AgentEffectCallback callback,
+      PayloadStore payloads) {
+    byAgentType.put(agentType.value(), new Bound(effects, callback, payloads));
   }
 
   @Override
@@ -74,7 +91,7 @@ public final class DefaultReplies implements Replies {
     return settle(
         token,
         AgentEffect.Approve.class,
-        (callId, _) ->
+        (callId, _, _) ->
             switch (result) {
               case ApprovalResult.Approved(var reference) ->
                   new EffectOutcome.ToolApproved(callId, reference);
@@ -89,10 +106,10 @@ public final class DefaultReplies implements Replies {
     return settle(
         token,
         AgentEffect.CallTool.class,
-        (callId, _) ->
+        (callId, _, payloads) ->
             switch (result) {
               case ToolResult.Success(var blocks) ->
-                  new EffectOutcome.ToolSucceeded(callId, blocks);
+                  new EffectOutcome.ToolSucceeded(callId, payloads.put(blocks));
               case ToolResult.Failure(String message) ->
                   new EffectOutcome.ToolFailed(callId, message);
             });
@@ -104,9 +121,7 @@ public final class DefaultReplies implements Replies {
    *     past the gate rather than through it.
    */
   private ReplyOutcome settle(
-      ReplyToken token,
-      Class<? extends AgentEffect> expected,
-      java.util.function.BiFunction<CallId, Attempt, EffectOutcome> outcome) {
+      ReplyToken token, Class<? extends AgentEffect> expected, Settlement outcome) {
     Objects.requireNonNull(token, "token must not be null");
 
     ReplyTokens.Coordinates where;
@@ -144,7 +159,10 @@ public final class DefaultReplies implements Replies {
     Attempt attempt = found.get();
     bound
         .callback()
-        .deliverOutcome(agentId, outcome.apply(where.callId(), attempt), attempt.traceContext());
+        .deliverOutcome(
+            agentId,
+            outcome.of(where.callId(), attempt, bound.payloads().forAgent(agentId)),
+            attempt.traceContext());
     if (!bound.effects().complete(attempt.effectId(), attempt.attemptsMade())) {
       // The fence: the row moved on while this answer was being folded, so it is not ours
       // to retire. Harmless -- the call is discharged either way, and whatever holds the row
