@@ -1,0 +1,147 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.jwcarman.nessy.engine.store;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentState;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.spi.store.Schemas;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
+
+/** Reading an agent back costs the last turn, not the whole life. */
+@Tag("container")
+@DisplayName("An agent's events in a database")
+class JdbcAgentEventStoreTest {
+
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+
+  static {
+    POSTGRES.start();
+  }
+
+  private static DataSource database() {
+    DataSource database =
+        new DriverManagerDataSource(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    Schemas.initialize(database);
+    return database;
+  }
+
+  private final AgentEventStore events =
+      new JdbcAgentEventStore(
+          JdbcClient.create(database()), new JacksonCodecFactory(JsonMapper.builder().build()));
+
+  private final AgentId agent = AgentId.random();
+  private final PayloadRef somewhere = new PayloadRef("p1");
+
+  private static AgentEvent started(long seq, long turn) {
+    return new AgentEvent.TurnStarted(new Seq(seq), new TurnId(turn), new PayloadRef("p1"));
+  }
+
+  private AgentEvent answered(long seq, long turn) {
+    return new AgentEvent.InferenceAnswered(new Seq(seq), new TurnId(turn), somewhere);
+  }
+
+  /** Rebuilt the way a harness rebuilds it: idle at the watermark, then whatever came after. */
+  private AgentState reconstituted() {
+    Seq watermark = events.watermark(agent);
+    return AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
+  }
+
+  @Test
+  @DisplayName("an agent nobody has written to starts at the beginning, idle")
+  void a_new_agent_is_idle() {
+    assertThat(events.watermark(agent)).isEqualTo(Seq.NONE);
+    assertThat(events.readFrom(agent, Seq.NONE)).isEmpty();
+    assertThat(reconstituted()).isInstanceOf(AgentState.Idle.class);
+  }
+
+  @Test
+  @DisplayName("past a closed turn there is nothing to read, and the agent comes back idle")
+  void a_closed_turn_leaves_nothing_to_replay() {
+    events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
+    events.watermark(agent, new Seq(2));
+
+    assertThat(events.readFrom(agent, events.watermark(agent)))
+        .as("the turn is folded and will not change")
+        .isEmpty();
+    assertThat(reconstituted()).isEqualTo(AgentState.idle(new Seq(2)));
+  }
+
+  @Test
+  @DisplayName("in the middle of a turn, what comes back is that turn")
+  void an_open_turn_is_replayed() {
+    events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
+    events.watermark(agent, new Seq(2));
+    events.append(agent, List.of(started(3, 3)), new Seq(2));
+
+    assertThat(events.readFrom(agent, events.watermark(agent)))
+        .as("one turn's events, not a history")
+        .hasSize(1);
+    assertThat(reconstituted()).isInstanceOf(AgentState.Inferring.class);
+  }
+
+  @Test
+  @DisplayName("a terminated agent stays terminated, however often it is read back")
+  void termination_survives_replay() {
+    events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
+    events.watermark(agent, new Seq(2));
+    // The watermark is deliberately NOT moved past this: replaying it is what makes the agent
+    // come back terminated every time, which is why Terminated needs no turn of its own.
+    events.append(agent, List.of(new AgentEvent.Terminated(new Seq(3))), new Seq(2));
+
+    assertThat(reconstituted()).isInstanceOf(AgentState.Terminal.class);
+    assertThat(reconstituted()).isInstanceOf(AgentState.Terminal.class);
+  }
+
+  @Test
+  @DisplayName("a writer that reached a seq first takes the second one down")
+  void a_seq_already_taken_is_a_conflict() {
+    events.append(agent, List.of(started(1, 1)), Seq.NONE);
+    List<AgentEvent> sameSeq = List.of(answered(1, 1));
+
+    assertThatThrownBy(() -> events.append(agent, sameSeq, Seq.NONE))
+        .isInstanceOf(AgentEventStore.Conflict.class)
+        .hasMessageContaining("another writer reached");
+  }
+
+  @Test
+  @DisplayName("agents do not read each other's events")
+  void agents_are_separate() {
+    AgentId other = AgentId.random();
+    events.append(agent, List.of(started(1, 1)), Seq.NONE);
+
+    assertThat(events.readFrom(other, Seq.NONE)).isEmpty();
+    assertThat(events.readFrom(agent, Seq.NONE)).hasSize(1);
+  }
+}

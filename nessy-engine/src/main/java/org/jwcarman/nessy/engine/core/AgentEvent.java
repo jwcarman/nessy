@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -34,6 +36,19 @@ import org.jwcarman.nessy.inference.tool.ToolName;
  * <p>Two scopes live here. Most events belong to a turn and carry its id; {@link Terminated}
  * belongs to the agent's life and sits between turns.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
+  @JsonSubTypes.Type(value = AgentEvent.InferenceAnswered.class, name = "inference-answered"),
+  @JsonSubTypes.Type(value = AgentEvent.InferenceRefused.class, name = "inference-refused"),
+  @JsonSubTypes.Type(value = AgentEvent.InferenceFailed.class, name = "inference-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
+  @JsonSubTypes.Type(value = AgentEvent.ToolApproved.class, name = "tool-approved"),
+  @JsonSubTypes.Type(value = AgentEvent.ToolDenied.class, name = "tool-denied"),
+  @JsonSubTypes.Type(value = AgentEvent.ToolSucceeded.class, name = "tool-succeeded"),
+  @JsonSubTypes.Type(value = AgentEvent.ToolFailed.class, name = "tool-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.Terminated.class, name = "terminated")
+})
 public sealed interface AgentEvent {
 
   /** Where this event sits. Strictly increasing, and what {@code apply} checks. */

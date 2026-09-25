@@ -161,3 +161,29 @@ CREATE TABLE IF NOT EXISTS nessy_payload
     written_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, hash)
 );
+
+-- What happened to an agent, in order, append-only. No content: every block is a reference into
+-- nessy_payload, so this table is a list of facts about a life rather than a copy of it.
+--
+-- The primary key is the concurrency control. Two writers that decided from the same state mint
+-- the same seq, so the second one violates it and takes its own transaction down -- which is the
+-- right way to find out that the state it decided against no longer holds.
+CREATE TABLE IF NOT EXISTS nessy_agent_event
+(
+    agent_id   UUID        NOT NULL,
+    seq        BIGINT      NOT NULL,
+    payload    BYTEA       NOT NULL,
+    written_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (agent_id, seq)
+);
+
+-- Where replay starts, which is not where the stream starts.
+--
+-- Moved to a turn boundary as turns close, so reconstituting an agent costs one turn's events
+-- however long it has lived. An agent with no row here has never closed a turn, and replay begins
+-- at the beginning -- which for a new agent is nothing at all.
+CREATE TABLE IF NOT EXISTS nessy_agent_watermark
+(
+    agent_id UUID   NOT NULL PRIMARY KEY,
+    seq      BIGINT NOT NULL
+);
