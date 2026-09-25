@@ -267,16 +267,41 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           approve.callId(),
           new AgentCommand.ApprovalOutcome.Denied("no such tool", Optional.empty()));
     }
-    ApprovalRequest question =
-        binding.question(
-            agentType,
-            agent,
-            turnOf(history),
-            approve.callId(),
-            argumentsOf(approve.callId(), history),
-            Instant.now(),
-            new ReplyToken(approve.callId().value()));
-    return switch (binding.approve(question)) {
+    ApprovalRequest question;
+    try {
+      question =
+          binding.question(
+              agentType,
+              agent,
+              turnOf(history),
+              approve.callId(),
+              argumentsOf(approve.callId(), history),
+              Instant.now(),
+              new ReplyToken(approve.callId().value()));
+    } catch (RuntimeException unreadable) {
+      // The sentence a person consents to is rendered from the tool's own input type, so a call
+      // whose arguments will not read has no question to ask about it -- and could not run
+      // whatever anybody answered. The queued door discharges the CALL here; this door is
+      // answering an approval effect, and the core takes a tool outcome only for a call already
+      // running, so it is discharged as a denial whose reason is the parse error. The model reads
+      // it and can correct itself, which is the part that matters.
+      return new AgentCommand.CompleteApproval(
+          approve.callId(),
+          new AgentCommand.ApprovalOutcome.Denied(
+              "the arguments could not be read: " + unreadable.getMessage(), Optional.empty()));
+    }
+    Awaited<ApprovalResult> answer;
+    try {
+      answer = binding.approve(question);
+    } catch (RuntimeException broken) {
+      // An approver that throws is a gate that failed, and a gate that failed is a no. Never a
+      // yes, and never an exception out of a turn the caller is blocked on.
+      return new AgentCommand.CompleteApproval(
+          approve.callId(),
+          new AgentCommand.ApprovalOutcome.Denied(
+              "the approver failed: " + broken.getMessage(), Optional.empty()));
+    }
+    return switch (answer) {
       case Awaited.Ready(ApprovalResult result) ->
           switch (result) {
             case ApprovalResult.Approved(var reference) ->
