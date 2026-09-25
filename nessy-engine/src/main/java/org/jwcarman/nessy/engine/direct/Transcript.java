@@ -1,0 +1,176 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.engine.direct;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.turn.Exchange;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.ToolOutcome;
+import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.inference.turn.TurnResult;
+import org.jwcarman.nessy.spi.store.PayloadStore;
+
+/**
+ * The event stream, read back as the conversation a model is shown.
+ *
+ * <p>Events carry identifiers, status and references; a provider wants {@link Turn}s full of
+ * blocks. This is the one place the claim check is read, and the only place the two shapes meet.
+ *
+ * <p><b>Content arrays come back whole and in order.</b> A vendor signature may cover an entire
+ * array -- {@code Block.Provider}'s javadoc is explicit that order is part of the payload and that
+ * siblings must not be dropped -- so one reference resolves to one complete array, reassembled
+ * exactly as it arrived. Nothing here filters by block kind.
+ *
+ * <p><b>Approvals do not appear.</b> {@code ToolApproved} is the agent's own bookkeeping: the model
+ * asked for a call and either got a result or was refused, and that a human said yes in between is
+ * not part of the conversation it is having.
+ */
+final class Transcript {
+
+  private final PayloadStore payloads;
+
+  Transcript(PayloadStore payloads) {
+    this.payloads = payloads;
+  }
+
+  List<Turn> of(List<AgentEvent> events) {
+    List<Turn> turns = new ArrayList<>();
+    Open open = null;
+
+    for (AgentEvent event : events) {
+      switch (event) {
+        case AgentEvent.TurnStarted started ->
+            open = Open.on(started, resolve(started.observation()));
+
+        case AgentEvent.ActionsRequested requested ->
+            require(open, event).ask(requested.seq(), cast(resolve(requested.request())));
+
+        case AgentEvent.ToolSucceeded done ->
+            require(open, event)
+                .outcome(new ToolOutcome.Succeeded(done.callId(), cast(resolve(done.result()))));
+
+        case AgentEvent.ToolFailed done ->
+            require(open, event).outcome(new ToolOutcome.Failed(done.callId(), done.message()));
+
+        case AgentEvent.ToolDenied done ->
+            require(open, event).outcome(new ToolOutcome.Denied(done.callId(), done.reason()));
+
+        case AgentEvent.InferenceAnswered answered -> {
+          turns.add(
+              require(open, event)
+                  .closed(new TurnResult.Answered(cast(resolve(answered.answer())))));
+          open = null;
+        }
+        case AgentEvent.InferenceRefused refused -> {
+          turns.add(require(open, event).closed(new TurnResult.Refused()));
+          open = null;
+        }
+        case AgentEvent.InferenceFailed failed -> {
+          turns.add(require(open, event).closed(new TurnResult.Failed()));
+          open = null;
+        }
+
+        // Bookkeeping, not conversation.
+        case AgentEvent.ToolApproved _, AgentEvent.Terminated _ -> {}
+      }
+    }
+    if (open != null) {
+      turns.add(open.stillOpen());
+    }
+    return List.copyOf(turns);
+  }
+
+  private List<Block> resolve(PayloadRef ref) {
+    return switch (payloads.get(ref)) {
+      case PayloadStore.Resolved.Found(List<Block> content) -> content;
+      // A reference with nothing behind it is a broken store, not a turn that went badly. Saying
+      // so here beats handing a model a turn with a hole where its own words were.
+      case PayloadStore.Resolved.Missing _ ->
+          throw new IllegalStateException("no payload behind " + ref);
+    };
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T extends Block> List<T> cast(List<Block> blocks) {
+    return (List<T>) blocks;
+  }
+
+  private static Open require(Open open, AgentEvent event) {
+    if (open == null) {
+      throw new IllegalStateException(
+          event.getClass().getSimpleName() + " with no turn open at " + event.seq());
+    }
+    return open;
+  }
+
+  /** A turn being reassembled, and the exchange within it that is still taking outcomes. */
+  private static final class Open {
+
+    private final AgentEvent.TurnStarted started;
+    private final Observation observation;
+    private final List<Exchange> exchanges = new ArrayList<>();
+
+    private org.jwcarman.nessy.inference.Seq askedAt;
+    private List<Block.ActionRequestContent> request;
+    private List<ToolOutcome> outcomes;
+
+    private Open(AgentEvent.TurnStarted started, Observation observation) {
+      this.started = started;
+      this.observation = observation;
+    }
+
+    static Open on(AgentEvent.TurnStarted started, List<Block> content) {
+      return new Open(started, new Observation(started.seq(), cast(content)));
+    }
+
+    void ask(org.jwcarman.nessy.inference.Seq at, List<Block.ActionRequestContent> blocks) {
+      flush();
+      askedAt = at;
+      request = blocks;
+      outcomes = new ArrayList<>();
+    }
+
+    void outcome(ToolOutcome outcome) {
+      if (outcomes == null) {
+        throw new IllegalStateException(
+            "an outcome for " + outcome.callId() + " with nothing asked");
+      }
+      outcomes.add(outcome);
+    }
+
+    Turn closed(TurnResult result) {
+      flush();
+      return new Turn(started.turn(), observation, List.copyOf(exchanges), result, 0);
+    }
+
+    Turn stillOpen() {
+      flush();
+      return new Turn(started.turn(), observation, List.copyOf(exchanges), null, 0);
+    }
+
+    private void flush() {
+      if (request != null) {
+        exchanges.add(new Exchange(askedAt, request, List.copyOf(outcomes)));
+        request = null;
+        outcomes = null;
+      }
+    }
+  }
+}

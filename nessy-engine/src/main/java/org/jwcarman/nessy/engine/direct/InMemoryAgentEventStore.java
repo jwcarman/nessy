@@ -1,0 +1,64 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.engine.direct;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jwcarman.nessy.api.ScopeId;
+import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.inference.Seq;
+
+/**
+ * A stream that is a list, for work that outlives nothing.
+ *
+ * <p>Enough for a turn nobody will resume, and enough to prove the seam: the same harness runs
+ * against this and against a durable one without knowing which it has.
+ */
+public final class InMemoryAgentEventStore implements AgentEventStore {
+
+  private final Map<ScopeId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
+  private final Map<ScopeId, Seq> watermarks = new ConcurrentHashMap<>();
+
+  @Override
+  public synchronized void append(ScopeId scope, List<AgentEvent> events, Seq expectedLast) {
+    List<AgentEvent> stream = streams.computeIfAbsent(scope, _ -> new ArrayList<>());
+    Seq last = stream.isEmpty() ? watermark(scope) : stream.getLast().seq();
+    if (!last.equals(expectedLast)) {
+      throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
+    }
+    stream.addAll(events);
+  }
+
+  @Override
+  public synchronized List<AgentEvent> readFrom(ScopeId scope, Seq watermark) {
+    return streams.getOrDefault(scope, List.of()).stream()
+        .filter(event -> event.seq().compareTo(watermark) > 0)
+        .toList();
+  }
+
+  @Override
+  public Seq watermark(ScopeId scope) {
+    return watermarks.getOrDefault(scope, Seq.NONE);
+  }
+
+  @Override
+  public void watermark(ScopeId scope, Seq at) {
+    watermarks.put(scope, at);
+  }
+}

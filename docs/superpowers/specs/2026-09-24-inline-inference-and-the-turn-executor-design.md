@@ -792,6 +792,72 @@ deciding how an owed call discharges. Bounds make it far less urgent.
    free, so the narrow type is the *more* shareable one. Deliberately **not** decided as a side
    effect of building inline.
 
+## 13b. The seams
+
+Settled 2026-09-24. Two harnesses, and the seam list is what keeps the cheap one cheap.
+
+| seam | direct | queued | where |
+|---|---|---|---|
+| `InferenceProvider` | ✓ | ✓ | `nessy-spi`, exists |
+| `PayloadStore` | ✓ | ✓ | `nessy-spi.store`, added |
+| **`AgentEventStore`** | ✓ | ✓ | `nessy-spi`, **to build** |
+| backlog, outbox | — | ✓ | **the queued harness's own**, not seams |
+
+**Direct needs exactly the first three.** That is the whole a-la-carte claim in one row: no
+`DataSource`, no dispatcher, no claims, no leases.
+
+### The queue does not leak into the core
+
+An earlier draft of this section proposed a `WorkOffered` core event so the backlog could be derived
+rather than stored. That is wrong, and it fails this record's own membership test: *can the inline
+harness run this unchanged?* Inline has no offers. Queueing is the queued harness's business, its
+backlog is its own stored state (per the 2026-09-03 ruling), and the core never learns either
+exists.
+
+### The harness owns the transaction, not a store
+
+Events, effects and the harness's own queue state commit together. Rather than a store method that
+takes all three -- which would make one store's interface depend on who is calling -- the harness
+opens one unit of work and writes through single-purpose stores inside it. The invariant then lives
+in one readable block instead of being implicit in a signature.
+
+**Constraint, and it is the existing both-stores-or-neither rule arriving again:** all durable
+stores for one agent must share a transactional resource. Two independently implemented stores
+cannot be made atomic together without XA, so in practice they are JDBC over one `DataSource`. A
+JDBC event store with an S3 outbox does not keep the guarantee.
+
+Direct opens no transaction at all: one store, no queue, no outbox, nothing to coordinate. The
+requirement does not exist rather than being skipped.
+
+### Placement
+
+`PayloadRef` is in `nessy-api` -- it appears wherever events do. `PayloadStore` is SPI: implemented
+*for* Nessy, like `InferenceProvider`, never called by application code.
+
+**Nothing in payload storage is governed.** A resolve finds the content or something is broken;
+there is no third answer, and `Resolved` has no refusal arm. Where a value must not reach a model it
+is a surrogate *inside* the content, and the reveal happens in the tool that holds the charter.
+(An earlier draft had a public `PayloadStore` and a `Refused` arm, justified by the loch
+integration. That put governance in the wrong layer and invented a question -- "what does the model
+see when a payload will not resolve?" -- that does not exist.)
+
+### One invariant a payload store must honour
+
+**One ref, one ordered list, stored and returned whole.** From `Block.Provider`'s javadoc: vendor
+reasoning state is *"text, never a tree"* because a signature covers bytes, and *"order is part of
+the payload"* because a signature may cover a whole content array. A store that split blocks across
+refs, merged them, deduplicated or reordered would break signatures on the way back in. JSON
+round-trips the payload string exactly, so there is no new risk here -- only a rule a JDBC or S3
+implementation must not be tempted to normalise away.
+
+### Open
+
+`AgentEventStore` works in `AgentEvent`, which is internal. Putting it in the SPI makes the event
+grammar a versioned public contract -- the one unavoidable cost of this design, at full price.
+Alternatives: a byte-shaped store with the codec above it (keeps `AgentEvent` internal, store learns
+nothing), or no SPI at all (ship memory/directory/JDBC, a backend is chosen rather than
+implemented). **Needs James.**
+
 ## 14. What does not change
 
 - `Harness` keeps its semantics. No lie is added to the durable door.
