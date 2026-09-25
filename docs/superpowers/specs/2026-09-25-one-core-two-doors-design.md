@@ -301,6 +301,32 @@ Written in the same transaction as the events it will become. `arrived_at` is th
 own time, because a coalescer that is time-dependent uses it as now -- that is why the field exists
 rather than a clock read at pull time.
 
+### RULED 2026-09-25: effect executors claim-check; EffectOutcome goes away
+
+James: "the effect executors should be doing the claim checking of the payloads before they send
+the outcome to the agent. The only thing that needs to 'manually' claim check inside the harness is
+the initial message that is derived from an input object."
+
+Content is put away where it is produced -- by whatever talked to the model or ran the tool -- not
+carried inward and put away later. Which means an outcome arrives already holding references, and
+at that point `EffectOutcome` holds exactly what `AgentCommand` holds, grouped differently:
+
+```
+EffectOutcome.InferenceAnswered(PayloadRef)      AgentCommand.CompleteInference(Answered(ref))
+EffectOutcome.ToolSucceeded(callId, PayloadRef)  AgentCommand.CompleteToolCall(callId, Succeeded(ref))
+EffectOutcome.ToolApproved(callId, reference)    AgentCommand.CompleteApproval(callId, Approved(...))
+```
+
+So `EffectOutcome` is not translated, it is **deleted**: executors produce `AgentCommand`. That
+lands with the fold swap rather than before it, because the old fold consumes `EffectOutcome`
+through `state.outcome(...)`.
+
+The one claim check that stays in a harness is the arrival -- the observation rendered from the
+application's own `O` or `I`. That is not an outcome and has no executor; it comes in the door.
+
+A translator was written for this and deleted the same day. It only made sense while outcomes
+carried content, which is the thing this ruling stops.
+
 ### Not open (decided)
 
 `<O>` leaves the fold. `Decision.stay` becomes events. The sealing rule (`Inferring.terminate()`

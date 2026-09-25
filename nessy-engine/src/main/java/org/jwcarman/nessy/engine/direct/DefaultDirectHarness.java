@@ -45,7 +45,6 @@ import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
-import org.jwcarman.nessy.engine.history.ClaimChecked;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
@@ -151,7 +150,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.listeners = List.copyOf(listeners);
     this.assembler =
         new ContextAssembler(
-            (type, id) -> new EventStreamHistory(events, transcript, id),
+            // Scoped as it reads: content belongs to an agent, so the projection of one agent's
+            // turns resolves only that agent's payloads.
+            (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id),
             summaries,
             maxTail,
             ambient);
@@ -160,7 +161,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   @Override
   public Outcome<String> ask(AgentId agent, I input) {
-    return under(agent, () -> runTurn(agent, input, Optional.empty(), this::saidText));
+    return under(
+        agent,
+        () -> runTurn(agent, input, Optional.empty(), answered -> saidText(agent, answered)));
   }
 
   @Override
@@ -170,7 +173,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     // provider constrains an answer with the same kind of document it constrains an argument with.
     OutputSchema shape = new OutputSchema(schemas.generate(type.rawClass()).json());
     return under(
-        agent, () -> runTurn(agent, input, Optional.of(shape), answered -> read(answered, type)));
+        agent,
+        () -> runTurn(agent, input, Optional.of(shape), answered -> read(agent, answered, type)));
   }
 
   /** One turn at a time per agent, whatever shape was asked for. */
@@ -196,6 +200,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     // The transcript is a different question. What the model is shown is the conversation, which
     // is every turn before this one as well, so it takes its own read. Using the last turn for
     // both is what made a second ask forget the first.
+    // Content is kept per agent, so everything this turn puts away or reads back goes through a
+    // view of the store that knows whose it is.
+    PayloadStore content = payloads.forAgent(agent);
+
     List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
     Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
     AgentState state = AgentState.idle(from).applyAll(lastTurn);
@@ -206,7 +214,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
     // Claim-checked before it reaches the core, which never sees I and never sees blocks.
     Deque<AgentCommand> pending = new ArrayDeque<>();
-    pending.add(new AgentCommand.StartTurn(payloads.put(renderer.apply(input))));
+    pending.add(new AgentCommand.StartTurn(content.put(renderer.apply(input))));
 
     while (!pending.isEmpty()) {
       Decision decision = state.execute(pending.poll());
@@ -219,7 +227,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       state = state.applyAll(decision.events());
 
       for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(agent, effect, history, shape));
+        pending.add(perform(agent, content, effect, history, shape));
       }
     }
 
@@ -244,13 +252,17 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   /** Where the outside world happens: everything slow, everything non-deterministic. */
   private AgentCommand perform(
-      AgentId agent, AgentEffect effect, List<AgentEvent> history, Optional<OutputSchema> shape) {
+      AgentId agent,
+      PayloadStore content,
+      AgentEffect effect,
+      List<AgentEvent> history,
+      Optional<OutputSchema> shape) {
     return switch (effect) {
-      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, shape));
+      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, content, shape));
 
-      case AgentEffect.Approve approve -> approve(agent, approve, history);
+      case AgentEffect.Approve approve -> approve(agent, content, approve, history);
 
-      case AgentEffect.CallTool call -> callTool(agent, call, history);
+      case AgentEffect.CallTool call -> callTool(agent, content, call, history);
     };
   }
 
@@ -263,7 +275,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * is a denial with a reason rather than a turn that never ends.
    */
   private AgentCommand approve(
-      AgentId agent, AgentEffect.Approve approve, List<AgentEvent> history) {
+      AgentId agent, PayloadStore content, AgentEffect.Approve approve, List<AgentEvent> history) {
     ToolBinding<?> binding = tools.find(approve.toolName()).orElse(null);
     if (binding == null) {
       return new AgentCommand.CompleteApproval(
@@ -278,7 +290,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
               agent,
               turnOf(history),
               approve.callId(),
-              argumentsOf(approve.callId(), history),
+              argumentsOf(content, approve.callId(), history),
               Instant.now(),
               new ReplyToken(approve.callId().value()));
     } catch (RuntimeException unreadable) {
@@ -323,7 +335,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   private AgentCommand callTool(
-      AgentId agent, AgentEffect.CallTool call, List<AgentEvent> history) {
+      AgentId agent, PayloadStore content, AgentEffect.CallTool call, List<AgentEvent> history) {
     ToolBinding<?> binding = tools.find(call.toolName()).orElse(null);
     if (binding == null) {
       return new AgentCommand.CompleteToolCall(
@@ -336,10 +348,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           turnOf(history),
           call.callId(),
           call.toolName(),
-          argumentsOf(call.callId(), history),
+          argumentsOf(content, call.callId(), history),
           Instant.now().plus(binding.timeout()),
           new ReplyToken(call.callId().value()))) {
-        case Awaited.Ready(ToolResult result) -> completed(call, result);
+        case Awaited.Ready(ToolResult result) -> completed(content, call, result);
         // A tool that wants to answer later has nowhere to put the answer on this door.
         case Awaited.Deferred<ToolResult> _ ->
             new AgentCommand.CompleteToolCall(
@@ -355,13 +367,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     }
   }
 
-  private AgentCommand completed(AgentEffect.CallTool call, ToolResult result) {
+  private AgentCommand completed(
+      PayloadStore content, AgentEffect.CallTool call, ToolResult result) {
     return switch (result) {
       // Claim-checked on the way back, so a result crosses into the core as a reference and never
       // as content.
       case ToolResult.Success(var blocks) ->
           new AgentCommand.CompleteToolCall(
-              call.callId(), new AgentCommand.ToolOutcome.Succeeded(payloads.put(blocks)));
+              call.callId(), new AgentCommand.ToolOutcome.Succeeded(content.put(blocks)));
       case ToolResult.Failure(String message) ->
           new AgentCommand.CompleteToolCall(
               call.callId(), new AgentCommand.ToolOutcome.Failed(message));
@@ -388,7 +401,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         .orElseThrow(() -> new IllegalStateException("a call outside any turn"));
   }
 
-  private AgentCommand.InferenceOutcome infer(AgentId agent, Optional<OutputSchema> shape) {
+  private AgentCommand.InferenceOutcome infer(
+      AgentId agent, PayloadStore content, Optional<OutputSchema> shape) {
     InferenceRequest request =
         new InferenceRequest(
             systemPrompt.forAgent(agent),
@@ -399,15 +413,24 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
     return switch (provider.infer(request, narratorFor(agent))) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
-          new AgentCommand.InferenceOutcome.Answered(payloads.put(blocks));
+          new AgentCommand.InferenceOutcome.Answered(content.put(blocks));
       case InferenceResult.Refusal(String category, var _) ->
           new AgentCommand.InferenceOutcome.Refused(category);
       case InferenceResult.Fault(var failure, var _) ->
           new AgentCommand.InferenceOutcome.Failed(failure);
       case InferenceResult.Actions(List<Block.ActionRequestContent> blocks, var _) ->
           new AgentCommand.InferenceOutcome.RequestedActions(
-              payloads.put(blocks), ClaimChecked.requested(blocks));
+              content.put(blocks), requested(blocks));
     };
+  }
+
+  /** Which calls a request obliges an outcome for, in the order the model made them. */
+  private static List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {
+    return blocks.stream()
+        .filter(Block.ToolCall.class::isInstance)
+        .map(Block.ToolCall.class::cast)
+        .map(call -> new AgentEvent.Requested(call.id(), call.name()))
+        .toList();
   }
 
   /**
@@ -454,7 +477,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
               agent,
               new org.jwcarman.nessy.api.AgentEvent.CallFailed(failed.callId(), failed.message()));
       case AgentEvent.InferenceAnswered answered ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Answered(textOf(answered)));
+          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Answered(textOf(agent, answered)));
       case AgentEvent.InferenceRefused _ ->
           tell(agent, new org.jwcarman.nessy.api.AgentEvent.TurnRefused());
       case AgentEvent.InferenceFailed _ ->
@@ -478,19 +501,20 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     }
   }
 
-  private String argumentsOf(CallId callId, List<AgentEvent> history) {
+  private String argumentsOf(PayloadStore content, CallId callId, List<AgentEvent> history) {
     return history.reversed().stream()
         .filter(AgentEvent.ActionsRequested.class::isInstance)
         .map(AgentEvent.ActionsRequested.class::cast)
         .findFirst()
-        .map(asked -> resolveCall(asked, callId))
+        .map(asked -> resolveCall(content, asked, callId))
         .orElseThrow(() -> new IllegalStateException("no request holds " + callId));
   }
 
-  private String resolveCall(AgentEvent.ActionsRequested asked, CallId callId) {
-    return switch (payloads.get(asked.request())) {
-      case PayloadStore.Resolved.Found(List<Block> content) ->
-          content.stream()
+  private String resolveCall(
+      PayloadStore content, AgentEvent.ActionsRequested asked, CallId callId) {
+    return switch (content.get(asked.request())) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+          blocks.stream()
               .filter(Block.ToolCall.class::isInstance)
               .map(Block.ToolCall.class::cast)
               .filter(tc -> tc.id().equals(callId))
@@ -522,8 +546,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   /** What a caller who asked for no particular shape gets: whatever the model said. */
-  private Outcome<String> saidText(AgentEvent.InferenceAnswered answered) {
-    return new Outcome.Answered<>(textOf(answered));
+  private Outcome<String> saidText(AgentId agent, AgentEvent.InferenceAnswered answered) {
+    return new Outcome.Answered<>(textOf(agent, answered));
   }
 
   /**
@@ -532,8 +556,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * <p>A model that answered around the schema fails the turn rather than handing back something
    * that does not fit -- which is the whole reason a caller asked for a shape instead of prose.
    */
-  private <T> Outcome<T> read(AgentEvent.InferenceAnswered answered, TypeRef<T> type) {
-    String json = textOf(answered);
+  private <T> Outcome<T> read(
+      AgentId agent, AgentEvent.InferenceAnswered answered, TypeRef<T> type) {
+    String json = textOf(agent, answered);
     try {
       return new Outcome.Answered<>(mapper.readValue(json, mapper.constructType(type.getType())));
     } catch (RuntimeException notTheShape) {
@@ -542,10 +567,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     }
   }
 
-  private String textOf(AgentEvent.InferenceAnswered answered) {
-    return switch (payloads.get(answered.answer())) {
-      case PayloadStore.Resolved.Found(List<Block> content) ->
-          content.stream()
+  private String textOf(AgentId agent, AgentEvent.InferenceAnswered answered) {
+    return switch (payloads.forAgent(agent).get(answered.answer())) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+          blocks.stream()
               .filter(Block.Text.class::isInstance)
               .map(Block.Text.class::cast)
               .map(Block.Text::text)
