@@ -18,12 +18,13 @@ package org.jwcarman.nessy.inference.anthropic;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link AnthropicInferenceProvider#create(AnthropicProviderCustomizer)} hands a customizer: a
- * CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public {@code
- * build()}.
+ * What {@link AnthropicInferenceProvider#create(Customizer<AnthropicProviderConfig>)} hands a
+ * customizer: a CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public
+ * {@code build()}.
  */
 public final class AnthropicProviderConfig {
 
@@ -133,8 +134,8 @@ public final class AnthropicProviderConfig {
   /**
    * Turns this config into the {@link AnthropicInferenceProvider} it describes — the factory's own
    * step, never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
-   * AnthropicInferenceProvider#create(AnthropicProviderCustomizer)}, once {@code customize} has
-   * returned.
+   * AnthropicInferenceProvider#create(Customizer<AnthropicProviderConfig>)}, once {@code customize}
+   * has returned.
    */
   AnthropicInferenceProvider build() {
     if (client != null) {

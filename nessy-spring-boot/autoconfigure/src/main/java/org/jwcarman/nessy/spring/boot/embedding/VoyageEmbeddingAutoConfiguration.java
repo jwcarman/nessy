@@ -51,7 +51,7 @@ public class VoyageEmbeddingAutoConfiguration {
       @Value("${nessy.embedding.voyage.model:}") String model,
       @Value("${nessy.embedding.voyage.dimension:}") String dimension,
       ObservationRegistry observations) {
-    VoyageEmbeddingProvider provider = VoyageEmbeddingProvider.create(c -> c.apiKey(apiKey));
+    VoyageEmbeddingProvider provider = VoyageEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
         provider,
         EmbeddingModels.modelOr(model, VoyageEmbedderConfig.DEFAULT_MODEL),

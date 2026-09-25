@@ -36,7 +36,7 @@ public interface InferenceConfig {
    * How the context for the call is built: summaries, the tail, and background. See {@link
    * ContextConfig} for the order those are sent in and what each one means.
    */
-  InferenceConfig context(java.util.function.Consumer<ContextConfig> customizer);
+  InferenceConfig context(Customizer<ContextConfig> customizer);
 
   /**
    * How long the agent is willing to wait for an answer, measured from when the work is written

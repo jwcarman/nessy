@@ -67,10 +67,10 @@ class ConcurrentDispatchTest {
         engine
             .harnesses()
             .create(
+                CHAT,
                 String.class,
                 config ->
                     config
-                        .agentType(CHAT)
                         .systemPrompt("You are a test assistant.")
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.maxInFlight(AGENTS).pollInterval(POLL)));
@@ -93,7 +93,7 @@ class ConcurrentDispatchTest {
             .limit(AGENTS)
             .toList();
 
-    agents.forEach(agentId -> harness.observe(agentId, "hello"));
+    agents.forEach(agentId -> harness.tell(agentId, "hello"));
 
     // Every call blocks until all three are in flight, so this only completes if the dispatcher
     // ran them concurrently. Serial execution deadlocks here until the latch times out, and

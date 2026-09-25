@@ -81,7 +81,7 @@ class HeadSummarizerFoldTest {
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     HeadSummarizer summarizer =
-        HeadSummarizer.create(
+        HeadSummarizer.of(
             c ->
                 c.agentType(CHAT)
                     .summaries(summaries)
@@ -90,10 +90,10 @@ class HeadSummarizerFoldTest {
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
     return factory.create(
+        CHAT,
         String.class,
         h ->
-            h.agentType(CHAT)
-                .systemPrompt("You are a test assistant.")
+            h.systemPrompt("You are a test assistant.")
                 .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(MAX_TAIL)))
                 .effects(e -> e.pollInterval(Duration.ofMillis(100)))
                 .listener(summarizer.listener()));
@@ -108,7 +108,7 @@ class HeadSummarizerFoldTest {
   private void converse(QueuedHarness<String> harness, AgentId agentId, int turns) {
     for (int i = 1; i <= turns; i++) {
       int expected = chats.get() + 1;
-      harness.observe(agentId, "turn " + i);
+      harness.tell(agentId, "turn " + i);
       await().atMost(Duration.ofSeconds(20)).until(() -> chats.get() >= expected);
     }
   }

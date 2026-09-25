@@ -77,7 +77,7 @@ class GatedByPolicyTest {
 
   private Approver gate() {
     var opa =
-        OpaPolicyEngine.create(
+        OpaPolicyEngine.of(
             policy ->
                 policy
                     .url("http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181))
@@ -95,7 +95,7 @@ class GatedByPolicyTest {
           terms.add(term);
           return Awaited.deferred();
         };
-    return PolicyApprover.create(config -> config.engine(opa).delegate("humans", humans));
+    return PolicyApprover.of(config -> config.engine(opa).delegate("humans", humans));
   }
 
   private static ApprovalRequest asking(String agentType, String tool, String target) {

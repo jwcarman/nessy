@@ -32,6 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
@@ -79,8 +80,8 @@ class VoyageEmbedderTest {
     server.stop(0);
   }
 
-  private VoyageEmbeddingProvider provider(VoyageEmbedderCustomizer more) {
-    return VoyageEmbeddingProvider.create(
+  private VoyageEmbeddingProvider provider(Customizer<VoyageEmbedderConfig> more) {
+    return VoyageEmbeddingProvider.of(
         c -> {
           c.apiKey("test-key")
               .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/");
@@ -190,7 +191,7 @@ class VoyageEmbedderTest {
     void an_unreachable_endpoint_is_reported() {
       Embedder unreachable =
           embedderOver(
-              VoyageEmbeddingProvider.create(
+              VoyageEmbeddingProvider.of(
                   c ->
                       c.apiKey("k")
                           .baseUrl("http://127.0.0.1:1/v1")
@@ -208,14 +209,14 @@ class VoyageEmbedderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> {}))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.create(c -> c.mapper(null)))
+      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -226,7 +227,7 @@ class VoyageEmbedderTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("VOYAGE_API_KEY");
       assertThat(
-              VoyageEmbeddingProvider.create(
+              VoyageEmbeddingProvider.of(
                       c ->
                           c.fromEnv()
                               .apiKey("k")

@@ -410,7 +410,7 @@ class BedrockInferenceProviderTest {
 
     @Test
     void without_a_region_the_config_refuses_to_build() {
-      assertThatThrownBy(() -> BedrockInferenceProvider.create(c -> {}))
+      assertThatThrownBy(() -> BedrockInferenceProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("region");
     }

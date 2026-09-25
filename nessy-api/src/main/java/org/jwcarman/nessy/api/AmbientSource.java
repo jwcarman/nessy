@@ -17,7 +17,6 @@ package org.jwcarman.nessy.api;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jwcarman.nessy.inference.Ambient;
 
@@ -68,10 +67,10 @@ public interface AmbientSource {
    * One made from a kind and a function, for a source small enough that a class of its own would be
    * ceremony: {@code of(a -> a.kind("clock").text(who -> Optional.of(today())))}.
    */
-  static AmbientSource of(Consumer<AmbientSourceConfig> customizer) {
+  static AmbientSource of(Customizer<AmbientSourceConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     AmbientSourceConfig config = new AmbientSourceConfig();
-    customizer.accept(config);
+    customizer.customize(config);
     String kind = config.requiredKind();
     Function<AgentId, Optional<Ambient>> offering = config.requiredOffering();
     return new AmbientSource() {

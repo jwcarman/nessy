@@ -24,8 +24,8 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.Pull;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -76,7 +76,7 @@ final class DefaultQueuedHarness<O>
 
   private final AgentType agentType;
   private final BacklogPolicy<O> policy;
-  private final ObservationRenderer<O> renderer;
+  private final InputRenderer<O> renderer;
   private final JdbcAgents agents;
   private final AgentEventStore events;
   private final PayloadStore payloads;
@@ -98,7 +98,7 @@ final class DefaultQueuedHarness<O>
   DefaultQueuedHarness(
       AgentType agentType,
       BacklogPolicy<O> policy,
-      ObservationRenderer<O> renderer,
+      InputRenderer<O> renderer,
       JdbcAgents agents,
       AgentEventStore events,
       PayloadStore payloads,
@@ -144,7 +144,7 @@ final class DefaultQueuedHarness<O>
    * never left idle with work waiting.
    */
   @Override
-  public void observe(AgentId agentId, O observation) {
+  public void tell(AgentId agentId, O observation) {
     BacklogItem<O> arrival = new BacklogItem<>(observation, clock.instant());
     log.debug("[{}] observing for agent {}", agentType.value(), agentId.value());
     traces.in(

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.console;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
@@ -49,7 +50,8 @@ public final class Repl {
    * -- the application already has injected, so nothing is discovered here and no context is
    * raised. Hand over a factory and say what the agent is for.
    */
-  public static void run(DirectHarnessFactory factory, String model, ReplCustomizer customizer) {
+  public static void run(
+      DirectHarnessFactory factory, String model, Customizer<ReplConfig> customizer) {
     Objects.requireNonNull(factory, "factory must not be null");
     Objects.requireNonNull(model, "model must not be null");
     Objects.requireNonNull(customizer, "customizer must not be null");
@@ -64,7 +66,7 @@ public final class Repl {
    * <p>Raises just enough Boot to find a provider and a database, then does what the other one
    * does. An application with its own context should hand over a factory instead.
    */
-  public static void run(ReplCustomizer customizer) {
+  public static void run(Customizer<ReplConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     ReplConfig config = new ReplConfig();
     customizer.customize(config);
@@ -75,13 +77,13 @@ public final class Repl {
     ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
     DirectHarness<String> harness =
         factory.<String>create(
+            config.type(),
             h -> {
-              h.agentType(config.type())
-                  .systemPrompt(config.systemPrompt())
+              h.systemPrompt(config.systemPrompt())
                   .inputRenderer(said -> List.of(new Block.Text(said)))
                   .inference(in -> in.model(model).maxTokens(config.maxTokens()))
                   .listener(narration);
-              config.tools().forEach(grant -> grant.accept(h));
+              config.tools().forEach(grant -> grant.customize(h));
             });
     new ReplLoop(
             harness,

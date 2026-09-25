@@ -51,7 +51,7 @@ public class OpenAiEmbeddingAutoConfiguration {
       @Value("${nessy.embedding.openai.model:}") String model,
       @Value("${nessy.embedding.openai.dimension:}") String dimension,
       ObservationRegistry observations) {
-    OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.create(c -> c.apiKey(apiKey));
+    OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
         provider,
         EmbeddingModels.modelOr(model, OpenAiEmbedderConfig.DEFAULT_MODEL),
@@ -70,7 +70,7 @@ public class OpenAiEmbeddingAutoConfiguration {
       @Value("${nessy.embedding.openai.dimension:}") String dimension,
       ObservationRegistry observations) {
     OpenAiEmbeddingProvider provider =
-        OpenAiEmbeddingProvider.create(
+        OpenAiEmbeddingProvider.of(
             c -> {
               c.apiKey(apiKey);
               if (baseUrl != null) {

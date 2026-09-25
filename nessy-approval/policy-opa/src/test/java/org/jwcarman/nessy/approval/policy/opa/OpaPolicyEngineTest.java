@@ -76,8 +76,7 @@ class OpaPolicyEngineTest {
   }
 
   private static PolicyEngine engine(String path) {
-    return OpaPolicyEngine.create(
-        opa -> opa.url(baseUrl()).decisionPath(path).objectMapper(MAPPER));
+    return OpaPolicyEngine.of(opa -> opa.url(baseUrl()).decisionPath(path).objectMapper(MAPPER));
   }
 
   private static ApprovalRequest asking(String agentType, String tool, String target) {
@@ -162,7 +161,7 @@ class OpaPolicyEngineTest {
     @Test
     void an_unreachable_engine_throws() {
       PolicyEngine offline =
-          OpaPolicyEngine.create(
+          OpaPolicyEngine.of(
               opa -> opa.url("http://127.0.0.1:1").decisionPath("nessy/tools/decision"));
       ApprovalRequest asking = asking("watchman", "disk_usage", "s");
 
@@ -209,7 +208,7 @@ class OpaPolicyEngineTest {
     void a_custom_renderer_is_what_the_policy_sees() {
       // This document has no toolName at all, so no rule can fire and the default answers.
       PolicyEngine mine =
-          OpaPolicyEngine.create(
+          OpaPolicyEngine.of(
               opa ->
                   opa.url(baseUrl())
                       .decisionPath("nessy/tools/decision")

@@ -18,8 +18,8 @@ package org.jwcarman.nessy.approval.policy;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -68,15 +68,15 @@ public final class PolicyApprover implements Approver {
    * Builds one, the way the rest of Nessy builds things.
    *
    * <pre>{@code
-   * Approver gate = PolicyApprover.create(policy -> policy
+   * Approver gate = PolicyApprover.of(policy -> policy
    *     .engine(opa)
    *     .delegate("humans", desk));
    * }</pre>
    */
-  public static PolicyApprover create(Consumer<PolicyApproverConfig> customizer) {
+  public static PolicyApprover of(Customizer<PolicyApproverConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     Configured configured = new Configured();
-    customizer.accept(configured);
+    customizer.customize(configured);
     if (configured.engine == null) {
       throw new IllegalStateException("a policy approver needs an engine: call engine(...)");
     }

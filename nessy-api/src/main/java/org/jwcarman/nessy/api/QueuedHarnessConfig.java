@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 
@@ -35,10 +34,9 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  *
  * @param <O> the observation type this agent takes
  */
-public interface QueuedHarnessConfig<O> {
+public interface QueuedHarnessConfig<O> extends HarnessConfig<QueuedHarnessConfig<O>> {
 
   /** What this agent type is called. Names its rows and scopes its dispatcher's polling. */
-  QueuedHarnessConfig<O> agentType(AgentType agentType);
 
   /** What this agent is, in the same words for every agent of the type. */
   QueuedHarnessConfig<O> systemPrompt(String prompt);
@@ -49,11 +47,11 @@ public interface QueuedHarnessConfig<O> {
   /**
    * How an observation becomes something a model can read.
    *
-   * <p>Defaults to {@link ObservationRenderer#asString()}, which is right for records and for
-   * anything with a considered {@code toString}, and quietly wrong for a class without one -- that
-   * sends {@code com.acme.Order@1a2b3c} to a model, and you pay for it.
+   * <p>Defaults to {@link InputRenderer#asString()}, which is right for records and for anything
+   * with a considered {@code toString}, and quietly wrong for a class without one -- that sends
+   * {@code com.acme.Order@1a2b3c} to a model, and you pay for it.
    */
-  QueuedHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer);
+  QueuedHarnessConfig<O> inputRenderer(InputRenderer<O> renderer);
 
   /**
    * What the backlog becomes when an observation arrives while the agent is busy.
@@ -64,10 +62,10 @@ public interface QueuedHarnessConfig<O> {
   QueuedHarnessConfig<O> backlogPolicy(BacklogPolicy<O> policy);
 
   /** Adjusts how this agent type infers, using the factory's provider. */
-  QueuedHarnessConfig<O> inference(Consumer<InferenceConfig> customizer);
+  QueuedHarnessConfig<O> inference(Customizer<InferenceConfig> customizer);
 
   /** Adjusts how this agent type performs the work it owes itself. */
-  QueuedHarnessConfig<O> effects(Consumer<EffectsConfig> customizer);
+  QueuedHarnessConfig<O> effects(Customizer<EffectsConfig> customizer);
 
   /**
    * Somebody who hears what this harness's agents do, in addition to whoever the engine already
@@ -76,9 +74,9 @@ public interface QueuedHarnessConfig<O> {
   QueuedHarnessConfig<O> listener(NarrationListener listener);
 
   /** Offers a tool, and says what a call of it is worth. */
-  <I> QueuedHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);
+  <I> QueuedHarnessConfig<O> tool(Tool<I> tool, Customizer<ToolConfig<I>> customizer);
 
   default <I> QueuedHarnessConfig<O> tool(Tool<I> tool) {
-    return tool(tool, Customizers.withDefaults());
+    return tool(tool, Customizer.withDefaults());
   }
 }

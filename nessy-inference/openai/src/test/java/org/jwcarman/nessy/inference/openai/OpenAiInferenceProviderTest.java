@@ -52,6 +52,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -757,7 +758,7 @@ class OpenAiInferenceProviderTest {
 
     @Test
     void create_rejects_a_null_customizer() {
-      assertThatThrownBy(() -> OpenAiInferenceProvider.create(null))
+      assertThatThrownBy(() -> OpenAiInferenceProvider.of((Customizer<OpenAiProviderConfig>) null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("customizer must not be null");
     }
@@ -769,14 +770,14 @@ class OpenAiInferenceProviderTest {
       assertThatThrownBy(OpenAiInferenceProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
-      assertThatThrownBy(() -> OpenAiInferenceProvider.create(OpenAiProviderConfig::fromEnv))
+      assertThatThrownBy(() -> OpenAiInferenceProvider.of(OpenAiProviderConfig::fromEnv))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
     }
 
     @Test
     void create_reaches_the_real_construction_path_offline() {
-      OpenAiInferenceProvider provider = OpenAiInferenceProvider.create(c -> c.apiKey("sk-test"));
+      OpenAiInferenceProvider provider = OpenAiInferenceProvider.of(c -> c.apiKey("sk-test"));
 
       assertThat(provider).isNotNull();
     }

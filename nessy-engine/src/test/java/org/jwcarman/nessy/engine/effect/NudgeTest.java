@@ -47,14 +47,14 @@ class NudgeTest {
       engine
           .harnesses()
           .create(
+              type,
               String.class,
               config ->
                   config
-                      .agentType(type)
                       .systemPrompt("You are a test assistant.")
                       .inference(in -> in.model("a-model"))
                       .effects(e -> e.pollInterval(Duration.ofMinutes(10))))
-          .observe(agentId, "hello");
+          .tell(agentId, "hello");
 
       await()
           .atMost(Duration.ofSeconds(10))

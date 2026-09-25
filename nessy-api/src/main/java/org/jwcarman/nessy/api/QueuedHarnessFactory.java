@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.function.Consumer;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.tool.Replies;
 
@@ -34,14 +33,15 @@ import org.jwcarman.nessy.api.tool.Replies;
 public interface QueuedHarnessFactory extends AutoCloseable {
 
   /** For observations that are already what a model should read. */
-  default QueuedHarness<String> create(Consumer<QueuedHarnessConfig<String>> customizer) {
-    return create(String.class, customizer);
+  default QueuedHarness<String> create(
+      AgentType agentType, Customizer<QueuedHarnessConfig<String>> customizer) {
+    return create(agentType, String.class, customizer);
   }
 
   /** For an observation type that is not itself generic, which is nearly all of them. */
   default <O> QueuedHarness<O> create(
-      Class<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer) {
-    return create(TypeRef.of(observationType), customizer);
+      AgentType agentType, Class<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer) {
+    return create(agentType, TypeRef.of(inputType), customizer);
   }
 
   /**
@@ -52,7 +52,7 @@ public interface QueuedHarnessFactory extends AutoCloseable {
    * TypeRef} can carry that through.
    */
   <O> QueuedHarness<O> create(
-      TypeRef<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer);
+      AgentType agentType, TypeRef<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer);
 
   /**
    * Where a late answer comes back in. One for the whole factory rather than one per harness: a

@@ -19,10 +19,11 @@ import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 
 /**
- * What {@link GeminiEmbeddingProvider#create(GeminiEmbedderCustomizer)} hands a customizer: a
- * CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link GeminiEmbeddingProvider#create(Customizer<GeminiEmbedderConfig>)} hands a customizer:
+ * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class GeminiEmbedderConfig {
 

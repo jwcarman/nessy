@@ -104,7 +104,7 @@ class RulesInJavaTest {
           terms.add(term);
           return Awaited.deferred();
         };
-    return PolicyApprover.create(config -> config.engine(RULES).delegate("humans", humans));
+    return PolicyApprover.of(config -> config.engine(RULES).delegate("humans", humans));
   }
 
   private static ApprovalRequest asking(String agentType, String tool, String target) {
@@ -157,7 +157,7 @@ class RulesInJavaTest {
         request -> {
           throw new IllegalStateException("somebody dereferenced a null");
         };
-    var gate = PolicyApprover.create(config -> config.engine(broken));
+    var gate = PolicyApprover.of(config -> config.engine(broken));
 
     var answer = gate.approve(asking("watchman", "disk_usage", "staging-1"));
 

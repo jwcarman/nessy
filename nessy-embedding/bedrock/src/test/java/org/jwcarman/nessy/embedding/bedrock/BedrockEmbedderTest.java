@@ -212,7 +212,7 @@ class BedrockEmbedderTest {
           StaticCredentialsProvider.create(AwsBasicCredentials.create("akid", "secret"));
       assertThatCode(
               () ->
-                  BedrockEmbeddingProvider.create(
+                  BedrockEmbeddingProvider.of(
                           c ->
                               c.region(Region.US_EAST_1)
                                   .credentialsProvider(credentials)
@@ -237,19 +237,19 @@ class BedrockEmbedderTest {
                     }
                     return null;
                   });
-      BedrockEmbeddingProvider.create(c -> c.client(theirs)).close();
+      BedrockEmbeddingProvider.of(c -> c.client(theirs)).close();
       assertThat(closed).isFalse();
     }
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> c.mapper(null)))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.create(c -> {}))
+      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("region");
     }

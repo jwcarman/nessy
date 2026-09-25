@@ -107,6 +107,7 @@ class HarnessObservesToolsTest {
             });
     DefaultQueuedHarnessConfig<String> config =
         new DefaultQueuedHarnessConfig<>(
+            new AgentType("observed"),
             new TypeRef<String>() {},
             new DefaultQueuedHarnessConfig.Defaults(
                 (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("ok"))),

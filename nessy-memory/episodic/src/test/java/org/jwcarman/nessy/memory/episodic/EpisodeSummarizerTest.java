@@ -113,10 +113,10 @@ class EpisodeSummarizerTest {
                     .inference(model, InferenceOptions.of("m"))
                     .observations(observations));
     episodes =
-        JdbcEpisodes.create(
+        JdbcEpisodes.of(
             c -> c.dataSource(dataSource).agentType(Calls.TYPE).embedder(embedder).shown(2));
     summarizer =
-        EpisodeSummarizer.create(
+        EpisodeSummarizer.of(
             c ->
                 c.agentType(Calls.TYPE)
                     .episodes(episodes)
@@ -126,10 +126,10 @@ class EpisodeSummarizerTest {
                     .observations(observations));
     harness =
         factory.create(
+            Calls.TYPE,
             String.class,
             h ->
-                h.agentType(Calls.TYPE)
-                    .systemPrompt("You are a test assistant.")
+                h.systemPrompt("You are a test assistant.")
                     .inference(
                         in ->
                             in.context(
@@ -150,7 +150,7 @@ class EpisodeSummarizerTest {
   private void say(AgentId agentId, String... texts) {
     for (String text : texts) {
       int expected = chatRequests.size() + 1;
-      harness.observe(agentId, text);
+      harness.tell(agentId, text);
       await().atMost(Duration.ofSeconds(20)).until(() -> chatRequests.size() >= expected);
     }
   }
@@ -292,12 +292,12 @@ class EpisodeSummarizerTest {
 
   @Test
   void what_is_refused_at_configuration() {
-    assertThatThrownBy(() -> EpisodeSummarizer.create(c -> c.agentType(Calls.TYPE)))
+    assertThatThrownBy(() -> EpisodeSummarizer.of(c -> c.agentType(Calls.TYPE)))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("episodes");
     assertThatThrownBy(
             () ->
-                EpisodeSummarizer.create(
+                EpisodeSummarizer.of(
                     c -> c.agentType(Calls.TYPE).episodes(episodes).histories(factory.histories())))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("locks");

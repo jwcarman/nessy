@@ -44,12 +44,12 @@ import org.jwcarman.nessy.inference.block.Block;
  * @param <O> the observation type
  */
 @FunctionalInterface
-public interface ObservationRenderer<O> {
+public interface InputRenderer<O> {
 
   List<Block.ObservationContent> render(O observation);
 
   /** For an observation that is already what the model should read. */
-  static <O> ObservationRenderer<O> asString() {
+  static <O> InputRenderer<O> asString() {
     return observation -> List.of(new Block.Text(String.valueOf(observation)));
   }
 }

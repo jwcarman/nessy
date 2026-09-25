@@ -157,16 +157,16 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(lookup(seen))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "what lake?");
+    harness.tell(agentId, "what lake?");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -239,16 +239,16 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(lookup(new ConcurrentLinkedQueue<>()))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "hello");
+    harness.tell(agentId, "hello");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -288,10 +288,10 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             lookup(seen),
@@ -306,7 +306,7 @@ class ToolCallingTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "what lake?");
+    harness.tell(agentId, "what lake?");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -375,16 +375,16 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(slow, t -> t.timeout(Duration.ofMinutes(4)))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "go");
+    harness.tell(agentId, "go");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -421,16 +421,16 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(lookup(new ConcurrentLinkedQueue<>()))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "two things");
+    harness.tell(agentId, "two things");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -490,10 +490,10 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             lookup(seen),
@@ -509,7 +509,7 @@ class ToolCallingTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "what lake?");
+    harness.tell(agentId, "what lake?");
 
     // Parked: the question was asked once, the row is still there, and the agent is waiting.
     await()
@@ -583,10 +583,10 @@ class ToolCallingTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             lookup(new ConcurrentLinkedQueue<>()),
@@ -607,12 +607,12 @@ class ToolCallingTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.maxInFlight(1).pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(waiting, "park this one");
+    harness.tell(waiting, "park this one");
     await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(handed).hasSize(1));
 
     // The parked question stands for half an hour. If it held the only permit, or if its row
     // were still claimable, nothing below would ever finish.
-    harness.observe(working, "and answer this one");
+    harness.tell(working, "and answer this one");
 
     await()
         .atMost(Duration.ofSeconds(20))

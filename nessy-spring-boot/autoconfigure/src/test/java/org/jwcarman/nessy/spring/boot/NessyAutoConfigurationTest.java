@@ -78,7 +78,7 @@ class NessyAutoConfigurationTest {
   void it_wires_a_harness_from_a_provider_and_a_database() {
     runner.run(
         context -> {
-          assertThat(context).hasSingleBean(QueuedHarness.class);
+          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
           assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
           assertThat(context).hasSingleBean(ReplyTokens.class);
@@ -162,35 +162,6 @@ class NessyAutoConfigurationTest {
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
         .run(context -> assertThat(context).hasFailed());
-  }
-
-  /**
-   * An agent with no standing instruction is a chat box, and the empty string used to be allowed
-   * only because nothing downstream objected.
-   */
-  @Test
-  void it_refuses_to_start_without_a_system_prompt() {
-    new ApplicationContextRunner()
-        .withConfiguration(
-            AutoConfigurations.of(ObservationAutoConfiguration.class, NessyAutoConfiguration.class))
-        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues(MODEL, NO_SCHEMA)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining("nessy.system-prompt");
-            });
-  }
-
-  @Test
-  void giving_both_prompt_sources_fails_rather_than_silently_picking_one() {
-    runner
-        .withPropertyValues("nessy.system-prompt-file=classpath:application.properties")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining("not both");
-            });
   }
 
   @Test

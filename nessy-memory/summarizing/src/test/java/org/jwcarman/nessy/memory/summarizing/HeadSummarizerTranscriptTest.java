@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
@@ -95,7 +96,7 @@ class HeadSummarizerTranscriptTest {
   @Test
   void the_tail_kept_verbatim_must_fit_inside_the_threshold() {
     org.jwcarman.nessy.api.AgentType type = new org.jwcarman.nessy.api.AgentType("chat");
-    java.util.function.Consumer<HeadSummarizer.Config> complete =
+    Customizer<HeadSummarizer.Config> complete =
         c ->
             c.agentType(type)
                 .summaries(new JdbcSummaries(new org.postgresql.ds.PGSimpleDataSource(), type))
@@ -109,16 +110,22 @@ class HeadSummarizerTranscriptTest {
                     })
                 .inference((request, narrator) -> null, InferenceOptions.of("m"));
 
-    java.util.function.Consumer<HeadSummarizer.Config> backwards =
-        complete.andThen(c -> c.tail(4, 8));
-    java.util.function.Consumer<HeadSummarizer.Config> nothingKept =
-        complete.andThen(c -> c.tail(4, 0));
-    assertThatThrownBy(() -> HeadSummarizer.create(backwards))
+    Customizer<HeadSummarizer.Config> backwards =
+        c -> {
+          complete.customize(c);
+          c.tail(4, 8);
+        };
+    Customizer<HeadSummarizer.Config> nothingKept =
+        c -> {
+          complete.customize(c);
+          c.tail(4, 0);
+        };
+    assertThatThrownBy(() -> HeadSummarizer.of(backwards))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("minTail");
-    assertThatThrownBy(() -> HeadSummarizer.create(nothingKept))
+    assertThatThrownBy(() -> HeadSummarizer.of(nothingKept))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> HeadSummarizer.create(c -> c.agentType(type)))
+    assertThatThrownBy(() -> HeadSummarizer.of(c -> c.agentType(type)))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("summaries");
   }

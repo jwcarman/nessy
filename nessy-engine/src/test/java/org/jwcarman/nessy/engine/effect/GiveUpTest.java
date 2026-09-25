@@ -73,10 +73,10 @@ class GiveUpTest {
     return engine
         .harnesses()
         .create(
+            agentType,
             String.class,
             config ->
                 config
-                    .agentType(agentType)
                     .systemPrompt("You are a test assistant.")
                     .inference(
                         in ->
@@ -101,7 +101,7 @@ class GiveUpTest {
     QueuedHarness<String> harness =
         harnessThatFails(type, new RetryPolicy.Never(), new AlwaysBroken());
 
-    harness.observe(agentId, "will not work");
+    harness.tell(agentId, "will not work");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -137,7 +137,7 @@ class GiveUpTest {
         harnessThatFails(
             type, new RetryPolicy.FixedDelay(3, Duration.ofMillis(50), Duration.ZERO), model);
 
-    harness.observe(agentId, "will not work");
+    harness.tell(agentId, "will not work");
 
     // Both inside the wait, as every other test of this shape has them. Retiring the effect is
     // its own call rather than part of the write that ends the turn, so reaching Idle does not

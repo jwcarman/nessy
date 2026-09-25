@@ -16,7 +16,6 @@
 
 package org.jwcarman.nessy.api;
 
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 
@@ -35,19 +34,17 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  *
  * @param <I> what a caller hands in
  */
-public interface DirectHarnessConfig<I> {
-
-  DirectHarnessConfig<I> agentType(AgentType agentType);
+public interface DirectHarnessConfig<I> extends HarnessConfig<DirectHarnessConfig<I>> {
 
   DirectHarnessConfig<I> systemPrompt(String prompt);
 
   DirectHarnessConfig<I> systemPrompt(SystemPromptSource source);
 
   /** How what a caller hands in becomes what the model reads. */
-  DirectHarnessConfig<I> inputRenderer(ObservationRenderer<I> renderer);
+  DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer);
 
   /** The model, the budget, and what it is shown. */
-  DirectHarnessConfig<I> inference(Consumer<InferenceConfig> customizer);
+  DirectHarnessConfig<I> inference(Customizer<InferenceConfig> customizer);
 
   /**
    * Who hears what happens while the turn runs.
@@ -57,9 +54,9 @@ public interface DirectHarnessConfig<I> {
    */
   DirectHarnessConfig<I> listener(NarrationListener listener);
 
-  <T> DirectHarnessConfig<I> tool(Tool<T> tool, Consumer<ToolConfig<T>> customizer);
+  <T> DirectHarnessConfig<I> tool(Tool<T> tool, Customizer<ToolConfig<T>> customizer);
 
   default <T> DirectHarnessConfig<I> tool(Tool<T> tool) {
-    return tool(tool, Customizers.withDefaults());
+    return tool(tool, Customizer.withDefaults());
   }
 }

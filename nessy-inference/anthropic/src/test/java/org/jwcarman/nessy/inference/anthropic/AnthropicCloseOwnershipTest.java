@@ -40,8 +40,7 @@ class AnthropicCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     AnthropicClient supplied = recordingClient(closes);
 
-    AnthropicInferenceProvider provider =
-        AnthropicInferenceProvider.create(c -> c.client(supplied));
+    AnthropicInferenceProvider provider = AnthropicInferenceProvider.of(c -> c.client(supplied));
     provider.close();
 
     assertThat(closes).hasValue(0);

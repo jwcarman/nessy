@@ -32,6 +32,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
@@ -43,9 +44,9 @@ class OpenAiEmbeddingProviderTest {
    * An embedder over a provider, which is how one is made: the connection is the provider's, the
    * model is the caller's.
    */
-  private static Embedder embedderOver(OpenAiEmbedderCustomizer connection) {
+  private static Embedder embedderOver(Customizer<OpenAiEmbedderConfig> connection) {
     return new DefaultEmbedderFactory(
-            OpenAiEmbeddingProvider.create(connection), OpenAiEmbedderConfig.DEFAULT_MODEL)
+            OpenAiEmbeddingProvider.of(connection), OpenAiEmbedderConfig.DEFAULT_MODEL)
         .create(c -> {});
   }
 
@@ -153,7 +154,7 @@ class OpenAiEmbeddingProviderTest {
       AtomicReference<EmbeddingCreateParams> sent = new AtomicReference<>();
       Embedder embedder =
           new DefaultEmbedderFactory(
-                  OpenAiEmbeddingProvider.create(
+                  OpenAiEmbeddingProvider.of(
                       c ->
                           c.client(
                               fakeClient(
@@ -188,12 +189,12 @@ class OpenAiEmbeddingProviderTest {
     @Test
     void a_handed_in_client_is_never_closed_and_a_built_one_is() {
       AtomicBoolean closed = new AtomicBoolean();
-      OpenAiEmbeddingProvider.create(c -> c.client(fakeClient(p -> reply(), closed))).close();
+      OpenAiEmbeddingProvider.of(c -> c.client(fakeClient(p -> reply(), closed))).close();
       assertThat(closed).isFalse();
 
       assertThatCode(
               () ->
-                  OpenAiEmbeddingProvider.create(
+                  OpenAiEmbeddingProvider.of(
                           c -> c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").organization("org"))
                       .close())
           .doesNotThrowAnyException();
@@ -201,14 +202,14 @@ class OpenAiEmbeddingProviderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.create(c -> {}))
+      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.create(null))
+      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of((Customizer<OpenAiEmbedderConfig>) null))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -218,7 +219,7 @@ class OpenAiEmbeddingProviderTest {
       assertThatThrownBy(OpenAiEmbeddingProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
-      assertThatCode(() -> OpenAiEmbeddingProvider.create(c -> c.fromEnv().apiKey("k")).close())
+      assertThatCode(() -> OpenAiEmbeddingProvider.of(c -> c.fromEnv().apiKey("k")).close())
           .doesNotThrowAnyException();
     }
   }

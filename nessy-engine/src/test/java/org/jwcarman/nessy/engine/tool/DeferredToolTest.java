@@ -119,10 +119,10 @@ class DeferredToolTest {
     return engine
         .harnesses()
         .create(
+            type,
             String.class,
             config ->
                 config
-                    .agentType(type)
                     .systemPrompt("You are a test assistant.")
                     // Nothing gates it: permission is granted at once, so the call itself is what
                     // parks. A tool cannot defer before it has been allowed to run.
@@ -147,7 +147,7 @@ class DeferredToolTest {
 
   private AgentId park(AgentType type, Duration toolBudget) {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, toolBudget).observe(agentId, "kick off the reindex");
+    harness(type, toolBudget).tell(agentId, "kick off the reindex");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     return agentId;
   }

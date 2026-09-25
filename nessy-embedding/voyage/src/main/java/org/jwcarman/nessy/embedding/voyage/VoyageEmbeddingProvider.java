@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -75,16 +76,21 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     return defaultDimension;
   }
 
-  public static VoyageEmbeddingProvider create(VoyageEmbedderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static VoyageEmbeddingProvider of(List<Customizer<VoyageEmbedderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     VoyageEmbedderConfig config = new VoyageEmbedderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static VoyageEmbeddingProvider of(Customizer<VoyageEmbedderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /** {@code VOYAGE_API_KEY} and the default model. */
   public static VoyageEmbeddingProvider fromEnv() {
-    return create(VoyageEmbedderConfig::fromEnv);
+    return of(VoyageEmbedderConfig::fromEnv);
   }
 
   /** Semconv names no value for Voyage AI, so this one is ours. */

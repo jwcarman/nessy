@@ -98,10 +98,10 @@ class TaintRecoveryTest {
         engine
             .harnesses()
             .create(
+                TAINTED,
                 String.class,
                 config ->
                     config
-                        .agentType(TAINTED)
                         .systemPrompt("You are a test assistant.")
                         .inference(
                             in ->
@@ -110,7 +110,7 @@ class TaintRecoveryTest {
                                     .timeout(Duration.ofMinutes(5)))
                         .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
 
-    harness.observe(agentId, "I want your help " + POISON + "?");
+    harness.tell(agentId, "I want your help " + POISON + "?");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -122,7 +122,7 @@ class TaintRecoveryTest {
 
     // The conversation is now in the state that breaks it on a real provider. Ask something
     // entirely ordinary: unrecovered, this is refused about a third of the time.
-    harness.observe(agentId, "What is the capital of France?");
+    harness.tell(agentId, "What is the capital of France?");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -157,10 +157,10 @@ class TaintRecoveryTest {
         engine
             .harnesses()
             .create(
+                new AgentType("no-cascade"),
                 String.class,
                 config ->
                     config
-                        .agentType(new AgentType("no-cascade"))
                         .systemPrompt("You are a test assistant.")
                         .inference(
                             in ->
@@ -171,12 +171,12 @@ class TaintRecoveryTest {
 
     // Two poisoned observations back to back: the second failure happens while the
     // conversation is already broken.
-    harness.observe(agentId, "help me with " + POISON);
+    harness.tell(agentId, "help me with " + POISON);
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(story(new AgentType("no-cascade"), agentId)).hasSize(2));
 
-    harness.observe(agentId, "and also " + POISON);
+    harness.tell(agentId, "and also " + POISON);
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(story(new AgentType("no-cascade"), agentId)).hasSize(4));

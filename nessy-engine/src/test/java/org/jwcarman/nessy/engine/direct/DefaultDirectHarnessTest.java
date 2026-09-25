@@ -98,7 +98,14 @@ class DefaultDirectHarnessTest {
   }
 
   private DirectHarnessFactory factoryFor(InferenceProvider model, Locks locks) {
-    return new DefaultDirectHarnessFactory(locks, events, payloads, model, SCHEMAS, MAPPER);
+    return DefaultDirectHarnessFactory.of(
+        c ->
+            c.locks(locks)
+                .events(events)
+                .payloads(payloads)
+                .provider(model)
+                .schemas(SCHEMAS)
+                .mapper(MAPPER));
   }
 
   private DirectHarness<String> harness(InferenceProvider model) {
@@ -124,9 +131,9 @@ class DefaultDirectHarnessTest {
       List<AmbientSource> ambient) {
     return factoryFor(model, locks)
         .<String>create(
+            TYPE,
             c -> {
-              c.agentType(TYPE)
-                  .systemPrompt("You are terse.")
+              c.systemPrompt("You are terse.")
                   .inputRenderer(said -> List.of(new Block.Text(said)))
                   .inference(
                       in ->
@@ -602,12 +609,18 @@ class DefaultDirectHarnessTest {
     }
     CountingPayloads counting = new CountingPayloads(payloads);
     DirectHarness<String> harness =
-        new DefaultDirectHarnessFactory(
-                new InMemoryLocks(), events, counting, model, SCHEMAS, MAPPER)
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(counting)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER))
             .<String>create(
+                TYPE,
                 c ->
-                    c.agentType(TYPE)
-                        .systemPrompt("You are terse.")
+                    c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
                         .inference(in -> in.model("a-model")));
 

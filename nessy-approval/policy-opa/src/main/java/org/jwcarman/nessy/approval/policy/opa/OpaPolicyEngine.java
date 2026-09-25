@@ -22,7 +22,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
-import java.util.function.Consumer;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
 import org.jwcarman.nessy.approval.policy.Verdict;
@@ -36,7 +36,7 @@ import tools.jackson.databind.node.ObjectNode;
  * A {@link PolicyEngine} backed by Open Policy Agent, so the rules are Rego rather than Java.
  *
  * <pre>{@code
- * PolicyEngine opa = OpaPolicyEngine.create(opa -> opa
+ * PolicyEngine opa = OpaPolicyEngine.of(opa -> opa
  *     .url("http://localhost:8181")
  *     .decisionPath("nessy/tools/decision"));
  * }</pre>
@@ -95,10 +95,10 @@ public final class OpaPolicyEngine implements PolicyEngine {
     this.http = HttpClient.newBuilder().connectTimeout(configured.connectTimeout).build();
   }
 
-  public static OpaPolicyEngine create(Consumer<OpaPolicyEngineConfig> customizer) {
+  public static OpaPolicyEngine of(Customizer<OpaPolicyEngineConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     Configured configured = new Configured();
-    customizer.accept(configured);
+    customizer.customize(configured);
     if (configured.url == null) {
       throw new IllegalStateException("an OPA engine needs a url: call url(...)");
     }

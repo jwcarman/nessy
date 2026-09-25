@@ -70,10 +70,10 @@ class DeadlineTest {
     return engine
         .harnesses()
         .create(
+            agentType,
             String.class,
             config ->
                 config
-                    .agentType(agentType)
                     .systemPrompt("You are a test assistant.")
                     .inference(in -> in.model("a-model").retryPolicy(policy).timeout(timeout))
                     .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
@@ -96,7 +96,7 @@ class DeadlineTest {
     QueuedHarness<String> harness =
         harness(type, Duration.ofMillis(1), new RetryPolicy.Never(), model);
 
-    harness.observe(agentId, "too late already");
+    harness.tell(agentId, "too late already");
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -148,7 +148,7 @@ class DeadlineTest {
             new RetryPolicy.FixedDelay(3, Duration.ofMinutes(10), Duration.ZERO),
             model);
 
-    harness.observe(agentId, "will not work");
+    harness.tell(agentId, "will not work");
 
     // Both conditions inside one await, because they are reached by two commits rather than
     // one: the fold writes the state, and the dispatcher deletes the row it finished with.

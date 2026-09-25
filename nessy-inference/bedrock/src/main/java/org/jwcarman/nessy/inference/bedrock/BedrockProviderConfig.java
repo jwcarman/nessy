@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.inference.bedrock;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.Customizer;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -24,8 +25,8 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClientB
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link BedrockInferenceProvider#create(BedrockProviderCustomizer)} hands a customizer: a
- * CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link BedrockInferenceProvider#create(Customizer<BedrockProviderConfig>)} hands a
+ * customizer: a CONFIG, not a builder -- fluent setters, no public {@code build()}.
  *
  * <p>There is no {@code apiKey}. Bedrock is reached with AWS credentials, ambient on most machines,
  * which is also why the starter wires no bean for it: an application that wants Bedrock says so in

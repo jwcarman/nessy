@@ -71,10 +71,10 @@ class UndispatchableTest {
         engine
             .harnesses()
             .create(
+                TYPE,
                 String.class,
                 config ->
                     config
-                        .agentType(TYPE)
                         .systemPrompt("You are a test assistant.")
                         .inference(in -> in.model("a-model").retryPolicy(new RetryPolicy.Never()))
                         .effects(e -> e.maxInFlight(2)));
@@ -84,7 +84,7 @@ class UndispatchableTest {
     // observe commits -- there is no later moment to corrupt it in before a pass looks.
     rewriteEffectsOf(agentId, "{\"type\":\"AnEffectFromTheFuture\"}");
     try {
-      harness.observe(agentId, "this will not be dispatchable");
+      harness.tell(agentId, "this will not be dispatchable");
     } finally {
       stopRewriting(agentId);
     }

@@ -22,16 +22,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
@@ -76,13 +76,13 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
    */
   private static final Duration DEFAULT_APPROVAL_TIMEOUT = Duration.ofMinutes(10);
 
-  private final TypeRef<O> observationType;
+  private final TypeRef<O> inputType;
   private final ObjectMapper mapper;
   private final InputSchemaGenerator schemas;
 
-  private AgentType agentType;
+  private final AgentType agentType;
   private SystemPromptSource systemPrompt;
-  private ObservationRenderer<O> renderer = ObservationRenderer.asString();
+  private InputRenderer<O> renderer = InputRenderer.asString();
   private BacklogPolicy<O> policy = BacklogPolicy.keepAll();
 
   private final Inference inference;
@@ -92,12 +92,14 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   private final List<NarrationListener> listeners = new ArrayList<>();
 
   DefaultQueuedHarnessConfig(
-      TypeRef<O> observationType,
+      AgentType agentType,
+      TypeRef<O> inputType,
       Defaults defaults,
       ObjectMapper mapper,
       InputSchemaGenerator schemas,
       ObservationRegistry observations) {
-    this.observationType = observationType;
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
+    this.inputType = inputType;
     this.inference = new Inference(defaults);
     this.mapper = mapper;
     this.schemas = schemas;
@@ -118,9 +120,8 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> agentType(AgentType agentType) {
-    this.agentType = agentType;
-    return this;
+  public AgentType agentType() {
+    return agentType;
   }
 
   @Override
@@ -135,7 +136,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> observationRenderer(ObservationRenderer<O> renderer) {
+  public DefaultQueuedHarnessConfig<O> inputRenderer(InputRenderer<O> renderer) {
     this.renderer = renderer;
     return this;
   }
@@ -146,15 +147,33 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
     return this;
   }
 
+  /** A shortcut into the context, where sources of summaries actually live. */
   @Override
-  public DefaultQueuedHarnessConfig<O> inference(Consumer<InferenceConfig> customizer) {
-    customizer.accept(inference);
+  public DefaultQueuedHarnessConfig<O> summaries(Summarizer source) {
+    return inference(in -> in.context(ctx -> ctx.summaries(source)));
+  }
+
+  /**
+   * Something the model sees every turn.
+   *
+   * <p>A shortcut into the context, which is where ambient sources actually live: this exists so
+   * something equipping an agent can add one without knowing the shape of the inference
+   * configuration.
+   */
+  @Override
+  public DefaultQueuedHarnessConfig<O> ambient(AmbientSource source) {
+    return inference(in -> in.context(ctx -> ctx.ambient(source)));
+  }
+
+  @Override
+  public DefaultQueuedHarnessConfig<O> inference(Customizer<InferenceConfig> customizer) {
+    customizer.customize(inference);
     return this;
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> effects(Consumer<EffectsConfig> customizer) {
-    customizer.accept(effects);
+  public DefaultQueuedHarnessConfig<O> effects(Customizer<EffectsConfig> customizer) {
+    customizer.customize(effects);
     return this;
   }
 
@@ -171,9 +190,10 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
    * same {@code execute_tool} span. An application that is not tracing pays for a check per call.
    */
   @Override
-  public <I> DefaultQueuedHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
+  public <I> DefaultQueuedHarnessConfig<O> tool(
+      Tool<I> tool, Customizer<ToolConfig<I>> customizer) {
     ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
-    customizer.accept(terms);
+    customizer.customize(terms);
     Tool<I> observed = ObservedTool.wrap(tool, observations);
     tools.add(
         new ToolBinding<>(
@@ -196,11 +216,11 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
 
   // ---- what the factory reads back -------------------------------------------------------
 
-  TypeRef<O> observationType() {
-    return observationType;
+  TypeRef<O> inputType() {
+    return inputType;
   }
 
-  ObservationRenderer<O> renderer() {
+  InputRenderer<O> renderer() {
     return renderer;
   }
 
@@ -284,9 +304,9 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
     }
 
     @Override
-    public ToolConfig<I> approver(Approver approver, Consumer<ApproverConfig> customizer) {
+    public ToolConfig<I> approver(Approver approver, Customizer<ApproverConfig> customizer) {
       ApprovalTerms terms = new ApprovalTerms();
-      customizer.accept(terms);
+      customizer.customize(terms);
       this.approver = approver;
       this.approverChosen = true;
       this.approvalTimeout = terms.timeout;
@@ -334,7 +354,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   }
 
   AgentType requiredAgentType() {
-    return Objects.requireNonNull(agentType, "agentType must be set");
+    return agentType;
   }
 
   /**
@@ -373,8 +393,8 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
     }
 
     @Override
-    public InferenceConfig context(java.util.function.Consumer<ContextConfig> customizer) {
-      customizer.accept(context);
+    public InferenceConfig context(Customizer<ContextConfig> customizer) {
+      customizer.customize(context);
       return this;
     }
 

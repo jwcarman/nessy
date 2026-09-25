@@ -34,7 +34,7 @@ import org.jwcarman.nessy.inference.block.Block;
 class EpisodeToolsTest {
 
   private final JdbcEpisodes episodes =
-      JdbcEpisodes.create(c -> c.dataSource(Calls.database()).agentType(Calls.TYPE));
+      JdbcEpisodes.of(c -> c.dataSource(Calls.database()).agentType(Calls.TYPE));
   private final Tool<EpisodeTools.BeginEpisode> begin = EpisodeTools.begin(episodes);
   private final Tool<EpisodeTools.RecallEpisode> recall = EpisodeTools.recall(episodes);
   private final AmbientSource index = EpisodeTools.index(episodes);

@@ -132,15 +132,15 @@ class EffectTraceCarrierTest {
           engine
               .harnesses()
               .create(
+                  type,
                   String.class,
                   config ->
                       config
-                          .agentType(type)
                           .systemPrompt("You are a test assistant.")
                           .inference(in -> in.model("a-model"))
                           .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-      harness.observe(agentId, "hello");
+      harness.tell(agentId, "hello");
       assertThat(performing.await(20, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
 
       List<String> onTheRow =
@@ -224,15 +224,15 @@ class EffectTraceCarrierTest {
       engine
           .harnesses()
           .create(
+              type,
               String.class,
               config ->
                   config
-                      .agentType(type)
                       .systemPrompt("You are a test assistant.")
                       .tool(ECHO)
                       .inference(in -> in.model("a-model"))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
-          .observe(agentId, "hello");
+          .tell(agentId, "hello");
 
       await()
           .atMost(Duration.ofSeconds(20))
@@ -309,14 +309,14 @@ class EffectTraceCarrierTest {
       engine
           .harnesses()
           .create(
+              type,
               String.class,
               config ->
                   config
-                      .agentType(type)
                       .systemPrompt("You are a test assistant.")
                       .inference(in -> in.model("a-model"))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
-          .observe(agentId, "hello");
+          .tell(agentId, "hello");
 
       assertThat(performing.await(20, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
 

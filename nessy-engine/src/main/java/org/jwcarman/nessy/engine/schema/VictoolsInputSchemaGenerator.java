@@ -33,8 +33,7 @@ import com.github.victools.jsonschema.module.jackson.JacksonSchemaModule;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Optional;
-import java.util.function.Consumer;
-import org.jwcarman.nessy.api.Customizers;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import tools.jackson.databind.JsonNode;
@@ -71,7 +70,7 @@ public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator 
 
   /** Jackson descriptions and polymorphism, and nothing else. */
   public VictoolsInputSchemaGenerator() {
-    this(Customizers.withDefaults());
+    this(Customizer.withDefaults());
   }
 
   /**
@@ -79,13 +78,13 @@ public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator 
    *     register further modules and can override anything set here -- including the required
    *     check, which a module of its own may want to decide instead
    */
-  public VictoolsInputSchemaGenerator(Consumer<SchemaGeneratorConfigBuilder> customizer) {
+  public VictoolsInputSchemaGenerator(Customizer<SchemaGeneratorConfigBuilder> customizer) {
     SchemaGeneratorConfigBuilder builder =
         new SchemaGeneratorConfigBuilder(SchemaVersion.DRAFT_2020_12, OptionPreset.PLAIN_JSON)
             .with(new JacksonSchemaModule());
     builder.forFields().withRequiredCheck(VictoolsInputSchemaGenerator::isRequired);
     builder.forTypesInGeneral().withCustomDefinitionProvider(new JsonValueAsItsOwnType());
-    customizer.accept(builder);
+    customizer.customize(builder);
     this.config = builder.build();
     this.generator = new SchemaGenerator(this.config);
   }

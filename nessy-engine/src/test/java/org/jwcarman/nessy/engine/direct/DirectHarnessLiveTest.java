@@ -75,13 +75,13 @@ class DirectHarnessLiveTest {
   private static DirectHarness<String> harness() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
     return DefaultDirectHarnessFactory.inMemory(
-            OpenAiInferenceProvider.create(c -> c.apiKey(key()).baseUrl(BASE_URL)),
+            OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)),
             new VictoolsInputSchemaGenerator(),
             JsonMapper.builder().build())
         .<String>create(
+            TYPE,
             c ->
-                c.agentType(TYPE)
-                    .systemPrompt("You are a terse assistant.")
+                c.systemPrompt("You are a terse assistant.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
                     .inference(in -> in.model(MODEL).maxTokens(4096)));
   }

@@ -16,20 +16,22 @@
 
 package org.jwcarman.nessy.spring.boot;
 
+import java.util.ArrayList;
+import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.direct.DirectHarnessFactoryConfig;
 import org.jwcarman.nessy.engine.direct.InMemoryLocks;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
 import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
 import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -77,21 +79,26 @@ public class DirectHarnessAutoConfiguration {
       NessyAutoConfiguration.NessySchema schema,
       ObjectProvider<Locks> locks,
       ObjectProvider<InputSchemaGenerator> schemas,
-      ObjectProvider<JsonMapper> mappers) {
+      ObjectProvider<JsonMapper> mappers,
+      ObjectProvider<Customizer<DirectHarnessFactoryConfig>> customizers) {
     JsonMapper mapper = mappers.getIfAvailable(() -> JsonMapper.builder().build());
     CodecFactory codecs = new JacksonCodecFactory(mapper);
     JdbcClient jdbc = JdbcClient.create(dataSource);
-    AgentEventStore events = new JdbcAgentEventStore(jdbc, codecs);
-    PayloadStore payloads = new JdbcPayloadStore(jdbc, codecs);
-    return new DefaultDirectHarnessFactory(
-        // In memory unless an application said otherwise. One process is the common case for this
-        // door, and a lease across machines is something an application opts into by declaring one.
-        locks.getIfAvailable(InMemoryLocks::new),
-        events,
-        payloads,
-        models,
-        schemas.getIfAvailable(VictoolsInputSchemaGenerator::new),
-        mapper);
+
+    // The starter says what it knows, then every customizer bean has its turn. An application
+    // adds a lease, a listener or a store of its own without declaring the whole factory.
+    List<Customizer<DirectHarnessFactoryConfig>> all = new ArrayList<>();
+    all.add(
+        config ->
+            config
+                .locks(locks.getIfAvailable(InMemoryLocks::new))
+                .events(new JdbcAgentEventStore(jdbc, codecs))
+                .payloads(new JdbcPayloadStore(jdbc, codecs))
+                .provider(models)
+                .schemas(schemas.getIfAvailable(VictoolsInputSchemaGenerator::new))
+                .mapper(mapper));
+    customizers.orderedStream().forEach(all::add);
+    return DefaultDirectHarnessFactory.of(all);
   }
 
   /**

@@ -61,10 +61,10 @@ class FirstObservationRaceTest {
         engine
             .harnesses()
             .create(
+                CHAT,
                 String.class,
                 config ->
                     config
-                        .agentType(CHAT)
                         .systemPrompt("You are a test assistant.")
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
   }
@@ -87,7 +87,7 @@ class FirstObservationRaceTest {
                     callers.submit(
                         () -> {
                           go.await();
-                          harness.observe(agentId, "hello " + i);
+                          harness.tell(agentId, "hello " + i);
                           return null;
                         }))
             .toList();

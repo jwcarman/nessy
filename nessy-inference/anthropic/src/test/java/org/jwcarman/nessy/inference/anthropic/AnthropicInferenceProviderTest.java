@@ -66,6 +66,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -681,7 +682,8 @@ class AnthropicInferenceProviderTest {
 
     @Test
     void create_rejects_a_null_customizer() {
-      assertThatThrownBy(() -> AnthropicInferenceProvider.create(null))
+      assertThatThrownBy(
+              () -> AnthropicInferenceProvider.of((Customizer<AnthropicProviderConfig>) null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("customizer must not be null");
     }
@@ -696,15 +698,14 @@ class AnthropicInferenceProviderTest {
       assertThatThrownBy(AnthropicInferenceProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("ANTHROPIC_API_KEY");
-      assertThatThrownBy(() -> AnthropicInferenceProvider.create(AnthropicProviderConfig::fromEnv))
+      assertThatThrownBy(() -> AnthropicInferenceProvider.of(AnthropicProviderConfig::fromEnv))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("ANTHROPIC_API_KEY");
     }
 
     @Test
     void create_reaches_the_real_construction_path_offline() {
-      AnthropicInferenceProvider provider =
-          AnthropicInferenceProvider.create(c -> c.apiKey("sk-test"));
+      AnthropicInferenceProvider provider = AnthropicInferenceProvider.of(c -> c.apiKey("sk-test"));
 
       assertThat(provider).isNotNull();
     }
@@ -921,9 +922,9 @@ class AnthropicInferenceProviderTest {
 
     @Test
     void a_null_caching_setting_or_mapper_is_refused_at_configuration() {
-      assertThatThrownBy(() -> AnthropicInferenceProvider.create(c -> c.promptCaching(null)))
+      assertThatThrownBy(() -> AnthropicInferenceProvider.of(c -> c.promptCaching(null)))
           .isInstanceOf(NullPointerException.class);
-      assertThatThrownBy(() -> AnthropicInferenceProvider.create(c -> c.mapper(null)))
+      assertThatThrownBy(() -> AnthropicInferenceProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
     }
   }

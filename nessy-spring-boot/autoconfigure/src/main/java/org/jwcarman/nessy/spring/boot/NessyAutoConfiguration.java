@@ -22,22 +22,16 @@ import io.micrometer.tracing.propagation.Propagator;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
-import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.inference.SystemPrompt;
-import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -180,44 +174,6 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public Replies nessyReplies(DefaultQueuedHarnessFactory factory) {
     return factory.replies();
-  }
-
-  /**
-   * The one harness an application gets for free, over {@code String} observations.
-   *
-   * <p>Every {@link Tool} bean is bound to it, and every tool is wrapped for observability when
-   * there is a registry to report to. An application wanting several agent types declares its own
-   * harnesses from the factory instead.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public QueuedHarness<String> nessyHarness(
-      DefaultQueuedHarnessFactory factory,
-      NessyProperties properties,
-      ObjectProvider<Tool<?>> tools,
-      ObjectProvider<ObservationRenderer<String>> renderers,
-      ObservationRegistry observations,
-      ObjectProvider<SystemPromptSource> prompts) {
-
-    List<Tool<?>> declared = tools.orderedStream().toList();
-    // A templated prompt when an engine is on the classpath (PromptAutoConfiguration), or one
-    // the application declared; the plain property otherwise.
-    SystemPromptSource systemPrompt =
-        prompts.getIfAvailable(
-            () -> SystemPromptSource.constant(new SystemPrompt(properties.resolveSystemPrompt())));
-    ObservationRenderer<String> renderer =
-        renderers.getIfAvailable(() -> said -> List.of(new Block.Text(said)));
-
-    return factory.create(
-        String.class,
-        config -> {
-          config
-              .agentType(new AgentType(properties.type()))
-              .systemPrompt(systemPrompt)
-              .observationRenderer(renderer);
-          // The harness observes every tool it is given itself, so nothing is wrapped here.
-          declared.forEach(config::tool);
-        });
   }
 
   private static String requireModel(NessyProperties properties) {

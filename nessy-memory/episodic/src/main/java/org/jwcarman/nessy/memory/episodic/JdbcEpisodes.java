@@ -26,10 +26,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.embedding.Embedding;
@@ -154,10 +154,16 @@ public class JdbcEpisodes implements Summarizer {
     }
   }
 
-  public static JdbcEpisodes create(Consumer<Config> customizer) {
+  public static JdbcEpisodes of(List<Customizer<Config>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     Config config = new Config();
-    customizer.accept(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return new JdbcEpisodes(config);
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static JdbcEpisodes of(Customizer<Config> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   private final JdbcClient jdbc;

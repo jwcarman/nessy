@@ -145,7 +145,7 @@ class NarrationTest {
     AgentType type = new AgentType("narrated");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness(type).observe(agentId, "how deep is Loch Ness?");
+    harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -178,7 +178,7 @@ class NarrationTest {
     AgentType type = new AgentType("narrated-commentary");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness(type).observe(agentId, "how deep is Loch Ness?");
+    harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -208,10 +208,10 @@ class NarrationTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             lookup(),
@@ -223,7 +223,7 @@ class NarrationTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "how deep is Loch Ness?");
+    harness.tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(of(Narration.ApprovalDeferred.class)).isNotEmpty());
@@ -259,7 +259,7 @@ class NarrationTest {
     AgentType type = new AgentType("narrated-broken");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness(type).observe(agentId, "how deep is Loch Ness?");
+    harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
@@ -281,10 +281,10 @@ class NarrationTest {
     return engine
         .harnesses()
         .create(
+            type,
             String.class,
             config ->
                 config
-                    .agentType(type)
                     .systemPrompt("You are a test assistant.")
                     .tool(lookup(), t -> t.action(query -> "look up " + query.q()))
                     .inference(in -> in.model("a-model"))

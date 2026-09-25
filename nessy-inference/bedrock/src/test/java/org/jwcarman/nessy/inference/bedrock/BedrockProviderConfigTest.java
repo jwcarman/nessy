@@ -39,7 +39,7 @@ class BedrockProviderConfigTest {
   @Test
   void a_region_and_credentials_build_a_provider_that_closes_its_own_client() {
     BedrockInferenceProvider provider =
-        BedrockInferenceProvider.create(
+        BedrockInferenceProvider.of(
             c ->
                 c.region(Region.US_EAST_1)
                     .credentialsProvider(CREDENTIALS)
@@ -64,7 +64,7 @@ class BedrockProviderConfigTest {
                   return null;
                 });
 
-    BedrockInferenceProvider.create(c -> c.client(theirs)).close();
+    BedrockInferenceProvider.of(c -> c.client(theirs)).close();
 
     assertThat(closed).isFalse();
   }
@@ -73,7 +73,7 @@ class BedrockProviderConfigTest {
   void an_explicit_region_wins_over_the_environment() {
     assertThatCode(
             () ->
-                BedrockInferenceProvider.create(
+                BedrockInferenceProvider.of(
                         c -> c.fromEnv().region(Region.EU_WEST_1).credentialsProvider(CREDENTIALS))
                     .close())
         .doesNotThrowAnyException();
@@ -86,8 +86,7 @@ class BedrockProviderConfigTest {
         "a region is set in this environment");
 
     assertThatThrownBy(
-            () ->
-                BedrockInferenceProvider.create(c -> c.fromEnv().credentialsProvider(CREDENTIALS)))
+            () -> BedrockInferenceProvider.of(c -> c.fromEnv().credentialsProvider(CREDENTIALS)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("AWS_REGION")
         .hasMessageContaining("AWS_DEFAULT_REGION");
@@ -95,7 +94,7 @@ class BedrockProviderConfigTest {
 
   @Test
   void a_null_mapper_is_refused() {
-    assertThatThrownBy(() -> BedrockInferenceProvider.create(c -> c.mapper(null)))
+    assertThatThrownBy(() -> BedrockInferenceProvider.of(c -> c.mapper(null)))
         .isInstanceOf(NullPointerException.class);
   }
 }

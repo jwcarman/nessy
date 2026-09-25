@@ -31,7 +31,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -138,10 +140,10 @@ class NotebookPatternTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(remember(agentId))
                         .inference(
@@ -164,7 +166,7 @@ class NotebookPatternTest {
                                                                             who.value())))))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "remember that the deploy is frozen");
+    harness.tell(agentId, "remember that the deploy is frozen");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -177,7 +179,7 @@ class NotebookPatternTest {
         .doesNotContain("notebook");
 
     // A second, entirely separate turn.
-    harness.observe(agentId, "what did I tell you?");
+    harness.tell(agentId, "what did I tell you?");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
@@ -211,10 +213,10 @@ class NotebookPatternTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .inference(
                             in ->
@@ -223,7 +225,7 @@ class NotebookPatternTest {
                                         ctx -> ctx.ambient(Ambient.text("clock", "it is Tuesday"))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "hello");
+    harness.tell(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -252,10 +254,9 @@ class NotebookPatternTest {
           throw new AssertionError("this harness never gets as far as a turn");
         });
     var harnesses = engine.harnesses();
-    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> twoNotebooks =
+    Customizer<QueuedHarnessConfig<String>> twoNotebooks =
         config ->
             config
-                .agentType(new AgentType("notebook-clash"))
                 .systemPrompt("You are a test assistant.")
                 .inference(
                     in ->
@@ -264,7 +265,7 @@ class NotebookPatternTest {
                                 ctx.ambient(Ambient.text("notebook", "one"))
                                     .ambient(Ambient.text("notebook", "two"))));
     org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> harnesses.create(String.class, twoNotebooks))
+            () -> harnesses.create(new AgentType("notebook-clash"), String.class, twoNotebooks))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("notebook");
   }

@@ -20,14 +20,14 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.ContextConfig;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -49,22 +49,20 @@ import org.jwcarman.nessy.inference.SystemPrompt;
  */
 public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<I> {
 
-  private AgentType agentType = new AgentType("agent");
+  DefaultDirectHarnessConfig(AgentType agentType) {
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
+  }
+
+  private final AgentType agentType;
   private SystemPromptSource systemPrompt =
       SystemPromptSource.constant(new SystemPrompt("You are a helpful assistant."));
-  private ObservationRenderer<I> renderer = ObservationRenderer.asString();
+  private InputRenderer<I> renderer = InputRenderer.asString();
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
   private final Inference inference = new Inference();
 
   /** One tool and everything said about it, kept until there is a mapper to bind it with. */
-  private record ToolRequest<T>(Tool<T> tool, Consumer<ToolConfig<T>> customizer) {}
-
-  @Override
-  public DirectHarnessConfig<I> agentType(AgentType agentType) {
-    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
-    return this;
-  }
+  private record ToolRequest<T>(Tool<T> tool, Customizer<ToolConfig<T>> customizer) {}
 
   @Override
   public DirectHarnessConfig<I> systemPrompt(String prompt) {
@@ -78,14 +76,32 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   }
 
   @Override
-  public DirectHarnessConfig<I> inputRenderer(ObservationRenderer<I> renderer) {
+  public DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     return this;
   }
 
+  /** A shortcut into the context, where sources of summaries actually live. */
   @Override
-  public DirectHarnessConfig<I> inference(Consumer<InferenceConfig> customizer) {
-    customizer.accept(inference);
+  public DirectHarnessConfig<I> summaries(Summarizer source) {
+    return inference(in -> in.context(ctx -> ctx.summaries(source)));
+  }
+
+  /**
+   * Something the model sees every turn.
+   *
+   * <p>A shortcut into the context, which is where ambient sources actually live: this exists so
+   * something equipping an agent can add one without knowing the shape of the inference
+   * configuration.
+   */
+  @Override
+  public DirectHarnessConfig<I> ambient(AmbientSource source) {
+    return inference(in -> in.context(ctx -> ctx.ambient(source)));
+  }
+
+  @Override
+  public DirectHarnessConfig<I> inference(Customizer<InferenceConfig> customizer) {
+    customizer.customize(inference);
     return this;
   }
 
@@ -96,12 +112,13 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   }
 
   @Override
-  public <T> DirectHarnessConfig<I> tool(Tool<T> tool, Consumer<ToolConfig<T>> customizer) {
+  public <T> DirectHarnessConfig<I> tool(Tool<T> tool, Customizer<ToolConfig<T>> customizer) {
     tools.add(new ToolRequest<>(tool, customizer));
     return this;
   }
 
-  AgentType agentType() {
+  @Override
+  public AgentType agentType() {
     return agentType;
   }
 
@@ -109,7 +126,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     return systemPrompt;
   }
 
-  ObservationRenderer<I> renderer() {
+  InputRenderer<I> renderer() {
     return renderer;
   }
 
@@ -132,7 +149,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
       org.jwcarman.nessy.api.tool.InputSchemaGenerator schemas,
       tools.jackson.databind.ObjectMapper mapper) {
     Binding<T> said = new Binding<>();
-    request.customizer().accept(said);
+    request.customizer().customize(said);
     return new ToolBinding<>(
         request.tool(),
         mapper,
@@ -180,9 +197,9 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     }
 
     @Override
-    public ToolConfig<T> approver(Approver approver, Consumer<ApproverConfig> customizer) {
+    public ToolConfig<T> approver(Approver approver, Customizer<ApproverConfig> customizer) {
       this.approver = approver;
-      customizer.accept(approval);
+      customizer.customize(approval);
       return this;
     }
   }
@@ -231,8 +248,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     }
 
     @Override
-    public InferenceConfig context(Consumer<ContextConfig> customizer) {
-      customizer.accept(this);
+    public InferenceConfig context(Customizer<ContextConfig> customizer) {
+      customizer.customize(this);
       return this;
     }
 

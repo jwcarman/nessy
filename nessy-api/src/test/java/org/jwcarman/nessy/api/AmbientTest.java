@@ -110,7 +110,7 @@ class AmbientTest {
   /** A source with no kind has no label to contribute under, and the factory says so. */
   @Test
   void aSourceWithoutAKindIsRefused() {
-    java.util.function.Consumer<AmbientSourceConfig> noKind =
+    Customizer<AmbientSourceConfig> noKind =
         source -> source.text(_ -> java.util.Optional.of("Tuesday"));
 
     assertThatThrownBy(() -> AmbientSource.of(noKind))
@@ -121,7 +121,7 @@ class AmbientTest {
   /** And one with nothing to offer is refused too, rather than offering nothing forever. */
   @Test
   void aSourceWithNothingToOfferIsRefused() {
-    java.util.function.Consumer<AmbientSourceConfig> nothingToSay = source -> source.kind("clock");
+    Customizer<AmbientSourceConfig> nothingToSay = source -> source.kind("clock");
 
     assertThatThrownBy(() -> AmbientSource.of(nothingToSay))
         .isInstanceOf(NullPointerException.class)

@@ -40,7 +40,7 @@ class OpenAiCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     OpenAIClient supplied = recordingClient(closes);
 
-    OpenAiInferenceProvider provider = OpenAiInferenceProvider.create(c -> c.client(supplied));
+    OpenAiInferenceProvider provider = OpenAiInferenceProvider.of(c -> c.client(supplied));
     provider.close();
 
     assertThat(closes).hasValue(0);

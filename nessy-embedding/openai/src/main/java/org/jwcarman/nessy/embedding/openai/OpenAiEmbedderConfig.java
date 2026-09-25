@@ -19,10 +19,11 @@ import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 
 /**
- * What {@link OpenAiEmbeddingProvider#create(OpenAiEmbedderCustomizer)} hands a customizer: a
- * CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link OpenAiEmbeddingProvider#create(Customizer<OpenAiEmbedderConfig>)} hands a customizer:
+ * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class OpenAiEmbedderConfig {
 

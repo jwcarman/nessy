@@ -16,8 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.time.Duration;
-import java.util.function.Consumer;
-import org.jwcarman.nessy.api.Customizers;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.RetryPolicy;
 
 /**
@@ -71,9 +70,9 @@ public interface ToolConfig<I> {
   ToolConfig<I> enrich(ApprovalEnricher enricher);
 
   /** Who decides whether a call of this tool may run. Defaults to {@link Approver#allow()}. */
-  ToolConfig<I> approver(Approver approver, Consumer<ApproverConfig> customizer);
+  ToolConfig<I> approver(Approver approver, Customizer<ApproverConfig> customizer);
 
   default ToolConfig<I> approver(Approver approver) {
-    return approver(approver, Customizers.withDefaults());
+    return approver(approver, Customizer.withDefaults());
   }
 }

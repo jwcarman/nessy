@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -69,16 +70,21 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return defaultDimension;
   }
 
-  public static OpenAiEmbeddingProvider create(OpenAiEmbedderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static OpenAiEmbeddingProvider of(List<Customizer<OpenAiEmbedderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     OpenAiEmbedderConfig config = new OpenAiEmbedderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static OpenAiEmbeddingProvider of(Customizer<OpenAiEmbedderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /** {@code OPENAI_API_KEY} and the default model, {@value OpenAiEmbedderConfig#DEFAULT_MODEL}. */
   public static OpenAiEmbeddingProvider fromEnv() {
-    return create(OpenAiEmbedderConfig::fromEnv);
+    return of(OpenAiEmbedderConfig::fromEnv);
   }
 
   /**

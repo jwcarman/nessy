@@ -17,6 +17,7 @@ package org.jwcarman.nessy.embedding.bedrock;
 
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -24,9 +25,9 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link BedrockEmbeddingProvider#create(BedrockEmbedderCustomizer)} hands a customizer: a
- * CONFIG, not a builder -- fluent setters, no public {@code build()}. No {@code apiKey}: Bedrock is
- * reached with AWS credentials.
+ * What {@link BedrockEmbeddingProvider#create(Customizer<BedrockEmbedderConfig>)} hands a
+ * customizer: a CONFIG, not a builder -- fluent setters, no public {@code build()}. No {@code
+ * apiKey}: Bedrock is reached with AWS credentials.
  */
 public final class BedrockEmbedderConfig {
 

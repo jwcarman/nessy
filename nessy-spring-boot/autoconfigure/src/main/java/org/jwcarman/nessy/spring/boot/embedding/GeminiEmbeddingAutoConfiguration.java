@@ -61,7 +61,7 @@ public class GeminiEmbeddingAutoConfiguration {
 
   private static EmbedderFactory observed(
       String apiKey, String model, String dimension, ObservationRegistry observations) {
-    GeminiEmbeddingProvider provider = GeminiEmbeddingProvider.create(c -> c.apiKey(apiKey));
+    GeminiEmbeddingProvider provider = GeminiEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
         provider,
         EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL),

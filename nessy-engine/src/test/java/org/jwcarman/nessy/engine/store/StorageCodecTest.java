@@ -79,10 +79,10 @@ class StorageCodecTest {
         engine
             .harnesses()
             .create(
+                CHAT,
                 String.class,
                 config ->
                     config
-                        .agentType(CHAT)
                         .systemPrompt("You are a test assistant.")
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
   }
@@ -95,7 +95,7 @@ class StorageCodecTest {
   @Test
   void every_row_is_written_through_it_and_read_back_through_it() {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness.observe(agentId, "what is nessy?");
+    harness.tell(agentId, "what is nessy?");
 
     // The turn completes: state, story and effect rows all went through the codec both ways.
     await()

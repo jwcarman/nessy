@@ -76,7 +76,7 @@ class OpaPolicyEngineFailureTest {
   }
 
   private PolicyEngine engine() {
-    return OpaPolicyEngine.create(
+    return OpaPolicyEngine.of(
         opa ->
             opa.url("http://127.0.0.1:" + server.getAddress().getPort())
                 .decisionPath("nessy/tools/decision")
@@ -171,7 +171,7 @@ class OpaPolicyEngineFailureTest {
   void the_interpreter_can_be_replaced() {
     body.set("{\"result\":{\"decision\":false,\"context\":{\"reason_user\":\"out of hours\"}}}");
     PolicyEngine authzen =
-        OpaPolicyEngine.create(
+        OpaPolicyEngine.of(
             opa ->
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort())
                     .decisionPath("nessy/tools/decision")
@@ -186,7 +186,7 @@ class OpaPolicyEngineFailureTest {
   @Test
   void the_decision_uri_is_reported_for_a_log_line_or_a_health_page() {
     OpaPolicyEngine engine =
-        OpaPolicyEngine.create(
+        OpaPolicyEngine.of(
             opa ->
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort())
                     .decisionPath("nessy/tools/decision"));
@@ -200,7 +200,7 @@ class OpaPolicyEngineFailureTest {
   @DisplayName("more than one trailing or leading slash is trimmed, not just the first")
   void multiple_slashes_are_all_trimmed() {
     OpaPolicyEngine engine =
-        OpaPolicyEngine.create(
+        OpaPolicyEngine.of(
             opa ->
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort() + "///")
                     .decisionPath("///nessy/tools/decision"));
@@ -213,10 +213,10 @@ class OpaPolicyEngineFailureTest {
   @Test
   @DisplayName("an engine missing its url or its decision path is refused at construction")
   void an_incomplete_engine_is_refused() {
-    assertThatThrownBy(() -> OpaPolicyEngine.create(opa -> opa.decisionPath("a/b")))
+    assertThatThrownBy(() -> OpaPolicyEngine.of(opa -> opa.decisionPath("a/b")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("needs a url");
-    assertThatThrownBy(() -> OpaPolicyEngine.create(opa -> opa.url("http://localhost:8181")))
+    assertThatThrownBy(() -> OpaPolicyEngine.of(opa -> opa.url("http://localhost:8181")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("needs a decision path");
   }

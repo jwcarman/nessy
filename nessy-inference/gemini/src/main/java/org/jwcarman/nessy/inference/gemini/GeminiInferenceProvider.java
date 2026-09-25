@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -109,14 +110,19 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   public static GeminiInferenceProvider fromEnv() {
-    return create(GeminiProviderConfig::fromEnv);
+    return of(GeminiProviderConfig::fromEnv);
   }
 
-  public static GeminiInferenceProvider create(GeminiProviderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static GeminiInferenceProvider of(List<Customizer<GeminiProviderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     GeminiProviderConfig config = new GeminiProviderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static GeminiInferenceProvider of(Customizer<GeminiProviderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /**

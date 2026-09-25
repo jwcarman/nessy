@@ -32,7 +32,7 @@ class GeminiProviderConfigTest {
   @Test
   void a_key_a_base_url_and_a_mapper_build_a_provider_that_closes_its_own_client() {
     GeminiInferenceProvider provider =
-        GeminiInferenceProvider.create(
+        GeminiInferenceProvider.of(
             c ->
                 c.apiKey("test-key")
                     .baseUrl("http://127.0.0.1:1")
@@ -46,7 +46,7 @@ class GeminiProviderConfigTest {
   void a_client_the_application_hands_in_is_used_and_never_closed_here() {
     Client theirs = Client.builder().apiKey("theirs").build();
 
-    GeminiInferenceProvider provider = GeminiInferenceProvider.create(c -> c.client(theirs));
+    GeminiInferenceProvider provider = GeminiInferenceProvider.of(c -> c.client(theirs));
 
     assertThatCode(provider::close).doesNotThrowAnyException();
     // Still usable afterwards: the provider did not close it.
@@ -55,8 +55,7 @@ class GeminiProviderConfigTest {
 
   @Test
   void an_explicit_key_wins_over_the_environment() {
-    assertThatCode(
-            () -> GeminiInferenceProvider.create(c -> c.fromEnv().apiKey("explicit")).close())
+    assertThatCode(() -> GeminiInferenceProvider.of(c -> c.fromEnv().apiKey("explicit")).close())
         .doesNotThrowAnyException();
   }
 
@@ -74,9 +73,9 @@ class GeminiProviderConfigTest {
 
   @Test
   void a_blank_key_is_refused() {
-    assertThatThrownBy(() -> GeminiInferenceProvider.create(c -> c.apiKey(" ")))
+    assertThatThrownBy(() -> GeminiInferenceProvider.of(c -> c.apiKey(" ")))
         .isInstanceOf(IllegalStateException.class);
-    assertThatThrownBy(() -> GeminiInferenceProvider.create(c -> c.mapper(null)))
+    assertThatThrownBy(() -> GeminiInferenceProvider.of(c -> c.mapper(null)))
         .isInstanceOf(NullPointerException.class);
   }
 }

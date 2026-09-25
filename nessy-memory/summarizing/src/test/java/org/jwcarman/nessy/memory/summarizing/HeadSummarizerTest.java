@@ -119,7 +119,7 @@ class HeadSummarizerTest {
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     summarizer =
-        HeadSummarizer.create(
+        HeadSummarizer.of(
             c ->
                 c.agentType(CHAT)
                     .summaries(summaries)
@@ -130,10 +130,10 @@ class HeadSummarizerTest {
                     .observations(observations));
     harness =
         factory.create(
+            CHAT,
             String.class,
             h ->
-                h.agentType(CHAT)
-                    .systemPrompt("You are a test assistant.")
+                h.systemPrompt("You are a test assistant.")
                     .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(MAX_TAIL)))
                     .effects(e -> e.pollInterval(Duration.ofMillis(100)))
                     // Hears every turn end; summarises off the narration thread.
@@ -160,7 +160,7 @@ class HeadSummarizerTest {
   private void converse(AgentId agentId, int turns) {
     for (int i = 1; i <= turns; i++) {
       int expected = chatRequests.size() + 1;
-      harness.observe(agentId, "turn " + i);
+      harness.tell(agentId, "turn " + i);
       await().atMost(Duration.ofSeconds(20)).until(() -> chatRequests.size() >= expected);
     }
   }

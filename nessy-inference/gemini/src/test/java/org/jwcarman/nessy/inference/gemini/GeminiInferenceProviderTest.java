@@ -404,7 +404,7 @@ class GeminiInferenceProviderTest {
 
     @Test
     void without_a_key_the_config_refuses_to_build() {
-      assertThatThrownBy(() -> GeminiInferenceProvider.create(c -> {}))
+      assertThatThrownBy(() -> GeminiInferenceProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
     }

@@ -68,10 +68,10 @@ class HarnessLoopTest {
         engine
             .harnesses()
             .create(
+                CHAT,
                 String.class,
                 config ->
                     config
-                        .agentType(CHAT)
                         .systemPrompt("You are a test assistant.")
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
@@ -95,7 +95,7 @@ class HarnessLoopTest {
   void anObservationBecomesAModelCallAndTheAnswerLandsInTheStory() {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness.observe(agentId, "what is nessy?");
+    harness.tell(agentId, "what is nessy?");
 
     // The observation is recorded and the model call owed in the same transaction as the
     // state, so the story shows the question before anything has been asked.
@@ -137,8 +137,8 @@ class HarnessLoopTest {
   void twoObservationsAreAnsweredInOrder() {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness.observe(agentId, "first");
-    harness.observe(agentId, "second");
+    harness.tell(agentId, "first");
+    harness.tell(agentId, "second");
 
     await()
         .atMost(Duration.ofSeconds(10))

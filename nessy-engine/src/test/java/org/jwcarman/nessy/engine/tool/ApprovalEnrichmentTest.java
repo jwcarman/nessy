@@ -144,10 +144,10 @@ class ApprovalEnrichmentTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             dangerous(),
@@ -179,7 +179,7 @@ class ApprovalEnrichmentTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "clean up /prod/data");
+    harness.tell(agentId, "clean up /prod/data");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -219,10 +219,10 @@ class ApprovalEnrichmentTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             dangerous(),
@@ -246,7 +246,7 @@ class ApprovalEnrichmentTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "clean up /tmp/scratch");
+    harness.tell(agentId, "clean up /tmp/scratch");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -266,10 +266,10 @@ class ApprovalEnrichmentTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             dangerous(),
@@ -290,7 +290,7 @@ class ApprovalEnrichmentTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "go");
+    harness.tell(agentId, "go");
     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(seen).isNotEmpty());
 
     assertThat(seen.peek().fact("first")).get().extracting(JsonNode::asString).isEqualTo("0");
@@ -314,10 +314,10 @@ class ApprovalEnrichmentTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             dangerous(),
@@ -334,7 +334,7 @@ class ApprovalEnrichmentTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "clean up /prod/data");
+    harness.tell(agentId, "clean up /prod/data");
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
@@ -355,10 +355,10 @@ class ApprovalEnrichmentTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .tool(
                             dangerous(),
@@ -371,7 +371,7 @@ class ApprovalEnrichmentTest {
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-    harness.observe(agentId, "go");
+    harness.tell(agentId, "go");
     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(seen).isNotEmpty());
 
     assertThat(seen.peek().facts().isEmpty()).isTrue();

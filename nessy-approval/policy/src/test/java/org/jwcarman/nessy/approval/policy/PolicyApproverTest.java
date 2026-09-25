@@ -76,15 +76,14 @@ class PolicyApproverTest {
 
     @Test
     void approve_allows() {
-      var gate = PolicyApprover.create(policy -> policy.engine(request -> Verdict.approve()));
+      var gate = PolicyApprover.of(policy -> policy.engine(request -> Verdict.approve()));
 
       assertThat(gate.approve(asking())).isEqualTo(Awaited.ready(ApprovalResult.approved()));
     }
 
     @Test
     void deny_carries_the_reason_the_policy_gave() {
-      var gate =
-          PolicyApprover.create(policy -> policy.engine(request -> Verdict.deny("never here")));
+      var gate = PolicyApprover.of(policy -> policy.engine(request -> Verdict.deny("never here")));
 
       assertThat(denialOf(gate.approve(asking()))).isEqualTo("never here");
     }
@@ -94,7 +93,7 @@ class PolicyApproverTest {
     void delegate_defers_to_whoever_was_named() {
       Approver desk = request -> Awaited.deferred();
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy.engine(request -> Verdict.delegate("humans")).delegate("humans", desk));
 
@@ -111,7 +110,7 @@ class PolicyApproverTest {
               Awaited.ready(
                   ApprovalResult.denied(request.fact("policy.term").orElseThrow().asString()));
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> new Verdict.Delegate("humans", extras))
@@ -128,7 +127,7 @@ class PolicyApproverTest {
     @Test
     void an_engine_that_throws_denies() {
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy.engine(
                       request -> {
@@ -141,7 +140,7 @@ class PolicyApproverTest {
 
     @Test
     void an_engine_that_answers_nothing_denies() {
-      var gate = PolicyApprover.create(policy -> policy.engine(request -> null));
+      var gate = PolicyApprover.of(policy -> policy.engine(request -> null));
 
       assertThat(denialOf(gate.approve(asking()))).contains("no verdict");
     }
@@ -150,7 +149,7 @@ class PolicyApproverTest {
     @DisplayName("a name that is not on the allowlist denies rather than falling through")
     void delegating_to_somebody_unregistered_denies() {
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> Verdict.delegate("whoever"))
@@ -163,7 +162,7 @@ class PolicyApproverTest {
     @DisplayName("a delegate that answers null denies rather than propagating the null")
     void a_delegate_that_answers_null_denies() {
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> Verdict.delegate("humans"))
@@ -179,7 +178,7 @@ class PolicyApproverTest {
             throw new IllegalStateException("the desk is down");
           };
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy.engine(request -> Verdict.delegate("humans")).delegate("humans", broken));
 
@@ -192,13 +191,13 @@ class PolicyApproverTest {
       // The classic shape: this approver's delegate is another policy approver whose policy
       // delegates straight back. Without a bound this recurses until the stack gives out.
       var inner =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> Verdict.delegate("outer"))
                       .delegate("outer", r -> Awaited.ready(ApprovalResult.approved())));
       var gate =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> Verdict.delegate("inner"))
@@ -219,7 +218,7 @@ class PolicyApproverTest {
       // empty -> 1 -> 2, then refused.
       PolicyApprover[] itself = new PolicyApprover[1];
       itself[0] =
-          PolicyApprover.create(
+          PolicyApprover.of(
               policy ->
                   policy
                       .engine(request -> Verdict.delegate("self"))
@@ -236,8 +235,7 @@ class PolicyApproverTest {
 
     @Test
     void an_approver_without_an_engine_is_refused_at_construction() {
-      assertThatThrownBy(
-              () -> PolicyApprover.create(policy -> policy.delegate("humans", r -> null)))
+      assertThatThrownBy(() -> PolicyApprover.of(policy -> policy.delegate("humans", r -> null)))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("needs an engine");
     }
@@ -250,7 +248,7 @@ class PolicyApproverTest {
 
       assertThatThrownBy(
               () ->
-                  PolicyApprover.create(
+                  PolicyApprover.of(
                       policy ->
                           policy
                               .engine(request -> Verdict.approve())

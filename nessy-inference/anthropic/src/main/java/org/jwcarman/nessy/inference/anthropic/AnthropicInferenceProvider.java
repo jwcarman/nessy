@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -98,14 +99,20 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   }
 
   public static AnthropicInferenceProvider fromEnv() {
-    return create(AnthropicProviderConfig::fromEnv);
+    return of(AnthropicProviderConfig::fromEnv);
   }
 
-  public static AnthropicInferenceProvider create(AnthropicProviderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static AnthropicInferenceProvider of(
+      List<Customizer<AnthropicProviderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     AnthropicProviderConfig config = new AnthropicProviderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static AnthropicInferenceProvider of(Customizer<AnthropicProviderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /**

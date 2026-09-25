@@ -38,6 +38,6 @@ public class WatchmanRounds {
   @Scheduled(fixedRateString = "${watchman.round-interval:PT30M}")
   public void round() {
     LOG.info("[watchman] telling the watchman to do its rounds");
-    harness.observe(Watchman.AGENT, TICK);
+    harness.tell(Watchman.AGENT, TICK);
   }
 }

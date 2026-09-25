@@ -16,8 +16,6 @@
 
 package org.jwcarman.nessy.api;
 
-import java.util.function.Consumer;
-
 /**
  * Makes direct harnesses that share what an application owns once.
  *
@@ -38,7 +36,7 @@ public interface DirectHarnessFactory {
    *     is written down as {@code I}, so nothing needs a codec for it. What is stored is what the
    *     renderer made of it.
    */
-  <I> DirectHarness<I> create(Consumer<DirectHarnessConfig<I>> customizer);
+  <I> DirectHarness<I> create(AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer);
 
   /** The vendor behind this, as the OpenTelemetry GenAI conventions name it. */
   String providerName();

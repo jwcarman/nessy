@@ -93,12 +93,10 @@ public class WatchmanConfiguration {
       ApprovalsDesk desk) {
     List<Tool<JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.create(
+        Watchman.TYPE,
         String.class,
         config -> {
-          config
-              .agentType(Watchman.TYPE)
-              .systemPrompt(WatchmanPrompt.SYSTEM)
-              .backlogPolicy(BacklogPolicy.keepLatest());
+          config.systemPrompt(WatchmanPrompt.SYSTEM).backlogPolicy(BacklogPolicy.keepLatest());
           // A watchman does rounds forever, so its story grows forever. The tail the model is
           // shown is capped (the default is the last twenty turns); summarising the head into a
           // paragraph is the piece that has not been rebuilt yet.

@@ -78,7 +78,7 @@ public class OpenAiAutoConfiguration {
             "NESSY INFERENCE: openai will call {}",
             baseUrl == null ? "the vendor's own endpoint" : baseUrl);
     InferenceProvider provider =
-        OpenAiInferenceProvider.create(
+        OpenAiInferenceProvider.of(
             c -> {
               c.apiKey(apiKey);
               if (baseUrl != null) {
@@ -97,7 +97,7 @@ public class OpenAiAutoConfiguration {
       ObjectProvider<JsonMapper> mappers,
       ObservationRegistry observations) {
     InferenceProvider provider =
-        OpenAiInferenceProvider.create(
+        OpenAiInferenceProvider.of(
             c -> {
               c.apiKey(apiKey).baseUrl(XAI_BASE_URL).provider(XAI_PROVIDER_NAME);
               mappers.ifAvailable(c::mapper);

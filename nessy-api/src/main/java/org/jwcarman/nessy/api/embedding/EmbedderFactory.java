@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api.embedding;
 
-import java.util.function.Consumer;
+import org.jwcarman.nessy.api.Customizer;
 
 /**
  * Makes embedders that share a connection.
@@ -28,5 +28,5 @@ import java.util.function.Consumer;
 public interface EmbedderFactory {
 
   /** One embedder, for a store. */
-  Embedder create(Consumer<EmbedderConfig> customizer);
+  Embedder create(Customizer<EmbedderConfig> customizer);
 }

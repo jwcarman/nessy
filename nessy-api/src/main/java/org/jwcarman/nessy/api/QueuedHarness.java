@@ -47,7 +47,7 @@ public interface QueuedHarness<O> {
    * call: there is nothing to say about an agent before its first observation, and a create step
    * would only be a way to get that wrong.
    */
-  void observe(AgentId agentId, O observation);
+  void tell(AgentId agentId, O input);
 
   /**
    * Ends an agent.

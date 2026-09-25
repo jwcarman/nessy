@@ -115,10 +115,10 @@ class DeferredApprovalTest {
     return engine
         .harnesses()
         .create(
+            type,
             String.class,
             config ->
                 config
-                    .agentType(type)
                     .systemPrompt("You are a test assistant.")
                     .tool(
                         lookup(),
@@ -150,7 +150,7 @@ class DeferredApprovalTest {
 
   private ReplyToken parkOne(AgentType type, Duration questionStands) {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, questionStands).observe(agentId, "what lake?");
+    harness(type, questionStands).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).isNotEmpty());
     return handed.peek();
   }
@@ -164,7 +164,7 @@ class DeferredApprovalTest {
   void anAnswerThatArrivesLaterRunsTheCallAndFinishesTheTurn() {
     AgentType type = new AgentType("deferred-approved");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, Duration.ofMinutes(30)).observe(agentId, "what lake?");
+    harness(type, Duration.ofMinutes(30)).tell(agentId, "what lake?");
 
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     assertThat(ran).as("nothing ran while permission was outstanding").isEmpty();
@@ -233,7 +233,7 @@ class DeferredApprovalTest {
   void anAnswerAfterTheQuestionExpiredIsRefused() {
     AgentType type = new AgentType("deferred-expired");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, Duration.ofSeconds(2)).observe(agentId, "what lake?");
+    harness(type, Duration.ofSeconds(2)).tell(agentId, "what lake?");
 
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     ReplyToken token = handed.peek();

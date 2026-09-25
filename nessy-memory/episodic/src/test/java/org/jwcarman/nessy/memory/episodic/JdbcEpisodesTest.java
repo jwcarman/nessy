@@ -39,7 +39,7 @@ class JdbcEpisodesTest {
   private static final DataSource DATABASE = Calls.database();
 
   private static JdbcEpisodes store(Embedder embedder, int shown) {
-    return JdbcEpisodes.create(
+    return JdbcEpisodes.of(
         c -> c.dataSource(DATABASE).agentType(Calls.TYPE).embedder(embedder).shown(shown));
   }
 
@@ -307,13 +307,13 @@ class JdbcEpisodesTest {
 
   @Test
   void what_is_refused_at_configuration() {
-    assertThatThrownBy(() -> JdbcEpisodes.create(c -> c.agentType(Calls.TYPE)))
+    assertThatThrownBy(() -> JdbcEpisodes.of(c -> c.agentType(Calls.TYPE)))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("dataSource");
-    assertThatThrownBy(() -> JdbcEpisodes.create(c -> c.dataSource(DATABASE)))
+    assertThatThrownBy(() -> JdbcEpisodes.of(c -> c.dataSource(DATABASE)))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("agentType");
-    assertThatThrownBy(() -> JdbcEpisodes.create(c -> c.shown(0)))
+    assertThatThrownBy(() -> JdbcEpisodes.of(c -> c.shown(0)))
         .isInstanceOf(IllegalArgumentException.class);
     TurnId first = new TurnId(1);
     TurnId fourth = new TurnId(4);

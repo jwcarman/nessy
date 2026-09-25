@@ -146,7 +146,7 @@ class GeminiEmbedderTest {
       assertThat(closed).isTrue();
 
       Client theirs = Client.builder().apiKey("theirs").build();
-      assertThatCode(() -> GeminiEmbeddingProvider.create(c -> c.client(theirs)).close())
+      assertThatCode(() -> GeminiEmbeddingProvider.of(c -> c.client(theirs)).close())
           .doesNotThrowAnyException();
       assertThat(theirs.models).isNotNull();
     }
@@ -155,7 +155,7 @@ class GeminiEmbedderTest {
     void a_key_a_base_url_a_model_and_a_dimension_build_an_embedder() {
       assertThatCode(
               () ->
-                  GeminiEmbeddingProvider.create(
+                  GeminiEmbeddingProvider.of(
                           c ->
                               c.apiKey("k")
                                   .baseUrl("http://127.0.0.1:1")
@@ -168,11 +168,11 @@ class GeminiEmbedderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> {}))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class);
-      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> c.model(" ")))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> c.model(" ")))
           .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> GeminiEmbeddingProvider.create(c -> c.dimension(0)))
+      assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> c.dimension(0)))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -184,7 +184,7 @@ class GeminiEmbedderTest {
       assertThatThrownBy(GeminiEmbeddingProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("GEMINI_API_KEY");
-      assertThatCode(() -> GeminiEmbeddingProvider.create(c -> c.fromEnv().apiKey("k")).close())
+      assertThatCode(() -> GeminiEmbeddingProvider.of(c -> c.fromEnv().apiKey("k")).close())
           .doesNotThrowAnyException();
     }
   }

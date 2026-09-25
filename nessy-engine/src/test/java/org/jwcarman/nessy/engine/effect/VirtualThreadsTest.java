@@ -63,15 +63,15 @@ class VirtualThreadsTest {
           engine
               .harnesses()
               .create(
+                  type,
                   String.class,
                   config ->
                       config
-                          .agentType(type)
                           .systemPrompt("You are a test assistant.")
                           .inference(in -> in.model("a-model"))
                           .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-      harness.observe(agentId, "hello");
+      harness.tell(agentId, "hello");
 
       await()
           .atMost(Duration.ofSeconds(20))

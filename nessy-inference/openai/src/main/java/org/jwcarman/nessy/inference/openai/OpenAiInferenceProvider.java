@@ -31,6 +31,7 @@ import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -104,11 +105,11 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   /**
-   * The blessed one-call shape: equivalent to {@code create(OpenAiProviderConfig::fromEnv)}.
-   * Delegates credential and configuration resolution to the SDK's own environment table.
+   * The blessed one-call shape: equivalent to {@code of(OpenAiProviderConfig::fromEnv)}. Delegates
+   * credential and configuration resolution to the SDK's own environment table.
    */
   public static OpenAiInferenceProvider fromEnv() {
-    return create(OpenAiProviderConfig::fromEnv);
+    return of(OpenAiProviderConfig::fromEnv);
   }
 
   /**
@@ -117,11 +118,16 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * {@code build()} survives here; the factory is the only place a config ever turns into a
    * provider.
    */
-  public static OpenAiInferenceProvider create(OpenAiProviderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static OpenAiInferenceProvider of(List<Customizer<OpenAiProviderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     OpenAiProviderConfig config = new OpenAiProviderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static OpenAiInferenceProvider of(Customizer<OpenAiProviderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /**

@@ -19,10 +19,12 @@ package org.jwcarman.nessy.engine.direct;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
@@ -70,32 +72,57 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
   private final InferenceProvider provider;
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
+  private final List<Customizer<HarnessConfig<?>>> features;
+  private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
 
-  public DefaultDirectHarnessFactory(
-      Locks locks,
-      AgentEventStore events,
-      PayloadStore payloads,
-      InferenceProvider provider,
-      InputSchemaGenerator schemas,
-      ObjectMapper mapper) {
-    this.locks = Objects.requireNonNull(locks, "locks must not be null");
-    this.events = Objects.requireNonNull(events, "events must not be null");
-    this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
-    this.schemas = Objects.requireNonNull(schemas, "schemas must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+  /**
+   * Reads the config rather than holding it, so a caller that keeps a reference and changes it
+   * afterwards does not change a factory that already exists.
+   */
+  private DefaultDirectHarnessFactory(DirectHarnessFactoryConfig config) {
+    this.locks = config.requiredLocks();
+    this.events = config.requiredEvents();
+    this.payloads = config.requiredPayloads();
+    this.provider = config.requiredProvider();
+    this.schemas = config.schemas();
+    this.mapper = config.mapper();
+    this.listeners.addAll(config.listeners());
+    this.features = config.features();
+    this.harnesses = config.harnesses();
+  }
+
+  /**
+   * One factory, from every customizer that has something to say about it.
+   *
+   * <p>A list rather than one, because this is what a container hands over: every {@code
+   * Customizer<DirectHarnessFactoryConfig>} bean an application declared, in order, each adding to
+   * the same config before anything is built from it.
+   */
+  public static DefaultDirectHarnessFactory of(
+      List<Customizer<DirectHarnessFactoryConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
+    DirectHarnessFactoryConfig config = new DirectHarnessFactoryConfig();
+    customizers.forEach(customizer -> customizer.customize(config));
+    return new DefaultDirectHarnessFactory(config);
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static DefaultDirectHarnessFactory of(Customizer<DirectHarnessFactoryConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /** Everything in one process and nothing written down: a CLI, a test, a one-shot. */
   public static DefaultDirectHarnessFactory inMemory(
       InferenceProvider provider, InputSchemaGenerator schemas, ObjectMapper mapper) {
-    return new DefaultDirectHarnessFactory(
-        new InMemoryLocks(),
-        new InMemoryAgentEventStore(),
-        new InMemoryPayloads(),
-        provider,
-        schemas,
-        mapper);
+    return of(
+        config ->
+            config
+                .locks(new InMemoryLocks())
+                .events(new InMemoryAgentEventStore())
+                .payloads(new InMemoryPayloads())
+                .provider(provider)
+                .schemas(schemas)
+                .mapper(mapper));
   }
 
   /**
@@ -111,10 +138,15 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
   }
 
   @Override
-  public <I> DirectHarness<I> create(Consumer<DirectHarnessConfig<I>> customizer) {
+  public <I> DirectHarness<I> create(
+      AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
-    DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>();
-    customizer.accept(config);
+    DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>(agentType);
+    // What jars installed, then what this application says about every harness, then what this
+    // caller asked for -- each able to override the one before it.
+    features.forEach(feature -> feature.customize(config));
+    harnesses.forEach(blanket -> blanket.customize(config));
+    customizer.customize(config);
     List<ToolBinding<?>> bindings = config.bindings(schemas, mapper);
     DefaultDirectHarnessConfig.Inference inference = config.inference();
     if (inference.modelName() == null) {

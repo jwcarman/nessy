@@ -41,7 +41,7 @@ class AnthropicProviderNameTest {
    */
   @Test
   void the_gateway_answers_to_its_vendor() {
-    assertThat(AnthropicInferenceProvider.create(c -> c.apiKey("sk-test")).name())
+    assertThat(AnthropicInferenceProvider.of(c -> c.apiKey("sk-test")).name())
         .isEqualTo("Anthropic");
   }
 }

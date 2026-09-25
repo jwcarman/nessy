@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -99,16 +100,21 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
     return defaultDimension;
   }
 
-  public static BedrockEmbeddingProvider create(BedrockEmbedderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static BedrockEmbeddingProvider of(List<Customizer<BedrockEmbedderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     BedrockEmbedderConfig config = new BedrockEmbedderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static BedrockEmbeddingProvider of(Customizer<BedrockEmbedderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /** The AWS default credentials chain, the region from the environment, and the default model. */
   public static BedrockEmbeddingProvider fromEnv() {
-    return create(BedrockEmbedderConfig::fromEnv);
+    return of(BedrockEmbedderConfig::fromEnv);
   }
 
   @Override

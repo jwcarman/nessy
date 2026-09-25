@@ -51,7 +51,7 @@ public class AnthropicAutoConfiguration {
       ObjectProvider<JsonMapper> mappers,
       ObservationRegistry observations) {
     InferenceProvider provider =
-        AnthropicInferenceProvider.create(
+        AnthropicInferenceProvider.of(
             c -> {
               c.apiKey(apiKey);
               mappers.ifAvailable(c::mapper);

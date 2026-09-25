@@ -20,13 +20,13 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
@@ -118,14 +118,14 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * -- the stores, the transaction manager, the one client they share -- so there is nothing for a
    * caller to assemble and nothing for two callers to assemble differently.
    */
-  public DefaultQueuedHarnessFactory(Consumer<EngineConfig> customizer) {
+  public DefaultQueuedHarnessFactory(Customizer<EngineConfig> customizer) {
     this(configured(customizer));
   }
 
-  private static EngineConfig configured(Consumer<EngineConfig> customizer) {
+  private static EngineConfig configured(Customizer<EngineConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     EngineConfig config = new EngineConfig();
-    customizer.accept(config);
+    customizer.customize(config);
     return config;
   }
 
@@ -176,12 +176,12 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    */
   @Override
   public <O> QueuedHarness<O> create(
-      TypeRef<O> observationType, Consumer<QueuedHarnessConfig<O>> customizer) {
+      AgentType agentType, TypeRef<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer) {
     DefaultQueuedHarnessConfig<O> config =
-        new DefaultQueuedHarnessConfig<>(observationType, defaults, mapper, schemas, observations);
-    customizer.accept(config);
+        new DefaultQueuedHarnessConfig<>(
+            agentType, inputType, defaults, mapper, schemas, observations);
+    customizer.customize(config);
 
-    AgentType agentType = config.requiredAgentType();
     Tools tools = config.tools();
     // Everyone who hears this harness's agents: the engine's listeners, then its own.
     Listeners narrator = new Listeners(listeners, config.listeners());
@@ -225,7 +225,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             events,
             payloads,
             (type, agent) ->
-                new JdbcBacklog<>(jdbc, codecs.create(config.observationType()), type, agent),
+                new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), type, agent),
             effects,
             transactions,
             narrator,

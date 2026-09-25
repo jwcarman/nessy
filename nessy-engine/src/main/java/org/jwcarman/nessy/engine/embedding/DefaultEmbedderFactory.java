@@ -17,7 +17,7 @@ package org.jwcarman.nessy.engine.embedding;
 
 import java.util.Objects;
 import java.util.OptionalInt;
-import java.util.function.Consumer;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
@@ -64,10 +64,10 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
   }
 
   @Override
-  public Embedder create(Consumer<EmbedderConfig> customizer) {
+  public Embedder create(Customizer<EmbedderConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     Settings settings = new Settings();
-    customizer.accept(settings);
+    customizer.customize(settings);
     return new DefaultEmbedder(provider, settings.options());
   }
 

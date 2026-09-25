@@ -49,7 +49,7 @@ class OpenAiProviderNameTest {
   @Test
   void a_gateway_pointed_at_xai_reports_that_vendor_rather_than_openai() {
     OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.create(
+        OpenAiInferenceProvider.of(
             c -> c.apiKey("sk-test").baseUrl("https://api.x.ai/v1").provider("x_ai"));
 
     assertThat(provider.providerName()).isEqualTo("x_ai");
@@ -58,7 +58,7 @@ class OpenAiProviderNameTest {
   @Test
   void and_any_other_compatible_endpoint_still_answers_openai() {
     OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.create(
+        OpenAiInferenceProvider.of(
             c -> c.apiKey("sk-test").baseUrl("https://openrouter.ai/api/v1"));
 
     assertThat(provider.providerName()).isEqualTo("openai");

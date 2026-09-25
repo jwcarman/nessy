@@ -19,9 +19,9 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -153,10 +153,16 @@ public class HeadSummarizer {
     }
   }
 
-  public static HeadSummarizer create(Consumer<Config> customizer) {
+  public static HeadSummarizer of(List<Customizer<Config>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     Config config = new Config();
-    customizer.accept(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return new HeadSummarizer(config);
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static HeadSummarizer of(Customizer<Config> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   private final AgentType agentType;

@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -105,14 +106,19 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   }
 
   public static BedrockInferenceProvider fromEnv() {
-    return create(BedrockProviderConfig::fromEnv);
+    return of(BedrockProviderConfig::fromEnv);
   }
 
-  public static BedrockInferenceProvider create(BedrockProviderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static BedrockInferenceProvider of(List<Customizer<BedrockProviderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     BedrockProviderConfig config = new BedrockProviderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static BedrockInferenceProvider of(Customizer<BedrockProviderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /**

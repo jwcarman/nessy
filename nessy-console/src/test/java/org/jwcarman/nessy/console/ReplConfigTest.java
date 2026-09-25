@@ -22,19 +22,21 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -194,8 +196,18 @@ class ReplConfigTest {
       private final List<Tool<?>> bound = new ArrayList<>();
 
       @Override
-      public DirectHarnessConfig<String> agentType(AgentType agentType) {
+      public DirectHarnessConfig<String> ambient(AmbientSource source) {
         return this;
+      }
+
+      @Override
+      public DirectHarnessConfig<String> summaries(Summarizer source) {
+        return this;
+      }
+
+      @Override
+      public AgentType agentType() {
+        return new AgentType("recording");
       }
 
       @Override
@@ -209,12 +221,12 @@ class ReplConfigTest {
       }
 
       @Override
-      public DirectHarnessConfig<String> inputRenderer(ObservationRenderer<String> renderer) {
+      public DirectHarnessConfig<String> inputRenderer(InputRenderer<String> renderer) {
         return this;
       }
 
       @Override
-      public DirectHarnessConfig<String> inference(Consumer<InferenceConfig> customizer) {
+      public DirectHarnessConfig<String> inference(Customizer<InferenceConfig> customizer) {
         return this;
       }
 
@@ -231,9 +243,9 @@ class ReplConfigTest {
 
       @Override
       public <I> DirectHarnessConfig<String> tool(
-          Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
+          Tool<I> tool, Customizer<ToolConfig<I>> customizer) {
         bound.add(tool);
-        customizer.accept(
+        customizer.customize(
             new ToolConfig<I>() {
               @Override
               public ToolConfig<I> timeout(Duration timeout) {
@@ -256,7 +268,7 @@ class ReplConfigTest {
               }
 
               @Override
-              public ToolConfig<I> approver(Approver approver, Consumer<ApproverConfig> c) {
+              public ToolConfig<I> approver(Approver approver, Customizer<ApproverConfig> c) {
                 return this;
               }
             });
@@ -294,7 +306,7 @@ class ReplConfigTest {
       Tool<String> tool = doNothingTool();
       config.tool(tool);
       RecordingHarnessConfig harnessConfig = new RecordingHarnessConfig();
-      config.tools().forEach(grant -> grant.accept(harnessConfig));
+      config.tools().forEach(grant -> grant.customize(harnessConfig));
       assertThat(harnessConfig.ungated).containsExactly(tool);
       assertThat(harnessConfig.bound).isEmpty();
     }
@@ -306,7 +318,7 @@ class ReplConfigTest {
       List<String> customizations = new ArrayList<>();
       config.tool(tool, binding -> customizations.add("applied"));
       RecordingHarnessConfig harnessConfig = new RecordingHarnessConfig();
-      config.tools().forEach(grant -> grant.accept(harnessConfig));
+      config.tools().forEach(grant -> grant.customize(harnessConfig));
       assertThat(harnessConfig.bound).containsExactly(tool);
       assertThat(customizations).containsExactly("applied");
     }

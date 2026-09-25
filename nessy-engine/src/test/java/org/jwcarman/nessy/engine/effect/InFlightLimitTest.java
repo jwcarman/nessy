@@ -63,10 +63,10 @@ class InFlightLimitTest {
           engine
               .harnesses()
               .create(
+                  LIMITED,
                   String.class,
                   config ->
                       config
-                          .agentType(LIMITED)
                           .systemPrompt("You are a test assistant.")
                           .inference(
                               in ->
@@ -77,7 +77,7 @@ class InFlightLimitTest {
 
       List<AgentId> agents =
           Stream.generate(() -> new AgentId(UUID.randomUUID())).limit(AGENTS).toList();
-      agents.forEach(agentId -> harness.observe(agentId, "hello"));
+      agents.forEach(agentId -> harness.tell(agentId, "hello"));
 
       agents.forEach(
           agentId ->

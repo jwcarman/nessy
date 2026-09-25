@@ -78,10 +78,10 @@ class GiveUpUndeliverableTest {
         engine
             .harnesses()
             .create(
+                type,
                 String.class,
                 config ->
                     config
-                        .agentType(type)
                         .systemPrompt("You are a test assistant.")
                         .inference(
                             in ->
@@ -94,7 +94,7 @@ class GiveUpUndeliverableTest {
                                     .timeout(Duration.ofSeconds(1)))
                         .effects(e -> e.maxInFlight(2)));
 
-    harness.observe(agentId, "the fold will break before this is answered");
+    harness.tell(agentId, "the fold will break before this is answered");
 
     // Break every fold from here on. The model call fails, the policy says give up, and the
     // delivery that would end the turn fails for the same reason.

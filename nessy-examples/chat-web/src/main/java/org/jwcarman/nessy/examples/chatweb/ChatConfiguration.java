@@ -103,7 +103,7 @@ public class ChatConfiguration {
   public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<EmbedderFactory> embedders) {
     Embedder embedder =
         embedders.getIfAvailable() == null ? null : embedders.getObject().create(c -> {});
-    return JdbcEpisodes.create(c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder));
+    return JdbcEpisodes.of(c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder));
   }
 
   /**
@@ -120,7 +120,7 @@ public class ChatConfiguration {
       InferenceProvider provider,
       NessyProperties properties,
       ObjectProvider<ObservationRegistry> observations) {
-    return EpisodeSummarizer.create(
+    return EpisodeSummarizer.of(
         c ->
             c.agentType(TYPE)
                 .episodes(episodes)
@@ -154,9 +154,9 @@ public class ChatConfiguration {
       JdbcEpisodes episodes,
       EpisodeSummarizer summarizer) {
     return factory.<String>create(
+        TYPE,
         config ->
             config
-                .agentType(TYPE)
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .systemPrompt(properties.resolveSystemPrompt())
                 // Hears every turn end and summarises any episode that has closed -- on its own

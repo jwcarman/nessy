@@ -65,7 +65,7 @@ public class GeminiAutoConfiguration {
   private static InferenceProvider observed(
       String apiKey, ObjectProvider<JsonMapper> mappers, ObservationRegistry observations) {
     InferenceProvider provider =
-        GeminiInferenceProvider.create(
+        GeminiInferenceProvider.of(
             c -> {
               c.apiKey(apiKey);
               mappers.ifAvailable(c::mapper);

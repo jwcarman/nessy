@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.api;
 
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -96,10 +95,10 @@ public interface NarrationListener {
    *     c -> c.agentType(CHAT).onTurnEnded((type, id, ended) -> summarize(id)));
    * }</pre>
    */
-  static NarrationListener of(Consumer<NarrationListenerConfig> customizer) {
+  static NarrationListener of(Customizer<NarrationListenerConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     NarrationListenerConfig config = new NarrationListenerConfig();
-    customizer.accept(config);
+    customizer.customize(config);
     return config.build();
   }
 }

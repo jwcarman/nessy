@@ -89,17 +89,18 @@ class DurableDirectHarnessTest {
 
   /** A harness that shares nothing with another but the database -- which is what a restart is. */
   private DirectHarness<String> harness(InferenceProvider model) {
-    return new DefaultDirectHarnessFactory(
-            new InMemoryLocks(),
-            events,
-            payloads,
-            model,
-            new VictoolsInputSchemaGenerator(),
-            JsonMapper.builder().build())
+    return DefaultDirectHarnessFactory.of(
+            f ->
+                f.locks(new InMemoryLocks())
+                    .events(events)
+                    .payloads(payloads)
+                    .provider(model)
+                    .schemas(new VictoolsInputSchemaGenerator())
+                    .mapper(JsonMapper.builder().build()))
         .<String>create(
+            TYPE,
             c ->
-                c.agentType(TYPE)
-                    .systemPrompt("You are terse.")
+                c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
                     .inference(in -> in.model("a-model")));
   }

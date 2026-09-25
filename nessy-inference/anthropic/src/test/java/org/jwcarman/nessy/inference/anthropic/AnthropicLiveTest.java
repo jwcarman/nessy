@@ -73,7 +73,7 @@ class AnthropicLiveTest {
   /** A provider configured as a deployment would configure it: thinking, caching, or neither. */
   private static AnthropicInferenceProvider provider(Consumer<AnthropicProviderConfig> customizer) {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY is not set");
-    return AnthropicInferenceProvider.create(
+    return AnthropicInferenceProvider.of(
         config -> {
           config.fromEnv();
           customizer.accept(config);

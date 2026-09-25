@@ -31,9 +31,11 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -101,14 +103,14 @@ class TerminationAndConfigurationTest {
         engine
             .harnesses()
             .create(
+                CHAT,
                 config ->
                     config
-                        .agentType(CHAT)
                         .systemPrompt("You are a test assistant.")
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness.observe(agentId, "hello");
+    harness.tell(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
         .until(() -> events.stream().anyMatch(Narration.TurnEnded.class::isInstance));
@@ -117,7 +119,7 @@ class TerminationAndConfigurationTest {
         .atMost(Duration.ofSeconds(10))
         .until(() -> events.stream().anyMatch(Narration.Terminated.class::isInstance));
     harness.terminate(agentId); // idempotent
-    harness.observe(agentId, "anyone there?");
+    harness.tell(agentId, "anyone there?");
 
     List<Turn> turns = engine.harnesses().histories().forAgent(CHAT, agentId).turnsFrom(0);
     assertThat(turns).hasSize(1);
@@ -129,14 +131,14 @@ class TerminationAndConfigurationTest {
         engine
             .harnesses()
             .create(
+                FAILING,
                 config ->
                     config
-                        .agentType(FAILING)
                         .systemPrompt("You are a test assistant that will fail.")
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    harness.observe(agentId, "hello");
+    harness.tell(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
         .until(() -> events.stream().anyMatch(Narration.TurnFailed.class::isInstance));
@@ -151,9 +153,9 @@ class TerminationAndConfigurationTest {
         engine
             .harnesses()
             .create(
+                new AgentType("chat-configured"),
                 config ->
                     config
-                        .agentType(new AgentType("chat-configured"))
                         .systemPrompt("You are a test assistant.")
                         .backlogPolicy(BacklogPolicy.keepAll())
                         .listener(NarrationListener.none())
@@ -180,24 +182,22 @@ class TerminationAndConfigurationTest {
     assertThat(configured).isNotNull();
 
     var harnesses = engine.harnesses();
-    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> clash =
+    Customizer<QueuedHarnessConfig<String>> clash =
         config ->
             config
-                .agentType(new AgentType("chat-clash"))
                 .systemPrompt("You are a test assistant.")
                 .tool(new PingTool())
                 .tool(new PingTool());
-    assertThatThrownBy(() -> harnesses.create(clash))
+    assertThatThrownBy(() -> harnesses.create(new AgentType("chat-clash"), clash))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("duplicate");
 
-    java.util.function.Consumer<org.jwcarman.nessy.api.QueuedHarnessConfig<String>> noTail =
+    Customizer<QueuedHarnessConfig<String>> noTail =
         config ->
             config
-                .agentType(new AgentType("chat-tail"))
                 .systemPrompt("You are a test assistant.")
                 .inference(in -> in.context(ctx -> ctx.maxTail(0)));
-    assertThatThrownBy(() -> harnesses.create(noTail))
+    assertThatThrownBy(() -> harnesses.create(new AgentType("chat-tail"), noTail))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
   }

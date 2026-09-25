@@ -50,14 +50,14 @@ class EngineUnderTestSmokeTest {
           engine
               .harnesses()
               .create(
+                  type,
                   String.class,
                   config ->
                       config
-                          .agentType(type)
                           .systemPrompt("You are a test assistant.")
                           .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
-      harness.observe(agentId, "how deep is Loch Ness?");
+      harness.tell(agentId, "how deep is Loch Ness?");
 
       await()
           .atMost(Duration.ofSeconds(20))

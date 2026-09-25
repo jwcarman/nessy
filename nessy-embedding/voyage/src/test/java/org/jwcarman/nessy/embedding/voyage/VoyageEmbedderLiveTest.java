@@ -42,7 +42,7 @@ class VoyageEmbedderLiveTest {
     String model =
         System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
     try (VoyageEmbeddingProvider provider =
-        VoyageEmbeddingProvider.create(c -> c.fromEnv().model(model))) {
+        VoyageEmbeddingProvider.of(c -> c.fromEnv().model(model))) {
       Embedder embedder = embedderOver(provider, model);
       List<Embedding> embeddings =
           embedder.embedDocuments(

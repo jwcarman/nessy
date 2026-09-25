@@ -20,11 +20,12 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link VoyageEmbeddingProvider#create(VoyageEmbedderCustomizer)} hands a customizer: a
- * CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link VoyageEmbeddingProvider#create(Customizer<VoyageEmbedderConfig>)} hands a customizer:
+ * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
  */
 public final class VoyageEmbedderConfig {
 

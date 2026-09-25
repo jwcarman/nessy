@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -66,16 +67,21 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return defaultDimension;
   }
 
-  public static GeminiEmbeddingProvider create(GeminiEmbedderCustomizer customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
+  public static GeminiEmbeddingProvider of(List<Customizer<GeminiEmbedderConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
     GeminiEmbedderConfig config = new GeminiEmbedderConfig();
-    customizer.customize(config);
+    customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
+  }
+
+  /** One customizer, for a caller that is not a container. */
+  public static GeminiEmbeddingProvider of(Customizer<GeminiEmbedderConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /** {@code GEMINI_API_KEY} or {@code GOOGLE_API_KEY}, and the default model. */
   public static GeminiEmbeddingProvider fromEnv() {
-    return create(GeminiEmbedderConfig::fromEnv);
+    return of(GeminiEmbedderConfig::fromEnv);
   }
 
   @Override

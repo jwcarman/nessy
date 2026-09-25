@@ -18,11 +18,12 @@ package org.jwcarman.nessy.inference.openai;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link OpenAiInferenceProvider#create(OpenAiProviderCustomizer)} hands a customizer: a
- * CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public {@code
+ * What {@link OpenAiInferenceProvider#create(Customizer<OpenAiProviderConfig>)} hands a customizer:
+ * a CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public {@code
  * build()}.
  */
 public final class OpenAiProviderConfig {
@@ -120,7 +121,8 @@ public final class OpenAiProviderConfig {
   /**
    * Turns this config into the {@link OpenAiInferenceProvider} it describes — the factory's own
    * step, never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
-   * OpenAiInferenceProvider#create(OpenAiProviderCustomizer)}, once {@code customize} has returned.
+   * OpenAiInferenceProvider#create(Customizer<OpenAiProviderConfig>)}, once {@code customize} has
+   * returned.
    */
   OpenAiInferenceProvider build() {
     if (client != null) {

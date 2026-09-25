@@ -43,7 +43,7 @@ class OpenAiEmbedderLiveTest {
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
     try (OpenAiEmbeddingProvider provider =
-        OpenAiEmbeddingProvider.create(OpenAiEmbedderConfig::fromEnv)) {
+        OpenAiEmbeddingProvider.of(OpenAiEmbedderConfig::fromEnv)) {
       Embedder embedder = new DefaultEmbedderFactory(provider, MODEL).create(c -> {});
 
       List<Embedding> embeddings =

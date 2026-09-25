@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.tool.Approver;
  * an application says what it wants in one expression and never holds a half-built object.
  *
  * <pre>{@code
- * Approver gate = PolicyApprover.create(policy -> policy
+ * Approver gate = PolicyApprover.of(policy -> policy
  *     .engine(opa)
  *     .delegate("humans", desk)
  *     .delegate("security-review", judge));
