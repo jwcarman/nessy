@@ -17,14 +17,15 @@ package org.jwcarman.nessy.engine.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -34,9 +35,19 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.tool.ActionRenderer;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.tool.ToolBinding;
+import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -93,8 +104,7 @@ class DefaultDirectHarnessTest {
     }
   }
 
-  private DefaultDirectHarness<String> harness(
-      InferenceProvider model, Map<ToolName, DefaultDirectHarness.DirectTool> tools) {
+  private DefaultDirectHarness<String> harness(InferenceProvider model, Tools tools) {
     return new DefaultDirectHarness<>(
         new LocalLocks(),
         TYPE,
@@ -121,18 +131,75 @@ class DefaultDirectHarnessTest {
         List.of(new Block.ToolCall(CALL, new ToolName(tool), "{\"id\":\"42\"}")), Usage.unknown());
   }
 
-  private static DefaultDirectHarness.DirectTool tool(String result) {
-    return new DefaultDirectHarness.DirectTool() {
+  /** A tool that answers with one line, bound with everything at its default. */
+  private static Tools bound(Tool<Lookup> tool) {
+    return bound(tool, Approver.allow());
+  }
+
+  private static Tools bound(Tool<Lookup> tool, Approver approver) {
+    return new Tools(
+        List.of(
+            new ToolBinding<>(
+                tool,
+                MAPPER,
+                new InputSchema("{}"),
+                Duration.ofSeconds(30),
+                new RetryPolicy.Never(),
+                ActionRenderer.byToString(),
+                List.of(),
+                approver,
+                Duration.ofMinutes(10),
+                new RetryPolicy.Never())));
+  }
+
+  record Lookup(String id) {}
+
+  /** A tool that answers with one line. */
+  private static Tool<Lookup> tool(String result) {
+    return new Tool<Lookup>() {
+      @Override
+      public Class<Lookup> inputType() {
+        return Lookup.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return LOOKUP;
+      }
+
+      @Override
       public String description() {
-        return "looks things up";
+        return "looks something up";
       }
 
-      public InputSchema schema() {
-        return new InputSchema("{\"type\":\"object\"}");
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+        return Awaited.ready(ToolResult.ok(new Block.Text(result)));
+      }
+    };
+  }
+
+  /** A tool that throws, to prove a broken tool is told to the model rather than ending a turn. */
+  private static Tool<Lookup> broken(String message) {
+    return new Tool<Lookup>() {
+      @Override
+      public Class<Lookup> inputType() {
+        return Lookup.class;
       }
 
-      public List<Block.ToolResultContent> call(String arguments) {
-        return List.of(new Block.Text(result));
+      @Override
+      public ToolName name() {
+        return LOOKUP;
+      }
+
+      @Override
+      public String description() {
+        return "breaks";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+        throw new IllegalStateException(message);
       }
     };
   }
@@ -140,8 +207,8 @@ class DefaultDirectHarnessTest {
   @Test
   @DisplayName("a turn with no tools runs to an answer")
   void a_plain_turn() {
-    Outcome outcome =
-        harness(new Scripted().then(answering("forty two")), Map.of())
+    Outcome<String> outcome =
+        harness(new Scripted().then(answering("forty two")), Tools.none())
             .ask(AgentId.random(), "what is the answer?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("forty two"));
@@ -153,8 +220,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("charge 42.00"));
 
-    Outcome outcome =
-        harness(model, Map.of(LOOKUP, tool("found it"))).ask(agent, "look up my charge");
+    Outcome outcome = harness(model, bound(tool("found it"))).ask(agent, "look up my charge");
 
     System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE));
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
@@ -174,8 +240,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("the answer itself"));
 
-    harness(model, Map.of(LOOKUP, tool("the tool's own words")))
-        .ask(agent, "a question with words");
+    harness(model, bound(tool("the tool's own words"))).ask(agent, "a question with words");
 
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE).toString())
         .doesNotContain("a question with words")
@@ -189,7 +254,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
 
-    harness(model, Map.of(LOOKUP, tool("found it"))).ask(agent, "look it up");
+    harness(model, bound(tool("found it"))).ask(agent, "look it up");
 
     // The second call saw a turn carrying the observation, the request and the tool's result --
     // all of it resolved back out of the claim check.
@@ -220,7 +285,7 @@ class DefaultDirectHarnessTest {
   void a_scope_remembers() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(answering("first")).then(answering("second"));
-    DefaultDirectHarness<String> harness = harness(model, Map.of());
+    DefaultDirectHarness<String> harness = harness(model, Tools.none());
 
     harness.ask(agent, "one");
     harness.ask(agent, "two");
@@ -234,7 +299,8 @@ class DefaultDirectHarnessTest {
   @DisplayName("a terminated agent refuses further work, loudly")
   void terminate_ends_it() {
     AgentId agent = AgentId.random();
-    DefaultDirectHarness<String> harness = harness(new Scripted().then(answering("ok")), Map.of());
+    DefaultDirectHarness<String> harness =
+        harness(new Scripted().then(answering("ok")), Tools.none());
     harness.ask(agent, "hello");
 
     harness.terminate(agent);
@@ -249,22 +315,7 @@ class DefaultDirectHarnessTest {
   void a_failing_tool_is_reported() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
-    DefaultDirectHarness.DirectTool broken =
-        new DefaultDirectHarness.DirectTool() {
-          public String description() {
-            return "breaks";
-          }
-
-          public InputSchema schema() {
-            return new InputSchema("{\"type\":\"object\"}");
-          }
-
-          public List<Block.ToolResultContent> call(String arguments) {
-            throw new IllegalStateException("the ledger is down");
-          }
-        };
-
-    Outcome<String> outcome = harness(model, Map.of(LOOKUP, broken)).ask(agent, "try");
+    Outcome<String> outcome = harness(model, bound(broken("the ledger is down"))).ask(agent, "try");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
@@ -313,7 +364,7 @@ class DefaultDirectHarnessTest {
             InferenceOptions.of("a-model"),
             (Function<String, List<Block.ObservationContent>>)
                 text -> List.of(new Block.Text(text)),
-            Map.of(),
+            Tools.none(),
             SCHEMAS,
             MAPPER,
             List.of(),
@@ -349,7 +400,7 @@ class DefaultDirectHarnessTest {
           }
           return answering("hi");
         };
-    DefaultDirectHarness<String> harness = harness(slow, Map.of());
+    DefaultDirectHarness<String> harness = harness(slow, Tools.none());
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
       Future<Outcome<String>> holder = callers.submit(() -> harness.ask(agent, "hello"));
@@ -373,7 +424,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("{\"city\":\"Paris\",\"country\":\"France\"}"));
 
     Outcome<Capital> outcome =
-        harness(model, Map.of()).ask(AgentId.random(), "capital of France?", Capital.class);
+        harness(model, Tools.none()).ask(AgentId.random(), "capital of France?", Capital.class);
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France")));
     assertThat(model.seen).hasSize(1);
@@ -390,7 +441,7 @@ class DefaultDirectHarnessTest {
   void prose_is_asked_for_without_a_shape() {
     Scripted model = new Scripted().then(answering("Paris."));
 
-    Outcome<String> outcome = harness(model, Map.of()).ask(AgentId.random(), "capital?");
+    Outcome<String> outcome = harness(model, Tools.none()).ask(AgentId.random(), "capital?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("Paris."));
     assertThat(model.seen.getFirst().outputSchema()).isEmpty();
@@ -402,7 +453,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("Paris, obviously."));
 
     Outcome<Capital> outcome =
-        harness(model, Map.of()).ask(AgentId.random(), "capital of France?", Capital.class);
+        harness(model, Tools.none()).ask(AgentId.random(), "capital of France?", Capital.class);
 
     assertThat(outcome)
         .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Outcome.Failed.class))
@@ -418,7 +469,7 @@ class DefaultDirectHarnessTest {
         new Scripted().then(answering("[{\"city\":\"Paris\",\"country\":\"France\"}]"));
 
     Outcome<List<Capital>> outcome =
-        harness(model, Map.of())
+        harness(model, Tools.none())
             .ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
@@ -439,7 +490,7 @@ class DefaultDirectHarnessTest {
             InferenceOptions.of("a-model"),
             (Function<String, List<Block.ObservationContent>>)
                 text -> List.of(new Block.Text(text)),
-            Map.of(),
+            Tools.none(),
             SCHEMAS,
             MAPPER,
             List.of(),
@@ -483,11 +534,94 @@ class DefaultDirectHarnessTest {
         new SystemPrompt("You are terse."),
         InferenceOptions.of("a-model"),
         (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
-        Map.of(),
+        Tools.none(),
         SCHEMAS,
         MAPPER,
         List.of(),
         maxTail,
         List.of());
+  }
+
+  @Test
+  @DisplayName("an approver that says no stops the tool, and the model is told")
+  void a_denied_call_does_not_run() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("understood"));
+    AtomicBoolean ran = new AtomicBoolean();
+    Tool<Lookup> watched =
+        new Tool<Lookup>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return LOOKUP;
+          }
+
+          @Override
+          public String description() {
+            return "looks something up";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            ran.set(true);
+            return Awaited.ready(ToolResult.ok(new Block.Text("should never happen")));
+          }
+        };
+
+    Outcome<String> outcome =
+        harness(model, bound(watched, _ -> Awaited.ready(ApprovalResult.denied("not today"))))
+            .ask(agent, "look it up");
+
+    assertThat(ran).as("a denied call is not a call").isFalse();
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("understood"));
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+        .extracting(e -> e.getClass().getSimpleName())
+        .contains("ToolDenied");
+  }
+
+  /**
+   * The one thing that genuinely cannot cross to this door: an approver that answers later. There
+   * is nowhere to put the waiting, so it is a denial with a reason rather than a turn that hangs.
+   */
+  @Test
+  @DisplayName("an approver that defers is a denial, because nothing here can wait")
+  void a_deferred_approval_is_denied() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("fine"));
+    AtomicBoolean ran = new AtomicBoolean();
+    Tool<Lookup> watched =
+        new Tool<Lookup>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return LOOKUP;
+          }
+
+          @Override
+          public String description() {
+            return "looks something up";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            ran.set(true);
+            return Awaited.ready(ToolResult.ok(new Block.Text("should never happen")));
+          }
+        };
+
+    harness(model, bound(watched, _ -> Awaited.deferred())).ask(agent, "look it up");
+
+    assertThat(ran).isFalse();
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+        .extracting(e -> e.getClass().getSimpleName())
+        .contains("ToolDenied");
   }
 }

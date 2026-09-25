@@ -15,11 +15,11 @@
  */
 package org.jwcarman.nessy.engine.direct;
 
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
@@ -28,10 +28,15 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
@@ -41,6 +46,8 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
+import org.jwcarman.nessy.engine.tool.ToolBinding;
+import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -48,10 +55,10 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
-import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
+import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import tools.jackson.databind.ObjectMapper;
@@ -78,7 +85,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final SystemPrompt systemPrompt;
   private final InferenceOptions options;
   private final Function<I, List<Block.ObservationContent>> renderer;
-  private final Map<ToolName, DirectTool> tools;
+  private final Tools tools;
 
   /** How a Java type becomes a schema, and how an answer in that shape becomes the type back. */
   private final InputSchemaGenerator schemas;
@@ -100,7 +107,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       SystemPrompt systemPrompt,
       InferenceOptions options,
       Function<I, List<Block.ObservationContent>> renderer,
-      Map<ToolName, DirectTool> tools,
+      Tools tools,
       InputSchemaGenerator schemas,
       ObjectMapper mapper,
       List<Summarizer> summaries,
@@ -115,7 +122,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.systemPrompt = systemPrompt;
     this.options = options;
     this.renderer = renderer;
-    this.tools = Map.copyOf(tools);
+    this.tools = tools;
     this.schemas = schemas;
     this.mapper = mapper;
     // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
@@ -126,13 +133,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
             summaries,
             maxTail,
             ambient);
-    this.toolset = Toolset.of(offersOf(this.tools));
-  }
-
-  private static List<ToolOffer> offersOf(Map<ToolName, DirectTool> tools) {
-    return tools.entrySet().stream()
-        .map(e -> new ToolOffer(e.getKey(), e.getValue().description(), e.getValue().schema()))
-        .toList();
+    this.toolset = Toolset.of(tools.offers());
   }
 
   @Override
@@ -224,33 +225,109 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     return switch (effect) {
       case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, shape));
 
-      // Nothing here can park, so approval is a policy answering now. A desk that needs a person
-      // belongs on the queued door, which has somewhere to put the waiting.
-      case AgentEffect.Approve approve ->
-          new AgentCommand.CompleteApproval(
-              approve.callId(), new AgentCommand.ApprovalOutcome.Approved(Optional.empty()));
+      case AgentEffect.Approve approve -> approve(agent, approve, history);
 
-      case AgentEffect.CallTool call -> {
-        DirectTool tool = tools.get(call.toolName());
-        if (tool == null) {
-          yield new AgentCommand.CompleteToolCall(
-              call.callId(), new AgentCommand.ToolOutcome.Failed("no such tool"));
-        }
-        try {
-          // Rendered and claim-checked on the way back, so a result crosses into the core as a
-          // reference and never as content.
-          yield new AgentCommand.CompleteToolCall(
-              call.callId(),
-              new AgentCommand.ToolOutcome.Succeeded(
-                  payloads.put(tool.call(argumentsOf(call, history)))));
-        } catch (RuntimeException broken) {
-          // A sentence, because the model is going to read it. Names what went wrong, never the
-          // values involved.
-          yield new AgentCommand.CompleteToolCall(
-              call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
-        }
-      }
+      case AgentEffect.CallTool call -> callTool(agent, call, history);
     };
+  }
+
+  /**
+   * Asks whoever guards this tool, now.
+   *
+   * <p>A person at a terminal is the case this door serves best: they are already waiting on the
+   * answer, so asking them costs nothing that was not already being spent. What cannot cross is an
+   * approver that parks -- a desk that replies tomorrow has nowhere to put the waiting here, so it
+   * is a denial with a reason rather than a turn that never ends.
+   */
+  private AgentCommand approve(
+      AgentId agent, AgentEffect.Approve approve, List<AgentEvent> history) {
+    ToolBinding<?> binding = tools.find(approve.toolName()).orElse(null);
+    if (binding == null) {
+      return new AgentCommand.CompleteApproval(
+          approve.callId(),
+          new AgentCommand.ApprovalOutcome.Denied("no such tool", Optional.empty()));
+    }
+    ApprovalRequest question =
+        binding.question(
+            agentType,
+            agent,
+            turnOf(history),
+            approve.callId(),
+            argumentsOf(approve.callId(), history),
+            Instant.now(),
+            new ReplyToken(approve.callId().value()));
+    return switch (binding.approve(question)) {
+      case Awaited.Ready(ApprovalResult result) ->
+          switch (result) {
+            case ApprovalResult.Approved(var reference) ->
+                new AgentCommand.CompleteApproval(
+                    approve.callId(), new AgentCommand.ApprovalOutcome.Approved(reference));
+            case ApprovalResult.Denied(String reason, var reference) ->
+                new AgentCommand.CompleteApproval(
+                    approve.callId(), new AgentCommand.ApprovalOutcome.Denied(reason, reference));
+          };
+      case Awaited.Deferred<ApprovalResult> _ ->
+          new AgentCommand.CompleteApproval(
+              approve.callId(),
+              new AgentCommand.ApprovalOutcome.Denied(
+                  "approval was deferred, and nothing here can wait for it", Optional.empty()));
+    };
+  }
+
+  private AgentCommand callTool(
+      AgentId agent, AgentEffect.CallTool call, List<AgentEvent> history) {
+    ToolBinding<?> binding = tools.find(call.toolName()).orElse(null);
+    if (binding == null) {
+      return new AgentCommand.CompleteToolCall(
+          call.callId(), new AgentCommand.ToolOutcome.Failed("no such tool"));
+    }
+    try {
+      return switch (binding.call(
+          agentType,
+          agent,
+          turnOf(history),
+          call.callId(),
+          call.toolName(),
+          argumentsOf(call.callId(), history),
+          Instant.now().plus(binding.timeout()),
+          new ReplyToken(call.callId().value()))) {
+        case Awaited.Ready(ToolResult result) -> completed(call, result);
+        // A tool that wants to answer later has nowhere to put the answer on this door.
+        case Awaited.Deferred<ToolResult> _ ->
+            new AgentCommand.CompleteToolCall(
+                call.callId(),
+                new AgentCommand.ToolOutcome.Failed(
+                    "the tool deferred, and nothing here can wait for it"));
+      };
+    } catch (RuntimeException broken) {
+      // A sentence, because the model is going to read it. Names what went wrong, never the
+      // values involved.
+      return new AgentCommand.CompleteToolCall(
+          call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
+    }
+  }
+
+  private AgentCommand completed(AgentEffect.CallTool call, ToolResult result) {
+    return switch (result) {
+      // Claim-checked on the way back, so a result crosses into the core as a reference and never
+      // as content.
+      case ToolResult.Success(var blocks) ->
+          new AgentCommand.CompleteToolCall(
+              call.callId(), new AgentCommand.ToolOutcome.Succeeded(payloads.put(blocks)));
+      case ToolResult.Failure(String message) ->
+          new AgentCommand.CompleteToolCall(
+              call.callId(), new AgentCommand.ToolOutcome.Failed(message));
+    };
+  }
+
+  /** The turn these events belong to: the last one started. */
+  private TurnId turnOf(List<AgentEvent> history) {
+    return history.reversed().stream()
+        .filter(AgentEvent.TurnStarted.class::isInstance)
+        .map(AgentEvent.TurnStarted.class::cast)
+        .findFirst()
+        .map(AgentEvent.TurnStarted::turn)
+        .orElseThrow(() -> new IllegalStateException("a call outside any turn"));
   }
 
   private AgentCommand.InferenceOutcome infer(AgentId agent, Optional<OutputSchema> shape) {
@@ -283,25 +360,25 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         .toList();
   }
 
-  private String argumentsOf(AgentEffect.CallTool call, List<AgentEvent> history) {
+  private String argumentsOf(CallId callId, List<AgentEvent> history) {
     return history.reversed().stream()
         .filter(AgentEvent.ActionsRequested.class::isInstance)
         .map(AgentEvent.ActionsRequested.class::cast)
         .findFirst()
-        .map(asked -> resolveCall(asked, call))
-        .orElseThrow(() -> new IllegalStateException("no request holds " + call.callId()));
+        .map(asked -> resolveCall(asked, callId))
+        .orElseThrow(() -> new IllegalStateException("no request holds " + callId));
   }
 
-  private String resolveCall(AgentEvent.ActionsRequested asked, AgentEffect.CallTool call) {
+  private String resolveCall(AgentEvent.ActionsRequested asked, CallId callId) {
     return switch (payloads.get(asked.request())) {
       case PayloadStore.Resolved.Found(List<Block> content) ->
           content.stream()
               .filter(Block.ToolCall.class::isInstance)
               .map(Block.ToolCall.class::cast)
-              .filter(tc -> tc.id().equals(call.callId()))
+              .filter(tc -> tc.id().equals(callId))
               .findFirst()
               .map(Block.ToolCall::arguments)
-              .orElseThrow(() -> new IllegalStateException("no call " + call.callId()));
+              .orElseThrow(() -> new IllegalStateException("no call " + callId));
       case PayloadStore.Resolved.Missing _ ->
           throw new IllegalStateException("no payload behind " + asked.request());
     };
@@ -357,14 +434,5 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
               .reduce("", String::concat);
       case PayloadStore.Resolved.Missing _ -> "";
     };
-  }
-
-  /** A tool, for a door where nothing can park. */
-  public interface DirectTool {
-    String description();
-
-    org.jwcarman.nessy.inference.tool.InputSchema schema();
-
-    List<Block.ToolResultContent> call(String arguments);
   }
 }

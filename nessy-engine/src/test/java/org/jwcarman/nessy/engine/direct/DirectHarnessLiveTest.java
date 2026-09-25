@@ -26,7 +26,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,6 +34,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.block.Block;
@@ -86,7 +86,7 @@ class DirectHarnessLiveTest {
         new SystemPrompt("You are a terse assistant."),
         new InferenceOptions(MODEL, 4096),
         text -> List.of(new Block.Text(text)),
-        Map.of(),
+        Tools.none(),
         new VictoolsInputSchemaGenerator(),
         JsonMapper.builder().build(),
         List.of(),
