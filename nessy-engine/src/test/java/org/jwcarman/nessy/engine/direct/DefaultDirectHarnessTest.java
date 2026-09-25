@@ -30,8 +30,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.ScopeId;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -123,7 +123,7 @@ class DefaultDirectHarnessTest {
   void a_plain_turn() {
     Outcome outcome =
         harness(new Scripted().then(answering("forty two")), Map.of())
-            .ask(ScopeId.fresh(), "what is the answer?");
+            .ask(AgentId.random(), "what is the answer?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered("forty two"));
   }
@@ -131,15 +131,15 @@ class DefaultDirectHarnessTest {
   @Test
   @DisplayName("a turn that calls a tool runs the whole loop")
   void a_turn_with_a_tool() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("charge 42.00"));
 
     Outcome outcome =
-        harness(model, Map.of(LOOKUP, tool("found it"))).ask(scope, "look up my charge");
+        harness(model, Map.of(LOOKUP, tool("found it"))).ask(agent, "look up my charge");
 
-    System.out.println("EVENTS: " + events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE));
+    System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE));
     assertThat(outcome).isEqualTo(new Outcome.Answered("charge 42.00"));
-    assertThat(events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .containsExactly(
             "TurnStarted",
@@ -152,13 +152,13 @@ class DefaultDirectHarnessTest {
   @Test
   @DisplayName("no content ever reaches the event stream: every event carries a reference")
   void the_stream_holds_no_content() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("the answer itself"));
 
     harness(model, Map.of(LOOKUP, tool("the tool's own words")))
-        .ask(scope, "a question with words");
+        .ask(agent, "a question with words");
 
-    assertThat(events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE).toString())
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE).toString())
         .doesNotContain("a question with words")
         .doesNotContain("the tool's own words")
         .doesNotContain("the answer itself");
@@ -167,10 +167,10 @@ class DefaultDirectHarnessTest {
   @Test
   @DisplayName("what the model is shown is rebuilt from the stream, not remembered")
   void the_transcript_is_projected_from_events() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
 
-    harness(model, Map.of(LOOKUP, tool("found it"))).ask(scope, "look it up");
+    harness(model, Map.of(LOOKUP, tool("found it"))).ask(agent, "look it up");
 
     // The second call saw a turn carrying the observation, the request and the tool's result --
     // all of it resolved back out of the claim check.
@@ -197,14 +197,14 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("a second ask on the same scope sees the first turn as history")
+  @DisplayName("a second ask on the same agent sees the first turn as history")
   void a_scope_remembers() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(answering("first")).then(answering("second"));
     DefaultDirectHarness<String> harness = harness(model, Map.of());
 
-    harness.ask(scope, "one");
-    harness.ask(scope, "two");
+    harness.ask(agent, "one");
+    harness.ask(agent, "two");
 
     assertThat(model.seen.get(1).context().turns())
         .as("the second call was shown the first turn as well as its own")
@@ -212,15 +212,15 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("a terminated scope refuses further work, loudly")
+  @DisplayName("a terminated agent refuses further work, loudly")
   void terminate_ends_it() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     DefaultDirectHarness<String> harness = harness(new Scripted().then(answering("ok")), Map.of());
-    harness.ask(scope, "hello");
+    harness.ask(agent, "hello");
 
-    harness.terminate(scope);
+    harness.terminate(agent);
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(() -> harness.ask(scope, "again"))
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> harness.ask(agent, "again"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("accepts nothing further");
   }
@@ -228,7 +228,7 @@ class DefaultDirectHarnessTest {
   @Test
   @DisplayName("a failing tool is reported to the model rather than ending the turn")
   void a_failing_tool_is_reported() {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
     DefaultDirectHarness.DirectTool broken =
         new DefaultDirectHarness.DirectTool() {
@@ -245,10 +245,10 @@ class DefaultDirectHarnessTest {
           }
         };
 
-    Outcome outcome = harness(model, Map.of(LOOKUP, broken)).ask(scope, "try");
+    Outcome outcome = harness(model, Map.of(LOOKUP, broken)).ask(agent, "try");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered("sorry"));
-    assertThat(events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
   }
@@ -272,9 +272,9 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("a second caller on a busy scope is told so, and the scope is untouched")
+  @DisplayName("a second caller on a busy agent is told so, and the agent is untouched")
   void a_busy_scope_is_refused() {
-    // Refusing every lock is what a held scope looks like from the outside, without needing a
+    // Refusing every lock is what a held agent looks like from the outside, without needing a
     // second thread to hold one.
     Locks held =
         new Locks() {
@@ -295,24 +295,24 @@ class DefaultDirectHarnessTest {
                 text -> List.of(new Block.Text(text)),
             Map.of());
 
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
 
-    Outcome outcome = harness.ask(scope, "anyone home?");
+    Outcome outcome = harness.ask(agent, "anyone home?");
 
     assertThat(outcome).isEqualTo(new Outcome.Busy());
-    assertThat(events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .as("nothing was appended, so nothing has to be undone")
         .isEmpty();
   }
 
   @Test
-  @DisplayName("while one caller is mid-turn, the others are told the scope is busy")
+  @DisplayName("while one caller is mid-turn, the others are told the agent is busy")
   void only_one_of_many_callers_runs() throws Exception {
-    ScopeId scope = ScopeId.fresh();
+    AgentId agent = AgentId.random();
     CountDownLatch inTurn = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     // A model that does not return until it is let go, so the first caller is demonstrably still
-    // holding the scope while the others ask. Without this the turn finishes first and the lock
+    // holding the agent while the others ask. Without this the turn finishes first and the lock
     // serialises them instead of refusing, which proves nothing.
     InferenceProvider slow =
         (request, narrator) -> {
@@ -327,11 +327,11 @@ class DefaultDirectHarnessTest {
     DefaultDirectHarness<String> harness = harness(slow, Map.of());
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome> holder = callers.submit(() -> harness.ask(scope, "hello"));
+      Future<Outcome> holder = callers.submit(() -> harness.ask(agent, "hello"));
       inTurn.await();
 
       List<Outcome> refused =
-          IntStream.range(0, 7).mapToObj(_ -> harness.ask(scope, "hello")).toList();
+          IntStream.range(0, 7).mapToObj(_ -> harness.ask(agent, "hello")).toList();
 
       assertThat(refused).as("every one of them, at once").containsOnly(new Outcome.Busy());
       release.countDown();

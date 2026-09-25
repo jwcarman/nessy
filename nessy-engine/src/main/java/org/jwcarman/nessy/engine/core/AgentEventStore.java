@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.core;
 
 import java.util.List;
-import org.jwcarman.nessy.api.ScopeId;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.inference.Seq;
 
 /**
@@ -44,16 +44,16 @@ public interface AgentEventStore {
    *     recourse is to reconstitute and decide again. Vacuous for a direct harness, load-bearing
    *     for a queued one, and the same seam serves both.
    */
-  void append(ScopeId scope, List<AgentEvent> events, Seq expectedLast);
+  void append(AgentId agent, List<AgentEvent> events, Seq expectedLast);
 
   /** Everything after the watermark, in order. */
-  List<AgentEvent> readFrom(ScopeId scope, Seq watermark);
+  List<AgentEvent> readFrom(AgentId agent, Seq watermark);
 
-  /** Where replay starts for this scope. {@link Seq#NONE} for a scope with no history. */
-  Seq watermark(ScopeId scope);
+  /** Where replay starts for this agent. {@link Seq#NONE} for a agent with no history. */
+  Seq watermark(AgentId agent);
 
   /** Moves the watermark, which a harness does when a turn closes. */
-  void watermark(ScopeId scope, Seq at);
+  void watermark(AgentId agent, Seq at);
 
   /** Raised when {@code expectedLast} did not hold. */
   final class Conflict extends RuntimeException {

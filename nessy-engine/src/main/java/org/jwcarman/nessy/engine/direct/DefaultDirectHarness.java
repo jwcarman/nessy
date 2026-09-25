@@ -22,9 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.ScopeId;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
@@ -99,30 +99,32 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   @Override
-  public Outcome ask(ScopeId scope, I input) {
-    // One turn at a time per scope. Two callers asking at once used to race on the scope's stream
-    // and find out at the append; now the second is told the scope is busy and nothing it did has
-    // to be undone. expectedLast still guards the append, because a lease can expire under a
-    // holder that is merely slow -- this stops two callers, that stops two writers.
-    return locks.tryWithLock(scope.value(), () -> runTurn(scope, input)).orElse(new Outcome.Busy());
+  public Outcome ask(AgentId agent, I input) {
+    // One turn at a time per agent. Two callers asking at once used to race on that agent's
+    // stream and find out at the append; now the second is told the agent is busy and nothing it
+    // did has to be undone. expectedLast still guards the append, because a lease can expire under
+    // a holder that is merely slow -- this stops two callers, that stops two writers.
+    return locks
+        .tryWithLock(agent.value().toString(), () -> runTurn(agent, input))
+        .orElse(new Outcome.Busy());
   }
 
-  private Outcome runTurn(ScopeId scope, I input) {
+  private Outcome runTurn(AgentId agent, I input) {
     // TWO READS, and they are not the same read.
     //
     // The state is rebuilt from the watermark alone -- the latest turn, and nothing before it.
     // That is what the watermark is for: reconstitution costs one turn's events however long this
-    // scope has lived, so a conversation of a thousand turns rebuilds as fast as its first.
+    // agent has lived, so a conversation of a thousand turns rebuilds as fast as its first.
     //
     // The transcript is a different question. What the model is shown is the conversation, which
     // is every turn before this one as well, so it takes its own read. Using the watermarked read
     // for both is what made a second ask forget the first.
-    Seq watermark = events.watermark(scope);
-    AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(scope, watermark));
+    Seq watermark = events.watermark(agent);
+    AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
 
     // TODO: unwindowed. ContextConfig.maxTail is the knob this should hang off; until it does, a
     // long conversation sends the model all of it.
-    List<AgentEvent> history = new ArrayList<>(events.readFrom(scope, Seq.NONE));
+    List<AgentEvent> history = new ArrayList<>(events.readFrom(agent, Seq.NONE));
 
     // Claim-checked before it reaches the core, which never sees I and never sees blocks.
     Deque<AgentCommand> pending = new ArrayDeque<>();
@@ -131,9 +133,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     while (!pending.isEmpty()) {
       Decision decision = state.execute(pending.poll());
 
-      // expectedLast is vacuous here -- nothing else writes this scope -- and load-bearing for a
+      // expectedLast is vacuous here -- nothing else writes this agent -- and load-bearing for a
       // queued harness using the same seam. One signature rather than two.
-      events.append(scope, decision.events(), state.seq());
+      events.append(agent, decision.events(), state.seq());
       history.addAll(decision.events());
       state = state.applyAll(decision.events());
 
@@ -143,22 +145,22 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     }
 
     // A closed turn is folded and will not change, so replay starts after it next time.
-    events.watermark(scope, state.seq());
+    events.watermark(agent, state.seq());
     return outcome(history);
   }
 
   @Override
-  public void terminate(ScopeId scope) {
+  public void terminate(AgentId agent) {
     // Under the same lock as a turn, because the core only takes Terminate from Idle: asking
     // while a turn is running would be declined silently, and waiting for the turn is not this
     // door's habit. A caller that was refused the lock asks again once the turn it saw has ended.
     locks.tryWithLock(
-        scope.value(),
+        agent.value().toString(),
         () -> {
-          Seq watermark = events.watermark(scope);
-          AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(scope, watermark));
+          Seq watermark = events.watermark(agent);
+          AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
           Decision decision = state.execute(new AgentCommand.Terminate());
-          events.append(scope, decision.events(), state.seq());
+          events.append(agent, decision.events(), state.seq());
         });
   }
 

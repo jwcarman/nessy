@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jwcarman.nessy.api.ScopeId;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.inference.Seq;
@@ -32,13 +32,13 @@ import org.jwcarman.nessy.inference.Seq;
  */
 public final class InMemoryAgentEventStore implements AgentEventStore {
 
-  private final Map<ScopeId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
-  private final Map<ScopeId, Seq> watermarks = new ConcurrentHashMap<>();
+  private final Map<AgentId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
+  private final Map<AgentId, Seq> watermarks = new ConcurrentHashMap<>();
 
   @Override
-  public synchronized void append(ScopeId scope, List<AgentEvent> events, Seq expectedLast) {
-    List<AgentEvent> stream = streams.computeIfAbsent(scope, _ -> new ArrayList<>());
-    Seq last = stream.isEmpty() ? watermark(scope) : stream.getLast().seq();
+  public synchronized void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+    List<AgentEvent> stream = streams.computeIfAbsent(agent, _ -> new ArrayList<>());
+    Seq last = stream.isEmpty() ? watermark(agent) : stream.getLast().seq();
     if (!last.equals(expectedLast)) {
       throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
     }
@@ -46,19 +46,19 @@ public final class InMemoryAgentEventStore implements AgentEventStore {
   }
 
   @Override
-  public synchronized List<AgentEvent> readFrom(ScopeId scope, Seq watermark) {
-    return streams.getOrDefault(scope, List.of()).stream()
+  public synchronized List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
+    return streams.getOrDefault(agent, List.of()).stream()
         .filter(event -> event.seq().compareTo(watermark) > 0)
         .toList();
   }
 
   @Override
-  public Seq watermark(ScopeId scope) {
-    return watermarks.getOrDefault(scope, Seq.NONE);
+  public Seq watermark(AgentId agent) {
+    return watermarks.getOrDefault(agent, Seq.NONE);
   }
 
   @Override
-  public void watermark(ScopeId scope, Seq at) {
-    watermarks.put(scope, at);
+  public void watermark(AgentId agent, Seq at) {
+    watermarks.put(agent, at);
   }
 }
