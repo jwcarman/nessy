@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -116,7 +117,9 @@ public class NessyAutoConfiguration {
   }
 
   @Bean
-  @ConditionalOnMissingBean
+  // Against the INTERFACE, as the direct door's is: an application declaring its own factory
+  // declares the interface, and a condition naming the concrete class never sees it.
+  @ConditionalOnMissingBean(QueuedHarnessFactory.class)
   public DefaultQueuedHarnessFactory nessyHarnessFactory(
       DataSource dataSource,
       ReplyTokens replyTokens,

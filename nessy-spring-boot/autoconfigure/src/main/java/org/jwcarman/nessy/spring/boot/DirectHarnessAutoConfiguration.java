@@ -19,6 +19,7 @@ package org.jwcarman.nessy.spring.boot;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
@@ -35,6 +36,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -55,12 +57,20 @@ import tools.jackson.databind.json.JsonMapper;
  * line and says what it does.
  */
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
+// Bound here as well as by the queued door, because this door must stand on its own: an
+// application that wants only this one excludes the other, and everything the other brought --
+// the properties among them -- goes with it.
+@EnableConfigurationProperties(NessyProperties.class)
 @ConditionalOnClass(DefaultDirectHarnessFactory.class)
 public class DirectHarnessAutoConfiguration {
 
   @Bean
   @ConditionalOnBean(DataSource.class)
-  @ConditionalOnMissingBean
+  // Against the INTERFACE, not this method's return type. An application declaring its own
+  // factory declares it as DirectHarnessFactory -- every example does -- and a condition naming
+  // the concrete class does not see it, so the starter builds a second one and then demands
+  // everything it needs from an application that had already said it wanted none of this.
+  @ConditionalOnMissingBean(DirectHarnessFactory.class)
   public DefaultDirectHarnessFactory nessyDirectHarnessFactory(
       DataSource dataSource,
       org.jwcarman.nessy.inference.InferenceProvider models,
