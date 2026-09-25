@@ -56,6 +56,17 @@ public final class JdbcBacklog<O> implements Backlog<O> {
        WHERE agent_type = ? AND agent_id = ?
       """;
 
+  /**
+   * One before the front. Negative is fine and expected: an ordinal is a position, not a count, and
+   * an empty backlog starts over at one whatever it held before.
+   */
+  private static final String FIRST_ORDINAL =
+      """
+      SELECT COALESCE(MIN(ordinal), 2) - 1
+        FROM nessy_agent_backlog
+       WHERE agent_type = ? AND agent_id = ?
+      """;
+
   private static final String INSERT =
       """
       INSERT INTO nessy_agent_backlog (agent_type, agent_id, ordinal, arrived_at, payload)
@@ -153,7 +164,13 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   @Override
   public void append(BacklogItem<O> item) {
     Objects.requireNonNull(item, "item must not be null");
-    insert(nextOrdinal(), item);
+    insert(ordinalFrom(NEXT_ORDINAL), item);
+  }
+
+  @Override
+  public void prepend(BacklogItem<O> item) {
+    Objects.requireNonNull(item, "item must not be null");
+    insert(ordinalFrom(FIRST_ORDINAL), item);
   }
 
   @Override
@@ -200,11 +217,8 @@ public final class JdbcBacklog<O> implements Backlog<O> {
     jdbc.sql(CLEAR).params(agentType.value(), agent.value()).update();
   }
 
-  private long nextOrdinal() {
-    return jdbc.sql(NEXT_ORDINAL)
-        .params(agentType.value(), agent.value())
-        .query(Long.class)
-        .single();
+  private long ordinalFrom(String sql) {
+    return jdbc.sql(sql).params(agentType.value(), agent.value()).query(Long.class).single();
   }
 
   private void insert(long ordinal, BacklogItem<O> item) {

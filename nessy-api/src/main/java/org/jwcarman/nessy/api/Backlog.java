@@ -60,6 +60,16 @@ public interface Backlog<O> {
   void append(BacklogItem<O> item);
 
   /**
+   * Keep it, ahead of everything already waiting.
+   *
+   * <p>For the arrival that should not wait its turn -- an interrupt, a correction, a cancellation
+   * that the things queued behind it would be wasted work against. Costs exactly what appending
+   * does: a backlog is ordered by a number, so both ends are a step away from what is already there
+   * and nothing in between is renumbered.
+   */
+  void prepend(BacklogItem<O> item);
+
+  /**
    * Keep only this one.
    *
    * <p>For observations that are snapshots rather than increments, where an older reading is

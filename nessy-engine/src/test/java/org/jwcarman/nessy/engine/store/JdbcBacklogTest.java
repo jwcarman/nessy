@@ -275,4 +275,51 @@ class JdbcBacklogTest {
     assertThat(its.take()).isEqualTo(new Pull.Empty<String>());
     assertThat(its.terminated()).isFalse();
   }
+
+  /** The arrival that should not wait its turn: an interrupt, a correction, a cancellation. */
+  @Test
+  @DisplayName("prepending puts it in front of everything waiting")
+  void prepend_jumps_the_queue() {
+    backlog.append(said("first in line"));
+    backlog.append(said("second in line"));
+
+    backlog.prepend(said("urgent"));
+
+    assertThat(waiting()).containsExactly("urgent", "first in line", "second in line");
+    assertThat(backlog.take()).isEqualTo(new Pull.Item<>(said("urgent")));
+  }
+
+  @Test
+  @DisplayName("prepending repeatedly keeps stacking on the front")
+  void prepend_stacks() {
+    backlog.append(said("last"));
+
+    backlog.prepend(said("second"));
+    backlog.prepend(said("first"));
+
+    assertThat(waiting()).containsExactly("first", "second", "last");
+  }
+
+  @Test
+  @DisplayName("prepending to an empty backlog is just the only one")
+  void prepend_to_empty() {
+    backlog.prepend(said("alone"));
+
+    assertThat(waiting()).containsExactly("alone");
+  }
+
+  /** Ordinals are positions, not counts: they go negative at the front and reset when it drains. */
+  @Test
+  @DisplayName("a drained backlog starts its numbering over")
+  void ordinals_reset_when_it_empties() {
+    backlog.prepend(said("negative territory"));
+    backlog.prepend(said("further still"));
+    backlog.take();
+    backlog.take();
+
+    backlog.append(said("fresh start"));
+
+    assertThat(waiting()).containsExactly("fresh start");
+    assertThat(backlog.size()).isEqualTo(1);
+  }
 }
