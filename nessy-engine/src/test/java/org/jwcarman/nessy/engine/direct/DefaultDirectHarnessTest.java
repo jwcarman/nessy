@@ -21,7 +21,13 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Outcome;
@@ -36,6 +42,9 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.lease.LocalLocks;
+import org.jwcarman.nessy.lease.Locks;
+import org.jwcarman.nessy.lease.Locks.Attempt;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 
 /**
@@ -72,8 +81,9 @@ class DefaultDirectHarnessTest {
   }
 
   private DefaultDirectHarness<String> harness(
-      Scripted model, Map<ToolName, DefaultDirectHarness.DirectTool> tools) {
+      InferenceProvider model, Map<ToolName, DefaultDirectHarness.DirectTool> tools) {
     return new DefaultDirectHarness<>(
+        new LocalLocks(),
         events,
         payloads,
         model,
@@ -259,5 +269,73 @@ class DefaultDirectHarnessTest {
             org.assertj.core.api.InstanceOfAssertFactories.type(PayloadStore.Resolved.Found.class))
         .extracting(PayloadStore.Resolved.Found::content)
         .isEqualTo(array);
+  }
+
+  @Test
+  @DisplayName("a second caller on a busy scope is told so, and the scope is untouched")
+  void a_busy_scope_is_refused() {
+    // Refusing every lock is what a held scope looks like from the outside, without needing a
+    // second thread to hold one.
+    Locks held =
+        new Locks() {
+          @Override
+          public <T> Attempt<T> tryWithLock(String key, Supplier<T> work) {
+            return new Attempt.Ignored<>();
+          }
+        };
+    DefaultDirectHarness<String> harness =
+        new DefaultDirectHarness<>(
+            held,
+            events,
+            payloads,
+            new Scripted().then(answering("never asked")),
+            new SystemPrompt("You are terse."),
+            InferenceOptions.of("a-model"),
+            (Function<String, List<Block.ObservationContent>>)
+                text -> List.of(new Block.Text(text)),
+            Map.of());
+
+    ScopeId scope = ScopeId.fresh();
+
+    Outcome outcome = harness.ask(scope, "anyone home?");
+
+    assertThat(outcome).isEqualTo(new Outcome.Busy());
+    assertThat(events.readFrom(scope, org.jwcarman.nessy.inference.Seq.NONE))
+        .as("nothing was appended, so nothing has to be undone")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("while one caller is mid-turn, the others are told the scope is busy")
+  void only_one_of_many_callers_runs() throws Exception {
+    ScopeId scope = ScopeId.fresh();
+    CountDownLatch inTurn = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    // A model that does not return until it is let go, so the first caller is demonstrably still
+    // holding the scope while the others ask. Without this the turn finishes first and the lock
+    // serialises them instead of refusing, which proves nothing.
+    InferenceProvider slow =
+        (request, narrator) -> {
+          inTurn.countDown();
+          try {
+            release.await();
+          } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+          }
+          return answering("hi");
+        };
+    DefaultDirectHarness<String> harness = harness(slow, Map.of());
+
+    try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
+      Future<Outcome> holder = callers.submit(() -> harness.ask(scope, "hello"));
+      inTurn.await();
+
+      List<Outcome> refused =
+          IntStream.range(0, 7).mapToObj(_ -> harness.ask(scope, "hello")).toList();
+
+      assertThat(refused).as("every one of them, at once").containsOnly(new Outcome.Busy());
+      release.countDown();
+      assertThat(holder.get()).isEqualTo(new Outcome.Answered("hi"));
+    }
   }
 }

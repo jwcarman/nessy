@@ -42,6 +42,7 @@ import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 
 /**
@@ -57,6 +58,7 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
  */
 public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
+  private final Locks locks;
   private final AgentEventStore events;
   private final PayloadStore payloads;
   private final InferenceProvider provider;
@@ -70,6 +72,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final Toolset toolset;
 
   public DefaultDirectHarness(
+      Locks locks,
       AgentEventStore events,
       PayloadStore payloads,
       InferenceProvider provider,
@@ -77,6 +80,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       InferenceOptions options,
       Function<I, List<Block.ObservationContent>> renderer,
       Map<ToolName, DirectTool> tools) {
+    this.locks = locks;
     this.events = events;
     this.payloads = payloads;
     this.provider = provider;
@@ -96,6 +100,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   @Override
   public Outcome ask(ScopeId scope, I input) {
+    // One turn at a time per scope. Two callers asking at once used to race on the scope's stream
+    // and find out at the append; now the second is told the scope is busy and nothing it did has
+    // to be undone. expectedLast still guards the append, because a lease can expire under a
+    // holder that is merely slow -- this stops two callers, that stops two writers.
+    return locks.tryWithLock(scope.value(), () -> runTurn(scope, input)).orElse(new Outcome.Busy());
+  }
+
+  private Outcome runTurn(ScopeId scope, I input) {
     // TWO READS, and they are not the same read.
     //
     // The state is rebuilt from the watermark alone -- the latest turn, and nothing before it.
@@ -137,10 +149,17 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   @Override
   public void terminate(ScopeId scope) {
-    Seq watermark = events.watermark(scope);
-    AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(scope, watermark));
-    Decision decision = state.execute(new AgentCommand.Terminate());
-    events.append(scope, decision.events(), state.seq());
+    // Under the same lock as a turn, because the core only takes Terminate from Idle: asking
+    // while a turn is running would be declined silently, and waiting for the turn is not this
+    // door's habit. A caller that was refused the lock asks again once the turn it saw has ended.
+    locks.tryWithLock(
+        scope.value(),
+        () -> {
+          Seq watermark = events.watermark(scope);
+          AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(scope, watermark));
+          Decision decision = state.execute(new AgentCommand.Terminate());
+          events.append(scope, decision.events(), state.seq());
+        });
   }
 
   /** Where the outside world happens: everything slow, everything non-deterministic. */

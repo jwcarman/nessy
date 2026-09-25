@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api;
 
-/** What a turn came to. */
+/** What came of asking. */
 public sealed interface Outcome {
 
   /** The model answered. */
@@ -32,4 +32,16 @@ public sealed interface Outcome {
    * exists for the model to read.
    */
   record Failed(String reason) implements Outcome {}
+
+  /**
+   * Somebody else is already running a turn on this scope, so this one never started.
+   *
+   * <p>The only arm that means no turn happened: nothing was appended, nothing was spent, and
+   * nothing about the scope changed. Which is also what makes it the only one worth simply asking
+   * again for -- the other three are answers, and asking again gets another one.
+   *
+   * <p>Says nothing about who holds the scope or for how long. Nothing can know that honestly; only
+   * that a moment ago it was taken.
+   */
+  record Busy() implements Outcome {}
 }

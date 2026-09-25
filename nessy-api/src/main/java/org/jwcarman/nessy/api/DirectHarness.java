@@ -26,9 +26,10 @@ package org.jwcarman.nessy.api;
  * <p><b>Whether it remembers is the store's business.</b> The same harness backed by memory forgets
  * and backed by a durable store resumes; neither changes a line of this interface.
  *
- * <p><b>It gives up serialization.</b> Two threads asking the same scope at once race on that
- * scope's stream, and nothing here stops them. A queued harness runs one turn at a time per agent;
- * this does not, and an application that needs it must arrange it.
+ * <p><b>One turn at a time per scope, and the second caller is told so.</b> A queued harness gets
+ * that from its queue; this gets it from a lock, and being refused is an {@link Outcome.Busy}
+ * rather than a wait -- the caller is standing right there and would rather know than block. What
+ * kind of lock decides whether that holds across machines or only inside this one.
  *
  * <p><b>TODO -- James:</b> the name, and {@link ScopeId}'s.
  */
@@ -38,7 +39,8 @@ public interface DirectHarness<I> {
    * One turn, start to finish, before this returns.
    *
    * <p>Answers rather than throws for anything it understands: a model declining, a turn running
-   * out of budget and a provider being unreachable are outcomes to branch on, not faults.
+   * out of budget, a provider being unreachable and the scope already being busy are outcomes to
+   * branch on, not faults.
    */
   Outcome ask(ScopeId scope, I input);
 
@@ -46,9 +48,10 @@ public interface DirectHarness<I> {
    * This agent is finished.
    *
    * <p>It refuses everything afterwards, loudly, and there is no way back -- so this is a decision
-   * about the agent rather than about this object. Letting a harness be collected leaves its scope
-   * resumable, which is the right default: abandoning a conversation and ending one are different
-   * acts, and only one of them has a method.
+   * about the agent rather than about this object. Takes the same lock a turn does, so ending an
+   * agent mid-turn does nothing; ask again once the turn has ended. Letting a harness be collected
+   * leaves its scope resumable, which is the right default: abandoning a conversation and ending
+   * one are different acts, and only one of them has a method.
    */
   void terminate(ScopeId scope);
 }
