@@ -24,14 +24,18 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
-import org.jwcarman.nessy.engine.store.AgentStateRepository;
-import org.jwcarman.nessy.engine.store.JdbcHistoryStore;
+import org.jwcarman.nessy.engine.history.EventStreamHistory;
+import org.jwcarman.nessy.engine.history.Transcript;
+import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
+import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
 import org.jwcarman.nessy.engine.store.StorageCodec;
-import org.jwcarman.nessy.engine.token.CharacterCountEstimator;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -63,9 +67,10 @@ public final class EngineFixture implements AutoCloseable {
 
   private final HikariDataSource dataSource;
   private final DefaultQueuedHarnessFactory harnesses;
-  private final JdbcHistoryStore history;
+  private final TurnHistories history;
+  private final AgentEventStore events;
+  private final PayloadStore payloads;
   private final JdbcClient jdbc;
-  private final AgentStateRepository states;
 
   public EngineFixture(InferenceProvider provider, AgentEventListener listener) {
     this(provider, listener, ObservationRegistry.NOOP);
@@ -112,13 +117,14 @@ public final class EngineFixture implements AutoCloseable {
     // stateless readers over the same tables, and a test that reached into the engine's would be
     // asserting on its internals rather than on what it wrote down.
     this.jdbc = JdbcClient.create(dataSource);
-    this.states = new AgentStateRepository(jdbc);
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
+    CodecFactory codecs = storage.map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
+    // Readers over the same tables the engine writes, so a test asserts on what was written down
+    // rather than on the engine's own objects.
+    this.events = new JdbcAgentEventStore(jdbc, codecs);
+    this.payloads = new JdbcPayloadStore(jdbc, codecs);
     this.history =
-        new JdbcHistoryStore(
-            jdbc,
-            storage.map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson),
-            new CharacterCountEstimator());
+        (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id);
 
     this.harnesses =
         new DefaultQueuedHarnessFactory(
@@ -141,8 +147,17 @@ public final class EngineFixture implements AutoCloseable {
     return harnesses;
   }
 
-  public JdbcHistoryStore history() {
+  public TurnHistories history() {
     return history;
+  }
+
+  /** The events themselves, for a test asserting on the story rather than on the turns. */
+  public AgentEventStore events() {
+    return events;
+  }
+
+  public PayloadStore payloads() {
+    return payloads;
   }
 
   public javax.sql.DataSource dataSource() {
@@ -151,10 +166,6 @@ public final class EngineFixture implements AutoCloseable {
 
   public JdbcClient jdbc() {
     return jdbc;
-  }
-
-  public AgentStateRepository states() {
-    return states;
   }
 
   public Replies replies() {
