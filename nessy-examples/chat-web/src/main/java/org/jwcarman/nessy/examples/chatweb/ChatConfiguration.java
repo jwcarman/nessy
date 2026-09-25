@@ -150,13 +150,15 @@ public class ChatConfiguration {
                 // written to the story -- the model sees them as they stand NOW.
                 .inference(
                     in ->
-                        in.context(
-                            ctx ->
-                                ctx.summaries(episodes)
-                                    .maxTail(MAX_TAIL)
-                                    .ambient(NotebookTools.index(notebook))
-                                    .ambient(PlanTools.plan(plans))
-                                    .ambient(EpisodeTools.index(episodes))))
+                        in.model(properties.model())
+                            .maxTokens(properties.maxTokens())
+                            .context(
+                                ctx ->
+                                    ctx.summaries(episodes)
+                                        .maxTail(MAX_TAIL)
+                                        .ambient(NotebookTools.index(notebook))
+                                        .ambient(PlanTools.plan(plans))
+                                        .ambient(EpisodeTools.index(episodes))))
                 .tool(new DaysUntilTool())
                 .tool(EpisodeTools.begin(episodes))
                 .tool(EpisodeTools.recall(episodes))
