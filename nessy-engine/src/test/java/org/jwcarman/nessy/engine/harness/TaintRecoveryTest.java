@@ -30,10 +30,10 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /**
@@ -200,7 +200,7 @@ class TaintRecoveryTest {
     private int refusals;
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       // A provider decides for itself what it is willing to be sent, and this one mirrors
       // the real adapter: an observation whose turn it refused is not sent again, because
       // it is what caused the refusal.

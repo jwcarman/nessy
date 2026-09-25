@@ -17,10 +17,10 @@ package org.jwcarman.nessy.examples.chatweb;
 
 import java.util.List;
 import java.util.function.Function;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 
 /**
@@ -58,7 +58,7 @@ final class ScriptedProvider implements InferenceProvider {
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     return script.apply(request);
   }
 }

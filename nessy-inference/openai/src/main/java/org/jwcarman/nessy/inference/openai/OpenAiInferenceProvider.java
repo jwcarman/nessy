@@ -32,12 +32,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -136,7 +136,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * Failure.Unknown} would be retried three times and then recorded as the model's fault.
    */
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<ChatCompletionChunk> stream =
         client.chat().completions().createStreaming(OpenAiRequests.toParams(request, mapper))) {
@@ -164,7 +164,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * sends any. Only the first choice, which is the only one read. Tool-call fragments are not
    * narrated: half a JSON argument is not something anybody can watch.
    */
-  private static void narrate(ChatCompletionChunk chunk, WireNarrator narrator) {
+  private static void narrate(ChatCompletionChunk chunk, InferenceNarrator narrator) {
     for (ChatCompletionChunk.Choice choice : chunk.choices()) {
       if (choice.index() != 0) {
         continue;

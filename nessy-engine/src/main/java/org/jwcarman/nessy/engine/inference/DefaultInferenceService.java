@@ -77,7 +77,8 @@ public class DefaultInferenceService implements InferenceService {
       // thinking -- and cannot say whose it is, or that an agent is involved at all.
       result =
           provider.infer(
-              request, narrator.forAgent(invocation.agentType(), invocation.agentId()).wire());
+              request,
+              narrator.forAgent(invocation.agentType(), invocation.agentId()).forInference());
     } catch (RuntimeException e) {
       recorder.failed(recorded);
       throw e;

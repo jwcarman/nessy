@@ -30,12 +30,12 @@ import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * A deadline is the agent saying how long it is willing to wait, and it is measured from the moment
@@ -190,7 +190,7 @@ class DeadlineTest {
     private final AtomicInteger calls = new AtomicInteger();
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       calls.incrementAndGet();
       return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("hello"));
     }
@@ -206,7 +206,7 @@ class DeadlineTest {
     private final AtomicInteger calls = new AtomicInteger();
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       calls.incrementAndGet();
       throw new IllegalStateException("nope");
     }

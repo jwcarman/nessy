@@ -17,10 +17,10 @@ package org.jwcarman.nessy.examples.watchman;
 
 import java.time.Duration;
 import java.util.List;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Turn;
 
@@ -40,7 +40,7 @@ public final class ScriptedWatchmanProvider implements InferenceProvider {
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     sleep(latency);
     Turn round =
         request.context().turns().stream()

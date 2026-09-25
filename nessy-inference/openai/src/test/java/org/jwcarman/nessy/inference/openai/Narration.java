@@ -17,7 +17,7 @@ package org.jwcarman.nessy.inference.openai;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 
 /**
  * What a provider said while it was streaming, in the order it said it.
@@ -25,7 +25,7 @@ import org.jwcarman.nessy.inference.WireNarrator;
  * <p>One list rather than two, because the interleaving is the thing worth asserting: a model that
  * thinks and then answers should narrate in that order.
  */
-final class Narration implements WireNarrator {
+final class Narration implements InferenceNarrator {
 
   private final List<Fragment> fragments = new ArrayList<>();
 

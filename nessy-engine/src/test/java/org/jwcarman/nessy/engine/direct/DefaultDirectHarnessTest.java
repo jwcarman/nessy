@@ -65,7 +65,7 @@ class DefaultDirectHarnessTest {
 
     @Override
     public InferenceResult infer(
-        InferenceRequest request, org.jwcarman.nessy.inference.WireNarrator narrator) {
+        InferenceRequest request, org.jwcarman.nessy.inference.InferenceNarrator narrator) {
       seen.add(request);
       return answers.poll();
     }

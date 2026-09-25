@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 
 @DisplayName("Binding a narrator to an agent")
 class AgentNarratorTest {
@@ -49,7 +49,7 @@ class AgentNarratorTest {
   @Test
   void the_wire_view_of_a_narrator_mints_the_delta_events() {
     AtomicReference<AgentEvent> heard = new AtomicReference<>();
-    WireNarrator wire = ((AgentNarrator) heard::set).wire();
+    InferenceNarrator wire = ((AgentNarrator) heard::set).forInference();
 
     wire.text("hel");
     assertThat(heard).hasValue(new AgentEvent.ContentDelta("hel"));
@@ -57,7 +57,7 @@ class AgentNarratorTest {
     wire.thinking("hmm");
     assertThat(heard).hasValue(new AgentEvent.ThinkingDelta("hmm"));
 
-    assertThatCode(() -> WireNarrator.silent().text("x")).doesNotThrowAnyException();
-    assertThatCode(() -> WireNarrator.silent().thinking("x")).doesNotThrowAnyException();
+    assertThatCode(() -> InferenceNarrator.silent().text("x")).doesNotThrowAnyException();
+    assertThatCode(() -> InferenceNarrator.silent().thinking("x")).doesNotThrowAnyException();
   }
 }

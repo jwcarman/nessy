@@ -35,12 +35,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -124,7 +124,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<RawMessageStreamEvent> stream =
         client.messages().createStreaming(AnthropicRequests.toParams(request, features, mapper))) {
@@ -151,7 +151,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * are not narrated -- half a JSON argument is not something anybody can watch -- and signatures
    * are the vendor's business.
    */
-  private static void narrate(RawMessageStreamEvent event, WireNarrator narrator) {
+  private static void narrate(RawMessageStreamEvent event, InferenceNarrator narrator) {
     if (!event.isContentBlockDelta()) {
       return;
     }

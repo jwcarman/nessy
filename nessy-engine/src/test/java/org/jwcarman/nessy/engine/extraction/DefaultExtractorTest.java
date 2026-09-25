@@ -26,12 +26,12 @@ import org.jwcarman.nessy.api.extraction.Extractor;
 import org.jwcarman.nessy.api.extraction.ExtractorFactory;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
@@ -224,7 +224,7 @@ class DefaultExtractorTest {
   /** A narrator is for a turn that is being watched; there is no turn here. */
   @Test
   void the_call_is_made_without_a_narrator() {
-    AtomicReference<WireNarrator> narrator = new AtomicReference<>(null);
+    AtomicReference<InferenceNarrator> narrator = new AtomicReference<>(null);
     Extractor extractor =
         factory(
                 (request, told) -> {

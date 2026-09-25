@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.spi.narration;
 
 import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 
 /**
  * A {@link Narrator} that already knows whose story it is telling.
@@ -46,8 +46,8 @@ public interface AgentNarrator {
    * read text; only this side knows that the text is an agent's answer, and that somebody is
    * watching for it.
    */
-  default WireNarrator wire() {
-    return new WireNarrator() {
+  default InferenceNarrator forInference() {
+    return new InferenceNarrator() {
       @Override
       public void text(String delta) {
         narrate(new AgentEvent.ContentDelta(delta));

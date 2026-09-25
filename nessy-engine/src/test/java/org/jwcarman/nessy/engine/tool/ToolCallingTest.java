@@ -36,13 +36,13 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
@@ -91,7 +91,7 @@ class ToolCallingTest {
     }
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       offered.add(request.toolset().offers());
       InferenceResult next = script.poll();
       return next != null

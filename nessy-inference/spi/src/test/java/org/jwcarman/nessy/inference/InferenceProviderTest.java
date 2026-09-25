@@ -37,7 +37,7 @@ class InferenceProviderTest {
   private static class LocalProvider implements InferenceProvider {
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       return ANSWER;
     }
   }

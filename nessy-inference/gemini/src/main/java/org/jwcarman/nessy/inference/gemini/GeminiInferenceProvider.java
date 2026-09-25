@@ -36,12 +36,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -134,7 +134,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (Stream<GenerateContentResponse> stream =
         client.generateContentStream(
@@ -186,7 +186,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private Optional<GenerateContentResponseUsageMetadata> usage = Optional.empty();
     private boolean any;
 
-    void take(GenerateContentResponse partial, WireNarrator narrator) {
+    void take(GenerateContentResponse partial, InferenceNarrator narrator) {
       any = true;
       if (partial.promptFeedback().isPresent()) {
         feedback = partial.promptFeedback();
@@ -209,7 +209,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       }
     }
 
-    private static void narrate(Part part, WireNarrator narrator) {
+    private static void narrate(Part part, InferenceNarrator narrator) {
       part.text()
           .filter(text -> !text.isEmpty())
           .ifPresent(

@@ -33,7 +33,7 @@ package org.jwcarman.nessy.inference;
  * whichever thread the read happened on. A watcher that misses every fragment still sees the answer
  * land, because the result is returned whole regardless.
  */
-public interface WireNarrator {
+public interface InferenceNarrator {
 
   /** A piece of the answer. */
   void text(String delta);
@@ -42,8 +42,8 @@ public interface WireNarrator {
   void thinking(String delta);
 
   /** Nobody is listening, and a provider should not have to ask. */
-  static WireNarrator silent() {
-    return new WireNarrator() {
+  static InferenceNarrator silent() {
+    return new InferenceNarrator() {
       @Override
       public void text(String delta) {
         // Nothing is listening.

@@ -30,11 +30,11 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Turn;
 
@@ -159,7 +159,7 @@ class HarnessLoopTest {
     private final List<List<Turn>> asked = new CopyOnWriteArrayList<>();
 
     @Override
-    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       asked.add(List.copyOf(request.context().turns()));
       return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("a lake monster"));
     }

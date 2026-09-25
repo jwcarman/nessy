@@ -48,11 +48,11 @@ public interface InferenceProvider {
    *     that spoke in agent events would hand that back. Best-effort: anything thrown by it is the
    *     engine's problem, not the provider's.
    */
-  InferenceResult infer(InferenceRequest request, WireNarrator narrator);
+  InferenceResult infer(InferenceRequest request, InferenceNarrator narrator);
 
   /** For a provider with nothing to stream, and for a caller with nobody watching. */
   default InferenceResult infer(InferenceRequest request) {
-    return infer(request, WireNarrator.silent());
+    return infer(request, InferenceNarrator.silent());
   }
 
   /**

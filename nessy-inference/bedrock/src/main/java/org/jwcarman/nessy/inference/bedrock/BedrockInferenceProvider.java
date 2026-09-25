@@ -24,12 +24,12 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.WireNarrator;
 import org.jwcarman.nessy.inference.block.Block;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
@@ -130,7 +130,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try {
       Folded folded = new Folded(narrator, mapper);
@@ -167,7 +167,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * redacted bytes arrived. A block still open at messageStop is closed then.
    */
   static final class Folded implements Consumer<ConverseStreamOutput> {
-    private final WireNarrator narrator;
+    private final InferenceNarrator narrator;
     private final JsonMapper mapper;
     private final SortedMap<Integer, Pending> open = new TreeMap<>();
     private final SortedMap<Integer, ContentBlock> closed = new TreeMap<>();
@@ -175,7 +175,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     private TokenUsage usage;
     private boolean any;
 
-    Folded(WireNarrator narrator, JsonMapper mapper) {
+    Folded(InferenceNarrator narrator, JsonMapper mapper) {
       this.narrator = narrator;
       this.mapper = mapper;
     }
