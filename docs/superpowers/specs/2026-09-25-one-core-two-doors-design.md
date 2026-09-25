@@ -1,8 +1,7 @@
 # One core, two doors: unifying the queued harness onto the pure fold
 
-**Status: DESIGN, in progress. Sections 1–5 are BUILT and on `main`. Section 6 is the remaining
-move and is NOT approved. Two of its three questions were ruled on 2026-09-25; one remains, marked
-`OPEN — James`, and must be answered before a plan or a dispatch brief.**
+**Status: DESIGN. Sections 1–5 are BUILT and on `main`. Section 6 is the remaining move: its three
+questions were all ruled on 2026-09-25, so it is ready to be planned. Nothing in §6 is built.**
 
 Date: 2026-09-25. Continues `2026-09-24-inline-inference-and-the-turn-executor-design.md`, which
 built the pure core and the direct door. Supersedes the storage mechanics of
@@ -187,18 +186,81 @@ Two consequences, recorded rather than discovered later:
 - **The table is typed.** Unlike events, a backlog row is an `O`, so it needs a codec built per
   harness -- the same reason the agent document was built per harness and nothing else was.
 
+**The coalescer is handed a backlog it can operate on, not a list it must rewrite.** The whole-list
+signature would have made every strategy pay to read and decode the entire backlog on every
+arrival -- affordable only while the backlog sat decoded in the fold's snapshot, which is exactly
+what stops being true.
+
+```java
+void coalesce(Backlog<O> backlog, BacklogItem<O> incoming);
+```
+
+| strategy | calls | costs |
+|---|---|---|
+| `keepAll` | `append` | one INSERT |
+| `latestOnly` | `replaceAll` | DELETE + INSERT |
+| a cap | `size`, `dropOldest`, `append` | COUNT + DELETE + INSERT |
+| anything bespoke | `all` -- the escape hatch | the full read, decoded |
+
+Nothing decodes an observation unless a strategy asks to see one, and expensive things look
+expensive: `all()` is visibly the door to the whole list, so a strategy that needs it says so at
+the call site instead of every strategy paying for the possibility.
+
+What the contract promises changes with it. "A pure function over data" becomes "a script over a
+bounded set of operations" -- narrower, and honest: those operations are the only side effects
+reachable, and they all land in the transaction that is already holding the agent's row lock.
+Purity was never enforced; reachability is.
+
 Rejected on the way: claim-checking the backlog and resolving payloads on every `offer` (drags
 content back into the write path), and narrowing the coalescer to a key function (cheap, but loses
 caps, reordering and "a full resync supersedes everything", which the contract names).
 
-### OPEN — James: what provides exclusion once the state row is gone?
+**OPEN — James, small:** the operation set is proposed as exactly `append`, `replaceAll`, `size`,
+`dropOldest`, `all`. Adding later is easy; removing is not. And whether `all()` hands back a
+snapshot (safer, and what "escape hatch" implies) or a live view (faster, sharper edges).
 
-`nessy_agent_state` is currently the lock -- `findAndLockByAgentId` is how two nodes do not drive
-one agent at once. Deleting the snapshot deletes the lock.
+### RULED 2026-09-25: an agent table, locked with SELECT ... FOR UPDATE
 
-Candidates: `Locks` (exists now; `JdbcLeases` spans machines, and it is what the direct door
-already uses), a bare row kept solely to lock on, or `expectedLast` alone with losers retrying.
-Recommendation: `Locks`, so "one turn at a time per agent" is one rule rather than two mechanisms.
+```sql
+CREATE TABLE nessy_agent (
+    agent_type VARCHAR(64) NOT NULL,
+    agent_id   UUID        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (agent_type, agent_id)
+);
+```
+
+`INSERT ... ON CONFLICT DO NOTHING`, then `SELECT ... FOR UPDATE`. The lock is held exactly as long
+as the transaction and released by the database when the connection dies -- so there is no TTL to
+tune and none of the "a slow holder is indistinguishable from a dead one" problem that forces
+lease-guarded work to be idempotent. The database knows.
+
+The row has to always exist, which is why this is a table rather than a lock over the backlog rows
+themselves: two offers to an agent with an empty backlog would both find nothing to lock, both
+insert, and neither would have excluded the other.
+
+It earns its place three ways -- it is the lock, it is the referential anchor the history rows
+currently take from `nessy_agent_state`, and it is the answer to "does this agent exist", which
+nothing else holds once the snapshot is gone.
+
+Rejected: Postgres advisory locks (`pg_advisory_xact_lock`), which avoid the table but hash into a
+64-bit space where unrelated agents can share a lock, are invisible in the schema, and are not
+portable SQL.
+
+**The two doors exclude differently, and that is correct rather than a seam that failed to close:**
+
+| | unit of work | exclusion |
+|---|---|---|
+| queued | a transaction | a row lock, `SELECT ... FOR UPDATE` |
+| direct | a turn containing a model call | `Locks` -- a lease |
+
+The direct door cannot hold a row lock: its turn spans an inference that may take minutes, and
+holding a database transaction open across the network is not a thing to do. The queued door's
+transaction is short and holds nothing while inferring -- the effect goes to the outbox and the
+transaction commits.
+
+One rule -- one turn at a time per agent -- with the enforcement chosen by whether the work is
+inside a transaction.
 
 ### RULED 2026-09-25: the backlog is its own table, holding the observation
 
