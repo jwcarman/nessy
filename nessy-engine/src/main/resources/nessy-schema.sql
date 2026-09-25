@@ -187,3 +187,39 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
 -- however long the conversation.
 CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
     ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;
+
+-- An agent, so there is something to lock and something to point at.
+--
+-- Taken with SELECT ... FOR UPDATE, which holds for exactly the transaction and is released by the
+-- database when a connection dies -- no time-to-live to tune, and none of the trouble a lease has
+-- telling a slow holder from a dead one. It has to be a row that always exists: locking the
+-- backlog rows instead would leave two arrivals to an empty backlog with nothing to contend for.
+CREATE TABLE IF NOT EXISTS nessy_agent
+(
+    agent_type VARCHAR(64) NOT NULL,
+    agent_id   UUID        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (agent_type, agent_id)
+);
+
+-- Work offered to an agent that is busy, waiting its turn.
+--
+-- One row per item, which is what lets a coalescer say "append" or "keep only this" in a statement
+-- rather than rewriting a list. A single row holding a serialized backlog would make every
+-- strategy a read-modify-write of the whole thing.
+--
+-- The observation itself, NOT a claim check. This is the one place content sits in a control-plane
+-- table, and it is deliberate: a backlog is a staging area rather than a record, and what is here
+-- is on its way into an event where it WILL be claim-checked. Forgetting an agent has to clear
+-- this table as well as its payloads.
+CREATE TABLE IF NOT EXISTS nessy_agent_backlog
+(
+    agent_type VARCHAR(64) NOT NULL,
+    agent_id   UUID        NOT NULL,
+    -- The backlog's own arrival ordinal, not an event seq: an item here is not an event yet and
+    -- may never become one, since a coalescer is free to drop it.
+    ordinal    BIGINT      NOT NULL,
+    arrived_at TIMESTAMPTZ NOT NULL,
+    payload    BYTEA       NOT NULL,
+    PRIMARY KEY (agent_type, agent_id, ordinal)
+);

@@ -197,10 +197,15 @@ void coalesce(Backlog<O> backlog, BacklogItem<O> incoming);
 
 | strategy | calls | costs |
 |---|---|---|
-| `keepAll` | `append` | one INSERT |
-| `latestOnly` | `replaceAll` | DELETE + INSERT |
-| a cap | `size`, `dropOldest`, `append` | COUNT + DELETE + INSERT |
-| anything bespoke | `all` -- the escape hatch | the full read, decoded |
+| keep everything | `append` | one INSERT |
+| keep only the latest | `replaceAll` | DELETE + INSERT |
+| a bounded buffer (max 5) | `size`, `dropOldest`, `append` | COUNT + DELETE + INSERT |
+| expire by age, reorder | `all` -- the escape hatch | the full read, decoded |
+
+James, 2026-09-25: a bound "is a valid use case I would think. It could be like a bounded buffer
+(max size = 5)." So `size` and `dropOldest` stay. Without them a bound would go through `all()` and
+pay a full read and decode on every arrival, which is absurd for something that never has to look
+at an observation to enforce itself.
 
 Nothing decodes an observation unless a strategy asks to see one, and expensive things look
 expensive: `all()` is visibly the door to the whole list, so a strategy that needs it says so at
@@ -215,8 +220,9 @@ Rejected on the way: claim-checking the backlog and resolving payloads on every 
 content back into the write path), and narrowing the coalescer to a key function (cheap, but loses
 caps, reordering and "a full resync supersedes everything", which the contract names).
 
-The operation set is exactly `append`, `replaceAll`, `size`, `dropOldest`, `all`. Adding later is
-easy; removing is not.
+The operation set is exactly `append`, `replaceAll`, `size`, `dropOldest`, `all`, `rewrite` --
+three strategies that read nothing, and a hatch with the two calls it needs. Adding later is easy;
+removing is not.
 
 **`all()` hands back a snapshot, and the row lock is what makes that safe.** The coalescer runs
 inside the transaction that already holds `nessy_agent` `FOR UPDATE`, so nothing else can write
