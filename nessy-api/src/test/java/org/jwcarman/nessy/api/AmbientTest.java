@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.inference.Ambient;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * What background refuses to be.
@@ -97,7 +98,9 @@ class AmbientTest {
             source ->
                 source
                     .kind("clock")
-                    .saying(java.util.List.of(new org.jwcarman.nessy.api.block.Block.Text("Tue"))));
+                    .saying(
+                        java.util.List.of(
+                            new org.jwcarman.nessy.inference.block.Block.Text("Tue"))));
 
     assertThat(clock.kind()).isEqualTo("clock");
     assertThat(clock.forAgent(new AgentId(java.util.UUID.randomUUID())))

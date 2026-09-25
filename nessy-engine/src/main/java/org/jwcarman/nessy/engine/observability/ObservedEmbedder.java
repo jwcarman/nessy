@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 
 /**
  * An embedder whose every call is an observation named the way OpenTelemetry's GenAI semantic

@@ -22,13 +22,13 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.engine.token.TokenEstimator;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.turn.Turn;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 

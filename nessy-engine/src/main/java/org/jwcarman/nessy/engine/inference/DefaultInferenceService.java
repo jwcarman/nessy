@@ -18,10 +18,10 @@ package org.jwcarman.nessy.engine.inference;
 import java.util.List;
 import java.util.UUID;
 import org.jwcarman.nessy.api.SystemPromptSource;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.ToolOffer;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.spi.narration.Narrator;
 
 /** Assemble, then send. The only thing that holds both halves at once, and it is one line. */
@@ -67,11 +67,12 @@ public class DefaultInferenceService implements InferenceService {
     UUID recorded = recorder.begin(invocation.agentType(), invocation.agentId(), request);
     InferenceResult result;
     try {
-      // Bound here, which is the only place that knows both who is being served and
-      // where the narration goes. The provider is handed something that can say what is
-      // arriving and cannot say whose it is.
+      // Bound here, which is the only place that knows both who is being served and where the
+      // narration goes. The provider is handed something that can say what is arriving -- text, or
+      // thinking -- and cannot say whose it is, or that an agent is involved at all.
       result =
-          provider.infer(request, narrator.forAgent(invocation.agentType(), invocation.agentId()));
+          provider.infer(
+              request, narrator.forAgent(invocation.agentType(), invocation.agentId()).wire());
     } catch (RuntimeException e) {
       recorder.failed(recorded);
       throw e;

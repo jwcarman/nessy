@@ -17,14 +17,14 @@ package org.jwcarman.nessy.engine.extraction;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.extraction.Extractor;
 import org.jwcarman.nessy.api.extraction.ExtractorConfig;
 import org.jwcarman.nessy.api.extraction.ExtractorFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.tool.ToolName;
 import tools.jackson.databind.ObjectMapper;
 
 /**

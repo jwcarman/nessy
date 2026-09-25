@@ -17,8 +17,8 @@ package org.jwcarman.nessy.spring.boot.inference;
 
 import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;

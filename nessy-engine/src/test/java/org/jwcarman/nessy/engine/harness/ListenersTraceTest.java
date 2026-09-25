@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.inference.TurnId;
 
 /** The observation current when an event is narrated is current where the listener runs. */
 @DisplayName("Listeners and the trace")

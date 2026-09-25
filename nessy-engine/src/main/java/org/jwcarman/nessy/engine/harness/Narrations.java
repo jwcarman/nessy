@@ -19,12 +19,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.AgentState;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * What a committed fold is worth announcing.

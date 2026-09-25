@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.engine.store;
 
-import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * One history row, decoded, with the token estimate that was written beside it.

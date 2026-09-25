@@ -17,8 +17,9 @@ package org.jwcarman.nessy.api;
 
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.turn.Summary;
-import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.turn.Summary;
+import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * Offers what stands in for turns that are no longer sent whole, asked afresh on every call.

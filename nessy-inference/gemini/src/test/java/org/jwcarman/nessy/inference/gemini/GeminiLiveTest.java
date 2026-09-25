@@ -18,24 +18,22 @@ package org.jwcarman.nessy.inference.gemini;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.OutputSchema;
-import org.jwcarman.nessy.spi.inference.ToolChoice;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.OutputSchema;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -114,20 +112,16 @@ class GeminiLiveTest {
   @Test
   void the_answer_is_narrated_as_it_streams() {
     try (GeminiInferenceProvider provider = provider()) {
-      List<AgentEvent> narrated = new ArrayList<>();
+      Narration narrated = new Narration();
 
       InferenceResult result =
           provider.infer(
               asking(
                   "In three paragraphs of about eighty words each, explain how Loch Ness was"
                       + " formed, why it is so deep, and what lives in it."),
-              narrated::add);
+              narrated);
 
-      List<String> deltas =
-          narrated.stream()
-              .filter(AgentEvent.ContentDelta.class::isInstance)
-              .map(event -> ((AgentEvent.ContentDelta) event).text())
-              .toList();
+      List<String> deltas = narrated.text();
       assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
       assertThat(String.join("", deltas)).isEqualTo(text(result));
     }

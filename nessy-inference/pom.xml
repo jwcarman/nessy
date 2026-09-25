@@ -43,6 +43,7 @@
   </properties>
 
   <modules>
+    <module>spi</module>
     <module>openai</module>
     <module>anthropic</module>
     <module>gemini</module>

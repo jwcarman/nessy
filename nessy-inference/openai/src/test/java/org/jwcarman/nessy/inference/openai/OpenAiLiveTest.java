@@ -18,27 +18,25 @@ package org.jwcarman.nessy.inference.openai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.OutputSchema;
-import org.jwcarman.nessy.spi.inference.ToolChoice;
-import org.jwcarman.nessy.spi.inference.ToolOffer;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.OutputSchema;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.InputSchema;
+import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -132,19 +130,15 @@ class OpenAiLiveTest {
   @Test
   void the_answer_is_narrated_as_it_streams() {
     try (OpenAiInferenceProvider provider = provider()) {
-      List<AgentEvent> narrated = new ArrayList<>();
+      Narration narrated = new Narration();
 
       InferenceResult result =
           provider.infer(
-              asking("List the seven days of the week, one per line.", List.of()), narrated::add);
+              asking("List the seven days of the week, one per line.", List.of()), narrated);
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
       String answer = ((Block.Text) ((InferenceResult.Answer) result).blocks().getFirst()).text();
-      List<String> deltas =
-          narrated.stream()
-              .filter(AgentEvent.ContentDelta.class::isInstance)
-              .map(event -> ((AgentEvent.ContentDelta) event).text())
-              .toList();
+      List<String> deltas = narrated.text();
       assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
       assertThat(String.join("", deltas)).isEqualTo(answer);
     }

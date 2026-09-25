@@ -36,20 +36,20 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.jwcarman.nessy.api.Ambient;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Summary;
-import org.jwcarman.nessy.api.turn.ToolOutcome;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.OutputSchema;
-import org.jwcarman.nessy.spi.inference.ToolChoice;
-import org.jwcarman.nessy.spi.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Ambient;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.OutputSchema;
+import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.turn.Exchange;
+import org.jwcarman.nessy.inference.turn.Summary;
+import org.jwcarman.nessy.inference.turn.ToolOutcome;
+import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.inference.turn.TurnResult;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -66,10 +66,10 @@ public final class OpenAiRequests {
 
   /**
    * @param mapper reads a tool's schema back into a document. {@link
-   *     org.jwcarman.nessy.api.tool.InputSchema} carries JSON text on purpose -- a tree would have
-   *     to be some library's tree, and this wire's is not the one this project speaks -- so the
-   *     parse is the bridge between the two, not a validation step. Supplied rather than made here,
-   *     because a mapper an application cannot configure is a mapper it cannot fix.
+   *     org.jwcarman.nessy.inference.tool.InputSchema} carries JSON text on purpose -- a tree would
+   *     have to be some library's tree, and this wire's is not the one this project speaks -- so
+   *     the parse is the bridge between the two, not a validation step. Supplied rather than made
+   *     here, because a mapper an application cannot configure is a mapper it cannot fix.
    */
   public static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
     InferenceOptions options = request.options();

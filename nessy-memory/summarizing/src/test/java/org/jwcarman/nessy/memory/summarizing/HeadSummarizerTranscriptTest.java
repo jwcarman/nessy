@@ -22,16 +22,16 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.ToolOutcome;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.turn.Exchange;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.ToolOutcome;
+import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /** The head as the summarising model reads it: one line per thing that happened. */
 @DisplayName("The transcript a summary is written from")

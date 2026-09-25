@@ -66,20 +66,19 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 import tools.jackson.databind.json.JsonMapper;
 
 class AnthropicInferenceProviderTest {
@@ -332,13 +331,13 @@ class AnthropicInferenceProviderTest {
   @Nested
   class WhatIsNarrated {
 
-    private final List<AgentEvent> narrated = new ArrayList<>();
+    private final Narration narrated = new Narration();
 
     private InferenceResult inferNarrating(Message message) {
       return new AnthropicProviderConfig()
           .client(fakeClient(params -> message))
           .build()
-          .infer(REQUEST, narrated::add);
+          .infer(REQUEST, narrated);
     }
 
     @Test
@@ -351,21 +350,21 @@ class AnthropicInferenceProviderTest {
                   .addContent(text("a lake monster"))
                   .build());
 
-      assertThat(narrated)
+      assertThat(narrated.fragments())
           .containsExactly(
-              new AgentEvent.ThinkingDelta("hmm, "),
-              new AgentEvent.ThinkingDelta("a lak"),
-              new AgentEvent.ThinkingDelta("e"),
-              new AgentEvent.ContentDelta("a lak"),
-              new AgentEvent.ContentDelta("e mon"),
-              new AgentEvent.ContentDelta("ster"));
+              Narration.Fragment.thinking("hmm, "),
+              Narration.Fragment.thinking("a lak"),
+              Narration.Fragment.thinking("e"),
+              Narration.Fragment.text("a lak"),
+              Narration.Fragment.text("e mon"),
+              Narration.Fragment.text("ster"));
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
       assertThat(((InferenceResult.Answer) result).blocks())
           .contains(
               new Block.Text(
                   "a lake monster")); // message_start said one token in, message_delta one token
       // out: what the fold carried.
-      assertThat(result.usage()).isEqualTo(new org.jwcarman.nessy.api.Usage(1, 1));
+      assertThat(result.usage()).isEqualTo(new org.jwcarman.nessy.inference.Usage(1, 1));
     }
 
     @Test
@@ -376,14 +375,14 @@ class AnthropicInferenceProviderTest {
                   .addContent(use("toolu_1", "days_until", Map.of("date", "2026-12-25")))
                   .build());
 
-      assertThat(narrated).isEmpty();
+      assertThat(narrated.fragments()).isEmpty();
       assertThat(calls).isInstanceOf(InferenceResult.Actions.class);
 
       InferenceResult nothing =
           new AnthropicProviderConfig()
               .client(fakeStreamingClient(params -> List.of()))
               .build()
-              .infer(REQUEST, narrated::add);
+              .infer(REQUEST, narrated);
       assertThat(nothing)
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
@@ -398,7 +397,7 @@ class AnthropicInferenceProviderTest {
           new AnthropicProviderConfig()
               .client(fakeStreamingClient(params -> cut))
               .build()
-              .infer(REQUEST, narrated::add);
+              .infer(REQUEST, narrated);
 
       assertThat(result)
           .isInstanceOfSatisfying(

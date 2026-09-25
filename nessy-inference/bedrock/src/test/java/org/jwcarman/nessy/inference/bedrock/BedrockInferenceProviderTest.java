@@ -26,19 +26,18 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -223,10 +222,10 @@ class BedrockInferenceProviderTest {
   @Nested
   class WhatIsNarrated {
 
-    private final List<AgentEvent> narrated = new ArrayList<>();
+    private final Narration narrated = new Narration();
 
     private InferenceResult inferNarrating(BedrockClient client) {
-      return new BedrockInferenceProvider(client, MAPPER).infer(request(), narrated::add);
+      return new BedrockInferenceProvider(client, MAPPER).infer(request(), narrated);
     }
 
     @Test
@@ -241,14 +240,14 @@ class BedrockInferenceProviderTest {
 
       InferenceResult result = inferNarrating(new ScriptedClient(response, null));
 
-      assertThat(narrated)
+      assertThat(narrated.fragments())
           .containsExactly(
-              new AgentEvent.ThinkingDelta("hmm, "),
-              new AgentEvent.ThinkingDelta("a lak"),
-              new AgentEvent.ThinkingDelta("e"),
-              new AgentEvent.ContentDelta("a lak"),
-              new AgentEvent.ContentDelta("e mon"),
-              new AgentEvent.ContentDelta("ster"));
+              Narration.Fragment.thinking("hmm, "),
+              Narration.Fragment.thinking("a lak"),
+              Narration.Fragment.thinking("e"),
+              Narration.Fragment.text("a lak"),
+              Narration.Fragment.text("e mon"),
+              Narration.Fragment.text("ster"));
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
       assertThat(((InferenceResult.Answer) result).blocks())
           .contains(new Block.Text("a lake monster"));
@@ -268,7 +267,7 @@ class BedrockInferenceProviderTest {
 
       InferenceResult result = inferNarrating(new ScriptedClient(response, null));
 
-      assertThat(narrated).isEmpty();
+      assertThat(narrated.fragments()).isEmpty();
       assertThat(result)
           .isEqualTo(
               new InferenceResult.Actions(

@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.engine.inference;
 
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceResult;
 
 /**
  * One inference on an agent's behalf: read its story, choose what to send, send it.

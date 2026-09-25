@@ -35,16 +35,16 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.inference.turn.TurnResult;
 
 @DisplayName("Ending an agent, and the settings a harness takes")
 class TerminationAndConfigurationTest {

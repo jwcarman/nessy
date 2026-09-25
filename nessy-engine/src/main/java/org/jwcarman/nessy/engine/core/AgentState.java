@@ -18,11 +18,11 @@ package org.jwcarman.nessy.engine.core;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.Outstanding;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * The whole of the pure core: where an agent is, what a command means there, and what a fact does

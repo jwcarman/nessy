@@ -19,9 +19,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * What performing an effect came to.

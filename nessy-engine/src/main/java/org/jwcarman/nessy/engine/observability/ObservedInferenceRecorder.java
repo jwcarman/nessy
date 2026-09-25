@@ -23,8 +23,8 @@ import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.inference.InferenceRecorder;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
 
 /**
  * Writing down what the model was shown, as {@code nessy.record}: it happens before the provider is

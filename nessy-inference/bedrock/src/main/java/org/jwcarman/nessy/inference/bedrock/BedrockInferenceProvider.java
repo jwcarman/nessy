@@ -23,15 +23,14 @@ import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -73,11 +72,11 @@ import tools.jackson.databind.json.JsonMapper;
  * client serves several agent types asking for different models.
  *
  * <p><b>Streams, and narrates as it goes.</b> Every call is a {@code ConverseStream}; each text
- * delta is narrated as a {@link AgentEvent.ContentDelta} and each reasoning delta as a {@link
- * AgentEvent.ThinkingDelta} the moment it arrives. The AWS SDK has no accumulator, so the events
- * are folded back into one response here -- text per block, a tool call's JSON input assembled
- * across its deltas and parsed once the block closes, reasoning with its signature -- and the reply
- * is read from that exactly as a non-streaming one would be. The engine receives one result.
+ * delta is narrated as text and each reasoning delta as thinking the moment it arrives. The AWS SDK
+ * has no accumulator, so the events are folded back into one response here -- text per block, a
+ * tool call's JSON input assembled across its deltas and parsed once the block closes, reasoning
+ * with its signature -- and the reply is read from that exactly as a non-streaming one would be.
+ * The engine receives one result.
  *
  * <p><b>Reasoning round-trips.</b> A model that reasons on this wire (Claude with extended thinking
  * on) returns reasoning content with a signature, and wants it back untouched on the next turn. It
@@ -131,7 +130,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try {
       Folded folded = new Folded(narrator, mapper);
@@ -168,7 +167,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * redacted bytes arrived. A block still open at messageStop is closed then.
    */
   static final class Folded implements Consumer<ConverseStreamOutput> {
-    private final AgentNarrator narrator;
+    private final WireNarrator narrator;
     private final JsonMapper mapper;
     private final SortedMap<Integer, Pending> open = new TreeMap<>();
     private final SortedMap<Integer, ContentBlock> closed = new TreeMap<>();
@@ -176,7 +175,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     private TokenUsage usage;
     private boolean any;
 
-    Folded(AgentNarrator narrator, JsonMapper mapper) {
+    Folded(WireNarrator narrator, JsonMapper mapper) {
       this.narrator = narrator;
       this.mapper = mapper;
     }
@@ -213,7 +212,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
       if (delta.text() != null) {
         pending.text.append(delta.text());
         if (!delta.text().isEmpty()) {
-          narrator.narrate(new AgentEvent.ContentDelta(delta.text()));
+          narrator.text(delta.text());
         }
       }
       if (delta.toolUse() != null && delta.toolUse().input() != null) {
@@ -224,7 +223,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
         if (reasoning.text() != null) {
           pending.reasoning.append(reasoning.text());
           if (!reasoning.text().isEmpty()) {
-            narrator.narrate(new AgentEvent.ThinkingDelta(reasoning.text()));
+            narrator.thinking(reasoning.text());
           }
         }
         if (reasoning.signature() != null) {

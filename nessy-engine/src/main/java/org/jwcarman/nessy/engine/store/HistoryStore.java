@@ -18,10 +18,10 @@ package org.jwcarman.nessy.engine.store;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.ObservationRenderer;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.Decision;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
 
 /**
  * One agent type's story, as far as writing it is concerned.

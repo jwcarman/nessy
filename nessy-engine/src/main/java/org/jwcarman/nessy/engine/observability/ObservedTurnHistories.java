@@ -23,10 +23,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * The story, read in a {@code nessy.context history} span: how long it took to fetch the verbatim

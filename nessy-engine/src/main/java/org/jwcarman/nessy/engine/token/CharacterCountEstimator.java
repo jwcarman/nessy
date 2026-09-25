@@ -16,10 +16,10 @@
 package org.jwcarman.nessy.engine.token;
 
 import java.util.List;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * The crude one: characters over three, plus a fixed charge for existing at all.

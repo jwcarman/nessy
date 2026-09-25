@@ -44,7 +44,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
+      <artifactId>nessy-embedding-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

@@ -25,14 +25,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * An outcome arriving for work the agent no longer owes.

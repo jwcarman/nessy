@@ -20,7 +20,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.inference.TurnId;
 
 /**
  * Whose span it is, said the same way on every span the engine opens.

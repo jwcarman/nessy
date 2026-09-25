@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
-import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.inference.Ambient;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * What a source is made of; see {@link AmbientSource#of(java.util.function.Consumer)}.

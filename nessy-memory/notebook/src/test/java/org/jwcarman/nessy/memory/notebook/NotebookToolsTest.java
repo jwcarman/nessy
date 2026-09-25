@@ -23,11 +23,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.inference.Ambient;
+import org.jwcarman.nessy.inference.block.Block;
 
 @DisplayName("The notebook a model works with")
 class NotebookToolsTest {

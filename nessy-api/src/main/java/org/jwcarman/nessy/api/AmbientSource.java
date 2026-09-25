@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jwcarman.nessy.inference.Ambient;
 
 /**
  * Something that has background to offer about an agent, asked afresh every time it is called.

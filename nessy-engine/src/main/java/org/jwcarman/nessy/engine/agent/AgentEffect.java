@@ -17,9 +17,9 @@ package org.jwcarman.nessy.engine.agent;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * A durable obligation to do work outside the transition. An effect is never proof that the work

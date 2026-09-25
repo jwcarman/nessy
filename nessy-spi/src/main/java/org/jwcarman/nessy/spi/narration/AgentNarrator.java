@@ -16,14 +16,15 @@
 package org.jwcarman.nessy.spi.narration;
 
 import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * A {@link Narrator} that already knows whose story it is telling.
  *
  * <p>Handed to anything that says what happened without being allowed to know who it happened to. A
- * provider is the case that matters: {@link org.jwcarman.nessy.spi.inference.InferenceRequest}
- * carries no agent identity on purpose -- "a provider that could see it could read something it has
- * no business reading" -- and a narrator taking an agent argument would hand that straight back.
+ * provider is the case that matters: {@link org.jwcarman.nessy.inference.InferenceRequest} carries
+ * no agent identity on purpose -- "a provider that could see it could read something it has no
+ * business reading" -- and a narrator taking an agent argument would hand that straight back.
  *
  * <p>Same promises as the narrator behind it: best-effort, never durable, and safe to call from
  * whatever thread is doing the work.
@@ -36,5 +37,26 @@ public interface AgentNarrator {
   /** Nobody is listening. */
   static AgentNarrator silent() {
     return _ -> {};
+  }
+
+  /**
+   * This narrator, as the thing a provider is handed.
+   *
+   * <p>The one place a fragment off a wire becomes something an agent said. A provider knows it
+   * read text; only this side knows that the text is an agent's answer, and that somebody is
+   * watching for it.
+   */
+  default WireNarrator wire() {
+    return new WireNarrator() {
+      @Override
+      public void text(String delta) {
+        narrate(new AgentEvent.ContentDelta(delta));
+      }
+
+      @Override
+      public void thinking(String delta) {
+        narrate(new AgentEvent.ThinkingDelta(delta));
+      }
+    };
   }
 }

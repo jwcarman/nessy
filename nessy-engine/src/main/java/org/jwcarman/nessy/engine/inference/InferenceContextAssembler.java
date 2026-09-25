@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.engine.inference;
 
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
 
 /**
  * Builds everything the model is shown for one call. The extension point.

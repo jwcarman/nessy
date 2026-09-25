@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.engine.token;
 
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * Roughly how much of a model's context a message will occupy.

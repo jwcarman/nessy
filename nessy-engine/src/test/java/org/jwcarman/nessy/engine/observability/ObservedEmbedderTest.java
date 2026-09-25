@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 
 class ObservedEmbedderTest {
 

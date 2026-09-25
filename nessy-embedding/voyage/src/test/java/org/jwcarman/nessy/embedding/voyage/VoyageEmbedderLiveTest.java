@@ -23,7 +23,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /** Against Voyage AI. Tagged {@code live}; needs {@code VOYAGE_API_KEY}. */

@@ -30,13 +30,13 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.lease.JdbcLeases;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 

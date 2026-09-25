@@ -22,11 +22,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.ObservationCoalescer;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
 
 /**
  * The fold, on its own. No database, no model, no Spring -- a state, an input and a context in, a

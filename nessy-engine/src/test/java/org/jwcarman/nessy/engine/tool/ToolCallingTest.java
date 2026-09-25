@@ -29,23 +29,23 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.ToolOffer;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * A whole round, through real Postgres: the model asks for work, the work is dispatched as its own
@@ -91,7 +91,7 @@ class ToolCallingTest {
     }
 
     @Override
-    public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
       offered.add(request.tools());
       InferenceResult next = script.poll();
       return next != null

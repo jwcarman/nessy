@@ -22,9 +22,9 @@ import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.embedding.Embedding;
-import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
-import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.embedding.EmbeddingProvider;
 
 /**
  * What a connection decides once, and what an embedder decides for itself.

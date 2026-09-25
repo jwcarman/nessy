@@ -21,21 +21,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.extraction.Extraction;
 import org.jwcarman.nessy.api.extraction.Extractor;
 import org.jwcarman.nessy.api.extraction.ExtractorFactory;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.inference.ToolChoice;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.InputSchema;
+import org.jwcarman.nessy.inference.tool.ToolName;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -224,7 +224,7 @@ class DefaultExtractorTest {
   /** A narrator is for a turn that is being watched; there is no turn here. */
   @Test
   void the_call_is_made_without_a_narrator() {
-    AtomicReference<AgentNarrator> narrator = new AtomicReference<>(null);
+    AtomicReference<WireNarrator> narrator = new AtomicReference<>(null);
     Extractor extractor =
         factory(
                 (request, told) -> {

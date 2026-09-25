@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.List;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.inference.Seq;
 
 /**
  * What the fold decided.

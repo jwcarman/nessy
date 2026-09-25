@@ -19,7 +19,7 @@ import java.time.Instant;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /** One question put to a person, as the board keeps it. */
 public record PendingApproval(

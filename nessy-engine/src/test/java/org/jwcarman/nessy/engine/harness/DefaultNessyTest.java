@@ -25,11 +25,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Nessy;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 

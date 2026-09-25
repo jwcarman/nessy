@@ -31,9 +31,9 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * Mints and reads the address a deferring approver or tool hands to whoever will answer.

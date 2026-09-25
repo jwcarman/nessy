@@ -18,7 +18,7 @@ package org.jwcarman.nessy.engine.inference;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceOptions;
 
 /**
  * The ask, before any context exists: who is asking, and under what terms.

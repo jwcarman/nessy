@@ -34,15 +34,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -55,10 +54,10 @@ import tools.jackson.databind.json.JsonMapper;
  * client serves several agent types asking for different models.
  *
  * <p><b>Streams, and narrates as it goes.</b> Every call is made through the streaming endpoint;
- * each text delta is narrated as a {@link AgentEvent.ContentDelta} and each thinking delta as a
- * {@link AgentEvent.ThinkingDelta} the moment it arrives. The events are folded back into one
- * message by the SDK's own accumulator, and the reply is read from that exactly as a non-streaming
- * one would be: the engine receives one result, and only the person watching can tell.
+ * each text delta is narrated as text and each thinking delta as thinking the moment it arrives.
+ * The events are folded back into one message by the SDK's own accumulator, and the reply is read
+ * from that exactly as a non-streaming one would be: the engine receives one result, and only the
+ * person watching can tell.
  *
  * <p><b>Extended thinking round-trips.</b> What the model reasoned comes back as a {@link
  * Block.Provider} block carrying this vendor's own payload, signature included, and goes out again
@@ -125,7 +124,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<RawMessageStreamEvent> stream =
         client.messages().createStreaming(AnthropicRequests.toParams(request, features, mapper))) {
@@ -152,15 +151,15 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * are not narrated -- half a JSON argument is not something anybody can watch -- and signatures
    * are the vendor's business.
    */
-  private static void narrate(RawMessageStreamEvent event, AgentNarrator narrator) {
+  private static void narrate(RawMessageStreamEvent event, WireNarrator narrator) {
     if (!event.isContentBlockDelta()) {
       return;
     }
     RawContentBlockDelta delta = event.asContentBlockDelta().delta();
     if (delta.isText() && !delta.asText().text().isEmpty()) {
-      narrator.narrate(new AgentEvent.ContentDelta(delta.asText().text()));
+      narrator.text(delta.asText().text());
     } else if (delta.isThinking() && !delta.asThinking().thinking().isEmpty()) {
-      narrator.narrate(new AgentEvent.ThinkingDelta(delta.asThinking().thinking()));
+      narrator.thinking(delta.asThinking().thinking());
     }
   }
 

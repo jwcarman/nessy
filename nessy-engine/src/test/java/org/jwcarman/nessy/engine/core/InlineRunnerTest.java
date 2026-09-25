@@ -23,8 +23,8 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * A whole turn, on one thread, with no database and nothing written down.
@@ -147,7 +147,8 @@ class InlineRunnerTest {
 
     InlineRunner.Ran ran = holder[0].run("anything");
 
-    AgentState replayed = AgentState.idle(org.jwcarman.nessy.api.Seq.NONE).applyAll(ran.events());
+    AgentState replayed =
+        AgentState.idle(org.jwcarman.nessy.inference.Seq.NONE).applyAll(ran.events());
 
     assertThat(replayed).isEqualTo(ran.state());
   }

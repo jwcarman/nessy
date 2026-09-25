@@ -19,8 +19,8 @@ import java.time.Instant;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.engine.agent.AgentState;
+import org.jwcarman.nessy.inference.Seq;
 
 /**
  * One agent type's state, as states rather than as rows.

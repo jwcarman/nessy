@@ -55,6 +55,7 @@
 
   <modules>
     <module>nessy-bom</module>
+    
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-engine</module>
@@ -373,6 +374,16 @@
         <version>${awssdk.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-inference-spi</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-embedding-spi</artifactId>
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>

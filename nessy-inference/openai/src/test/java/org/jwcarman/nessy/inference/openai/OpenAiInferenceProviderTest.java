@@ -52,21 +52,20 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 
 class OpenAiInferenceProviderTest {
 
@@ -360,13 +359,13 @@ class OpenAiInferenceProviderTest {
   @Nested
   class WhatIsNarrated {
 
-    private final List<AgentEvent> narrated = new ArrayList<>();
+    private final Narration narrated = new Narration();
 
     private InferenceResult inferNarrating(List<ChatCompletionChunk> chunks) {
       return new OpenAiProviderConfig()
           .client(fakeStreamingClient(params -> chunks))
           .build()
-          .infer(REQUEST, narrated::add);
+          .infer(REQUEST, narrated);
     }
 
     @Test
@@ -380,8 +379,8 @@ class OpenAiInferenceProviderTest {
                           .refusal(Optional.<String>empty())
                           .build())));
 
-      assertThat(narrated)
-          .extracting(event -> ((AgentEvent.ContentDelta) event).text())
+      assertThat(narrated.fragments())
+          .extracting(Narration.Fragment::text)
           .containsExactly("a lak", "e mon", "ster");
       assertThat(result)
           .usingRecursiveComparison()
@@ -406,8 +405,8 @@ class OpenAiInferenceProviderTest {
 
       InferenceResult result = inferNarrating(chunks);
 
-      assertThat(narrated)
-          .containsExactly(new AgentEvent.ThinkingDelta("hmm"), new AgentEvent.ContentDelta("ok"));
+      assertThat(narrated.fragments())
+          .containsExactly(Narration.Fragment.thinking("hmm"), Narration.Fragment.text("ok"));
       assertThat(result)
           .usingRecursiveComparison()
           .ignoringFields("usage")
@@ -435,7 +434,7 @@ class OpenAiInferenceProviderTest {
                                       .build()))
                           .build())));
 
-      assertThat(narrated).isEmpty();
+      assertThat(narrated.fragments()).isEmpty();
       assertThat(calls).isInstanceOf(InferenceResult.Actions.class);
       assertThat(inferNarrating(List.of()))
           .isInstanceOfSatisfying(

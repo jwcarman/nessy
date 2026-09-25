@@ -18,7 +18,9 @@ package org.jwcarman.nessy.api.tool;
 import java.time.Instant;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * One call of a tool: whose it is, which call it is, its arguments, how long the answer is worth

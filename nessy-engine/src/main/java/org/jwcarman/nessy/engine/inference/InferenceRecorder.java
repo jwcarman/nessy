@@ -18,8 +18,8 @@ package org.jwcarman.nessy.engine.inference;
 import java.util.UUID;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
 
 /** Writes down a model call before it is made and how it came back once it has. */
 public interface InferenceRecorder {

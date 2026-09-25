@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;

@@ -20,13 +20,13 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * A provider observed the way the OpenTelemetry GenAI semantic conventions describe a model call:
@@ -83,7 +83,7 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
     // Asked per call, not once: a registry is no-op until a handler is registered, which may
     // happen after this wrapper is built.
     if (observations.isNoop()) {

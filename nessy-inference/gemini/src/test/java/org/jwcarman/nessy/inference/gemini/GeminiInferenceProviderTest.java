@@ -39,19 +39,18 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceContext;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Turn;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("The Gemini provider")
@@ -193,7 +192,7 @@ class GeminiInferenceProviderTest {
   @Nested
   class WhatIsNarrated {
 
-    private final List<AgentEvent> narrated = new ArrayList<>();
+    private final Narration narrated = new Narration();
 
     @Test
     void thoughts_and_prose_are_narrated_as_they_arrive_and_the_reply_is_read_whole() {
@@ -205,16 +204,16 @@ class GeminiInferenceProviderTest {
 
       InferenceResult result =
           new GeminiInferenceProvider(new ScriptedClient(response, null), MAPPER)
-              .infer(request(), narrated::add);
+              .infer(request(), narrated);
 
-      assertThat(narrated)
+      assertThat(narrated.fragments())
           .containsExactly(
-              new AgentEvent.ThinkingDelta("hmm, "),
-              new AgentEvent.ThinkingDelta("a lak"),
-              new AgentEvent.ThinkingDelta("e"),
-              new AgentEvent.ContentDelta("a lak"),
-              new AgentEvent.ContentDelta("e mon"),
-              new AgentEvent.ContentDelta("ster"));
+              Narration.Fragment.thinking("hmm, "),
+              Narration.Fragment.thinking("a lak"),
+              Narration.Fragment.thinking("e"),
+              Narration.Fragment.text("a lak"),
+              Narration.Fragment.text("e mon"),
+              Narration.Fragment.text("ster"));
       assertThat(result)
           .usingRecursiveComparison()
           .ignoringFields("usage")
@@ -240,13 +239,13 @@ class GeminiInferenceProviderTest {
           };
 
       InferenceResult result =
-          new GeminiInferenceProvider(silent, MAPPER).infer(request(), narrated::add);
+          new GeminiInferenceProvider(silent, MAPPER).infer(request(), narrated);
 
       assertThat(result)
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
               fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
-      assertThat(narrated).isEmpty();
+      assertThat(narrated.fragments()).isEmpty();
     }
   }
 

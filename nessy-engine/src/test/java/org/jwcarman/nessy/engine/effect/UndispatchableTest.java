@@ -27,10 +27,10 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * An effect nobody can read still ends its agent's turn.
@@ -152,7 +152,7 @@ class UndispatchableTest {
   static class NeverCalled implements InferenceProvider {
 
     @Override
-    public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
       throw new IllegalStateException("the undecodable effect was somehow dispatched");
     }
   }

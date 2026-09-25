@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * One call the engine owes an outcome for, and how far along it is.

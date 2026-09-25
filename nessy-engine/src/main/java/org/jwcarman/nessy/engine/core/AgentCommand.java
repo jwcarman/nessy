@@ -17,8 +17,9 @@ package org.jwcarman.nessy.engine.core;
 
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * What the harness asks of an {@link AgentState}. Five of them, and the same five whatever the

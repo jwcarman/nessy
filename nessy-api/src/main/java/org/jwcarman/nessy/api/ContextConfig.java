@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import org.jwcarman.nessy.inference.Ambient;
+
 /**
  * How the context for a call is built: what is compressed, how much of the tail is sent whole, and
  * what background rides along.

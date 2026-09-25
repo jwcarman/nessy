@@ -22,9 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
-import org.jwcarman.nessy.api.embedding.Embedding;
-import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
-import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.embedding.EmbeddingProvider;
 
 /**
  * OpenAI's embeddings endpoint, through the vendor's own SDK, and with a base URL every service

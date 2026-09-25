@@ -17,13 +17,13 @@ package org.jwcarman.nessy.engine.store;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Observation;
-import org.jwcarman.nessy.api.turn.ToolOutcome;
-import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.inference.turn.Exchange;
+import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.ToolOutcome;
+import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /**
  * One turn, under construction, as the story is reduced forward.

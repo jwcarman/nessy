@@ -22,17 +22,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.risk.Impact;
 import org.jwcarman.nessy.approval.risk.Likelihood;
 import org.jwcarman.nessy.approval.risk.Risk;
 import org.jwcarman.nessy.approval.risk.RiskAssessment;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 import tools.jackson.databind.JsonNode;
 
 @DisplayName("The watchman's risk appetite")

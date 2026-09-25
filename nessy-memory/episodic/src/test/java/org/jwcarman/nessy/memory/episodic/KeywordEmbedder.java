@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.Embedding;
 
 /**
  * An embedder whose vectors can be reasoned about: one coordinate per keyword, counting mentions,

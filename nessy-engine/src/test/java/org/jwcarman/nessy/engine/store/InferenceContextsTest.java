@@ -28,11 +28,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.block.Block;
 
 @DisplayName("What a model was shown")
 class InferenceContextsTest {
@@ -123,7 +123,7 @@ class InferenceContextsTest {
                     .inference(
                         (request, narrator) ->
                             new InferenceResult.Answer(List.of(new Block.Text("shh"))),
-                        org.jwcarman.nessy.spi.inference.InferenceOptions.of("a-model"))
+                        org.jwcarman.nessy.inference.InferenceOptions.of("a-model"))
                     .recordInferenceContexts(false))) {
       Harness<String> silent =
           quiet.create(
@@ -139,7 +139,7 @@ class InferenceContextsTest {
               () ->
                   assertThat(
                           quiet.histories().forAgent(new AgentType("quiet"), agentId).turnsFrom(0))
-                      .anyMatch(org.jwcarman.nessy.api.turn.Turn::complete));
+                      .anyMatch(org.jwcarman.nessy.inference.turn.Turn::complete));
       assertThat(quiet.inferenceContexts().forAgent(new AgentType("quiet"), agentId)).isEmpty();
     }
   }

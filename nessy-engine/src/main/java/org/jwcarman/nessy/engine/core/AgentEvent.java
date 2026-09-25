@@ -17,11 +17,12 @@ package org.jwcarman.nessy.engine.core;
 
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.spi.inference.Failure;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.tool.CallId;
+import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * What happened. Facts, in order, and the only thing that moves an {@link AgentState}.

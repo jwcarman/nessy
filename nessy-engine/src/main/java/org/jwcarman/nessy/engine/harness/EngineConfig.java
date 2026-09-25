@@ -25,8 +25,8 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
 
 /**
  * What an engine needs from the application, and what it will assume if not told.

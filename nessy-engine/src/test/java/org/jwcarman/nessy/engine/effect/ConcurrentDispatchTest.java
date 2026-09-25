@@ -31,10 +31,10 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * A batch is performed in parallel, not one row at a time.
@@ -120,7 +120,7 @@ class ConcurrentDispatchTest {
     private volatile boolean everyoneArrived;
 
     @Override
-    public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
       arrived.countDown();
       try {
         if (!arrived.await(15, TimeUnit.SECONDS)) {

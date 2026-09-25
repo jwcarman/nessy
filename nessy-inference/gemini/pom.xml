@@ -36,7 +36,7 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
+      <artifactId>nessy-inference-spi</artifactId>
     </dependency>
     <dependency>
       <groupId>com.google.genai</groupId>

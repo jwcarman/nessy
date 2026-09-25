@@ -21,9 +21,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * One model call as the model saw it: the request as rendered, and how it came back.

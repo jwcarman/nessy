@@ -21,8 +21,8 @@ import java.util.function.Consumer;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
-import org.jwcarman.nessy.spi.embedding.EmbeddingOptions;
-import org.jwcarman.nessy.spi.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
+import org.jwcarman.nessy.embedding.EmbeddingProvider;
 
 /**
  * Embedders over one connection, one per model.

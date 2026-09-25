@@ -31,15 +31,14 @@ import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -54,12 +53,12 @@ import tools.jackson.databind.json.JsonMapper;
  * pin.
  *
  * <p><b>Streams, and narrates as it goes.</b> Every call is made with {@code stream: true}; each
- * chunk's text is narrated as a {@link AgentEvent.ContentDelta} the moment it arrives, and a chunk
- * carrying {@code reasoning_content} -- what OpenAI-compatible servers such as LM Studio send for a
- * thinking model -- as a {@link AgentEvent.ThinkingDelta}. The chunks are folded back into one
- * completion by the SDK's own accumulator, and the answer is read from that exactly as a
- * non-streaming reply would be. The narrator is best-effort and the engine reads only the result,
- * so nothing above this class can tell it streams; the person watching can.
+ * chunk's text is narrated as text the moment it arrives, and a chunk carrying {@code
+ * reasoning_content} -- what OpenAI-compatible servers such as LM Studio send for a thinking model
+ * -- as thinking. The chunks are folded back into one completion by the SDK's own accumulator, and
+ * the answer is read from that exactly as a non-streaming reply would be. The narrator is
+ * best-effort and the engine reads only the result, so nothing above this class can tell it
+ * streams; the person watching can.
  *
  * <p><b>Images are not sent.</b> The block grammar has no image yet, so there is nothing to
  * project; when it grows one, {@code OpenAiRequests} is where it lands.
@@ -137,7 +136,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * Failure.Unknown} would be retried three times and then recorded as the model's fault.
    */
   @Override
-  public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<ChatCompletionChunk> stream =
         client.chat().completions().createStreaming(OpenAiRequests.toParams(request, mapper))) {
@@ -165,20 +164,17 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * sends any. Only the first choice, which is the only one read. Tool-call fragments are not
    * narrated: half a JSON argument is not something anybody can watch.
    */
-  private static void narrate(ChatCompletionChunk chunk, AgentNarrator narrator) {
+  private static void narrate(ChatCompletionChunk chunk, WireNarrator narrator) {
     for (ChatCompletionChunk.Choice choice : chunk.choices()) {
       if (choice.index() != 0) {
         continue;
       }
       ChatCompletionChunk.Choice.Delta delta = choice.delta();
-      delta
-          .content()
-          .filter(text -> !text.isEmpty())
-          .ifPresent(text -> narrator.narrate(new AgentEvent.ContentDelta(text)));
+      delta.content().filter(text -> !text.isEmpty()).ifPresent(text -> narrator.text(text));
       for (String field : REASONING_FIELDS) {
         if (delta._additionalProperties().get(field) instanceof JsonString reasoning
             && !reasoning.value().isEmpty()) {
-          narrator.narrate(new AgentEvent.ThinkingDelta(reasoning.value()));
+          narrator.thinking(reasoning.value());
         }
       }
     }

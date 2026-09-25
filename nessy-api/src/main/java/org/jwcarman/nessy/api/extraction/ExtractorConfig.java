@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api.extraction;
 
-import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.inference.SystemPrompt;
 
 /**
  * What varies between one extractor and the next.

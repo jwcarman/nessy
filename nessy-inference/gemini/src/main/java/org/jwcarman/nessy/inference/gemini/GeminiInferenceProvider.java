@@ -35,15 +35,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.spi.inference.Failure;
-import org.jwcarman.nessy.spi.inference.InferenceOptions;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Usage;
+import org.jwcarman.nessy.inference.WireNarrator;
+import org.jwcarman.nessy.inference.block.Block;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -57,11 +56,11 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p><b>Streams, and narrates as it goes.</b> Every call is made through {@code
  * generateContentStream}; each partial response's text parts are narrated as they arrive -- a
- * thought summary as a {@link AgentEvent.ThinkingDelta}, prose as a {@link AgentEvent.ContentDelta}
- * -- and the parts are folded into one response here, because this SDK has no accumulator of its
- * own: consecutive text parts of one kind are joined, function calls arrive whole and are kept
- * whole, and the last partial's finish reason is the reply's. The reply is then read exactly as a
- * non-streaming one would be; the engine receives one result.
+ * thought summary as thinking and prose as text -- and the parts are folded into one response here,
+ * because this SDK has no accumulator of its own: consecutive text parts of one kind are joined,
+ * function calls arrive whole and are kept whole, and the last partial's finish reason is the
+ * reply's. The reply is then read exactly as a non-streaming one would be; the engine receives one
+ * result.
  *
  * <p><b>Thought signatures round-trip.</b> Gemini ties an opaque signature to each function call it
  * makes and wants it back with the call on the next turn. It comes back as a {@link Block.Provider}
@@ -135,7 +134,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   @Override
-  public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+  public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (Stream<GenerateContentResponse> stream =
         client.generateContentStream(
@@ -187,7 +186,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private Optional<GenerateContentResponseUsageMetadata> usage = Optional.empty();
     private boolean any;
 
-    void take(GenerateContentResponse partial, AgentNarrator narrator) {
+    void take(GenerateContentResponse partial, WireNarrator narrator) {
       any = true;
       if (partial.promptFeedback().isPresent()) {
         feedback = partial.promptFeedback();
@@ -210,15 +209,17 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       }
     }
 
-    private static void narrate(Part part, AgentNarrator narrator) {
+    private static void narrate(Part part, WireNarrator narrator) {
       part.text()
           .filter(text -> !text.isEmpty())
           .ifPresent(
-              text ->
-                  narrator.narrate(
-                      part.thought().orElse(false)
-                          ? new AgentEvent.ThinkingDelta(text)
-                          : new AgentEvent.ContentDelta(text)));
+              text -> {
+                if (part.thought().orElse(false)) {
+                  narrator.thinking(text);
+                } else {
+                  narrator.text(text);
+                }
+              });
     }
 
     private void fold(Part part) {

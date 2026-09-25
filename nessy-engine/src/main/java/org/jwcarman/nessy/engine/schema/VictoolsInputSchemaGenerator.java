@@ -35,8 +35,8 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Customizers;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.inference.tool.InputSchema;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 

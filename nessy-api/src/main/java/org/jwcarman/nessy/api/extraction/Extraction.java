@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.extraction;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What came back when a document was read for its fields.

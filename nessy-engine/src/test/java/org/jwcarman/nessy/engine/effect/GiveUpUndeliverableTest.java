@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Harness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.spi.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.inference.InferenceRequest;
-import org.jwcarman.nessy.spi.inference.InferenceResult;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.WireNarrator;
 
 /**
  * Giving up and failing to say so are not the same thing.
@@ -156,7 +156,7 @@ class GiveUpUndeliverableTest {
     final CountDownLatch fail = new CountDownLatch(1);
 
     @Override
-    public InferenceResult infer(InferenceRequest request, AgentNarrator narrator) {
+    public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
       DELIVERIES.incrementAndGet();
       try {
         fail.await();
