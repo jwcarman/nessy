@@ -26,8 +26,11 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.core.AgentCommand;
@@ -35,7 +38,9 @@ import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
-import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.engine.inference.ContextAssembler;
+import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -65,6 +70,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   private final Locks locks;
+  private final AgentType agentType;
   private final AgentEventStore events;
   private final PayloadStore payloads;
   private final InferenceProvider provider;
@@ -79,11 +85,15 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   private final ObjectMapper mapper;
 
+  /** What the model is shown, assembled the same way the queued door assembles it. */
+  private final InferenceContextAssembler assembler;
+
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
 
   public DefaultDirectHarness(
       Locks locks,
+      AgentType agentType,
       AgentEventStore events,
       PayloadStore payloads,
       InferenceProvider provider,
@@ -92,8 +102,12 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       Function<I, List<Block.ObservationContent>> renderer,
       Map<ToolName, DirectTool> tools,
       InputSchemaGenerator schemas,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      List<Summarizer> summaries,
+      int maxTail,
+      List<AmbientSource> ambient) {
     this.locks = locks;
+    this.agentType = agentType;
     this.events = events;
     this.payloads = payloads;
     this.provider = provider;
@@ -104,6 +118,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.tools = Map.copyOf(tools);
     this.schemas = schemas;
     this.mapper = mapper;
+    // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
+    // however the turn was started, and a second implementation of it would drift.
+    this.assembler =
+        new ContextAssembler(
+            (type, id) -> new EventStreamHistory(events, transcript, id),
+            summaries,
+            maxTail,
+            ambient);
     this.toolset = Toolset.of(offersOf(this.tools));
   }
 
@@ -172,7 +194,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       state = state.applyAll(decision.events());
 
       for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(effect, history, shape));
+        pending.add(perform(agent, effect, history, shape));
       }
     }
 
@@ -198,9 +220,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
   /** Where the outside world happens: everything slow, everything non-deterministic. */
   private AgentCommand perform(
-      AgentEffect effect, List<AgentEvent> history, Optional<OutputSchema> shape) {
+      AgentId agent, AgentEffect effect, List<AgentEvent> history, Optional<OutputSchema> shape) {
     return switch (effect) {
-      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(history, shape));
+      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, shape));
 
       // Nothing here can park, so approval is a policy answering now. A desk that needs a person
       // belongs on the queued door, which has somewhere to put the waiting.
@@ -231,11 +253,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
-  private AgentCommand.InferenceOutcome infer(
-      List<AgentEvent> history, Optional<OutputSchema> shape) {
+  private AgentCommand.InferenceOutcome infer(AgentId agent, Optional<OutputSchema> shape) {
     InferenceRequest request =
         new InferenceRequest(
-            systemPrompt, InferenceContext.of(transcript.of(history)), toolset, options, shape);
+            systemPrompt,
+            assembler.assemble(new InferenceInvocation(agentType, agent, options)),
+            toolset,
+            options,
+            shape);
 
     return switch (provider.infer(request)) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->

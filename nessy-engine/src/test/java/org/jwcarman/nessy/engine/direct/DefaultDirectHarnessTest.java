@@ -32,9 +32,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -60,6 +63,9 @@ import tools.jackson.databind.json.JsonMapper;
  * stream, and what the model is shown is rebuilt from that stream rather than remembered.
  */
 class DefaultDirectHarnessTest {
+
+  private static final AgentType TYPE = new AgentType("chat");
+  private static final int MAX_TAIL = 50;
 
   private static final ToolName LOOKUP = new ToolName("lookup");
   private static final CallId CALL = new CallId("call-1");
@@ -91,6 +97,7 @@ class DefaultDirectHarnessTest {
       InferenceProvider model, Map<ToolName, DefaultDirectHarness.DirectTool> tools) {
     return new DefaultDirectHarness<>(
         new LocalLocks(),
+        TYPE,
         events,
         payloads,
         model,
@@ -99,7 +106,10 @@ class DefaultDirectHarnessTest {
         (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
         tools,
         SCHEMAS,
-        MAPPER);
+        MAPPER,
+        List.of(),
+        MAX_TAIL,
+        List.of());
   }
 
   private static InferenceResult answering(String text) {
@@ -295,6 +305,7 @@ class DefaultDirectHarnessTest {
     DefaultDirectHarness<String> harness =
         new DefaultDirectHarness<>(
             held,
+            TYPE,
             events,
             payloads,
             new Scripted().then(answering("never asked")),
@@ -304,7 +315,10 @@ class DefaultDirectHarnessTest {
                 text -> List.of(new Block.Text(text)),
             Map.of(),
             SCHEMAS,
-            MAPPER);
+            MAPPER,
+            List.of(),
+            MAX_TAIL,
+            List.of());
 
     AgentId agent = AgentId.random();
 
@@ -408,5 +422,72 @@ class DefaultDirectHarnessTest {
             .ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
+  }
+
+  @Test
+  @DisplayName("ambient background reaches the model, assembled the way the queued door does it")
+  void ambient_is_shown_to_the_model() {
+    Scripted model = new Scripted().then(answering("noted"));
+    DefaultDirectHarness<String> harness =
+        new DefaultDirectHarness<>(
+            new LocalLocks(),
+            TYPE,
+            events,
+            payloads,
+            model,
+            new SystemPrompt("You are terse."),
+            InferenceOptions.of("a-model"),
+            (Function<String, List<Block.ObservationContent>>)
+                text -> List.of(new Block.Text(text)),
+            Map.of(),
+            SCHEMAS,
+            MAPPER,
+            List.of(),
+            MAX_TAIL,
+            List.of(AmbientSource.constant(Ambient.text("notebook", "the deploy is frozen"))));
+
+    harness.ask(AgentId.random(), "anything I should know?");
+
+    assertThat(model.seen.getFirst().context().ambient())
+        .singleElement()
+        .extracting(Ambient::kind)
+        .isEqualTo("notebook");
+  }
+
+  @Test
+  @DisplayName("the tail window is honoured, so a long conversation does not send all of itself")
+  void the_tail_is_windowed() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted();
+    for (int i = 0; i < 5; i++) {
+      model.then(answering("ok " + i));
+    }
+    DefaultDirectHarness<String> harness = harnessKeeping(model, 2);
+
+    for (int i = 0; i < 5; i++) {
+      harness.ask(agent, "question " + i);
+    }
+
+    // The fifth call is the one worth looking at: four turns are behind it, and only maxTail of
+    // them may be sent -- the window is what makes a thousand-turn conversation affordable.
+    assertThat(model.seen.getLast().context().turns()).hasSizeLessThanOrEqualTo(2);
+  }
+
+  private DefaultDirectHarness<String> harnessKeeping(Scripted model, int maxTail) {
+    return new DefaultDirectHarness<>(
+        new LocalLocks(),
+        TYPE,
+        events,
+        payloads,
+        model,
+        new SystemPrompt("You are terse."),
+        InferenceOptions.of("a-model"),
+        (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
+        Map.of(),
+        SCHEMAS,
+        MAPPER,
+        List.of(),
+        maxTail,
+        List.of());
   }
 }

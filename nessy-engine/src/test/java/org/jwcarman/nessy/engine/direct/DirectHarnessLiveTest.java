@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -61,6 +62,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("live")
 class DirectHarnessLiveTest {
 
+  private static final AgentType TYPE = new AgentType("chat");
+  private static final int MAX_TAIL = 50;
+
   private static final String BASE_URL =
       System.getenv().getOrDefault("CHAT_MODEL_URL", "http://localhost:1234/v1");
   private static final String MODEL =
@@ -75,6 +79,7 @@ class DirectHarnessLiveTest {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
     return new DefaultDirectHarness<>(
         new LocalLocks(),
+        TYPE,
         new InMemoryAgentEventStore(),
         new InMemoryPayloads(),
         OpenAiInferenceProvider.create(c -> c.apiKey(key()).baseUrl(BASE_URL)),
@@ -83,7 +88,10 @@ class DirectHarnessLiveTest {
         text -> List.of(new Block.Text(text)),
         Map.of(),
         new VictoolsInputSchemaGenerator(),
-        JsonMapper.builder().build());
+        JsonMapper.builder().build(),
+        List.of(),
+        MAX_TAIL,
+        List.of());
   }
 
   private static String key() {
