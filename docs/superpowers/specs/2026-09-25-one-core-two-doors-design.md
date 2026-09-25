@@ -215,9 +215,17 @@ Rejected on the way: claim-checking the backlog and resolving payloads on every 
 content back into the write path), and narrowing the coalescer to a key function (cheap, but loses
 caps, reordering and "a full resync supersedes everything", which the contract names).
 
-**OPEN — James, small:** the operation set is proposed as exactly `append`, `replaceAll`, `size`,
-`dropOldest`, `all`. Adding later is easy; removing is not. And whether `all()` hands back a
-snapshot (safer, and what "escape hatch" implies) or a live view (faster, sharper edges).
+The operation set is exactly `append`, `replaceAll`, `size`, `dropOldest`, `all`. Adding later is
+easy; removing is not.
+
+**`all()` hands back a snapshot, and the row lock is what makes that safe.** The coalescer runs
+inside the transaction that already holds `nessy_agent` `FOR UPDATE`, so nothing else can write
+this agent's backlog while it is running: a snapshot cannot go stale, and being immutable it is
+safe to iterate while calling operations that mutate. The only argument for a live view was speed,
+and it buys nothing here.
+
+Operations apply immediately rather than accumulating, so the snapshot is taken at the moment of
+the call: `all()` -> `dropOldest(1)` -> `all()` sees the drop in the second one.
 
 ### RULED 2026-09-25: an agent table, locked with SELECT ... FOR UPDATE
 
