@@ -33,6 +33,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
 import org.jwcarman.nessy.inference.block.Block;
@@ -65,7 +66,7 @@ class AnthropicRequestsTest {
   }
 
   private static InferenceRequest request(List<Turn> turns) {
-    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), List.of(), options());
+    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), Toolset.none(), options());
   }
 
   private static Features caching(PromptCaching caching) {
@@ -138,7 +139,7 @@ class AnthropicRequestsTest {
               new InferenceContext(
                   List.of(open(1, "hello")),
                   List.of(Ambient.text("notebook", "the deploy is frozen"))),
-              List.of(),
+              Toolset.none(),
               options());
 
       var system =
@@ -160,7 +161,7 @@ class AnthropicRequestsTest {
               new InferenceContext(
                   List.of(open(1, "hello")),
                   List.of(new Ambient("notebook", List.of(new Block.Text("   "))))),
-              List.of(),
+              Toolset.none(),
               options());
 
       assertThat(
@@ -178,7 +179,7 @@ class AnthropicRequestsTest {
               SYSTEM,
               new InferenceContext(
                   List.of(open(1, "hello")), List.of(Ambient.text("clock", "it is Tuesday"))),
-              List.of(),
+              Toolset.none(),
               options());
 
       assertThat(blocksOf(AnthropicRequests.toParams(request, NONE, MAPPER)))
@@ -519,7 +520,7 @@ class AnthropicRequestsTest {
     private static MessageCreateParams withTools(List<ToolOffer> tools, PromptCaching caching) {
       return AnthropicRequests.toParams(
           new InferenceRequest(
-              SYSTEM, InferenceContext.of(List.of(open(1, "hi"))), tools, options()),
+              SYSTEM, InferenceContext.of(List.of(open(1, "hi"))), Toolset.of(tools), options()),
           caching(caching),
           MAPPER);
     }
@@ -634,7 +635,7 @@ class AnthropicRequestsTest {
               List.of());
       MessageCreateParams params =
           AnthropicRequests.toParams(
-              new InferenceRequest(SYSTEM, context, List.of(), options()), NONE, MAPPER);
+              new InferenceRequest(SYSTEM, context, Toolset.none(), options()), NONE, MAPPER);
 
       assertThat(params.messages()).hasSize(2);
       assertThat(params.messages().getFirst().role()).isEqualTo(MessageParam.Role.USER);
@@ -726,8 +727,7 @@ class AnthropicRequestsTest {
           new InferenceRequest(
               SYSTEM,
               InferenceContext.of(List.of(open(1, "hello"))),
-              List.of(offer("lookup")),
-              choice,
+              new Toolset(List.of(offer("lookup")), choice),
               options()),
           NONE,
           MAPPER);
@@ -756,7 +756,13 @@ class AnthropicRequestsTest {
           .isNotNull();
     }
 
-    /** Nothing to choose between, so nothing is said -- and the wire is not sent an empty rule. */
+    /**
+     * Nothing to choose between, so nothing is said -- and the wire is not sent an empty rule.
+     *
+     * <p>This used to be asked with an empty offer and a required call, which Toolset now refuses
+     * to build: requiring a call with nothing to call is unsatisfiable on every wire, so it is
+     * caught once at construction rather than defended against four times here.
+     */
     @Test
     void a_request_with_no_tools_says_nothing_about_choosing() {
       MessageCreateParams params =
@@ -764,8 +770,7 @@ class AnthropicRequestsTest {
               new InferenceRequest(
                   SYSTEM,
                   InferenceContext.of(List.of(open(1, "hello"))),
-                  List.of(),
-                  new ToolChoice.Any(),
+                  Toolset.none(),
                   options()),
               NONE,
               MAPPER);

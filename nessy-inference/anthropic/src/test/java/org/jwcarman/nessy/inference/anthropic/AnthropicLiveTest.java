@@ -32,6 +32,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.InputSchema;
@@ -95,15 +96,17 @@ class AnthropicLiveTest {
   private static InferenceRequest asking(
       List<Turn> turns, List<ToolOffer> tools, ToolChoice choice) {
     return new InferenceRequest(
-        SYSTEM, InferenceContext.of(turns), tools, choice, new InferenceOptions(MODEL, 2048));
+        SYSTEM,
+        InferenceContext.of(turns),
+        new Toolset(tools, choice),
+        new InferenceOptions(MODEL, 2048));
   }
 
   private static InferenceRequest askingFor(List<Turn> turns, OutputSchema shape) {
     return new InferenceRequest(
         SYSTEM,
         InferenceContext.of(turns),
-        List.of(),
-        ToolChoice.auto(),
+        Toolset.none(),
         new InferenceOptions(MODEL, 2048),
         Optional.of(shape));
   }

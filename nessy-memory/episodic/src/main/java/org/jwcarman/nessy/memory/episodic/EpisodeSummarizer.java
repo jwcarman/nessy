@@ -33,6 +33,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.lease.Leases;
 import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
@@ -232,7 +233,7 @@ public class EpisodeSummarizer {
             new InferenceRequest(
                 new SystemPrompt(PROMPT),
                 new InferenceContext(List.of(), shown, List.of()),
-                List.of(),
+                Toolset.none(),
                 options));
     if (!(result instanceof InferenceResult.Answer(var blocks, _))) {
       // Not an error to anybody: the episode stays unsummarised, and the next turn end tries again.

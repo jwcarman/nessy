@@ -73,6 +73,7 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -304,7 +305,7 @@ class AnthropicInferenceProviderTest {
                       List.of(),
                       null,
                       0))),
-          List.of(),
+          Toolset.none(),
           new InferenceOptions("claude-sonnet", 1024));
 
   private static InferenceResult inferAnswering(Message message) {

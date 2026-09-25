@@ -29,7 +29,7 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
-import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Observation;
@@ -57,7 +57,7 @@ class GeminiLiveTest {
                     List.of(),
                     null,
                     0))),
-        List.of(),
+        Toolset.none(),
         new InferenceOptions(MODEL, 1024));
   }
 
@@ -72,8 +72,7 @@ class GeminiLiveTest {
                     List.of(),
                     null,
                     0))),
-        List.of(),
-        ToolChoice.auto(),
+        Toolset.none(),
         new InferenceOptions(MODEL, 1024),
         Optional.of(shape));
   }

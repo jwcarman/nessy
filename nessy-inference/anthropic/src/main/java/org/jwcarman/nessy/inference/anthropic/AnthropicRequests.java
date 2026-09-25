@@ -115,8 +115,8 @@ public final class AnthropicRequests {
       builder.systemOfTextBlockParams(system);
     }
     addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
-    addTools(builder, request.tools(), marker, mapper);
-    chooseTool(builder, request.tools(), request.toolChoice());
+    addTools(builder, request.toolset().offers(), marker, mapper);
+    chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
 
     if (features.thinking()) {

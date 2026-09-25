@@ -45,6 +45,7 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
@@ -140,7 +141,7 @@ class ObservedTest {
                     List.of(),
                     null,
                     0))),
-        List.of(),
+        Toolset.none(),
         new InferenceOptions("a-model", 1024));
   }
 

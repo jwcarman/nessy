@@ -92,7 +92,7 @@ class ToolCallingTest {
 
     @Override
     public InferenceResult infer(InferenceRequest request, WireNarrator narrator) {
-      offered.add(request.tools());
+      offered.add(request.toolset().offers());
       InferenceResult next = script.poll();
       return next != null
           ? next

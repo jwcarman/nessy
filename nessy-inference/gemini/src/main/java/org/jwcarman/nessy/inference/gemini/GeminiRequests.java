@@ -106,14 +106,16 @@ public final class GeminiRequests {
       }
     }
     builder.systemInstruction(Content.builder().parts(instruction).build());
-    if (request.hasTools()) {
+    if (request.toolset().any()) {
       builder.tools(
           List.of(
               Tool.builder()
                   .functionDeclarations(
-                      request.tools().stream().map(offer -> declaration(offer, mapper)).toList())
+                      request.toolset().offers().stream()
+                          .map(offer -> declaration(offer, mapper))
+                          .toList())
                   .build()));
-      chooseTool(builder, request.toolChoice());
+      chooseTool(builder, request.toolset().choice());
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
     return builder.build();

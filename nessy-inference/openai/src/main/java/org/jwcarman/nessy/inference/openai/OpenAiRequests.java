@@ -96,8 +96,8 @@ public final class OpenAiRequests {
     if (options.hasMaxTokens()) {
       builder.maxCompletionTokens(options.maxTokens());
     }
-    request.tools().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
-    chooseTool(builder, request.tools(), request.toolChoice());
+    request.toolset().offers().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
+    chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
     return builder.build();
   }

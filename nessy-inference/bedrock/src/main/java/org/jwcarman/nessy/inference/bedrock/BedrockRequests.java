@@ -99,11 +99,12 @@ public final class BedrockRequests {
             .toList();
     builder.messages(alternating(drafted));
 
-    if (request.hasTools()) {
+    if (request.toolset().any()) {
       ToolConfiguration.Builder tools =
           ToolConfiguration.builder()
-              .tools(request.tools().stream().map(offer -> tool(offer, mapper)).toList());
-      chooseTool(tools, request.toolChoice());
+              .tools(
+                  request.toolset().offers().stream().map(offer -> tool(offer, mapper)).toList());
+      chooseTool(tools, request.toolset().choice());
       builder.toolConfig(tools.build());
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema));

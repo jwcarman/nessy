@@ -84,9 +84,9 @@ class DefaultExtractorTest {
         .extract(Inquiry.class, "please look at invoice INV-1");
 
     InferenceRequest request = sent.get();
-    assertThat(request.tools()).hasSize(1);
-    assertThat(request.tools().getFirst().name()).isEqualTo(new ToolName("record"));
-    assertThat(request.toolChoice())
+    assertThat(request.toolset().offers()).hasSize(1);
+    assertThat(request.toolset().offers().getFirst().name()).isEqualTo(new ToolName("record"));
+    assertThat(request.toolset().choice())
         .as("one tool is offered, so requiring some tool requires that one")
         .isEqualTo(new ToolChoice.Any());
   }

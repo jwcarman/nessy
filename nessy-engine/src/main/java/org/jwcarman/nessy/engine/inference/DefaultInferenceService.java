@@ -22,6 +22,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.spi.narration.Narrator;
 
 /** Assemble, then send. The only thing that holds both halves at once, and it is one line. */
@@ -30,7 +31,14 @@ public class DefaultInferenceService implements InferenceService {
   private final InferenceContextAssembler assembler;
   private final InferenceProvider provider;
   private final SystemPromptSource systemPrompt;
-  private final List<ToolOffer> tools;
+
+  /**
+   * The same offer on every call of this agent type. Varying what is on offer mid-conversation
+   * leaves calls in the story for tools the model can no longer see, which reads to it as having
+   * imagined them.
+   */
+  private final Toolset toolset;
+
   private final Narrator narrator;
   private final InferenceRecorder recorder;
 
@@ -44,7 +52,7 @@ public class DefaultInferenceService implements InferenceService {
     this.assembler = assembler;
     this.provider = provider;
     this.systemPrompt = systemPrompt;
-    this.tools = List.copyOf(tools);
+    this.toolset = Toolset.of(tools);
     this.narrator = narrator;
     this.recorder = recorder;
   }
@@ -57,10 +65,7 @@ public class DefaultInferenceService implements InferenceService {
         new InferenceRequest(
             systemPrompt.forAgent(invocation.agentId()),
             assembler.assemble(invocation),
-            // The same offer on every call of this agent type. Varying what is on offer
-            // mid-conversation leaves calls in the story for tools the model can no longer
-            // see, which reads to it as having imagined them.
-            tools,
+            toolset,
             invocation.options());
     // Written down before the provider is asked, so a call that never returns still has its
     // context on record; the outcome follows. A provider that throws is a fault like any other.

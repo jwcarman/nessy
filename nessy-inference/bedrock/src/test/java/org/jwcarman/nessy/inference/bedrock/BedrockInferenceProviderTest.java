@@ -33,6 +33,7 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
@@ -82,7 +83,7 @@ class BedrockInferenceProviderTest {
     return new InferenceRequest(
         new SystemPrompt("be brief"),
         InferenceContext.of(List.of(open)),
-        List.of(),
+        Toolset.none(),
         new InferenceOptions("us.amazon.nova-lite", 256));
   }
 

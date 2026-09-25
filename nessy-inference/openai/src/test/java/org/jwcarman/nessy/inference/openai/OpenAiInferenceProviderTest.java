@@ -59,6 +59,7 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
@@ -287,7 +288,7 @@ class OpenAiInferenceProviderTest {
                       List.of(),
                       null,
                       0))),
-          List.of(),
+          Toolset.none(),
           InferenceOptions.of("gpt-4o"));
 
   /** Runs one inference against a client that answers with {@code message}. */

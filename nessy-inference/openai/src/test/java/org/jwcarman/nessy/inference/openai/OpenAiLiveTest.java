@@ -31,6 +31,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.InputSchema;
@@ -82,8 +83,7 @@ class OpenAiLiveTest {
                     List.of(),
                     null,
                     0))),
-        List.of(),
-        ToolChoice.auto(),
+        Toolset.none(),
         InferenceOptions.of(MODEL),
         Optional.of(shape));
   }
@@ -100,8 +100,7 @@ class OpenAiLiveTest {
                     List.of(),
                     null,
                     0))),
-        tools,
-        choice,
+        new Toolset(tools, choice),
         InferenceOptions.of(MODEL));
   }
 

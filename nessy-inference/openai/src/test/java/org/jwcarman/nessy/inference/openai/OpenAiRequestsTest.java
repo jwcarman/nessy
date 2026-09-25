@@ -31,6 +31,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -59,7 +60,7 @@ class OpenAiRequestsTest {
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   private static InferenceRequest request(List<Turn> turns) {
-    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), List.of(), OPTIONS);
+    return new InferenceRequest(SYSTEM, InferenceContext.of(turns), Toolset.none(), OPTIONS);
   }
 
   private static Observation asked(long seq, String text) {
@@ -112,7 +113,7 @@ class OpenAiRequestsTest {
                   List.of(
                       Ambient.text("notebook", "the deploy is frozen"),
                       Ambient.text("clock", "it is Tuesday"))),
-              List.of(),
+              Toolset.none(),
               OPTIONS);
 
       String system =
@@ -167,7 +168,7 @@ class OpenAiRequestsTest {
           new InferenceRequest(
               SYSTEM,
               InferenceContext.of(List.of(open(1, "hi"))),
-              List.of(),
+              Toolset.none(),
               InferenceOptions.of("gpt-4o"));
 
       assertThat(OpenAiRequests.toParams(request, MAPPER).maxCompletionTokens()).isEmpty();
@@ -371,12 +372,13 @@ class OpenAiRequestsTest {
           new InferenceRequest(
               SYSTEM,
               InferenceContext.of(List.of(open(1, "hi"))),
-              List.of(
-                  new ToolOffer(
-                      new ToolName("lookup"),
-                      "looks a thing up",
-                      new InputSchema(
-                          "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"))),
+              Toolset.of(
+                  List.of(
+                      new ToolOffer(
+                          new ToolName("lookup"),
+                          "looks a thing up",
+                          new InputSchema(
+                              "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}")))),
               OPTIONS);
 
       var tools = OpenAiRequests.toParams(request, MAPPER).tools().orElseThrow();
@@ -405,7 +407,7 @@ class OpenAiRequestsTest {
             new InferenceRequest(
                 new SystemPrompt("s"),
                 InferenceContext.of(List.of()),
-                List.of(),
+                Toolset.none(),
                 InferenceOptions.of("m")),
             MAPPER);
 
@@ -421,13 +423,14 @@ class OpenAiRequestsTest {
           new InferenceRequest(
               SYSTEM,
               InferenceContext.of(List.of(open(1, "hi"))),
-              List.of(
-                  new ToolOffer(
-                      new ToolName("lookup"),
-                      "looks a thing up",
-                      new InputSchema(
-                          "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"))),
-              choice,
+              new Toolset(
+                  List.of(
+                      new ToolOffer(
+                          new ToolName("lookup"),
+                          "looks a thing up",
+                          new InputSchema(
+                              "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"))),
+                  choice),
               OPTIONS),
           MAPPER);
     }

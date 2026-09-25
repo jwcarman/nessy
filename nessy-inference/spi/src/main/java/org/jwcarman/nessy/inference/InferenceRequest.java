@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -25,54 +24,33 @@ import java.util.Optional;
  * <p>The system prompt sits beside the conversation rather than inside it, which is where most
  * wires put it: a top-level field for Anthropic and Gemini, and a leading message only because that
  * is all an OpenAI-compatible endpoint offers. It is not a turn and it is not a model option.
+ *
+ * <p><b>Three things decided at three different times.</b> The options are configuration -- which
+ * model, how long an answer -- fixed when a harness is built. The toolset is fixed then too, since
+ * a tool's shape cannot change between calls. The output schema is the one thing chosen per call,
+ * because it comes from what this caller asked to be handed back.
  */
 public record InferenceRequest(
     SystemPrompt systemPrompt,
     InferenceContext context,
-    List<ToolOffer> tools,
-    ToolChoice toolChoice,
+    Toolset toolset,
     InferenceOptions options,
     Optional<OutputSchema> outputSchema) {
+
+  public InferenceRequest {
+    Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    Objects.requireNonNull(context, "context must not be null");
+    Objects.requireNonNull(toolset, "toolset must not be null");
+    Objects.requireNonNull(options, "options must not be null");
+    Objects.requireNonNull(outputSchema, "outputSchema must not be null");
+  }
 
   /** Asks for prose: no shape is required of the answer. */
   public InferenceRequest(
       SystemPrompt systemPrompt,
       InferenceContext context,
-      List<ToolOffer> tools,
-      ToolChoice toolChoice,
+      Toolset toolset,
       InferenceOptions options) {
-    this(systemPrompt, context, tools, toolChoice, options, Optional.empty());
-  }
-
-  public InferenceRequest {
-    Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
-    Objects.requireNonNull(context, "context must not be null");
-    Objects.requireNonNull(tools, "tools must not be null");
-    // Absent means auto, on the wire and in a stored row alike: a request recorded before this
-    // field existed said nothing about choosing, which is exactly what auto means. Defaulted
-    // rather than refused, because those rows are read back to show what a model was shown.
-    toolChoice = toolChoice == null ? ToolChoice.auto() : toolChoice;
-    Objects.requireNonNull(options, "options must not be null");
-    tools = List.copyOf(tools);
-  }
-
-  /** A request that leaves the choice to the model, which is what a turn wants. */
-  public InferenceRequest(
-      SystemPrompt systemPrompt,
-      InferenceContext context,
-      List<ToolOffer> tools,
-      InferenceOptions options) {
-    this(systemPrompt, context, tools, ToolChoice.auto(), options);
-  }
-
-  /**
-   * Whether anything is on offer.
-   *
-   * <p>Worth asking rather than sending an empty array. Several OpenAI-compatible servers reject
-   * {@code "tools": []}, and a model offered nothing should be asked the way it was asked before
-   * tools existed at all.
-   */
-  public boolean hasTools() {
-    return !tools.isEmpty();
+    this(systemPrompt, context, toolset, options, Optional.empty());
   }
 }

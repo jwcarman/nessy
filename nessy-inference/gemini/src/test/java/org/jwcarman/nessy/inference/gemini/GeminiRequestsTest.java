@@ -39,6 +39,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -65,7 +66,7 @@ class GeminiRequestsTest {
 
   private static InferenceRequest request(InferenceContext context, List<ToolOffer> tools) {
     return new InferenceRequest(
-        SYSTEM, context, tools, new InferenceOptions("gemini-3.6-pro", 1024));
+        SYSTEM, context, Toolset.of(tools), new InferenceOptions("gemini-3.6-pro", 1024));
   }
 
   private static Observation asked(long seq, String text) {
@@ -352,8 +353,7 @@ class GeminiRequestsTest {
           new InferenceRequest(
               SYSTEM,
               new InferenceContext(List.of(open(1, "hello")), List.of()),
-              List.of(offer()),
-              choice,
+              new Toolset(List.of(offer()), choice),
               new InferenceOptions("gemini-3.6-pro", 1024)),
           MAPPER);
     }

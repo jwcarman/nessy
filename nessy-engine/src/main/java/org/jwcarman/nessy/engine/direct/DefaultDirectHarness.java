@@ -38,7 +38,8 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
-import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.store.PayloadStore;
@@ -65,6 +66,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final Function<I, List<Block.ObservationContent>> renderer;
   private final Map<ToolName, DirectTool> tools;
 
+  /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
+  private final Toolset toolset;
+
   public DefaultDirectHarness(
       AgentEventStore events,
       PayloadStore payloads,
@@ -81,6 +85,13 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.options = options;
     this.renderer = renderer;
     this.tools = Map.copyOf(tools);
+    this.toolset = Toolset.of(offersOf(this.tools));
+  }
+
+  private static List<ToolOffer> offersOf(Map<ToolName, DirectTool> tools) {
+    return tools.entrySet().stream()
+        .map(e -> new ToolOffer(e.getKey(), e.getValue().description(), e.getValue().schema()))
+        .toList();
   }
 
   @Override
@@ -169,11 +180,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private AgentCommand.InferenceOutcome infer(List<AgentEvent> history) {
     InferenceRequest request =
         new InferenceRequest(
-            systemPrompt,
-            InferenceContext.of(transcript.of(history)),
-            offers(),
-            ToolChoice.auto(),
-            options);
+            systemPrompt, InferenceContext.of(transcript.of(history)), toolset, options);
 
     return switch (provider.infer(request)) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
@@ -193,15 +200,6 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
         .map(call -> new AgentEvent.Requested(call.id(), call.name()))
-        .toList();
-  }
-
-  private List<org.jwcarman.nessy.inference.ToolOffer> offers() {
-    return tools.entrySet().stream()
-        .map(
-            e ->
-                new org.jwcarman.nessy.inference.ToolOffer(
-                    e.getKey(), e.getValue().description(), e.getValue().schema()))
         .toList();
   }
 

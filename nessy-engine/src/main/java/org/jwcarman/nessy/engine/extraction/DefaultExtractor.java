@@ -30,6 +30,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
@@ -124,8 +125,9 @@ public final class DefaultExtractor implements Extractor {
     return new InferenceRequest(
         systemPrompt,
         InferenceContext.of(List.of(asOneTurn(document))),
-        List.of(new ToolOffer(toolName, describing(type), schemas.generate(type))),
-        new ToolChoice.Any(),
+        new Toolset(
+            List.of(new ToolOffer(toolName, describing(type), schemas.generate(type))),
+            new ToolChoice.Any()),
         options);
   }
 

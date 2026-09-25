@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
@@ -33,19 +34,57 @@ class ToolChoiceTest {
 
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
 
-  private static InferenceRequest with(ToolChoice choice) {
-    return new InferenceRequest(
-        SYSTEM, InferenceContext.of(List.of()), List.of(), choice, InferenceOptions.of("a-model"));
+  private static final ToolOffer LOOKUP =
+      new ToolOffer(new ToolName("lookup"), "looks something up", new InputSchema("{}"));
+
+  private static Toolset with(ToolChoice choice) {
+    return new Toolset(List.of(LOOKUP), choice);
   }
 
-  /** The four-argument constructor is what every caller written before this used. */
+  /** What a toolset assembled without an opinion about choosing means. */
   @Test
-  void a_request_that_does_not_mention_choosing_leaves_it_to_the_model() {
+  void a_toolset_that_does_not_mention_choosing_leaves_it_to_the_model() {
     InferenceRequest request =
         new InferenceRequest(
-            SYSTEM, InferenceContext.of(List.of()), List.of(), InferenceOptions.of("a-model"));
+            SYSTEM, InferenceContext.of(List.of()), Toolset.none(), InferenceOptions.of("a-model"));
 
-    assertThat(request.toolChoice()).isEqualTo(new ToolChoice.Auto());
+    assertThat(request.toolset().choice()).isEqualTo(new ToolChoice.Auto());
+    assertThat(Toolset.of(List.of(LOOKUP)).choice()).isEqualTo(new ToolChoice.Auto());
+  }
+
+  /** Nothing on offer is a state a wire cares about, not an empty list to be sent. */
+  @Test
+  void a_toolset_says_whether_anything_is_on_offer() {
+    assertThat(Toolset.none().any()).isFalse();
+    assertThat(Toolset.none().offers()).isEmpty();
+    assertThat(Toolset.of(List.of(LOOKUP)).any()).isTrue();
+  }
+
+  /**
+   * Incoherent rather than merely unusual, so it is refused once here instead of four times on four
+   * wires. Note what is NOT refused: a choice that is absent, which defaults, because a stored row
+   * written before there was anything to say about choosing has to stay readable.
+   */
+  @Test
+  void a_required_call_with_nothing_to_call_is_refused() {
+    List<ToolOffer> nothing = List.of();
+    ToolChoice any = new ToolChoice.Any();
+    ToolChoice named = new ToolChoice.Named(new ToolName("absent"));
+
+    assertThatThrownBy(() -> new Toolset(nothing, any))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("needs a tool on offer");
+    assertThatThrownBy(() -> new Toolset(List.of(LOOKUP), named))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("absent");
+  }
+
+  /** Neither of these obliges a call, so neither needs anything on offer. */
+  @Test
+  void leaving_it_open_or_forbidding_it_is_coherent_with_nothing_on_offer() {
+    assertThat(new Toolset(List.of(), ToolChoice.auto()).choice()).isEqualTo(new ToolChoice.Auto());
+    assertThat(new Toolset(List.of(), new ToolChoice.None()).choice())
+        .isEqualTo(new ToolChoice.None());
   }
 
   /**
@@ -54,12 +93,12 @@ class ToolChoiceTest {
    */
   @Test
   void a_stored_request_from_before_this_field_existed_reads_as_auto() {
-    assertThat(with(null).toolChoice()).isEqualTo(new ToolChoice.Auto());
+    assertThat(with(null).choice()).isEqualTo(new ToolChoice.Auto());
   }
 
   @Test
   void a_named_choice_keeps_the_name() {
-    assertThat(with(new ToolChoice.Named(new ToolName("lookup"))).toolChoice())
+    assertThat(with(new ToolChoice.Named(new ToolName("lookup"))).choice())
         .isEqualTo(new ToolChoice.Named(new ToolName("lookup")));
   }
 
