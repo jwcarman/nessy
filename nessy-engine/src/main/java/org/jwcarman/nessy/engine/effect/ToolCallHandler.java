@@ -19,10 +19,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -216,7 +216,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       case Awaited.Deferred<ToolResult> _ -> {
         // Same reason as a deferred approval: the fold does not learn that anything is
         // waiting, so this is the only place a watcher can.
-        narrator.narrate(agentType, agentId, new AgentEvent.CallDeferred(callId, toolName, until));
+        narrator.narrate(agentType, agentId, new Narration.CallDeferred(callId, toolName, until));
         yield new Awaited.Deferred<>();
       }
     };

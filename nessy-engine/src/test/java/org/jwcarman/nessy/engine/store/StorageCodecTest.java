@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
 
@@ -102,27 +102,33 @@ class StorageCodecTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () ->
-                assertThat(engine.history().entriesFrom(CHAT, agentId, 0))
-                    .filteredOn(HistoryEntry.InferenceAnswered.class::isInstance)
+                assertThat(engine.story(agentId))
+                    .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
                     .hasSize(1));
 
     // And what is on disk is not JSON: a reader without the codec gets nothing.
-    byte[] state =
-        engine
-            .jdbc()
-            .sql("SELECT payload FROM nessy_agent_state WHERE agent_id = ?")
-            .params(agentId.value())
-            .query(byte[].class)
-            .single();
-    assertThat(state[0]).as("a JSON object would begin with '{'").isNotEqualTo((byte) '{');
-    assertThat(new String(reverse(state), java.nio.charset.StandardCharsets.UTF_8)).startsWith("{");
     List<byte[]> story =
         engine
             .jdbc()
-            .sql("SELECT payload FROM nessy_agent_history WHERE agent_id = ?")
+            .sql("SELECT payload FROM nessy_agent_event WHERE agent_id = ?")
             .params(agentId.value())
             .query(byte[].class)
             .list();
-    assertThat(story).isNotEmpty().allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(story).isNotEmpty();
+    assertThat(story).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(new String(reverse(story.getFirst()), java.nio.charset.StandardCharsets.UTF_8))
+        .as("and it is JSON again once the codec is undone")
+        .startsWith("{");
+
+    // The content is kept apart from the record of it, and goes through the codec too.
+    List<byte[]> content =
+        engine
+            .jdbc()
+            .sql("SELECT content FROM nessy_payload WHERE agent_id = ?")
+            .params(agentId.value())
+            .query(byte[].class)
+            .list();
+    assertThat(content).isNotEmpty();
+    assertThat(content).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '['));
   }
 }

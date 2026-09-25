@@ -73,7 +73,7 @@ public interface QueuedHarnessConfig<O> {
    * Somebody who hears what this harness's agents do, in addition to whoever the engine already
    * tells. Repeatable; every listener hears every event.
    */
-  QueuedHarnessConfig<O> listener(AgentEventListener listener);
+  QueuedHarnessConfig<O> listener(NarrationListener listener);
 
   /** Offers a tool, and says what a call of it is worth. */
   <I> QueuedHarnessConfig<O> tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer);

@@ -20,9 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
@@ -193,8 +193,8 @@ public class HeadSummarizer {
    * event, because a summary is a model call and the engine's narration thread must not wait for
    * one.
    */
-  public AgentEventListener listener() {
-    return AgentEventListener.of(
+  public NarrationListener listener() {
+    return NarrationListener.of(
             c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> summarizeIfDue(agentId)))
         .async();
   }

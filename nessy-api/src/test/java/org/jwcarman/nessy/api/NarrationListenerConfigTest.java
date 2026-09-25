@@ -34,32 +34,32 @@ class AgentEventListenerConfigTest {
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
   private static final CallId CALL = new CallId("c1");
 
-  private static final List<AgentEvent> EVERY_KIND =
+  private static final List<Narration> EVERY_KIND =
       List.of(
-          new AgentEvent.TurnStarted(new TurnId(1), "hi"),
-          new AgentEvent.Thinking(),
-          new AgentEvent.Answered("hello"),
-          new AgentEvent.TurnEnded(new TurnId(1)),
-          new AgentEvent.TurnFailed(),
-          new AgentEvent.TurnRefused(),
-          new AgentEvent.Commentary("hmm"),
-          new AgentEvent.ActionsRequested(List.of(new ToolName("t"))),
-          new AgentEvent.CallApproved(CALL),
-          new AgentEvent.CallDenied(CALL, "no"),
-          new AgentEvent.CallFinished(CALL),
-          new AgentEvent.CallFailed(CALL, "boom"),
-          new AgentEvent.Terminated(),
-          new AgentEvent.ApprovalSought(CALL, "restart"),
-          new AgentEvent.ApprovalDeferred(CALL, "restart", Instant.EPOCH),
-          new AgentEvent.CallDeferred(CALL, new ToolName("t"), Instant.EPOCH),
-          new AgentEvent.ThinkingDelta("h"),
-          new AgentEvent.ContentDelta("c"));
+          new Narration.TurnStarted(new TurnId(1), "hi"),
+          new Narration.Thinking(),
+          new Narration.Answered("hello"),
+          new Narration.TurnEnded(new TurnId(1)),
+          new Narration.TurnFailed(),
+          new Narration.TurnRefused(),
+          new Narration.Commentary("hmm"),
+          new Narration.ActionsRequested(List.of(new ToolName("t"))),
+          new Narration.CallApproved(CALL),
+          new Narration.CallDenied(CALL, "no"),
+          new Narration.CallFinished(CALL),
+          new Narration.CallFailed(CALL, "boom"),
+          new Narration.Terminated(),
+          new Narration.ApprovalSought(CALL, "restart"),
+          new Narration.ApprovalDeferred(CALL, "restart", Instant.EPOCH),
+          new Narration.CallDeferred(CALL, new ToolName("t"), Instant.EPOCH),
+          new Narration.ThinkingDelta("h"),
+          new Narration.ContentDelta("c"));
 
   @Test
   void every_kind_has_a_method_of_its_own_and_each_hears_only_its_kind() {
     List<String> heard = new ArrayList<>();
-    AgentEventListener listener =
-        AgentEventListener.of(
+    NarrationListener listener =
+        NarrationListener.of(
             on ->
                 on.onTurnStarted((t, id, e) -> heard.add("started " + e.observation()))
                     .onThinking((t, id, e) -> heard.add("thinking"))
@@ -107,13 +107,13 @@ class AgentEventListenerConfigTest {
   @Test
   void a_type_filter_keeps_other_agents_out_and_a_kind_nobody_asked_about_is_ignored() {
     List<String> heard = new ArrayList<>();
-    AgentEventListener listener =
-        AgentEventListener.of(
+    NarrationListener listener =
+        NarrationListener.of(
             on -> on.agentType(CHAT).onAnswered((t, id, e) -> heard.add(e.text())));
 
-    listener.on(new AgentType("other"), AGENT, new AgentEvent.Answered("not for us"));
-    listener.on(CHAT, AGENT, new AgentEvent.Thinking());
-    listener.on(CHAT, AGENT, new AgentEvent.Answered("for us"));
+    listener.on(new AgentType("other"), AGENT, new Narration.Answered("not for us"));
+    listener.on(CHAT, AGENT, new Narration.Thinking());
+    listener.on(CHAT, AGENT, new Narration.Answered("for us"));
 
     assertThat(heard).containsExactly("for us");
   }

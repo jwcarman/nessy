@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -29,7 +30,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -84,8 +85,8 @@ class GiveUpTest {
   }
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
-  private List<HistoryEntry> story(AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+  private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
+    return engine.story(agentId);
   }
 
   /**
@@ -114,12 +115,16 @@ class GiveUpTest {
                   .isZero();
             });
 
-    assertThat(story(type, agentId))
+    List<AgentEvent> story = story(type, agentId);
+    assertThat(story)
         .as("the turn is closed by a failure message, never by an invented answer")
-        .containsExactly(
-            HistoryEntry.ObservationReceived.opening(
-                1, HistoryEntry.ObservationReceived.text("will not work")),
-            new HistoryEntry.InferenceFailed(new Seq(2), new TurnId(1)));
+        .hasSize(2)
+        .first()
+        .isEqualTo(engine.turnStarted(agentId, 1, "will not work"));
+    assertThat(story.get(1))
+        .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.InferenceFailed.class))
+        .extracting(AgentEvent.InferenceFailed::seq, AgentEvent.InferenceFailed::turn)
+        .containsExactly(new Seq(2), new TurnId(1));
   }
 
   /** A policy with a budget spends it, then gives up the same way. */
@@ -155,13 +160,9 @@ class GiveUpTest {
         .isEqualTo(3);
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {

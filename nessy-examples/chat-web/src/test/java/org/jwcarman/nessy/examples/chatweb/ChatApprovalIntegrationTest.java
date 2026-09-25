@@ -22,6 +22,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,11 +61,18 @@ class ChatApprovalIntegrationTest {
     RestClient http = RestClient.create("http://localhost:" + port);
     String agentId = UUID.randomUUID().toString();
 
-    http.post()
-        .uri("/api/agents/{id}/messages", agentId)
-        .body(new ChatController.MessageRequest("Email Jim about dinner"))
-        .retrieve()
-        .toBodilessEntity();
+    // Sent without waiting for the reply, which is what a browser does and what this door
+    // requires of anything that gates a tool on a person: the request is held open for the whole
+    // turn, so the answer to the question it raises has to come in on a different one. A test that
+    // blocked here would be waiting for a turn that is waiting for the test.
+    CompletableFuture<Void> said =
+        CompletableFuture.runAsync(
+            () ->
+                http.post()
+                    .uri("/api/agents/{id}/messages", agentId)
+                    .body(new ChatController.MessageRequest("Email Jim about dinner"))
+                    .retrieve()
+                    .toBodilessEntity());
 
     // The question reaches the page...
     await()
@@ -91,6 +100,10 @@ class ChatApprovalIntegrationTest {
             });
     // The desk hands out each question once: answering it takes it off the page.
     assertThat(approvals(http, agentId)).isEmpty();
+    // And the turn that was held open across all of that can now finish, which is the proof that
+    // a person answering hours later would have released it too.
+    said.orTimeout(30, TimeUnit.SECONDS).join();
+
     // And the story shows the whole of it, for a page that loads later.
     await()
         .atMost(Duration.ofSeconds(20))

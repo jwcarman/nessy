@@ -18,13 +18,19 @@ package org.jwcarman.nessy.engine;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.AgentEventListener;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
@@ -35,6 +41,9 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -72,26 +81,26 @@ public final class EngineFixture implements AutoCloseable {
   private final PayloadStore payloads;
   private final JdbcClient jdbc;
 
-  public EngineFixture(InferenceProvider provider, AgentEventListener listener) {
+  public EngineFixture(InferenceProvider provider, NarrationListener listener) {
     this(provider, listener, ObservationRegistry.NOOP);
   }
 
   public EngineFixture(
-      InferenceProvider provider, AgentEventListener listener, ObservationRegistry observations) {
+      InferenceProvider provider, NarrationListener listener, ObservationRegistry observations) {
     this(provider, listener, observations, Optional.empty(), Optional.empty());
   }
 
   /** Tracing, with the context written by {@code carrier} rather than a momentary span. */
   public EngineFixture(
       InferenceProvider provider, ObservationRegistry observations, TraceCarrier carrier) {
-    this(provider, AgentEventListener.none(), observations, Optional.empty(), Optional.of(carrier));
+    this(provider, NarrationListener.none(), observations, Optional.empty(), Optional.of(carrier));
   }
 
   /** With something done to every stored byte, which the fixture's own reader must undo too. */
   public EngineFixture(InferenceProvider provider, Codec<byte[]> storage) {
     this(
         provider,
-        AgentEventListener.none(),
+        NarrationListener.none(),
         ObservationRegistry.NOOP,
         Optional.of(storage),
         Optional.empty());
@@ -99,7 +108,7 @@ public final class EngineFixture implements AutoCloseable {
 
   private EngineFixture(
       InferenceProvider provider,
-      AgentEventListener listener,
+      NarrationListener listener,
       ObservationRegistry observations,
       Optional<Codec<byte[]>> storage,
       Optional<TraceCarrier> carrier) {
@@ -140,7 +149,7 @@ public final class EngineFixture implements AutoCloseable {
   }
 
   public EngineFixture(InferenceProvider provider) {
-    this(provider, AgentEventListener.none());
+    this(provider, NarrationListener.none());
   }
 
   public DefaultQueuedHarnessFactory harnesses() {
@@ -158,6 +167,80 @@ public final class EngineFixture implements AutoCloseable {
 
   public PayloadStore payloads() {
     return payloads;
+  }
+
+  /**
+   * One agent's whole story, oldest first.
+   *
+   * <p>What a test asserting on what happened wants, and the replacement for reading entries from a
+   * turn: the events ARE the story now, and a turn is a reading of them.
+   */
+  public List<AgentEvent> story(AgentId agent) {
+    return events.readFrom(agent, Seq.NONE);
+  }
+
+  /**
+   * The content a reference stands for.
+   *
+   * <p>Events carry references rather than blocks, so a test that asserts on words has to go and
+   * get them. A dangling reference fails the test where it is dereferenced rather than returning
+   * something empty, because in this engine a missing payload is always a fault.
+   */
+  public List<Block> content(AgentId agent, PayloadRef ref) {
+    return switch (payloads.forAgent(agent).get(ref)) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) -> blocks;
+      case PayloadStore.Resolved.Missing() ->
+          throw new AssertionError("no payload stored at " + ref);
+    };
+  }
+
+  /**
+   * What state this agent is in, by replaying what happened to it.
+   *
+   * <p>There is no state column to read any more, and that is the design rather than an omission:
+   * the events are the truth and a state is what replaying them produces. So this is not a
+   * convenience over a stored answer -- it is the same thing the engine itself does to find out.
+   */
+  public AgentState stateOf(AgentId agent) {
+    return AgentState.idle(Seq.NONE).applyAll(story(agent));
+  }
+
+  /**
+   * The reference this content has, for building an event a test expects to find.
+   *
+   * <p>Safe to call when the engine has already stored the same content: a reference IS the hash of
+   * what it points at, so putting it a second time yields the same reference and the same single
+   * row. That is what lets a test say what it expects without having watched it being written.
+   */
+  public PayloadRef ref(AgentId agent, List<? extends Block> content) {
+    return payloads.forAgent(agent).put(content);
+  }
+
+  /**
+   * The event that opens a turn on {@code said}, as the fold would have written it.
+   *
+   * <p>The turn is derived from the position rather than passed, because an observation's own seq
+   * is the turn it opens -- the same rule {@code AgentState} applies.
+   */
+  public AgentEvent.TurnStarted turnStarted(AgentId agent, long seq, String said) {
+    Seq at = new Seq(seq);
+    return new AgentEvent.TurnStarted(
+        at, at.opensTurn(), ref(agent, List.of(new Block.Text(said))));
+  }
+
+  /** The event recording an answer of {@code said}, as the fold would have written it. */
+  public AgentEvent.InferenceAnswered answered(AgentId agent, long seq, long turn, String said) {
+    return new AgentEvent.InferenceAnswered(
+        new Seq(seq), new TurnId(turn), ref(agent, List.of(new Block.Text(said))));
+  }
+
+  /** The text of what a reference stands for, joined, for the common assertion. */
+  public String text(AgentId agent, PayloadRef ref) {
+    return content(agent, ref).stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .collect(Collectors.joining());
   }
 
   public javax.sql.DataSource dataSource() {

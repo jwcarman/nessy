@@ -24,11 +24,13 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.Pull;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
@@ -42,6 +44,7 @@ import org.jwcarman.nessy.engine.store.JdbcAgents;
 import org.jwcarman.nessy.engine.store.JdbcBacklog;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
@@ -275,6 +278,13 @@ final class DefaultQueuedHarness<O>
       effects.insert(agentId, effect, clock.instant(), trace);
     }
     advance.events().forEach(event -> narrate(agentId, event));
+    // Read off the effect rather than the state. Inferring is where an agent sits for the whole
+    // of a call, so a fold that stays there without emitting anything -- an observation queued
+    // mid-turn -- would announce a second "thinking" for a call already in flight. The effect is
+    // emitted exactly once per call, which is what this means.
+    if (advance.effects().stream().anyMatch(AgentEffect.Infer.class::isInstance)) {
+      say(agentId, new Narration.Thinking());
+    }
     return !advance.effects().isEmpty();
   }
 
@@ -327,40 +337,72 @@ final class DefaultQueuedHarness<O>
    */
   private void narrate(AgentId agentId, AgentEvent event) {
     switch (event) {
-      case AgentEvent.ActionsRequested asked ->
-          say(
-              agentId,
-              new org.jwcarman.nessy.api.AgentEvent.ActionsRequested(
-                  asked.calls().stream().map(AgentEvent.Requested::toolName).toList()));
+      case AgentEvent.ActionsRequested asked -> {
+        // What the model said while deciding to act, told apart from an answer by the block it
+        // arrived as. It is in the request's payload, because everything the model wrote is.
+        blocksOf(agentId, asked.request()).stream()
+            .filter(Block.Commentary.class::isInstance)
+            .map(Block.Commentary.class::cast)
+            .forEach(said -> say(agentId, new Narration.Commentary(said.text())));
+        say(
+            agentId,
+            new Narration.ActionsRequested(
+                asked.actions().stream()
+                    .filter(ActionRequest.ToolCall.class::isInstance)
+                    .map(ActionRequest.ToolCall.class::cast)
+                    .map(ActionRequest.ToolCall::name)
+                    .toList()));
+      }
       case AgentEvent.ToolApproved approved ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.CallApproved(approved.callId()));
+          say(agentId, new Narration.CallApproved(approved.callId()));
       case AgentEvent.ToolDenied denied ->
-          say(
-              agentId,
-              new org.jwcarman.nessy.api.AgentEvent.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.CallFinished(done.callId()));
+          say(agentId, new Narration.CallDenied(denied.callId(), denied.reason()));
+      case AgentEvent.ToolSucceeded done -> say(agentId, new Narration.CallFinished(done.callId()));
       case AgentEvent.ToolFailed failed ->
+          say(agentId, new Narration.CallFailed(failed.callId(), failed.message()));
+      // However it ended, it ended: the one event to hear when the story grew by a turn. An
+      // answer, a refusal and a fault all close one; asking for actions does not.
+      case AgentEvent.InferenceRefused refused -> {
+        say(agentId, new Narration.TurnRefused());
+        say(agentId, new Narration.TurnEnded(refused.turn()));
+      }
+      case AgentEvent.InferenceFailed failed -> {
+        say(agentId, new Narration.TurnFailed());
+        say(agentId, new Narration.TurnEnded(failed.turn()));
+      }
+      case AgentEvent.Terminated _ -> say(agentId, new Narration.Terminated());
+      case AgentEvent.TurnStarted started ->
           say(
               agentId,
-              new org.jwcarman.nessy.api.AgentEvent.CallFailed(failed.callId(), failed.message()));
-      case AgentEvent.InferenceRefused _ ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.TurnRefused());
-      case AgentEvent.InferenceFailed _ ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.TurnFailed());
-      case AgentEvent.Terminated _ ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.Terminated());
-      case AgentEvent.TurnStarted started ->
-          say(agentId, new org.jwcarman.nessy.api.AgentEvent.TurnStarted(started.turn(), ""));
-      // The answer is narrated by whoever streamed it, delta by delta, and saying it again here
-      // would say it twice to anybody listening.
-      case AgentEvent.InferenceAnswered _ -> {
-        /* already said */
+              new Narration.TurnStarted(started.turn(), textOf(agentId, started.observation())));
+      // Said as a fact once the fold has committed, exactly as the direct door says it. The
+      // deltas a provider streamed are what is ARRIVING; this is what was said, and a watcher
+      // that saw neither -- a page opened mid-turn -- would otherwise never learn the answer.
+      case AgentEvent.InferenceAnswered answered -> {
+        say(agentId, new Narration.Answered(textOf(agentId, answered.answer())));
+        say(agentId, new Narration.TurnEnded(answered.turn()));
       }
     }
   }
 
-  private void say(AgentId agentId, org.jwcarman.nessy.api.AgentEvent event) {
+  /** The content behind a reference, or nothing when it has gone. */
+  private List<Block> blocksOf(AgentId agentId, org.jwcarman.nessy.api.PayloadRef ref) {
+    return switch (payloads.forAgent(agentId).get(ref)) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) -> blocks;
+      case PayloadStore.Resolved.Missing _ -> List.of();
+    };
+  }
+
+  /** The words behind a reference, joined. */
+  private String textOf(AgentId agentId, org.jwcarman.nessy.api.PayloadRef ref) {
+    return blocksOf(agentId, ref).stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .reduce("", String::concat);
+  }
+
+  private void say(AgentId agentId, org.jwcarman.nessy.api.Narration event) {
     narrator.narrate(agentType, agentId, event);
   }
 }

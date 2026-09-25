@@ -37,7 +37,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
@@ -79,7 +79,7 @@ class DeferredToolTest {
   private static final InferenceProvider MODEL =
       (request, _) ->
           request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-              ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("all done"))
+              ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
               : new InferenceResult.Actions(
                   List.of(new Block.ToolCall("call_1", "start_job", "{\"what\":\"reindex\"}")));
 
@@ -131,13 +131,9 @@ class DeferredToolTest {
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -164,9 +160,9 @@ class DeferredToolTest {
     // Approved and dispatched, and then waiting on work rather than on a decision.
     assertThat(agentStateOf(agentId)).isEqualTo("AwaitingActions");
     assertThat(outstandingEffects(agentId)).isEqualTo(1);
-    assertThat(engine.history().entriesFrom(type, agentId, 0))
+    assertThat(engine.story(agentId))
         .as("permission was granted before the tool ever ran")
-        .anyMatch(HistoryEntry.ToolApproved.class::isInstance);
+        .anyMatch(AgentEvent.ToolApproved.class::isInstance);
 
     assertThat(
             engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("reindexed 91"))))
@@ -180,15 +176,15 @@ class DeferredToolTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
+    List<AgentEvent> story = engine.story(agentId);
     assertThat(story.get(3))
         .isEqualTo(
-            new HistoryEntry.ToolSucceeded(
+            new AgentEvent.ToolSucceeded(
                 new Seq(4),
                 new TurnId(1),
                 new CallId("call_1"),
-                List.of(new Block.Text("reindexed 91"))));
-    assertThat(story.get(4)).isInstanceOf(HistoryEntry.InferenceAnswered.class);
+                engine.ref(agentId, List.of(new Block.Text("reindexed 91")))));
+    assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
   }
 
   /** Work that finished badly is still an answer, and discharges the call the same way. */
@@ -208,8 +204,8 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
 
-    assertThat(engine.history().entriesFrom(type, agentId, 0).get(3))
-        .asInstanceOf(type(HistoryEntry.ToolFailed.class))
+    assertThat(engine.story(agentId).get(3))
+        .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
               assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
@@ -270,8 +266,8 @@ class DeferredToolTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    assertThat(engine.history().entriesFrom(type, agentId, 0).get(3))
-        .asInstanceOf(type(HistoryEntry.ToolFailed.class))
+    assertThat(engine.story(agentId).get(3))
+        .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
               assertThat(failed.callId()).isEqualTo(new CallId("call_1"));

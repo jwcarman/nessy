@@ -15,9 +15,9 @@
  */
 package org.jwcarman.nessy.spi.narration;
 
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
 
 /**
  * Where an agent says what it is doing.
@@ -53,7 +53,7 @@ public interface Narrator {
    * @param agentId which agent
    * @param event what happened
    */
-  void narrate(AgentType agentType, AgentId agentId, AgentEvent event);
+  void narrate(AgentType agentType, AgentId agentId, Narration event);
 
   /** Nobody is listening, and nothing is lost by saying so. The default. */
   static Narrator silent() {

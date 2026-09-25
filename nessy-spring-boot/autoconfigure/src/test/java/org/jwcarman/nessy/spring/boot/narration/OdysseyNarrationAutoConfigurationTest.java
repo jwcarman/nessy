@@ -22,10 +22,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
@@ -55,8 +55,8 @@ class OdysseyNarrationAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class AnApplicationWithItsOwnNarrator {
     @Bean
-    AgentEventListener mine() {
-      return AgentEventListener.none();
+    NarrationListener mine() {
+      return NarrationListener.none();
     }
   }
 
@@ -86,14 +86,14 @@ class OdysseyNarrationAutoConfigurationTest {
   void narrating_writes_to_the_journal() {
     runner.run(
         context -> {
-          AgentEventListener narrator = context.getBean(OdysseyNarrator.class);
+          NarrationListener narrator = context.getBean(OdysseyNarrator.class);
           AgentId agentId = new AgentId(UUID.randomUUID());
           // No exception is the assertion: the in-memory journal accepted the entry. What it
           // holds is read back over SSE, which the web example exercises end to end.
-          narrator.on(new AgentType("chat"), agentId, new AgentEvent.ContentDelta("hi"));
+          narrator.on(new AgentType("chat"), agentId, new Narration.ContentDelta("hi"));
           assertThat(
                   context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
-                      .publish("terminated", new AgentEvent.Terminated()))
+                      .publish("terminated", new Narration.Terminated()))
               .isNotBlank();
         });
   }
@@ -105,7 +105,7 @@ class OdysseyNarrationAutoConfigurationTest {
         .withUserConfiguration(AnApplicationWithItsOwnNarrator.class)
         .run(
             context -> {
-              assertThat(context.getBeansOfType(AgentEventListener.class)).hasSize(2);
+              assertThat(context.getBeansOfType(NarrationListener.class)).hasSize(2);
               assertThat(context).hasSingleBean(OdysseyNarrator.class);
             });
   }

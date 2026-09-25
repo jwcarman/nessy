@@ -27,12 +27,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -52,7 +52,7 @@ class TerminationAndConfigurationTest {
   private static final AgentType CHAT = new AgentType("chat-ends");
   private static final AgentType FAILING = new AgentType("chat-fails");
 
-  private final List<AgentEvent> events = new CopyOnWriteArrayList<>();
+  private final List<Narration> events = new CopyOnWriteArrayList<>();
   private EngineFixture engine;
 
   @BeforeEach
@@ -111,11 +111,11 @@ class TerminationAndConfigurationTest {
     harness.observe(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(() -> events.stream().anyMatch(AgentEvent.TurnEnded.class::isInstance));
+        .until(() -> events.stream().anyMatch(Narration.TurnEnded.class::isInstance));
     harness.terminate(agentId);
     await()
         .atMost(Duration.ofSeconds(10))
-        .until(() -> events.stream().anyMatch(AgentEvent.Terminated.class::isInstance));
+        .until(() -> events.stream().anyMatch(Narration.Terminated.class::isInstance));
     harness.terminate(agentId); // idempotent
     harness.observe(agentId, "anyone there?");
 
@@ -139,7 +139,7 @@ class TerminationAndConfigurationTest {
     harness.observe(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(() -> events.stream().anyMatch(AgentEvent.TurnFailed.class::isInstance));
+        .until(() -> events.stream().anyMatch(Narration.TurnFailed.class::isInstance));
 
     List<Turn> turns = engine.harnesses().histories().forAgent(FAILING, agentId).turnsFrom(0);
     assertThat(turns).singleElement().extracting(Turn::result).isEqualTo(new TurnResult.Failed());
@@ -156,7 +156,7 @@ class TerminationAndConfigurationTest {
                         .agentType(new AgentType("chat-configured"))
                         .systemPrompt("You are a test assistant.")
                         .backlogPolicy(BacklogPolicy.keepAll())
-                        .listener(AgentEventListener.none())
+                        .listener(NarrationListener.none())
                         .inference(
                             in ->
                                 in.model("other")

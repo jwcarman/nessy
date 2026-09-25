@@ -21,14 +21,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.ActionRequest;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import tools.jackson.core.type.TypeReference;
@@ -50,8 +52,8 @@ import tools.jackson.databind.json.JsonMapper;
 class ValueTypeCodecTest {
 
   private final JsonMapper mapper = JsonMapper.builder().build();
-  private final Codec<HistoryEntry> entries =
-      new JacksonCodecFactory(JsonMapper.builder().build()).create(HistoryEntry.class);
+  private final Codec<AgentEvent> entries =
+      new JacksonCodecFactory(JsonMapper.builder().build()).create(AgentEvent.class);
 
   private String json(Object value) {
     return mapper.writeValueAsString(value);
@@ -90,65 +92,51 @@ class ValueTypeCodecTest {
 
   // ---- the rows that already exist ----------------------------------------------------
 
-  /**
-   * Copied from a live agent's history, written before either of these was a type.
-   *
-   * <p>The assertion that matters: this still decodes, and into the same call it always meant.
-   *
-   * <p><b>The prose block is {@code commentary} rather than {@code text}, and that difference is
-   * a migration.</b> Rows written before commentary existed carry {@code {"type":"text"}} beside
-   * their calls, and {@code Text} is no longer legal in that slot -- so they do not decode at
-   * all. The fix is a rewrite of the stored payload, not anything in this code:
-   *
-   * <pre>{@code
-   * UPDATE nessy_agent_history
-   *    SET payload = convert_to(replace(convert_from(payload, 'UTF8'),
-   *                                     '{"type":"text"', '{"type":"commentary"'), 'UTF8')
-   *  WHERE convert_from(payload, 'UTF8') LIKE '%inference-requested-actions%';
-   * }</pre>
-   *
-   * <p>Recorded here rather than in a note because this test is the thing that found it.
-   */
   @Test
-  void anEntryStoredBeforeTheseWereTypesStillReads() {
+  void aStoredRequestForActionsReadsBackWithItsValueTypes() {
     String stored =
         """
-                {"type":"inference-requested-actions","seq":2,"turn":1,"blocks":[\
-                {"type":"commentary","text":"looking it up"},\
-                {"type":"tool-call","id":"729606640","name":"lake_depth",\
-                "arguments":"{\\"name\\":\\"Loch Ness\\"}"}]}""";
+                {"type":"actions-requested","seq":2,"turn":1,\
+                "request":"c7f1e2a9","actions":[\
+                {"type":"tool-call","id":"729606640","name":"lake_depth"}]}""";
 
-    HistoryEntry.InferenceRequestedActions entry =
-        (HistoryEntry.InferenceRequestedActions)
-            entries.decode(stored.getBytes(StandardCharsets.UTF_8));
+    AgentEvent.ActionsRequested entry =
+        (AgentEvent.ActionsRequested) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
 
-    assertThat(entry.calls())
+    assertThat(entry.request())
+        .as("a reference is stored as the bare string it wraps, like every other value type here")
+        .isEqualTo(PayloadRef.of("c7f1e2a9"));
+    assertThat(entry.actions())
         .singleElement()
+        .asInstanceOf(InstanceOfAssertFactories.type(ActionRequest.ToolCall.class))
         .satisfies(
             call -> {
               assertThat(call.id()).isEqualTo(new CallId("729606640"));
               assertThat(call.name()).isEqualTo(new ToolName("lake_depth"));
-              assertThat(call.arguments()).isEqualTo("{\"name\":\"Loch Ness\"}");
             });
   }
 
-  /** And writing one produces those same bytes, so old and new rows are indistinguishable. */
+  /** And writing one produces exactly those bytes back. */
   @Test
-  void writingOneProducesTheSameBytesItAlwaysDid() {
+  void writingARequestForActionsProducesThoseSameBytes() {
     String written =
         new String(
             entries.encode(
-                new HistoryEntry.InferenceRequestedActions(
+                new AgentEvent.ActionsRequested(
                     new Seq(2),
                     new TurnId(1),
+                    PayloadRef.of("c7f1e2a9"),
                     List.of(
-                        new Block.ToolCall(
-                            "729606640", "lake_depth", "{\"name\":\"Loch Ness\"}")))),
+                        new ActionRequest.ToolCall(
+                            new CallId("729606640"), new ToolName("lake_depth"))))),
             StandardCharsets.UTF_8);
 
     assertThat(written)
+        .contains("\"request\":\"c7f1e2a9\"")
         .contains("\"id\":\"729606640\"")
         .contains("\"name\":\"lake_depth\"")
+        .contains("\"type\":\"tool-call\"")
+        .as("no value type may nest an object where a bare string belongs")
         .doesNotContain("\"value\"");
   }
 
@@ -157,11 +145,8 @@ class ValueTypeCodecTest {
     String written =
         new String(
             entries.encode(
-                new HistoryEntry.ToolSucceeded(
-                    new Seq(4),
-                    new TurnId(1),
-                    new CallId("729606640"),
-                    HistoryEntry.ToolSucceeded.text("1412 metres"))),
+                new AgentEvent.ToolSucceeded(
+                    new Seq(4), new TurnId(1), new CallId("729606640"), PayloadRef.of("a3d9f0b1"))),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"callId\":\"729606640\"").doesNotContain("\"value\"");
@@ -172,7 +157,7 @@ class ValueTypeCodecTest {
     String written =
         new String(
             entries.encode(
-                new HistoryEntry.ToolApproved(
+                new AgentEvent.ToolApproved(
                     new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"))),
             StandardCharsets.UTF_8);
 
@@ -223,7 +208,9 @@ class ValueTypeCodecTest {
   void anEntryNamesItsPositionAndTurnAsNumbers() {
     String written =
         new String(
-            entries.encode(HistoryEntry.InferenceAnswered.of(5, 1, "It is 1412 metres deep.")),
+            entries.encode(
+                new AgentEvent.InferenceAnswered(
+                    new Seq(5), new TurnId(1), PayloadRef.of("a3d9f0b1"))),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"seq\":5").contains("\"turn\":1").doesNotContain("\"value\"");
@@ -239,9 +226,10 @@ class ValueTypeCodecTest {
     String stored =
         """
                 {"type":"tool-succeeded","seq":4,"turn":1,"callId":"call_1",\
-                "blocks":[{"type":"text","text":"1412 metres"}]}""";
+                "result":"a3d9f0b1"}""";
 
-    HistoryEntry entry = entries.decode(stored.getBytes(StandardCharsets.UTF_8));
+    AgentEvent.ToolSucceeded entry =
+        (AgentEvent.ToolSucceeded) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
 
     assertThat(entry.seq()).isEqualTo(new Seq(4));
     assertThat(entry.turn()).isEqualTo(new TurnId(1));

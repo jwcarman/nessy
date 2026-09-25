@@ -37,7 +37,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
@@ -76,7 +76,7 @@ class DeferredApprovalTest {
   private static final InferenceProvider MODEL =
       (request, _) ->
           request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-              ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("all done"))
+              ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
               : new InferenceResult.Actions(
                   List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")));
 
@@ -134,13 +134,9 @@ class DeferredApprovalTest {
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -186,14 +182,14 @@ class DeferredApprovalTest {
             });
 
     assertThat(ran).containsExactly("loch ness");
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
+    List<AgentEvent> story = engine.story(agentId);
     assertThat(story.get(2))
         .as("the grant carries the join to whoever actually said yes")
         .isEqualTo(
-            new HistoryEntry.ToolApproved(
+            new AgentEvent.ToolApproved(
                 new Seq(3), new TurnId(1), new CallId("call_1"), Optional.of("u_carol")));
-    assertThat(story.get(3)).isInstanceOf(HistoryEntry.ToolSucceeded.class);
-    assertThat(story.get(4)).isInstanceOf(HistoryEntry.InferenceAnswered.class);
+    assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
+    assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
   }
 
   /** A late denial discharges the call and never reaches the tool. */

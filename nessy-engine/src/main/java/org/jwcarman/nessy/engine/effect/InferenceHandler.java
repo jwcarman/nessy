@@ -23,7 +23,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
-import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
 import org.jwcarman.nessy.inference.Failure;
@@ -146,11 +146,11 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
   }
 
   /** Which calls a request obliges an outcome for, in the order the model made them. */
-  private static List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {
+  private static List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
     return blocks.stream()
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
-        .map(call -> new AgentEvent.Requested(call.id(), call.name()))
+        .map(call -> (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name()))
         .toList();
   }
 }

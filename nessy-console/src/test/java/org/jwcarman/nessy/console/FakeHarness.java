@@ -19,11 +19,11 @@ package org.jwcarman.nessy.console;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 
 /**
@@ -36,19 +36,19 @@ final class FakeHarness implements DirectHarness<String> {
 
   private static final AgentType TYPE = new AgentType("chat");
 
-  private final List<List<AgentEvent>> answers;
+  private final List<List<Narration>> answers;
   private final List<String> asked = new ArrayList<>();
-  private AgentEventListener narrator = AgentEventListener.none();
+  private NarrationListener narrator = NarrationListener.none();
   private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)");
   private int next;
 
   @SafeVarargs
-  FakeHarness(List<AgentEvent>... answers) {
+  FakeHarness(List<Narration>... answers) {
     this.answers = List.of(answers);
   }
 
   /** The engine is told its listeners at construction; a fake is told afterwards. */
-  void narrateTo(AgentEventListener narrator) {
+  void narrateTo(NarrationListener narrator) {
     this.narrator = narrator;
   }
 
@@ -74,7 +74,7 @@ final class FakeHarness implements DirectHarness<String> {
 
   @Override
   public void terminate(AgentId agent) {
-    narrator.on(TYPE, agent, new AgentEvent.Terminated());
+    narrator.on(TYPE, agent, new Narration.Terminated());
   }
 
   List<String> observed() {

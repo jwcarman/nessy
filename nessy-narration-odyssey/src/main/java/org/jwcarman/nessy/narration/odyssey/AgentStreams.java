@@ -16,16 +16,16 @@
 package org.jwcarman.nessy.narration.odyssey;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.odyssey.core.Odyssey;
 import org.jwcarman.odyssey.core.OdysseyStream;
 import org.jwcarman.odyssey.core.TtlPolicy;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * One Odyssey stream of {@link AgentEvent}s per agent instance, named {@code nessy/<type>/<id>}.
+ * One Odyssey stream of {@link Narration}s per agent instance, named {@code nessy/<type>/<id>}.
  *
  * <p>The narrator publishes through it and a page subscribes or resumes through it. It carries the
  * engine's events and nothing else: an application with things of its own to say about an agent
@@ -47,8 +47,8 @@ public class AgentStreams {
     return "nessy/" + agentType.value() + "/" + agentId.value();
   }
 
-  public OdysseyStream<AgentEvent> stream(AgentType agentType, AgentId agentId) {
-    return odyssey.stream(nameOf(agentType, agentId), AgentEvent.class, ttl);
+  public OdysseyStream<Narration> stream(AgentType agentType, AgentId agentId) {
+    return odyssey.stream(nameOf(agentType, agentId), Narration.class, ttl);
   }
 
   /** From now on. */
@@ -61,7 +61,7 @@ public class AgentStreams {
    * reconnects; from now on when it has seen nothing.
    */
   public SseEmitter resume(AgentType agentType, AgentId agentId, String lastEventId) {
-    OdysseyStream<AgentEvent> stream = stream(agentType, agentId);
+    OdysseyStream<Narration> stream = stream(agentType, agentId);
     return lastEventId == null || lastEventId.isBlank()
         ? stream.subscribe()
         : stream.resume(lastEventId);

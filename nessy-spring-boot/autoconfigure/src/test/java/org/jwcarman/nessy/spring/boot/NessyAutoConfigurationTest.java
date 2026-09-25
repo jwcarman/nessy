@@ -21,8 +21,8 @@ import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -208,7 +208,7 @@ class NessyAutoConfigurationTest {
   /** Nobody listens by default; every listener bean an application declares is attached. */
   @Test
   void listeners_are_the_applications_to_declare() {
-    runner.run(context -> assertThat(context).doesNotHaveBean(AgentEventListener.class));
+    runner.run(context -> assertThat(context).doesNotHaveBean(NarrationListener.class));
     runner
         .withUserConfiguration(AListener.class)
         .run(context -> assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class));
@@ -256,10 +256,10 @@ class NessyAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class AListener {
 
-    static final AgentEventListener INSTANCE = AgentEventListener.none();
+    static final NarrationListener INSTANCE = NarrationListener.none();
 
     @Bean
-    AgentEventListener narrator() {
+    NarrationListener narrator() {
       return INSTANCE;
     }
   }

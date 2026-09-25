@@ -29,11 +29,12 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * The permit count bounds work in flight, and the batch is sized from it.
@@ -49,9 +50,9 @@ class InFlightLimitTest {
   private static final AgentType LIMITED = new AgentType("limited");
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
-  private static List<HistoryEntry> story(
+  private static List<AgentEvent> story(
       EngineFixture engine, AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+    return engine.story(agentId);
   }
 
   @Test
@@ -104,7 +105,7 @@ class InFlightLimitTest {
       peak.accumulateAndGet(current.incrementAndGet(), Math::max);
       try {
         Thread.sleep(250);
-        return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("counted"));
+        return new InferenceResult.Answer(List.of(new Block.Text("counted")));
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new IllegalStateException(e);

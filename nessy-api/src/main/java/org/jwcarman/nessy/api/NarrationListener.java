@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Something that hears what agents do.
  *
- * <p>Told every {@link AgentEvent} about every agent of the harnesses it is attached to, after the
+ * <p>Told every {@link Narration} about every agent of the harnesses it is attached to, after the
  * fold that produced it has committed. Best-effort by contract: a listener that throws is logged
  * and the others still hear; nothing a listener does can fail a turn, and nothing is replayed to a
  * listener that was not there. Work that must not be missed reads the story, which is durable.
@@ -32,9 +32,9 @@ import org.slf4j.LoggerFactory;
  * of these.
  */
 @FunctionalInterface
-public interface AgentEventListener {
+public interface NarrationListener {
 
-  void on(AgentType agentType, AgentId agentId, AgentEvent event);
+  void on(AgentType agentType, AgentId agentId, Narration event);
 
   /**
    * This listener, told on a virtual thread of its own for every event, so however long it takes --
@@ -42,7 +42,7 @@ public interface AgentEventListener {
    * events may be handled at once, and the later may be handled first. Right for work that reads
    * the story rather than the event, such as a summariser; wrong for a stream a person is reading.
    */
-  default AgentEventListener async() {
+  default NarrationListener async() {
     return this instanceof Async ? this : new Async(this);
   }
 
@@ -54,25 +54,25 @@ public interface AgentEventListener {
    * -- a summary written because a turn ended then appears beneath that turn. Told directly, with
    * no engine in between, it starts the thread itself and carries nothing.
    */
-  record Async(AgentEventListener delegate) implements AgentEventListener {
+  record Async(NarrationListener delegate) implements NarrationListener {
 
     public Async {
       Objects.requireNonNull(delegate, "delegate must not be null");
     }
 
     @Override
-    public void on(AgentType agentType, AgentId agentId, AgentEvent event) {
+    public void on(AgentType agentType, AgentId agentId, Narration event) {
       Thread.ofVirtual().name("nessy-listener").start(() -> tell(agentType, agentId, event));
     }
 
     /**
      * The delegate, told, with a throw logged rather than lost: on its own thread nobody else can.
      */
-    public void tell(AgentType agentType, AgentId agentId, AgentEvent event) {
+    public void tell(AgentType agentType, AgentId agentId, Narration event) {
       try {
         delegate.on(agentType, agentId, event);
       } catch (RuntimeException e) {
-        LoggerFactory.getLogger(AgentEventListener.class)
+        LoggerFactory.getLogger(NarrationListener.class)
             .warn(
                 "[{}] agent {}: a listener threw on {}; carrying on",
                 agentType.value(),
@@ -84,7 +84,7 @@ public interface AgentEventListener {
   }
 
   /** Hears nothing. */
-  static AgentEventListener none() {
+  static NarrationListener none() {
     return (_, _, _) -> {};
   }
 
@@ -92,13 +92,13 @@ public interface AgentEventListener {
    * A listener that reacts to the kinds of event it names and ignores the rest:
    *
    * <pre>{@code
-   * AgentEventListener.of(
+   * NarrationListener.of(
    *     c -> c.agentType(CHAT).onTurnEnded((type, id, ended) -> summarize(id)));
    * }</pre>
    */
-  static AgentEventListener of(Consumer<AgentEventListenerConfig> customizer) {
+  static NarrationListener of(Consumer<NarrationListenerConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
-    AgentEventListenerConfig config = new AgentEventListenerConfig();
+    NarrationListenerConfig config = new NarrationListenerConfig();
     customizer.accept(config);
     return config.build();
   }

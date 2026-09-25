@@ -22,9 +22,9 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 
 @DisplayName("Binding a narrator to an agent")
@@ -38,24 +38,24 @@ class AgentNarratorTest {
             heard.set(agentType.value() + "/" + event.getClass().getSimpleName());
     AgentType chat = new AgentType("chat");
 
-    narrator.forAgent(chat, new AgentId(UUID.randomUUID())).narrate(new AgentEvent.Thinking());
+    narrator.forAgent(chat, new AgentId(UUID.randomUUID())).narrate(new Narration.Thinking());
 
     assertThat(heard).hasValue("chat/Thinking");
-    assertThatCode(() -> AgentNarrator.silent().narrate(new AgentEvent.Thinking()))
+    assertThatCode(() -> AgentNarrator.silent().narrate(new Narration.Thinking()))
         .doesNotThrowAnyException();
   }
 
   /** A provider is handed text and thinking, and the engine is what turns them into events. */
   @Test
   void the_wire_view_of_a_narrator_mints_the_delta_events() {
-    AtomicReference<AgentEvent> heard = new AtomicReference<>();
+    AtomicReference<Narration> heard = new AtomicReference<>();
     InferenceNarrator wire = ((AgentNarrator) heard::set).forInference();
 
     wire.text("hel");
-    assertThat(heard).hasValue(new AgentEvent.ContentDelta("hel"));
+    assertThat(heard).hasValue(new Narration.ContentDelta("hel"));
 
     wire.thinking("hmm");
-    assertThat(heard).hasValue(new AgentEvent.ThinkingDelta("hmm"));
+    assertThat(heard).hasValue(new Narration.ThinkingDelta("hmm"));
 
     assertThatCode(() -> InferenceNarrator.silent().text("x")).doesNotThrowAnyException();
     assertThatCode(() -> InferenceNarrator.silent().thinking("x")).doesNotThrowAnyException();

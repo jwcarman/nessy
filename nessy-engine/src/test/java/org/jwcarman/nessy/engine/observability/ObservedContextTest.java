@@ -121,15 +121,6 @@ class ObservedContextTest {
     assertThat(only().getLowCardinalityKeyValue(Identity.AGENT_NAME).getValue()).isEqualTo("chat");
   }
 
-  @Test
-  void writing_down_what_the_model_was_shown_is_its_own_span() {
-    ObservedInferenceRecorder.wrap(
-            org.jwcarman.nessy.engine.inference.InferenceRecorder.NONE, registry)
-        .begin(TYPE, AGENT, null);
-
-    assertThat(only().getContextualName()).isEqualTo("nessy.record");
-  }
-
   /** Reading the tail says how much of the story came back, which grows with the conversation. */
   @Test
   void reading_the_tail_says_how_many_turns_it_found() {

@@ -16,10 +16,10 @@
 package org.jwcarman.nessy.narration.odyssey;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 
 /**
  * Journals every event about every agent to that agent's stream.
@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.AgentType;
  * number. The SSE event name is that same kind, so a browser can listen for {@code content-delta}
  * and a subscriber with a mapper of its own gets the event back typed.
  */
-public class OdysseyNarrator implements AgentEventListener {
+public class OdysseyNarrator implements NarrationListener {
 
   private final AgentStreams streams;
 
@@ -42,7 +42,7 @@ public class OdysseyNarrator implements AgentEventListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, AgentEvent event) {
+  public void on(AgentType agentType, AgentId agentId, Narration event) {
     streams.stream(agentType, agentId).publish(nameOf(event), event);
   }
 
@@ -50,26 +50,26 @@ public class OdysseyNarrator implements AgentEventListener {
    * The event name on the wire: the kind the event declares in its own JSON. Spelled out here
    * rather than read off the annotation on every event; a test holds the two together.
    */
-  public static String nameOf(AgentEvent event) {
+  public static String nameOf(Narration event) {
     return switch (event) {
-      case AgentEvent.TurnStarted _ -> "turn-started";
-      case AgentEvent.Thinking _ -> "thinking";
-      case AgentEvent.Answered _ -> "answered";
-      case AgentEvent.TurnEnded _ -> "turn-ended";
-      case AgentEvent.TurnFailed _ -> "turn-failed";
-      case AgentEvent.TurnRefused _ -> "turn-refused";
-      case AgentEvent.Commentary _ -> "commentary";
-      case AgentEvent.ActionsRequested _ -> "actions-requested";
-      case AgentEvent.CallApproved _ -> "call-approved";
-      case AgentEvent.CallDenied _ -> "call-denied";
-      case AgentEvent.CallFinished _ -> "call-finished";
-      case AgentEvent.CallFailed _ -> "call-failed";
-      case AgentEvent.Terminated _ -> "terminated";
-      case AgentEvent.ApprovalSought _ -> "approval-sought";
-      case AgentEvent.ApprovalDeferred _ -> "approval-deferred";
-      case AgentEvent.CallDeferred _ -> "call-deferred";
-      case AgentEvent.ThinkingDelta _ -> "thinking-delta";
-      case AgentEvent.ContentDelta _ -> "content-delta";
+      case Narration.TurnStarted _ -> "turn-started";
+      case Narration.Thinking _ -> "thinking";
+      case Narration.Answered _ -> "answered";
+      case Narration.TurnEnded _ -> "turn-ended";
+      case Narration.TurnFailed _ -> "turn-failed";
+      case Narration.TurnRefused _ -> "turn-refused";
+      case Narration.Commentary _ -> "commentary";
+      case Narration.ActionsRequested _ -> "actions-requested";
+      case Narration.CallApproved _ -> "call-approved";
+      case Narration.CallDenied _ -> "call-denied";
+      case Narration.CallFinished _ -> "call-finished";
+      case Narration.CallFailed _ -> "call-failed";
+      case Narration.Terminated _ -> "terminated";
+      case Narration.ApprovalSought _ -> "approval-sought";
+      case Narration.ApprovalDeferred _ -> "approval-deferred";
+      case Narration.CallDeferred _ -> "call-deferred";
+      case Narration.ThinkingDelta _ -> "thinking-delta";
+      case Narration.ContentDelta _ -> "content-delta";
     };
   }
 }

@@ -26,10 +26,10 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.inference.TurnId;
 
 /** The observation current when an event is narrated is current where the listener runs. */
@@ -49,10 +49,10 @@ class ListenersTraceTest {
   void a_sync_and_an_async_listener_both_see_the_narrating_observation() {
     ObservationRegistry registry = registry();
     List<String> seen = new CopyOnWriteArrayList<>();
-    AgentEventListener sync =
+    NarrationListener sync =
         (_, _, _) -> seen.add("sync:" + name(registry.getCurrentObservation()));
-    AgentEventListener async =
-        ((AgentEventListener)
+    NarrationListener async =
+        ((NarrationListener)
                 (_, _, _) ->
                     seen.add(
                         "async:"
@@ -60,7 +60,7 @@ class ListenersTraceTest {
                             + ":"
                             + Thread.currentThread().getName()))
             .async();
-    assertThat(async).isInstanceOf(AgentEventListener.Async.class);
+    assertThat(async).isInstanceOf(NarrationListener.Async.class);
 
     try (Listeners listeners = new Listeners(List.of(sync), List.of(async))) {
       Observation.createNotStarted("nessy.turn", registry)
@@ -69,7 +69,7 @@ class ListenersTraceTest {
                   listeners.narrate(
                       TYPE,
                       new AgentId(UUID.randomUUID()),
-                      new AgentEvent.TurnEnded(new TurnId(1))));
+                      new Narration.TurnEnded(new TurnId(1))));
       await().atMost(Duration.ofSeconds(5)).until(() -> seen.size() == 2);
     }
 
@@ -79,10 +79,10 @@ class ListenersTraceTest {
   @Test
   void told_with_no_engine_an_async_listener_still_runs_on_its_own_thread() {
     List<String> seen = new CopyOnWriteArrayList<>();
-    AgentEventListener async =
-        ((AgentEventListener) (_, _, _) -> seen.add(Thread.currentThread().getName())).async();
+    NarrationListener async =
+        ((NarrationListener) (_, _, _) -> seen.add(Thread.currentThread().getName())).async();
 
-    async.on(TYPE, new AgentId(UUID.randomUUID()), new AgentEvent.TurnEnded(new TurnId(1)));
+    async.on(TYPE, new AgentId(UUID.randomUUID()), new Narration.TurnEnded(new TurnId(1)));
 
     await().atMost(Duration.ofSeconds(5)).until(() -> !seen.isEmpty());
     assertThat(seen).containsExactly("nessy-listener");

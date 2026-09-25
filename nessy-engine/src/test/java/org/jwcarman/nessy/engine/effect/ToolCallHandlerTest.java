@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.direct.InMemoryPayloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
@@ -48,6 +49,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.narration.Narrator;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -63,6 +65,7 @@ class ToolCallHandlerTest {
 
   private static final AgentType TYPE = new AgentType("tools");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
+  private static final PayloadStore PAYLOADS = new InMemoryPayloads();
   private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);
@@ -135,7 +138,8 @@ class ToolCallHandlerTest {
             Narrator.silent(),
             Duration.ofSeconds(30),
             new RetryPolicy.Never(),
-            CLOCK)
+            CLOCK,
+            PAYLOADS)
         .handle(
             AGENT, new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
   }
@@ -154,7 +158,8 @@ class ToolCallHandlerTest {
     assertThat(outcome)
         .isEqualTo(
             new EffectOutcome.ToolSucceeded(
-                new CallId("c1"), List.of(new Block.Text("you said loch ness"))));
+                new CallId("c1"),
+                PAYLOADS.forAgent(AGENT).put(List.of(new Block.Text("you said loch ness")))));
   }
 
   /**
@@ -264,7 +269,8 @@ class ToolCallHandlerTest {
                 Narrator.silent(),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
-                CLOCK)
+                CLOCK,
+                PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
@@ -287,7 +293,8 @@ class ToolCallHandlerTest {
                 Narrator.silent(),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
-                CLOCK)
+                CLOCK,
+                PAYLOADS)
             .termsFor(new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("gone")));
 
     assertThat(terms.timeout()).isEqualTo(Duration.ofSeconds(30));
@@ -309,7 +316,8 @@ class ToolCallHandlerTest {
                 Narrator.silent(),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
-                CLOCK)
+                CLOCK,
+                PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
 

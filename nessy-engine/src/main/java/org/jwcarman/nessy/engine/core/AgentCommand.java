@@ -68,10 +68,10 @@ public sealed interface AgentCommand {
 
     record Failed(Failure failure) implements InferenceOutcome {}
 
-    record RequestedActions(PayloadRef request, List<AgentEvent.Requested> calls)
+    record RequestedActions(PayloadRef request, List<ActionRequest> actions)
         implements InferenceOutcome {
       public RequestedActions {
-        calls = List.copyOf(calls);
+        actions = List.copyOf(actions);
       }
     }
   }

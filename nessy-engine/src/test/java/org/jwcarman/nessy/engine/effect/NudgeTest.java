@@ -19,13 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * Work this process writes down is taken now, not at the next poll.
@@ -42,8 +43,7 @@ class NudgeTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     try (EngineFixture engine =
-        new EngineFixture(
-            (_, _) -> new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done")))) {
+        new EngineFixture((_, _) -> new InferenceResult.Answer(List.of(new Block.Text("done"))))) {
       engine
           .harnesses()
           .create(
@@ -58,8 +58,7 @@ class NudgeTest {
 
       await()
           .atMost(Duration.ofSeconds(10))
-          .untilAsserted(
-              () -> assertThat(engine.history().entriesFrom(type, agentId, 0)).hasSize(2));
+          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(2));
     }
   }
 }

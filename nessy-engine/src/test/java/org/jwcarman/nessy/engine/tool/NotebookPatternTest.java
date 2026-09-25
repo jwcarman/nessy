@@ -36,7 +36,6 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -111,13 +110,9 @@ class NotebookPatternTest {
     };
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   @Test
@@ -131,7 +126,7 @@ class NotebookPatternTest {
         (request, _) -> {
           systemPrompts.add(request.systemPrompt().value() + render(request));
           return request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-              ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("noted"))
+              ? new InferenceResult.Answer(List.of(new Block.Text("noted")))
               : new InferenceResult.Actions(
                   List.of(
                       new Block.ToolCall(
@@ -211,8 +206,7 @@ class NotebookPatternTest {
     AgentType type = new AgentType("notebook-not-stored");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    running(
-        (_, _) -> new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("understood")));
+    running((_, _) -> new InferenceResult.Answer(List.of(new Block.Text("understood"))));
     QueuedHarness<String> harness =
         engine
             .harnesses()
@@ -238,8 +232,8 @@ class NotebookPatternTest {
         engine
             .jdbc()
             .sql(
-                "SELECT string_agg(convert_from(payload,'UTF8'), ' ') "
-                    + "FROM nessy_agent_history WHERE agent_id = ?")
+                "SELECT string_agg(convert_from(content,'UTF8'), ' ') "
+                    + "FROM nessy_payload WHERE agent_id = ?")
             .params(agentId.value())
             .query(String.class)
             .single();

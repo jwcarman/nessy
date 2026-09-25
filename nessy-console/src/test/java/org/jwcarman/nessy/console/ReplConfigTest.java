@@ -27,12 +27,12 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -219,7 +219,7 @@ class ReplConfigTest {
       }
 
       @Override
-      public DirectHarnessConfig<String> listener(AgentEventListener listener) {
+      public DirectHarnessConfig<String> listener(NarrationListener listener) {
         return this;
       }
 

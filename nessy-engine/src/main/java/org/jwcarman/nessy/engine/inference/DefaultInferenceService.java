@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.engine.inference;
 
 import java.util.List;
-import java.util.UUID;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -40,21 +39,18 @@ public class DefaultInferenceService implements InferenceService {
   private final Toolset toolset;
 
   private final Narrator narrator;
-  private final InferenceRecorder recorder;
 
   public DefaultInferenceService(
       InferenceContextAssembler assembler,
       InferenceProvider provider,
       SystemPromptSource systemPrompt,
       List<ToolOffer> tools,
-      Narrator narrator,
-      InferenceRecorder recorder) {
+      Narrator narrator) {
     this.assembler = assembler;
     this.provider = provider;
     this.systemPrompt = systemPrompt;
     this.toolset = Toolset.of(tools);
     this.narrator = narrator;
-    this.recorder = recorder;
   }
 
   @Override
@@ -67,23 +63,10 @@ public class DefaultInferenceService implements InferenceService {
             assembler.assemble(invocation),
             toolset,
             invocation.options());
-    // Written down before the provider is asked, so a call that never returns still has its
-    // context on record; the outcome follows. A provider that throws is a fault like any other.
-    UUID recorded = recorder.begin(invocation.agentType(), invocation.agentId(), request);
-    InferenceResult result;
-    try {
-      // Bound here, which is the only place that knows both who is being served and where the
-      // narration goes. The provider is handed something that can say what is arriving -- text, or
-      // thinking -- and cannot say whose it is, or that an agent is involved at all.
-      result =
-          provider.infer(
-              request,
-              narrator.forAgent(invocation.agentType(), invocation.agentId()).forInference());
-    } catch (RuntimeException e) {
-      recorder.failed(recorded);
-      throw e;
-    }
-    recorder.end(recorded, result);
-    return result;
+    // Bound here, which is the only place that knows both who is being served and where the
+    // narration goes. The provider is handed something that can say what is arriving -- text, or
+    // thinking -- and cannot say whose it is, or that an agent is involved at all.
+    return provider.infer(
+        request, narrator.forAgent(invocation.agentType(), invocation.agentId()).forInference());
   }
 }

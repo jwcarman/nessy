@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.codec.Codec;
-import org.jwcarman.nessy.api.AgentEventListener;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -51,12 +51,11 @@ public final class EngineConfig {
   private DataSource dataSource;
   private InferenceProvider provider;
   private InferenceOptions options;
-  private final List<AgentEventListener> listeners = new ArrayList<>();
+  private final List<NarrationListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private TraceCarrier traceCarrier;
   private ReplyTokens replyTokens;
   private Codec<byte[]> storage;
-  private boolean recordInferenceContexts = true;
 
   EngineConfig() {}
 
@@ -83,7 +82,7 @@ public final class EngineConfig {
    * because narration costs a line per event and nobody asked. A harness adds its own with {@code
    * QueuedHarnessConfig.listener(...)}.
    */
-  public EngineConfig listener(AgentEventListener listener) {
+  public EngineConfig listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
@@ -129,17 +128,6 @@ public final class EngineConfig {
     return this;
   }
 
-  /**
-   * Whether every model call's request is written down, whole, in {@code nessy_inference_context}
-   * -- on unless said otherwise. The cost is one row per call, small against the call itself; the
-   * value is knowing exactly what the model was shown when it decided something, which nothing else
-   * can say afterwards.
-   */
-  public EngineConfig recordInferenceContexts(boolean recorded) {
-    this.recordInferenceContexts = recorded;
-    return this;
-  }
-
   // ---- what the factory reads ------------------------------------------------------------
 
   DataSource requiredDataSource() {
@@ -160,7 +148,7 @@ public final class EngineConfig {
     return Objects.requireNonNull(options, "inference(provider, options) needs both");
   }
 
-  List<AgentEventListener> listeners() {
+  List<NarrationListener> listeners() {
     return List.copyOf(listeners);
   }
 
@@ -170,10 +158,6 @@ public final class EngineConfig {
 
   Optional<TraceCarrier> traceCarrier() {
     return Optional.ofNullable(traceCarrier);
-  }
-
-  boolean recordInferenceContexts() {
-    return recordInferenceContexts;
   }
 
   Optional<Codec<byte[]>> storage() {

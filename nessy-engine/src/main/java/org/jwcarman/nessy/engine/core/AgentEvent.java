@@ -24,7 +24,6 @@ import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * What happened. Facts, in order, and the only thing that moves an {@link AgentState}.
@@ -77,15 +76,12 @@ public sealed interface AgentEvent {
    * <p>The calls are in the spine because the state must know what it is waiting for; their
    * arguments are behind {@code request}, because only the tool ever reads those.
    */
-  record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<Requested> calls)
+  record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions)
       implements AgentEvent {
     public ActionsRequested {
-      calls = List.copyOf(calls);
+      actions = List.copyOf(actions);
     }
   }
-
-  /** One call the model asked for: which call, and which tool. */
-  record Requested(CallId callId, ToolName toolName) {}
 
   /** A call was allowed to run. */
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference)

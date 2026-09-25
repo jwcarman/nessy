@@ -29,7 +29,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Summarizer;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.inference.Ambient;
@@ -37,6 +36,7 @@ import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Observation;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
@@ -58,9 +58,9 @@ class ContextAssemblerTest {
   private static Turn turn(long id) {
     return new Turn(
         new TurnId(id),
-        new Observation(new Seq(id), HistoryEntry.ObservationReceived.text("q" + id)),
+        new Observation(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(),
-        new TurnResult.Answered(HistoryEntry.InferenceAnswered.text("a" + id)),
+        new TurnResult.Answered(List.of(new Block.Text("a" + id))),
         10);
   }
 

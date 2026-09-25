@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -159,8 +159,8 @@ public class EpisodeSummarizer {
    * The listener to attach to the harness: hears this type's turns end, on a thread of its own per
    * event, because a summary is a model call and the engine's narration thread must not wait.
    */
-  public AgentEventListener listener() {
-    return AgentEventListener.of(
+  public NarrationListener listener() {
+    return NarrationListener.of(
             c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> summarizeIfDue(agentId)))
         .async();
   }

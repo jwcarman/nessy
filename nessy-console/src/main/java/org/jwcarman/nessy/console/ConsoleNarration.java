@@ -15,16 +15,16 @@
  */
 package org.jwcarman.nessy.console;
 
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 
 /**
  * What the REPL prints while the agent works, and how it knows a turn is over.
  *
- * <p>A {@link AgentEventListener} is engine-wide -- one sink hears every agent -- so this filters
- * to the one agent the terminal is talking to and ignores the rest. It is built before the engine,
+ * <p>A {@link NarrationListener} is engine-wide -- one sink hears every agent -- so this filters to
+ * the one agent the terminal is talking to and ignores the rest. It is built before the engine,
  * because the engine is told about it at construction; the loop that reads the keyboard is built
  * after.
  *
@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.AgentType;
  * and nothing else -- which is all a narration was ever good for, the ending having been the part
  * it could only guess at.
  */
-final class ConsoleNarration implements AgentEventListener {
+final class ConsoleNarration implements NarrationListener {
 
   private final AgentId agentId;
   private final ConsoleIo io;
@@ -45,7 +45,7 @@ final class ConsoleNarration implements AgentEventListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId who, AgentEvent event) {
+  public void on(AgentType agentType, AgentId who, Narration event) {
     if (!agentId.equals(who)) {
       return;
     }
@@ -54,21 +54,21 @@ final class ConsoleNarration implements AgentEventListener {
       // terminal when what it wrote contains a newline, so without this a paragraph arrives in
       // one lump at the end -- finished rather than being written, the whole difference a person
       // can see.
-      case AgentEvent.ContentDelta(String text) -> {
+      case Narration.ContentDelta(String text) -> {
         spoke = true;
         io.write(text);
         io.flush();
       }
       // A provider that does not stream says the whole thing at once; one that does has already
       // said it delta by delta, and saying it again would print the answer twice.
-      case AgentEvent.Answered(String text) -> {
+      case Narration.Answered(String text) -> {
         if (!spoke && !text.isBlank()) {
           spoke = true;
           io.write(text);
           io.flush();
         }
       }
-      case AgentEvent.ActionsRequested(var toolNames) ->
+      case Narration.ActionsRequested(var toolNames) ->
           toolNames.forEach(
               name ->
                   io.write(
@@ -77,25 +77,25 @@ final class ConsoleNarration implements AgentEventListener {
                           + name.value()
                           + "]"
                           + System.lineSeparator()));
-      case AgentEvent.CallFinished(var callId) ->
+      case Narration.CallFinished(var callId) ->
           io.write("  [" + callId.value() + " answered]" + System.lineSeparator());
-      case AgentEvent.CallFailed(var callId, String message) ->
+      case Narration.CallFailed(var callId, String message) ->
           io.write("  [" + callId.value() + " failed: " + message + "]" + System.lineSeparator());
-      case AgentEvent.CallDenied(var callId, String reason) ->
+      case Narration.CallDenied(var callId, String reason) ->
           io.write("  [" + callId.value() + " denied: " + reason + "]" + System.lineSeparator());
-      case AgentEvent.TurnFailed _, AgentEvent.TurnRefused _, AgentEvent.Terminated _ -> {
+      case Narration.TurnFailed _, Narration.TurnRefused _, Narration.Terminated _ -> {
         // How it ended is the outcome's to report, and the loop has it.
       }
       // Thinking is shown as a marker, not as content: a model's reasoning is not its answer.
-      case AgentEvent.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
-      case AgentEvent.TurnStarted _,
-          AgentEvent.TurnEnded _,
-          AgentEvent.Commentary _,
-          AgentEvent.CallApproved _,
-          AgentEvent.ApprovalSought _,
-          AgentEvent.ApprovalDeferred _,
-          AgentEvent.CallDeferred _,
-          AgentEvent.ThinkingDelta _ -> {
+      case Narration.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
+      case Narration.TurnStarted _,
+          Narration.TurnEnded _,
+          Narration.Commentary _,
+          Narration.CallApproved _,
+          Narration.ApprovalSought _,
+          Narration.ApprovalDeferred _,
+          Narration.CallDeferred _,
+          Narration.ThinkingDelta _ -> {
         // Not something a person at a terminal needs told; the approver prompts for itself.
       }
     }

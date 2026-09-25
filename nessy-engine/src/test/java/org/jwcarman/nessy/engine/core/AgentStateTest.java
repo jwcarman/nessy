@@ -59,7 +59,7 @@ class AgentStateTest {
                 .execute(
                     new AgentCommand.CompleteInference(
                         new AgentCommand.InferenceOutcome.RequestedActions(
-                            MAIL, List.of(new AgentEvent.Requested(CALL, TOOL)))))
+                            MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))))
                 .events());
     return state.applyAll(
         state
@@ -163,7 +163,7 @@ class AgentStateTest {
           inferring.execute(
               new AgentCommand.CompleteInference(
                   new AgentCommand.InferenceOutcome.RequestedActions(
-                      MAIL, List.of(new AgentEvent.Requested(CALL, TOOL)))));
+                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Approve.class);
     }
@@ -178,7 +178,7 @@ class AgentStateTest {
                   .execute(
                       new AgentCommand.CompleteInference(
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new AgentEvent.Requested(CALL, TOOL)))))
+                              MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))))
                   .events());
 
       Decision decision =
@@ -345,7 +345,9 @@ class AgentStateTest {
     @DisplayName("an agent waiting for nothing is not a state that can exist")
     void awaiting_nothing_is_rejected() {
       assertThatThrownBy(
-              () -> new AgentState.AwaitingCalls(Seq.of(1), Seq.of(1).opensTurn(), Map.of()))
+              () ->
+                  new AgentState.AwaitingActions(
+                      Seq.of(1), Seq.of(1).opensTurn(), Seq.of(1), Map.of()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("awaiting nothing");
     }
@@ -379,9 +381,9 @@ class AgentStateTest {
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
                               List.of(
-                                  new AgentEvent.Requested(A, TOOL),
-                                  new AgentEvent.Requested(B, TOOL),
-                                  new AgentEvent.Requested(C, TOOL)))))
+                                  new ActionRequest.ToolCall(A, TOOL),
+                                  new ActionRequest.ToolCall(B, TOOL),
+                                  new ActionRequest.ToolCall(C, TOOL)))))
                   .events());
       for (CallId call : List.of(A, B, C)) {
         state =
@@ -406,7 +408,8 @@ class AgentStateTest {
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
                       List.of(
-                          new AgentEvent.Requested(A, TOOL), new AgentEvent.Requested(B, TOOL)))));
+                          new ActionRequest.ToolCall(A, TOOL),
+                          new ActionRequest.ToolCall(B, TOOL)))));
 
       assertThat(decision.effects()).hasSize(2).allMatch(AgentEffect.Approve.class::isInstance);
     }
@@ -468,7 +471,7 @@ class AgentStateTest {
                   .execute(
                       new AgentCommand.CompleteInference(
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new AgentEvent.Requested(A, TOOL)))))
+                              MAIL, List.of(new ActionRequest.ToolCall(A, TOOL)))))
                   .events());
 
       Decision denied =
@@ -503,7 +506,7 @@ class AgentStateTest {
                   .execute(
                       new AgentCommand.CompleteInference(
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new AgentEvent.Requested(A, TOOL)))))
+                              MAIL, List.of(new ActionRequest.ToolCall(A, TOOL)))))
                   .events());
 
       assertThat(

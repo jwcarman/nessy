@@ -22,15 +22,14 @@ import io.micrometer.tracing.propagation.Propagator;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
-import org.jwcarman.nessy.engine.store.InferenceContexts;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -157,13 +156,13 @@ public class NessyAutoConfiguration {
   }
 
   /**
-   * Every {@link AgentEventListener} bean, attached engine-wide once every bean exists -- after
+   * Every {@link NarrationListener} bean, attached engine-wide once every bean exists -- after
    * rather than at the factory's making, so a listener that reads the story (through the factory)
    * is not a circle.
    */
   @Bean
   public SmartInitializingSingleton nessyListeners(
-      DefaultQueuedHarnessFactory factory, ObjectProvider<AgentEventListener> listeners) {
+      DefaultQueuedHarnessFactory factory, ObjectProvider<NarrationListener> listeners) {
     return () -> listeners.orderedStream().forEach(factory::listener);
   }
 
@@ -172,13 +171,6 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public TurnHistories nessyHistories(DefaultQueuedHarnessFactory factory) {
     return factory.histories();
-  }
-
-  /** What each model call was shown, for evals, critics and anyone debugging a call. */
-  @Bean
-  @ConditionalOnMissingBean
-  public InferenceContexts nessyInferenceContexts(DefaultQueuedHarnessFactory factory) {
-    return factory.inferenceContexts();
   }
 
   @Bean

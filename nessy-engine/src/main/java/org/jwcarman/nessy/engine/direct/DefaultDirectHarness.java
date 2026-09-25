@@ -25,12 +25,13 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -40,6 +41,7 @@ import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
+import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
@@ -112,7 +114,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * would be delayed, and it is already waiting -- so a listener that blocks blocks the turn it is
    * watching, which is the honest arrangement when somebody is holding the answer.
    */
-  private final List<AgentEventListener> listeners;
+  private final List<NarrationListener> listeners;
 
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
@@ -132,7 +134,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       List<Summarizer> summaries,
       int maxTail,
       List<AmbientSource> ambient,
-      List<AgentEventListener> listeners) {
+      List<NarrationListener> listeners) {
     this.locks = locks;
     this.agentType = agentType;
     this.events = events;
@@ -207,6 +209,15 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
     Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
     AgentState state = AgentState.idle(from).applyAll(lastTurn);
+
+    // Asked of an agent that has ended. The core refuses this loudly, and rightly -- silently
+    // swallowing it is what costs somebody an afternoon -- but loudly is for a programming error
+    // reaching the fold, not for a caller who is owed an answer. This door always has one waiting,
+    // so the refusal is the answer rather than an exception out of a request thread.
+    if (state instanceof AgentState.Terminal) {
+      LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
+      return new Outcome.Refused<>("terminated");
+    }
 
     // TODO: unwindowed. ContextConfig.maxTail is the knob this should hang off; until it does, a
     // long conversation sends the model all of it.
@@ -305,6 +316,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           new AgentCommand.ApprovalOutcome.Denied(
               "the arguments could not be read: " + unreadable.getMessage(), Optional.empty()));
     }
+    // Before asking, not after: an approver that blocks on a person is exactly when a watcher
+    // needs to know one is being asked, and after the answer it is too late to be worth saying.
+    tell(agent, new Narration.ApprovalSought(approve.callId(), question.action()));
     Awaited<ApprovalResult> answer;
     try {
       answer = binding.approve(question);
@@ -411,6 +425,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
             options,
             shape);
 
+    tell(agent, new Narration.Thinking());
     return switch (provider.infer(request, narratorFor(agent))) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
           new AgentCommand.InferenceOutcome.Answered(content.put(blocks));
@@ -425,11 +440,11 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   /** Which calls a request obliges an outcome for, in the order the model made them. */
-  private static List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {
+  private static List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
     return blocks.stream()
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
-        .map(call -> new AgentEvent.Requested(call.id(), call.name()))
+        .map(call -> (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name()))
         .toList();
   }
 
@@ -459,40 +474,54 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       return;
     }
     switch (event) {
-      case AgentEvent.ActionsRequested asked ->
-          tell(
-              agent,
-              new org.jwcarman.nessy.api.AgentEvent.ActionsRequested(
-                  asked.calls().stream().map(AgentEvent.Requested::toolName).toList()));
-      case AgentEvent.ToolApproved approved ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.CallApproved(approved.callId()));
-      case AgentEvent.ToolDenied denied ->
-          tell(
-              agent,
-              new org.jwcarman.nessy.api.AgentEvent.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.CallFinished(done.callId()));
-      case AgentEvent.ToolFailed failed ->
-          tell(
-              agent,
-              new org.jwcarman.nessy.api.AgentEvent.CallFailed(failed.callId(), failed.message()));
-      case AgentEvent.InferenceAnswered answered ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Answered(textOf(agent, answered)));
-      case AgentEvent.InferenceRefused _ ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.TurnRefused());
-      case AgentEvent.InferenceFailed _ ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.TurnFailed());
-      case AgentEvent.Terminated _ ->
-          tell(agent, new org.jwcarman.nessy.api.AgentEvent.Terminated());
-      // A turn starting is the caller's own doing, and it is standing right there.
-      case AgentEvent.TurnStarted _ -> {
-        /* nothing a watcher of this door needs told */
+      case AgentEvent.ActionsRequested asked -> {
+        // What the model said while deciding to act, told apart from an answer by the block it
+        // arrived as rather than by the message it happened to sit in.
+        blocksOf(agent, asked.request()).stream()
+            .filter(Block.Commentary.class::isInstance)
+            .map(Block.Commentary.class::cast)
+            .forEach(said -> tell(agent, new Narration.Commentary(said.text())));
+        tell(
+            agent,
+            new Narration.ActionsRequested(
+                asked.actions().stream()
+                    .filter(ActionRequest.ToolCall.class::isInstance)
+                    .map(ActionRequest.ToolCall.class::cast)
+                    .map(ActionRequest.ToolCall::name)
+                    .toList()));
       }
+      case AgentEvent.ToolApproved approved ->
+          tell(agent, new Narration.CallApproved(approved.callId()));
+      case AgentEvent.ToolDenied denied ->
+          tell(agent, new Narration.CallDenied(denied.callId(), denied.reason()));
+      case AgentEvent.ToolSucceeded done -> tell(agent, new Narration.CallFinished(done.callId()));
+      case AgentEvent.ToolFailed failed ->
+          tell(agent, new Narration.CallFailed(failed.callId(), failed.message()));
+      case AgentEvent.InferenceAnswered answered -> {
+        tell(agent, new Narration.Answered(textOf(agent, answered)));
+        tell(agent, new Narration.TurnEnded(answered.turn()));
+      }
+      case AgentEvent.InferenceRefused refused -> {
+        tell(agent, new Narration.TurnRefused());
+        tell(agent, new Narration.TurnEnded(refused.turn()));
+      }
+      case AgentEvent.InferenceFailed failed -> {
+        tell(agent, new Narration.TurnFailed());
+        tell(agent, new Narration.TurnEnded(failed.turn()));
+      }
+      case AgentEvent.Terminated _ -> tell(agent, new Narration.Terminated());
+      // Said even though the caller knows: the caller is not the only watcher. A page on the
+      // narration stream while the request blocks, or a second one opened beside it, learns what
+      // is happening only from here.
+      case AgentEvent.TurnStarted started ->
+          tell(
+              agent,
+              new Narration.TurnStarted(started.turn(), textOfRef(agent, started.observation())));
     }
   }
 
-  private void tell(AgentId agent, org.jwcarman.nessy.api.AgentEvent event) {
-    for (AgentEventListener listener : listeners) {
+  private void tell(AgentId agent, org.jwcarman.nessy.api.Narration event) {
+    for (NarrationListener listener : listeners) {
       try {
         listener.on(agentType, agent, event);
       } catch (RuntimeException broken) {
@@ -568,14 +597,23 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   private String textOf(AgentId agent, AgentEvent.InferenceAnswered answered) {
-    return switch (payloads.forAgent(agent).get(answered.answer())) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) ->
-          blocks.stream()
-              .filter(Block.Text.class::isInstance)
-              .map(Block.Text.class::cast)
-              .map(Block.Text::text)
-              .reduce("", String::concat);
-      case PayloadStore.Resolved.Missing _ -> "";
+    return textOfRef(agent, answered.answer());
+  }
+
+  /** The content behind a reference, or nothing when it has gone. */
+  private List<Block> blocksOf(AgentId agent, org.jwcarman.nessy.api.PayloadRef ref) {
+    return switch (payloads.forAgent(agent).get(ref)) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) -> blocks;
+      case PayloadStore.Resolved.Missing _ -> List.of();
     };
+  }
+
+  /** The words behind a reference, joined. */
+  private String textOfRef(AgentId agent, org.jwcarman.nessy.api.PayloadRef ref) {
+    return blocksOf(agent, ref).stream()
+        .filter(Block.Text.class::isInstance)
+        .map(Block.Text.class::cast)
+        .map(Block.Text::text)
+        .reduce("", String::concat);
   }
 }

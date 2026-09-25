@@ -21,12 +21,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
@@ -53,7 +53,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   private SystemPromptSource systemPrompt =
       SystemPromptSource.constant(new SystemPrompt("You are a helpful assistant."));
   private ObservationRenderer<I> renderer = ObservationRenderer.asString();
-  private final List<AgentEventListener> listeners = new ArrayList<>();
+  private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
   private final Inference inference = new Inference();
 
@@ -90,7 +90,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   }
 
   @Override
-  public DirectHarnessConfig<I> listener(AgentEventListener listener) {
+  public DirectHarnessConfig<I> listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
@@ -113,7 +113,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     return renderer;
   }
 
-  List<AgentEventListener> listeners() {
+  List<NarrationListener> listeners() {
     return List.copyOf(listeners);
   }
 

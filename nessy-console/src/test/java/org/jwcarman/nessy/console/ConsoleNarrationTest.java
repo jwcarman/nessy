@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
@@ -40,16 +40,16 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    for (AgentEvent event :
+    for (Narration event :
         List.of(
-            new AgentEvent.TurnStarted(new TurnId(1), "hi"),
-            new AgentEvent.Thinking(),
-            new AgentEvent.ActionsRequested(List.of(new ToolName("depth"))),
-            new AgentEvent.CallDenied(CALL, "not today"),
-            new AgentEvent.CallFailed(CALL, "boom"),
-            new AgentEvent.CallFinished(CALL),
-            new AgentEvent.ContentDelta("230"),
-            new AgentEvent.Terminated())) {
+            new Narration.TurnStarted(new TurnId(1), "hi"),
+            new Narration.Thinking(),
+            new Narration.ActionsRequested(List.of(new ToolName("depth"))),
+            new Narration.CallDenied(CALL, "not today"),
+            new Narration.CallFailed(CALL, "boom"),
+            new Narration.CallFinished(CALL),
+            new Narration.ContentDelta("230"),
+            new Narration.Terminated())) {
       narration.on(CHAT, AGENT, event);
     }
 
@@ -66,7 +66,7 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, new AgentId(UUID.randomUUID()), new AgentEvent.Answered("elsewhere"));
+    narration.on(CHAT, new AgentId(UUID.randomUUID()), new Narration.Answered("elsewhere"));
 
     assertThat(console.written()).isEmpty();
   }
@@ -76,10 +76,10 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new AgentEvent.Answered("whole answer"));
+    narration.on(CHAT, AGENT, new Narration.Answered("whole answer"));
     assertThat(console.written()).isEqualTo("whole answer");
 
-    narration.on(CHAT, AGENT, new AgentEvent.Answered("again"));
+    narration.on(CHAT, AGENT, new Narration.Answered("again"));
     assertThat(console.written()).isEqualTo("whole answer");
   }
 
@@ -88,7 +88,7 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new AgentEvent.Answered("  "));
+    narration.on(CHAT, AGENT, new Narration.Answered("  "));
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
@@ -99,18 +99,18 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new AgentEvent.TurnFailed());
-    narration.on(CHAT, AGENT, new AgentEvent.TurnRefused());
+    narration.on(CHAT, AGENT, new Narration.TurnFailed());
+    narration.on(CHAT, AGENT, new Narration.TurnRefused());
 
-    for (AgentEvent quiet :
+    for (Narration quiet :
         List.of(
-            new AgentEvent.TurnEnded(new TurnId(1)),
-            new AgentEvent.Commentary("hmm"),
-            new AgentEvent.CallApproved(CALL),
-            new AgentEvent.ApprovalSought(CALL, "restart"),
-            new AgentEvent.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
-            new AgentEvent.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),
-            new AgentEvent.ThinkingDelta("h"))) {
+            new Narration.TurnEnded(new TurnId(1)),
+            new Narration.Commentary("hmm"),
+            new Narration.CallApproved(CALL),
+            new Narration.ApprovalSought(CALL, "restart"),
+            new Narration.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
+            new Narration.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),
+            new Narration.ThinkingDelta("h"))) {
       narration.on(CHAT, AGENT, quiet);
     }
     assertThat(console.written()).isEmpty();

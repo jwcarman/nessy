@@ -38,16 +38,16 @@ class AgentEventListenerTest {
   @DisplayName("built from handlers hears the kinds it named, in order, and ignores the rest")
   void the_builder_dispatches_by_kind() {
     List<String> heard = new CopyOnWriteArrayList<>();
-    AgentEventListener listener =
-        AgentEventListener.of(
+    NarrationListener listener =
+        NarrationListener.of(
             c ->
                 c.onTurnEnded((type, id, ended) -> heard.add("ended " + ended.turn().value()))
                     .onTurnEnded((type, id, ended) -> heard.add("and again"))
                     .onAnswered((type, id, answered) -> heard.add("said " + answered.text())));
 
-    listener.on(CHAT, ONE, new AgentEvent.TurnEnded(new TurnId(3)));
-    listener.on(CHAT, ONE, new AgentEvent.Thinking());
-    listener.on(CHAT, ONE, new AgentEvent.Answered("hi"));
+    listener.on(CHAT, ONE, new Narration.TurnEnded(new TurnId(3)));
+    listener.on(CHAT, ONE, new Narration.Thinking());
+    listener.on(CHAT, ONE, new Narration.Answered("hi"));
 
     assertThat(heard).containsExactly("ended 3", "and again", "said hi");
   }
@@ -56,12 +56,12 @@ class AgentEventListenerTest {
   @DisplayName("narrowed to an agent type hears nobody else's agents")
   void the_builder_filters_by_agent_type() {
     AtomicInteger heard = new AtomicInteger();
-    AgentEventListener listener =
-        AgentEventListener.of(
+    NarrationListener listener =
+        NarrationListener.of(
             c -> c.agentType(CHAT).onTurnEnded((type, id, ended) -> heard.incrementAndGet()));
 
-    listener.on(WATCHMAN, ONE, new AgentEvent.TurnEnded(new TurnId(1)));
-    listener.on(CHAT, ONE, new AgentEvent.TurnEnded(new TurnId(1)));
+    listener.on(WATCHMAN, ONE, new Narration.TurnEnded(new TurnId(1)));
+    listener.on(CHAT, ONE, new Narration.TurnEnded(new TurnId(1)));
 
     assertThat(heard).hasValue(1);
   }
@@ -71,8 +71,8 @@ class AgentEventListenerTest {
   void async_runs_elsewhere_and_survives_a_failure() throws InterruptedException {
     CountDownLatch ran = new CountDownLatch(1);
     List<String> threads = new CopyOnWriteArrayList<>();
-    AgentEventListener listener =
-        ((AgentEventListener)
+    NarrationListener listener =
+        ((NarrationListener)
                 (type, id, event) -> {
                   threads.add(Thread.currentThread().getName());
                   ran.countDown();
@@ -81,7 +81,7 @@ class AgentEventListenerTest {
             .async();
 
     // No exception reaches the caller, and the caller's thread is not the one that ran it.
-    listener.on(CHAT, ONE, new AgentEvent.Thinking());
+    listener.on(CHAT, ONE, new Narration.Thinking());
 
     assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(threads.getFirst()).isEqualTo("nessy-listener");

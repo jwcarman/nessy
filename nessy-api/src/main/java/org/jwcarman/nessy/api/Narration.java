@@ -53,34 +53,34 @@ import org.jwcarman.nessy.inference.tool.ToolName;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = AgentEvent.TurnStarted.class, name = "turn-started"),
-  @JsonSubTypes.Type(value = AgentEvent.Thinking.class, name = "thinking"),
-  @JsonSubTypes.Type(value = AgentEvent.Answered.class, name = "answered"),
-  @JsonSubTypes.Type(value = AgentEvent.TurnEnded.class, name = "turn-ended"),
-  @JsonSubTypes.Type(value = AgentEvent.TurnFailed.class, name = "turn-failed"),
-  @JsonSubTypes.Type(value = AgentEvent.TurnRefused.class, name = "turn-refused"),
-  @JsonSubTypes.Type(value = AgentEvent.Commentary.class, name = "commentary"),
-  @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
-  @JsonSubTypes.Type(value = AgentEvent.CallApproved.class, name = "call-approved"),
-  @JsonSubTypes.Type(value = AgentEvent.CallDenied.class, name = "call-denied"),
-  @JsonSubTypes.Type(value = AgentEvent.CallFinished.class, name = "call-finished"),
-  @JsonSubTypes.Type(value = AgentEvent.CallFailed.class, name = "call-failed"),
-  @JsonSubTypes.Type(value = AgentEvent.Terminated.class, name = "terminated"),
-  @JsonSubTypes.Type(value = AgentEvent.ApprovalSought.class, name = "approval-sought"),
-  @JsonSubTypes.Type(value = AgentEvent.ApprovalDeferred.class, name = "approval-deferred"),
-  @JsonSubTypes.Type(value = AgentEvent.CallDeferred.class, name = "call-deferred"),
-  @JsonSubTypes.Type(value = AgentEvent.ThinkingDelta.class, name = "thinking-delta"),
-  @JsonSubTypes.Type(value = AgentEvent.ContentDelta.class, name = "content-delta")
+  @JsonSubTypes.Type(value = Narration.TurnStarted.class, name = "turn-started"),
+  @JsonSubTypes.Type(value = Narration.Thinking.class, name = "thinking"),
+  @JsonSubTypes.Type(value = Narration.Answered.class, name = "answered"),
+  @JsonSubTypes.Type(value = Narration.TurnEnded.class, name = "turn-ended"),
+  @JsonSubTypes.Type(value = Narration.TurnFailed.class, name = "turn-failed"),
+  @JsonSubTypes.Type(value = Narration.TurnRefused.class, name = "turn-refused"),
+  @JsonSubTypes.Type(value = Narration.Commentary.class, name = "commentary"),
+  @JsonSubTypes.Type(value = Narration.ActionsRequested.class, name = "actions-requested"),
+  @JsonSubTypes.Type(value = Narration.CallApproved.class, name = "call-approved"),
+  @JsonSubTypes.Type(value = Narration.CallDenied.class, name = "call-denied"),
+  @JsonSubTypes.Type(value = Narration.CallFinished.class, name = "call-finished"),
+  @JsonSubTypes.Type(value = Narration.CallFailed.class, name = "call-failed"),
+  @JsonSubTypes.Type(value = Narration.Terminated.class, name = "terminated"),
+  @JsonSubTypes.Type(value = Narration.ApprovalSought.class, name = "approval-sought"),
+  @JsonSubTypes.Type(value = Narration.ApprovalDeferred.class, name = "approval-deferred"),
+  @JsonSubTypes.Type(value = Narration.CallDeferred.class, name = "call-deferred"),
+  @JsonSubTypes.Type(value = Narration.ThinkingDelta.class, name = "thinking-delta"),
+  @JsonSubTypes.Type(value = Narration.ContentDelta.class, name = "content-delta")
 })
-public sealed interface AgentEvent {
+public sealed interface Narration {
 
   // ---- facts: from the engine, after the fold commits ---------------------------------
 
   /** An observation was taken up and a turn opened on it. */
-  record TurnStarted(TurnId turn, String observation) implements AgentEvent {}
+  record TurnStarted(TurnId turn, String observation) implements Narration {}
 
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
-  record Thinking() implements AgentEvent {}
+  record Thinking() implements Narration {}
 
   /**
    * The turn ended with an answer.
@@ -90,19 +90,19 @@ public sealed interface AgentEvent {
    * the only place the answer appears. Text rather than blocks: the block grammar is the engine's
    * business, and what a watcher wants is what a person would read.
    */
-  record Answered(String text) implements AgentEvent {}
+  record Answered(String text) implements Narration {}
 
   /**
    * The turn is over, however it ended -- answered, failed or refused. One event to listen for when
    * what matters is that the story grew by a turn, not how.
    */
-  record TurnEnded(TurnId turn) implements AgentEvent {}
+  record TurnEnded(TurnId turn) implements Narration {}
 
   /** The turn ended without an answer, and might have gone otherwise. */
-  record TurnFailed() implements AgentEvent {}
+  record TurnFailed() implements Narration {}
 
   /** The turn was declined, and would be declined again. */
-  record TurnRefused() implements AgentEvent {}
+  record TurnRefused() implements Narration {}
 
   /**
    * What the model said while asking for work -- "Let me look that up."
@@ -118,10 +118,10 @@ public sealed interface AgentEvent {
    * a request for actions is commentary and inside an answer is the answer. The grammar says which
    * by where it sits.
    */
-  record Commentary(String text) implements AgentEvent {}
+  record Commentary(String text) implements Narration {}
 
   /** The model asked for work before it would answer. */
-  record ActionsRequested(List<ToolName> toolNames) implements AgentEvent {
+  record ActionsRequested(List<ToolName> toolNames) implements Narration {
     public ActionsRequested {
       toolNames = List.copyOf(toolNames);
     }
@@ -135,19 +135,19 @@ public sealed interface AgentEvent {
    * something the story does not. A watcher that wants the name heard it a moment ago in {@link
    * ActionsRequested}.
    */
-  record CallApproved(CallId callId) implements AgentEvent {}
+  record CallApproved(CallId callId) implements Narration {}
 
   /** A call was refused, and never ran. */
-  record CallDenied(CallId callId, String reason) implements AgentEvent {}
+  record CallDenied(CallId callId, String reason) implements Narration {}
 
   /** A call ran and produced something. */
-  record CallFinished(CallId callId) implements AgentEvent {}
+  record CallFinished(CallId callId) implements Narration {}
 
   /** A call did not produce something. The message is what the model will read. */
-  record CallFailed(CallId callId, String message) implements AgentEvent {}
+  record CallFailed(CallId callId, String message) implements Narration {}
 
   /** The agent will accept nothing further. */
-  record Terminated() implements AgentEvent {}
+  record Terminated() implements Narration {}
 
   // ---- waiting: the reason this channel exists ----------------------------------------
 
@@ -157,7 +157,7 @@ public sealed interface AgentEvent {
    * <p>Carries {@code action} -- the sentence a person is shown -- because an operator watching an
    * agent wants to know what is being asked, not which call id is outstanding.
    */
-  record ApprovalSought(CallId callId, String action) implements AgentEvent {}
+  record ApprovalSought(CallId callId, String action) implements Narration {}
 
   /**
    * Nobody has answered yet, and the question stands until {@code until}.
@@ -167,10 +167,10 @@ public sealed interface AgentEvent {
    * that takes three days from one that takes 200ms, and should not learn. So it is announced
    * rather than stored, which is the one place it belongs.
    */
-  record ApprovalDeferred(CallId callId, String action, Instant until) implements AgentEvent {}
+  record ApprovalDeferred(CallId callId, String action, Instant until) implements Narration {}
 
   /** A tool started work and will report back. Same reasoning as {@link ApprovalDeferred}. */
-  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements AgentEvent {}
+  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements Narration {}
 
   // ---- deltas: from a provider, while a call is in flight -------------------------------
 
@@ -192,7 +192,7 @@ public sealed interface AgentEvent {
    * <p>The arm most likely to be filtered: an operator's console may want it and an end user's may
    * not.
    */
-  record ThinkingDelta(String text) implements AgentEvent {}
+  record ThinkingDelta(String text) implements Narration {}
 
   /**
    * A fragment of the answer, as it arrives.
@@ -200,5 +200,5 @@ public sealed interface AgentEvent {
    * <p>The same text that lands in the story a moment later as an answer, arriving early. Not a
    * second copy of anything: a watcher that missed every delta still sees {@link Answered}.
    */
-  record ContentDelta(String text) implements AgentEvent {}
+  record ContentDelta(String text) implements Narration {}
 }

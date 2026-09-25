@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.engine.core.ActionRequest;
 
 /**
  * One call the engine owes an outcome for, and how far along it is.
@@ -30,10 +30,10 @@ import org.jwcarman.nessy.inference.tool.ToolName;
  * <p>The tool's name is carried because the call effect needs it and the fold has no registry to
  * look it up in. It is the same name the model wrote, which may no longer be bound to anything.
  */
-public record Outstanding(ToolName toolName, Phase phase) {
+public record Outstanding(ActionRequest action, Phase phase) {
 
   public Outstanding {
-    Objects.requireNonNull(toolName, "toolName must not be null");
+    Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(phase, "phase must not be null");
   }
 
@@ -47,11 +47,11 @@ public record Outstanding(ToolName toolName, Phase phase) {
     RUNNING
   }
 
-  public static Outstanding awaitingApproval(ToolName toolName) {
-    return new Outstanding(toolName, Phase.AWAITING_APPROVAL);
+  public static Outstanding awaitingApproval(ActionRequest action) {
+    return new Outstanding(action, Phase.AWAITING_APPROVAL);
   }
 
   public Outstanding running() {
-    return new Outstanding(toolName, Phase.RUNNING);
+    return new Outstanding(action, Phase.RUNNING);
   }
 }

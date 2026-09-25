@@ -151,7 +151,7 @@ public sealed interface AgentState {
         case AgentEvent.InferenceAnswered answered -> new Idle(answered.seq());
         case AgentEvent.InferenceRefused refused -> new Idle(refused.seq());
         case AgentEvent.InferenceFailed failed -> new Idle(failed.seq());
-        case AgentEvent.ActionsRequested requested -> AwaitingCalls.opening(requested);
+        case AgentEvent.ActionsRequested requested -> AwaitingActions.opening(requested);
         default -> throw unexpected(event, this);
       };
     }
@@ -165,6 +165,13 @@ public sealed interface AgentState {
         // leave effects with rows and nothing to deliver them to.
         case AgentCommand.StartTurn _, AgentCommand.Terminate _ -> Decision.ignore();
         default -> Decision.ignore();
+      };
+    }
+
+    /** The permission an action needs before anything is done in the world on its behalf. */
+    private static AgentEffect approving(Seq at, ActionRequest action) {
+      return switch (action) {
+        case ActionRequest.ToolCall call -> new AgentEffect.Approve(at, call.id(), call.name());
       };
     }
 
@@ -182,22 +189,25 @@ public sealed interface AgentState {
                 List.of(new AgentEvent.InferenceFailed(at, turn, failed.failure())), List.of());
         case AgentCommand.InferenceOutcome.RequestedActions asked ->
             Decision.of(
-                List.of(new AgentEvent.ActionsRequested(at, turn, asked.request(), asked.calls())),
-                asked.calls().stream()
-                    .map(
-                        call ->
-                            (AgentEffect)
-                                new AgentEffect.Approve(at, call.callId(), call.toolName()))
-                    .toList());
+                List.of(
+                    new AgentEvent.ActionsRequested(at, turn, asked.request(), asked.actions())),
+                asked.actions().stream().map(action -> approving(at, action)).toList());
       };
     }
   }
 
-  /** A turn is open and calls are outstanding. */
-  record AwaitingCalls(Seq seq, TurnId turn, Map<CallId, Outstanding> outstanding)
+  /**
+   * A turn is open and calls are outstanding.
+   *
+   * @param seq where this state sits, which moves with every event it accepts
+   * @param requestSeq where the request that asked for these calls sits, which does not move. An
+   *     effect naming a call has to name that request too, because the call itself is content
+   *     behind it -- and by the time an approval comes back, {@code seq} is the approval's.
+   */
+  record AwaitingActions(Seq seq, TurnId turn, Seq requestSeq, Map<CallId, Outstanding> outstanding)
       implements AgentState {
 
-    public AwaitingCalls {
+    public AwaitingActions {
       if (outstanding.isEmpty()) {
         // Nothing would ever arrive to move this on, so the turn would stay open forever. The
         // state goes back to inferring the moment the last call is discharged.
@@ -206,12 +216,12 @@ public sealed interface AgentState {
       outstanding = Map.copyOf(outstanding);
     }
 
-    static AwaitingCalls opening(AgentEvent.ActionsRequested requested) {
+    static AwaitingActions opening(AgentEvent.ActionsRequested requested) {
       Map<CallId, Outstanding> calls = new LinkedHashMap<>();
-      for (AgentEvent.Requested call : requested.calls()) {
-        calls.put(call.callId(), Outstanding.awaitingApproval(call.toolName()));
+      for (ActionRequest action : requested.actions()) {
+        calls.put(action.id(), Outstanding.awaitingApproval(action));
       }
-      return new AwaitingCalls(requested.seq(), requested.turn(), calls);
+      return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls);
     }
 
     @Override
@@ -232,14 +242,16 @@ public sealed interface AgentState {
       }
       Map<CallId, Outstanding> next = new LinkedHashMap<>(outstanding);
       next.put(callId, call.running());
-      return new AwaitingCalls(at, turn, next);
+      return new AwaitingActions(at, turn, requestSeq, next);
     }
 
     /** One fewer thing to wait for -- and back to inferring when it was the last. */
     private AgentState discharge(Seq at, CallId callId) {
       Map<CallId, Outstanding> next = new LinkedHashMap<>(outstanding);
       next.remove(callId);
-      return next.isEmpty() ? new Inferring(at, turn) : new AwaitingCalls(at, turn, next);
+      return next.isEmpty()
+          ? new Inferring(at, turn)
+          : new AwaitingActions(at, turn, requestSeq, next);
     }
 
     @Override
@@ -264,7 +276,7 @@ public sealed interface AgentState {
         case AgentCommand.ApprovalOutcome.Approved ok ->
             Decision.of(
                 List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
-                List.of(new AgentEffect.CallTool(at, done.callId(), call.toolName())));
+                List.of(performing(requestSeq, call.action())));
         case AgentCommand.ApprovalOutcome.Denied no ->
             Decision.of(
                 List.of(
@@ -276,7 +288,22 @@ public sealed interface AgentState {
 
     private Decision ran(AgentCommand.CompleteToolCall done) {
       Outstanding call = outstanding.get(done.callId());
-      if (call == null || call.phase() != Outstanding.Phase.RUNNING) {
+      // Already discharged, or never ours: a redelivery.
+      if (call == null) {
+        return Decision.ignore();
+      }
+      // An answer has to fit the action it claims to settle. A tool outcome can only discharge a
+      // tool call -- when a second kind of action exists, its answer arriving at this id would
+      // otherwise settle something it knows nothing about.
+      if (!(call.action() instanceof ActionRequest.ToolCall)) {
+        return Decision.ignore();
+      }
+      // A result can only come from a call that was running. A FAILURE can reach one that never
+      // got that far: an approval that expires discharges its call as failed rather than denied,
+      // because nobody said no -- and refusing it here because the call never ran would leave the
+      // turn open with nothing left that could ever close it.
+      if (done.outcome() instanceof AgentCommand.ToolOutcome.Succeeded
+          && call.phase() != Outstanding.Phase.RUNNING) {
         return Decision.ignore();
       }
       Seq at = seq.next();
@@ -288,6 +315,14 @@ public sealed interface AgentState {
                 new AgentEvent.ToolFailed(at, turn, done.callId(), no.message());
           };
       return Decision.of(List.of(event), nextInference(1));
+    }
+
+    /** The work that performs an action, whatever kind of action it is. */
+    private static AgentEffect performing(Seq requestSeq, ActionRequest action) {
+      return switch (action) {
+        case ActionRequest.ToolCall call ->
+            new AgentEffect.CallTool(requestSeq, call.id(), call.name());
+      };
     }
 
     /** Ask the model again once this discharge leaves nothing outstanding. */

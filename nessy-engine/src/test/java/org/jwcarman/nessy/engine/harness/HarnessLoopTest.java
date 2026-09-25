@@ -29,7 +29,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -82,14 +82,13 @@ class HarnessLoopTest {
     engine.close();
   }
 
-  private static HistoryEntry.ObservationReceived observed(long seq, String text) {
-    return HistoryEntry.ObservationReceived.opening(
-        seq, HistoryEntry.ObservationReceived.text(text));
+  private AgentEvent.TurnStarted observed(AgentId agent, long seq, String text) {
+    return engine.turnStarted(agent, seq, text);
   }
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
-  private List<HistoryEntry> story(AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+  private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
+    return engine.story(agentId);
   }
 
   @Test
@@ -100,7 +99,7 @@ class HarnessLoopTest {
 
     // The observation is recorded and the model call owed in the same transaction as the
     // state, so the story shows the question before anything has been asked.
-    assertThat(story(CHAT, agentId)).containsExactly(observed(1, "what is nessy?"));
+    assertThat(story(CHAT, agentId)).containsExactly(observed(agentId, 1, "what is nessy?"));
 
     await()
         .atMost(Duration.ofSeconds(10))
@@ -108,8 +107,8 @@ class HarnessLoopTest {
             () ->
                 assertThat(story(CHAT, agentId))
                     .containsExactly(
-                        observed(1, "what is nessy?"),
-                        HistoryEntry.InferenceAnswered.of(2, 1, "a lake monster")));
+                        observed(agentId, 1, "what is nessy?"),
+                        engine.answered(agentId, 2, 1, "a lake monster")));
 
     assertThat(model.asked())
         .as("the call is built from the story: one turn, still open, carrying the question")
@@ -147,10 +146,10 @@ class HarnessLoopTest {
             () ->
                 assertThat(story(CHAT, agentId))
                     .containsExactly(
-                        observed(1, "first"),
-                        HistoryEntry.InferenceAnswered.of(2, 1, "a lake monster"),
-                        observed(3, "second"),
-                        HistoryEntry.InferenceAnswered.of(4, 3, "a lake monster")));
+                        observed(agentId, 1, "first"),
+                        engine.answered(agentId, 2, 1, "a lake monster"),
+                        observed(agentId, 3, "second"),
+                        engine.answered(agentId, 4, 3, "a lake monster")));
   }
 
   /** A model that always answers the same thing, and remembers what it was asked. */
@@ -161,7 +160,7 @@ class HarnessLoopTest {
     @Override
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       asked.add(List.copyOf(request.context().turns()));
-      return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("a lake monster"));
+      return new InferenceResult.Answer(List.of(new Block.Text("a lake monster")));
     }
 
     List<List<Turn>> asked() {

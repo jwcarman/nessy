@@ -118,8 +118,9 @@ class GiveUpUndeliverableTest {
   }
 
   /**
-   * Corrupts the stored state so that decoding it inside the fold throws, which is what makes both
-   * the ordinary delivery and the give-up delivery fail.
+   * Corrupts a stored event so that replaying it inside the fold throws, which is what makes both
+   * the ordinary delivery and the give-up delivery fail. There is no state row to break any more --
+   * state is what replay produces, so an unreadable event is the same wound in the same place.
    */
   private void breakTheFold(AgentId agentId) {
     assertThat(effectsFor(agentId))
@@ -127,8 +128,8 @@ class GiveUpUndeliverableTest {
         .isEqualTo(1);
     engine
         .jdbc()
-        .sql("UPDATE nessy_agent_state SET payload = ? WHERE agent_id = ?")
-        .params("{\"type\":\"AStateFromTheFuture\"}".getBytes(), agentId.value())
+        .sql("UPDATE nessy_agent_event SET payload = ? WHERE agent_id = ?")
+        .params("{\"type\":\"an-event-from-the-future\"}".getBytes(), agentId.value())
         .update();
   }
 

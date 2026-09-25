@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
 
@@ -105,12 +105,12 @@ class FirstObservationRaceTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              List<HistoryEntry> story = engine.history().entriesFrom(CHAT, agentId, 0);
+              List<AgentEvent> story = engine.story(agentId);
               assertThat(story)
-                  .filteredOn(HistoryEntry.ObservationReceived.class::isInstance)
+                  .filteredOn(AgentEvent.TurnStarted.class::isInstance)
                   .hasSize(CALLERS);
               assertThat(story)
-                  .filteredOn(HistoryEntry.InferenceAnswered.class::isInstance)
+                  .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
                   .hasSize(CALLERS);
             });
   }

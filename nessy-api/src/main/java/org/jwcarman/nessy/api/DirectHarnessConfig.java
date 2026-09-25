@@ -55,7 +55,7 @@ public interface DirectHarnessConfig<I> {
    * <p>Worth having even though the answer is returned: a caller waiting on a model wants to watch
    * it arrive, and the deltas are the only part that can be shown before the end.
    */
-  DirectHarnessConfig<I> listener(AgentEventListener listener);
+  DirectHarnessConfig<I> listener(NarrationListener listener);
 
   <T> DirectHarnessConfig<I> tool(Tool<T> tool, Consumer<ToolConfig<T>> customizer);
 

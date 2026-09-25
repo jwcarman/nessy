@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
@@ -113,19 +113,15 @@ class ApprovalEnrichmentTest {
     };
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private static InferenceProvider asksToWipe(String target) {
     return (request, _) ->
         request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-            ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"))
+            ? new InferenceResult.Answer(List.of(new Block.Text("done")))
             : new InferenceResult.Actions(
                 List.of(new Block.ToolCall("call_1", "wipe", "{\"target\":\"" + target + "\"}")));
   }
@@ -202,9 +198,9 @@ class ApprovalEnrichmentTest {
                   .isEqualTo("delete everything under /prod/data");
             });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
-    assertThat(engine.history().entriesFrom(type, agentId, 0).get(2))
+    assertThat(engine.story(agentId).get(2))
         .isEqualTo(
-            new HistoryEntry.ToolDenied(
+            new AgentEvent.ToolDenied(
                 new Seq(3),
                 new TurnId(1),
                 new CallId("call_1"),
@@ -344,8 +340,7 @@ class ApprovalEnrichmentTest {
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
 
     assertThat(ran).as("a broken gatherer must not become an approval").isEmpty();
-    assertThat(engine.history().entriesFrom(type, agentId, 0))
-        .noneMatch(HistoryEntry.ToolApproved.class::isInstance);
+    assertThat(engine.story(agentId)).noneMatch(AgentEvent.ToolApproved.class::isInstance);
   }
 
   /** Nothing gathers by default, and a question with no facts is an ordinary one. */

@@ -19,8 +19,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -78,7 +78,7 @@ public class WatchmanConfiguration {
 
   /**
    * One bean, two roles: the approver the prune is bound to, and -- being the only {@link
-   * AgentEventListener} declared -- the one the starter hands to the engine.
+   * NarrationListener} declared -- the one the starter hands to the engine.
    */
   @Bean
   public ApprovalsDesk approvalsDesk(PendingApprovalsRepository repository, Clock clock) {

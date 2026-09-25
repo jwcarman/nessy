@@ -23,9 +23,9 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
@@ -41,26 +41,26 @@ class OdysseyNarratorTest {
   private static final TtlPolicy A_DAY =
       new TtlPolicy(Duration.ofDays(1), Duration.ofDays(1), Duration.ofHours(1));
 
-  private static final List<AgentEvent> EVERY_KIND =
+  private static final List<Narration> EVERY_KIND =
       List.of(
-          new AgentEvent.TurnStarted(new TurnId(1), "x"),
-          new AgentEvent.Thinking(),
-          new AgentEvent.Answered("x"),
-          new AgentEvent.TurnEnded(new TurnId(1)),
-          new AgentEvent.TurnFailed(),
-          new AgentEvent.TurnRefused(),
-          new AgentEvent.Commentary("x"),
-          new AgentEvent.ActionsRequested(List.of(new ToolName("t"))),
-          new AgentEvent.CallApproved(new CallId("c")),
-          new AgentEvent.CallDenied(new CallId("c"), "r"),
-          new AgentEvent.CallFinished(new CallId("c")),
-          new AgentEvent.CallFailed(new CallId("c"), "m"),
-          new AgentEvent.Terminated(),
-          new AgentEvent.ApprovalSought(new CallId("c"), "a"),
-          new AgentEvent.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),
-          new AgentEvent.CallDeferred(new CallId("c"), new ToolName("t"), Instant.EPOCH),
-          new AgentEvent.ThinkingDelta("x"),
-          new AgentEvent.ContentDelta("x"));
+          new Narration.TurnStarted(new TurnId(1), "x"),
+          new Narration.Thinking(),
+          new Narration.Answered("x"),
+          new Narration.TurnEnded(new TurnId(1)),
+          new Narration.TurnFailed(),
+          new Narration.TurnRefused(),
+          new Narration.Commentary("x"),
+          new Narration.ActionsRequested(List.of(new ToolName("t"))),
+          new Narration.CallApproved(new CallId("c")),
+          new Narration.CallDenied(new CallId("c"), "r"),
+          new Narration.CallFinished(new CallId("c")),
+          new Narration.CallFailed(new CallId("c"), "m"),
+          new Narration.Terminated(),
+          new Narration.ApprovalSought(new CallId("c"), "a"),
+          new Narration.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),
+          new Narration.CallDeferred(new CallId("c"), new ToolName("t"), Instant.EPOCH),
+          new Narration.ThinkingDelta("x"),
+          new Narration.ContentDelta("x"));
 
   private final JsonMapper mapper = JsonMapper.builder().build();
   private final RecordingOdyssey odyssey = new RecordingOdyssey();
@@ -74,17 +74,17 @@ class OdysseyNarratorTest {
   @Test
   @DisplayName("the stream is the agent's: its type and its id, and it carries events")
   void an_event_lands_on_the_stream_named_for_the_agent() {
-    narrator.on(CHAT, ONE, new AgentEvent.Thinking());
+    narrator.on(CHAT, ONE, new Narration.Thinking());
     assertThat(only().stream()).isEqualTo("nessy/chat/" + ONE.value());
-    assertThat(only().type()).isEqualTo(AgentEvent.class);
-    assertThat(only().data()).isEqualTo(new AgentEvent.Thinking());
+    assertThat(only().type()).isEqualTo(Narration.class);
+    assertThat(only().data()).isEqualTo(new Narration.Thinking());
     assertThat(odyssey.lastTtl).isEqualTo(A_DAY);
   }
 
   @Test
   @DisplayName("the event name is the kind, and the event goes as it is")
   void a_delta_is_published_under_its_kind() {
-    AgentEvent.ContentDelta delta = new AgentEvent.ContentDelta("hel");
+    Narration.ContentDelta delta = new Narration.ContentDelta("hel");
     narrator.on(CHAT, ONE, delta);
     assertThat(only().eventName()).isEqualTo("content-delta");
     assertThat(only().data()).isEqualTo(delta);
@@ -93,27 +93,27 @@ class OdysseyNarratorTest {
   @Test
   @DisplayName("on the wire an event names its kind, and its ids are bare values")
   void the_json_of_an_event_carries_its_kind() {
-    JsonNode json = mapper.valueToTree(new AgentEvent.TurnStarted(new TurnId(7), "hello"));
+    JsonNode json = mapper.valueToTree(new Narration.TurnStarted(new TurnId(7), "hello"));
     assertThat(json.path("type").asString()).isEqualTo("turn-started");
     assertThat(json.path("turn").asLong()).isEqualTo(7);
     assertThat(json.path("observation").asString()).isEqualTo("hello");
-    JsonNode denied = mapper.valueToTree(new AgentEvent.CallDenied(new CallId("c1"), "no"));
+    JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), "no"));
     assertThat(denied.path("callId").asString()).isEqualTo("c1");
   }
 
   @Test
   @DisplayName("and every kind reads back as what it was, which is what resuming a stream needs")
   void every_kind_round_trips_through_json() {
-    for (AgentEvent event : EVERY_KIND) {
+    for (Narration event : EVERY_KIND) {
       String json = mapper.writeValueAsString(event);
-      assertThat(mapper.readValue(json, AgentEvent.class)).as(json).isEqualTo(event);
+      assertThat(mapper.readValue(json, Narration.class)).as(json).isEqualTo(event);
     }
   }
 
   @Test
   @DisplayName("the SSE event name and the kind in the JSON are one name")
   void the_wire_name_is_the_declared_kind() {
-    for (AgentEvent event : EVERY_KIND) {
+    for (Narration event : EVERY_KIND) {
       assertThat(OdysseyNarrator.nameOf(event))
           .isEqualTo(mapper.valueToTree(event).path("type").asString());
     }

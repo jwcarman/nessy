@@ -31,17 +31,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
@@ -124,9 +123,9 @@ class EffectTraceCarrierTest {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(e);
               }
-              return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));
+              return new InferenceResult.Answer(List.of(new Block.Text("done")));
             },
-            AgentEventListener.none(),
+            NarrationListener.none(),
             registry)) {
 
       QueuedHarness<String> harness =
@@ -166,8 +165,7 @@ class EffectTraceCarrierTest {
       release.countDown();
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(
-              () -> assertThat(engine.history().entriesFrom(type, agentId, 0)).hasSize(2));
+          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(2));
     }
   }
 
@@ -218,7 +216,7 @@ class EffectTraceCarrierTest {
     InferenceProvider model =
         (request, _) ->
             request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-                ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"))
+                ? new InferenceResult.Answer(List.of(new Block.Text("done")))
                 : new InferenceResult.Actions(
                     List.of(new Block.ToolCall("call_1", "echo", "\"hi\"")));
 
@@ -238,8 +236,7 @@ class EffectTraceCarrierTest {
 
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(
-              () -> assertThat(engine.history().entriesFrom(type, agentId, 0)).hasSize(5));
+          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(5));
     }
 
     assertThat(captures).as("the context was captured once, when the turn opened").hasValue(1);
@@ -306,7 +303,7 @@ class EffectTraceCarrierTest {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(e);
               }
-              return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));
+              return new InferenceResult.Answer(List.of(new Block.Text("done")));
             })) {
 
       engine

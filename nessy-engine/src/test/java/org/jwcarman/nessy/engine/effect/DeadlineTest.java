@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -29,13 +30,14 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * A deadline is the agent saying how long it is willing to wait, and it is measured from the moment
@@ -111,12 +113,18 @@ class DeadlineTest {
     assertThat(model.calls())
         .as("expired means not worth doing -- the provider is never asked")
         .isZero();
-    assertThat(story(type, agentId))
+    List<AgentEvent> story = story(type, agentId);
+    assertThat(story)
         .as("the turn is closed by the failure stored beside the effect")
-        .containsExactly(
-            HistoryEntry.ObservationReceived.opening(
-                1, HistoryEntry.ObservationReceived.text("too late already")),
-            new HistoryEntry.InferenceFailed(new Seq(2), new TurnId(1)));
+        .hasSize(2)
+        .first()
+        .isEqualTo(engine.turnStarted(agentId, 1, "too late already"));
+    // Where the failure sits, not what it says: the reason is the dispatcher's wording and this
+    // test is about the turn being closed at all.
+    assertThat(story.get(1))
+        .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.InferenceFailed.class))
+        .extracting(AgentEvent.InferenceFailed::seq, AgentEvent.InferenceFailed::turn)
+        .containsExactly(new Seq(2), new TurnId(1));
   }
 
   /**
@@ -163,17 +171,13 @@ class DeadlineTest {
         .isEqualTo(1);
   }
 
-  private List<HistoryEntry> story(AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+  private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
+    return engine.story(agentId);
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -193,7 +197,7 @@ class DeadlineTest {
     @Override
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       calls.incrementAndGet();
-      return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("hello"));
+      return new InferenceResult.Answer(List.of(new Block.Text("hello")));
     }
 
     int calls() {

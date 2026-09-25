@@ -30,13 +30,15 @@ import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.direct.InMemoryPayloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.spi.store.PayloadStore;
 
 /**
  * An answer that is authentic but is not for anything still waiting.
@@ -63,6 +65,7 @@ class MisroutedReplyTest {
   private final ReplyTokens tokens = ReplyTokens.withKeys(new byte[32]);
   private final Rows rows = new Rows();
   private final Deliveries delivered = new Deliveries();
+  private final PayloadStore payloads = new InMemoryPayloads();
   private final DefaultReplies replies = new DefaultReplies(tokens);
 
   private ReplyToken token() {
@@ -70,7 +73,7 @@ class MisroutedReplyTest {
   }
 
   private void serving() {
-    replies.register(TYPE, rows, delivered);
+    replies.register(TYPE, rows, delivered, payloads);
   }
 
   /** A token minted before a rename, or a deployment that no longer builds that harness. */
@@ -129,7 +132,7 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(REQUEST, new CallId("c2"), TOOL);
 
-    assertThat(replies.complete(token(), ToolResult.ok(HistoryEntry.ToolSucceeded.text("done"))))
+    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
   }
 
@@ -139,7 +142,7 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(new Seq(7), CALL, TOOL);
 
-    assertThat(replies.complete(token(), ToolResult.ok(HistoryEntry.ToolSucceeded.text("done"))))
+    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
   }
 

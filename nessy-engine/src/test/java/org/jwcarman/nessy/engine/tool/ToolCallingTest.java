@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -35,7 +36,8 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.ActionRequest;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -94,9 +96,7 @@ class ToolCallingTest {
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       offered.add(request.toolset().offers());
       InferenceResult next = script.poll();
-      return next != null
-          ? next
-          : new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"));
+      return next != null ? next : new InferenceResult.Answer(List.of(new Block.Text("done")));
     }
   }
 
@@ -125,13 +125,9 @@ class ToolCallingTest {
     };
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -154,7 +150,7 @@ class ToolCallingTest {
                 List.of(
                     new Block.Commentary("Let me look."),
                     new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
-            new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("It is Loch Ness.")));
+            new InferenceResult.Answer(List.of(new Block.Text("It is Loch Ness."))));
 
     running(model);
     QueuedHarness<String> harness =
@@ -189,36 +185,42 @@ class ToolCallingTest {
                     .extracting(ToolOffer::name)
                     .containsExactly(new ToolName("lookup")));
 
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
+    List<AgentEvent> story = engine.story(agentId);
     assertThat(story).hasSize(5);
-    assertThat(story.get(0)).isInstanceOf(HistoryEntry.ObservationReceived.class);
+    assertThat(story.get(0))
+        .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnStarted.class))
+        .extracting(AgentEvent.TurnStarted::turn)
+        .as("one turn throughout: asking for work does not start a new one")
+        .isEqualTo(new TurnId(1));
     assertThat(story.get(1))
         .isEqualTo(
-            new HistoryEntry.InferenceRequestedActions(
+            new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
-                List.of(
-                    new Block.Commentary("Let me look."),
-                    new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))));
+                engine.ref(
+                    agentId,
+                    List.of(
+                        new Block.Commentary("Let me look."),
+                        new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
+                List.of(new ActionRequest.ToolCall(new CallId("call_1"), new ToolName("lookup")))));
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
-            new HistoryEntry.ToolApproved(
+            new AgentEvent.ToolApproved(
                 new Seq(3), new TurnId(1), new CallId("call_1"), Optional.empty()));
     assertThat(story.get(3))
         .isEqualTo(
-            new HistoryEntry.ToolSucceeded(
+            new AgentEvent.ToolSucceeded(
                 new Seq(4),
                 new TurnId(1),
                 new CallId("call_1"),
-                List.of(new Block.Text("the answer to loch ness"))));
-    assertThat(story.get(4)).isEqualTo(HistoryEntry.InferenceAnswered.of(5, 1, "It is Loch Ness."));
-    assertThat(story)
-        .allSatisfy(
-            entry ->
-                assertThat(entry.turn())
-                    .as("one turn throughout: asking for work does not start a new one")
-                    .isEqualTo(new TurnId(1)));
+                engine.ref(agentId, List.of(new Block.Text("the answer to loch ness")))));
+    assertThat(story.get(4))
+        .isEqualTo(
+            new AgentEvent.InferenceAnswered(
+                new Seq(5),
+                new TurnId(1),
+                engine.ref(agentId, List.of(new Block.Text("It is Loch Ness.")))));
   }
 
   /**
@@ -230,8 +232,7 @@ class ToolCallingTest {
     AgentType type = new AgentType("tool-offer");
     AgentId agentId = new AgentId(UUID.randomUUID());
     ScriptedModel model =
-        new ScriptedModel(
-            new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("no need")));
+        new ScriptedModel(new InferenceResult.Answer(List.of(new Block.Text("no need"))));
 
     running(model);
     QueuedHarness<String> harness =
@@ -280,8 +281,7 @@ class ToolCallingTest {
         new ScriptedModel(
             new InferenceResult.Actions(
                 List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
-            new InferenceResult.Answer(
-                HistoryEntry.InferenceAnswered.text("I was not allowed to look.")));
+            new InferenceResult.Answer(List.of(new Block.Text("I was not allowed to look."))));
 
     running(model);
     QueuedHarness<String> harness =
@@ -320,15 +320,19 @@ class ToolCallingTest {
     assertThat(asked)
         .as("the approver was shown what the call would do, not what the tool is")
         .containsExactly("look up loch ness in the register");
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
+    List<AgentEvent> story = engine.story(agentId);
     assertThat(story.get(2))
         .as("a denial is written and no grant ever was")
         .isEqualTo(
-            new HistoryEntry.ToolDenied(
-                new Seq(3), new TurnId(1), new CallId("call_1"), "out of hours"));
-    assertThat(story).noneMatch(HistoryEntry.ToolApproved.class::isInstance);
+            new AgentEvent.ToolDenied(
+                new Seq(3), new TurnId(1), new CallId("call_1"), "out of hours", Optional.empty()));
+    assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
-        .isEqualTo(HistoryEntry.InferenceAnswered.of(4, 1, "I was not allowed to look."));
+        .isEqualTo(
+            new AgentEvent.InferenceAnswered(
+                new Seq(4),
+                new TurnId(1),
+                engine.ref(agentId, List.of(new Block.Text("I was not allowed to look.")))));
   }
 
   /** What an application configures per tool is what the tool is actually told. */
@@ -410,7 +414,7 @@ class ToolCallingTest {
                 List.of(
                     new Block.ToolCall("call_1", "lookup", "{\"q\":\"one\"}"),
                     new Block.ToolCall("call_2", "lookup", "{\"q\":\"two\"}"))),
-            new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("both done")));
+            new InferenceResult.Answer(List.of(new Block.Text("both done"))));
 
     running(model);
     QueuedHarness<String> harness =
@@ -436,14 +440,14 @@ class ToolCallingTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
-    for (HistoryEntry entry : story) {
-      if (entry instanceof HistoryEntry.ToolSucceeded ran) {
+    List<AgentEvent> story = engine.story(agentId);
+    for (AgentEvent entry : story) {
+      if (entry instanceof AgentEvent.ToolSucceeded ran) {
         assertThat(
                 story.stream()
                     .anyMatch(
                         before ->
-                            before instanceof HistoryEntry.ToolApproved grant
+                            before instanceof AgentEvent.ToolApproved grant
                                 && grant.callId().equals(ran.callId())
                                 && grant.turn().equals(ran.turn())
                                 && grant.seq().compareTo(ran.seq()) < 0))
@@ -452,7 +456,7 @@ class ToolCallingTest {
       }
     }
     assertThat(story)
-        .filteredOn(HistoryEntry.ToolApproved.class::isInstance)
+        .filteredOn(AgentEvent.ToolApproved.class::isInstance)
         .as("one grant per call, and no more")
         .hasSize(2);
   }
@@ -479,8 +483,7 @@ class ToolCallingTest {
         new ScriptedModel(
             new InferenceResult.Actions(
                 List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
-            new InferenceResult.Answer(
-                HistoryEntry.InferenceAnswered.text("Nobody got back to me.")));
+            new InferenceResult.Answer(List.of(new Block.Text("Nobody got back to me."))));
 
     running(model);
     QueuedHarness<String> harness =
@@ -535,11 +538,11 @@ class ToolCallingTest {
 
     assertThat(handed).as("asked once, never again -- a deferral is not a retry").hasSize(1);
     assertThat(seen).as("never authorised, so never run").isEmpty();
-    List<HistoryEntry> story = engine.history().entriesFrom(type, agentId, 0);
-    assertThat(story).noneMatch(HistoryEntry.ToolApproved.class::isInstance);
+    List<AgentEvent> story = engine.story(agentId);
+    assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(2))
         .asInstanceOf(
-            org.assertj.core.api.InstanceOfAssertFactories.type(HistoryEntry.ToolFailed.class))
+            org.assertj.core.api.InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
               assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
@@ -571,7 +574,7 @@ class ToolCallingTest {
     InferenceProvider model =
         (request, _) ->
             request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-                ? new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("done"))
+                ? new InferenceResult.Answer(List.of(new Block.Text("done")))
                 : new InferenceResult.Actions(
                     List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"x\"}")));
 

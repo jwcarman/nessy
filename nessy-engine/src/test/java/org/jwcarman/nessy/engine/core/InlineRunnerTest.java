@@ -70,7 +70,7 @@ class InlineRunnerTest {
               ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("refunded 42.00"))
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new AgentEvent.Requested(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 
@@ -108,7 +108,7 @@ class InlineRunnerTest {
               ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("cannot help"))
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new AgentEvent.Requested(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
         };
     holder[0] = new InlineRunner(model, tools, _ -> false);
 
@@ -171,7 +171,7 @@ class InlineRunnerTest {
               ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("sorry"))
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
-                  List.of(new AgentEvent.Requested(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 

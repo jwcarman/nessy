@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.spi.narration;
 
-import org.jwcarman.nessy.api.AgentEvent;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 
 /**
@@ -32,7 +32,7 @@ import org.jwcarman.nessy.inference.InferenceNarrator;
 @FunctionalInterface
 public interface AgentNarrator {
 
-  void narrate(AgentEvent event);
+  void narrate(Narration event);
 
   /** Nobody is listening. */
   static AgentNarrator silent() {
@@ -50,12 +50,12 @@ public interface AgentNarrator {
     return new InferenceNarrator() {
       @Override
       public void text(String delta) {
-        narrate(new AgentEvent.ContentDelta(delta));
+        narrate(new Narration.ContentDelta(delta));
       }
 
       @Override
       public void thinking(String delta) {
-        narrate(new AgentEvent.ThinkingDelta(delta));
+        narrate(new Narration.ThinkingDelta(delta));
       }
     };
   }

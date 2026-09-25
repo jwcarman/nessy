@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Objects;
 
 /**
@@ -28,7 +30,7 @@ import java.util.Objects;
  * memory, or by revealing a surrogate through a destination that may refuse. None of that is the
  * core's business.
  */
-public record PayloadRef(String value) {
+public record PayloadRef(@JsonValue String value) {
 
   public PayloadRef {
     Objects.requireNonNull(value, "value must not be null");
@@ -38,6 +40,15 @@ public record PayloadRef(String value) {
     }
   }
 
+  /**
+   * Read back from the bare string it was written as.
+   *
+   * <p>{@code @JsonValue} and this together keep a reference stored the way every other value type
+   * here is stored -- as the string it wraps, not as an object wrapping a string. A reference sits
+   * inside every event that carries content, so getting this wrong would nest an object in each of
+   * them and make every stored row unreadable by anything expecting the plain form.
+   */
+  @JsonCreator
   public static PayloadRef of(String value) {
     return new PayloadRef(value);
   }

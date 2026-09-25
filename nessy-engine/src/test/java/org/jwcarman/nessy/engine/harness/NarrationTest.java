@@ -25,17 +25,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
@@ -57,7 +56,7 @@ class NarrationTest {
    * A narrator is a factory-level seam, not a per-harness one, so varying it means varying the
    * engine. Every test but one runs against the recording sink installed below.
    */
-  private void narratedBy(AgentEventListener narrator) {
+  private void narratedBy(NarrationListener narrator) {
     if (engine != null) {
       engine.close();
     }
@@ -75,7 +74,7 @@ class NarrationTest {
    * <p>Static because there is deliberately no per-harness override: one sink is told about every
    * agent and routes on what it is told, which is exactly what this does. Cleared between tests.
    */
-  private static final ConcurrentLinkedQueue<AgentEvent> EVENTS = new ConcurrentLinkedQueue<>();
+  private static final ConcurrentLinkedQueue<Narration> EVENTS = new ConcurrentLinkedQueue<>();
 
   /**
    * The engine's one narrator.
@@ -84,7 +83,7 @@ class NarrationTest {
    * agent each event belongs to, so one sink serves every agent type and routes on what it is
    * handed rather than being installed per harness.
    */
-  private static final AgentEventListener RECORDING = (_, _, event) -> EVENTS.add(event);
+  private static final NarrationListener RECORDING = (_, _, event) -> EVENTS.add(event);
 
   @BeforeEach
   void forgetWhatWasSaid() {
@@ -118,27 +117,22 @@ class NarrationTest {
     };
   }
 
+  /** The state replay produces, named -- there is no state column to read. */
   private String agentStateOf(AgentId agentId) {
-    return engine
-        .jdbc()
-        .sql("SELECT state_type FROM nessy_agent_state WHERE agent_id = ?")
-        .params(agentId.value())
-        .query(String.class)
-        .single();
+    return engine.stateOf(agentId).getClass().getSimpleName();
   }
 
   private static InferenceProvider callsThenAnswers() {
     return (request, _) ->
         request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-            ? new InferenceResult.Answer(
-                HistoryEntry.InferenceAnswered.text("It is 1412 metres deep."))
+            ? new InferenceResult.Answer(List.of(new Block.Text("It is 1412 metres deep.")))
             : new InferenceResult.Actions(
                 List.of(
                     new Block.Commentary("Let me look that up."),
                     new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")));
   }
 
-  private <T extends AgentEvent> List<T> of(Class<T> kind) {
+  private <T extends Narration> List<T> of(Class<T> kind) {
     return EVENTS.stream().filter(kind::isInstance).map(kind::cast).toList();
   }
 
@@ -169,11 +163,11 @@ class NarrationTest {
             "Thinking",
             "Answered");
 
-    assertThat(of(AgentEvent.TurnStarted.class))
+    assertThat(of(Narration.TurnStarted.class))
         .singleElement()
         .satisfies(
             started -> assertThat(started.observation()).isEqualTo("how deep is Loch Ness?"));
-    assertThat(of(AgentEvent.Answered.class))
+    assertThat(of(Narration.Answered.class))
         .singleElement()
         .satisfies(
             answered ->
@@ -196,10 +190,10 @@ class NarrationTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
 
-    assertThat(of(AgentEvent.Commentary.class))
+    assertThat(of(Narration.Commentary.class))
         .singleElement()
         .satisfies(said -> assertThat(said.text()).isEqualTo("Let me look that up."));
-    assertThat(of(AgentEvent.Answered.class))
+    assertThat(of(Narration.Answered.class))
         .singleElement()
         .satisfies(answered -> assertThat(answered.text()).doesNotContain("Let me look that up."));
   }
@@ -239,9 +233,9 @@ class NarrationTest {
     harness.observe(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(of(AgentEvent.ApprovalDeferred.class)).isNotEmpty());
+        .untilAsserted(() -> assertThat(of(Narration.ApprovalDeferred.class)).isNotEmpty());
 
-    assertThat(of(AgentEvent.ApprovalDeferred.class))
+    assertThat(of(Narration.ApprovalDeferred.class))
         .singleElement()
         .satisfies(
             waiting -> {

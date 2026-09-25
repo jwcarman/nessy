@@ -22,10 +22,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -39,13 +39,13 @@ class ReplLoopTest {
 
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
 
-  private static AgentEvent said(String text) {
-    return new AgentEvent.ContentDelta(text);
+  private static Narration said(String text) {
+    return new Narration.ContentDelta(text);
   }
 
   /** A streaming provider has already said everything; the answer just closes the turn. */
-  private static AgentEvent ended() {
-    return new AgentEvent.Answered("(already streamed)");
+  private static Narration ended() {
+    return new Narration.Answered("(already streamed)");
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
@@ -84,7 +84,7 @@ class ReplLoopTest {
   /** A provider that does not stream says everything at once, and it must still be shown. */
   @Test
   void an_answer_that_was_not_streamed_is_printed_whole() {
-    FakeHarness harness = new FakeHarness(List.of(new AgentEvent.Answered("all at once")));
+    FakeHarness harness = new FakeHarness(List.of(new Narration.Answered("all at once")));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
     assertThat(console.written()).contains("all at once");
@@ -229,8 +229,8 @@ class ReplLoopTest {
     FakeHarness harness =
         new FakeHarness(
             List.of(
-                new AgentEvent.ActionsRequested(List.of(new ToolName("days_until"))),
-                new AgentEvent.CallFinished(new CallId("c1")),
+                new Narration.ActionsRequested(List.of(new ToolName("days_until"))),
+                new Narration.CallFinished(new CallId("c1")),
                 ended()));
     FakeConsole console = new FakeConsole("when is christmas", "quit");
     run(harness, console, config());
@@ -243,7 +243,7 @@ class ReplLoopTest {
 
     @Test
     void a_silent_completion_says_so_rather_than_printing_nothing() {
-      FakeHarness harness = new FakeHarness(List.of(new AgentEvent.Answered("   ")));
+      FakeHarness harness = new FakeHarness(List.of(new Narration.Answered("   ")));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("ended the turn without saying anything");

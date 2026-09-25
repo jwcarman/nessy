@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.spring.boot.narration;
 
-import org.jwcarman.nessy.api.AgentEventListener;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
@@ -33,7 +33,7 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>Ordered after Odyssey's own auto-configuration, so the {@code Odyssey} bean exists to be
  * conditioned on, and before Nessy's, whose silent narrator stands down for any {@link
- * AgentEventListener} declared ahead of it. An application that declares its own narrator keeps it;
+ * NarrationListener} declared ahead of it. An application that declares its own narrator keeps it;
  * this one only fills the gap.
  */
 @AutoConfiguration(after = OdysseyAutoConfiguration.class, before = NessyAutoConfiguration.class)

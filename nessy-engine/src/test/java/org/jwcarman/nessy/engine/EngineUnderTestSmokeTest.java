@@ -19,13 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * The engine, started and driven with no container around it.
@@ -41,8 +42,7 @@ class EngineUnderTestSmokeTest {
     try (EngineFixture engine =
         new EngineFixture(
             (request, narrator) ->
-                new InferenceResult.Answer(
-                    HistoryEntry.InferenceAnswered.text("It is 1412 metres deep.")))) {
+                new InferenceResult.Answer(List.of(new Block.Text("It is 1412 metres deep."))))) {
 
       AgentId agentId = new AgentId(UUID.randomUUID());
       AgentType type = new AgentType("smoke");
@@ -63,7 +63,7 @@ class EngineUnderTestSmokeTest {
           .atMost(Duration.ofSeconds(20))
           .untilAsserted(
               () ->
-                  assertThat(engine.history().entriesFrom(type, agentId, 0))
+                  assertThat(engine.story(agentId))
                       .as("the observation and the answer, both written down")
                       .hasSize(2));
     }

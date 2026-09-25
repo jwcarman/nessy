@@ -24,13 +24,13 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -89,7 +89,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   private final Effects effects = new Effects();
   private final List<ToolBinding<?>> tools = new ArrayList<>();
   private final ObservationRegistry observations;
-  private final List<AgentEventListener> listeners = new ArrayList<>();
+  private final List<NarrationListener> listeners = new ArrayList<>();
 
   DefaultQueuedHarnessConfig(
       TypeRef<O> observationType,
@@ -108,12 +108,12 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   record Defaults(InferenceProvider provider, InferenceOptions options) {}
 
   @Override
-  public DefaultQueuedHarnessConfig<O> listener(AgentEventListener listener) {
+  public DefaultQueuedHarnessConfig<O> listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
 
-  List<AgentEventListener> listeners() {
+  List<NarrationListener> listeners() {
     return List.copyOf(listeners);
   }
 

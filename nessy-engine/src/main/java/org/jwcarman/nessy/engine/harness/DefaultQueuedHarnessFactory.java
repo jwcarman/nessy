@@ -26,8 +26,8 @@ import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
@@ -45,21 +45,17 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.inference.InferenceRecorder;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
-import org.jwcarman.nessy.engine.observability.ObservedInferenceRecorder;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.EffectStore;
-import org.jwcarman.nessy.engine.store.InferenceContexts;
 import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
 import org.jwcarman.nessy.engine.store.JdbcAgents;
 import org.jwcarman.nessy.engine.store.JdbcBacklog;
 import org.jwcarman.nessy.engine.store.JdbcEffectStore;
-import org.jwcarman.nessy.engine.store.JdbcInferenceContexts;
 import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -103,10 +99,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final AgentEventStore events;
   private final PayloadStore payloads;
   private final JdbcEffectStore effectRows;
-  private final JdbcInferenceContexts contexts;
-  private final InferenceRecorder recorder;
   private final TransactionTemplate transactions;
-  private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
+  private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
   private final DefaultReplies replies;
   private final ThreadPoolTaskScheduler scheduler;
@@ -146,8 +140,6 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     this.events = new JdbcAgentEventStore(jdbc, codecs);
     this.payloads = new JdbcPayloadStore(jdbc, codecs);
     this.effectRows = new JdbcEffectStore(jdbc, codecs);
-    this.contexts = new JdbcInferenceContexts(jdbc, codecs, clock);
-    this.recorder = config.recordInferenceContexts() ? contexts : InferenceRecorder.NONE;
     this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
@@ -314,8 +306,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             ObservedInferenceProvider.wrap(inference.provider(), observations),
             config.requiredSystemPrompt(),
             tools.offers(),
-            narrator,
-            ObservedInferenceRecorder.wrap(recorder, observations)),
+            narrator),
         inference.options(),
         inference.timeout(),
         inference.retryPolicy(),
@@ -327,13 +318,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * container that finds its listeners once everything else exists. Harnesses already made hear it
    * too.
    */
-  public void listener(AgentEventListener listener) {
+  public void listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
-  }
-
-  /** What each model call was shown, read-only. */
-  public InferenceContexts inferenceContexts() {
-    return contexts;
   }
 
   /**

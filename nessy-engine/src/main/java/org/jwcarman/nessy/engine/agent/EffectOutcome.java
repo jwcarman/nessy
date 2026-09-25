@@ -20,7 +20,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
-import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.tool.CallId;
 
@@ -101,7 +101,7 @@ public sealed interface EffectOutcome {
    * the whole of what came back rather than just the calls, because the prose and the vendor state
    * around them are part of the same message and are re-sent with it.
    */
-  record InferenceRequestedActions(PayloadRef request, List<AgentEvent.Requested> calls)
+  record InferenceRequestedActions(PayloadRef request, List<ActionRequest> actions)
       implements EffectOutcome {}
 
   /**

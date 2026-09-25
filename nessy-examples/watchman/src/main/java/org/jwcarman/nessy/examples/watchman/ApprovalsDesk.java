@@ -18,11 +18,11 @@ package org.jwcarman.nessy.examples.watchman;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.AgentEvent;
-import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -32,11 +32,11 @@ import org.jwcarman.nessy.api.tool.Approver;
  *
  * <p>As the {@link Approver}, it writes a question down the moment the engine asks -- the request
  * carries everything the row needs, the reply token included, so there is no second half to wait
- * for. As the {@link AgentEventListener}, it hears the engine settle a call and marks the row
+ * for. As the {@link NarrationListener}, it hears the engine settle a call and marks the row
  * answered, which is how a decision made from another tab, or by the engine itself when the term
  * runs out, reaches the board.
  */
-public class ApprovalsDesk implements Approver, AgentEventListener {
+public class ApprovalsDesk implements Approver, NarrationListener {
 
   private final PendingApprovalsRepository repository;
   private final Clock clock;
@@ -65,11 +65,11 @@ public class ApprovalsDesk implements Approver, AgentEventListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, AgentEvent event) {
+  public void on(AgentType agentType, AgentId agentId, Narration event) {
     switch (event) {
-      case AgentEvent.CallApproved(var callId) ->
+      case Narration.CallApproved(var callId) ->
           repository.answered(agentType, agentId, callId, "approved", null, clock.instant());
-      case AgentEvent.CallDenied(var callId, String reason) ->
+      case Narration.CallDenied(var callId, String reason) ->
           repository.answered(agentType, agentId, callId, "denied", reason, clock.instant());
       default -> {
         // Only decisions change the board.

@@ -29,11 +29,12 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /**
@@ -84,8 +85,8 @@ class TaintRecoveryTest {
   private static final AgentType TAINTED = new AgentType("tainted");
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
-  private List<HistoryEntry> story(AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+  private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
+    return engine.story(agentId);
   }
 
   @Test
@@ -131,14 +132,13 @@ class TaintRecoveryTest {
                     .as("RECOVERY: the second question is answered, not refused")
                     .anySatisfy(
                         message ->
-                            assertThat(message)
-                                .isInstanceOf(HistoryEntry.InferenceAnswered.class)));
+                            assertThat(message).isInstanceOf(AgentEvent.InferenceAnswered.class)));
 
     assertThat(model.lastRequest())
         .as("the poison was not sent, which is the only reason an answer was possible")
         .noneMatch(sent -> sent.contains(POISON));
 
-    assertThat(story(TAINTED, agentId).stream().map(this::textOf))
+    assertThat(story(TAINTED, agentId).stream().map(event -> textOf(agentId, event)))
         .as("nothing was destroyed -- the question is still in the record")
         .anyMatch(text -> text.contains(POISON));
   }
@@ -186,8 +186,21 @@ class TaintRecoveryTest {
         .isGreaterThanOrEqualTo(2);
   }
 
-  private String textOf(HistoryEntry message) {
-    return message.toString();
+  /**
+   * What an event says, in words.
+   *
+   * <p>An event names its content rather than carrying it, so anything asserting on what was
+   * actually said has to go and get it. Events that hold no content answer with themselves, which
+   * is what a caller scanning the whole story wants.
+   */
+  private String textOf(AgentId agentId, AgentEvent message) {
+    return switch (message) {
+      case AgentEvent.TurnStarted started -> engine.text(agentId, started.observation());
+      case AgentEvent.InferenceAnswered answered -> engine.text(agentId, answered.answer());
+      case AgentEvent.ActionsRequested asked -> engine.text(agentId, asked.request());
+      case AgentEvent.ToolSucceeded ran -> engine.text(agentId, ran.result());
+      default -> message.toString();
+    };
   }
 
   /**
@@ -215,7 +228,7 @@ class TaintRecoveryTest {
         refusals++;
         return new InferenceResult.Refusal("bio");
       }
-      return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("Paris."));
+      return new InferenceResult.Answer(List.of(new Block.Text("Paris.")));
     }
 
     List<String> lastRequest() {

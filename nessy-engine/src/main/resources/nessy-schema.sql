@@ -2,45 +2,25 @@
 -- column name wherever it appears, primary key or foreign key. That is what lets a
 -- query say USING (agent_id) rather than spelling out a join condition.
 
--- The agent's current state. One row per agent; the row lock taken on it is what
--- serializes transitions for that agent while leaving other agents free.
+-- An agent, so there is something to lock and something to point at.
 --
--- agent_id is the key rather than a separate surrogate because an agent has no natural
--- identity to begin with -- it is already a minted UUID, so a second one would be inert.
---
--- version is maintained by Spring Data JDBC, and counts FOLDS -- not messages. A fold may
--- record two messages, one, or none, so the story's seq is its own counter, minted by
--- max(seq) + 1 under this row's lock. Conflating them would make a fold that recorded
--- nothing look like a gap in the story.
-CREATE TABLE IF NOT EXISTS nessy_agent_state
+-- Taken with SELECT ... FOR UPDATE, which holds for exactly the transaction and is released by the
+-- database when a connection dies -- no time-to-live to tune, and none of the trouble a lease has
+-- telling a slow holder from a dead one. It has to be a row that always exists: locking the
+-- backlog rows instead would leave two arrivals to an empty backlog with nothing to contend for.
+CREATE TABLE IF NOT EXISTS nessy_agent
 (
-    agent_id   UUID        PRIMARY KEY,
-    agent_type VARCHAR(64) NOT NULL,
-    version    BIGINT      NOT NULL,
-    state_type VARCHAR(64) NOT NULL,
-    payload    BYTEA       NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
--- The story. One row per message, in the order it happened. Append-only.
---
--- turn_id is the seq of the observation that opened the turn, so a turn needs no identifier of
--- its own: turns are ordered by comparing integers, and a turn's first message is the row where
--- seq = turn_id. No discriminator column either -- the codec's payload names its own type.
-CREATE TABLE IF NOT EXISTS nessy_agent_history
-(
-    agent_type VARCHAR(64) NOT NULL,
-    agent_id   UUID        NOT NULL REFERENCES nessy_agent_state (agent_id),
-    seq        BIGINT      NOT NULL,
-    turn_id    BIGINT      NOT NULL,
-    -- Roughly what this message costs a model's context, estimated when it is written. Here so a
-    -- budget can be applied in the query -- a running sum over turns, stopping at the oldest that
-    -- fits -- rather than by loading a whole conversation to measure it. An estimate and never the
-    -- authority: the provider's tokenizer decides, and being wrong is survivable because a request
-    -- refused for length is retried rather than lost.
-    tokens     INT         NOT NULL,
-    payload    BYTEA       NOT NULL,
-    PRIMARY KEY (agent_type, agent_id, seq)
+    agent_type   VARCHAR(64) NOT NULL,
+    agent_id     UUID        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- When it was told to end, and null while it has not been.
+    --
+    -- Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
+    -- it only from idle. So it is recorded here, the backlog is emptied, and every read of the
+    -- backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
+    -- ending IS the work.
+    terminated_at TIMESTAMPTZ,
+    PRIMARY KEY (agent_type, agent_id)
 );
 
 -- The outbox. Rows are written in the transition's transaction and performed later.
@@ -52,8 +32,9 @@ CREATE TABLE IF NOT EXISTS nessy_agent_history
 CREATE TABLE IF NOT EXISTS nessy_agent_effect
 (
     effect_id   UUID        PRIMARY KEY,
-    agent_id    UUID        NOT NULL REFERENCES nessy_agent_state (agent_id),
+    agent_id    UUID        NOT NULL,
     agent_type  VARCHAR(64) NOT NULL,
+    FOREIGN KEY (agent_type, agent_id) REFERENCES nessy_agent (agent_type, agent_id),
     payload     BYTEA       NOT NULL,
     -- Attached at emit, from the binding for this effect. Here rather than looked up when
     -- marking, because marking must not decode the payload: it happens before anything knows what
@@ -105,38 +86,6 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
 -- Shaped for the one query that matters: due work of one agent type, oldest first.
 CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
-
--- What a model was shown, call by call: the whole request as rendered -- system prompt,
--- summaries, tail, ambient, tools, options -- written before the provider is asked. It cannot be
--- reconstructed afterwards: the head summary replaces itself, ambient changes every call, and
--- the system prompt is a template rendered per call. Stored whole rather than by reference to
--- the story so that a row means something on its own, wherever it is read.
-CREATE TABLE IF NOT EXISTS nessy_inference_context
-(
-    context_id   UUID         PRIMARY KEY,
-    agent_type   VARCHAR(64)  NOT NULL,
-    agent_id     UUID         NOT NULL REFERENCES nessy_agent_state (agent_id),
-    -- The open turn the call was made for: the last turn in the context.
-    turn_id      BIGINT       NOT NULL,
-    requested_at TIMESTAMPTZ  NOT NULL,
-    model        VARCHAR(128) NOT NULL,
-    payload      BYTEA        NOT NULL,
-    -- How the call came back: answer, actions, refusal, fault -- or null while it is in flight or
-    -- if the process died before it returned.
-    outcome      VARCHAR(16),
-    completed_at TIMESTAMPTZ,
-    -- What the call cost, as the vendor counted it; null until it returns, or if nobody counted.
-    input_tokens  BIGINT,
-    output_tokens BIGINT
-);
-
--- A table from before the cost was recorded gains the columns.
-ALTER TABLE nessy_inference_context ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
-ALTER TABLE nessy_inference_context ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
-
-CREATE INDEX IF NOT EXISTS ix_nessy_inference_context_agent
-    ON nessy_inference_context (agent_type, agent_id, requested_at);
-
 -- Content, kept away from the record of what happened to it.
 --
 -- Everything a model was shown or said -- observations, answers, tool results -- lives here and
@@ -187,27 +136,6 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
 -- however long the conversation.
 CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
     ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;
-
--- An agent, so there is something to lock and something to point at.
---
--- Taken with SELECT ... FOR UPDATE, which holds for exactly the transaction and is released by the
--- database when a connection dies -- no time-to-live to tune, and none of the trouble a lease has
--- telling a slow holder from a dead one. It has to be a row that always exists: locking the
--- backlog rows instead would leave two arrivals to an empty backlog with nothing to contend for.
-CREATE TABLE IF NOT EXISTS nessy_agent
-(
-    agent_type   VARCHAR(64) NOT NULL,
-    agent_id     UUID        NOT NULL,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- When it was told to end, and null while it has not been.
-    --
-    -- Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
-    -- it only from idle. So it is recorded here, the backlog is emptied, and every read of the
-    -- backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
-    -- ending IS the work.
-    terminated_at TIMESTAMPTZ,
-    PRIMARY KEY (agent_type, agent_id)
-);
 
 -- Work offered to an agent that is busy, waiting its turn.
 --

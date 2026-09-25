@@ -30,11 +30,12 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.EngineFixture;
-import org.jwcarman.nessy.engine.history.HistoryEntry;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * A batch is performed in parallel, not one row at a time.
@@ -81,8 +82,8 @@ class ConcurrentDispatchTest {
   }
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
-  private List<HistoryEntry> story(AgentType agentType, AgentId agentId) {
-    return engine.history().entriesFrom(agentType, agentId, 0);
+  private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
+    return engine.story(agentId);
   }
 
   @Test
@@ -106,7 +107,7 @@ class ConcurrentDispatchTest {
                         assertThat(story(CHAT, agentId))
                             .hasSize(2)
                             .last()
-                            .isEqualTo(HistoryEntry.InferenceAnswered.of(2, 1, "all here"))));
+                            .isEqualTo(engine.answered(agentId, 2, 1, "all here"))));
 
     assertThat(model.everyoneArrived())
         .as("the rendezvous is the proof; without it the answers could not have been given")
@@ -131,7 +132,7 @@ class ConcurrentDispatchTest {
         throw new IllegalStateException(e);
       }
       everyoneArrived = true;
-      return new InferenceResult.Answer(HistoryEntry.InferenceAnswered.text("all here"));
+      return new InferenceResult.Answer(List.of(new Block.Text("all here")));
     }
 
     boolean everyoneArrived() {
