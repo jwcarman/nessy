@@ -360,6 +360,22 @@ bypassed exactly when the agent is idle, which is most of the time, and would su
 that works under load and not otherwise. The rows exist for microseconds in that case, under a lock
 already held.
 
+### 7c-i. The invariant
+
+Both moments -- an arrival, and a result folding -- come out of idle inside the transaction that
+made the agent idle. Which is worth stating as a rule rather than leaving to be inferred:
+
+> **At every commit, an agent is busy, or its backlog is empty, or it has ended. Never idle with
+> work waiting.**
+
+One item at a time: take one, start one turn, and the rest wait for that turn to end.
+
+If the invariant holds, the only way to see an idle agent with a non-empty backlog is a process
+that died between deciding and committing -- so the sweep below is recovery and nothing else. If it
+ever stops holding, agents stall silently and the sweep quietly becomes load-bearing, which is the
+worst way to find out. Worth a test that asserts it directly rather than trusting the paths that
+maintain it.
+
 ### 7d. The crash window, and the one sweep that covers it
 
 Committed the turn end, died before draining. An idle agent then sits on a non-empty backlog with
