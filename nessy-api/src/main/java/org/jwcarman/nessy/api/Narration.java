@@ -77,7 +77,14 @@ public sealed interface Narration {
   // ---- facts: from the engine, after the fold commits ---------------------------------
 
   /** An observation was taken up and a turn opened on it. */
-  record TurnStarted(TurnId turn, String observation) implements Narration {}
+  /**
+   * A turn opened.
+   *
+   * <p>The observation is not echoed here. Whoever sent it has it, and anybody else reads the
+   * story; narration says what is happening, and repeating content into it makes every watcher pay
+   * to be told what it already had.
+   */
+  record TurnStarted(TurnId turn) implements Narration {}
 
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
   record Thinking() implements Narration {}
@@ -90,7 +97,14 @@ public sealed interface Narration {
    * the only place the answer appears. Text rather than blocks: the block grammar is the engine's
    * business, and what a watcher wants is what a person would read.
    */
-  record Answered(String text) implements Narration {}
+  /**
+   * The turn produced an answer.
+   *
+   * <p>Not the answer itself. The direct door returns it to the caller who asked, and anything
+   * watching a queued agent reads it from the story; a provider that streams has already said it
+   * delta by delta. Carrying it here would be a third copy of the same words.
+   */
+  record Answered() implements Narration {}
 
   /**
    * The turn is over, however it ended -- answered, failed or refused. One event to listen for when

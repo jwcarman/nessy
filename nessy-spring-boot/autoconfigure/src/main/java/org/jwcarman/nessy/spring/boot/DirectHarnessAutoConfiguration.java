@@ -19,7 +19,7 @@ package org.jwcarman.nessy.spring.boot;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
@@ -30,6 +30,7 @@ import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -60,7 +61,7 @@ public class DirectHarnessAutoConfiguration {
   @Bean
   @ConditionalOnBean(DataSource.class)
   @ConditionalOnMissingBean
-  public DirectHarnessFactory nessyDirectHarnessFactory(
+  public DefaultDirectHarnessFactory nessyDirectHarnessFactory(
       DataSource dataSource,
       org.jwcarman.nessy.inference.InferenceProvider models,
       NessyAutoConfiguration.NessySchema schema,
@@ -81,5 +82,20 @@ public class DirectHarnessAutoConfiguration {
         models,
         schemas.getIfAvailable(VictoolsInputSchemaGenerator::new),
         mapper);
+  }
+
+  /**
+   * Every {@link NarrationListener} bean, attached to every harness this factory makes.
+   *
+   * <p>The same mechanism the queued door has, deliberately: a listener an application declares
+   * should reach its agents whichever door they are behind, and the difference is not something
+   * anybody could predict from the outside. Attached after every bean exists rather than at the
+   * factory's making, so a listener that reads the story is not a circle.
+   */
+  @Bean
+  @ConditionalOnBean(DefaultDirectHarnessFactory.class)
+  public SmartInitializingSingleton nessyDirectListeners(
+      DefaultDirectHarnessFactory factory, ObjectProvider<NarrationListener> listeners) {
+    return () -> listeners.orderedStream().forEach(factory::listener);
   }
 }

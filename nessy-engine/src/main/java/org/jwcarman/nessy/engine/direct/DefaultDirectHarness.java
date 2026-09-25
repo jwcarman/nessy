@@ -31,7 +31,6 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -66,7 +65,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.narration.AgentNarrator;
+import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,14 +106,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final InferenceContextAssembler assembler;
 
   /**
-   * Who is watching, told on the calling thread.
+   * The handle everything watching this agent is reached through.
    *
-   * <p>Synchronously and in order, which the queued door cannot do: there it hands narration to a
-   * thread of its own so a slow listener never delays an agent. Here the caller IS the thing that
-   * would be delayed, and it is already waiting -- so a listener that blocks blocks the turn it is
-   * watching, which is the honest arrangement when somebody is holding the answer.
+   * <p>The same abstraction the queued door talks to, and for the same reasons: telling listeners
+   * in order, off this thread, isolated from each other. This door once kept its own list and told
+   * them inline, which meant no listener an application registered could reach it at all, and a
+   * slow one sat between the caller and their answer.
    */
-  private final List<NarrationListener> listeners;
+  private final Narrator narrator;
 
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
@@ -134,7 +133,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       List<Summarizer> summaries,
       int maxTail,
       List<AmbientSource> ambient,
-      List<NarrationListener> listeners) {
+      Narrator narrator) {
     this.locks = locks;
     this.agentType = agentType;
     this.events = events;
@@ -149,7 +148,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.mapper = mapper;
     // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
     // however the turn was started, and a second implementation of it would drift.
-    this.listeners = List.copyOf(listeners);
+    this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.assembler =
         new ContextAssembler(
             // Scoped as it reads: content belongs to an agent, so the projection of one agent's
@@ -433,10 +432,25 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           new AgentCommand.InferenceOutcome.Refused(category);
       case InferenceResult.Fault(var failure, var _) ->
           new AgentCommand.InferenceOutcome.Failed(failure);
-      case InferenceResult.Actions(List<Block.ActionRequestContent> blocks, var _) ->
-          new AgentCommand.InferenceOutcome.RequestedActions(
-              content.put(blocks), requested(blocks));
+      case InferenceResult.Actions(List<Block.ActionRequestContent> blocks, var _) -> {
+        commentary(agent, blocks);
+        yield new AgentCommand.InferenceOutcome.RequestedActions(
+            content.put(blocks), requested(blocks));
+      }
     };
+  }
+
+  /**
+   * What the model said while deciding to act, announced where the words still are.
+   *
+   * <p>Not from the event afterwards: by then it holds a reference, and narrating from it would
+   * mean reading back content this method already has in its hand.
+   */
+  private void commentary(AgentId agent, List<Block.ActionRequestContent> blocks) {
+    blocks.stream()
+        .filter(Block.Commentary.class::isInstance)
+        .map(Block.Commentary.class::cast)
+        .forEach(said -> tell(agent, new Narration.Commentary(said.text())));
   }
 
   /** Which calls a request obliges an outcome for, in the order the model made them. */
@@ -455,11 +469,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * waiting on, and a watcher that misses every fragment still gets the answer.
    */
   private InferenceNarrator narratorFor(AgentId agent) {
-    if (listeners.isEmpty()) {
-      return InferenceNarrator.silent();
-    }
-    AgentNarrator narrator = event -> tell(agent, event);
-    return narrator.forInference();
+    return narrator.forAgent(agentType, agent).forInference();
   }
 
   /**
@@ -470,26 +480,21 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * ahead of everything, because a fragment of an answer is worth seeing before the answer exists.
    */
   private void narrate(AgentId agent, AgentEvent event) {
-    if (listeners.isEmpty()) {
+    // Some of these mean resolving what a reference stands for, which is real work: skipped
+    // entirely when nobody is there to be told. Narrating anyway would still be correct.
+    if (!narrator.listening()) {
       return;
     }
     switch (event) {
-      case AgentEvent.ActionsRequested asked -> {
-        // What the model said while deciding to act, told apart from an answer by the block it
-        // arrived as rather than by the message it happened to sit in.
-        blocksOf(agent, asked.request()).stream()
-            .filter(Block.Commentary.class::isInstance)
-            .map(Block.Commentary.class::cast)
-            .forEach(said -> tell(agent, new Narration.Commentary(said.text())));
-        tell(
-            agent,
-            new Narration.ActionsRequested(
-                asked.actions().stream()
-                    .filter(ActionRequest.ToolCall.class::isInstance)
-                    .map(ActionRequest.ToolCall.class::cast)
-                    .map(ActionRequest.ToolCall::name)
-                    .toList()));
-      }
+      case AgentEvent.ActionsRequested asked ->
+          tell(
+              agent,
+              new Narration.ActionsRequested(
+                  asked.actions().stream()
+                      .filter(ActionRequest.ToolCall.class::isInstance)
+                      .map(ActionRequest.ToolCall.class::cast)
+                      .map(ActionRequest.ToolCall::name)
+                      .toList()));
       case AgentEvent.ToolApproved approved ->
           tell(agent, new Narration.CallApproved(approved.callId()));
       case AgentEvent.ToolDenied denied ->
@@ -498,7 +503,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       case AgentEvent.ToolFailed failed ->
           tell(agent, new Narration.CallFailed(failed.callId(), failed.message()));
       case AgentEvent.InferenceAnswered answered -> {
-        tell(agent, new Narration.Answered(textOf(agent, answered)));
+        tell(agent, new Narration.Answered());
         tell(agent, new Narration.TurnEnded(answered.turn()));
       }
       case AgentEvent.InferenceRefused refused -> {
@@ -513,21 +518,19 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       // Said even though the caller knows: the caller is not the only watcher. A page on the
       // narration stream while the request blocks, or a second one opened beside it, learns what
       // is happening only from here.
-      case AgentEvent.TurnStarted started ->
-          tell(
-              agent,
-              new Narration.TurnStarted(started.turn(), textOfRef(agent, started.observation())));
+      case AgentEvent.TurnStarted started -> tell(agent, new Narration.TurnStarted(started.turn()));
     }
   }
 
+  /**
+   * Handed to the narrator, which is the one thing that knows who is listening.
+   *
+   * <p>Not a loop over listeners here. Telling them is the narrator's job -- off this thread, in
+   * order, isolated from each other -- and doing it inline would put a slow listener between the
+   * caller and their answer, which is exactly what this door must not do.
+   */
   private void tell(AgentId agent, org.jwcarman.nessy.api.Narration event) {
-    for (NarrationListener listener : listeners) {
-      try {
-        listener.on(agentType, agent, event);
-      } catch (RuntimeException broken) {
-        LOG.warn("a listener threw while being told {}", event.getClass().getSimpleName(), broken);
-      }
-    }
+    narrator.narrate(agentType, agent, event);
   }
 
   private String argumentsOf(PayloadStore content, CallId callId, List<AgentEvent> history) {
@@ -574,6 +577,24 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
+  /**
+   * The words of an answer, for the value this door hands back.
+   *
+   * <p>Nothing to do with narration, which no longer reads content at all: this is the answer the
+   * caller asked for, and the only place the reference has to be resolved.
+   */
+  private String textOf(AgentId agent, AgentEvent.InferenceAnswered answered) {
+    return switch (payloads.forAgent(agent).get(answered.answer())) {
+      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+          blocks.stream()
+              .filter(Block.Text.class::isInstance)
+              .map(Block.Text.class::cast)
+              .map(Block.Text::text)
+              .reduce("", String::concat);
+      case PayloadStore.Resolved.Missing _ -> "";
+    };
+  }
+
   /** What a caller who asked for no particular shape gets: whatever the model said. */
   private Outcome<String> saidText(AgentId agent, AgentEvent.InferenceAnswered answered) {
     return new Outcome.Answered<>(textOf(agent, answered));
@@ -594,26 +615,5 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       return new Outcome.Failed<>(
           "the answer did not fit " + type + ": " + notTheShape.getMessage());
     }
-  }
-
-  private String textOf(AgentId agent, AgentEvent.InferenceAnswered answered) {
-    return textOfRef(agent, answered.answer());
-  }
-
-  /** The content behind a reference, or nothing when it has gone. */
-  private List<Block> blocksOf(AgentId agent, org.jwcarman.nessy.api.PayloadRef ref) {
-    return switch (payloads.forAgent(agent).get(ref)) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) -> blocks;
-      case PayloadStore.Resolved.Missing _ -> List.of();
-    };
-  }
-
-  /** The words behind a reference, joined. */
-  private String textOfRef(AgentId agent, org.jwcarman.nessy.api.PayloadRef ref) {
-    return blocksOf(agent, ref).stream()
-        .filter(Block.Text.class::isInstance)
-        .map(Block.Text.class::cast)
-        .map(Block.Text::text)
-        .reduce("", String::concat);
   }
 }

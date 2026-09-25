@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.TurnId;
 
 @DisplayName("An agent event listener")
-class AgentEventListenerTest {
+class NarrationListenerTest {
 
   private static final AgentType CHAT = new AgentType("chat");
   private static final AgentType WATCHMAN = new AgentType("watchman");
@@ -43,13 +43,13 @@ class AgentEventListenerTest {
             c ->
                 c.onTurnEnded((type, id, ended) -> heard.add("ended " + ended.turn().value()))
                     .onTurnEnded((type, id, ended) -> heard.add("and again"))
-                    .onAnswered((type, id, answered) -> heard.add("said " + answered.text())));
+                    .onAnswered((type, id, _) -> heard.add("said")));
 
     listener.on(CHAT, ONE, new Narration.TurnEnded(new TurnId(3)));
     listener.on(CHAT, ONE, new Narration.Thinking());
-    listener.on(CHAT, ONE, new Narration.Answered("hi"));
+    listener.on(CHAT, ONE, new Narration.Answered());
 
-    assertThat(heard).containsExactly("ended 3", "and again", "said hi");
+    assertThat(heard).containsExactly("ended 3", "and again", "said");
   }
 
   @Test

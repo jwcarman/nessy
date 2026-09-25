@@ -292,8 +292,14 @@ class DefaultDirectHarnessTest {
         .hasSize(2);
   }
 
+  /**
+   * The core refuses a command sent to a dead agent by throwing, and should: that is a programming
+   * error reaching the fold. A caller at this door is not a programming error, though -- they are
+   * owed an answer, and an exception out of a request thread becomes somebody's 500. So the door
+   * answers with the refusal rather than letting the fold's guard escape.
+   */
   @Test
-  @DisplayName("a terminated agent refuses further work, loudly")
+  @DisplayName("a terminated agent refuses further work, as an answer rather than an exception")
   void terminate_ends_it() {
     AgentId agent = AgentId.random();
     DirectHarness<String> harness = harness(new Scripted().then(answering("ok")));
@@ -301,9 +307,7 @@ class DefaultDirectHarnessTest {
 
     harness.terminate(agent);
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(() -> harness.ask(agent, "again"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("accepts nothing further");
+    assertThat(harness.ask(agent, "again")).isEqualTo(new Outcome.Refused<String>("terminated"));
   }
 
   @Test

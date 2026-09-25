@@ -42,7 +42,7 @@ class ConsoleNarrationTest {
 
     for (Narration event :
         List.of(
-            new Narration.TurnStarted(new TurnId(1), "hi"),
+            new Narration.TurnStarted(new TurnId(1)),
             new Narration.Thinking(),
             new Narration.ActionsRequested(List.of(new ToolName("depth"))),
             new Narration.CallDenied(CALL, "not today"),
@@ -66,21 +66,9 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, new AgentId(UUID.randomUUID()), new Narration.Answered("elsewhere"));
+    narration.on(CHAT, new AgentId(UUID.randomUUID()), new Narration.Answered());
 
     assertThat(console.written()).isEmpty();
-  }
-
-  @Test
-  void an_answer_that_was_not_streamed_is_printed_once_and_a_streamed_one_is_not_repeated() {
-    FakeConsole console = new FakeConsole();
-    ConsoleNarration narration = new ConsoleNarration(AGENT, console);
-
-    narration.on(CHAT, AGENT, new Narration.Answered("whole answer"));
-    assertThat(console.written()).isEqualTo("whole answer");
-
-    narration.on(CHAT, AGENT, new Narration.Answered("again"));
-    assertThat(console.written()).isEqualTo("whole answer");
   }
 
   @Test
@@ -88,7 +76,7 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new Narration.Answered("  "));
+    narration.on(CHAT, AGENT, new Narration.Answered());
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();

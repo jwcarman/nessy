@@ -111,7 +111,7 @@ final class ReplLoop {
   private void report(Outcome<String> outcome) {
     io.write(System.lineSeparator());
     switch (outcome) {
-      case Outcome.Answered<String> _ -> reportAnswer();
+      case Outcome.Answered<String>(String said) -> reportAnswer(said);
       case Outcome.Refused<String>(String category) ->
           note("the model refused to answer: " + category);
       case Outcome.Failed<String>(String reason) -> note("the turn failed: " + reason);
@@ -121,11 +121,23 @@ final class ReplLoop {
     }
   }
 
-  /** Nothing to add when the model spoke: the answer IS the report. */
-  private void reportAnswer() {
-    if (!narration.spoke()) {
-      note("the model ended the turn without saying anything");
+  /**
+   * The answer, unless watching it arrive already showed it.
+   *
+   * <p>A provider that streams has written it delta by delta as it came, and printing it again
+   * would show it twice. One that does not stream says nothing until it is done, and then this is
+   * where it gets said -- from the value {@code ask} returned, because narration announces that a
+   * turn was answered without carrying the answer.
+   */
+  private void reportAnswer(String said) {
+    if (narration.spoke()) {
+      return;
     }
+    if (said.isBlank()) {
+      note("the model ended the turn without saying anything");
+      return;
+    }
+    io.write(said + System.lineSeparator());
   }
 
   private void note(String what) {

@@ -18,8 +18,9 @@ let events = null;
 let approvalEvents = null;
 let openBubble = null;
 let openThinking = null;
-// Whether this inference call has streamed: a provider that does says the answer delta by delta
-// and then whole, and drawing it twice would be wrong; one that does not says it whole, once.
+// Whether this inference call has streamed. A provider that streams says commentary delta by
+// delta as it writes it; one that does not says it only as a commentary event, and drawing both
+// would show it twice.
 let streamed = false;
 
 function useAgent(id) {
@@ -134,10 +135,9 @@ function listen() {
   events.addEventListener("call-failed", (e) =>
     appendLine("tool", "failed: " + JSON.parse(e.data).message),
   );
-  events.addEventListener("answered", (e) => {
-    if (!streamed) said(JSON.parse(e.data).text);
-    idle();
-  });
+  // Says only that an answer happened. The words arrive as the reply to the POST that asked,
+  // which this page already renders; a streaming provider has shown them as deltas besides.
+  events.addEventListener("answered", () => idle());
   events.addEventListener("turn-failed", () => {
     appendLine("system", "the agent could not answer");
     idle();

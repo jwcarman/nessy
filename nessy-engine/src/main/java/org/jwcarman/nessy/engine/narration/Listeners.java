@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine.harness;
+package org.jwcarman.nessy.engine.narration;
 
 import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * when the event was narrated, which is the turn's or the effect's. What a listener does in
  * response, a summary say, is then a child of what it responded to, however long after.
  */
-final class Listeners implements Narrator, AutoCloseable {
+public final class Listeners implements Narrator, AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(Listeners.class);
 
@@ -68,9 +68,14 @@ final class Listeners implements Narrator, AutoCloseable {
     return ContextExecutorService.wrap(executor, SNAPSHOTS::captureAll);
   }
 
-  Listeners(List<NarrationListener> engineWide, List<NarrationListener> own) {
+  public Listeners(List<NarrationListener> engineWide, List<NarrationListener> own) {
     this.engineWide = engineWide;
     this.own = List.copyOf(own);
+  }
+
+  @Override
+  public boolean listening() {
+    return !engineWide.isEmpty() || !own.isEmpty();
   }
 
   @Override

@@ -17,9 +17,11 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
@@ -30,6 +32,7 @@ import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.spi.narration.Narrator;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,19 +63,23 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
   /** Where what the model said goes, so that what reaches the fold is a reference to it. */
   private final PayloadStore payloads;
 
+  private final Narrator narrator;
+
   public InferenceHandler(
       AgentType agentType,
       InferenceService inference,
       InferenceOptions options,
       Duration timeout,
       RetryPolicy retryPolicy,
-      PayloadStore payloads) {
+      PayloadStore payloads,
+      Narrator narrator) {
     this.agentType = agentType;
     this.inference = inference;
     this.options = options;
     this.timeout = timeout;
     this.retryPolicy = retryPolicy;
     this.payloads = payloads;
+    this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
   }
 
   /** Uniform: one agent type calls one model on one set of terms. */
@@ -135,6 +142,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
             // The calls come out beside the reference: which calls are outstanding is the one
             // thing about a request the fold cannot take on trust from a claim check.
+            commentary(agentId, blocks);
             yield new EffectOutcome.InferenceRequestedActions(
                 payloads.forAgent(agentId).put(blocks), requested(blocks));
           }
@@ -143,6 +151,21 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
             yield new EffectOutcome.InferenceFailed(failure);
           }
         });
+  }
+
+  /**
+   * What the model said while deciding to act, announced where the words still are.
+   *
+   * <p>Here rather than from the event, which by then holds a reference: narrating from that would
+   * read back content this method is holding. The same reason its two sibling handlers announce
+   * what they are doing rather than leaving it to be reconstructed.
+   */
+  private void commentary(AgentId agentId, List<Block.ActionRequestContent> blocks) {
+    blocks.stream()
+        .filter(Block.Commentary.class::isInstance)
+        .map(Block.Commentary.class::cast)
+        .forEach(
+            said -> narrator.narrate(agentType, agentId, new Narration.Commentary(said.text())));
   }
 
   /** Which calls a request obliges an outcome for, in the order the model made them. */

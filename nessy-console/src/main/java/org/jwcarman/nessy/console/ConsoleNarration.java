@@ -59,14 +59,10 @@ final class ConsoleNarration implements NarrationListener {
         io.write(text);
         io.flush();
       }
-      // A provider that does not stream says the whole thing at once; one that does has already
-      // said it delta by delta, and saying it again would print the answer twice.
-      case Narration.Answered(String text) -> {
-        if (!spoke && !text.isBlank()) {
-          spoke = true;
-          io.write(text);
-          io.flush();
-        }
+      // Says only that the turn produced one. The words are what ask() returns, and the REPL
+      // prints them; a provider that streams has already shown them delta by delta.
+      case Narration.Answered _ -> {
+        /* the answer itself is the caller's, not the watcher's */
       }
       case Narration.ActionsRequested(var toolNames) ->
           toolNames.forEach(

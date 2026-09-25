@@ -45,6 +45,7 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
@@ -310,7 +311,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         inference.options(),
         inference.timeout(),
         inference.retryPolicy(),
-        payloads);
+        payloads,
+        narrator);
   }
 
   /**

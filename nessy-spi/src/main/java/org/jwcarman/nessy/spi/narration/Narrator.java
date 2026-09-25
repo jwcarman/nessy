@@ -55,6 +55,20 @@ public interface Narrator {
    */
   void narrate(AgentType agentType, AgentId agentId, Narration event);
 
+  /**
+   * Whether anybody is listening.
+   *
+   * <p>For a caller deciding whether to BUILD an event at all. Most narration is cheap to make, but
+   * some of it means resolving content a reference stands for, and doing that for nobody is work a
+   * turn should not be paying for. Narrating when this is false must still be harmless -- this is
+   * an optimisation, never a gate.
+   *
+   * <p>True by default, because a narrator that cannot say is one that might be heard.
+   */
+  default boolean listening() {
+    return true;
+  }
+
   /** Nobody is listening, and nothing is lost by saying so. The default. */
   static Narrator silent() {
     return (_, _, _) -> {};

@@ -18,12 +18,15 @@ package org.jwcarman.nessy.engine.direct;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -44,6 +47,22 @@ import tools.jackson.databind.ObjectMapper;
  * the turn ends when {@code ask} returns and there is nothing left running to shut down.
  */
 public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
+
+  /**
+   * Everyone who hears every agent of every harness this factory makes.
+   *
+   * <p>Filled after the factory exists, because a container finds its listeners once everything
+   * else is built. Without this a listener an application declares can reach the queued door and
+   * not this one, which is a difference nobody would predict from the outside.
+   */
+  private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
+
+  /**
+   * Adds somebody who hears every agent this factory serves. Harnesses already made hear it too.
+   */
+  public void listener(NarrationListener listener) {
+    listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+  }
 
   private final Locks locks;
   private final AgentEventStore events;
@@ -116,6 +135,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
         inference.summaries(),
         inference.maxTail(),
         inference.ambient(),
-        config.listeners());
+        new Listeners(listeners, config.listeners()));
   }
 }

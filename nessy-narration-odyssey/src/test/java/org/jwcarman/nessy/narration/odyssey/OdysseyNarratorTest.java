@@ -43,9 +43,9 @@ class OdysseyNarratorTest {
 
   private static final List<Narration> EVERY_KIND =
       List.of(
-          new Narration.TurnStarted(new TurnId(1), "x"),
+          new Narration.TurnStarted(new TurnId(1)),
           new Narration.Thinking(),
-          new Narration.Answered("x"),
+          new Narration.Answered(),
           new Narration.TurnEnded(new TurnId(1)),
           new Narration.TurnFailed(),
           new Narration.TurnRefused(),
@@ -93,10 +93,12 @@ class OdysseyNarratorTest {
   @Test
   @DisplayName("on the wire an event names its kind, and its ids are bare values")
   void the_json_of_an_event_carries_its_kind() {
-    JsonNode json = mapper.valueToTree(new Narration.TurnStarted(new TurnId(7), "hello"));
+    JsonNode json = mapper.valueToTree(new Narration.TurnStarted(new TurnId(7)));
     assertThat(json.path("type").asString()).isEqualTo("turn-started");
     assertThat(json.path("turn").asLong()).isEqualTo(7);
-    assertThat(json.path("observation").asString()).isEqualTo("hello");
+    assertThat(json.has("observation"))
+        .as("narration names what happened; it does not carry the words it happened to")
+        .isFalse();
     JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), "no"));
     assertThat(denied.path("callId").asString()).isEqualTo("c1");
   }

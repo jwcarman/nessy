@@ -28,7 +28,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 
 @DisplayName("The listener builder")
-class AgentEventListenerConfigTest {
+class NarrationListenerConfigTest {
 
   private static final AgentType CHAT = new AgentType("chat");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -36,9 +36,9 @@ class AgentEventListenerConfigTest {
 
   private static final List<Narration> EVERY_KIND =
       List.of(
-          new Narration.TurnStarted(new TurnId(1), "hi"),
+          new Narration.TurnStarted(new TurnId(1)),
           new Narration.Thinking(),
-          new Narration.Answered("hello"),
+          new Narration.Answered(),
           new Narration.TurnEnded(new TurnId(1)),
           new Narration.TurnFailed(),
           new Narration.TurnRefused(),
@@ -61,9 +61,9 @@ class AgentEventListenerConfigTest {
     NarrationListener listener =
         NarrationListener.of(
             on ->
-                on.onTurnStarted((t, id, e) -> heard.add("started " + e.observation()))
+                on.onTurnStarted((t, id, e) -> heard.add("started " + e.turn()))
                     .onThinking((t, id, e) -> heard.add("thinking"))
-                    .onAnswered((t, id, e) -> heard.add("answered " + e.text()))
+                    .onAnswered((t, id, e) -> heard.add("answered"))
                     .onTurnEnded((t, id, e) -> heard.add("ended " + e.turn()))
                     .onTurnFailed((t, id, e) -> heard.add("failed"))
                     .onTurnRefused((t, id, e) -> heard.add("refused"))
@@ -84,9 +84,9 @@ class AgentEventListenerConfigTest {
 
     assertThat(heard)
         .containsExactly(
-            "started hi",
+            "started 1",
             "thinking",
-            "answered hello",
+            "answered",
             "ended 1",
             "failed",
             "refused",
@@ -109,12 +109,12 @@ class AgentEventListenerConfigTest {
     List<String> heard = new ArrayList<>();
     NarrationListener listener =
         NarrationListener.of(
-            on -> on.agentType(CHAT).onAnswered((t, id, e) -> heard.add(e.text())));
+            on -> on.agentType(CHAT).onAnswered((t, id, _) -> heard.add("answered")));
 
-    listener.on(new AgentType("other"), AGENT, new Narration.Answered("not for us"));
+    listener.on(new AgentType("other"), AGENT, new Narration.Answered());
     listener.on(CHAT, AGENT, new Narration.Thinking());
-    listener.on(CHAT, AGENT, new Narration.Answered("for us"));
+    listener.on(CHAT, AGENT, new Narration.Answered());
 
-    assertThat(heard).containsExactly("for us");
+    assertThat(heard).containsExactly("answered");
   }
 }

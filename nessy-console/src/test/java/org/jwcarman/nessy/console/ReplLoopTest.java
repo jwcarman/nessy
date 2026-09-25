@@ -45,7 +45,7 @@ class ReplLoopTest {
 
   /** A streaming provider has already said everything; the answer just closes the turn. */
   private static Narration ended() {
-    return new Narration.Answered("(already streamed)");
+    return new Narration.Answered();
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
@@ -81,10 +81,17 @@ class ReplLoopTest {
     assertThat(console.written()).contains("Hello.").doesNotContain("already streamed");
   }
 
-  /** A provider that does not stream says everything at once, and it must still be shown. */
+  /**
+   * A provider that does not stream says everything at once, and it must still be shown.
+   *
+   * <p>From the value ask returned, not from the narration: narration says a turn was answered
+   * without carrying the answer, so the terminal prints what it was handed.
+   */
   @Test
   void an_answer_that_was_not_streamed_is_printed_whole() {
-    FakeHarness harness = new FakeHarness(List.of(new Narration.Answered("all at once")));
+    FakeHarness harness =
+        new FakeHarness(List.of(new Narration.Answered()))
+            .answering(new Outcome.Answered<>("all at once"));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
     assertThat(console.written()).contains("all at once");
@@ -243,7 +250,8 @@ class ReplLoopTest {
 
     @Test
     void a_silent_completion_says_so_rather_than_printing_nothing() {
-      FakeHarness harness = new FakeHarness(List.of(new Narration.Answered("   ")));
+      FakeHarness harness =
+          new FakeHarness(List.of(new Narration.Answered())).answering(new Outcome.Answered<>(""));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("ended the turn without saying anything");
