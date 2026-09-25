@@ -21,10 +21,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -56,26 +55,23 @@ public class ChatController {
 
   public record Line(String role, String text) {}
 
-  private final QueuedHarness<String> harness;
+  private final DirectHarness<String> harness;
   private final TurnHistories histories;
   private final AgentStreams streams;
   private final ApprovalStreams approvals;
   private final ApprovalDesk desk;
-  private final Replies replies;
 
   ChatController(
-      QueuedHarness<String> harness,
+      DirectHarness<String> harness,
       TurnHistories histories,
       AgentStreams streams,
       ApprovalStreams approvals,
-      ApprovalDesk desk,
-      Replies replies) {
+      ApprovalDesk desk) {
     this.harness = harness;
     this.histories = histories;
     this.streams = streams;
     this.approvals = approvals;
     this.desk = desk;
-    this.replies = replies;
   }
 
   /** What has been said, from the story itself: the page rebuilds from this, not from a replay. */
@@ -86,10 +82,30 @@ public class ChatController {
     return Map.of("transcript", lines(turns), "approvals", desk.pending(agentId));
   }
 
+  /**
+   * Says something, and waits for the answer.
+   *
+   * <p>The turn runs here, on this request's thread, and what comes back is what it came to. The
+   * stream is still how a page watches it happen -- deltas as the model writes, cards when the desk
+   * is asked -- but the answer is the response to this call rather than something to listen for.
+   *
+   * <p>A turn that stops to ask a person holds this request while it waits. That is the bargain of
+   * this door: the caller is holding the answer, so it holds the whole turn.
+   */
   @PostMapping("/{id}/messages")
-  public ResponseEntity<Void> say(@PathVariable("id") String id, @RequestBody MessageRequest body) {
-    harness.observe(agent(id), body.text());
-    return ResponseEntity.accepted().build();
+  public ResponseEntity<Map<String, String>> say(
+      @PathVariable("id") String id, @RequestBody MessageRequest body) {
+    return switch (harness.ask(agent(id), body.text())) {
+      case Outcome.Answered<String>(String said) -> ResponseEntity.ok(Map.of("said", said));
+      case Outcome.Refused<String>(String category) ->
+          ResponseEntity.ok(Map.of("refused", category));
+      case Outcome.Failed<String>(String reason) ->
+          ResponseEntity.internalServerError().body(Map.of("failed", reason));
+      // Somebody else is mid-turn on this agent -- another tab, or a request that has not
+      // finished. Not an error: the page can say so and let them try again.
+      case Outcome.Busy<String> _ ->
+          ResponseEntity.status(409).body(Map.of("busy", "that agent is already answering"));
+    };
   }
 
   /**
@@ -127,7 +143,10 @@ public class ChatController {
       @PathVariable("id") String id,
       @PathVariable("callId") String callId,
       @RequestBody Decision body) {
-    ApprovalDesk.Waiting question = desk.take(new CallId(callId)).orElse(null);
+    ApprovalDesk.Waiting question =
+        desk.card(new CallId(callId)).isPresent()
+            ? desk.take(new CallId(callId)).orElse(null)
+            : null;
     if (question == null) {
       // Already answered, by another tab or another person. Not an error: the page should redraw
       // and see what was decided, rather than be shown a stack trace for losing a race.
@@ -138,12 +157,12 @@ public class ChatController {
             ? ApprovalResult.approved()
             : ApprovalResult.denied(
                 body.note() == null || body.note().isBlank() ? "denied" : body.note());
-    return switch (replies.approve(question.replyToken(), result)) {
-      case ReplyOutcome.Settled _ -> ResponseEntity.accepted().build();
-      // The agent had already moved on -- the term ran out, or it was ended. The card was stale.
-      case ReplyOutcome.NotAwaiting _, ReplyOutcome.Unreadable _ ->
-          ResponseEntity.status(HttpStatus.CONFLICT).build();
-    };
+    // Handed to the turn that is waiting on it, which is on somebody's request thread rather than
+    // in an outbox. False means nothing was waiting -- the patience ran out, or another tab got
+    // there first -- and the card was stale.
+    return desk.answer(new CallId(callId), result)
+        ? ResponseEntity.accepted().build()
+        : ResponseEntity.status(HttpStatus.CONFLICT).build();
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
