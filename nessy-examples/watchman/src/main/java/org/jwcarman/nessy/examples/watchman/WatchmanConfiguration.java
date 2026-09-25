@@ -22,6 +22,7 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.approval.risk.Impact;
@@ -31,7 +32,6 @@ import org.jwcarman.nessy.approval.risk.RiskAssessment;
 import org.jwcarman.nessy.approval.risk.RiskAssessor;
 import org.jwcarman.nessy.approval.risk.RiskFactors;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
-import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.springframework.beans.factory.InitializingBean;
@@ -87,7 +87,7 @@ public class WatchmanConfiguration {
 
   @Bean(name = "watchmanHarness")
   public QueuedHarness<String> harness(
-      DefaultQueuedHarnessFactory factory,
+      QueuedHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
       ApprovalsDesk desk) {

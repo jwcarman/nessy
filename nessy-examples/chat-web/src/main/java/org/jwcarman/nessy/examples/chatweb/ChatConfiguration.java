@@ -21,10 +21,11 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.lease.JdbcLeases;
@@ -93,7 +94,8 @@ public class ChatConfiguration {
    */
   @Bean
   public EpisodeSummarizer episodeSummarizer(
-      DefaultQueuedHarnessFactory factory,
+      QueuedHarnessFactory factory,
+      TurnHistories histories,
       JdbcEpisodes episodes,
       DataSource dataSource,
       InferenceProvider provider,
@@ -103,7 +105,7 @@ public class ChatConfiguration {
         c ->
             c.agentType(TYPE)
                 .episodes(episodes)
-                .histories(factory.histories())
+                .histories(histories)
                 // Its own kind and its own generous lease: a local thinking model can
                 // take minutes over a long episode, and erring long only delays the
                 // next attempt, where erring short lets two summarise at once.
@@ -117,7 +119,7 @@ public class ChatConfiguration {
 
   @Bean
   public QueuedHarness<String> harness(
-      DefaultQueuedHarnessFactory factory,
+      QueuedHarnessFactory factory,
       NessyProperties properties,
       SendEmailTool email,
       Approver desk,

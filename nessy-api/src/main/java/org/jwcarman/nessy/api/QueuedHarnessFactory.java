@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.tool.Replies;
  * same scheduler the way they use the same JVM. Nothing else crosses between them: each gets its
  * own codec, its own model, its own dispatcher, its own schedule and its own rows.
  */
-public interface QueuedHarnessFactory {
+public interface QueuedHarnessFactory extends AutoCloseable {
 
   /** For observations that are already what a model should read. */
   default QueuedHarness<String> create(Consumer<QueuedHarnessConfig<String>> customizer) {
@@ -59,4 +59,18 @@ public interface QueuedHarnessFactory {
    * reply token is opaque, so whoever holds one cannot say which kind of agent it belongs to.
    */
   Replies replies();
+
+  /**
+   * Stops looking for work.
+   *
+   * <p>On the interface because an application that built one has to be able to stop it: this owns
+   * a timer and the threads that perform effects, which outlive the calls that submitted them. The
+   * direct door has no equivalent and is deliberately not closeable -- a turn there ends when
+   * {@code ask} returns, and there is nothing left running to shut down.
+   *
+   * <p>Declared without a checked exception, so a try-with-resources over one does not have to
+   * catch something that cannot happen.
+   */
+  @Override
+  void close();
 }
