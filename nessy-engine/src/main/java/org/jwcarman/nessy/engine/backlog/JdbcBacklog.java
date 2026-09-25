@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.backlog;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -63,6 +64,17 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   private static final String CLEAR =
       "DELETE FROM nessy_agent_backlog WHERE agent_type = ? AND agent_id = ?";
 
+  private static final String TAKE =
+      """
+      DELETE FROM nessy_agent_backlog
+       WHERE (agent_type, agent_id, ordinal) IN (SELECT agent_type, agent_id, ordinal
+                                                   FROM nessy_agent_backlog
+                                                  WHERE agent_type = ? AND agent_id = ?
+                                                  ORDER BY ordinal
+                                                  LIMIT 1)
+      RETURNING arrived_at, payload
+      """;
+
   private static final String COUNT =
       "SELECT COUNT(*) FROM nessy_agent_backlog WHERE agent_type = ? AND agent_id = ?";
 
@@ -86,6 +98,16 @@ public final class JdbcBacklog<O> implements Backlog<O> {
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
+  }
+
+  @Override
+  public Optional<BacklogItem<O>> take() {
+    // Removed and returned in one statement, so nothing can see it waiting after it has been
+    // taken. The caller is holding the agent's row, so nothing else is looking anyway.
+    return jdbc.sql(TAKE)
+        .params(agentType.value(), agent.value())
+        .query((rs, _) -> item(rs))
+        .optional();
   }
 
   @Override
@@ -116,14 +138,7 @@ public final class JdbcBacklog<O> implements Backlog<O> {
 
   @Override
   public List<BacklogItem<O>> all() {
-    return jdbc.sql(ALL)
-        .params(agentType.value(), agent.value())
-        .query(
-            (rs, _) ->
-                new BacklogItem<>(
-                    codec.decode(rs.getBytes("payload")),
-                    rs.getTimestamp("arrived_at").toInstant()))
-        .list();
+    return jdbc.sql(ALL).params(agentType.value(), agent.value()).query((rs, _) -> item(rs)).list();
   }
 
   @Override
@@ -134,6 +149,11 @@ public final class JdbcBacklog<O> implements Backlog<O> {
     for (BacklogItem<O> item : items) {
       insert(ordinal++, item);
     }
+  }
+
+  private BacklogItem<O> item(java.sql.ResultSet rs) throws java.sql.SQLException {
+    return new BacklogItem<>(
+        codec.decode(rs.getBytes("payload")), rs.getTimestamp("arrived_at").toInstant());
   }
 
   private void clear() {

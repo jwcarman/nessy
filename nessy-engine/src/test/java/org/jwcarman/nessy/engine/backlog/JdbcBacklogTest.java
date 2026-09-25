@@ -183,4 +183,51 @@ class JdbcBacklogTest {
 
     assertThat(its.all()).isEmpty();
   }
+
+  @Test
+  @DisplayName("taking gives the one that waited longest, and removes it")
+  void take_is_the_head() {
+    backlog.append(said("first"));
+    backlog.append(said("second"));
+
+    assertThat(backlog.take()).map(BacklogItem::observation).contains("first");
+
+    assertThat(waiting()).as("and it is gone").containsExactly("second");
+  }
+
+  @Test
+  @DisplayName("taking drains in order until there is nothing waiting")
+  void take_drains_in_order() {
+    backlog.append(said("one"));
+    backlog.append(said("two"));
+    backlog.append(said("three"));
+
+    assertThat(backlog.take()).map(BacklogItem::observation).contains("one");
+    assertThat(backlog.take()).map(BacklogItem::observation).contains("two");
+    assertThat(backlog.take()).map(BacklogItem::observation).contains("three");
+    assertThat(backlog.take()).as("how an agent goes quiet").isEmpty();
+  }
+
+  @Test
+  @DisplayName("what is taken keeps the time it said it arrived")
+  void take_keeps_the_arrival_time() {
+    Instant early = Instant.parse("2026-09-25T09:00:00Z");
+    backlog.append(new BacklogItem<>("first", early));
+
+    assertThat(backlog.take()).map(BacklogItem::arrivedAt).contains(early);
+  }
+
+  @Test
+  @DisplayName("appending after a bound was held carries on from where the ordinals left off")
+  void ordinals_do_not_collide_after_dropping() {
+    for (int i = 1; i <= 4; i++) {
+      backlog.append(said("item " + i));
+    }
+    backlog.dropOldest(2);
+    backlog.take();
+
+    backlog.append(said("later"));
+
+    assertThat(waiting()).containsExactly("item 4", "later");
+  }
 }
