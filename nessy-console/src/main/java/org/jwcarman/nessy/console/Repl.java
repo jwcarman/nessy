@@ -27,7 +27,6 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
-import org.jwcarman.nessy.spring.boot.lease.LeaseAutoConfiguration;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -133,6 +132,6 @@ public final class Repl {
    * builds by hand -- and so is what depends on it.
    */
   @Configuration(proxyBeanMethods = false)
-  @EnableAutoConfiguration(exclude = {NessyAutoConfiguration.class, LeaseAutoConfiguration.class})
+  @EnableAutoConfiguration(exclude = NessyAutoConfiguration.class)
   static class ReplBootstrap {}
 }

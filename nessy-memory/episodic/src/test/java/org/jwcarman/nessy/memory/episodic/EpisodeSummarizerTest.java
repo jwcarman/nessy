@@ -121,7 +121,7 @@ class EpisodeSummarizerTest {
                 c.agentType(Calls.TYPE)
                     .episodes(episodes)
                     .histories(factory.histories())
-                    .leases(new JdbcLeases(dataSource))
+                    .locks(new JdbcLeases(dataSource, "episode", Duration.ofSeconds(30)))
                     .inference(model, InferenceOptions.of("m"))
                     .observations(observations));
     harness =
@@ -300,7 +300,7 @@ class EpisodeSummarizerTest {
                 EpisodeSummarizer.create(
                     c -> c.agentType(Calls.TYPE).episodes(episodes).histories(factory.histories())))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("leases");
+        .hasMessageContaining("locks");
   }
 
   /** Every observation stopped, by name, with its low-cardinality tags. */

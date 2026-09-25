@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.engine.harness.DefaultHarnessFactory;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.lease.Leases;
+import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.memory.episodic.EpisodeSummarizer;
 import org.jwcarman.nessy.memory.episodic.EpisodeTools;
 import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
@@ -95,7 +95,7 @@ public class ChatConfiguration {
   public EpisodeSummarizer episodeSummarizer(
       DefaultHarnessFactory factory,
       JdbcEpisodes episodes,
-      Leases leases,
+      DataSource dataSource,
       InferenceProvider provider,
       NessyProperties properties,
       ObjectProvider<ObservationRegistry> observations) {
@@ -104,10 +104,12 @@ public class ChatConfiguration {
             c.agentType(TYPE)
                 .episodes(episodes)
                 .histories(factory.histories())
-                .leases(leases)
+                // Its own kind and its own generous lease: a local thinking model can
+                // take minutes over a long episode, and erring long only delays the
+                // next attempt, where erring short lets two summarise at once.
+                .locks(new JdbcLeases(dataSource, "episode", Duration.ofMinutes(10)))
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
-                .leaseTtl(Duration.ofMinutes(5))
                 // Each summary is a nessy.summary span with its model call inside, when the
                 // application is tracing.
                 .observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP)));

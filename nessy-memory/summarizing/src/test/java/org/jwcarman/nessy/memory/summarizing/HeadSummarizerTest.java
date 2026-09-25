@@ -124,7 +124,7 @@ class HeadSummarizerTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .leases(new JdbcLeases(dataSource))
+                    .locks(new JdbcLeases(dataSource, "summary", Duration.ofSeconds(30)))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL)
                     .observations(observations));

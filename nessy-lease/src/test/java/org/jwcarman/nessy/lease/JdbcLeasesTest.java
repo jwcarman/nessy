@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.jwcarman.nessy.lease;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +33,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.lease.Locks.Attempt;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -53,11 +55,30 @@ class JdbcLeasesTest {
     return database;
   }
 
-  private final Leases leases = new JdbcLeases(database());
+  private final DataSource database = database();
+  private final Locks leases = leases("summary", Duration.ofSeconds(30));
   private final ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor();
 
   /** A key nobody else in the shared database is using. */
   private final String key = UUID.randomUUID().toString();
+
+  private Locks leases(String kind, Duration ttl) {
+    return new JdbcLeases(database, kind, ttl);
+  }
+
+  /** Whether the work ran, which is the whole of what a caller needs from an attempt. */
+  private static boolean ran(Attempt<?> attempt) {
+    return attempt instanceof Attempt.Ran<?>;
+  }
+
+  private Attempt<Void> held(CountDownLatch holding, CountDownLatch release) {
+    return leases.tryWithLock(
+        key,
+        () -> {
+          holding.countDown();
+          await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+        });
+  }
 
   @AfterEach
   void stop() {
@@ -67,10 +88,21 @@ class JdbcLeasesTest {
   @Test
   @DisplayName("is taken by the first to ask, who is told so, and does the work")
   void the_first_caller_runs() {
-    AtomicInteger ran = new AtomicInteger();
-    assertThat(leases.tryRun("summary", key, Duration.ofSeconds(30), ran::incrementAndGet))
-        .isTrue();
-    assertThat(ran).hasValue(1);
+    AtomicInteger counted = new AtomicInteger();
+
+    Attempt<Integer> attempt = leases.tryWithLock(key, counted::incrementAndGet);
+
+    assertThat(attempt).isEqualTo(new Attempt.Ran<>(1));
+    assertThat(counted).hasValue(1);
+  }
+
+  @Test
+  @DisplayName("hands back what the work produced, null included")
+  void the_work_answers_through_the_attempt() {
+    assertThat(leases.tryWithLock(key, () -> "summarised"))
+        .isEqualTo(new Attempt.Ran<>("summarised"));
+    // The reason this is not an Optional: work that produces nothing still ran.
+    assertThat(leases.tryWithLock(key, () -> null)).isEqualTo(new Attempt.Ran<>(null));
   }
 
   @Test
@@ -78,44 +110,34 @@ class JdbcLeasesTest {
   void a_held_lease_is_refused() throws Exception {
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
-    Future<Boolean> holder =
-        callers.submit(
-            () ->
-                leases.tryRun(
-                    "summary",
-                    key,
-                    Duration.ofSeconds(30),
-                    () -> {
-                      holding.countDown();
-                      await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
-                    }));
+    Future<Attempt<Void>> holder = callers.submit(() -> held(holding, release));
     holding.await();
+    AtomicInteger counted = new AtomicInteger();
 
-    AtomicInteger ran = new AtomicInteger();
-    assertThat(leases.tryRun("summary", key, Duration.ofSeconds(30), ran::incrementAndGet))
-        .as("refused, at once")
-        .isFalse();
-    assertThat(ran).hasValue(0);
+    Attempt<Integer> refused = leases.tryWithLock(key, counted::incrementAndGet);
 
+    assertThat(refused).as("refused, at once").isEqualTo(new Attempt.Ignored<Integer>());
+    assertThat(counted).hasValue(0);
     release.countDown();
-    assertThat(holder.get()).isTrue();
+    assertThat(ran(holder.get())).isTrue();
   }
 
   @Test
-  @DisplayName("is free again once the holder's work returns, however it returns")
+  @DisplayName("is free again once the holder\'s work returns, however it returns")
   void released_after_the_work() {
-    Duration ttl = Duration.ofSeconds(30);
-    Runnable failing =
-        () -> {
-          throw new IllegalStateException("the work failed");
-        };
-    assertThatThrownBy(() -> leases.tryRun("summary", key, ttl, failing))
+    AtomicInteger counted = new AtomicInteger();
+
+    assertThatThrownBy(
+            () ->
+                leases.tryWithLock(
+                    key,
+                    () -> {
+                      throw new IllegalStateException("the work failed");
+                    }))
         .isInstanceOf(IllegalStateException.class);
 
-    AtomicInteger ran = new AtomicInteger();
-    assertThat(leases.tryRun("summary", key, Duration.ofSeconds(30), ran::incrementAndGet))
-        .isTrue();
-    assertThat(ran).hasValue(1);
+    assertThat(ran(leases.tryWithLock(key, counted::incrementAndGet))).isTrue();
+    assertThat(counted).hasValue(1);
   }
 
   @Test
@@ -124,46 +146,38 @@ class JdbcLeasesTest {
     // A holder that is still running when its lease runs out: a slow one, or a dead one.
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
+    Locks brief = leases("summary", Duration.ofMillis(500));
     callers.submit(
         () ->
-            leases.tryRun(
-                "summary",
+            brief.tryWithLock(
                 key,
-                Duration.ofMillis(500),
                 () -> {
                   holding.countDown();
                   await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
                 }));
     holding.await();
+    AtomicInteger counted = new AtomicInteger();
 
-    AtomicInteger ran = new AtomicInteger();
     await()
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(
-            () ->
-                assertThat(
-                        leases.tryRun("summary", key, Duration.ofSeconds(30), ran::incrementAndGet))
-                    .isTrue());
-    assertThat(ran).hasValue(1);
+            () -> assertThat(ran(leases.tryWithLock(key, counted::incrementAndGet))).isTrue());
+
+    assertThat(counted).hasValue(1);
     release.countDown();
   }
 
   @Test
   @DisplayName("keys are scoped by kind: the same key under another kind is another lease")
   void kinds_do_not_collide() {
-    CountDownLatch inside = new CountDownLatch(1);
-    AtomicInteger ran = new AtomicInteger();
-    leases.tryRun(
-        "summary",
-        key,
-        Duration.ofSeconds(30),
-        () -> {
-          assertThat(leases.tryRun("enrichment", key, Duration.ofSeconds(30), ran::incrementAndGet))
-              .isTrue();
-          inside.countDown();
-        });
-    assertThat(inside.getCount()).isZero();
-    assertThat(ran).hasValue(1);
+    Locks enrichment = leases("enrichment", Duration.ofSeconds(30));
+    AtomicInteger counted = new AtomicInteger();
+
+    Attempt<Boolean> outer =
+        leases.tryWithLock(key, () -> ran(enrichment.tryWithLock(key, counted::incrementAndGet)));
+
+    assertThat(outer).isEqualTo(new Attempt.Ran<>(true));
+    assertThat(counted).hasValue(1);
   }
 
   @Test
@@ -171,39 +185,40 @@ class JdbcLeasesTest {
   void a_race_has_one_winner() throws Exception {
     int callerCount = 16;
     CountDownLatch go = new CountDownLatch(1);
-    AtomicInteger ran = new AtomicInteger();
-    List<Future<Boolean>> outcomes =
+    AtomicInteger counted = new AtomicInteger();
+    List<Future<Attempt<Void>>> outcomes =
         IntStream.range(0, callerCount)
             .mapToObj(
-                i ->
+                _ ->
                     callers.submit(
                         () -> {
                           go.await();
-                          return leases.tryRun(
-                              "summary",
+                          return leases.tryWithLock(
                               key,
-                              Duration.ofSeconds(30),
                               () -> {
-                                ran.incrementAndGet();
+                                counted.incrementAndGet();
                                 // Hold it long enough for the others to be refused.
                                 await().pollDelay(Duration.ofMillis(300)).until(() -> true);
                               });
                         }))
             .toList();
+
     go.countDown();
+
     int winners = 0;
-    for (Future<Boolean> outcome : outcomes) {
-      if (outcome.get()) {
+    for (Future<Attempt<Void>> outcome : outcomes) {
+      if (ran(outcome.get())) {
         winners++;
       }
     }
     assertThat(winners).isEqualTo(1);
-    assertThat(ran).hasValue(1);
+    assertThat(counted).hasValue(1);
   }
 
   @Test
+  @DisplayName("a lease with no life in it is refused where it is configured")
   void a_ttl_that_is_not_positive_is_refused() {
-    assertThatThrownBy(() -> leases.tryRun("summary", key, Duration.ZERO, () -> {}))
+    assertThatThrownBy(() -> leases("summary", Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

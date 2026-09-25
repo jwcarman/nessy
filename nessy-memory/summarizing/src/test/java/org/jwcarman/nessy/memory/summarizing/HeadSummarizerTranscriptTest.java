@@ -18,8 +18,8 @@ package org.jwcarman.nessy.memory.summarizing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Duration;
 import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -32,6 +32,8 @@ import org.jwcarman.nessy.inference.turn.Observation;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
+import org.jwcarman.nessy.lease.Locks;
+import org.jwcarman.nessy.lease.Locks.Attempt;
 
 /** The head as the summarising model reads it: one line per thing that happened. */
 @DisplayName("The transcript a summary is written from")
@@ -98,9 +100,14 @@ class HeadSummarizerTranscriptTest {
             c.agentType(type)
                 .summaries(new JdbcSummaries(new org.postgresql.ds.PGSimpleDataSource(), type))
                 .histories((agentType, agentId) -> null)
-                .leases((kind, key, ttl, work) -> false)
-                .inference((request, narrator) -> null, InferenceOptions.of("m"))
-                .leaseTtl(Duration.ofSeconds(5));
+                .locks(
+                    new Locks() {
+                      @Override
+                      public <T> Attempt<T> tryWithLock(String key, Supplier<T> work) {
+                        return new Attempt.Ignored<>();
+                      }
+                    })
+                .inference((request, narrator) -> null, InferenceOptions.of("m"));
 
     java.util.function.Consumer<HeadSummarizer.Config> backwards =
         complete.andThen(c -> c.tail(4, 8));

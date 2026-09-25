@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.memory.summarizing;
 
 import io.micrometer.observation.ObservationRegistry;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -38,7 +37,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.lease.Leases;
+import org.jwcarman.nessy.lease.Locks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,12 +91,11 @@ public class HeadSummarizer {
     private AgentType agentType;
     private JdbcSummaries summaries;
     private TurnHistories histories;
-    private Leases leases;
+    private Locks locks;
     private InferenceProvider provider;
     private InferenceOptions options;
     private int maxTail = 20;
     private int minTail = 8;
-    private Duration leaseTtl = Duration.ofMinutes(2);
     private ObservationRegistry observations = ObservationRegistry.NOOP;
 
     private Config() {}
@@ -121,8 +119,8 @@ public class HeadSummarizer {
     }
 
     /** Whose turn it is. */
-    public Config leases(Leases leases) {
-      this.leases = leases;
+    public Config locks(Locks locks) {
+      this.locks = locks;
       return this;
     }
 
@@ -141,12 +139,6 @@ public class HeadSummarizer {
     public Config tail(int maxTail, int minTail) {
       this.maxTail = maxTail;
       this.minTail = minTail;
-      return this;
-    }
-
-    /** How long one summary may take before another process may assume this one died. */
-    public Config leaseTtl(Duration leaseTtl) {
-      this.leaseTtl = leaseTtl;
       return this;
     }
 
@@ -170,19 +162,18 @@ public class HeadSummarizer {
   private final AgentType agentType;
   private final JdbcSummaries summaries;
   private final TurnHistories histories;
-  private final Leases leases;
+  private final Locks locks;
   private final InferenceProvider provider;
   private final InferenceOptions options;
   private final int maxTail;
   private final int minTail;
-  private final Duration leaseTtl;
   private final SummaryObservation observation;
 
   private HeadSummarizer(Config config) {
     this.agentType = Objects.requireNonNull(config.agentType, "agentType is required");
     this.summaries = Objects.requireNonNull(config.summaries, "summaries are required");
     this.histories = Objects.requireNonNull(config.histories, "histories are required");
-    this.leases = Objects.requireNonNull(config.leases, "leases are required");
+    this.locks = Objects.requireNonNull(config.locks, "locks are required");
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
@@ -195,7 +186,6 @@ public class HeadSummarizer {
     }
     this.maxTail = config.maxTail;
     this.minTail = config.minTail;
-    this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
   }
 
   /**
@@ -216,13 +206,9 @@ public class HeadSummarizer {
       observation.observe(
           agentId,
           () -> {
-            String[] outcome = {"lease-refused"};
-            leases.tryRun(
-                "summary",
-                agentId.value().toString(),
-                leaseTtl,
-                () -> outcome[0] = summarize(agentId));
-            return outcome[0];
+            return locks
+                .tryWithLock(agentId.value().toString(), () -> summarize(agentId))
+                .orElse("lease-refused");
           });
     }
   }

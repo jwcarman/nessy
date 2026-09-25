@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.memory.episodic;
 
 import io.micrometer.observation.ObservationRegistry;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,7 +34,7 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.lease.Leases;
+import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.memory.summarizing.Transcripts;
 import org.slf4j.Logger;
@@ -81,10 +80,9 @@ public class EpisodeSummarizer {
     private AgentType agentType;
     private JdbcEpisodes episodes;
     private TurnHistories histories;
-    private Leases leases;
+    private Locks locks;
     private InferenceProvider provider;
     private InferenceOptions options;
-    private Duration leaseTtl = Duration.ofMinutes(2);
     private ObservationRegistry observations = ObservationRegistry.NOOP;
 
     private Config() {}
@@ -108,8 +106,8 @@ public class EpisodeSummarizer {
     }
 
     /** Whose turn it is. */
-    public Config leases(Leases leases) {
-      this.leases = leases;
+    public Config locks(Locks locks) {
+      this.locks = locks;
       return this;
     }
 
@@ -117,12 +115,6 @@ public class EpisodeSummarizer {
     public Config inference(InferenceProvider provider, InferenceOptions options) {
       this.provider = provider;
       this.options = options;
-      return this;
-    }
-
-    /** How long one agent's summaries may take before another process may assume this one died. */
-    public Config leaseTtl(Duration leaseTtl) {
-      this.leaseTtl = leaseTtl;
       return this;
     }
 
@@ -146,21 +138,19 @@ public class EpisodeSummarizer {
   private final AgentType agentType;
   private final JdbcEpisodes episodes;
   private final TurnHistories histories;
-  private final Leases leases;
+  private final Locks locks;
   private final InferenceProvider provider;
   private final InferenceOptions options;
-  private final Duration leaseTtl;
   private final SummaryObservation observation;
 
   private EpisodeSummarizer(Config config) {
     this.agentType = Objects.requireNonNull(config.agentType, "agentType is required");
     this.episodes = Objects.requireNonNull(config.episodes, "episodes are required");
     this.histories = Objects.requireNonNull(config.histories, "histories are required");
-    this.leases = Objects.requireNonNull(config.leases, "leases are required");
+    this.locks = Objects.requireNonNull(config.locks, "locks are required");
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
-    this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
     this.provider = ObservedInferenceProvider.wrap(config.provider, config.observations);
     this.observation = new SummaryObservation(config.observations, "episode", agentType);
   }
@@ -181,13 +171,9 @@ public class EpisodeSummarizer {
       observation.observe(
           agentId,
           () -> {
-            String[] outcome = {"lease-refused"};
-            leases.tryRun(
-                "episode",
-                agentId.value().toString(),
-                leaseTtl,
-                () -> outcome[0] = summarizeAll(agentId));
-            return outcome[0];
+            return locks
+                .tryWithLock(agentId.value().toString(), () -> summarizeAll(agentId))
+                .orElse("lease-refused");
           });
     }
   }
