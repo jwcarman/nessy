@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
@@ -70,7 +70,7 @@ public sealed interface AgentState<O> {
    *
    * @param arrivedAt when it arrived, passed in rather than read, so the fold has no clock
    */
-  Decision<O> observe(O observation, Instant arrivedAt, ObservationCoalescer<O> coalescer);
+  Decision<O> observe(O observation, Instant arrivedAt, BacklogPolicy<O> policy);
 
   /** An effect this agent owed was performed, and this is what came of it. */
   Decision<O> outcome(EffectOutcome outcome);
@@ -113,8 +113,7 @@ public sealed interface AgentState<O> {
     }
 
     @Override
-    public Decision<O> observe(
-        O observation, Instant arrivedAt, ObservationCoalescer<O> coalescer) {
+    public Decision<O> observe(O observation, Instant arrivedAt, BacklogPolicy<O> policy) {
       return begin(observation, lastSeq, Backlog.empty(), List.of());
     }
 
@@ -154,10 +153,9 @@ public sealed interface AgentState<O> {
     }
 
     @Override
-    public Decision<O> observe(
-        O observation, Instant arrivedAt, ObservationCoalescer<O> coalescer) {
-      Backlog<O> next = backlog.accept(new BacklogItem<>(observation, arrivedAt), coalescer);
-      // A coalescer that dropped the arrival, or a sealed backlog that refused it, changed
+    public Decision<O> observe(O observation, Instant arrivedAt, BacklogPolicy<O> policy) {
+      Backlog<O> next = backlog.accept(new BacklogItem<>(observation, arrivedAt), policy);
+      // A policy that dropped the arrival, or a sealed backlog that refused it, changed
       // nothing -- and a fold that wrote a version bump for that would be recording that
       // something happened when nothing did.
       return next.equals(backlog)
@@ -291,9 +289,8 @@ public sealed interface AgentState<O> {
     }
 
     @Override
-    public Decision<O> observe(
-        O observation, Instant arrivedAt, ObservationCoalescer<O> coalescer) {
-      Backlog<O> next = backlog.accept(new BacklogItem<>(observation, arrivedAt), coalescer);
+    public Decision<O> observe(O observation, Instant arrivedAt, BacklogPolicy<O> policy) {
+      Backlog<O> next = backlog.accept(new BacklogItem<>(observation, arrivedAt), policy);
       return next.equals(backlog)
           ? Decision.ignore()
           : Decision.stay(new AwaitingActions<>(lastSeq, turn, requestSeq, next, outstanding));
@@ -426,8 +423,7 @@ public sealed interface AgentState<O> {
   record Terminated<O>(Seq lastSeq) implements AgentState<O> {
 
     @Override
-    public Decision<O> observe(
-        O observation, Instant arrivedAt, ObservationCoalescer<O> coalescer) {
+    public Decision<O> observe(O observation, Instant arrivedAt, BacklogPolicy<O> policy) {
       // Refused. There is no backlog to put it in and no turn that will ever take it.
       return Decision.ignore();
     }

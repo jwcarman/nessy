@@ -27,10 +27,10 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
-import org.jwcarman.nessy.api.ObservationCoalescer;
 import org.jwcarman.nessy.api.ObservationRenderer;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -83,7 +83,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   private AgentType agentType;
   private SystemPromptSource systemPrompt;
   private ObservationRenderer<O> renderer = ObservationRenderer.asString();
-  private ObservationCoalescer<O> coalescer = ObservationCoalescer.keepAll();
+  private BacklogPolicy<O> policy = BacklogPolicy.keepAll();
 
   private final Inference inference;
   private final Effects effects = new Effects();
@@ -141,8 +141,8 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer) {
-    this.coalescer = coalescer;
+  public DefaultQueuedHarnessConfig<O> backlogPolicy(BacklogPolicy<O> policy) {
+    this.policy = policy;
     return this;
   }
 
@@ -204,8 +204,8 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
     return renderer;
   }
 
-  ObservationCoalescer<O> coalescer() {
-    return coalescer;
+  BacklogPolicy<O> policy() {
+    return policy;
   }
 
   Inference inference() {

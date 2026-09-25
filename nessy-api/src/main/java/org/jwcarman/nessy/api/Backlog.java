@@ -19,10 +19,10 @@ package org.jwcarman.nessy.api;
 import java.util.List;
 
 /**
- * What is waiting for an agent, and what a coalescer may do about it.
+ * What is waiting for an agent, and what a policy may do about it.
  *
- * <p>Handed to an {@link ObservationCoalescer} when an observation arrives, so a strategy says what
- * it wants done rather than rewriting a list. That is what keeps the ordinary cases cheap: keeping
+ * <p>Handed to an {@link BacklogPolicy} when an observation arrives, so a strategy says what it
+ * wants done rather than rewriting a list. That is what keeps the ordinary cases cheap: keeping
  * everything is an append, keeping only the latest is a replace, and neither reads a row or decodes
  * an observation. Only {@link #all()} pays for the backlog, and it is meant to look like it does.
  *
@@ -30,15 +30,15 @@ import java.util.List;
  * strategy that calls {@code all()}, drops something, and calls {@code all()} again sees its own
  * change.
  *
- * <p><b>An ended agent never gets here.</b> Whatever decides to consult a coalescer checks first
+ * <p><b>An ended agent never gets here.</b> Whatever decides to consult a policy checks first
  * whether the agent has been told to end, and refuses the arrival if it has. Anything coalesced
  * into an emptied backlog would be read as work the next time it is asked, which would undo a
  * termination that had already happened.
  *
  * <p><b>It runs with the agent to itself.</b> The transaction that hands this over already holds
- * the agent's row, so nothing else can add to or take from this backlog while a coalescer is
- * running -- which is what makes a snapshot safe to hold and iterate while changing things, and why
- * these operations need no locking of their own.
+ * the agent's row, so nothing else can add to or take from this backlog while a policy is running
+ * -- which is what makes a snapshot safe to hold and iterate while changing things, and why these
+ * operations need no locking of their own.
  *
  * <p>A handle rather than data, and deliberately small. The three strategies that account for
  * nearly everything -- keep everything, keep only the latest, keep at most N -- are one or two

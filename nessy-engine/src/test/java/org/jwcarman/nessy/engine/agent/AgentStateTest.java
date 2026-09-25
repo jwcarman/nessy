@@ -21,7 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.Failure;
@@ -40,7 +40,7 @@ class AgentStateTest {
 
   private static final Instant T0 = Instant.parse("2026-09-08T12:00:00Z");
 
-  private static final ObservationCoalescer<String> KEEP_ALL = ObservationCoalescer.keepAll();
+  private static final BacklogPolicy<String> KEEP_ALL = BacklogPolicy.keepAll();
 
   private static Decision.Advance<String> advance(Decision<String> decision) {
     assertThat(decision).isInstanceOf(Decision.Advance.class);
@@ -116,9 +116,9 @@ class AgentStateTest {
   }
 
   /**
-   * A coalescer that drops the arrival has not made a small change, it has made none -- and the
-   * fold must say so. Anything else writes a version bump and logs a transition for an observation
-   * that was thrown away.
+   * A policy that drops the arrival has not made a small change, it has made none -- and the fold
+   * must say so. Anything else writes a version bump and logs a transition for an observation that
+   * was thrown away.
    */
   @Test
   void anObservationTheCoalescerDropsIsIgnoredRatherThanRecordedAsAFold() {
@@ -127,7 +127,7 @@ class AgentStateTest {
 
     Decision<String> decision =
         new AgentState.Inferring<>(new Seq(1), new TurnId(1), waiting)
-            .observe("go and look", T0, ObservationCoalescer.dropRepeats(o -> o));
+            .observe("go and look", T0, BacklogPolicy.dropRepeats(o -> o));
 
     assertThat(decision)
         .as("the backlog is unchanged, so nothing happened")
@@ -145,7 +145,7 @@ class AgentStateTest {
     Decision.Advance<String> decision =
         advance(
             new AgentState.Inferring<>(new Seq(1), new TurnId(1), waiting)
-                .observe("temp=11", T0, ObservationCoalescer.replaceBy(o -> o.split("=")[0])));
+                .observe("temp=11", T0, BacklogPolicy.replaceBy(o -> o.split("=")[0])));
 
     assertThat(decision.next())
         .as(

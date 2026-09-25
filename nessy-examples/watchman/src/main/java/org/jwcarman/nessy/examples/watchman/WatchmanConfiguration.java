@@ -20,7 +20,7 @@ import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentEventListener;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -98,7 +98,7 @@ public class WatchmanConfiguration {
           config
               .agentType(Watchman.TYPE)
               .systemPrompt(WatchmanPrompt.SYSTEM)
-              .observationCoalescer(ObservationCoalescer.keepLatest());
+              .backlogPolicy(BacklogPolicy.keepLatest());
           // A watchman does rounds forever, so its story grows forever. The tail the model is
           // shown is capped (the default is the last twenty turns); summarising the head into a
           // paragraph is the piece that has not been rebuilt yet.

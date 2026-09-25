@@ -24,7 +24,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.Seq;
@@ -38,7 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class AgentCodecTest {
 
-  private static final ObservationCoalescer<String> KEEP_ALL = ObservationCoalescer.keepAll();
+  private static final BacklogPolicy<String> KEEP_ALL = BacklogPolicy.keepAll();
 
   private final CodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
 

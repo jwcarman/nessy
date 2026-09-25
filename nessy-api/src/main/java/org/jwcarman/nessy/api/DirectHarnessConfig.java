@@ -29,9 +29,9 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  *
  * <p><b>What is absent is absent because nothing here can produce it.</b> There is no effects
  * configuration -- no poll interval and no in-flight cap -- because there is no poller and nothing
- * in flight; the turn runs on the thread that asked for it. There is no coalescer, because
- * coalescing answers "what if more work arrives while this runs", and the only thing that can put
- * work here is the caller, who is blocked.
+ * in flight; the turn runs on the thread that asked for it. There is no policy, because coalescing
+ * answers "what if more work arrives while this runs", and the only thing that can put work here is
+ * the caller, who is blocked.
  *
  * @param <I> what a caller hands in
  */

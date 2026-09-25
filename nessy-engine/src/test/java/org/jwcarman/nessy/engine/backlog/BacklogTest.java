@@ -20,11 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 
 class BacklogTest {
 
-  private static final ObservationCoalescer<String> KEEP_ALL = ObservationCoalescer.keepAll();
+  private static final BacklogPolicy<String> KEEP_ALL = BacklogPolicy.keepAll();
 
   private static final Instant T0 = Instant.parse("2026-09-05T12:00:00Z");
 
@@ -127,7 +127,7 @@ class BacklogTest {
         .isEqualTo(sealed);
   }
 
-  /** The coalescer is never consulted once nothing more can be taken. */
+  /** The policy is never consulted once nothing more can be taken. */
   @Test
   void aSealedBacklogDoesNotConsultTheCoalescer() {
     Backlog<String> sealed = Backlog.<String>empty().seal();
@@ -136,7 +136,7 @@ class BacklogTest {
         sealed.accept(
             item("too late"),
             (backlog, incoming) -> {
-              throw new AssertionError("the coalescer must not be asked");
+              throw new AssertionError("the policy must not be asked");
             });
 
     assertThat(after).isEqualTo(sealed);

@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -155,7 +155,7 @@ class TerminationAndConfigurationTest {
                     config
                         .agentType(new AgentType("chat-configured"))
                         .systemPrompt("You are a test assistant.")
-                        .observationCoalescer(ObservationCoalescer.keepAll())
+                        .backlogPolicy(BacklogPolicy.keepAll())
                         .listener(AgentEventListener.none())
                         .inference(
                             in ->

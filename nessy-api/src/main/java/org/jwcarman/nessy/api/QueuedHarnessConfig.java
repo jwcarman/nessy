@@ -58,10 +58,10 @@ public interface QueuedHarnessConfig<O> {
   /**
    * What the backlog becomes when an observation arrives while the agent is busy.
    *
-   * <p>Defaults to {@link ObservationCoalescer#keepAll()} -- right for anything a person said,
-   * wrong for a sensor, and only the application knows which it has.
+   * <p>Defaults to {@link BacklogPolicy#keepAll()} -- right for anything a person said, wrong for a
+   * sensor, and only the application knows which it has.
    */
-  QueuedHarnessConfig<O> observationCoalescer(ObservationCoalescer<O> coalescer);
+  QueuedHarnessConfig<O> backlogPolicy(BacklogPolicy<O> policy);
 
   /** Adjusts how this agent type infers, using the factory's provider. */
   QueuedHarnessConfig<O> inference(Consumer<InferenceConfig> customizer);

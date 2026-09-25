@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.history.HistoryEntry;
 import org.jwcarman.nessy.inference.Seq;
@@ -44,7 +44,7 @@ import org.jwcarman.nessy.inference.tool.ToolName;
 class AwaitingActionsTest {
 
   private static final Instant T0 = Instant.parse("2026-09-08T12:00:00Z");
-  private static final ObservationCoalescer<String> KEEP_ALL = ObservationCoalescer.keepAll();
+  private static final BacklogPolicy<String> KEEP_ALL = BacklogPolicy.keepAll();
 
   private static Decision.Advance<String> advance(Decision<String> decision) {
     assertThat(decision).isInstanceOf(Decision.Advance.class);

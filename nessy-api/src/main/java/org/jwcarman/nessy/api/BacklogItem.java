@@ -27,8 +27,7 @@ import java.util.Objects;
  *
  * <p>{@code arrivedAt} is the arriving item's own time rather than a clock read while queuing, so
  * anything that reasons about age is a pure function of what it was given. That is what lets a
- * coalescer expire stale entries without reading a clock, and it is why the field is not called
- * "now".
+ * policy expire stale entries without reading a clock, and it is why the field is not called "now".
  *
  * @param <O> the application's observation type
  */

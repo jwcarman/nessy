@@ -221,7 +221,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     DefaultHarness<O> harness =
         new DefaultHarness<>(
             agentType,
-            config.coalescer(),
+            config.policy(),
             new AgentStateStore<>(agentType, codecs.create(stateType), states),
             new AgentHistoryStore<>(agentType, config.renderer(), history),
             effects,

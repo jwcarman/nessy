@@ -19,7 +19,8 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.ListBacklog;
 
 /**
  * Observations waiting for an agent that is busy, and the agent's own ending.
@@ -51,13 +52,13 @@ public sealed interface Backlog<O> {
   /**
    * Offers an observation, letting the application say what the backlog becomes.
    *
-   * <p>The coalescer arrives as an argument rather than living here because a backlog is stored: it
-   * is one opaque value beside the agent's state, and a function has no serialised form. So the
-   * policy is supplied at the moment it is applied and gone the instant it returns.
+   * <p>The policy arrives as an argument rather than living here because a backlog is stored: it is
+   * one opaque value beside the agent's state, and a function has no serialised form. So the policy
+   * is supplied at the moment it is applied and gone the instant it returns.
    *
    * <p>Returning {@code this} means the arrival changed nothing, and the fold reads it that way.
    */
-  Backlog<O> accept(BacklogItem<O> incoming, ObservationCoalescer<O> coalescer);
+  Backlog<O> accept(BacklogItem<O> incoming, BacklogPolicy<O> policy);
 
   /** What to work on next, if anything. */
   Pull<O> next();
@@ -91,8 +92,13 @@ public sealed interface Backlog<O> {
     }
 
     @Override
-    public Backlog<O> accept(BacklogItem<O> incoming, ObservationCoalescer<O> coalescer) {
-      return new Open<>(coalescer.coalesce(items, incoming));
+    public Backlog<O> accept(BacklogItem<O> incoming, BacklogPolicy<O> policy) {
+      // The policy operates on a backlog rather than returning one, so it is given a list to
+      // operate on and what it leaves behind becomes the next state. Against a database the same
+      // calls are statements; here they are an ArrayList, and a policy cannot tell.
+      ListBacklog<O> working = new ListBacklog<>(items);
+      policy.coalesce(working, incoming);
+      return new Open<>(working.items());
     }
 
     @Override
@@ -123,9 +129,9 @@ public sealed interface Backlog<O> {
   record Sealed<O>() implements Backlog<O> {
 
     @Override
-    public Backlog<O> accept(BacklogItem<O> incoming, ObservationCoalescer<O> coalescer) {
+    public Backlog<O> accept(BacklogItem<O> incoming, BacklogPolicy<O> policy) {
       // Refused rather than silently swallowed: an observation queued here could never be
-      // taken, and the caller would have been told it was accepted. The coalescer is not
+      // taken, and the caller would have been told it was accepted. The policy is not
       // consulted -- a cap or a merge has no say once nothing more can be taken.
       return this;
     }

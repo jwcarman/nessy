@@ -25,7 +25,7 @@ import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.ObservationCoalescer;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.AgentState;
@@ -73,12 +73,12 @@ final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, 
   /**
    * The one caller-supplied strategy this object keeps.
    *
-   * <p>The renderer went to the history store because what it makes is stored; a coalescer makes
+   * <p>The renderer went to the history store because what it makes is stored; a policy makes
    * state, and state never leaves the fold. It cannot live in the backlog either -- that is
    * serialised beside the agent, and a function has no stored form -- so it is held here and handed
    * in.
    */
-  private final ObservationCoalescer<O> coalescer;
+  private final BacklogPolicy<O> policy;
 
   private final AgentStateStore<O> states;
   private final HistoryStore<O> history;
@@ -92,7 +92,7 @@ final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, 
 
   DefaultHarness(
       AgentType agentType,
-      ObservationCoalescer<O> coalescer,
+      BacklogPolicy<O> policy,
       AgentStateStore<O> states,
       HistoryStore<O> history,
       EffectStore effects,
@@ -101,7 +101,7 @@ final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, 
       Clock clock,
       Traces traces) {
     this.agentType = agentType;
-    this.coalescer = coalescer;
+    this.policy = policy;
     this.states = states;
     this.history = history;
     this.effects = effects;
@@ -154,7 +154,7 @@ final class DefaultHarness<O> implements QueuedHarness<O>, AgentEffectCallback, 
               agentId,
               "observation",
               Trace.CURRENT,
-              state -> state.observe(observation, arrivedAt, coalescer));
+              state -> state.observe(observation, arrivedAt, policy));
           return null;
         });
   }

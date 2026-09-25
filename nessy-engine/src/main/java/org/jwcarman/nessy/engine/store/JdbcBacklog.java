@@ -147,14 +147,14 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   /**
    * End this agent, and abandon whatever it was going to do.
    *
-   * <p>Not on {@link Backlog}: a coalescer decides what waits, not whether the agent lives. The
-   * mark and the emptying belong to the same transaction, so an agent cannot be left ended with
-   * work still queued behind it.
+   * <p>Not on {@link Backlog}: a policy decides what waits, not whether the agent lives. The mark
+   * and the emptying belong to the same transaction, so an agent cannot be left ended with work
+   * still queued behind it.
    *
    * <p><b>Nothing may be coalesced into a sealed agent afterwards.</b> An arrival that got past
    * this would put something back into an emptied backlog, and the next read would answer with an
    * item rather than the pill -- undoing a termination that had already happened. The check belongs
-   * before the coalescer is consulted, not after.
+   * before the policy is consulted, not after.
    *
    * @return how many were abandoned, so that work thrown away is counted rather than vanishing
    */
