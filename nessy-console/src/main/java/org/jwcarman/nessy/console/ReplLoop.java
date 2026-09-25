@@ -30,18 +30,28 @@ import org.jwcarman.nessy.api.Outcome;
  */
 final class ReplLoop {
 
+  /** What a person types to be told what they are actually talking to. */
+  private static final String DIAGNOSTIC = "/config";
+
   private final DirectHarness<String> harness;
   private final AgentId agentId;
   private final ReplConfig config;
   private final ConsoleIo io;
   private final ConsoleNarration narration;
 
+  private final Diagnostics diagnostics;
+
+  /** What was actually wired up, for a person who typed a model name at one vendor's key. */
+  record Diagnostics(String provider, String model, int maxTokens) {}
+
   ReplLoop(
       DirectHarness<String> harness,
       AgentId agentId,
       ReplConfig config,
       ConsoleIo io,
-      ConsoleNarration narration) {
+      ConsoleNarration narration,
+      Diagnostics diagnostics) {
+    this.diagnostics = diagnostics;
     this.harness = harness;
     this.agentId = agentId;
     this.config = config;
@@ -60,6 +70,10 @@ final class ReplLoop {
       if (line == null || config.isExit(line)) {
         break;
       }
+      if (DIAGNOSTIC.equalsIgnoreCase(line.strip())) {
+        describe();
+        continue;
+      }
       if (!line.isBlank()) {
         narration.beginTurn();
         report(harness.ask(agentId, line));
@@ -70,6 +84,28 @@ final class ReplLoop {
       io.write(System.lineSeparator() + config.farewell() + System.lineSeparator());
       io.flush();
     }
+  }
+
+  /**
+   * What is actually configured.
+   *
+   * <p>Which provider answers is decided by which key happens to be set, and the model name is
+   * chosen separately, so the two can disagree and the only sign is a 404 from a vendor nobody
+   * meant to call. This is the question that makes that visible before it happens.
+   */
+  private void describe() {
+    io.write(System.lineSeparator());
+    line("provider", diagnostics.provider());
+    line("model", diagnostics.model());
+    line("max tokens", Integer.toString(diagnostics.maxTokens()));
+    line("agent", config.type().value() + " / " + agentId.value());
+    line("tools", config.granted().isEmpty() ? "(none)" : String.join(", ", config.granted()));
+    line("history", "in memory; this conversation ends with this process");
+    io.flush();
+  }
+
+  private void line(String label, String value) {
+    io.write("  %-12s %s%n".formatted(label, value));
   }
 
   private void report(Outcome<String> outcome) {

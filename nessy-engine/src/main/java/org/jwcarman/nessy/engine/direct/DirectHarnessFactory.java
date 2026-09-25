@@ -78,6 +78,17 @@ public final class DirectHarnessFactory {
         mapper);
   }
 
+  /**
+   * The vendor behind this, as the OpenTelemetry GenAI conventions name it.
+   *
+   * <p>Worth being able to ask. Which provider answers is decided by which key happens to be set,
+   * and a model name that belongs to a different vendor fails as a 404 from one nobody meant to
+   * call.
+   */
+  public String providerName() {
+    return provider.providerName();
+  }
+
   public <I> DirectHarness<I> create(Consumer<DirectHarnessConfig<I>> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>();

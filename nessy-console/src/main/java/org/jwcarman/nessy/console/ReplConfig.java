@@ -50,6 +50,10 @@ public final class ReplConfig {
   private String banner = "";
   private String prompt = "> ";
   private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
+
+  /** What was granted, in the order it was granted, so the terminal can say what it can do. */
+  private final List<String> granted = new ArrayList<>();
+
   private String farewell = "";
   private SystemPromptSource systemPrompt =
       SystemPromptSource.constant(
@@ -133,6 +137,7 @@ public final class ReplConfig {
 
   public <I> ReplConfig tool(Tool<I> tool) {
     Objects.requireNonNull(tool, "tool must not be null");
+    granted.add(tool.name().value());
     tools.add(harness -> harness.tool(tool));
     return this;
   }
@@ -140,6 +145,7 @@ public final class ReplConfig {
   public <I> ReplConfig tool(Tool<I> tool, Consumer<ToolConfig<I>> customizer) {
     Objects.requireNonNull(tool, "tool must not be null");
     Objects.requireNonNull(customizer, "customizer must not be null");
+    granted.add(tool.name().value());
     tools.add(harness -> harness.tool(tool, customizer));
     return this;
   }
@@ -162,6 +168,10 @@ public final class ReplConfig {
 
   String prompt() {
     return prompt;
+  }
+
+  List<String> granted() {
+    return List.copyOf(granted);
   }
 
   boolean isExit(String line) {

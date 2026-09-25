@@ -25,7 +25,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentEvent;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 
@@ -46,7 +51,14 @@ class ReplLoopTest {
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
     harness.narrateTo(narration);
-    new ReplLoop(harness, AGENT, config, console, narration).run();
+    new ReplLoop(
+            harness,
+            AGENT,
+            config,
+            console,
+            narration,
+            new ReplLoop.Diagnostics("openai", "a-model", 4096))
+        .run();
   }
 
   private static ReplConfig config() {
@@ -263,5 +275,42 @@ class ReplLoopTest {
       run(harness, console, config());
       assertThat(console.written()).contains("hi").doesNotContain("without saying anything");
     }
+  }
+
+  @Test
+  @DisplayName("says what is actually configured, which the 404 from the wrong vendor does not")
+  void the_diagnostic_says_what_is_wired_up() {
+    FakeHarness harness = new FakeHarness();
+    FakeConsole console = new FakeConsole("/config", "/exit");
+
+    run(harness, console, config().tool(namedTool("days_until")));
+
+    assertThat(console.written()).contains("openai").contains("a-model").contains("days_until");
+    assertThat(harness.observed()).as("asking what is configured is not a turn").isEmpty();
+  }
+
+  /** Just enough of a tool to have a name worth reporting. */
+  private static Tool<Void> namedTool(String name) {
+    return new Tool<Void>() {
+      @Override
+      public Class<Void> inputType() {
+        return Void.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName(name);
+      }
+
+      @Override
+      public String description() {
+        return "does something";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Void> request) {
+        return Awaited.ready(ToolResult.ok(new Block.Text("done")));
+      }
+    };
   }
 }

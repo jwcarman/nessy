@@ -82,7 +82,14 @@ public final class Repl {
                   .listener(narration);
               config.tools().forEach(grant -> grant.accept(h));
             });
-    new ReplLoop(harness, config.agentId(), config, io, narration).run();
+    new ReplLoop(
+            harness,
+            config.agentId(),
+            config,
+            io,
+            narration,
+            new ReplLoop.Diagnostics(factory.providerName(), model, config.maxTokens()))
+        .run();
   }
 
   /**
