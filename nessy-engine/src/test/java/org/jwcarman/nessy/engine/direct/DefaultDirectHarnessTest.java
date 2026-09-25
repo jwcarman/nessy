@@ -30,8 +30,11 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -46,6 +49,8 @@ import org.jwcarman.nessy.lease.LocalLocks;
 import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.lease.Locks.Attempt;
 import org.jwcarman.nessy.spi.store.PayloadStore;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A whole turn, on one thread, with a map for storage.
@@ -58,6 +63,8 @@ class DefaultDirectHarnessTest {
 
   private static final ToolName LOOKUP = new ToolName("lookup");
   private static final CallId CALL = new CallId("call-1");
+  private static final InputSchemaGenerator SCHEMAS = new VictoolsInputSchemaGenerator();
+  private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
   private final InMemoryAgentEventStore events = new InMemoryAgentEventStore();
   private final InMemoryPayloads payloads = new InMemoryPayloads();
@@ -90,7 +97,9 @@ class DefaultDirectHarnessTest {
         new SystemPrompt("You are terse."),
         InferenceOptions.of("a-model"),
         (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
-        tools);
+        tools,
+        SCHEMAS,
+        MAPPER);
   }
 
   private static InferenceResult answering(String text) {
@@ -125,7 +134,7 @@ class DefaultDirectHarnessTest {
         harness(new Scripted().then(answering("forty two")), Map.of())
             .ask(AgentId.random(), "what is the answer?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered("forty two"));
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("forty two"));
   }
 
   @Test
@@ -138,7 +147,7 @@ class DefaultDirectHarnessTest {
         harness(model, Map.of(LOOKUP, tool("found it"))).ask(agent, "look up my charge");
 
     System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE));
-    assertThat(outcome).isEqualTo(new Outcome.Answered("charge 42.00"));
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .containsExactly(
@@ -245,9 +254,9 @@ class DefaultDirectHarnessTest {
           }
         };
 
-    Outcome outcome = harness(model, Map.of(LOOKUP, broken)).ask(agent, "try");
+    Outcome<String> outcome = harness(model, Map.of(LOOKUP, broken)).ask(agent, "try");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered("sorry"));
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
@@ -293,13 +302,15 @@ class DefaultDirectHarnessTest {
             InferenceOptions.of("a-model"),
             (Function<String, List<Block.ObservationContent>>)
                 text -> List.of(new Block.Text(text)),
-            Map.of());
+            Map.of(),
+            SCHEMAS,
+            MAPPER);
 
     AgentId agent = AgentId.random();
 
-    Outcome outcome = harness.ask(agent, "anyone home?");
+    Outcome<String> outcome = harness.ask(agent, "anyone home?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Busy());
+    assertThat(outcome).isEqualTo(new Outcome.Busy<>());
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
         .as("nothing was appended, so nothing has to be undone")
         .isEmpty();
@@ -327,15 +338,75 @@ class DefaultDirectHarnessTest {
     DefaultDirectHarness<String> harness = harness(slow, Map.of());
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome> holder = callers.submit(() -> harness.ask(agent, "hello"));
+      Future<Outcome<String>> holder = callers.submit(() -> harness.ask(agent, "hello"));
       inTurn.await();
 
-      List<Outcome> refused =
+      List<Outcome<String>> refused =
           IntStream.range(0, 7).mapToObj(_ -> harness.ask(agent, "hello")).toList();
 
-      assertThat(refused).as("every one of them, at once").containsOnly(new Outcome.Busy());
+      assertThat(refused).as("every one of them, at once").containsOnly(new Outcome.Busy<>());
       release.countDown();
-      assertThat(holder.get()).isEqualTo(new Outcome.Answered("hi"));
+      assertThat(holder.get()).isEqualTo(new Outcome.Answered<>("hi"));
     }
+  }
+
+  /** What a caller asks for when it wants data back rather than prose. */
+  record Capital(String city, String country) {}
+
+  @Test
+  @DisplayName("asking for a shape sends the schema and hands back the shape, not the JSON")
+  void an_answer_can_be_asked_for_in_a_shape() {
+    Scripted model = new Scripted().then(answering("{\"city\":\"Paris\",\"country\":\"France\"}"));
+
+    Outcome<Capital> outcome =
+        harness(model, Map.of()).ask(AgentId.random(), "capital of France?", Capital.class);
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France")));
+    assertThat(model.seen).hasSize(1);
+    assertThat(model.seen.getFirst().outputSchema())
+        .as("the provider was told the shape, which is the whole point")
+        .isPresent();
+    assertThat(model.seen.getFirst().outputSchema().orElseThrow().json())
+        .contains("city")
+        .contains("country");
+  }
+
+  @Test
+  @DisplayName("asking for nothing in particular sends no schema at all")
+  void prose_is_asked_for_without_a_shape() {
+    Scripted model = new Scripted().then(answering("Paris."));
+
+    Outcome<String> outcome = harness(model, Map.of()).ask(AgentId.random(), "capital?");
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("Paris."));
+    assertThat(model.seen.getFirst().outputSchema()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("an answer that will not fit the shape fails the turn rather than being handed back")
+  void an_answer_that_misses_the_shape_fails() {
+    Scripted model = new Scripted().then(answering("Paris, obviously."));
+
+    Outcome<Capital> outcome =
+        harness(model, Map.of()).ask(AgentId.random(), "capital of France?", Capital.class);
+
+    assertThat(outcome)
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Outcome.Failed.class))
+        .extracting(Outcome.Failed::reason)
+        .asString()
+        .contains("did not fit");
+  }
+
+  @Test
+  @DisplayName("a TypeRef carries type arguments a Class cannot")
+  void a_shape_with_type_arguments_is_parsed_whole() {
+    Scripted model =
+        new Scripted().then(answering("[{\"city\":\"Paris\",\"country\":\"France\"}]"));
+
+    Outcome<List<Capital>> outcome =
+        harness(model, Map.of())
+            .ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
   }
 }

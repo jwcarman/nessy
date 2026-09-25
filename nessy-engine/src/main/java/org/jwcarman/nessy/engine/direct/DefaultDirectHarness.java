@@ -20,11 +20,15 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
@@ -36,6 +40,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.ToolOffer;
@@ -44,6 +49,7 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.spi.store.PayloadStore;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * A turn, run on the calling thread.
@@ -68,6 +74,11 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final Function<I, List<Block.ObservationContent>> renderer;
   private final Map<ToolName, DirectTool> tools;
 
+  /** How a Java type becomes a schema, and how an answer in that shape becomes the type back. */
+  private final InputSchemaGenerator schemas;
+
+  private final ObjectMapper mapper;
+
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
 
@@ -79,7 +90,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       SystemPrompt systemPrompt,
       InferenceOptions options,
       Function<I, List<Block.ObservationContent>> renderer,
-      Map<ToolName, DirectTool> tools) {
+      Map<ToolName, DirectTool> tools,
+      InputSchemaGenerator schemas,
+      ObjectMapper mapper) {
     this.locks = locks;
     this.events = events;
     this.payloads = payloads;
@@ -89,6 +102,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.options = options;
     this.renderer = renderer;
     this.tools = Map.copyOf(tools);
+    this.schemas = schemas;
+    this.mapper = mapper;
     this.toolset = Toolset.of(offersOf(this.tools));
   }
 
@@ -99,17 +114,34 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   @Override
-  public Outcome ask(AgentId agent, I input) {
-    // One turn at a time per agent. Two callers asking at once used to race on that agent's
-    // stream and find out at the append; now the second is told the agent is busy and nothing it
-    // did has to be undone. expectedLast still guards the append, because a lease can expire under
-    // a holder that is merely slow -- this stops two callers, that stops two writers.
-    return locks
-        .tryWithLock(agent.value().toString(), () -> runTurn(agent, input))
-        .orElse(new Outcome.Busy());
+  public Outcome<String> ask(AgentId agent, I input) {
+    return under(agent, () -> runTurn(agent, input, Optional.empty(), this::saidText));
   }
 
-  private Outcome runTurn(AgentId agent, I input) {
+  @Override
+  public <T> Outcome<T> ask(AgentId agent, I input, TypeRef<T> type) {
+    Objects.requireNonNull(type, "type must not be null");
+    // The same generator the tools use: turning a Java type into a JSON schema is one job, and a
+    // provider constrains an answer with the same kind of document it constrains an argument with.
+    OutputSchema shape = new OutputSchema(schemas.generate(type.rawClass()).json());
+    return under(
+        agent, () -> runTurn(agent, input, Optional.of(shape), answered -> read(answered, type)));
+  }
+
+  /** One turn at a time per agent, whatever shape was asked for. */
+  private <T> Outcome<T> under(AgentId agent, Supplier<Outcome<T>> turn) {
+    // Two callers asking at once used to race on that agent's stream and find out at the append;
+    // now the second is told the agent is busy and nothing it did has to be undone. expectedLast
+    // still guards the append, because a lease can expire under a holder that is merely slow --
+    // this stops two callers, that stops two writers.
+    return locks.tryWithLock(agent.value().toString(), turn).orElse(new Outcome.Busy<>());
+  }
+
+  private <T> Outcome<T> runTurn(
+      AgentId agent,
+      I input,
+      Optional<OutputSchema> shape,
+      Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
     // TWO READS, and they are not the same read.
     //
     // The state is rebuilt from the watermark alone -- the latest turn, and nothing before it.
@@ -140,13 +172,13 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       state = state.applyAll(decision.events());
 
       for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(effect, history));
+        pending.add(perform(effect, history, shape));
       }
     }
 
     // A closed turn is folded and will not change, so replay starts after it next time.
     events.watermark(agent, state.seq());
-    return outcome(history);
+    return outcome(history, reading);
   }
 
   @Override
@@ -165,9 +197,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   /** Where the outside world happens: everything slow, everything non-deterministic. */
-  private AgentCommand perform(AgentEffect effect, List<AgentEvent> history) {
+  private AgentCommand perform(
+      AgentEffect effect, List<AgentEvent> history, Optional<OutputSchema> shape) {
     return switch (effect) {
-      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(history));
+      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(history, shape));
 
       // Nothing here can park, so approval is a policy answering now. A desk that needs a person
       // belongs on the queued door, which has somewhere to put the waiting.
@@ -198,10 +231,11 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
-  private AgentCommand.InferenceOutcome infer(List<AgentEvent> history) {
+  private AgentCommand.InferenceOutcome infer(
+      List<AgentEvent> history, Optional<OutputSchema> shape) {
     InferenceRequest request =
         new InferenceRequest(
-            systemPrompt, InferenceContext.of(transcript.of(history)), toolset, options);
+            systemPrompt, InferenceContext.of(transcript.of(history)), toolset, options, shape);
 
     return switch (provider.infer(request)) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
@@ -248,21 +282,44 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
-  private Outcome outcome(List<AgentEvent> history) {
+  private <T> Outcome<T> outcome(
+      List<AgentEvent> history, Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
     return history.reversed().stream()
-        .map(this::asOutcome)
-        .filter(java.util.Objects::nonNull)
+        .map(event -> asOutcome(event, reading))
+        .filter(Objects::nonNull)
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("a turn that ended without ending"));
   }
 
-  private Outcome asOutcome(AgentEvent event) {
+  private <T> Outcome<T> asOutcome(
+      AgentEvent event, Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
     return switch (event) {
-      case AgentEvent.InferenceAnswered answered -> new Outcome.Answered(textOf(answered));
-      case AgentEvent.InferenceRefused refused -> new Outcome.Refused(refused.category());
-      case AgentEvent.InferenceFailed failed -> new Outcome.Failed(failed.failure().reason());
+      case AgentEvent.InferenceAnswered answered -> reading.apply(answered);
+      case AgentEvent.InferenceRefused refused -> new Outcome.Refused<>(refused.category());
+      case AgentEvent.InferenceFailed failed -> new Outcome.Failed<>(failed.failure().reason());
       default -> null;
     };
+  }
+
+  /** What a caller who asked for no particular shape gets: whatever the model said. */
+  private Outcome<String> saidText(AgentEvent.InferenceAnswered answered) {
+    return new Outcome.Answered<>(textOf(answered));
+  }
+
+  /**
+   * The answer, parsed into the shape it was asked for.
+   *
+   * <p>A model that answered around the schema fails the turn rather than handing back something
+   * that does not fit -- which is the whole reason a caller asked for a shape instead of prose.
+   */
+  private <T> Outcome<T> read(AgentEvent.InferenceAnswered answered, TypeRef<T> type) {
+    String json = textOf(answered);
+    try {
+      return new Outcome.Answered<>(mapper.readValue(json, mapper.constructType(type.getType())));
+    } catch (RuntimeException notTheShape) {
+      return new Outcome.Failed<>(
+          "the answer did not fit " + type + ": " + notTheShape.getMessage());
+    }
   }
 
   private String textOf(AgentEvent.InferenceAnswered answered) {

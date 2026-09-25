@@ -16,13 +16,19 @@
 package org.jwcarman.nessy.api;
 
 /** What came of asking. */
-public sealed interface Outcome {
+public sealed interface Outcome<T> {
 
-  /** The model answered. */
-  record Answered(String text) implements Outcome {}
+  /**
+   * The model answered.
+   *
+   * <p>Text when nothing was asked of the answer's shape, and the shape itself when something was
+   * -- the same arm either way, because a caller that asked for an invoice wants an invoice, not an
+   * invoice it has to parse.
+   */
+  record Answered<T>(T value) implements Outcome<T> {}
 
   /** The model declined, and would decline again. */
-  record Refused(String category) implements Outcome {}
+  record Refused<T>(String category) implements Outcome<T> {}
 
   /**
    * The turn ended without an answer.
@@ -30,8 +36,12 @@ public sealed interface Outcome {
    * <p>Carries the reason rather than a sentence, because what matters about a failed inference is
    * whether trying again could work -- which is the opposite of a failed tool call, whose message
    * exists for the model to read.
+   *
+   * <p>An answer that would not fit the shape it was asked for arrives here too. The turn happened
+   * and the model spoke; what came back was not the thing requested, which is a failure of the
+   * asking rather than a refusal by the model.
    */
-  record Failed(String reason) implements Outcome {}
+  record Failed<T>(String reason) implements Outcome<T> {}
 
   /**
    * Somebody else is already running a turn on this scope, so this one never started.
@@ -43,5 +53,5 @@ public sealed interface Outcome {
    * <p>Says nothing about who holds the scope or for how long. Nothing can know that honestly; only
    * that a moment ago it was taken.
    */
-  record Busy() implements Outcome {}
+  record Busy<T>() implements Outcome<T> {}
 }
