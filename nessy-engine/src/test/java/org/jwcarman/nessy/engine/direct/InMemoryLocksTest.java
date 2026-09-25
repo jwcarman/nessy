@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.lease;
+package org.jwcarman.nessy.engine.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,12 +31,13 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.lease.Locks.Attempt;
+import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.spi.lock.Locks.Attempt;
 
 @DisplayName("Locks held in this process")
-class LocalLocksTest {
+class InMemoryLocksTest {
 
-  private final Locks locks = new LocalLocks();
+  private final Locks locks = new InMemoryLocks();
   private final ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor();
 
   private static boolean ran(Attempt<?> attempt) {
@@ -181,7 +182,7 @@ class LocalLocksTest {
   @Test
   @DisplayName("refuse a size with no locks in it, and work with only one")
   void the_stripe_count_is_checked_where_it_is_given() {
-    assertThatThrownBy(() -> new LocalLocks(0)).isInstanceOf(IllegalArgumentException.class);
-    assertThat(ran(new LocalLocks(1).tryWithLock("a", () -> "ran"))).isTrue();
+    assertThatThrownBy(() -> new InMemoryLocks(0)).isInstanceOf(IllegalArgumentException.class);
+    assertThat(ran(new InMemoryLocks(1).tryWithLock("a", () -> "ran"))).isTrue();
   }
 }

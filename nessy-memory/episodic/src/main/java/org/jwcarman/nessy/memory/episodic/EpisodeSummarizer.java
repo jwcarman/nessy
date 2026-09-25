@@ -34,9 +34,9 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.lease.Locks;
 import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.memory.summarizing.Transcripts;
+import org.jwcarman.nessy.spi.lock.Locks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

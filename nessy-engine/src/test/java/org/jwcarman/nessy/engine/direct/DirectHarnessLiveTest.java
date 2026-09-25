@@ -32,14 +32,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.tool.Tools;
-import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
-import org.jwcarman.nessy.lease.LocalLocks;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -75,23 +72,18 @@ class DirectHarnessLiveTest {
 
   record Answer(String answer, boolean confident) {}
 
-  private static DefaultDirectHarness<String> harness() {
+  private static DirectHarness<String> harness() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
-    return new DefaultDirectHarness<>(
-        new LocalLocks(),
-        TYPE,
-        new InMemoryAgentEventStore(),
-        new InMemoryPayloads(),
-        OpenAiInferenceProvider.create(c -> c.apiKey(key()).baseUrl(BASE_URL)),
-        new SystemPrompt("You are a terse assistant."),
-        new InferenceOptions(MODEL, 4096),
-        text -> List.of(new Block.Text(text)),
-        Tools.none(),
-        new VictoolsInputSchemaGenerator(),
-        JsonMapper.builder().build(),
-        List.of(),
-        MAX_TAIL,
-        List.of());
+    return DirectHarnessFactory.inMemory(
+            OpenAiInferenceProvider.create(c -> c.apiKey(key()).baseUrl(BASE_URL)),
+            new VictoolsInputSchemaGenerator(),
+            JsonMapper.builder().build())
+        .<String>create(
+            c ->
+                c.agentType(TYPE)
+                    .systemPrompt("You are a terse assistant.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model(MODEL).maxTokens(4096)));
   }
 
   private static String key() {

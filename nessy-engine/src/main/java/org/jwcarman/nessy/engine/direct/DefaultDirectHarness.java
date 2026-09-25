@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.AgentEventListener;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
@@ -32,6 +33,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
@@ -48,19 +50,22 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.lease.Locks;
+import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.spi.narration.AgentNarrator;
 import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -76,13 +81,15 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultDirectHarness.class);
+
   private final Locks locks;
   private final AgentType agentType;
   private final AgentEventStore events;
   private final PayloadStore payloads;
   private final InferenceProvider provider;
   private final Transcript transcript;
-  private final SystemPrompt systemPrompt;
+  private final SystemPromptSource systemPrompt;
   private final InferenceOptions options;
   private final Function<I, List<Block.ObservationContent>> renderer;
   private final Tools tools;
@@ -95,6 +102,16 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   /** What the model is shown, assembled the same way the queued door assembles it. */
   private final InferenceContextAssembler assembler;
 
+  /**
+   * Who is watching, told on the calling thread.
+   *
+   * <p>Synchronously and in order, which the queued door cannot do: there it hands narration to a
+   * thread of its own so a slow listener never delays an agent. Here the caller IS the thing that
+   * would be delayed, and it is already waiting -- so a listener that blocks blocks the turn it is
+   * watching, which is the honest arrangement when somebody is holding the answer.
+   */
+  private final List<AgentEventListener> listeners;
+
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
 
@@ -104,7 +121,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       AgentEventStore events,
       PayloadStore payloads,
       InferenceProvider provider,
-      SystemPrompt systemPrompt,
+      SystemPromptSource systemPrompt,
       InferenceOptions options,
       Function<I, List<Block.ObservationContent>> renderer,
       Tools tools,
@@ -112,7 +129,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       ObjectMapper mapper,
       List<Summarizer> summaries,
       int maxTail,
-      List<AmbientSource> ambient) {
+      List<AmbientSource> ambient,
+      List<AgentEventListener> listeners) {
     this.locks = locks;
     this.agentType = agentType;
     this.events = events;
@@ -127,6 +145,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.mapper = mapper;
     // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
     // however the turn was started, and a second implementation of it would drift.
+    this.listeners = List.copyOf(listeners);
     this.assembler =
         new ContextAssembler(
             (type, id) -> new EventStreamHistory(events, transcript, id),
@@ -333,13 +352,13 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private AgentCommand.InferenceOutcome infer(AgentId agent, Optional<OutputSchema> shape) {
     InferenceRequest request =
         new InferenceRequest(
-            systemPrompt,
+            systemPrompt.forAgent(agent),
             assembler.assemble(new InferenceInvocation(agentType, agent, options)),
             toolset,
             options,
             shape);
 
-    return switch (provider.infer(request)) {
+    return switch (provider.infer(request, narratorFor(agent))) {
       case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
           new AgentCommand.InferenceOutcome.Answered(payloads.put(blocks));
       case InferenceResult.Refusal(String category, var _) ->
@@ -350,6 +369,30 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           new AgentCommand.InferenceOutcome.RequestedActions(
               payloads.put(blocks), requested(blocks));
     };
+  }
+
+  /**
+   * What a provider says while it is still saying it, turned into events for whoever is watching.
+   *
+   * <p>Best-effort by contract: a listener that throws is not allowed to fail a turn the caller is
+   * waiting on, and a watcher that misses every fragment still gets the answer.
+   */
+  private InferenceNarrator narratorFor(AgentId agent) {
+    if (listeners.isEmpty()) {
+      return InferenceNarrator.silent();
+    }
+    AgentNarrator narrator = event -> tell(agent, event);
+    return narrator.forInference();
+  }
+
+  private void tell(AgentId agent, org.jwcarman.nessy.api.AgentEvent event) {
+    for (AgentEventListener listener : listeners) {
+      try {
+        listener.on(agentType, agent, event);
+      } catch (RuntimeException broken) {
+        LOG.warn("a listener threw while being told {}", event.getClass().getSimpleName(), broken);
+      }
+    }
   }
 
   private List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {

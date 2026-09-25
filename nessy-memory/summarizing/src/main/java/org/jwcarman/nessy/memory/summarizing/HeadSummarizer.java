@@ -37,7 +37,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.lease.Locks;
+import org.jwcarman.nessy.spi.lock.Locks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

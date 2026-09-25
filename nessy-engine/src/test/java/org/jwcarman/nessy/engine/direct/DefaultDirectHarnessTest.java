@@ -17,7 +17,6 @@ package org.jwcarman.nessy.engine.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -26,7 +25,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
@@ -36,9 +34,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
@@ -46,22 +43,16 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.tool.ToolBinding;
-import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Ambient;
-import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.lease.LocalLocks;
-import org.jwcarman.nessy.lease.Locks;
-import org.jwcarman.nessy.lease.Locks.Attempt;
+import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.spi.lock.Locks.Attempt;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -104,22 +95,47 @@ class DefaultDirectHarnessTest {
     }
   }
 
-  private DefaultDirectHarness<String> harness(InferenceProvider model, Tools tools) {
-    return new DefaultDirectHarness<>(
-        new LocalLocks(),
-        TYPE,
-        events,
-        payloads,
-        model,
-        new SystemPrompt("You are terse."),
-        InferenceOptions.of("a-model"),
-        (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
-        tools,
-        SCHEMAS,
-        MAPPER,
-        List.of(),
-        MAX_TAIL,
-        List.of());
+  private DirectHarnessFactory factoryFor(InferenceProvider model, Locks locks) {
+    return new DirectHarnessFactory(locks, events, payloads, model, SCHEMAS, MAPPER);
+  }
+
+  private DirectHarness<String> harness(InferenceProvider model) {
+    return harness(model, List.of(), Approver.allow(), new InMemoryLocks(), MAX_TAIL, List.of());
+  }
+
+  private DirectHarness<String> harness(InferenceProvider model, Tool<Lookup> tool) {
+    return harness(
+        model, List.of(tool), Approver.allow(), new InMemoryLocks(), MAX_TAIL, List.of());
+  }
+
+  private DirectHarness<String> harness(
+      InferenceProvider model, Tool<Lookup> tool, Approver approver) {
+    return harness(model, List.of(tool), approver, new InMemoryLocks(), MAX_TAIL, List.of());
+  }
+
+  private DirectHarness<String> harness(
+      InferenceProvider model,
+      List<Tool<Lookup>> tools,
+      Approver approver,
+      Locks locks,
+      int maxTail,
+      List<AmbientSource> ambient) {
+    return factoryFor(model, locks)
+        .<String>create(
+            c -> {
+              c.agentType(TYPE)
+                  .systemPrompt("You are terse.")
+                  .inputRenderer(said -> List.of(new Block.Text(said)))
+                  .inference(
+                      in ->
+                          in.model("a-model")
+                              .context(
+                                  ctx -> {
+                                    ctx.maxTail(maxTail);
+                                    ambient.forEach(ctx::ambient);
+                                  }));
+              tools.forEach(tool -> c.tool(tool, t -> t.approver(approver)));
+            });
   }
 
   private static InferenceResult answering(String text) {
@@ -129,27 +145,6 @@ class DefaultDirectHarnessTest {
   private static InferenceResult asking(String tool) {
     return new InferenceResult.Actions(
         List.of(new Block.ToolCall(CALL, new ToolName(tool), "{\"id\":\"42\"}")), Usage.unknown());
-  }
-
-  /** A tool that answers with one line, bound with everything at its default. */
-  private static Tools bound(Tool<Lookup> tool) {
-    return bound(tool, Approver.allow());
-  }
-
-  private static Tools bound(Tool<Lookup> tool, Approver approver) {
-    return new Tools(
-        List.of(
-            new ToolBinding<>(
-                tool,
-                MAPPER,
-                new InputSchema("{}"),
-                Duration.ofSeconds(30),
-                new RetryPolicy.Never(),
-                ActionRenderer.byToString(),
-                List.of(),
-                approver,
-                Duration.ofMinutes(10),
-                new RetryPolicy.Never())));
   }
 
   record Lookup(String id) {}
@@ -208,7 +203,7 @@ class DefaultDirectHarnessTest {
   @DisplayName("a turn with no tools runs to an answer")
   void a_plain_turn() {
     Outcome<String> outcome =
-        harness(new Scripted().then(answering("forty two")), Tools.none())
+        harness(new Scripted().then(answering("forty two")))
             .ask(AgentId.random(), "what is the answer?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("forty two"));
@@ -220,7 +215,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("charge 42.00"));
 
-    Outcome outcome = harness(model, bound(tool("found it"))).ask(agent, "look up my charge");
+    Outcome outcome = harness(model, tool("found it")).ask(agent, "look up my charge");
 
     System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE));
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
@@ -240,7 +235,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("the answer itself"));
 
-    harness(model, bound(tool("the tool's own words"))).ask(agent, "a question with words");
+    harness(model, tool("the tool's own words")).ask(agent, "a question with words");
 
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE).toString())
         .doesNotContain("a question with words")
@@ -254,7 +249,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
 
-    harness(model, bound(tool("found it"))).ask(agent, "look it up");
+    harness(model, tool("found it")).ask(agent, "look it up");
 
     // The second call saw a turn carrying the observation, the request and the tool's result --
     // all of it resolved back out of the claim check.
@@ -285,7 +280,7 @@ class DefaultDirectHarnessTest {
   void a_scope_remembers() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(answering("first")).then(answering("second"));
-    DefaultDirectHarness<String> harness = harness(model, Tools.none());
+    DirectHarness<String> harness = harness(model);
 
     harness.ask(agent, "one");
     harness.ask(agent, "two");
@@ -299,8 +294,7 @@ class DefaultDirectHarnessTest {
   @DisplayName("a terminated agent refuses further work, loudly")
   void terminate_ends_it() {
     AgentId agent = AgentId.random();
-    DefaultDirectHarness<String> harness =
-        harness(new Scripted().then(answering("ok")), Tools.none());
+    DirectHarness<String> harness = harness(new Scripted().then(answering("ok")));
     harness.ask(agent, "hello");
 
     harness.terminate(agent);
@@ -315,7 +309,7 @@ class DefaultDirectHarnessTest {
   void a_failing_tool_is_reported() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
-    Outcome<String> outcome = harness(model, bound(broken("the ledger is down"))).ask(agent, "try");
+    Outcome<String> outcome = harness(model, broken("the ledger is down")).ask(agent, "try");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
@@ -353,21 +347,12 @@ class DefaultDirectHarnessTest {
             return new Attempt.Ignored<>();
           }
         };
-    DefaultDirectHarness<String> harness =
-        new DefaultDirectHarness<>(
-            held,
-            TYPE,
-            events,
-            payloads,
+    DirectHarness<String> harness =
+        harness(
             new Scripted().then(answering("never asked")),
-            new SystemPrompt("You are terse."),
-            InferenceOptions.of("a-model"),
-            (Function<String, List<Block.ObservationContent>>)
-                text -> List.of(new Block.Text(text)),
-            Tools.none(),
-            SCHEMAS,
-            MAPPER,
             List.of(),
+            Approver.allow(),
+            held,
             MAX_TAIL,
             List.of());
 
@@ -400,7 +385,7 @@ class DefaultDirectHarnessTest {
           }
           return answering("hi");
         };
-    DefaultDirectHarness<String> harness = harness(slow, Tools.none());
+    DirectHarness<String> harness = harness(slow);
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
       Future<Outcome<String>> holder = callers.submit(() -> harness.ask(agent, "hello"));
@@ -424,7 +409,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("{\"city\":\"Paris\",\"country\":\"France\"}"));
 
     Outcome<Capital> outcome =
-        harness(model, Tools.none()).ask(AgentId.random(), "capital of France?", Capital.class);
+        harness(model).ask(AgentId.random(), "capital of France?", Capital.class);
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France")));
     assertThat(model.seen).hasSize(1);
@@ -441,7 +426,7 @@ class DefaultDirectHarnessTest {
   void prose_is_asked_for_without_a_shape() {
     Scripted model = new Scripted().then(answering("Paris."));
 
-    Outcome<String> outcome = harness(model, Tools.none()).ask(AgentId.random(), "capital?");
+    Outcome<String> outcome = harness(model).ask(AgentId.random(), "capital?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("Paris."));
     assertThat(model.seen.getFirst().outputSchema()).isEmpty();
@@ -453,7 +438,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("Paris, obviously."));
 
     Outcome<Capital> outcome =
-        harness(model, Tools.none()).ask(AgentId.random(), "capital of France?", Capital.class);
+        harness(model).ask(AgentId.random(), "capital of France?", Capital.class);
 
     assertThat(outcome)
         .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Outcome.Failed.class))
@@ -469,8 +454,7 @@ class DefaultDirectHarnessTest {
         new Scripted().then(answering("[{\"city\":\"Paris\",\"country\":\"France\"}]"));
 
     Outcome<List<Capital>> outcome =
-        harness(model, Tools.none())
-            .ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
+        harness(model).ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
   }
@@ -479,21 +463,12 @@ class DefaultDirectHarnessTest {
   @DisplayName("ambient background reaches the model, assembled the way the queued door does it")
   void ambient_is_shown_to_the_model() {
     Scripted model = new Scripted().then(answering("noted"));
-    DefaultDirectHarness<String> harness =
-        new DefaultDirectHarness<>(
-            new LocalLocks(),
-            TYPE,
-            events,
-            payloads,
+    DirectHarness<String> harness =
+        harness(
             model,
-            new SystemPrompt("You are terse."),
-            InferenceOptions.of("a-model"),
-            (Function<String, List<Block.ObservationContent>>)
-                text -> List.of(new Block.Text(text)),
-            Tools.none(),
-            SCHEMAS,
-            MAPPER,
             List.of(),
+            Approver.allow(),
+            new InMemoryLocks(),
             MAX_TAIL,
             List.of(AmbientSource.constant(Ambient.text("notebook", "the deploy is frozen"))));
 
@@ -513,7 +488,7 @@ class DefaultDirectHarnessTest {
     for (int i = 0; i < 5; i++) {
       model.then(answering("ok " + i));
     }
-    DefaultDirectHarness<String> harness = harnessKeeping(model, 2);
+    DirectHarness<String> harness = harnessKeeping(model, 2);
 
     for (int i = 0; i < 5; i++) {
       harness.ask(agent, "question " + i);
@@ -524,22 +499,8 @@ class DefaultDirectHarnessTest {
     assertThat(model.seen.getLast().context().turns()).hasSizeLessThanOrEqualTo(2);
   }
 
-  private DefaultDirectHarness<String> harnessKeeping(Scripted model, int maxTail) {
-    return new DefaultDirectHarness<>(
-        new LocalLocks(),
-        TYPE,
-        events,
-        payloads,
-        model,
-        new SystemPrompt("You are terse."),
-        InferenceOptions.of("a-model"),
-        (Function<String, List<Block.ObservationContent>>) text -> List.of(new Block.Text(text)),
-        Tools.none(),
-        SCHEMAS,
-        MAPPER,
-        List.of(),
-        maxTail,
-        List.of());
+  private DirectHarness<String> harnessKeeping(Scripted model, int maxTail) {
+    return harness(model, List.of(), Approver.allow(), new InMemoryLocks(), maxTail, List.of());
   }
 
   @Test
@@ -573,7 +534,7 @@ class DefaultDirectHarnessTest {
         };
 
     Outcome<String> outcome =
-        harness(model, bound(watched, _ -> Awaited.ready(ApprovalResult.denied("not today"))))
+        harness(model, watched, _ -> Awaited.ready(ApprovalResult.denied("not today")))
             .ask(agent, "look it up");
 
     assertThat(ran).as("a denied call is not a call").isFalse();
@@ -617,7 +578,7 @@ class DefaultDirectHarnessTest {
           }
         };
 
-    harness(model, bound(watched, _ -> Awaited.deferred())).ask(agent, "look it up");
+    harness(model, watched, _ -> Awaited.deferred()).ask(agent, "look it up");
 
     assertThat(ran).isFalse();
     assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))

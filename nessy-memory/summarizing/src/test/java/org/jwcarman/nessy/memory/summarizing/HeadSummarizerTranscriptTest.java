@@ -32,8 +32,8 @@ import org.jwcarman.nessy.inference.turn.Observation;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
-import org.jwcarman.nessy.lease.Locks;
-import org.jwcarman.nessy.lease.Locks.Attempt;
+import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.spi.lock.Locks.Attempt;
 
 /** The head as the summarising model reads it: one line per thing that happened. */
 @DisplayName("The transcript a summary is written from")

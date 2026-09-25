@@ -51,13 +51,12 @@
       <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- Only the tests know about nessy-spi: Schemas.initialize applies the schema the way an
-         application would. The library itself is a table and a statement. -->
+    <!-- The Locks contract this satisfies, and in the tests Schemas.initialize, which applies
+         the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>

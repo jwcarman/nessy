@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.lease;
+package org.jwcarman.nessy.engine.direct;
 
 import java.util.List;
 import java.util.Objects;
@@ -21,6 +21,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import org.jwcarman.nessy.spi.lock.Locks;
 
 /**
  * Locks held in this process and nowhere else.
@@ -38,18 +39,18 @@ import java.util.stream.IntStream;
  * handles, so a collision means one attempt is skipped exactly as if a real holder had it. Nothing
  * waits, so nothing is delayed.
  */
-public final class LocalLocks implements Locks {
+public final class InMemoryLocks implements Locks {
 
   /** Enough that collisions are rare, small enough to be free. */
   private static final int DEFAULT_STRIPES = 64;
 
   private final List<Lock> stripes;
 
-  public LocalLocks() {
+  public InMemoryLocks() {
     this(DEFAULT_STRIPES);
   }
 
-  public LocalLocks(int stripes) {
+  public InMemoryLocks(int stripes) {
     if (stripes <= 0) {
       throw new IllegalArgumentException("stripes must be positive");
     }
