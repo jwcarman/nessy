@@ -25,6 +25,8 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.Pull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -40,6 +42,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * @param <O> the application's observation type
  */
 public final class JdbcBacklog<O> implements Backlog<O> {
+
+  private static final Logger LOG = LoggerFactory.getLogger(JdbcBacklog.class);
 
   private static final String ALL =
       """
@@ -146,10 +150,25 @@ public final class JdbcBacklog<O> implements Backlog<O> {
    * <p>Not on {@link Backlog}: a coalescer decides what waits, not whether the agent lives. The
    * mark and the emptying belong to the same transaction, so an agent cannot be left ended with
    * work still queued behind it.
+   *
+   * <p><b>Nothing may be coalesced into a sealed agent afterwards.</b> An arrival that got past
+   * this would put something back into an emptied backlog, and the next read would answer with an
+   * item rather than the pill -- undoing a termination that had already happened. The check belongs
+   * before the coalescer is consulted, not after.
+   *
+   * @return how many were abandoned, so that work thrown away is counted rather than vanishing
    */
-  public void seal() {
-    clear();
+  public int seal() {
+    int abandoned = clear();
     jdbc.sql(SEAL).params(agentType.value(), agent.value()).update();
+    if (abandoned > 0) {
+      LOG.info(
+          "[backlog] agent {}/{} ended with {} observation(s) still waiting; abandoned",
+          agentType.value(),
+          agent.value(),
+          abandoned);
+    }
+    return abandoned;
   }
 
   /** Whether this agent has been told to end, whether or not it has noticed yet. */
@@ -213,8 +232,8 @@ public final class JdbcBacklog<O> implements Backlog<O> {
         codec.decode(rs.getBytes("payload")), rs.getTimestamp("arrived_at").toInstant());
   }
 
-  private void clear() {
-    jdbc.sql(CLEAR).params(agentType.value(), agent.value()).update();
+  private int clear() {
+    return jdbc.sql(CLEAR).params(agentType.value(), agent.value()).update();
   }
 
   private long ordinalFrom(String sql) {

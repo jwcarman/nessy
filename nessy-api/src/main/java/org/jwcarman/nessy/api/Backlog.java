@@ -30,6 +30,11 @@ import java.util.List;
  * strategy that calls {@code all()}, drops something, and calls {@code all()} again sees its own
  * change.
  *
+ * <p><b>An ended agent never gets here.</b> Whatever decides to consult a coalescer checks first
+ * whether the agent has been told to end, and refuses the arrival if it has. Anything coalesced
+ * into an emptied backlog would be read as work the next time it is asked, which would undo a
+ * termination that had already happened.
+ *
  * <p><b>It runs with the agent to itself.</b> The transaction that hands this over already holds
  * the agent's row, so nothing else can add to or take from this backlog while a coalescer is
  * running -- which is what makes a snapshot safe to hold and iterate while changing things, and why

@@ -306,3 +306,78 @@ rather than a clock read at pull time.
 `<O>` leaves the fold. `Decision.stay` becomes events. The sealing rule (`Inferring.terminate()`
 seals the backlog so nothing new is accepted) moves out with the backlog. `engine.agent` is
 deleted last, when nothing references it.
+
+---
+
+## 7. How a queued agent keeps driving
+
+Built: the backlog is a place work waits (`nessy_agent_backlog`) and a way to take it
+(`Backlog.take()`). Nothing yet *asks*. This is what asks.
+
+### 7a. Keeping alive is the effect side, unchanged
+
+James, 2026-09-25: "we can keep them alive the same way we were on the effect side. That's easy."
+`nessy_agent_effect`, the poller and the watchdog stay as they are. That outbox is what lets the
+queued transaction be short: the effect commits, the inference happens outside it, and a second
+transaction folds the answer in. Nothing about sharing the fold changes that.
+
+### 7b. Nobody has to be woken, because the finisher hands over
+
+The drain happens where a turn ends, in the transaction that ends it:
+
+```
+fold the result -> state becomes Idle -> take() -> Item   start the next turn, same transaction
+                                                -> Pill   terminate
+                                                -> Empty  go quiet
+```
+
+So "wake the agent when something arrives" is not a mechanism that has to exist for the normal
+path. The thing that finished does the handoff, and an agent goes quiet only because there was
+genuinely nothing waiting.
+
+### 7c. An arrival to an idle agent starts a turn, through the backlog
+
+```
+offer(agent, o):
+  BEGIN
+  SELECT ... FROM nessy_agent WHERE ... FOR UPDATE
+  if terminated        -> refuse; the backlog stays empty
+  else                 -> coalescer.coalesce(backlog, item)
+  replay the last turn
+  if Idle              -> take() and start the turn, writing its effect to the outbox
+  COMMIT
+```
+
+**The terminated check comes before the coalescer**, not after. An arrival coalesced into an
+emptied backlog would be read as work the next time it is asked, undoing a termination that had
+already happened -- which is the one promise the pill makes.
+
+**An arrival to an idle agent still goes through the backlog**, rather than starting a turn
+directly. Skipping would be faster and is defensible, because coalescing against an empty backlog
+is a no-op for every built-in strategy. It is not done because it is not a promise the interface
+makes: a strategy that drops based on the arriving item alone -- "ignore heartbeats" -- would be
+bypassed exactly when the agent is idle, which is most of the time, and would surface as a filter
+that works under load and not otherwise. The rows exist for microseconds in that case, under a lock
+already held.
+
+### 7d. The crash window, and the one sweep that covers it
+
+Committed the turn end, died before draining. An idle agent then sits on a non-empty backlog with
+nothing driving it, because the handoff in §7b is the only thing that would have driven it.
+
+That is the existing watchdog's shape with one more query: find agents with work waiting and
+nothing in flight, and nudge. It is a recovery path rather than the normal one, and it should be
+rare enough that it is worth counting when it fires.
+
+### 7e. Abandoned work is counted
+
+`seal()` returns how many observations were thrown away and logs it. An agent ended mid-turn
+abandons whatever was queued behind it, which is correct -- but silently dropping a person's
+messages is not something to find out about from a support ticket.
+
+### Still to decide
+
+- `ObservationCoalescer` still has its whole-list signature. The handle exists; the coalescer has
+  not been moved onto it, because it has nowhere to be called from until the fold swap.
+- Whether `ObservationCoalescer` keeps its name now that it holds bounds and drops work.
+  `BacklogPolicy` is closer to what it does.

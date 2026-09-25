@@ -250,7 +250,7 @@ class JdbcBacklogTest {
         .update();
     its.append(said("never going to happen"));
 
-    its.seal();
+    assertThat(its.seal()).as("work thrown away is counted, not vanished").isEqualTo(1);
 
     assertThat(its.size()).as("whatever was waiting is abandoned").isZero();
     assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
@@ -321,5 +321,39 @@ class JdbcBacklogTest {
 
     assertThat(waiting()).containsExactly("fresh start");
     assertThat(backlog.size()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("sealing an agent with nothing waiting abandons nothing")
+  void sealing_an_idle_agent_abandons_nothing() {
+    AgentId ending = AgentId.random();
+    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
+    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
+        .params(TYPE.value(), ending.value())
+        .update();
+
+    assertThat(its.seal()).isZero();
+    assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
+  }
+
+  /**
+   * The invariant the pill depends on. Nothing may be coalesced into a sealed agent -- an arrival
+   * that got through would be read as work next time and undo a termination that had happened.
+   */
+  @Test
+  @DisplayName("sealing twice is still sealed, and still says end")
+  void sealing_is_not_undone() {
+    AgentId ending = AgentId.random();
+    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
+    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
+        .params(TYPE.value(), ending.value())
+        .update();
+    its.append(said("in flight when it ended"));
+
+    its.seal();
+    assertThat(its.seal()).as("nothing left to abandon the second time").isZero();
+
+    assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
+    assertThat(its.terminated()).isTrue();
   }
 }
