@@ -193,10 +193,11 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     // agent has lived, so a conversation of a thousand turns rebuilds as fast as its first.
     //
     // The transcript is a different question. What the model is shown is the conversation, which
-    // is every turn before this one as well, so it takes its own read. Using the watermarked read
-    // for both is what made a second ask forget the first.
-    Seq watermark = events.watermark(agent);
-    AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
+    // is every turn before this one as well, so it takes its own read. Using the last turn for
+    // both is what made a second ask forget the first.
+    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
+    Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
+    AgentState state = AgentState.idle(from).applyAll(lastTurn);
 
     // TODO: unwindowed. ContextConfig.maxTail is the knob this should hang off; until it does, a
     // long conversation sends the model all of it.
@@ -221,8 +222,6 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       }
     }
 
-    // A closed turn is folded and will not change, so replay starts after it next time.
-    events.watermark(agent, state.seq());
     return outcome(history, reading);
   }
 
@@ -234,8 +233,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     locks.tryWithLock(
         agent.value().toString(),
         () -> {
-          Seq watermark = events.watermark(agent);
-          AgentState state = AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
+          List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
+          Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
+          AgentState state = AgentState.idle(from).applyAll(lastTurn);
           Decision decision = state.execute(new AgentCommand.Terminate());
           events.append(agent, decision.events(), state.seq());
         });
@@ -365,6 +365,16 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           new AgentCommand.CompleteToolCall(
               call.callId(), new AgentCommand.ToolOutcome.Failed(message));
     };
+  }
+
+  /**
+   * Where an idle state has to sit for the first replayed event to be accepted.
+   *
+   * <p>The fold refuses an event at or before its own position, so replay starts one short of the
+   * turn it is about to apply. Nothing is stored to say where that is -- the events carry it.
+   */
+  private static Seq previous(Seq seq) {
+    return seq.value() <= 1 ? Seq.NONE : new Seq(seq.value() - 1);
   }
 
   /** The turn these events belong to: the last one started. */

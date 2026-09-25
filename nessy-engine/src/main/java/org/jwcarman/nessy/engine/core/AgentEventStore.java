@@ -25,9 +25,14 @@ import org.jwcarman.nessy.inference.Seq;
  * <p>The one seam both harnesses need. A direct harness uses nothing else; a queued harness adds a
  * backlog and an outbox of its own and writes all three in one unit of work.
  *
- * <p><b>The watermark is where replay starts</b>, not where the stream does. It moves to a turn
- * boundary as turns close, so reconstitution costs one turn's events rather than a history --
- * bounded by the turn policy rather than by how long the agent has lived.
+ * <p><b>Reading an agent back costs its last turn, not its history.</b> Replay begins at the last
+ * turn that started, so reconstitution is bounded by the length of a turn rather than by how long
+ * the agent has lived -- a conversation of a thousand turns comes back as fast as its first.
+ *
+ * <p>Nothing records where that is. The boundary is a fact the events already carry, and a stored
+ * watermark would be a second copy of it that can disagree: written after the append, missed on a
+ * crash, and wrong in a way nothing detects. Finding it costs reading backwards to the nearest
+ * {@link AgentEvent.TurnStarted}, which is one turn's worth of rows.
  *
  * <p><b>TODO -- this belongs in {@code nessy-spi}</b>, beside {@code PayloadStore}. It cannot go
  * there yet: it is typed on {@link AgentEvent}, which carries a {@code Failure}, which lives in the
@@ -46,14 +51,21 @@ public interface AgentEventStore {
    */
   void append(AgentId agent, List<AgentEvent> events, Seq expectedLast);
 
-  /** Everything after the watermark, in order. */
-  List<AgentEvent> readFrom(AgentId agent, Seq watermark);
+  /** Everything after {@code after}, in order. {@link Seq#NONE} reads the whole story. */
+  List<AgentEvent> readFrom(AgentId agent, Seq after);
 
-  /** Where replay starts for this agent. {@link Seq#NONE} for a agent with no history. */
-  Seq watermark(AgentId agent);
-
-  /** Moves the watermark, which a harness does when a turn closes. */
-  void watermark(AgentId agent, Seq at);
+  /**
+   * The last turn that started, and everything after it.
+   *
+   * <p>What a harness replays onto {@link AgentState#idle} to find out where an agent is, and the
+   * answer is whatever state comes back: a turn that ended leaves it idle, one that did not leaves
+   * it where it stopped, and an agent that was ended comes back terminated. Nothing here has to
+   * know which of those happened -- that is the fold's job, and asking it is the whole of this
+   * method's purpose.
+   *
+   * <p>Empty for an agent nothing has happened to.
+   */
+  List<AgentEvent> sinceLastTurnStarted(AgentId agent);
 
   /** Raised when {@code expectedLast} did not hold. */
   final class Conflict extends RuntimeException {

@@ -170,20 +170,20 @@ CREATE TABLE IF NOT EXISTS nessy_payload
 -- right way to find out that the state it decided against no longer holds.
 CREATE TABLE IF NOT EXISTS nessy_agent_event
 (
-    agent_id   UUID        NOT NULL,
-    seq        BIGINT      NOT NULL,
-    payload    BYTEA       NOT NULL,
-    written_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    agent_id    UUID        NOT NULL,
+    seq         BIGINT      NOT NULL,
+    -- Where a turn begins, which is the only thing about an event this table needs to know
+    -- without decoding it. Reading an agent back means replaying its last turn, and finding
+    -- where that starts is a lookup rather than a scan because of this column. A stored
+    -- watermark would answer the same question as a second copy of it that can disagree; this
+    -- is the events saying it themselves.
+    starts_turn BOOLEAN     NOT NULL,
+    payload     BYTEA       NOT NULL,
+    written_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, seq)
 );
 
--- Where replay starts, which is not where the stream starts.
---
--- Moved to a turn boundary as turns close, so reconstituting an agent costs one turn's events
--- however long it has lived. An agent with no row here has never closed a turn, and replay begins
--- at the beginning -- which for a new agent is nothing at all.
-CREATE TABLE IF NOT EXISTS nessy_agent_watermark
-(
-    agent_id UUID   NOT NULL PRIMARY KEY,
-    seq      BIGINT NOT NULL
-);
+-- Only the turn starts, which is all the boundary lookup reads. A handful of rows per agent
+-- however long the conversation.
+CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
+    ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;

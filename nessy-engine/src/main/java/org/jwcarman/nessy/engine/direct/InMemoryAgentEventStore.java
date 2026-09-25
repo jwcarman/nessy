@@ -33,12 +33,11 @@ import org.jwcarman.nessy.inference.Seq;
 public final class InMemoryAgentEventStore implements AgentEventStore {
 
   private final Map<AgentId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
-  private final Map<AgentId, Seq> watermarks = new ConcurrentHashMap<>();
 
   @Override
   public synchronized void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
     List<AgentEvent> stream = streams.computeIfAbsent(agent, _ -> new ArrayList<>());
-    Seq last = stream.isEmpty() ? watermark(agent) : stream.getLast().seq();
+    Seq last = stream.isEmpty() ? Seq.NONE : stream.getLast().seq();
     if (!last.equals(expectedLast)) {
       throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
     }
@@ -53,12 +52,13 @@ public final class InMemoryAgentEventStore implements AgentEventStore {
   }
 
   @Override
-  public Seq watermark(AgentId agent) {
-    return watermarks.getOrDefault(agent, Seq.NONE);
-  }
-
-  @Override
-  public void watermark(AgentId agent, Seq at) {
-    watermarks.put(agent, at);
+  public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
+    List<AgentEvent> stream = streams.getOrDefault(agent, List.of());
+    for (int i = stream.size() - 1; i >= 0; i--) {
+      if (stream.get(i) instanceof AgentEvent.TurnStarted) {
+        return List.copyOf(stream.subList(i, stream.size()));
+      }
+    }
+    return List.of();
   }
 }

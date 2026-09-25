@@ -72,17 +72,18 @@ class JdbcAgentEventStoreTest {
     return new AgentEvent.InferenceAnswered(new Seq(seq), new TurnId(turn), somewhere);
   }
 
-  /** Rebuilt the way a harness rebuilds it: idle at the watermark, then whatever came after. */
+  /** Rebuilt the way a harness rebuilds it: the last turn, replayed onto idle. */
   private AgentState reconstituted() {
-    Seq watermark = events.watermark(agent);
-    return AgentState.idle(watermark).applyAll(events.readFrom(agent, watermark));
+    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
+    Seq from =
+        lastTurn.isEmpty() ? Seq.NONE : new Seq(Math.max(0, lastTurn.getFirst().seq().value() - 1));
+    return AgentState.idle(from).applyAll(lastTurn);
   }
 
   @Test
-  @DisplayName("an agent nobody has written to starts at the beginning, idle")
+  @DisplayName("an agent nobody has written to has no last turn, and comes back idle")
   void a_new_agent_is_idle() {
-    assertThat(events.watermark(agent)).isEqualTo(Seq.NONE);
-    assertThat(events.readFrom(agent, Seq.NONE)).isEmpty();
+    assertThat(events.sinceLastTurnStarted(agent)).isEmpty();
     assertThat(reconstituted()).isInstanceOf(AgentState.Idle.class);
   }
 
@@ -90,22 +91,22 @@ class JdbcAgentEventStoreTest {
   @DisplayName("past a closed turn there is nothing to read, and the agent comes back idle")
   void a_closed_turn_leaves_nothing_to_replay() {
     events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
-    events.watermark(agent, new Seq(2));
 
-    assertThat(events.readFrom(agent, events.watermark(agent)))
-        .as("the turn is folded and will not change")
-        .isEmpty();
-    assertThat(reconstituted()).isEqualTo(AgentState.idle(new Seq(2)));
+    assertThat(events.sinceLastTurnStarted(agent))
+        .as("the last turn, and nothing before it")
+        .hasSize(2);
+    assertThat(reconstituted())
+        .as("a turn that ended leaves the agent idle, wherever it ended")
+        .isEqualTo(AgentState.idle(new Seq(2)));
   }
 
   @Test
   @DisplayName("in the middle of a turn, what comes back is that turn")
   void an_open_turn_is_replayed() {
     events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
-    events.watermark(agent, new Seq(2));
     events.append(agent, List.of(started(3, 3)), new Seq(2));
 
-    assertThat(events.readFrom(agent, events.watermark(agent)))
+    assertThat(events.sinceLastTurnStarted(agent))
         .as("one turn's events, not a history")
         .hasSize(1);
     assertThat(reconstituted()).isInstanceOf(AgentState.Inferring.class);
@@ -115,9 +116,8 @@ class JdbcAgentEventStoreTest {
   @DisplayName("a terminated agent stays terminated, however often it is read back")
   void termination_survives_replay() {
     events.append(agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
-    events.watermark(agent, new Seq(2));
-    // The watermark is deliberately NOT moved past this: replaying it is what makes the agent
-    // come back terminated every time, which is why Terminated needs no turn of its own.
+    // Terminated starts no turn, so it falls inside the last one that did -- which is why it
+    // needs no turn of its own, and why it is replayed every time the agent is read back.
     events.append(agent, List.of(new AgentEvent.Terminated(new Seq(3))), new Seq(2));
 
     assertThat(reconstituted()).isInstanceOf(AgentState.Terminal.class);

@@ -47,19 +47,27 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 public final class JdbcAgentEventStore implements AgentEventStore {
 
   private static final String APPEND =
-      "INSERT INTO nessy_agent_event (agent_id, seq, payload) VALUES (?, ?, ?)";
+      "INSERT INTO nessy_agent_event (agent_id, seq, starts_turn, payload) VALUES (?, ?, ?, ?)";
 
   private static final String READ_FROM =
       "SELECT payload FROM nessy_agent_event WHERE agent_id = ? AND seq > ? ORDER BY seq";
 
-  private static final String WATERMARK =
-      "SELECT seq FROM nessy_agent_watermark WHERE agent_id = ?";
-
-  private static final String MOVE =
+  /**
+   * The last turn, and nothing before it.
+   *
+   * <p>Two index lookups: where the last turn started, then the rows at or after it. Never a scan,
+   * and never the history -- the answer is one turn long whatever the agent has been through.
+   */
+  private static final String LAST_TURN =
       """
-      INSERT INTO nessy_agent_watermark (agent_id, seq)
-      VALUES (?, ?)
-          ON CONFLICT (agent_id) DO UPDATE SET seq = EXCLUDED.seq
+      SELECT payload
+        FROM nessy_agent_event
+       WHERE agent_id = ?
+         AND seq >= COALESCE((SELECT MAX(seq)
+                                FROM nessy_agent_event
+                               WHERE agent_id = ?
+                                 AND starts_turn), 0)
+       ORDER BY seq
       """;
 
   private final JdbcClient jdbc;
@@ -76,7 +84,13 @@ public final class JdbcAgentEventStore implements AgentEventStore {
     Objects.requireNonNull(events, "events must not be null");
     for (AgentEvent event : events) {
       try {
-        jdbc.sql(APPEND).params(agent.value(), event.seq().value(), codec.encode(event)).update();
+        jdbc.sql(APPEND)
+            .params(
+                agent.value(),
+                event.seq().value(),
+                event instanceof AgentEvent.TurnStarted,
+                codec.encode(event))
+            .update();
       } catch (DuplicateKeyException taken) {
         // Somebody else wrote this seq, which means they decided from the state this caller
         // decided from. Its recourse is to read the agent back and decide again.
@@ -103,21 +117,11 @@ public final class JdbcAgentEventStore implements AgentEventStore {
   }
 
   @Override
-  public Seq watermark(AgentId agent) {
+  public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
     Objects.requireNonNull(agent, "agent must not be null");
-    return jdbc.sql(WATERMARK)
-        .params(agent.value())
-        .query((rs, _) -> new Seq(rs.getLong("seq")))
-        .optional()
-        // An agent that has never closed a turn starts at the beginning, which for a new one is
-        // nothing at all.
-        .orElse(Seq.NONE);
-  }
-
-  @Override
-  public void watermark(AgentId agent, Seq at) {
-    Objects.requireNonNull(agent, "agent must not be null");
-    Objects.requireNonNull(at, "at must not be null");
-    jdbc.sql(MOVE).params(agent.value(), at.value()).update();
+    return jdbc.sql(LAST_TURN)
+        .params(agent.value(), agent.value())
+        .query((rs, _) -> codec.decode(rs.getBytes("payload")))
+        .list();
   }
 }
