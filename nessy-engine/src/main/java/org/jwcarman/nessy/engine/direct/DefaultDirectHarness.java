@@ -45,6 +45,7 @@ import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.history.ClaimChecked;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
@@ -405,7 +406,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           new AgentCommand.InferenceOutcome.Failed(failure);
       case InferenceResult.Actions(List<Block.ActionRequestContent> blocks, var _) ->
           new AgentCommand.InferenceOutcome.RequestedActions(
-              payloads.put(blocks), requested(blocks));
+              payloads.put(blocks), ClaimChecked.requested(blocks));
     };
   }
 
@@ -475,14 +476,6 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         LOG.warn("a listener threw while being told {}", event.getClass().getSimpleName(), broken);
       }
     }
-  }
-
-  private List<AgentEvent.Requested> requested(List<Block.ActionRequestContent> blocks) {
-    return blocks.stream()
-        .filter(Block.ToolCall.class::isInstance)
-        .map(Block.ToolCall.class::cast)
-        .map(call -> new AgentEvent.Requested(call.id(), call.name()))
-        .toList();
   }
 
   private String argumentsOf(CallId callId, List<AgentEvent> history) {
