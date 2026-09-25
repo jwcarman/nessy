@@ -136,3 +136,28 @@ ALTER TABLE nessy_inference_context ADD COLUMN IF NOT EXISTS output_tokens BIGIN
 
 CREATE INDEX IF NOT EXISTS ix_nessy_inference_context_agent
     ON nessy_inference_context (agent_type, agent_id, requested_at);
+
+-- Content, kept away from the record of what happened to it.
+--
+-- Everything a model was shown or said -- observations, answers, tool results -- lives here and
+-- nowhere else. The tables that describe an agent's life hold references, so they are plain rows
+-- nobody has to reason about: no user text, no tool output, nothing anybody has to encrypt,
+-- redact, or hunt through to answer a question about what is retained.
+--
+-- Addressed by the hash of its own bytes, which buys idempotence: an effect retried after a
+-- failure writes the same row rather than a second copy. Scoped by agent, which buys forgetting:
+-- deleting everything one agent ever said is one statement over one table, with nothing shared
+-- out from under another agent. Identical content in two agents is stored twice, and that is the
+-- trade -- cross-agent sharing is rare, and a deletion that has to count references is a deletion
+-- somebody eventually gets wrong.
+CREATE TABLE IF NOT EXISTS nessy_payload
+(
+    agent_id   UUID        NOT NULL,
+    -- SHA-256 of the encoded content. Large enough that an accidental collision is far less
+    -- likely than the row being corrupted underneath us, and strong enough that a crafted one
+    -- is not a thing anybody can do.
+    hash       BYTEA       NOT NULL,
+    content    BYTEA       NOT NULL,
+    written_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (agent_id, hash)
+);

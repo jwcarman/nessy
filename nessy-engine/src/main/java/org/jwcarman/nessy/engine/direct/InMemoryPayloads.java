@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.PayloadStore;
@@ -35,12 +34,20 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
 public final class InMemoryPayloads implements PayloadStore {
 
   private final Map<PayloadRef, List<Block>> content = new ConcurrentHashMap<>();
-  private final AtomicLong next = new AtomicLong();
 
+  /**
+   * Addressed by content, as the durable store is.
+   *
+   * <p>Minting a fresh reference each time would work here and diverge there: putting the same
+   * content twice would be two references in memory and one in a table, and the difference would be
+   * found by a test that passes against one and not the other. Equality of the blocks stands in for
+   * the hash -- there are no bytes to take one of, and nothing here outlives the process.
+   */
   @Override
   public PayloadRef put(List<? extends Block> blocks) {
-    PayloadRef ref = PayloadRef.of("p" + next.incrementAndGet());
-    content.put(ref, List.copyOf(new ArrayList<Block>(blocks)));
+    List<Block> kept = List.copyOf(new ArrayList<Block>(blocks));
+    PayloadRef ref = PayloadRef.of("p" + Integer.toHexString(kept.hashCode()));
+    content.put(ref, kept);
     return ref;
   }
 

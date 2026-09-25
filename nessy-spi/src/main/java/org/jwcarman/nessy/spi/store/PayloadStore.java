@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
 
@@ -40,6 +41,24 @@ import org.jwcarman.nessy.inference.block.Block;
 public interface PayloadStore {
 
   /** Puts content away and returns the reference that will fetch it. */
+  /**
+   * This store, for one agent's content.
+   *
+   * <p>Everything an agent ever said is scoped to it, so forgetting an agent is one statement over
+   * one table rather than a traversal of what it might share with others. A store that keeps
+   * nothing beyond the process has nothing to scope and answers with itself.
+   */
+  default PayloadStore forAgent(AgentId agent) {
+    return this;
+  }
+
+  /**
+   * Keeps content, and says where it went.
+   *
+   * <p><b>Idempotent.</b> Putting the same content twice is the same reference and one copy, so an
+   * effect retried after a failure cannot leave a second one behind. That is what makes the
+   * reference worth deriving from the content rather than minting.
+   */
   PayloadRef put(List<? extends Block> content);
 
   /** What is behind a reference. */
