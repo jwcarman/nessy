@@ -52,10 +52,10 @@ import org.jwcarman.nessy.inference.tool.ToolName;
  *
  * <p><b>Why this exists when {@code TracesTest} already passes.</b> That one drives {@link Traces}
  * directly, and an engine that never called it would satisfy every assertion in it -- and every
- * other test in this module. Delete the {@code traces.capture()} from {@code EffectStore.insert},
- * or the {@code traces.restore(...)} from {@code EffectDispatcher.perform}, and nothing anywhere
- * else goes red. A turn would simply stop coming back as one trace, silently, which is the whole
- * failure mode tracing has.
+ * other test in this module. Delete the {@code traces.capture()} from {@code Outbox.insert}, or the
+ * {@code traces.restore(...)} from {@code EffectDispatcher.perform}, and nothing anywhere else goes
+ * red. A turn would simply stop coming back as one trace, silently, which is the whole failure mode
+ * tracing has.
  *
  * <p>So this drives a real engine against a real database and asserts on two things that cannot
  * both be true of plumbing which is not connected: what the column holds while the work is in

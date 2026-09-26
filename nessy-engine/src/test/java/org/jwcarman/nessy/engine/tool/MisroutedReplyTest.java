@@ -33,12 +33,12 @@ import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.direct.InMemoryPayloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.store.Attempt;
-import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * An answer that is authentic but is not for anything still waiting.
@@ -65,7 +65,7 @@ class MisroutedReplyTest {
   private final ReplyTokens tokens = ReplyTokens.withKeys(new byte[32]);
   private final Rows rows = new Rows();
   private final Deliveries delivered = new Deliveries();
-  private final PayloadStore payloads = new InMemoryPayloads();
+  private final Payloads payloads = new InMemoryPayloads();
   private final DefaultReplies replies = new DefaultReplies(tokens);
 
   private ReplyToken token() {
@@ -188,7 +188,7 @@ class MisroutedReplyTest {
   }
 
   /** One agent type's rows, said rather than stored. */
-  private static final class Rows extends EffectStore {
+  private static final class Rows extends Outbox {
 
     private List<Attempt> running = List.of();
     private AgentEffect effect = new AgentEffect.Infer();

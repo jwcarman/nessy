@@ -21,12 +21,12 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * The call a model asked for, found in the request that asked for it.
@@ -37,10 +37,10 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
  */
 public final class EventStreamToolCalls implements ToolCalls {
 
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
+  private final AgentEvents events;
+  private final Payloads payloads;
 
-  public EventStreamToolCalls(AgentEventStore events, PayloadStore payloads) {
+  public EventStreamToolCalls(AgentEvents events, Payloads payloads) {
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
   }
@@ -58,7 +58,7 @@ public final class EventStreamToolCalls implements ToolCalls {
   private Optional<ResolvedCall> callIn(
       AgentId agentId, AgentEvent.ActionsRequested asked, CallId callId) {
     return switch (payloads.forAgent(agentId).get(asked.request())) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+      case Payloads.Resolved.Found(List<Block> blocks) ->
           blocks.stream()
               .filter(Block.ToolCall.class::isInstance)
               .map(Block.ToolCall.class::cast)
@@ -67,7 +67,7 @@ public final class EventStreamToolCalls implements ToolCalls {
               .map(call -> new ResolvedCall(asked.turn(), call));
       // A request whose content is gone is not a call that can be performed, and saying so is
       // better than performing one with arguments nobody can see.
-      case PayloadStore.Resolved.Missing _ -> Optional.empty();
+      case Payloads.Resolved.Missing _ -> Optional.empty();
     };
   }
 }

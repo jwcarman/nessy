@@ -28,16 +28,16 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
-import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
+import org.jwcarman.nessy.engine.store.JdbcAgentEvents;
+import org.jwcarman.nessy.engine.store.JdbcPayloads;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -74,8 +74,8 @@ class DurableDirectHarnessTest {
   private final DataSource database = database();
   private final JdbcClient jdbc = JdbcClient.create(database);
   private final JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
-  private final AgentEventStore events = new JdbcAgentEventStore(jdbc, codecs);
-  private final PayloadStore payloads = new JdbcPayloadStore(jdbc, codecs);
+  private final AgentEvents events = new JdbcAgentEvents(jdbc, codecs);
+  private final Payloads payloads = new JdbcPayloads(jdbc, codecs);
 
   /** Answers with whatever it is handed, in order. */
   private static InferenceProvider saying(String... answers) {

@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.AgentId;
  * writer to lose to. A durable re-drive after a crash replays the same wholesale write and stores
  * the identical list, which makes a clobbered write re-done work rather than a lost word.
  */
-public interface PlanStore {
+public interface Plans {
 
   /** The current plan, or empty if the model has never written one — or has cleared it. */
   Optional<Plan> find(AgentId agentId);

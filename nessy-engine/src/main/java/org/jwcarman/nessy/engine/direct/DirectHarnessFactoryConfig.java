@@ -24,11 +24,11 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -47,8 +47,8 @@ import tools.jackson.databind.json.JsonMapper;
 public final class DirectHarnessFactoryConfig {
 
   private Locks locks;
-  private AgentEventStore events;
-  private PayloadStore payloads;
+  private AgentEvents events;
+  private Payloads payloads;
   private InferenceProvider provider;
   private InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
@@ -70,13 +70,13 @@ public final class DirectHarnessFactoryConfig {
   }
 
   /** Where the story is kept. */
-  public DirectHarnessFactoryConfig events(AgentEventStore events) {
+  public DirectHarnessFactoryConfig events(AgentEvents events) {
     this.events = events;
     return this;
   }
 
   /** Where content is kept, which is everything the events only name. */
-  public DirectHarnessFactoryConfig payloads(PayloadStore payloads) {
+  public DirectHarnessFactoryConfig payloads(Payloads payloads) {
     this.payloads = payloads;
     return this;
   }
@@ -161,11 +161,11 @@ public final class DirectHarnessFactoryConfig {
     return require(locks, "locks");
   }
 
-  AgentEventStore requiredEvents() {
+  AgentEvents requiredEvents() {
     return require(events, "events");
   }
 
-  PayloadStore requiredPayloads() {
+  Payloads requiredPayloads() {
     return require(payloads, "payloads");
   }
 

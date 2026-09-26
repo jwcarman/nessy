@@ -26,24 +26,27 @@ import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
 
 /**
- * One agent type's effects.
+ * One agent type's view of the outbox: what this agent type owes the outside world.
  *
- * <p>Holds the two things {@link JdbcEffectStore} deliberately does not: which agent type these
- * rows belong to, and what this agent type's effects are worth. So a caller says "store this
- * effect" and nothing else -- the timeout, the budget and the outcome to fall back on are looked up
- * here, from the binding, at the moment the row is written.
+ * <p>Holds the two things {@link JdbcEffects} deliberately does not: which agent type these rows
+ * belong to, and what this agent type's effects are worth. So a caller says "store this effect" and
+ * nothing else -- the timeout, the budget and the outcome to fall back on are looked up here, from
+ * the binding, at the moment the row is written.
  *
  * <p>That is where the lookup belongs. The fold decides that an effect is <em>owed</em>; how long
  * it may run is configuration, and making the state machine carry configuration down to the table
  * is how a switch over effect kinds ends up living on the harness.
+ *
+ * <p>Not the row store -- {@link JdbcEffects} is that, shared by every agent type. One instance of
+ * this class sits in front of it per harness.
  */
-public class EffectStore {
+public class Outbox {
 
   private final AgentType agentType;
   private final EffectHandlers handlers;
-  private final JdbcEffectStore rows;
+  private final JdbcEffects rows;
 
-  public EffectStore(AgentType agentType, EffectHandlers handlers, JdbcEffectStore rows) {
+  public Outbox(AgentType agentType, EffectHandlers handlers, JdbcEffects rows) {
     this.agentType = agentType;
     this.handlers = handlers;
     this.rows = rows;

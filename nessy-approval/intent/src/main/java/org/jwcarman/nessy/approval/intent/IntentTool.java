@@ -39,14 +39,14 @@ public final class IntentTool<T> implements Tool<T> {
           + " other tool.";
 
   private final Class<T> vocabulary;
-  private final IntentStore<T> store;
+  private final Intents<T> store;
 
-  public IntentTool(Class<T> vocabulary, IntentStore<T> store) {
+  public IntentTool(Class<T> vocabulary, Intents<T> store) {
     this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
   }
 
-  public static IntentTool<Intent> freeform(IntentStore<Intent> store) {
+  public static IntentTool<Intent> freeform(Intents<Intent> store) {
     return new IntentTool<>(Intent.class, store);
   }
 

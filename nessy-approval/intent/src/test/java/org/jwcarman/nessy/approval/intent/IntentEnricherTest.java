@@ -18,7 +18,7 @@ package org.jwcarman.nessy.approval.intent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jwcarman.nessy.approval.intent.Fixtures.AGENT;
 import static org.jwcarman.nessy.approval.intent.Fixtures.MAPPER;
-import static org.jwcarman.nessy.approval.intent.Fixtures.freshStore;
+import static org.jwcarman.nessy.approval.intent.Fixtures.freshIntents;
 import static org.jwcarman.nessy.approval.intent.Fixtures.request;
 
 import java.util.UUID;
@@ -30,7 +30,7 @@ class IntentEnricherTest {
 
   @Test
   void it_records_the_latest_declaration_when_one_was_made() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(AGENT, new Intent("restart prod-eu to clear the stuck deploy"));
     var request = request();
 
@@ -47,7 +47,7 @@ class IntentEnricherTest {
 
   @Test
   void it_records_only_the_latest_declaration() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(AGENT, new Intent("first"));
     store.declare(AGENT, new Intent("second"));
     var request = request();
@@ -65,7 +65,7 @@ class IntentEnricherTest {
   void it_leaves_the_request_untouched_when_no_declaration_was_ever_made() {
     var request = request();
 
-    new IntentEnricher<>(freshStore(), MAPPER).enrich(request);
+    new IntentEnricher<>(freshIntents(), MAPPER).enrich(request);
 
     assertThat(request.facts().isEmpty()).isTrue();
     assertThat(request.fact(IntentEnricher.DECLARED)).isEmpty();
@@ -76,7 +76,7 @@ class IntentEnricherTest {
    */
   @Test
   void it_reads_the_declaration_of_the_agent_the_request_names_and_no_other() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(new AgentId(UUID.randomUUID()), new Intent("somebody else's plan"));
     ApprovalRequest request = request();
 

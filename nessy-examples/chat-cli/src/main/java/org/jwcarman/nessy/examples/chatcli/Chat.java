@@ -29,9 +29,9 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
-import org.jwcarman.nessy.planning.JdbcPlanStore;
-import org.jwcarman.nessy.planning.PlanStore;
+import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
+import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
@@ -102,8 +102,8 @@ public class Chat {
   }
 
   @Bean
-  public PlanStore plans(DataSource database) {
-    return new JdbcPlanStore(database, TYPE);
+  public Plans plans(DataSource database) {
+    return new JdbcPlans(database, TYPE);
   }
 
   /** Everything an application owns once. In memory, because the conversation is the process. */
@@ -118,7 +118,7 @@ public class Chat {
       DirectHarnessFactory harnesses,
       @Value("${nessy.model}") String model,
       Notebook notebook,
-      PlanStore plans,
+      Plans plans,
       Clock clock) {
     return _ ->
         Repl.run(

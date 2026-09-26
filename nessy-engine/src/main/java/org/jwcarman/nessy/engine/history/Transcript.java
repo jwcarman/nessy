@@ -26,7 +26,7 @@ import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * The event stream, read back as the conversation a model is shown.
@@ -45,16 +45,16 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
  */
 public final class Transcript {
 
-  private final PayloadStore payloads;
+  private final Payloads payloads;
 
-  public Transcript(PayloadStore payloads) {
+  public Transcript(Payloads payloads) {
     this.payloads = payloads;
   }
 
   public List<Turn> of(List<AgentEvent> events) {
     // Every payload in the window, in one ask. Resolving as each event is reached would be a
     // round trip per block -- free against a map, and one query per turn against a database.
-    Map<PayloadRef, PayloadStore.Resolved> resolved = payloads.get(referencedBy(events));
+    Map<PayloadRef, Payloads.Resolved> resolved = payloads.get(referencedBy(events));
 
     List<Turn> turns = new ArrayList<>();
     Open open = null;
@@ -126,10 +126,9 @@ public final class Transcript {
     return refs;
   }
 
-  private static List<Block> resolve(
-      Map<PayloadRef, PayloadStore.Resolved> resolved, PayloadRef ref) {
+  private static List<Block> resolve(Map<PayloadRef, Payloads.Resolved> resolved, PayloadRef ref) {
     return switch (resolved.get(ref)) {
-      case PayloadStore.Resolved.Found(List<Block> content) -> content;
+      case Payloads.Resolved.Found(List<Block> content) -> content;
       // A reference with nothing behind it is a broken store, not a turn that went badly. Saying
       // so here beats handing a model a turn with a hole where its own words were.
       case null, default -> throw new IllegalStateException("no payload behind " + ref);

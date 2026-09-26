@@ -62,7 +62,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spi.lock.Locks.Attempt;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -83,7 +83,7 @@ class DefaultDirectHarnessTest {
   private static final InputSchemaGenerator SCHEMAS = new VictoolsInputSchemaGenerator();
   private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
-  private final InMemoryAgentEventStore events = new InMemoryAgentEventStore();
+  private final InMemoryAgentEvents events = new InMemoryAgentEvents();
   private final InMemoryPayloads payloads = new InMemoryPayloads();
 
   /** Answers with whatever it is handed, in order, one per call. */
@@ -370,12 +370,12 @@ class DefaultDirectHarnessTest {
             new Block.Provider("anthropic", "{\"sig\":\"x\"}"),
             new Block.Text("last"));
 
-    PayloadStore.Resolved back = payloads.get(payloads.put(array));
+    Payloads.Resolved back = payloads.get(payloads.put(array));
 
     assertThat(back)
         .asInstanceOf(
-            org.assertj.core.api.InstanceOfAssertFactories.type(PayloadStore.Resolved.Found.class))
-        .extracting(PayloadStore.Resolved.Found::content)
+            org.assertj.core.api.InstanceOfAssertFactories.type(Payloads.Resolved.Found.class))
+        .extracting(Payloads.Resolved.Found::content)
         .isEqualTo(array);
   }
 
@@ -860,12 +860,12 @@ class DefaultDirectHarnessTest {
   }
 
   /** Counts how a projection reaches for its payloads. */
-  private static final class CountingPayloads implements PayloadStore {
-    private final PayloadStore delegate;
+  private static final class CountingPayloads implements Payloads {
+    private final Payloads delegate;
     private int batches;
     private int singles;
 
-    CountingPayloads(PayloadStore delegate) {
+    CountingPayloads(Payloads delegate) {
       this.delegate = delegate;
     }
 

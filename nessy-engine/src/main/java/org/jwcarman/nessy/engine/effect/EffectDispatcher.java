@@ -33,7 +33,7 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Attempt;
-import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.slf4j.Logger;
@@ -75,7 +75,7 @@ public class EffectDispatcher {
   private static final Logger log = LoggerFactory.getLogger(EffectDispatcher.class);
 
   private final AgentType agentType;
-  private final EffectStore effects;
+  private final Outbox effects;
   private final EffectHandlers handlers;
   private final AgentEffectCallback callback;
   private final Clock clock;
@@ -95,7 +95,7 @@ public class EffectDispatcher {
 
   public EffectDispatcher(
       AgentType agentType,
-      EffectStore effects,
+      Outbox effects,
       EffectHandlers handlers,
       AgentEffectCallback callback,
       Clock clock,

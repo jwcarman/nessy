@@ -37,7 +37,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>Rows rather than a blob so the order the model sent is a column rather than a list's
  * incidental order, and so a plan can be read in a database without a running JVM.
  */
-public final class JdbcPlanStore implements PlanStore {
+public final class JdbcPlans implements Plans {
 
   private static final String SELECT =
       "SELECT title, status FROM nessy_plan_task "
@@ -52,7 +52,7 @@ public final class JdbcPlanStore implements PlanStore {
   private final TransactionTemplate transactions;
   private final String agentType;
 
-  public JdbcPlanStore(DataSource dataSource, AgentType agentType) {
+  public JdbcPlans(DataSource dataSource, AgentType agentType) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));

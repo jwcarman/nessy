@@ -32,7 +32,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -52,7 +52,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * from under anybody. Counting references across agents would save a little space and cost the one
  * property this table exists for.
  */
-public final class JdbcPayloadStore implements PayloadStore {
+public final class JdbcPayloads implements Payloads {
 
   private static final String PUT =
       """
@@ -77,19 +77,19 @@ public final class JdbcPayloadStore implements PayloadStore {
   private final Codec<Content> codec;
   private final AgentId agent;
 
-  public JdbcPayloadStore(JdbcClient jdbc, CodecFactory codecs) {
+  public JdbcPayloads(JdbcClient jdbc, CodecFactory codecs) {
     this(jdbc, codecs.create(Content.class), null);
   }
 
-  private JdbcPayloadStore(JdbcClient jdbc, Codec<Content> codec, AgentId agent) {
+  private JdbcPayloads(JdbcClient jdbc, Codec<Content> codec, AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
     this.agent = agent;
   }
 
   @Override
-  public PayloadStore forAgent(AgentId agent) {
-    return new JdbcPayloadStore(jdbc, codec, Objects.requireNonNull(agent, "agent must not null"));
+  public Payloads forAgent(AgentId agent) {
+    return new JdbcPayloads(jdbc, codec, Objects.requireNonNull(agent, "agent must not null"));
   }
 
   @Override

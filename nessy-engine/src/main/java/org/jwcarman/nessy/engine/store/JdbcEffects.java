@@ -34,10 +34,10 @@ import org.springframework.stereotype.Component;
  * The effect table, row by row.
  *
  * <p>Shared by every agent type: it knows SQL and codecs, and nothing about what any particular
- * agent type's effects are worth waiting for. That is {@link EffectStore}'s job, one instance of
- * which sits in front of this per harness.
+ * agent type's effects are worth waiting for. That is {@link Outbox}'s job, one instance of which
+ * sits in front of this per harness.
  *
- * <p>The outbox: what the agent owes the outside world.
+ * <p>The rows underneath the outbox: what an agent owes the outside world.
  *
  * <p>A row is written in the transition that decided it and performed later. There is no lease and
  * nothing to renew -- {@code actionable_at} says when a row may be acted on, and a row past it is
@@ -58,7 +58,7 @@ import org.springframework.stereotype.Component;
  * same job.
  */
 @Component
-public class JdbcEffectStore {
+public class JdbcEffects {
 
   public static final String PENDING = "PENDING";
   public static final String RUNNING = "RUNNING";
@@ -134,7 +134,7 @@ public class JdbcEffectStore {
    * Spring telling four {@code Codec} beans apart by their type argument alone. The factory is the
    * shared thing; a codec for a type only this class writes is not.
    */
-  public JdbcEffectStore(JdbcClient jdbc, CodecFactory codecs) {
+  public JdbcEffects(JdbcClient jdbc, CodecFactory codecs) {
     this.jdbc = jdbc;
     // What to do. Only what to do: which model to call is read from the binding.
     this.effectCodec = codecs.create(AgentEffect.class);

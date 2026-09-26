@@ -24,9 +24,9 @@ import org.jwcarman.nessy.api.AgentId;
 /**
  * One claimed effect row, as handed to whoever is about to perform it.
  *
- * <p>Carries both blobs unread. Decoding is {@link EffectStore#effectOf} and {@link
- * EffectStore#failureOf}, called separately and only when wanted, because the two are independent:
- * a row whose effect cannot be read can still say what to tell the waiting agent.
+ * <p>Carries both blobs unread. Decoding is {@link Outbox#effectOf} and {@link Outbox#failureOf},
+ * called separately and only when wanted, because the two are independent: a row whose effect
+ * cannot be read can still say what to tell the waiting agent.
  *
  * <p>{@code deadline} is fixed by the first claim and read back by every one after it, so it is
  * settled by the time anyone holds an attempt -- which is why it is not optional here even though

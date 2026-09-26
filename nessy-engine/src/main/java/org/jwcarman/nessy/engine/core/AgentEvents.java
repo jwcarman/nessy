@@ -35,12 +35,12 @@ import org.jwcarman.nessy.inference.Seq;
  * crash, and wrong in a way nothing detects. Finding it costs reading backwards to the nearest
  * {@link AgentEvent.TurnStarted}, which is one turn's worth of rows.
  *
- * <p><b>TODO -- this belongs in {@code nessy-spi}</b>, beside {@code PayloadStore}. It cannot go
- * there yet: it is typed on {@link AgentEvent}, which carries a {@code Failure}, which lives in the
- * SPI -- so the move waits on {@code Failure} being lifted to {@code nessy-api}, which the design
+ * <p><b>TODO -- this belongs in {@code nessy-spi}</b>, beside {@code Payloads}. It cannot go there
+ * yet: it is typed on {@link AgentEvent}, which carries a {@code Failure}, which lives in the SPI
+ * -- so the move waits on {@code Failure} being lifted to {@code nessy-api}, which the design
  * record already has planned for other reasons.
  */
-public interface AgentEventStore {
+public interface AgentEvents {
 
   /**
    * Appends, if nothing else has.

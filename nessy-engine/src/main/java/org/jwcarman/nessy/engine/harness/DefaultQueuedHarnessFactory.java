@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
@@ -53,19 +53,19 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.store.EffectStore;
-import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
+import org.jwcarman.nessy.engine.store.JdbcAgentEvents;
 import org.jwcarman.nessy.engine.store.JdbcAgents;
 import org.jwcarman.nessy.engine.store.JdbcBacklog;
-import org.jwcarman.nessy.engine.store.JdbcEffectStore;
-import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
+import org.jwcarman.nessy.engine.store.JdbcEffects;
+import org.jwcarman.nessy.engine.store.JdbcPayloads;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -98,9 +98,9 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final Clock clock = Clock.systemUTC();
 
   private final JdbcClient jdbc;
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
-  private final JdbcEffectStore effectRows;
+  private final AgentEvents events;
+  private final Payloads payloads;
+  private final JdbcEffects effectRows;
   private final TransactionTemplate transactions;
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
@@ -148,9 +148,9 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
     this.jdbc = JdbcClient.create(dataSource);
-    this.events = new JdbcAgentEventStore(jdbc, codecs);
-    this.payloads = new JdbcPayloadStore(jdbc, codecs);
-    this.effectRows = new JdbcEffectStore(jdbc, codecs);
+    this.events = new JdbcAgentEvents(jdbc, codecs);
+    this.payloads = new JdbcPayloads(jdbc, codecs);
+    this.effectRows = new JdbcEffects(jdbc, codecs);
     this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
@@ -237,7 +237,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
                 agentType, assembler, inference, config, tools, narrator, payloads, terms),
             createApprovalHandler(agentType, tools, narrator, terms),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
-    EffectStore effects = new EffectStore(agentType, handlers, effectRows);
+    Outbox effects = new Outbox(agentType, handlers, effectRows);
     DefaultQueuedHarness<I> harness =
         new DefaultQueuedHarness<>(
             agentType,
@@ -287,7 +287,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       AgentType agentType,
       Tools tools,
       Listeners narrator,
-      PayloadStore payloads,
+      Payloads payloads,
       EffectTermsSource terms) {
     return new ToolCallHandler(
         agentType,
@@ -319,7 +319,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       DefaultQueuedHarnessConfig<I> config,
       Tools tools,
       Listeners narrator,
-      PayloadStore payloads,
+      Payloads payloads,
       EffectTermsSource terms) {
     return new InferenceHandler(
         agentType,

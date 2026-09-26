@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * A claim check that is a map, for work that outlives nothing.
@@ -31,7 +31,7 @@ import org.jwcarman.nessy.spi.store.PayloadStore;
  * this and a table, which is the point -- the discipline of keeping content out of events costs the
  * cheapest door nothing.
  */
-public final class InMemoryPayloads implements PayloadStore {
+public final class InMemoryPayloads implements Payloads {
 
   private final Map<PayloadRef, List<Block>> content = new ConcurrentHashMap<>();
 

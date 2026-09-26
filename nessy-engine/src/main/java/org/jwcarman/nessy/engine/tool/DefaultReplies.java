@@ -31,10 +31,10 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.store.Attempt;
-import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +55,7 @@ public final class DefaultReplies implements Replies {
   private static final Logger log = LoggerFactory.getLogger(DefaultReplies.class);
 
   /** One agent type's two halves: where its rows live, and how to reach its fold. */
-  public record Bound(EffectStore effects, AgentEffectCallback callback, PayloadStore payloads) {}
+  public record Bound(Outbox effects, AgentEffectCallback callback, Payloads payloads) {}
 
   /**
    * How a late answer becomes an outcome.
@@ -66,7 +66,7 @@ public final class DefaultReplies implements Replies {
    */
   @FunctionalInterface
   private interface Settlement {
-    EffectOutcome of(CallId callId, Attempt attempt, PayloadStore payloads);
+    EffectOutcome of(CallId callId, Attempt attempt, Payloads payloads);
   }
 
   private final ReplyTokens tokens;
@@ -78,10 +78,7 @@ public final class DefaultReplies implements Replies {
 
   /** Called as each harness is built. An agent type answered before that is simply unknown. */
   public void register(
-      AgentType agentType,
-      EffectStore effects,
-      AgentEffectCallback callback,
-      PayloadStore payloads) {
+      AgentType agentType, Outbox effects, AgentEffectCallback callback, Payloads payloads) {
     byAgentType.put(agentType.value(), new Bound(effects, callback, payloads));
   }
 

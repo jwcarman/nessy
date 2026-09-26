@@ -66,7 +66,7 @@ public final class PlanTools {
    * rather than decorative: send the whole list, keep one task in progress, mark work done as it
    * finishes.
    */
-  public static Tool<UpdatePlan> updatePlan(PlanStore store) {
+  public static Tool<UpdatePlan> updatePlan(Plans store) {
     Objects.requireNonNull(store, "store must not be null");
     return new PlanTool(store);
   }
@@ -82,7 +82,7 @@ public final class PlanTools {
    * <p>An empty plan contributes nothing: a heading over no tasks tells the model it has a plan,
    * which is a claim, and saying nothing is not.
    */
-  public static AmbientSource plan(PlanStore store) {
+  public static AmbientSource plan(Plans store) {
     Objects.requireNonNull(store, "store must not be null");
     return AmbientSource.of(
         source ->
@@ -113,7 +113,7 @@ public final class PlanTools {
     };
   }
 
-  private record PlanTool(PlanStore store) implements Tool<UpdatePlan> {
+  private record PlanTool(Plans store) implements Tool<UpdatePlan> {
 
     @Override
     public Class<UpdatePlan> inputType() {

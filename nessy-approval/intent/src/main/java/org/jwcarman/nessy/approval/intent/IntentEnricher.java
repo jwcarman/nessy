@@ -31,10 +31,10 @@ public final class IntentEnricher<T> implements ApprovalEnricher {
 
   public static final String DECLARED = "intent.declared";
 
-  private final IntentStore<T> store;
+  private final Intents<T> store;
   private final ObjectMapper mapper;
 
-  public IntentEnricher(IntentStore<T> store, ObjectMapper mapper) {
+  public IntentEnricher(Intents<T> store, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }

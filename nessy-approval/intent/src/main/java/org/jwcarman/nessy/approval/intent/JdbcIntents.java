@@ -37,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  * version that was read, and a loser retries — so two callers declaring at the same moment produce
  * two declarations one after the other, never one silently overwriting the other.
  */
-public final class JdbcIntentStore<T> implements IntentStore<T> {
+public final class JdbcIntents<T> implements Intents<T> {
 
   private static final String WHERE_AGENT = " WHERE agent_type = ? AND agent_id = ?";
   private static final String SELECT = "SELECT declaration FROM nessy_intent" + WHERE_AGENT;
@@ -51,12 +51,12 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
 
   private final JdbcClient jdbc;
   // Unwrapped once, at construction: below this line is SQL, and SQL takes strings. The same
-  // shape JdbcNotebook, JdbcPlanStore and TranscriptMemory already use.
+  // shape JdbcNotebook, JdbcPlans and TranscriptMemory already use.
   private final String agentType;
   private final Codec<T> codec;
 
   /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
-  public JdbcIntentStore(
+  public JdbcIntents(
       DataSource dataSource, AgentType agentType, Class<T> vocabulary, ObjectMapper mapper) {
     this(
         dataSource,
@@ -65,7 +65,7 @@ public final class JdbcIntentStore<T> implements IntentStore<T> {
             .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
-  public JdbcIntentStore(DataSource dataSource, AgentType agentType, Codec<T> codec) {
+  public JdbcIntents(DataSource dataSource, AgentType agentType, Codec<T> codec) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();

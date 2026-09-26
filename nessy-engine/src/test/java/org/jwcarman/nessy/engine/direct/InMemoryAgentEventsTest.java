@@ -31,12 +31,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 
 @DisplayName("An agent's events, held only for as long as the process lives")
-class InMemoryAgentEventStoreTest {
+class InMemoryAgentEventsTest {
 
   private final AgentId agent = AgentId.random();
 
@@ -50,7 +50,7 @@ class InMemoryAgentEventStoreTest {
     Instant first = Instant.parse("2026-01-01T00:00:00Z");
     Instant second = Instant.parse("2026-01-01T00:05:00Z");
     Clock clock = new SteppedClock(first, second);
-    AgentEventStore events = new InMemoryAgentEventStore(clock);
+    AgentEvents events = new InMemoryAgentEvents(clock);
 
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
     events.append(agent, List.of(started(2, 2)), new Seq(1));
@@ -62,7 +62,7 @@ class InMemoryAgentEventStoreTest {
   @Test
   @DisplayName("a default store stamps with the system clock, not with nothing")
   void the_no_arg_constructor_defaults_to_the_system_clock() {
-    AgentEventStore events = new InMemoryAgentEventStore();
+    AgentEvents events = new InMemoryAgentEvents();
 
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
 
@@ -73,7 +73,7 @@ class InMemoryAgentEventStoreTest {
   @Test
   @DisplayName("an unknown seq names the agent and the seq rather than staying quiet about it")
   void an_unknown_seq_throws() {
-    AgentEventStore events = new InMemoryAgentEventStore();
+    AgentEvents events = new InMemoryAgentEvents();
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
 
     assertThatThrownBy(() -> events.writtenAt(agent, new Seq(99)))

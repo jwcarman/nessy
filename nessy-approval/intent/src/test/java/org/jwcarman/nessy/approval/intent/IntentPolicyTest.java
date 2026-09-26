@@ -18,7 +18,7 @@ package org.jwcarman.nessy.approval.intent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jwcarman.nessy.approval.intent.Fixtures.AGENT;
 import static org.jwcarman.nessy.approval.intent.Fixtures.MAPPER;
-import static org.jwcarman.nessy.approval.intent.Fixtures.freshStore;
+import static org.jwcarman.nessy.approval.intent.Fixtures.freshIntents;
 import static org.jwcarman.nessy.approval.intent.Fixtures.request;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,7 +32,8 @@ class IntentPolicyTest {
   @Test
   void an_undeclared_call_is_denied_and_told_how_to_proceed() {
     var policy =
-        IntentPolicy.requireDeclared(new IntentEnricher<>(freshStore(), MAPPER), Approver.allow());
+        IntentPolicy.requireDeclared(
+            new IntentEnricher<>(freshIntents(), MAPPER), Approver.allow());
 
     Awaited<ApprovalResult> result = policy.approve(request());
 
@@ -44,7 +45,7 @@ class IntentPolicyTest {
 
   @Test
   void a_declared_call_passes_to_the_approver_it_guards() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(AGENT, new Intent("restart prod-eu to clear the stuck deploy"));
     var policy =
         IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), Approver.allow());
@@ -55,7 +56,7 @@ class IntentPolicyTest {
   /** A declaration is a precondition, never a reason to allow: the guarded approver still rules. */
   @Test
   void it_never_approves_on_its_own_only_defers_to_what_it_guards() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(AGENT, new Intent("declared, but still not allowed"));
     Approver alwaysDenies = request -> Awaited.ready(ApprovalResult.denied("policy says no"));
     var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(store, MAPPER), alwaysDenies);
@@ -72,7 +73,8 @@ class IntentPolicyTest {
           calls.incrementAndGet();
           return Awaited.ready(ApprovalResult.approved());
         };
-    var policy = IntentPolicy.requireDeclared(new IntentEnricher<>(freshStore(), MAPPER), counting);
+    var policy =
+        IntentPolicy.requireDeclared(new IntentEnricher<>(freshIntents(), MAPPER), counting);
 
     policy.approve(request());
 
@@ -81,7 +83,7 @@ class IntentPolicyTest {
 
   @Test
   void the_guarded_approver_sees_the_declaration_this_policy_recorded() {
-    var store = freshStore();
+    var store = freshIntents();
     store.declare(AGENT, new Intent("restart prod-eu"));
     Approver reader =
         request ->

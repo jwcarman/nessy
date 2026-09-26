@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
@@ -45,7 +45,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -89,8 +89,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   }
 
   private final Locks locks;
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
+  private final AgentEvents events;
+  private final Payloads payloads;
   private final InferenceProvider provider;
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
@@ -150,7 +150,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         config ->
             config
                 .locks(new InMemoryLocks())
-                .events(new InMemoryAgentEventStore())
+                .events(new InMemoryAgentEvents())
                 .payloads(new InMemoryPayloads())
                 .provider(provider)
                 .schemas(schemas)

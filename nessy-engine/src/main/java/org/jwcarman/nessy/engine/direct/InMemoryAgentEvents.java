@@ -24,7 +24,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.inference.Seq;
 
 /**
@@ -37,17 +37,17 @@ import org.jwcarman.nessy.inference.Seq;
  * Clock#instant()} -- the JDBC store's database clock and this one's harness clock are the same
  * kind of thing, read at the same moment: when the fact was filed.
  */
-public final class InMemoryAgentEventStore implements AgentEventStore {
+public final class InMemoryAgentEvents implements AgentEvents {
 
   private final Map<AgentId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
   private final Map<AgentId, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
   private final Clock clock;
 
-  public InMemoryAgentEventStore() {
+  public InMemoryAgentEvents() {
     this(Clock.systemUTC());
   }
 
-  public InMemoryAgentEventStore(Clock clock) {
+  public InMemoryAgentEvents(Clock clock) {
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 

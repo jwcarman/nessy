@@ -38,7 +38,7 @@ import org.jwcarman.nessy.inference.block.Block;
  * is no third answer. Where a value must not reach a model, it is a surrogate inside the content,
  * and the reveal happens in the tool that holds the charter, not here.
  */
-public interface PayloadStore {
+public interface Payloads {
 
   /** Puts content away and returns the reference that will fetch it. */
   /**
@@ -48,7 +48,7 @@ public interface PayloadStore {
    * one table rather than a traversal of what it might share with others. A store that keeps
    * nothing beyond the process has nothing to scope and answers with itself.
    */
-  default PayloadStore forAgent(AgentId agent) {
+  default Payloads forAgent(AgentId agent) {
     return this;
   }
 

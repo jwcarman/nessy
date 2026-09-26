@@ -29,7 +29,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -39,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Content, kept where nothing else has to look at it. */
 @Tag("container")
 @DisplayName("Payloads in a database")
-class JdbcPayloadStoreTest {
+class JdbcPayloadsTest {
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -55,18 +55,18 @@ class JdbcPayloadStoreTest {
     return database;
   }
 
-  private final PayloadStore unscoped =
-      new JdbcPayloadStore(
+  private final Payloads unscoped =
+      new JdbcPayloads(
           JdbcClient.create(database()), new JacksonCodecFactory(JsonMapper.builder().build()));
 
-  private PayloadStore forSomeAgent() {
+  private Payloads forSomeAgent() {
     return unscoped.forAgent(AgentId.random());
   }
 
   @Test
   @DisplayName("keeps content and hands it back whole")
   void round_trips() {
-    PayloadStore payloads = forSomeAgent();
+    Payloads payloads = forSomeAgent();
     List<Block> content =
         List.of(
             new Block.Text("first"),
@@ -75,14 +75,14 @@ class JdbcPayloadStoreTest {
 
     PayloadRef ref = payloads.put(content);
 
-    assertThat(payloads.get(ref)).isEqualTo(new PayloadStore.Resolved.Found(content));
+    assertThat(payloads.get(ref)).isEqualTo(new Payloads.Resolved.Found(content));
   }
 
   /** The reason the reference is the content's hash rather than a number somebody handed out. */
   @Test
   @DisplayName("putting the same content twice is one reference and one row")
   void putting_twice_is_idempotent() {
-    PayloadStore payloads = forSomeAgent();
+    Payloads payloads = forSomeAgent();
     List<Block> content = List.of(new Block.Text("say it again"));
 
     PayloadRef first = payloads.put(content);
@@ -94,7 +94,7 @@ class JdbcPayloadStoreTest {
   @Test
   @DisplayName("different content is a different reference")
   void different_content_differs() {
-    PayloadStore payloads = forSomeAgent();
+    Payloads payloads = forSomeAgent();
 
     assertThat(payloads.put(List.of(new Block.Text("one"))))
         .isNotEqualTo(payloads.put(List.of(new Block.Text("two"))));
@@ -104,36 +104,36 @@ class JdbcPayloadStoreTest {
   @Test
   @DisplayName("an agent cannot resolve another agent's content")
   void agents_do_not_share() {
-    PayloadStore mine = forSomeAgent();
-    PayloadStore theirs = forSomeAgent();
+    Payloads mine = forSomeAgent();
+    Payloads theirs = forSomeAgent();
     List<Block> content = List.of(new Block.Text("the same words"));
 
     PayloadRef ref = mine.put(content);
 
-    assertThat(mine.get(ref)).isInstanceOf(PayloadStore.Resolved.Found.class);
+    assertThat(mine.get(ref)).isInstanceOf(Payloads.Resolved.Found.class);
     assertThat(theirs.get(ref))
         .as("identical content, stored twice, and not shared")
-        .isEqualTo(new PayloadStore.Resolved.Missing());
+        .isEqualTo(new Payloads.Resolved.Missing());
   }
 
   @Test
   @DisplayName("a window of references is one query, and every one gets an answer")
   void resolves_a_batch() {
-    PayloadStore payloads = forSomeAgent();
+    Payloads payloads = forSomeAgent();
     PayloadRef one = payloads.put(List.of(new Block.Text("one")));
     PayloadRef two = payloads.put(List.of(new Block.Text("two")));
     PayloadRef never = new PayloadRef("00".repeat(32));
 
-    Map<PayloadRef, PayloadStore.Resolved> found = payloads.get(List.of(one, two, never));
+    Map<PayloadRef, Payloads.Resolved> found = payloads.get(List.of(one, two, never));
 
     assertThat(found).hasSize(3);
     assertThat(found.get(one))
-        .isEqualTo(new PayloadStore.Resolved.Found(List.of(new Block.Text("one"))));
+        .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("one"))));
     assertThat(found.get(two))
-        .isEqualTo(new PayloadStore.Resolved.Found(List.of(new Block.Text("two"))));
+        .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("two"))));
     assertThat(found.get(never))
         .as("asked about and not there, rather than absent from the answer")
-        .isEqualTo(new PayloadStore.Resolved.Missing());
+        .isEqualTo(new Payloads.Resolved.Missing());
   }
 
   @Test

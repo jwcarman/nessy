@@ -37,9 +37,9 @@ import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
-import org.jwcarman.nessy.planning.JdbcPlanStore;
-import org.jwcarman.nessy.planning.PlanStore;
+import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
+import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.ObjectProvider;
@@ -87,8 +87,8 @@ public class ChatConfiguration {
   }
 
   @Bean
-  public PlanStore planStore(DataSource dataSource) {
-    return new JdbcPlanStore(dataSource, TYPE);
+  public Plans plans(DataSource dataSource) {
+    return new JdbcPlans(dataSource, TYPE);
   }
 
   private static final int MAX_TAIL = 20;
@@ -150,7 +150,7 @@ public class ChatConfiguration {
       SendEmailTool email,
       Approver desk,
       Notebook notebook,
-      PlanStore plans,
+      Plans plans,
       JdbcEpisodes episodes,
       EpisodeSummarizer summarizer) {
     return factory.<String>create(

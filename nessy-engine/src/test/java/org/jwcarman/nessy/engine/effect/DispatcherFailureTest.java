@@ -39,7 +39,7 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.store.Attempt;
-import org.jwcarman.nessy.engine.store.EffectStore;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
@@ -340,7 +340,7 @@ class DispatcherFailureTest {
   }
 
   /** A store that can be asked to fail, one operation at a time. */
-  private static final class Effects extends EffectStore {
+  private static final class Effects extends Outbox {
 
     private EffectHandlers handlers;
     private List<Attempt> due = List.of();

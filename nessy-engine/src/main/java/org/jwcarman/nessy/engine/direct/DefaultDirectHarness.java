@@ -48,7 +48,7 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
@@ -74,7 +74,7 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -105,8 +105,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private final Locks locks;
   private final AgentType agentType;
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
+  private final AgentEvents events;
+  private final Payloads payloads;
   private final InferenceProvider provider;
   private final SystemPromptSource systemPrompt;
   private final InferenceOptions options;
@@ -169,8 +169,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   public DefaultDirectHarness(
       Locks locks,
       AgentType agentType,
-      AgentEventStore events,
-      PayloadStore payloads,
+      AgentEvents events,
+      Payloads payloads,
       InferenceProvider provider,
       SystemPromptSource systemPrompt,
       InferenceOptions options,
@@ -239,7 +239,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // both is what made a second ask forget the first.
     // Content is kept per agent, so everything this turn puts away or reads back goes through a
     // view of the store that knows whose it is.
-    PayloadStore content = payloads.forAgent(agent);
+    Payloads content = payloads.forAgent(agent);
 
     List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
     Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
@@ -301,7 +301,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * everything bounded by the deadline the effect's own terms name.
    */
   private AgentCommand perform(
-      AgentId agent, PayloadStore content, AgentEffect effect, List<AgentEvent> history) {
+      AgentId agent, Payloads content, AgentEffect effect, List<AgentEvent> history) {
     return within(
         termsFor(effect),
         () ->
@@ -376,7 +376,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * is a denial with a reason rather than a turn that never ends.
    */
   private AgentCommand approve(
-      AgentId agent, PayloadStore content, AgentEffect.Approve approve, List<AgentEvent> history) {
+      AgentId agent, Payloads content, AgentEffect.Approve approve, List<AgentEvent> history) {
     ToolBinding<?> binding = tools.find(approve.toolName()).orElse(null);
     if (binding == null) {
       return new AgentCommand.CompleteApproval(
@@ -439,7 +439,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   private AgentCommand callTool(
-      AgentId agent, PayloadStore content, AgentEffect.CallTool call, List<AgentEvent> history) {
+      AgentId agent, Payloads content, AgentEffect.CallTool call, List<AgentEvent> history) {
     ToolBinding<?> binding = tools.find(call.toolName()).orElse(null);
     if (binding == null) {
       return new AgentCommand.CompleteToolCall(
@@ -471,8 +471,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     }
   }
 
-  private AgentCommand completed(
-      PayloadStore content, AgentEffect.CallTool call, ToolResult result) {
+  private AgentCommand completed(Payloads content, AgentEffect.CallTool call, ToolResult result) {
     return switch (result) {
       // Claim-checked on the way back, so a result crosses into the core as a reference and never
       // as content.
@@ -505,7 +504,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         .orElseThrow(() -> new IllegalStateException("a call outside any turn"));
   }
 
-  private AgentCommand.InferenceOutcome infer(AgentId agent, PayloadStore content) {
+  private AgentCommand.InferenceOutcome infer(AgentId agent, Payloads content) {
     InferenceRequest request =
         new InferenceRequest(
             systemPrompt.forAgent(agent),
@@ -623,7 +622,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     narrator.narrate(agentType, agent, event);
   }
 
-  private String argumentsOf(PayloadStore content, CallId callId, List<AgentEvent> history) {
+  private String argumentsOf(Payloads content, CallId callId, List<AgentEvent> history) {
     return history.reversed().stream()
         .filter(AgentEvent.ActionsRequested.class::isInstance)
         .map(AgentEvent.ActionsRequested.class::cast)
@@ -632,10 +631,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         .orElseThrow(() -> new IllegalStateException("no request holds " + callId));
   }
 
-  private String resolveCall(
-      PayloadStore content, AgentEvent.ActionsRequested asked, CallId callId) {
+  private String resolveCall(Payloads content, AgentEvent.ActionsRequested asked, CallId callId) {
     return switch (content.get(asked.request())) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+      case Payloads.Resolved.Found(List<Block> blocks) ->
           blocks.stream()
               .filter(Block.ToolCall.class::isInstance)
               .map(Block.ToolCall.class::cast)
@@ -643,7 +641,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
               .findFirst()
               .map(Block.ToolCall::arguments)
               .orElseThrow(() -> new IllegalStateException("no call " + callId));
-      case PayloadStore.Resolved.Missing _ ->
+      case Payloads.Resolved.Missing _ ->
           throw new IllegalStateException("no payload behind " + asked.request());
     };
   }
@@ -672,15 +670,15 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * caller asked for, and the only place the reference has to be resolved.
    */
   private static String textOf(
-      PayloadStore payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
+      Payloads payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
     return switch (payloads.forAgent(agent).get(answered.answer())) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) ->
+      case Payloads.Resolved.Found(List<Block> blocks) ->
           blocks.stream()
               .filter(Block.Text.class::isInstance)
               .map(Block.Text.class::cast)
               .map(Block.Text::text)
               .reduce("", String::concat);
-      case PayloadStore.Resolved.Missing _ -> "";
+      case Payloads.Resolved.Missing _ -> "";
     };
   }
 
@@ -693,7 +691,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * rather than merely this class's abstract type variable.
    */
   static Outcome<String> saidText(
-      PayloadStore payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
+      Payloads payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
     return new Outcome.Answered<>(textOf(payloads, agent, answered));
   }
 
@@ -708,7 +706,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * O} are the same type parameter.
    */
   static <T> Outcome<T> read(
-      PayloadStore payloads,
+      Payloads payloads,
       ObjectMapper mapper,
       AgentId agent,
       AgentEvent.InferenceAnswered answered,

@@ -37,11 +37,11 @@ class PlanToolsTest {
   // Fresh per test: the database is shared by the whole JVM, and an agent is the unit of isolation.
   private final AgentId thisAgent = Calls.agent();
 
-  private PlanStore plans;
+  private Plans plans;
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlanStore(Calls.database(), Calls.TYPE);
+    plans = new JdbcPlans(Calls.database(), Calls.TYPE);
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */

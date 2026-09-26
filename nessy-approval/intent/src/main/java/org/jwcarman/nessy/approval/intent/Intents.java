@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.AgentId;
  * on every call now, and this is the same shape the notebook and the plan settled on: one store,
  * many agents, the agent named on the way in.
  */
-public interface IntentStore<T> {
+public interface Intents<T> {
 
   void declare(AgentId agentId, T declaration);
 

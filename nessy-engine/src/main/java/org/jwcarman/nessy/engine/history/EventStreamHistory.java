@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
@@ -41,11 +41,11 @@ import org.jwcarman.nessy.inference.turn.Turn;
  */
 public final class EventStreamHistory implements TurnHistory {
 
-  private final AgentEventStore events;
+  private final AgentEvents events;
   private final Transcript transcript;
   private final AgentId agent;
 
-  public EventStreamHistory(AgentEventStore events, Transcript transcript, AgentId agent) {
+  public EventStreamHistory(AgentEvents events, Transcript transcript, AgentId agent) {
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
     this.agent = Objects.requireNonNull(agent, "agent must not be null");

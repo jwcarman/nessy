@@ -24,7 +24,7 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.inference.Seq;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -46,7 +46,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * {@code expectedLast} means here: not a version column to compare, but a claim that the seqs about
  * to be written are free -- and the database is the thing that knows.
  */
-public final class JdbcAgentEventStore implements AgentEventStore {
+public final class JdbcAgentEvents implements AgentEvents {
 
   private static final String APPEND =
       "INSERT INTO nessy_agent_event (agent_id, seq, starts_turn, payload) VALUES (?, ?, ?, ?)";
@@ -78,7 +78,7 @@ public final class JdbcAgentEventStore implements AgentEventStore {
   private final JdbcClient jdbc;
   private final Codec<AgentEvent> codec;
 
-  public JdbcAgentEventStore(JdbcClient jdbc, CodecFactory codecs) {
+  public JdbcAgentEvents(JdbcClient jdbc, CodecFactory codecs) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(AgentEvent.class);
   }

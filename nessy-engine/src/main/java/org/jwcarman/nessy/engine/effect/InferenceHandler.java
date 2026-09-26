@@ -30,7 +30,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,7 +57,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   private final EffectTermsSource terms;
 
   /** Where what the model said goes, so that what reaches the fold is a reference to it. */
-  private final PayloadStore payloads;
+  private final Payloads payloads;
 
   private final Narrator narrator;
 
@@ -66,7 +66,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
       InferenceService inference,
       InferenceOptions options,
       EffectTermsSource terms,
-      PayloadStore payloads,
+      Payloads payloads,
       Narrator narrator) {
     this.agentType = agentType;
     this.inference = inference;

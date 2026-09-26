@@ -33,7 +33,7 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +56,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private final AgentType agentType;
 
   /** Where a tool result goes, so the fold is told a reference rather than an answer. */
-  private final PayloadStore payloads;
+  private final Payloads payloads;
 
   private final Tools tools;
   private final ToolCalls calls;
@@ -73,7 +73,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       Narrator narrator,
       EffectTermsSource terms,
       Clock clock,
-      PayloadStore payloads) {
+      Payloads payloads) {
     this.agentType = agentType;
     this.payloads = payloads;
     this.tools = tools;

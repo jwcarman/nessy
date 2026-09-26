@@ -29,13 +29,13 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
-import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
-import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
+import org.jwcarman.nessy.engine.store.JdbcAgentEvents;
+import org.jwcarman.nessy.engine.store.JdbcPayloads;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
@@ -44,7 +44,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -77,8 +77,8 @@ public final class EngineFixture implements AutoCloseable {
   private final HikariDataSource dataSource;
   private final DefaultQueuedHarnessFactory harnesses;
   private final TurnHistories history;
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
+  private final AgentEvents events;
+  private final Payloads payloads;
   private final JdbcClient jdbc;
 
   public EngineFixture(InferenceProvider provider, NarrationListener listener) {
@@ -130,8 +130,8 @@ public final class EngineFixture implements AutoCloseable {
     CodecFactory codecs = storage.map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
     // Readers over the same tables the engine writes, so a test asserts on what was written down
     // rather than on the engine's own objects.
-    this.events = new JdbcAgentEventStore(jdbc, codecs);
-    this.payloads = new JdbcPayloadStore(jdbc, codecs);
+    this.events = new JdbcAgentEvents(jdbc, codecs);
+    this.payloads = new JdbcPayloads(jdbc, codecs);
     this.history =
         (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id);
 
@@ -161,11 +161,11 @@ public final class EngineFixture implements AutoCloseable {
   }
 
   /** The events themselves, for a test asserting on the story rather than on the turns. */
-  public AgentEventStore events() {
+  public AgentEvents events() {
     return events;
   }
 
-  public PayloadStore payloads() {
+  public Payloads payloads() {
     return payloads;
   }
 
@@ -188,9 +188,8 @@ public final class EngineFixture implements AutoCloseable {
    */
   public List<Block> content(AgentId agent, PayloadRef ref) {
     return switch (payloads.forAgent(agent).get(ref)) {
-      case PayloadStore.Resolved.Found(List<Block> blocks) -> blocks;
-      case PayloadStore.Resolved.Missing() ->
-          throw new AssertionError("no payload stored at " + ref);
+      case Payloads.Resolved.Found(List<Block> blocks) -> blocks;
+      case Payloads.Resolved.Missing() -> throw new AssertionError("no payload stored at " + ref);
     };
   }
 

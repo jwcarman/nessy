@@ -56,8 +56,8 @@ final class Fixtures {
     return database;
   }
 
-  static JdbcIntentStore<Intent> freshStore() {
-    return new JdbcIntentStore<>(freshDatabase(), TYPE, Intent.class, MAPPER);
+  static JdbcIntents<Intent> freshIntents() {
+    return new JdbcIntents<>(freshDatabase(), TYPE, Intent.class, MAPPER);
   }
 
   /** The question an approver is asked, for {@link #AGENT}. */

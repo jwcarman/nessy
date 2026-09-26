@@ -33,20 +33,20 @@ import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.observability.Identity;
-import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.store.JdbcAgents;
 import org.jwcarman.nessy.engine.store.JdbcBacklog;
+import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -79,10 +79,10 @@ final class DefaultQueuedHarness<I>
   private final BacklogPolicy<I> policy;
   private final InputRenderer<I> renderer;
   private final JdbcAgents agents;
-  private final AgentEventStore events;
-  private final PayloadStore payloads;
+  private final AgentEvents events;
+  private final Payloads payloads;
   private final Backlogs<I> backlogs;
-  private final EffectStore effects;
+  private final Outbox effects;
   private final TransactionTemplate transactions;
   private final Narrator narrator;
   private final Clock clock;
@@ -101,10 +101,10 @@ final class DefaultQueuedHarness<I>
       BacklogPolicy<I> policy,
       InputRenderer<I> renderer,
       JdbcAgents agents,
-      AgentEventStore events,
-      PayloadStore payloads,
+      AgentEvents events,
+      Payloads payloads,
       Backlogs<I> backlogs,
-      EffectStore effects,
+      Outbox effects,
       TransactionTemplate transactions,
       Narrator narrator,
       Clock clock,

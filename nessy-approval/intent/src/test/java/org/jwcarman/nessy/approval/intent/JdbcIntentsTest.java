@@ -31,7 +31,7 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 
-class JdbcIntentStoreTest {
+class JdbcIntentsTest {
 
   /** A plainly-pinned mapper — tolerant reads, same as the stored format contract. */
   private static final String AGENT_KEY = AGENT.value().toString();
@@ -41,16 +41,14 @@ class JdbcIntentStoreTest {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store =
-          new JdbcIntentStore<>(freshDatabase(), new AgentType("chat"), Intent.class, MAPPER);
+      var store = new JdbcIntents<>(freshDatabase(), new AgentType("chat"), Intent.class, MAPPER);
 
       assertThat(store.latest(AGENT)).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store =
-          new JdbcIntentStore<>(freshDatabase(), new AgentType("chat"), Intent.class, MAPPER);
+      var store = new JdbcIntents<>(freshDatabase(), new AgentType("chat"), Intent.class, MAPPER);
 
       store.declare(AGENT, new Intent("first declaration"));
       store.declare(AGENT, new Intent("second declaration"));
@@ -65,7 +63,7 @@ class JdbcIntentStoreTest {
           database,
           AGENT_KEY,
           "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}");
-      var store = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var store = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
 
       assertThat(store.latest(AGENT)).contains(new Intent("restart prod-eu"));
     }
@@ -77,8 +75,8 @@ class JdbcIntentStoreTest {
     @Test
     void shareTheDeclaration() {
       var database = freshDatabase();
-      var writer = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
-      var reader = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var writer = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var reader = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
 
       writer.declare(AGENT, new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -97,23 +95,25 @@ class JdbcIntentStoreTest {
     record Restart(String target, String reason) implements ForeignVocabulary {}
 
     /**
-     * Typed-stores fix round 1, Q3: {@code declare} is documented "last write wins" without
-     * qualification — {@link DocumentStore#update} would decode the incumbent before discarding it,
-     * which throws when a second store shares the key with an incompatible vocabulary, silently
-     * narrowing that contract. A version-only CAS loop restores the blind overwrite.
+     * {@code declare} is last write wins, without qualification.
+     *
+     * <p>Which is why it never decodes what it is about to replace. Reading the incumbent first
+     * would throw whenever another writer shares the key with a vocabulary this one cannot read --
+     * turning an unconditional contract into one that holds only while everybody agrees about the
+     * type. The compare-and-set is on the version alone, so the bytes underneath can be anything.
      */
     @Test
     void blindlyOverwritesAnIncumbentItsOwnCodecCannotDecode() {
       var database = freshDatabase();
-      var plainStore = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
-      var foreignStore =
-          new JdbcIntentStore<>(database, new AgentType("chat"), ForeignVocabulary.class, MAPPER);
-      plainStore.declare(
+      var plainIntents = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var foreignIntents =
+          new JdbcIntents<>(database, new AgentType("chat"), ForeignVocabulary.class, MAPPER);
+      plainIntents.declare(
           AGENT, new Intent("a plain declaration, no \"type\" discriminator at all"));
 
-      foreignStore.declare(AGENT, new Restart("prod-eu", "stuck deploy"));
+      foreignIntents.declare(AGENT, new Restart("prod-eu", "stuck deploy"));
 
-      assertThat(foreignStore.latest(AGENT)).contains(new Restart("prod-eu", "stuck deploy"));
+      assertThat(foreignIntents.latest(AGENT)).contains(new Restart("prod-eu", "stuck deploy"));
     }
   }
 
@@ -125,9 +125,8 @@ class JdbcIntentStoreTest {
     @DisplayName("an id is unique within its type, so two types do not share a declaration")
     void two_agent_types_sharing_an_id_declare_separately() {
       var database = freshDatabase();
-      var chat = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
-      var watchman =
-          new JdbcIntentStore<>(database, new AgentType("watchman"), Intent.class, MAPPER);
+      var chat = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var watchman = new JdbcIntents<>(database, new AgentType("watchman"), Intent.class, MAPPER);
 
       chat.declare(AGENT, new Intent("answering a question"));
       watchman.declare(AGENT, new Intent("pruning docker images"));
@@ -156,7 +155,7 @@ class JdbcIntentStoreTest {
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
       var store =
-          new JdbcIntentStore<>(freshDatabase(), new AgentType("chat"), OpsIntent.class, MAPPER);
+          new JdbcIntents<>(freshDatabase(), new AgentType("chat"), OpsIntent.class, MAPPER);
 
       store.declare(AGENT, new Restart("prod-eu", "stuck deploy"));
 
@@ -166,7 +165,7 @@ class JdbcIntentStoreTest {
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
       var store =
-          new JdbcIntentStore<>(freshDatabase(), new AgentType("chat"), OpsIntent.class, MAPPER);
+          new JdbcIntents<>(freshDatabase(), new AgentType("chat"), OpsIntent.class, MAPPER);
 
       store.declare(AGENT, new Diagnose("prod-eu"));
 
@@ -183,7 +182,7 @@ class JdbcIntentStoreTest {
     @Test
     void anAnnotatedVocabularySingleDiscriminatesRatherThanDoublingTheTypeKey() {
       var database = freshDatabase();
-      var store = new JdbcIntentStore<>(database, new AgentType("chat"), OpsIntent.class, MAPPER);
+      var store = new JdbcIntents<>(database, new AgentType("chat"), OpsIntent.class, MAPPER);
 
       store.declare(AGENT, new Restart("prod-eu", "stuck deploy"));
 
@@ -209,12 +208,11 @@ class JdbcIntentStoreTest {
     void aFirstWriteWithNoContenderSucceedsEvenWhenItsReportedRowCountIsWrong() {
       var database = freshDatabase();
       var raced =
-          new JdbcIntentStore<>(
-              losesOneWrite(database), new AgentType("chat"), Intent.class, MAPPER);
+          new JdbcIntents<>(losesOneWrite(database), new AgentType("chat"), Intent.class, MAPPER);
 
       raced.declare(AGENT, new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var readBack = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
       assertThat(readBack.latest(AGENT))
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }
@@ -229,12 +227,12 @@ class JdbcIntentStoreTest {
       // (stale) empty read of the version and its own attempt to insert.
       storeDeclaration(database, AGENT_KEY, "{\"declaration\":\"won the race\"}");
       var raced =
-          new JdbcIntentStore<>(
+          new JdbcIntents<>(
               forcedEmptyVersionReadOnce(database), new AgentType("chat"), Intent.class, MAPPER);
 
       raced.declare(AGENT, new Intent("declared after losing the insert race"));
 
-      var readBack = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var readBack = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
       assertThat(readBack.latest(AGENT))
           .contains(new Intent("declared after losing the insert race"));
     }
@@ -245,11 +243,11 @@ class JdbcIntentStoreTest {
             + " declaration")
     void a_lost_optimistic_lock_retries_rather_than_dropping_the_write() {
       var database = freshDatabase();
-      var writer = new JdbcIntentStore<>(database, new AgentType("chat"), Intent.class, MAPPER);
+      var writer = new JdbcIntents<>(database, new AgentType("chat"), Intent.class, MAPPER);
       writer.declare(AGENT, new Intent("first declaration"));
 
       var raced =
-          new JdbcIntentStore<>(
+          new JdbcIntents<>(
               racingAnotherWriterIntoTheFirstUpdate(database),
               new AgentType("chat"),
               Intent.class,
@@ -269,7 +267,7 @@ class JdbcIntentStoreTest {
       var database = freshDatabase();
       Codec<Intent> codec =
           new JacksonCodecFactory(MAPPER).create(Intent.class).andThen(new MarkerBytesCodec());
-      var store = new JdbcIntentStore<>(database, new AgentType("chat"), codec);
+      var store = new JdbcIntents<>(database, new AgentType("chat"), codec);
 
       store.declare(AGENT, new Intent("restart prod-eu"));
 
@@ -341,7 +339,7 @@ class JdbcIntentStoreTest {
     boolean[] lost = {false};
     return (javax.sql.DataSource)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {javax.sql.DataSource.class},
             (source, method, args) -> {
               Object result = method.invoke(delegate, args);
@@ -354,7 +352,7 @@ class JdbcIntentStoreTest {
   private static java.sql.Connection proxyConnection(java.sql.Connection delegate, boolean[] lost) {
     return (java.sql.Connection)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {java.sql.Connection.class},
             (connection, method, args) -> {
               Object result = method.invoke(delegate, args);
@@ -368,7 +366,7 @@ class JdbcIntentStoreTest {
       java.sql.PreparedStatement delegate, boolean[] lost) {
     return (java.sql.PreparedStatement)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {java.sql.PreparedStatement.class},
             (statement, method, args) -> {
               if ("executeUpdate".equals(method.getName()) && !lost[0]) {
@@ -394,7 +392,7 @@ class JdbcIntentStoreTest {
     boolean[] intercepted = {false};
     return (javax.sql.DataSource)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {javax.sql.DataSource.class},
             (source, method, args) -> {
               Object result = method.invoke(delegate, args);
@@ -408,7 +406,7 @@ class JdbcIntentStoreTest {
       java.sql.Connection delegate, boolean[] intercepted) {
     return (java.sql.Connection)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {java.sql.Connection.class},
             (connection, method, args) -> {
               if ("prepareStatement".equals(method.getName())
@@ -437,7 +435,7 @@ class JdbcIntentStoreTest {
     boolean[] raced = {false};
     return (javax.sql.DataSource)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {javax.sql.DataSource.class},
             (source, method, args) -> {
               Object result = method.invoke(delegate, args);
@@ -451,7 +449,7 @@ class JdbcIntentStoreTest {
       java.sql.Connection delegate, javax.sql.DataSource realDataSource, boolean[] raced) {
     return (java.sql.Connection)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {java.sql.Connection.class},
             (connection, method, args) -> {
               Object result = method.invoke(delegate, args);
@@ -465,7 +463,7 @@ class JdbcIntentStoreTest {
       java.sql.PreparedStatement delegate, javax.sql.DataSource realDataSource, boolean[] raced) {
     return (java.sql.PreparedStatement)
         java.lang.reflect.Proxy.newProxyInstance(
-            JdbcIntentStoreTest.class.getClassLoader(),
+            JdbcIntentsTest.class.getClassLoader(),
             new Class<?>[] {java.sql.PreparedStatement.class},
             (statement, method, args) -> {
               if ("executeUpdate".equals(method.getName()) && !raced[0]) {

@@ -49,7 +49,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.spi.narration.Narrator;
-import org.jwcarman.nessy.spi.store.PayloadStore;
+import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -65,7 +65,7 @@ class ToolCallHandlerTest {
 
   private static final AgentType TYPE = new AgentType("tools");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
-  private static final PayloadStore PAYLOADS = new InMemoryPayloads();
+  private static final Payloads PAYLOADS = new InMemoryPayloads();
   private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);

@@ -30,7 +30,7 @@ import org.jwcarman.nessy.engine.agent.EffectOutcome;
  * with no cast at all. It also means a new kind of effect stops both methods compiling until it has
  * somewhere to go -- which a map would discover at runtime, on a row already claimed.
  *
- * <p>Held by both halves of the engine: {@code EffectStore} asks for terms while writing a row, the
+ * <p>Held by both halves of the engine: {@code Outbox} asks for terms while writing a row, the
  * dispatcher asks for the work once it has decoded one. Same instance, so the two cannot describe
  * different sets of effects.
  */

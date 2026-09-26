@@ -31,7 +31,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.core.AgentEvents;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
@@ -44,7 +44,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Reading an agent back costs the last turn, not the whole life. */
 @Tag("container")
 @DisplayName("An agent's events in a database")
-class JdbcAgentEventStoreTest {
+class JdbcAgentEventsTest {
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -60,8 +60,8 @@ class JdbcAgentEventStoreTest {
     return database;
   }
 
-  private final AgentEventStore events =
-      new JdbcAgentEventStore(
+  private final AgentEvents events =
+      new JdbcAgentEvents(
           JdbcClient.create(database()), new JacksonCodecFactory(JsonMapper.builder().build()));
 
   private final AgentId agent = AgentId.random();
@@ -134,7 +134,7 @@ class JdbcAgentEventStoreTest {
     List<AgentEvent> sameSeq = List.of(answered(1, 1));
 
     assertThatThrownBy(() -> events.append(agent, sameSeq, Seq.NONE))
-        .isInstanceOf(AgentEventStore.Conflict.class)
+        .isInstanceOf(AgentEvents.Conflict.class)
         .hasMessageContaining("another writer reached");
   }
 

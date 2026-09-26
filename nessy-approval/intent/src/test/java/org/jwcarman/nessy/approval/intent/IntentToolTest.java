@@ -21,7 +21,7 @@ import static org.jwcarman.nessy.approval.intent.Fixtures.MAPPER;
 import static org.jwcarman.nessy.approval.intent.Fixtures.TYPE;
 import static org.jwcarman.nessy.approval.intent.Fixtures.declaring;
 import static org.jwcarman.nessy.approval.intent.Fixtures.freshDatabase;
-import static org.jwcarman.nessy.approval.intent.Fixtures.freshStore;
+import static org.jwcarman.nessy.approval.intent.Fixtures.freshIntents;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -39,31 +39,31 @@ class IntentToolTest {
 
     @Test
     void itIsNamedDeclareIntent() {
-      assertThat(IntentTool.freeform(freshStore()).name())
+      assertThat(IntentTool.freeform(freshIntents()).name())
           .isEqualTo(new ToolName("declare-intent"));
     }
 
     @Test
     void itsInputTypeIsTheFreeformIntentClass() {
-      assertThat(IntentTool.freeform(freshStore()).inputType()).isEqualTo(Intent.class);
+      assertThat(IntentTool.freeform(freshIntents()).inputType()).isEqualTo(Intent.class);
     }
 
     @Test
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
-      assertThat(IntentTool.freeform(freshStore()).description())
+      assertThat(IntentTool.freeform(freshIntents()).description())
           .isEqualTo("Declare what you are about to do and why, before using any other tool.");
     }
 
     /** Recording a claim is local work, so this tool can only ever come back ready. */
     @Test
     void itAnswersImmediatelyRatherThanDeferring() {
-      assertThat(IntentTool.freeform(freshStore()).call(declaring(new Intent("something"))))
+      assertThat(IntentTool.freeform(freshIntents()).call(declaring(new Intent("something"))))
           .isInstanceOf(Awaited.Ready.class);
     }
 
     @Test
     void callingDeclaresTheDeclarationIntoTheStoreForTheCallingAgent() {
-      var store = freshStore();
+      var store = freshIntents();
 
       IntentTool.freeform(store)
           .call(declaring(new Intent("restart prod-eu to clear the stuck deploy")));
@@ -75,7 +75,7 @@ class IntentToolTest {
     @Test
     void callingReturnsAnImmediatelyReadyOkResult() {
       Awaited<ToolResult> outcome =
-          IntentTool.freeform(freshStore()).call(declaring(new Intent("restart prod-eu")));
+          IntentTool.freeform(freshIntents()).call(declaring(new Intent("restart prod-eu")));
 
       assertThat(outcome)
           .isEqualTo(Awaited.ready(ToolResult.ok(new Block.Text("intent recorded"))));
@@ -101,8 +101,8 @@ class IntentToolTest {
 
     record Shutdown(String reason) implements Vocabulary {}
 
-    private JdbcIntentStore<Vocabulary> store() {
-      return new JdbcIntentStore<>(freshDatabase(), TYPE, Vocabulary.class, MAPPER);
+    private JdbcIntents<Vocabulary> store() {
+      return new JdbcIntents<>(freshDatabase(), TYPE, Vocabulary.class, MAPPER);
     }
 
     @Test
