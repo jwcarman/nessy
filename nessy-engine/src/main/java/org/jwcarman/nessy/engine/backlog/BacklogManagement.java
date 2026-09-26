@@ -47,4 +47,13 @@ public interface BacklogManagement<I> extends Backlog<I> {
    * error, but they are a fact somebody may want to know about.
    */
   int seal();
+
+  /**
+   * Whether this agent has been told to end.
+   *
+   * <p>{@link #take} already asks this to choose between {@link Pull.Pill} and {@link Pull.Empty};
+   * a caller deciding whether to coalesce an arrival at all -- before there is anything to take --
+   * needs the answer on its own.
+   */
+  boolean terminated();
 }

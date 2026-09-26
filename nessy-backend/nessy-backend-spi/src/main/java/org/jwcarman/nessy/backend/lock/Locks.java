@@ -54,6 +54,16 @@ import org.jwcarman.nessy.api.AgentType;
 public interface Locks {
 
   /**
+   * A turn is running for this agent -- whichever door started it.
+   *
+   * <p>Shared rather than owned by either door: the direct door's {@code ask} and {@code terminate}
+   * and the queued door's {@code tell}, {@code terminate} and {@code deliverOutcome} all lock under
+   * this same kind, so a turn taken through one door excludes a turn taken through the other over
+   * the same agent. A kind named after a door instead of the work would not do that.
+   */
+  LockKind TURN = new LockKind("nessy.agent.turn");
+
+  /**
    * How often the default {@link #withLock} asks again after being refused.
    *
    * <p>Short enough that a caller waiting for a step -- a database round trip, not an inference --

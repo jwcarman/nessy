@@ -67,6 +67,11 @@ public final class ListBacklog<I> implements BacklogManagement<I> {
   }
 
   @Override
+  public boolean terminated() {
+    return ended;
+  }
+
+  @Override
   public void append(BacklogItem<I> item) {
     items.add(Objects.requireNonNull(item, "item must not be null"));
   }

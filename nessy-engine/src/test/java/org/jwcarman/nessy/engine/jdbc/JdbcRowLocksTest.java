@@ -201,9 +201,12 @@ class JdbcRowLocksTest {
                   () -> {
                     holding.countDown();
                     await(release);
+                    // Inside the work, so it is set BEFORE the commit that releases the row. The
+                    // waiter wakes on that commit, so a signal raised after withLock returned
+                    // would race it -- the waiter can be running before the holder's next line.
+                    holderFinished.countDown();
                     return null;
                   });
-              holderFinished.countDown();
             });
     holder.start();
     holding.await();

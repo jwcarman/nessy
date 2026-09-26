@@ -29,7 +29,6 @@ import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarness;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -78,19 +77,19 @@ public class ChatConfiguration {
    * this one JVM, so a second instance would not see them at all. A lease is keyed by the agent
    * itself and holds across instances.
    *
-   * <p>One instance, two kinds: the direct door's own turn lock and the episode summariser's, each
-   * with its own time-to-live rather than a shared default. Both are generous, because a turn here
-   * can be waiting on a person -- the desk holds a call for five minutes before giving up -- and a
-   * local thinking model can take minutes over a long episode; a lease that expired under a holder
-   * still working would let a second run start on the same agent, which is the thing it exists to
-   * prevent.
+   * <p>One instance, two kinds: {@link Locks#TURN}, shared by every door that runs a turn, and the
+   * episode summariser's, each with its own time-to-live rather than a shared default. Both are
+   * generous, because a turn here can be waiting on a person -- the desk holds a call for five
+   * minutes before giving up -- and a local thinking model can take minutes over a long episode; a
+   * lease that expired under a holder still working would let a second run start on the same agent,
+   * which is the thing it exists to prevent.
    */
   @Bean
   public Locks agentLocks(DataSource dataSource) {
     return new JdbcLeases(
         dataSource,
         Map.of(
-            DefaultDirectHarness.TURN, Duration.ofMinutes(10),
+            Locks.TURN, Duration.ofMinutes(10),
             EpisodeSummarizer.LOCK_KIND, Duration.ofMinutes(10)));
   }
 

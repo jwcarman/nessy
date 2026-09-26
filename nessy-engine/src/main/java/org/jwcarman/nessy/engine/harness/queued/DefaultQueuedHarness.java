@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
@@ -48,7 +49,6 @@ import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * A harness for work nobody is waiting on, and the callback its own effects report through.
@@ -56,16 +56,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>The same fold the direct door runs. What is different is everything around it: a backlog in
  * front, an outbox behind, and a row lock holding the agent still while both are written.
  *
- * <p><b>Nothing here holds a lock while a model is called.</b> A transaction takes the agent, folds
- * a command, writes the events and the effects it decided on, and commits. Performing those effects
- * happens afterwards and elsewhere; the answer comes back through {@link #deliverOutcome} as a
- * second transaction. That is the whole reason this door exists and the whole reason it can wait
+ * <p><b>Nothing here holds a lock while a model is called.</b> {@link Locks#withLock} takes the
+ * agent, folds a command, writes the events and the effects it decided on, and commits -- the lock
+ * absorbs the transaction, so there is no separate transaction boundary here. Performing those
+ * effects happens afterwards and elsewhere; the answer comes back through {@link #deliverOutcome}
+ * as a lock of its own. That is the whole reason this door exists and the whole reason it can wait
  * hours for a person to approve something.
- *
- * <p><b>Transactions are explicit.</b> A {@link TransactionTemplate} rather than
- * {@code @Transactional}, because the annotation only works through a Spring proxy and nothing
- * makes a harness a bean. The failure mode there is a successful write with no transaction, silent
- * until a crash lands between the events and the outbox.
  *
  * @param <I> the input type
  */
@@ -82,7 +78,7 @@ final class DefaultQueuedHarness<I>
   private final Payloads payloads;
   private final Backlogs<I> backlogs;
   private final Outbox effects;
-  private final TransactionTemplate transactions;
+  private final Locks locks;
   private final Narrator narrator;
   private final Clock clock;
   private final Traces traces;
@@ -104,7 +100,7 @@ final class DefaultQueuedHarness<I>
       Payloads payloads,
       Backlogs<I> backlogs,
       Outbox effects,
-      TransactionTemplate transactions,
+      Locks locks,
       Narrator narrator,
       Clock clock,
       Traces traces) {
@@ -116,7 +112,7 @@ final class DefaultQueuedHarness<I>
     this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
     this.backlogs = Objects.requireNonNull(backlogs, "backlogs must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
-    this.transactions = Objects.requireNonNull(transactions, "transactions must not be null");
+    this.locks = Objects.requireNonNull(locks, "locks must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
@@ -140,7 +136,7 @@ final class DefaultQueuedHarness<I>
    * the one thing that can refuse. What happens to the arrival is the policy's business: appended,
    * replacing what was waiting, or dropped to hold a bound.
    *
-   * <p>Then, if the agent is idle, the arrival becomes a turn in this same transaction. An agent is
+   * <p>Then, if the agent is idle, the arrival becomes a turn under this same lock. An agent is
    * never left idle with work waiting.
    */
   @Override
@@ -153,22 +149,25 @@ final class DefaultQueuedHarness<I>
         () -> {
           String trace = traces.capture();
           boolean nudge =
-              Boolean.TRUE.equals(
-                  transactions.execute(
-                      _ -> {
-                        if (agents.lock(agentType, agentId)) {
-                          // Ended. Coalescing now would put something into an emptied backlog and
-                          // be read as work next time, undoing a termination that has happened.
-                          log.debug(
-                              "[{}] agent {} has ended; the input is refused",
-                              agentType.value(),
-                              agentId.value());
-                          return false;
-                        }
-                        BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
-                        policy.coalesce(backlog, arrival);
-                        return driveIfIdle(agentId, backlog, trace);
-                      }));
+              locks.withLock(
+                  Locks.TURN,
+                  agentType,
+                  agentId,
+                  () -> {
+                    agents.ensure(agentType, agentId);
+                    BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
+                    if (backlog.terminated()) {
+                      // Ended. Coalescing now would put something into an emptied backlog and be
+                      // read as work next time, undoing a termination that has happened.
+                      log.debug(
+                          "[{}] agent {} has ended; the input is refused",
+                          agentType.value(),
+                          agentId.value());
+                      return false;
+                    }
+                    policy.coalesce(backlog, arrival);
+                    return driveIfIdle(agentId, backlog, trace);
+                  });
           if (nudge) {
             dispatch();
           }
@@ -188,27 +187,29 @@ final class DefaultQueuedHarness<I>
     log.info("[{}] terminating agent {}", agentType.value(), agentId.value());
     String trace = traces.capture();
     boolean nudge =
-        Boolean.TRUE.equals(
-            transactions.execute(
-                _ -> {
-                  agents.lock(agentType, agentId);
-                  BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
-                  int abandoned = backlog.seal();
-                  if (abandoned > 0) {
-                    log.info(
-                        "[{}] agent {} ended with {} input(s) waiting; abandoned",
-                        agentType.value(),
-                        agentId.value(),
-                        abandoned);
-                  }
-                  return driveIfIdle(agentId, backlog, trace);
-                }));
+        locks.withLock(
+            Locks.TURN,
+            agentType,
+            agentId,
+            () -> {
+              agents.ensure(agentType, agentId);
+              BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
+              int abandoned = backlog.seal();
+              if (abandoned > 0) {
+                log.info(
+                    "[{}] agent {} ended with {} input(s) waiting; abandoned",
+                    agentType.value(),
+                    agentId.value(),
+                    abandoned);
+              }
+              return driveIfIdle(agentId, backlog, trace);
+            });
     if (nudge) {
       dispatch();
     }
   }
 
-  /** What an effect came to, folded in a transaction of its own. */
+  /** What an effect came to, folded under a lock of its own. */
   @Override
   public void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext) {
     log.debug(
@@ -217,16 +218,18 @@ final class DefaultQueuedHarness<I>
         outcome.getClass().getSimpleName(),
         agentId.value());
     boolean nudge =
-        Boolean.TRUE.equals(
-            transactions.execute(
-                _ -> {
-                  agents.lock(agentType, agentId);
-                  boolean wrote = apply(agentId, EffectOutcomes.command(outcome), traceContext);
-                  // A turn that ended leaves the agent idle, and the next thing waiting becomes
-                  // the next turn -- here, before this transaction commits.
-                  return wrote
-                      | driveIfIdle(agentId, backlogs.forAgent(agentType, agentId), traceContext);
-                }));
+        locks.withLock(
+            Locks.TURN,
+            agentType,
+            agentId,
+            () -> {
+              agents.ensure(agentType, agentId);
+              boolean wrote = apply(agentId, EffectOutcomes.command(outcome), traceContext);
+              // A turn that ended leaves the agent idle, and the next thing waiting becomes
+              // the next turn -- here, before this transaction commits.
+              return wrote
+                  | driveIfIdle(agentId, backlogs.forAgent(agentType, agentId), traceContext);
+            });
     if (nudge) {
       dispatch();
     }

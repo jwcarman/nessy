@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
@@ -53,6 +54,7 @@ import org.jwcarman.nessy.engine.jdbc.JdbcAgents;
 import org.jwcarman.nessy.engine.jdbc.JdbcBacklog;
 import org.jwcarman.nessy.engine.jdbc.JdbcEffects;
 import org.jwcarman.nessy.engine.jdbc.JdbcPayloads;
+import org.jwcarman.nessy.engine.jdbc.JdbcRowLocks;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
@@ -68,9 +70,7 @@ import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -79,8 +79,8 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>The split is deliberate: a caller supplies what is theirs -- the agent type's name, its input
  * type, how to render one, which model it calls, how often it polls -- and this supplies the
- * stores, the transaction template, the scheduler and the codec factory. Nobody assembles a harness
- * by hand, so nobody can assemble one wrongly.
+ * stores, the row locks, the scheduler and the codec factory. Nobody assembles a harness by hand,
+ * so nobody can assemble one wrongly.
  *
  * <p><b>Shared infrastructure, not shared machinery.</b> Two harnesses use the same tables and the
  * same scheduler the way they use the same JVM. Nothing else crosses between them: each gets its
@@ -102,7 +102,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final AgentEvents events;
   private final Payloads payloads;
   private final JdbcEffects effectRows;
-  private final TransactionTemplate transactions;
+  private final Locks locks;
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
   private final DefaultReplies replies;
@@ -152,7 +152,10 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);
     this.effectRows = new JdbcEffects(jdbc, codecs);
-    this.transactions = new TransactionTemplate(new JdbcTransactionManager(dataSource));
+    // No PlatformTransactionManager to take from the config -- it is DataSource-only today (a
+    // later step makes it store-shaped) -- so this mints its own, exactly as the transaction
+    // template it replaces used to.
+    this.locks = new JdbcRowLocks(dataSource);
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
     this.replies = new DefaultReplies(replyTokens);
@@ -250,7 +253,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             (type, agent) ->
                 new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), type, agent),
             effects,
-            transactions,
+            locks,
             narrator,
             clock,
             traces);
